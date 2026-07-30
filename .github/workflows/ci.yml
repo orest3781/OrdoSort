@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: windows-latest   # the app targets net8.0-windows (WPF + WebView2)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore
+        run: dotnet restore
+      - name: Build
+        run: dotnet build --no-restore -c Release
+      - name: Test
+        run: dotnet test --no-build -c Release --verbosity normal
+      # every push gets a downloadable portable exe (Actions run → Artifacts)
+      - name: Publish portable exe
+        run: >
+          dotnet publish src/OrdoSort.Wpf -c Release -r win-x64
+          --self-contained false
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=none
+          -o out/portable
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ordosort-portable-win-x64
+          path: out/portable/OrdoSort.exe
+
+  smoke:
+    # the UI proofs: real WebView2 releases the PDF handle before the move,
+    # double-fire commits exactly once, every window constructs cleanly
+    runs-on: windows-latest
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+      - name: Dialogs
+        run: dotnet run --project tools/OrdoSort.Smoke -- dialogs
+      - name: Reentrancy
+        run: dotnet run --project tools/OrdoSort.Smoke -- reentrancy
+      - name: Filing loop
+        run: dotnet run --project tools/OrdoSort.Smoke

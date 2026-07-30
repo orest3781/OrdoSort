@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>OrdoSort</AssemblyName>
+    <RootNamespace>OrdoSort.Wpf</RootNamespace>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- also a WPF resource so windows show it when run via the dotnet host -->
+    <Resource Include="app.ico" />
+    <!-- empty-state illustrations (generated, de-whited, 512px) -->
+    <Resource Include="Assets\*.png" />
+    <!-- original synthesized alert sounds -->
+    <Resource Include="Assets\sounds\*.wav" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- the WPF SDK drops the System.IO implicit using (Shapes.Path clash);
+         this app is file-plumbing, so bring it back project-wide -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OrdoSort.Core\OrdoSort.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OrdoSort.Wpf.Tests" />
+    <InternalsVisibleTo Include="OrdoSort.Smoke" />
+  </ItemGroup>
+
+</Project>

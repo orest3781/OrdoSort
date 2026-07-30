@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
+    <PackageReference Include="PdfSharp" Version="6.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- the large-file threshold is settable only by tests, matching the
+         pattern the Wpf project already uses -->
+    <InternalsVisibleTo Include="OrdoSort.Core.Tests" />
+  </ItemGroup>
+
+</Project>

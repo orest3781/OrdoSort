@@ -1,0 +1,95 @@
+using System.Windows;
+using OrdoSort.Core;
+
+namespace OrdoSort.Wpf;
+
+/// <summary>Startup: parse --config, load Config with a readable error dialog,
+/// boot the theme, show the shell. Uncaught exceptions append to crash.log
+/// beside the config and surface as a dialog — the app survives (the Python
+/// original's excepthook behavior).</summary>
+public partial class App : Application
+{
+    private string _cfgPath = "";
+
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+
+        DispatcherUnhandledException += (_, ex) =>
+        {
+            LogCrash(ex.Exception);
+            MessageBox.Show(
+                "Something went wrong — details were written to crash.log.\n\n" +
+                ex.Exception.Message, "OrdoSort", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ex.Handled = true;
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, ex) =>
+            LogCrash(ex.ExceptionObject as Exception);
+
+        _cfgPath = e.Args.Length >= 2 && e.Args[0] == "--config"
+            ? e.Args[1]
+            : Path.Combine(AppContext.BaseDirectory, "config.json");
+        _crashDir = Path.GetDirectoryName(Path.GetFullPath(_cfgPath)) ?? ".";
+
+        Config cfg;
+        try
+        {
+            cfg = Config.Load(_cfgPath);
+        }
+        catch (ConfigException ex)
+        {
+            MessageBox.Show(ex.Message, "OrdoSort — configuration problem",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+            return;
+        }
+
+        Theme.ThemeManager.Start(this, cfg.Theme);
+        ApplyFont(this, cfg);
+
+        try
+        {
+            var window = new MainWindow(cfg, _cfgPath);
+            MainWindow = window;
+            window.Show();
+        }
+        catch (Exception ex)
+        {
+            // the shell ctor opens SQLite and takes the daily backup — a locked
+            // or corrupt history DB must fail with a dialog, not a silent crash
+            LogCrash(ex);
+            MessageBox.Show("OrdoSort couldn't start:\n\n" + ex.Message,
+                "OrdoSort", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+        }
+    }
+
+    /// <summary>ui_font_family / ui_font_size land in the AppFontFamily and
+    /// AppFontSize resources every window's style consumes.</summary>
+    /// <summary>The default face: Segoe UI Variable (the Windows 11 optical
+    /// font) with a plain Segoe UI fallback for older Windows.</summary>
+    internal const string DefaultFontChain = "Segoe UI Variable Text, Segoe UI";
+
+    public static void ApplyFont(Application app, Config cfg)
+    {
+        app.Resources["AppFontFamily"] = new System.Windows.Media.FontFamily(
+            string.IsNullOrWhiteSpace(cfg.UiFontFamily) ? DefaultFontChain : cfg.UiFontFamily);
+        app.Resources["AppFontSize"] = cfg.UiFontSize == 0 ? 14.0 : (double)cfg.UiFontSize;
+    }
+
+    /// <summary>Where crash.log goes: beside the config. Static so the shell can
+    /// route an unexpected filing-loop exception here too.</summary>
+    private static string _crashDir = ".";
+
+    internal static void LogCrash(Exception? ex)
+    {
+        if (ex is null) return;
+        try
+        {
+            var dir = _crashDir;
+            File.AppendAllText(Path.Combine(dir, "crash.log"),
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {ex}\n\n");
+        }
+        catch (Exception) { /* crash logging must never crash */ }
+    }
+}

@@ -1,0 +1,39 @@
+<Window x:Class="OrdoSort.Wpf.Windows.PrintPreviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:OrdoSort.Wpf.Windows"
+        Title="OrdoSort — Print preview" Width="900" Height="840"
+        MinWidth="680" MinHeight="560"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Style="{StaticResource {x:Type Window}}">
+    <DockPanel Margin="14">
+        <TextBlock x:Name="PageInfo" DockPanel.Dock="Top" Margin="0,0,0,8"
+                   Style="{StaticResource SubtleText}" />
+
+        <!-- everything needed to print lives here — no OS dialog round trip
+             (whose Windows 11 preview pane can't render XPS jobs anyway) -->
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <Button DockPanel.Dock="Right" Content="Cancel" Width="96" IsCancel="True" />
+            <Button x:Name="PrintButton" DockPanel.Dock="Right" Click="OnPrint"
+                    Style="{StaticResource PrimaryButton}" Width="110" Margin="0,0,8,0"
+                    AutomationProperties.Name="Print">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE749;" Margin="0,0,7,0"
+                               Foreground="{DynamicResource Theme.AccentText}" />
+                    <TextBlock Text="Print" Foreground="{DynamicResource Theme.AccentText}" />
+                </StackPanel>
+            </Button>
+            <TextBlock Text="Printer:" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <ComboBox x:Name="Printers" MinWidth="220" VerticalAlignment="Center"
+                      AutomationProperties.Name="Printer" />
+            <TextBlock Text="Copies:" VerticalAlignment="Center" Margin="14,0,6,0" />
+            <TextBox x:Name="Copies" Width="44" Text="1" VerticalAlignment="Center"
+                     AutomationProperties.Name="Copies" />
+            <TextBlock x:Name="PrintNote" VerticalAlignment="Center" Margin="10,0,0,0"
+                       Style="{StaticResource StatusText}" TextTrimming="CharacterEllipsis" />
+        </DockPanel>
+
+        <!-- the exact document that spools: zoom and page through it here -->
+        <local:PreviewDocumentViewer x:Name="Viewer" />
+    </DockPanel>
+</Window>

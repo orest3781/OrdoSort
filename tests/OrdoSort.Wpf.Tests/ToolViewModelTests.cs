@@ -1,0 +1,711 @@
+using OrdoSort.Core;
+using OrdoSort.Wpf.Services;
+using OrdoSort.Wpf.ViewModels;
+using PdfSharp.Pdf;
+
+namespace OrdoSort.Wpf.Tests;
+
+public class UnlockViewModelTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "frunlock_" + Guid.NewGuid());
+    private readonly Config _cfg = new();
+    private int _saves;
+
+    public UnlockViewModelTests() => Directory.CreateDirectory(_dir);
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_dir, true); } catch { /* best effort */ }
+    }
+
+    private UnlockViewModel Vm() => new(_cfg, () => _saves++);
+
+    private string MakeEncrypted(string name, string userPw = "secret")
+    {
+        var path = Path.Combine(_dir, name);
+        using var doc = new PdfDocument();
+        doc.AddPage();
+        doc.SecuritySettings.UserPassword = userPw;
+        doc.SecuritySettings.OwnerPassword = "owner-" + userPw;
+        doc.Save(path);
+        return path;
+    }
+
+    [Fact]
+    public async Task UnlocksInPlaceWithTheRightPassword()
+    {
+        var vm = Vm();
+        var path = MakeEncrypted("locked.pdf");
+        await vm.AddFilesAsync(new[] { path });
+        vm.Password = "secret";
+        await vm.UnlockAsync();
+        var line = Assert.Single(vm.ResultLines);
+        Assert.Equal(UnlockResultKind.Ok, line.Kind);
+        Assert.Contains("locked.pdf — unlocked", line.Text);
+        Assert.Equal("1 unlocked", vm.Summary);
+    }
+
+    [Fact]
+    public async Task WrongPasswordReportsPerFileWithoutTouchingIt()
+    {
+        var vm = Vm();
+        var path = MakeEncrypted("locked.pdf");
+        var before = File.ReadAllBytes(path);
+        await vm.AddFilesAsync(new[] { path });
+        vm.Password = "wrong";
+        await vm.UnlockAsync();
+        var line = Assert.Single(vm.ResultLines);
+        Assert.Equal(UnlockResultKind.Fail, line.Kind);
+        Assert.StartsWith("✗", line.Text);
+        Assert.Equal(before, File.ReadAllBytes(path));
+        Assert.Contains("1 failed", vm.Summary);
+    }
+
+    [Fact]
+    public async Task AWrongPasswordIsNeverRemembered()
+    {
+        // the old behavior saved the label unconditionally after the attempt —
+        // a stored wrong password would just fail again silently next session
+        var vm = Vm();
+        await vm.AddFilesAsync(new[] { MakeEncrypted("locked.pdf") });
+        vm.Password = "wrong";
+        vm.RememberLabel = "Payer A";
+        await vm.UnlockAsync();
+        Assert.Empty(_cfg.SavedPasswords);
+        Assert.Equal(0, _saves);
+        Assert.Equal("Payer A", vm.RememberLabel);   // kept for the retry
+    }
+
+    [Fact]
+    public async Task UnlockingKeepsTheNameAndArchivesTheLockedOriginal()
+    {
+        // There is no longer a choice to make: the unlocked file always keeps
+        // its name and place, and the locked one is always moved aside. The
+        // suffixed-copy mode this test used to cover is gone from the app.
+        var vm = Vm();
+        var path = MakeEncrypted("locked.pdf");
+        await vm.AddFilesAsync(new[] { path });
+        vm.Password = "secret";
+        await vm.UnlockAsync();
+
+        Assert.True(File.Exists(path));                                  // same name, same place
+        Assert.Empty(Directory.GetFiles(_dir, "*_unlocked*"));           // nothing renamed
+        var archived = Path.Combine(OrdoSort.Core.Unlock.ArchiveFolderFor(path), "locked.pdf");
+        Assert.True(File.Exists(archived));                              // original kept, not destroyed
+    }
+
+    [Fact]
+    public async Task RememberPersistsADpapiEntry()
+    {
+        var vm = Vm();
+        await vm.AddFilesAsync(new[] { MakeEncrypted("locked.pdf") });
+        vm.Password = "secret";
+        vm.RememberLabel = "Payer A";
+        await vm.UnlockAsync();
+
+        var saved = Assert.Single(_cfg.SavedPasswords);
+        Assert.Equal("Payer A", saved.Label);
+        Assert.True(PasswordVault.IsProtected(saved.Password));
+        Assert.Equal("secret", PasswordVault.Reveal(saved.Password));
+        Assert.Equal(1, _saves);
+        Assert.Equal("", vm.RememberLabel);
+    }
+
+    [Fact]
+    public async Task ABatchIsAllUnlockedAndStillReportedInTheOrderItWasAdded()
+    {
+        // Files are unlocked several at a time now, so the order they FINISH
+        // in is not the order they were added. The list must still read in the
+        // user's order — one that reshuffles itself is harder to follow than a
+        // slower one — and nothing may be dropped or double-counted.
+        var vm = Vm();
+        var names = Enumerable.Range(1, 9).Select(i => $"doc{i:00}.pdf").ToList();
+        await vm.AddFilesAsync(names.Select(MakeEncryptedDefault));
+        vm.Password = "secret";
+        await vm.UnlockAsync();
+
+        Assert.Equal(names.Count, vm.ResultLines.Count);
+        Assert.All(vm.ResultLines, l => Assert.Equal(UnlockResultKind.Ok, l.Kind));
+        for (var i = 0; i < names.Count; i++)
+            Assert.Contains(names[i], vm.ResultLines[i].Text);
+        Assert.Equal("9 unlocked", vm.Summary);
+    }
+
+    private string MakeEncryptedDefault(string name) => MakeEncrypted(name);
+
+    private static int InterlockedMax(ref int location, int value)
+    {
+        int snapshot;
+        while (value > (snapshot = Volatile.Read(ref location))
+               && Interlocked.CompareExchange(ref location, value, snapshot) != snapshot) { }
+        return snapshot;
+    }
+
+    [Fact]
+    public async Task CancellingMidBatchSkipsTheFilesNotYetStarted()
+    {
+        // Deterministic, not timing-hopeful: the injected unlocker blocks the
+        // first four files (the whole gate), so files five and six CANNOT have
+        // started when cancel lands. Completed files stay completed — each is
+        // individually safe — and the rest say so instead of running on after
+        // the user asked them not to.
+        var started = 0;
+        var block = new ManualResetEventSlim(false);
+        var vm = new UnlockViewModel(_cfg, () => _saves++, unlocker: (p, _) =>
+        {
+            Interlocked.Increment(ref started);
+            block.Wait();
+            return new OrdoSort.Core.Unlock.UnlockResult("ok", p, p, InPlace: true);
+        });
+        var files = Enumerable.Range(1, 6).Select(i => MakeEncrypted($"f{i}.pdf")).ToList();
+        await vm.AddFilesAsync(files);
+        vm.Password = "x";
+
+        var run = vm.UnlockAsync();
+        for (var i = 0; i < 500 && Volatile.Read(ref started) < 4; i++) await Task.Delay(10);
+        Assert.Equal(4, Volatile.Read(ref started));
+        Assert.True(vm.IsUnlocking);
+
+        vm.CancelUnlock();
+        block.Set();
+        await run;
+
+        Assert.False(vm.IsUnlocking);
+        Assert.Equal(4, Volatile.Read(ref started));      // 5 and 6 never began
+        Assert.Equal(6, vm.ResultLines.Count);            // but both are accounted for
+        Assert.Contains("4 unlocked", vm.Summary);
+        Assert.Contains("2 cancelled", vm.Summary);
+        block.Dispose();
+    }
+
+    [Fact]
+    public async Task ALargeFileNeverRunsBesideAnotherFile()
+    {
+        // a buffered file costs ~3x its size in memory and a streamed giant
+        // saturates the share — either way a large file taking the whole gate
+        // is the bound that keeps four of them from multiplying
+        var current = 0; var peak = 0;
+        var vm = new UnlockViewModel(_cfg, () => _saves++,
+            unlocker: (p, _) =>
+            {
+                var c = Interlocked.Increment(ref current);
+                InterlockedMax(ref peak, c);
+                Thread.Sleep(25);
+                Interlocked.Decrement(ref current);
+                return new OrdoSort.Core.Unlock.UnlockResult("ok", p, p, InPlace: true);
+            },
+            fileSize: _ => long.MaxValue);   // everything is "large"
+        await vm.AddFilesAsync(new[]
+            { MakeEncrypted("g1.pdf"), MakeEncrypted("g2.pdf"), MakeEncrypted("g3.pdf") });
+        vm.Password = "x";
+
+        await vm.UnlockAsync();
+
+        Assert.Equal(1, peak);
+        Assert.Contains("3 unlocked", vm.Summary);
+    }
+
+    [Fact]
+    public async Task AMixedBatchStillReportsInTheOrderFilesWereAdded()
+    {
+        // larges run after smalls, so finish order differs from add order —
+        // the report must not
+        var vm = new UnlockViewModel(_cfg, () => _saves++,
+            unlocker: (p, _) => new OrdoSort.Core.Unlock.UnlockResult("ok", p, p, InPlace: true),
+            fileSize: p => p.Contains("big") ? long.MaxValue : 0L);
+        var names = new[] { "big1.pdf", "tiny.pdf", "big2.pdf" };
+        await vm.AddFilesAsync(names.Select(n => MakeEncrypted(n)));
+        vm.Password = "x";
+
+        await vm.UnlockAsync();
+
+        Assert.Equal(3, vm.ResultLines.Count);
+        for (var i = 0; i < names.Length; i++)
+            Assert.Contains(names[i], vm.ResultLines[i].Text);
+    }
+
+    [Fact]
+    public void SelectingASavedPasswordFillsTheBox()
+    {
+        _cfg.SavedPasswords.Add(new SavedPassword
+        { Label = "X", Password = PasswordVault.Protect("pw123") });
+        var vm = Vm();
+        vm.SelectedSaved = vm.Saved[0];
+        Assert.Equal("pw123", vm.Password);
+    }
+
+    [Fact]
+    public async Task EmptyListDisablesUnlockAndHints()
+    {
+        var vm = Vm();
+        Assert.False(vm.UnlockCommand.CanExecute(null));
+        await vm.UnlockAsync();
+        Assert.Equal("Add at least one PDF first.", vm.Summary);
+    }
+
+    [Fact]
+    public async Task OnlyExistingPdfsAreAcceptedAndTheDropExplainsItself()
+    {
+        var vm = Vm();
+        var txt = Path.Combine(_dir, "not.txt");
+        File.WriteAllText(txt, "x");
+        await vm.AddFilesAsync(new[] { txt, Path.Combine(_dir, "ghost.pdf") });
+        Assert.Empty(vm.Files);
+        Assert.Contains("nothing added", vm.AddNote);
+
+        var pdf = MakeEncrypted("real.pdf");
+        await vm.AddFilesAsync(new[] { pdf, txt });
+        Assert.Single(vm.Files);
+        Assert.Contains("1 added", vm.AddNote);
+        Assert.Contains("1 ignored", vm.AddNote);
+        Assert.True(vm.UnlockCommand.CanExecute(null));
+    }
+}
+
+public class BulkRenameViewModelTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "frbulk_" + Guid.NewGuid());
+
+    public BulkRenameViewModelTests() => Directory.CreateDirectory(_dir);
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_dir, true); } catch { /* best effort */ }
+    }
+
+    private string Touch(string name)
+    {
+        var p = Path.Combine(_dir, name);
+        File.WriteAllText(p, "x");
+        return p;
+    }
+
+    [Fact]
+    public void CountsLineAndAddNoteTrackTheBatch()
+    {
+        var vm = new BulkRenameViewModel();
+        var a = Touch("scan_001.pdf");
+        var b = Touch("keep.pdf");
+        vm.AddFiles(new[] { a, b, a });   // duplicate ignored
+        Assert.Contains("2 added", vm.AddNote);
+        Assert.Contains("1 ignored", vm.AddNote);
+
+        vm.Find = "scan";
+        vm.Replace = "fax";
+        Assert.Equal("2 files · 1 will change", vm.CountsLine);
+
+        vm.RemoveFiles(new[] { b });
+        Assert.Equal("1 file · 1 will change", vm.CountsLine);
+        Assert.Single(vm.Preview);
+    }
+
+    [Fact]
+    public void CountsLineCallsOutTheRowsStillWaitingOnAName()
+    {
+        var vm = new BulkRenameViewModel();
+        vm.AddFiles(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf"),
+                            Touch("notes_only.pdf") });
+        vm.ReceivedDate = new DateTime(2024, 1, 26);
+        vm.ReviewMode = true;
+        Assert.Contains("1 will change", vm.CountsLine);
+        // was "1 won't (name didn't parse)" — a dead end. It now names the
+        // number of files waiting on you, which is the thing to act on.
+        Assert.Contains("1 need a name", vm.CountsLine);
+    }
+
+    /// <summary>Six strays in a batch of seventy-five is the real workload, so
+    /// the tool has to make those six quick to fix rather than make the other
+    /// sixty-nine expressible in a pattern language.</summary>
+    private BulkRenameViewModel BatchWithStrays()
+    {
+        var vm = new BulkRenameViewModel();
+        vm.AddFiles(new[]
+        {
+            Touch("SMITH_JOHN_5_5_2024_ACME_RECORDS_1-1__08_02_24_1019_X.pdf"),
+            Touch("oddball one.pdf"),
+            Touch("GARCIA_MARIA_8_5_2024_ACME_RECORDS_2-1__08_02_24_1020_X.pdf"),
+            Touch("oddball two.pdf"),
+        });
+        vm.ReceivedDate = new DateTime(2024, 8, 2);
+        vm.ReviewMode = true;
+        return vm;
+    }
+
+    [Fact]
+    public void RowsThatCouldNotBeParsedAreFlaggedAndCounted()
+    {
+        var vm = BatchWithStrays();
+
+        Assert.Equal(2, vm.NeedsNameCount);
+        Assert.False(vm.Preview[0].NeedsName);   // parsed fine
+        Assert.True(vm.Preview[1].NeedsName);    // oddball
+        Assert.False(vm.Preview[2].NeedsName);
+        Assert.True(vm.Preview[3].NeedsName);
+        Assert.Contains("2 need a name", vm.CountsLine);
+    }
+
+    [Fact]
+    public void AStrayOpensPrefilledWithTheDatePrefixSoOnlyTheNameIsTyped()
+    {
+        // the date is a batch constant the user already chose — retyping it on
+        // every stray is both keystrokes and a chance to drift out of format
+        var vm = BatchWithStrays();
+
+        Assert.Equal("20240802-", vm.Preview[1].EditSeed);
+        // a row that parsed opens with what it already says, to be edited
+        Assert.Equal(vm.Preview[0].NewName, vm.Preview[0].EditSeed);
+    }
+
+    [Fact]
+    public void NextStrayWrapsPastTheRowsThatAreAlreadyRight()
+    {
+        var vm = BatchWithStrays();
+
+        Assert.Equal(1, vm.IndexOfNextNeedingName(-1));  // from the top
+        Assert.Equal(3, vm.IndexOfNextNeedingName(1));   // skips row 2
+        Assert.Equal(1, vm.IndexOfNextNeedingName(3));   // wraps around
+    }
+
+    [Fact]
+    public void FixingAStrayByHandRemovesItFromTheCount()
+    {
+        var vm = BatchWithStrays();
+        vm.SetOverride(vm.Preview[1].Source, "20240802-ODD-ONE");
+
+        Assert.Equal(1, vm.NeedsNameCount);
+        Assert.Equal(3, vm.IndexOfNextNeedingName(-1));
+        Assert.False(vm.Preview[1].NeedsName);
+    }
+
+    [Fact]
+    public void NoStraysMeansNothingToJumpTo()
+    {
+        var vm = new BulkRenameViewModel();
+        vm.AddFiles(new[] { Touch("scan_001.pdf") });
+        vm.Find = "scan";
+        vm.Replace = "fax";
+
+        Assert.Equal(0, vm.NeedsNameCount);
+        Assert.Equal(-1, vm.IndexOfNextNeedingName(-1));
+        Assert.DoesNotContain("need a name", vm.CountsLine);
+    }
+
+    [Fact]
+    public void FindReplacePreviewMatchesThePlan()
+    {
+        var vm = new BulkRenameViewModel();
+        vm.AddFiles(new[] { Touch("scan_001.pdf"), Touch("keep.pdf") });
+        vm.Find = "scan";
+        vm.Replace = "fax";
+
+        Assert.Equal("fax_001.pdf", vm.Preview[0].NewName);
+        Assert.True(vm.Preview[0].Changed);
+        Assert.False(vm.Preview[1].Changed);
+        Assert.Equal("Rename 1 file", vm.RenameButtonText);
+    }
+
+    [Fact]
+    public void ReviewTransformParsesTheMedicalFaxNames()
+    {
+        var vm = new BulkRenameViewModel();
+        vm.AddFiles(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf") });
+        vm.ReceivedDate = new DateTime(2024, 1, 26);
+        vm.ReviewMode = true;
+        Assert.Equal("20240126-BROWN-ADAM.pdf", vm.Preview[0].NewName);
+    }
+
+    [Fact]
+    public void HandEditSurvivesAnOpChange()
+    {
+        var vm = new BulkRenameViewModel();
+        var src = Touch("scan_001.pdf");
+        vm.AddFiles(new[] { src });
+        vm.SetOverride(src, "CUSTOM NAME.pdf");   // typed extension is stripped
+        vm.Find = "scan";
+        vm.Replace = "fax";
+
+        Assert.Equal("CUSTOM NAME.pdf", vm.Preview[0].NewName);
+        Assert.True(vm.Preview[0].Manual);
+
+        vm.SetOverride(src, "");   // clearing goes back to the op result
+        Assert.Equal("fax_001.pdf", vm.Preview[0].NewName);
+    }
+
+    [Fact]
+    public void ApplyRenamesOnDiskAndUndoRestores()
+    {
+        var vm = new BulkRenameViewModel();
+        var src = Touch("scan_001.pdf");
+        vm.AddFiles(new[] { src });
+        vm.Find = "scan";
+        vm.Replace = "fax";
+        vm.Apply();
+
+        Assert.True(File.Exists(Path.Combine(_dir, "fax_001.pdf")));
+        Assert.False(File.Exists(src));
+        Assert.Contains("Renamed 1 file", vm.Status);
+        Assert.Equal("", vm.Find);   // ops reset after a batch
+
+        vm.UndoBatch();
+        Assert.True(File.Exists(src));
+        Assert.Equal("Original names restored.", vm.Status);
+    }
+}
+
+public class MatchMergeViewModelTests : IDisposable
+{
+    private const string Csv =
+        "First Name,Last Name,Control ID,DOB\n" +
+        "Adam,Brown,100000001,4/25/1966\n" +
+        "Adam,Brown,696009058,11/10/1955\n" +
+        "Frank,Evans,176797656,8/9/1997\n";
+
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "frmm_" + Guid.NewGuid());
+    private readonly Config _cfg = new();
+    private readonly FakeDialogs _dialogs = new();
+    private Dictionary<string, string>? _savedHeaders;
+
+    public MatchMergeViewModelTests() => Directory.CreateDirectory(_dir);
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_dir, true); } catch { /* best effort */ }
+    }
+
+    private MatchMergeViewModel Vm() => new(_cfg, h => _savedHeaders = h, _dialogs);
+
+    private string WriteRoster()
+    {
+        var path = Path.Combine(_dir, "roster.csv");
+        File.WriteAllText(path, Csv, new System.Text.UTF8Encoding(true));
+        return path;
+    }
+
+    private string Touch(string name)
+    {
+        var p = Path.Combine(_dir, name);
+        File.WriteAllText(p, "x");
+        return p;
+    }
+
+    [Fact]
+    public void RosterLoadGuessesHeadersAndRemembersThem()
+    {
+        var vm = Vm();
+        vm.LoadRosterFrom(WriteRoster());
+        Assert.Equal("First Name", vm.FirstHeader);
+        Assert.Equal("Last Name", vm.LastHeader);
+        Assert.Equal("Control ID", vm.ControlHeader);
+        Assert.Contains("2 people", vm.Status);   // the two Adam Browns are one person
+        Assert.Equal("First Name", _savedHeaders!["first"]);
+    }
+
+    [Fact]
+    public void SavedHeaderMappingWinsOverTheGuess()
+    {
+        _cfg.MergeHeaders["control"] = "DOB";   // deliberately odd saved choice
+        var vm = Vm();
+        vm.LoadRosterFrom(WriteRoster());
+        Assert.Equal("DOB", vm.ControlHeader);
+    }
+
+    [Fact]
+    public void FilesClassifyIntoTheFourBuckets()
+    {
+        var vm = Vm();
+        vm.LoadRosterFrom(WriteRoster());
+        vm.AddFiles(new[]
+        {
+            Touch("20240126-EVANS-FRANK.pdf"),               // unambiguous
+            Touch("20240126-BROWN-ADAM.pdf"),                // two Adams -> triage
+            Touch("20240126-EVANS-FRANK-176797656.pdf"),     // already merged
+            Touch("scan_001.pdf"),                           // no name
+        });
+
+        Assert.Equal(1, vm.MergeCount);
+        Assert.Equal(1, vm.ReviewCount);
+        Assert.Equal("Merge 1 matched", vm.MergeButtonText);
+        Assert.True(vm.CanReview);
+        Assert.Single(vm.ReviewItems);
+        Assert.Contains(vm.Rows, r => r.Note == "already has the id");
+    }
+
+    [Fact]
+    public void SuggestedFilesJoinTheReviewQueueWithReasons()
+    {
+        var vm = Vm();
+        vm.LoadRosterFrom(WriteRoster());
+        vm.AddFiles(new[] { Touch("20240126-FRANK-EVANS.pdf") });   // inverted -> suggested
+
+        Assert.Equal(1, vm.ReviewCount);
+        Assert.True(vm.CanReview);
+        var item = Assert.Single(vm.ReviewItems);
+        Assert.Equal("suggested", item.Status);
+        Assert.Equal("all segments agree", Assert.Single(item.Suggestions!).Reason);
+        Assert.Contains("Review 1 match", vm.ReviewButtonText);
+        Assert.Contains("1 suggested", vm.BucketsLine);
+    }
+
+    [Fact]
+    public void MergeRenamesAndUndoRestores()
+    {
+        var vm = Vm();
+        vm.LoadRosterFrom(WriteRoster());
+        var f = Touch("20240126-EVANS-FRANK.pdf");
+        vm.AddFiles(new[] { f });
+
+        vm.MergeCommand.Execute(null);
+        Assert.True(File.Exists(Path.Combine(_dir, "20240126-EVANS-FRANK-176797656.pdf")));
+        Assert.Contains("Merged 1 file", vm.Status);
+
+        vm.UndoCommand.Execute(null);
+        Assert.True(File.Exists(f));
+    }
+
+    [Fact]
+    public void NoRosterShowsAHintPerFile()
+    {
+        var vm = Vm();
+        Assert.False(vm.HasRoster);   // the header combos stay hidden
+        vm.AddFiles(new[] { Touch("20240126-EVANS-FRANK.pdf") });
+        Assert.Equal("load a roster first", Assert.Single(vm.Rows).Note);
+        Assert.False(vm.MergeCommand.CanExecute(null));
+        Assert.Equal("", vm.BucketsLine);
+    }
+
+    [Fact]
+    public void BucketsLineSummarizesTheGrid()
+    {
+        var vm = Vm();
+        vm.LoadRosterFrom(WriteRoster());
+        Assert.True(vm.HasRoster);
+        vm.AddFiles(new[]
+        {
+            Touch("20240126-EVANS-FRANK.pdf"),               // ready
+            Touch("20240126-BROWN-ADAM.pdf"),                // ambiguous
+            Touch("20240126-EVANS-FRANK-176797656.pdf"),     // already
+            Touch("scan_001.pdf"),                           // no name
+        });
+        Assert.Equal(
+            "1 ready to merge · 1 to review · 1 already merged · 1 no name in the filename",
+            vm.BucketsLine);
+        Assert.Equal("merge", vm.Rows[0].Status);
+        Assert.Equal("ambiguous", vm.Rows[1].Status);
+    }
+
+    [Fact]
+    public void RemoveFilesAndAddNotesWork()
+    {
+        var vm = Vm();
+        vm.LoadRosterFrom(WriteRoster());
+        var keep = Touch("20240126-EVANS-FRANK.pdf");
+        var drop = Touch("20240126-BROWN-ADAM.pdf");
+        var txt = Path.Combine(_dir, "notes.txt");
+        File.WriteAllText(txt, "x");
+
+        vm.AddFiles(new[] { keep, drop, txt });
+        Assert.Equal(2, vm.Rows.Count);
+        Assert.Contains("2 added", vm.AddNote);
+        Assert.Contains("1 ignored", vm.AddNote);
+
+        vm.RemoveFiles(new[] { drop });
+        Assert.Single(vm.Rows);
+        Assert.Equal(keep, vm.Rows[0].Source);
+    }
+
+    [Fact]
+    public async Task TheLastRosterLoadsItselfNextSession()
+    {
+        var roster = Path.Combine(_dir, "roster.csv");
+        File.WriteAllLines(roster, new[] { "Last,First,Control", "EVANS,FRANK,111" });
+        var cfg = new Config { MergeRoster = roster };
+        var vm = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs());
+
+        await vm.AutoLoadRosterAsync();
+
+        Assert.True(vm.HasRoster);
+        Assert.Equal(roster, vm.RosterPath);
+    }
+
+    [Fact]
+    public async Task AVanishedRosterSaysSoInsteadOfLoading()
+    {
+        var cfg = new Config { MergeRoster = Path.Combine(_dir, "gone.csv") };
+        var vm = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs());
+
+        await vm.AutoLoadRosterAsync();
+
+        Assert.False(vm.HasRoster);
+        Assert.Contains("wasn't found", vm.Status);
+    }
+
+    [Fact]
+    public void AFailedBrowseLeavesTheGoodRosterInPlace()
+    {
+        var roster = Path.Combine(_dir, "good.csv");
+        File.WriteAllLines(roster, new[] { "Last,First,Control", "EVANS,FRANK,111" });
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
+        vm.LoadRosterFrom(roster);
+        Assert.True(vm.HasRoster);
+
+        vm.LoadRosterFrom(Path.Combine(_dir, "nope.csv"));   // vanished mid-browse
+
+        Assert.True(vm.HasRoster);                            // still matching
+        Assert.Equal(roster, vm.RosterPath);                  // the box doesn't lie
+    }
+
+    [Fact]
+    public void ASuccessfulLoadRemembersThePathAndSaves()
+    {
+        var roster = Path.Combine(_dir, "roster.csv");
+        File.WriteAllLines(roster, new[] { "Last,First,Control", "EVANS,FRANK,111" });
+        var cfg = new Config();
+        var saves = 0;
+        var vm = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs(), () => saves++);
+
+        vm.LoadRosterFrom(roster);
+
+        Assert.Equal(roster, cfg.MergeRoster);
+        Assert.True(saves > 0);
+    }
+
+    [Fact]
+    public void ColumnChoiceDefaultsToTheMappedHeadersAndPersists()
+    {
+        var roster = Path.Combine(_dir, "r.csv");
+        File.WriteAllLines(roster, new[] { "Last,First,DOB,Dept,Control", "EVANS,FRANK,1970,ER,111" });
+        var cfg = new Config();
+        var saves = 0;
+        var vm = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs(), () => saves++);
+        vm.LoadRosterFrom(roster);
+
+        // nothing picked yet -> the mapped name and id columns
+        Assert.Equal(new[] { "Last", "First", "Control" }, vm.ChosenColumns);
+
+        vm.ColumnPicks.Single(p => p.Name == "DOB").IsChosen = true;
+        Assert.Contains("DOB", vm.ChosenColumns);
+        Assert.Equal(new[] { "Last", "First", "DOB", "Control" }, cfg.MergeColumns);
+        Assert.True(saves > 0);
+
+        // a fresh VM against the same config restores the choice
+        var vm2 = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs());
+        vm2.LoadRosterFrom(roster);
+        Assert.True(vm2.ColumnPicks.Single(p => p.Name == "DOB").IsChosen);
+    }
+
+    [Fact]
+    public void DuplicateRosterHeadersDontDuplicateChosenColumns()
+    {
+        // a spreadsheet with a repeated column name (or a roster whose
+        // guessed name headers collapse to the same column) must not hand
+        // Review matches a duplicate header list — DataGrid tolerates it,
+        // but the per-row dictionary building downstream does not
+        var roster = Path.Combine(_dir, "dup.csv");
+        File.WriteAllLines(roster, new[] { "Last,Last,Control", "EVANS,EVANS,111" });
+        var vm = Vm();
+        vm.LoadRosterFrom(roster);
+
+        Assert.Equal(2, vm.ColumnPicks.Count);             // one pick per DISTINCT header
+        Assert.Equal(vm.ChosenColumns.Count, vm.ChosenColumns.Distinct().Count());
+    }
+}
