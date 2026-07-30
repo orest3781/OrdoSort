@@ -18,7 +18,8 @@ The GitHub repository `orest3781/OrdoSort` exists and is empty.
 
 Rebuild the project as **OrdoSort** at `S:\OrdoSort` (repo root), with a full
 clean rebrand — no FileRouter/Sendu/Paper Trail residue in code, docs, or git
-history — and push it to `https://github.com/orest3781/OrdoSort`.
+history — and push it to `https://github.com/orest3781/OrdoSort`. The sole
+exception is this design spec, which necessarily documents the rename.
 
 ## Decisions (user-approved)
 
@@ -78,10 +79,11 @@ renamed identifiers need no back-compat aliases.
   "formerly known as" note.
 - **Banner:** `ordosort-logo-concept.jpg` moves to `docs/` and is referenced
   as the README banner until final art exists.
-- **Removed:** Paper Trail `docs/banner.png`, `docs/wordmark.png`,
-  `docs/index.html` (+ `docs/assets` if Sendu-branded), and the historical
-  design docs under `docs/superpowers/` that describe the Paper Trail
-  identity. This spec is the first document of the new lineage.
+- **Removed:** the entire old `docs/` content — Paper Trail `banner.png` and
+  `wordmark.png`, the Pages site (`index.html`, `.nojekyll`, `assets/` with
+  favicon, og image, wordmark), and all historical design docs and plans
+  under `docs/superpowers/`. This spec is the first document of the new
+  lineage.
 
 ## Verification gate (before first commit)
 
