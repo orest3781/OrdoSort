@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 /// <summary>Regenerate the demo: 5 sample documents in demo\inbox, empty route and
 /// set-aside folders, and a ready-to-use demo\config.json. Self-contained —
 /// used by reset.bat. The demo folder is resolved relative to the
@@ -33,28 +31,35 @@ public static class DemoReset
                 Path.Combine(inbox, $"2024{i + 1:00}15--{1000000000 + i}.pdf"),
                 $"MEDICAL REVIEW   -   {names[i]}   -   Document {i + 1} of {names.Length}");
 
-        File.WriteAllText(Path.Combine(demo, "config.json"), JsonSerializer.Serialize(new
+        var cfg = new OrdoSort.Core.Config
         {
-            inbox = inbox.Replace('\\', '/'),
-            deferred = deferred.Replace('\\', '/'),
-            history_db = "history.sqlite",
-            naming_mode = "insert",
-            sort = "size_desc",
-            uppercase_names = true,
-            enter_commits = true,
-            monitor_title = "Needs attention",
-            flash_alerts = true,
-            alert_texts = new[] { "URGENT" },
-            watch_folders = new[]
+            Inbox = inbox.Replace('\\', '/'),
+            Deferred = deferred.Replace('\\', '/'),
+            HistoryDb = "history.sqlite",
+            NamingMode = "insert",
+            Sort = "size_desc",
+            UppercaseNames = true,
+            EnterCommits = true,
+            MonitorTitle = "Needs attention",
+            FlashAlerts = true,
+            AlertTexts = { "URGENT" },
+            WatchFolders =
             {
-                new { label = "Failed transfers", path = failed.Replace('\\', '/'), recursive = false, filetypes = "pdf", color = "#c0392b" },
+                new OrdoSort.Core.WatchFolder { Label = "Failed transfers",
+                    Path = failed.Replace('\\', '/'), Recursive = false,
+                    Filetypes = "pdf", Color = "#c0392b" },
             },
-            routes = new[]
+            Routes =
             {
-                new { label = "Invoices", path = invoices.Replace('\\', '/'), hotkey = "Ctrl+1", append_suffix = true, suffix = "_INVOICE", color = "#2e7d32" },
-                new { label = "Statements", path = statements.Replace('\\', '/'), hotkey = "Ctrl+2", append_suffix = false, suffix = "", color = "#1565c0" },
+                new OrdoSort.Core.Route { Label = "Invoices",
+                    Path = invoices.Replace('\\', '/'), Hotkey = "Ctrl+1",
+                    AppendSuffix = true, Suffix = "_INVOICE", Color = "#2e7d32" },
+                new OrdoSort.Core.Route { Label = "Statements",
+                    Path = statements.Replace('\\', '/'), Hotkey = "Ctrl+2",
+                    AppendSuffix = false, Suffix = "", Color = "#1565c0" },
             },
-        }, new JsonSerializerOptions { WriteIndented = true }));
+        };
+        OrdoSort.Core.Config.Save(cfg, Path.Combine(demo, "config.json"));
 
         Console.WriteLine($"Demo reset: {names.Length} sample documents in {inbox}");
         Console.WriteLine("Run  run.bat  to launch against it.");

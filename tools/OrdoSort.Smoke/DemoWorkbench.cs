@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.Json;
 using PdfSharp.Pdf.IO;
 
 /// <summary>Builds a full-size workbench under <c>demo-full\</c>: ten routes, a
@@ -475,43 +474,43 @@ public static class DemoWorkbench
     {
         static string P(string p) => p.Replace('\\', '/');
 
-        var cfg = new
+        var cfg = new OrdoSort.Core.Config
         {
-            inbox = P(inbox),
-            deferred = P(deferred),
-            names_file = "names.txt",
-            history_db = "history.sqlite",
-            naming_mode = "insert",
-            sort = "size_desc",
-            enter_commits = true,
-            uppercase_names = true,
-            word_separator = "-",
-            theme = "auto",
-            poll_seconds = 15,
-            monitor_title = "Needs attention",
-            flash_alerts = true,
-            tile_visibility = "active",
-            alert_texts = new[] { "URGENT", "RUSH", "STAT" },
-            routes = routes.Select(r => new
+            Inbox = P(inbox),
+            Deferred = P(deferred),
+            NamesFile = "names.txt",
+            HistoryDb = "history.sqlite",
+            NamingMode = "insert",
+            Sort = "size_desc",
+            EnterCommits = true,
+            UppercaseNames = true,
+            WordSeparator = "-",
+            Theme = "auto",
+            PollSeconds = 15,
+            MonitorTitle = "Needs attention",
+            FlashAlerts = true,
+            TileVisibility = "active",
+            AlertTexts = { "URGENT", "RUSH", "STAT" },
+            Routes = routes.Select(r => new OrdoSort.Core.Route
             {
-                label = r.Label,
-                path = P(r.Path),
-                hotkey = r.Hotkey,
-                append_suffix = r.Suffix.Length > 0,
-                suffix = r.Suffix,
-                color = r.Color,
-                naming_mode = r.Mode,
-            }),
-            watch_folders = watches.Select(w => new
+                Label = r.Label,
+                Path = P(r.Path),
+                Hotkey = r.Hotkey,
+                AppendSuffix = r.Suffix.Length > 0,
+                Suffix = r.Suffix,
+                Color = r.Color,
+                NamingMode = r.Mode,
+            }).ToList(),
+            WatchFolders = watches.Select(w => new OrdoSort.Core.WatchFolder
             {
-                label = w.Label,
-                path = P(w.Path),
-                recursive = w.Recursive,
-                filetypes = w.Filetypes,
-                color = w.Color,
-            }),
+                Label = w.Label,
+                Path = P(w.Path),
+                Recursive = w.Recursive,
+                Filetypes = w.Filetypes,
+                Color = w.Color,
+            }).ToList(),
             // headers as written into merge/roster.csv
-            merge_headers = new Dictionary<string, string>
+            MergeHeaders = new Dictionary<string, string>
             {
                 ["first"] = "First Name",
                 ["last"] = "Last Name",
@@ -519,28 +518,27 @@ public static class DemoWorkbench
             },
             // plaintext here on purpose: the app re-protects these with DPAPI
             // the next time Settings saves, which is itself worth watching
-            saved_passwords = passwords.Select(p => new { label = p.Label, password = p.Password }),
-            label_clients = new[]
+            SavedPasswords = passwords.Select(p => new OrdoSort.Core.SavedPassword
             {
-                new { id = "NGC", destroy_days = 2555, next_number = 1L },
-                new { id = "RIVLAB", destroy_days = 730, next_number = 4200L },
-                new { id = "MERID", destroy_days = 90, next_number = 1L },
+                Label = p.Label,
+                Password = p.Password,
+            }).ToList(),
+            LabelClients =
+            {
+                new OrdoSort.Core.LabelClient { Id = "NGC", DestroyDays = 2555, NextNumber = 1L },
+                new OrdoSort.Core.LabelClient { Id = "RIVLAB", DestroyDays = 730, NextNumber = 4200L },
+                new OrdoSort.Core.LabelClient { Id = "MERID", DestroyDays = 90, NextNumber = 1L },
             },
-            sounds = new
+            Sounds = new OrdoSort.Core.SoundSettings
             {
-                enabled = true,
-                new_alert = "",
-                filed = "none",
-                set_aside = "none",
-                error = "",
+                Enabled = true,
+                NewAlert = "",
+                Filed = "none",
+                SetAside = "none",
+                Error = "",
             },
         };
 
-        File.WriteAllText(Path.Combine(root, "config.json"),
-            JsonSerializer.Serialize(cfg, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            }) + "\n");
+        OrdoSort.Core.Config.Save(cfg, Path.Combine(root, "config.json"));
     }
 }
