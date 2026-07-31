@@ -160,4 +160,14 @@ public class ConfigSplitTests : IDisposable
         Assert.False(ok);
         Assert.Contains("destinations.json", error);
     }
+
+    [Fact]
+    public void TrySaveCreatesTheConfigDirectory()
+    {
+        var cfgPath = Path.Combine(_dir, "brand-new", "config.json");
+        var ok = Config.TrySave(new Config(), cfgPath, out var error);
+        Assert.True(ok, error);
+        Assert.True(File.Exists(cfgPath));
+        Assert.True(File.Exists(Path.Combine(_dir, "brand-new", "destinations.json")));
+    }
 }

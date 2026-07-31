@@ -370,6 +370,14 @@ public sealed class Config
     public static bool TrySave(Config cfg, string path, out string error)
     {
         var errors = new List<string>();
+        var dir = Path.GetDirectoryName(Path.GetFullPath(path));
+        Attempt(() => { if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir); }, path);
+        if (errors.Count > 0)
+        {
+            error = string.Join("; ", errors);
+            return false;
+        }
+
         Attempt(() => SaveMain(cfg, path), path);
         Attempt(() => WriteDoc(path, cfg.DestinationsFile,
             new DestinationsDoc { Routes = cfg.Routes, Extras = cfg.DestinationsFileExtras }),

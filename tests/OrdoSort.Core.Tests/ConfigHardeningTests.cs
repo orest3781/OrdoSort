@@ -30,8 +30,8 @@ public class ConfigHardeningTests : IDisposable
     {
         var dest = Path.Combine(_dir, "sub", "nope", "config.json");   // missing dirs
         var ok = Config.TrySave(new Config(), dest, out var error);
-        Assert.False(ok);
-        Assert.NotEqual("", error);
+        Assert.True(ok, error);   // TrySave creates missing directories
+        Assert.Equal("", error);
     }
 
     [Fact]
