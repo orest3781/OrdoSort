@@ -106,10 +106,12 @@ plaintext values, without attributing them to a predecessor app.
 
 1. `dotnet build OrdoSort.sln` succeeds.
 2. `dotnet test OrdoSort.sln` — exactly 557 passed (301 Core + 256 Wpf).
-3. `git grep -inE "python|winforms|port of|ported" -- ':!docs/superpowers'` on the commit → empty.
+3. `git grep -inE "python|winforms|port of|\bported\b" -- ':!docs/superpowers'` on the commit → empty.
 4. `git grep -noE '"fr[a-z_]*_"' -- ':!docs/superpowers'` on the commit → empty.
 5. The diff touches only comments, the `.gitignore` stanza, and the 13
-   prefix strings — no code statements.
+   prefix strings — no code statements. (Exception: the test method rename
+   NewKeysRoundTripWithExactPythonNames → NewKeysRoundTripWithExactJsonNames,
+   forced by gate 3.)
 
 ## Delivery
 

@@ -925,7 +925,7 @@
 
                         <TextBlock Text="Saved passwords" FontWeight="Bold" Margin="0,10,0,6" />
                         <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap" Margin="0,0,0,8"
-                                   Text="Encrypted for this Windows account (the old app kept these in plain text)." />
+                                   Text="Encrypted for this Windows account. Hand-edited plaintext values are encrypted on the next save." />
                         <ListBox ItemsSource="{Binding Passwords}" SelectedItem="{Binding SelectedPassword}"
                                  Height="110">
                             <ListBox.ItemTemplate>

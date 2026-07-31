@@ -59,8 +59,7 @@ public sealed class WebViewPdfViewer : IPdfViewer
     }
 
     /// <summary>Navigate to a blank page and wait for completion so Edge
-    /// releases the PDF file handle before the move — verbatim contract from
-    /// MainForm.ReleaseViewerAsync, proven by the smoke test.</summary>
+    /// releases the PDF file handle before the move — proven by the smoke test.</summary>
     public async Task ReleaseAsync()
     {
         if (!_ready) return;

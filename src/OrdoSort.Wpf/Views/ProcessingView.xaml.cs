@@ -53,7 +53,7 @@ public partial class ProcessingView : UserControl
             case Key.Down:
             case Key.Up:
                 // walk the matches instead of taking only the top one: the
-                // list can run to 8, and the rest used to be mouse-only
+                // list can run to 8, and arrowing reaches all of them without the mouse
                 if (_shell.CycleSuggestion(e.Key == Key.Down ? 1 : -1))
                 {
                     NameBox.CaretIndex = NameBox.Text.Length;

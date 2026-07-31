@@ -39,9 +39,9 @@ public static class PanMath
 }
 
 /// <summary>Familiar viewer gestures, grafted onto Edge's PDF viewer:
-/// Shift+scroll zooms (anchored at the
-/// cursor) and left-drag pans. WebView2 hosts its own HWNDs, so WPF never
-/// sees this input — a low-level mouse hook remaps it instead:
+/// Shift+scroll zooms (anchored at the cursor) and left-drag pans. WebView2
+/// hosts its own HWNDs, so WPF never sees this input — a low-level mouse
+/// hook remaps it instead:
 ///
 ///   Shift+wheel  -> the same wheel message with MK_CONTROL (Edge zooms)
 ///   left-drag    -> wheel messages proportional to the drag (Edge scrolls)

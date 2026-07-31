@@ -939,9 +939,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Adopt a new config: re-open the DB if its path changed (with a
-    /// fresh daily backup for the NEW db), save
-    /// (warning, not crashing, on a read-only file), rebuild watchers, refresh
-    /// Ready. Settings is only reachable from Ready, so no live session.</summary>
+    /// fresh daily backup for the NEW db), save (warning, not crashing, on a
+    /// read-only file), rebuild watchers, refresh Ready. Settings is only
+    /// reachable from Ready, so no live session.</summary>
     internal void ApplySettings(Config cfg) => _ = ApplySettingsAsync(cfg);
 
     internal async Task ApplySettingsAsync(Config cfg)
