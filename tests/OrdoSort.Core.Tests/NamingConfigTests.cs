@@ -61,4 +61,18 @@ public class NamingConfigTests : IDisposable
             """);
         Assert.Equal("{bogus}", Config.Load(path).Routes.Single().NamingTemplate);
     }
+
+    [Fact]
+    public void OmittedRouteTemplateStaysNullThroughLoadAndSave()
+    {
+        var path = Path.Combine(_dir, "config.json");
+        var cfg = new Config();
+        cfg.Routes.Add(new Route { Label = "A", Path = "C:/a" });
+        Config.Save(cfg, path);
+        var back = Config.Load(path);
+        Assert.Null(back.Routes.Single().NamingTemplate);
+        Config.Save(back, path);
+        Assert.DoesNotContain("\"naming_template\": \"\"",
+            File.ReadAllText(Path.Combine(_dir, "destinations.json")));
+    }
 }

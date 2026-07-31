@@ -327,7 +327,6 @@ public sealed class Config
         foreach (var r in Routes)
         {
             r.Label ??= ""; r.Path ??= ""; r.Hotkey ??= ""; r.Suffix ??= "";
-            r.NamingTemplate ??= "";
             r.Extras ??= new();
         }
         foreach (var w in WatchFolders)
