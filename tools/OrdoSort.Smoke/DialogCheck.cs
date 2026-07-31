@@ -34,7 +34,7 @@ public static class DialogCheck
             new MatchMergeViewModel(new Config(), _ => { }, dialogs)));
         Check("Settings", () => new SettingsWindow(new SettingsViewModel(new Config(), dialogs)));
         Check("LabelMaker", () => new LabelMakerWindow(
-            new LabelMakerViewModel(new Config(), () => { }, dialogs)));
+            new LabelMakerViewModel(new Config(), Path.Combine(dir, "box-labels.json"), dialogs)));
         Check("PrintPreview", () => new PrintPreviewWindow(
             OrdoSort.Wpf.Views.LabelPrinting.BuildDocument(
                 BoxLabels.Batch("ABCD", 1, 12, new DateTime(2026, 7, 25), 30)),

@@ -115,6 +115,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     internal Session Session => _session;
     internal History History => _history;
 
+    /// <summary>box-labels.json resolved beside the config (or absolute).</summary>
+    internal string BoxLabelsPath => ResolvePath(_cfg.BoxLabelsFile, _cfgPath);
+
     /// <summary>True for the moment ApplySettings is re-opening the history
     /// DB at a new path — _history is unusable until the swap lands.</summary>
     internal bool HistorySwapping { get; private set; }

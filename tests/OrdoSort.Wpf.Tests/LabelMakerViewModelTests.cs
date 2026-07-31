@@ -8,13 +8,24 @@ public class LabelMakerViewModelTests : IDisposable
     private readonly string _dir =
         Directory.CreateTempSubdirectory("fr_labelvm").FullName;
     private readonly FakeDialogs _dialogs = new();
-    private bool _saved;
     private readonly List<string> _opened = new();
     private static readonly DateTime Today = new(2026, 7, 25);
 
-    private LabelMakerViewModel Vm(Config cfg) =>
-        new(cfg, () => _saved = true, _dialogs, () => Today, _opened.Add,
+    private LabelMakerViewModel Vm(string boxLabelsPath) =>
+        new(new Config(), boxLabelsPath, _dialogs, () => Today, _opened.Add,
             new InlineWorkScheduler());
+
+    /// <summary>A fresh box-labels.json path (nothing written yet — the
+    /// window seeds an empty roster) or, when clients are given, one already
+    /// seeded through the exclusive store, exactly as another station's
+    /// prior session would have left it.</summary>
+    private string PathWith(params LabelClient[] clients)
+    {
+        var path = Path.Combine(_dir, $"box-labels-{Guid.NewGuid():N}.json");
+        if (clients.Length > 0)
+            BoxLabelStore.Mutate(path, d => { d.LabelClients.AddRange(clients); return 0; });
+        return path;
+    }
 
     public void Dispose()
     {
@@ -24,15 +35,10 @@ public class LabelMakerViewModelTests : IDisposable
     [Fact]
     public void LoadsClientsFromConfigAndSelectsTheFirst()
     {
-        var cfg = new Config
-        {
-            LabelClients =
-            {
-                new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 42 },
-                new LabelClient { Id = "WXYZ", DestroyDays = 90, NextNumber = 7 },
-            },
-        };
-        var vm = Vm(cfg);
+        var path = PathWith(
+            new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 42 },
+            new LabelClient { Id = "WXYZ", DestroyDays = 90, NextNumber = 7 });
+        var vm = Vm(path);
         Assert.Equal(2, vm.Clients.Count);
         Assert.Equal("ABCD", vm.Selected!.Id);
         Assert.Contains("ABCD00000042 – ABCD00000051", vm.Preview);   // default count 10
@@ -47,11 +53,8 @@ public class LabelMakerViewModelTests : IDisposable
     [Fact]
     public void PrintSendsTheSheetsAndAdvancesTheNumber()
     {
-        var cfg = new Config
-        {
-            LabelClients = { new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 5 } },
-        };
-        var vm = Vm(cfg);
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 5 });
+        var vm = Vm(path);
         IReadOnlyList<BoxLabels.Item>? sent = null;
         string? job = null;
         vm.PrintSheets = (items, name) => { sent = items; job = name; return true; };
@@ -61,38 +64,39 @@ public class LabelMakerViewModelTests : IDisposable
         Assert.Equal(10, sent!.Count);
         Assert.Equal("ABCD00000005", sent[0].Code);
         Assert.Contains("ABCD00000005", job);
-        Assert.Equal("15", vm.Selected!.NextNumberText);        // 10 labels consumed
-        Assert.Equal(15, cfg.LabelClients[0].NextNumber);       // written back...
-        Assert.True(_saved);                                    // ...and saved
+        Assert.Equal("15", vm.Selected!.NextNumberText);            // 10 labels consumed
+        Assert.Equal(15, BoxLabelStore.Read(path).LabelClients.Single().NextNumber); // written back...
         Assert.Contains("printer", vm.Status);
         Assert.Empty(_dialogs.Warnings);
     }
 
     [Fact]
-    public void CancellingThePrintDialogChangesNothing()
+    public void PrintClaimsFromTheFreshFileEvenWhenTheDialogIsThenCancelled()
     {
-        var cfg = new Config
-        {
-            LabelClients = { new LabelClient { Id = "ABCD", NextNumber = 5 } },
-        };
-        var vm = Vm(cfg);
+        // The claim (BoxLabelStore.Mutate) happens before the sheets are
+        // handed to the printer, because the sheets themselves must carry
+        // the claimed numbers, not the stale on-screen ones. That means a
+        // user backing out of the OS print dialog AFTER the claim landed
+        // cannot get the numbers back — reopening the file to "un-claim"
+        // would just recreate the race this store exists to close. The
+        // counter moves; only the "sent to printer" status line does not.
+        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = 5 });
+        var vm = Vm(path);
         vm.PrintSheets = (_, _) => false;   // user backed out
 
         vm.Print();
 
-        Assert.Equal("5", vm.Selected!.NextNumberText);
-        Assert.False(_saved);
+        Assert.Equal("15", vm.Selected!.NextNumberText);
+        Assert.Equal(15, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
         Assert.Equal("", vm.Status);
+        Assert.Empty(_dialogs.Warnings);
     }
 
     [Fact]
     public void SavePdfWritesTheFileAdvancesTheNumberAndPersists()
     {
-        var cfg = new Config
-        {
-            LabelClients = { new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 5 } },
-        };
-        var vm = Vm(cfg);
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 5 });
+        var vm = Vm(path);
         var dest = Path.Combine(_dir, "labels.pdf");
         _dialogs.NextSaveFile = dest;
 
@@ -100,9 +104,8 @@ public class LabelMakerViewModelTests : IDisposable
 
         Assert.True(File.Exists(dest));
         Assert.Equal("15", vm.Selected!.NextNumberText);
-        Assert.Equal(15, cfg.LabelClients[0].NextNumber);
-        Assert.True(_saved);
-        Assert.Equal(dest, Assert.Single(_opened));             // handed to the viewer
+        Assert.Equal(15, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+        Assert.Equal(dest, Assert.Single(_opened));                 // handed to the viewer
         Assert.Contains("1 sheet", vm.Status);
         Assert.Empty(_dialogs.Warnings);
     }
@@ -110,25 +113,25 @@ public class LabelMakerViewModelTests : IDisposable
     [Fact]
     public void CancellingTheSaveDialogChangesNothing()
     {
-        var cfg = new Config
-        {
-            LabelClients = { new LabelClient { Id = "ABCD", NextNumber = 5 } },
-        };
-        var vm = Vm(cfg);
+        // Unlike Print(), the Save-PDF cancellation point (choosing a
+        // destination) comes BEFORE the claim — there is no reason to burn
+        // numbers for a save the user never confirmed a location for.
+        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = 5 });
+        var vm = Vm(path);
         _dialogs.NextSaveFile = null;   // user pressed Cancel
 
         vm.SavePdf();
 
         Assert.Equal("5", vm.Selected!.NextNumberText);
-        Assert.False(_saved);
+        Assert.Equal(5, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
         Assert.Empty(_opened);
     }
 
     [Fact]
     public void BadInputsWarnInsteadOfGenerating()
     {
-        var cfg = new Config { LabelClients = { new LabelClient { Id = "A" } } };
-        var vm = Vm(cfg);
+        var path = PathWith(new LabelClient { Id = "A" });
+        var vm = Vm(path);
         vm.LabelCountText = "0";
         _dialogs.NextSaveFile = Path.Combine(_dir, "never.pdf");
 
@@ -139,31 +142,26 @@ public class LabelMakerViewModelTests : IDisposable
         Assert.Contains("1 to 1000", msg);       // bad count
         Assert.False(File.Exists(Path.Combine(_dir, "never.pdf")));
         Assert.StartsWith("⚠", vm.Preview);      // the preview says so live too
-        Assert.Null(vm.PreviewItem);             // and the card goes blank
+        Assert.Null(vm.PreviewItem);              // and the card goes blank
     }
 
     [Fact]
     public void PrintWithoutAPrinterHookWarns()
     {
-        var cfg = new Config { LabelClients = { new LabelClient { Id = "ABCD" } } };
-        var vm = Vm(cfg);
+        var path = PathWith(new LabelClient { Id = "ABCD" });
+        var vm = Vm(path);
         vm.Print();   // PrintSheets never wired
         Assert.Contains("Printing", Assert.Single(_dialogs.Warnings).Message);
-        Assert.False(_saved);
+        Assert.Equal(1, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);  // untouched
     }
 
     [Fact]
     public void DuplicateClientIdsAreBlocked()
     {
-        var cfg = new Config
-        {
-            LabelClients =
-            {
-                new LabelClient { Id = "ABCD" },
-                new LabelClient { Id = "ABCD" },
-            },
-        };
-        var vm = Vm(cfg);
+        var path = PathWith(
+            new LabelClient { Id = "ABCD" },
+            new LabelClient { Id = "ABCD" });
+        var vm = Vm(path);
         vm.SavePdf();
         Assert.Contains("both called", Assert.Single(_dialogs.Warnings).Message);
     }
@@ -171,11 +169,8 @@ public class LabelMakerViewModelTests : IDisposable
     [Fact]
     public void ResetTakesTheNumberBackToOne()
     {
-        var cfg = new Config
-        {
-            LabelClients = { new LabelClient { Id = "ABCD", NextNumber = 4242 } },
-        };
-        var vm = Vm(cfg);
+        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = 4242 });
+        var vm = Vm(path);
         vm.ResetNumberCommand.Execute(null);
         Assert.Equal("1", vm.Selected!.NextNumberText);
         Assert.Contains("ABCD00000001", vm.Preview);
@@ -184,8 +179,8 @@ public class LabelMakerViewModelTests : IDisposable
     [Fact]
     public void AddAndRemoveManageTheListAndPersistOnDemand()
     {
-        var cfg = new Config();
-        var vm = Vm(cfg);
+        var path = PathWith();
+        var vm = Vm(path);
         Assert.Null(vm.Selected);
         Assert.False(vm.PrintCommand.CanExecute(null));
         Assert.False(vm.SavePdfCommand.CanExecute(null));
@@ -195,23 +190,19 @@ public class LabelMakerViewModelTests : IDisposable
         Assert.Equal("ABCD", vm.Selected.Id);     // ...uppercased on the way in
 
         vm.Persist();
-        Assert.Equal("ABCD", Assert.Single(cfg.LabelClients).Id);
-        Assert.True(_saved);
+        Assert.Equal("ABCD", Assert.Single(BoxLabelStore.Read(path).LabelClients).Id);
 
         vm.RemoveClientCommand.Execute(null);
         Assert.Empty(vm.Clients);
         vm.Persist();
-        Assert.Empty(cfg.LabelClients);
+        Assert.Empty(BoxLabelStore.Read(path).LabelClients);
     }
 
     [Fact]
     public void RemovingARealClientAsksFirstAndDecliningKeepsIt()
     {
-        var cfg = new Config
-        {
-            LabelClients = { new LabelClient { Id = "MEDR", NextNumber = 5000 } },
-        };
-        var vm = Vm(cfg);
+        var path = PathWith(new LabelClient { Id = "MEDR", NextNumber = 5000 });
+        var vm = Vm(path);
 
         _dialogs.ConfirmAnswer = false;              // "No" — the counter survives
         vm.RemoveClientCommand.Execute(null);
@@ -225,7 +216,7 @@ public class LabelMakerViewModelTests : IDisposable
     [Fact]
     public void RemovingAJustAddedBlankRowDoesNotNag()
     {
-        var vm = Vm(new Config());
+        var vm = Vm(PathWith());
         vm.AddClientCommand.Execute(null);
         _dialogs.ConfirmAnswer = false;              // would block if it asked
         vm.RemoveClientCommand.Execute(null);
@@ -235,7 +226,7 @@ public class LabelMakerViewModelTests : IDisposable
     [Fact]
     public void AddRequestsFocusOnTheIdBox()
     {
-        var vm = Vm(new Config());
+        var vm = Vm(PathWith());
         var asked = 0;
         vm.RequestIdFocus += () => asked++;
         vm.AddClientCommand.Execute(null);
@@ -245,16 +236,35 @@ public class LabelMakerViewModelTests : IDisposable
     [Fact]
     public void BatchNearTheCeilingIsCaughtBeforeTheDialog()
     {
-        var cfg = new Config
-        {
-            LabelClients = { new LabelClient { Id = "ABCD", NextNumber = 99_999_995 } },
-        };
-        var vm = Vm(cfg);
+        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = 99_999_995 });
+        var vm = Vm(path);
         _dialogs.NextSaveFile = Path.Combine(_dir, "never.pdf");
 
         vm.SavePdf();   // 10 labels would pass 99,999,999
 
         Assert.Contains("99999999", Assert.Single(_dialogs.Warnings).Message);
         Assert.False(File.Exists(Path.Combine(_dir, "never.pdf")));
+    }
+
+    [Fact]
+    public void PrintClaimsNumbersFromTheFreshFileNotTheScreen()
+    {
+        var dir = Directory.CreateTempSubdirectory("ordomm_").FullName;
+        try
+        {
+            var path = Path.Combine(dir, "box-labels.json");
+            BoxLabelStore.Mutate(path, d => { d.LabelClients.Add(
+                new LabelClient { Id = "ACME", DestroyDays = 30, NextNumber = 10 }); return 0; });
+
+            var vm = Vm(path);                    // window opens, sees NextNumber 10
+            // another station advances the counter AFTER our window opened:
+            BoxLabelStore.Mutate(path, d =>
+                { d.LabelClients.Single(c => c.Id == "ACME").NextNumber = 50; return 0; });
+
+            var start = vm.ClaimNumbers(vm.Clients.Single(c => c.Id == "ACME"), 3);
+            Assert.Equal(50, start);                 // fresh, not the stale 10
+            Assert.Equal(53, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+        }
+        finally { Directory.Delete(dir, true); }
     }
 }

@@ -59,7 +59,7 @@ public sealed class LabelClientVm : ObservableObject
 public sealed class LabelMakerViewModel : ObservableObject
 {
     private readonly Config _cfg;
-    private readonly Action _saveConfig;
+    private readonly string _boxLabelsPath;
     private readonly IDialogService _dialogs;
     private readonly Func<DateTime> _today;
     private readonly Action<string> _openFile;
@@ -67,19 +67,20 @@ public sealed class LabelMakerViewModel : ObservableObject
 
     public ObservableCollection<LabelClientVm> Clients { get; } = new();
 
-    public LabelMakerViewModel(Config cfg, Action saveConfig, IDialogService dialogs,
+    public LabelMakerViewModel(Config cfg, string boxLabelsPath, IDialogService dialogs,
         Func<DateTime>? today = null, Action<string>? openFile = null,
         IWorkScheduler? scheduler = null)
     {
         _cfg = cfg;
-        _saveConfig = saveConfig;
+        _boxLabelsPath = boxLabelsPath;
         _dialogs = dialogs;
         _today = today ?? (() => DateTime.Now);
         _openFile = openFile ?? (p => System.Diagnostics.Process.Start(
             new System.Diagnostics.ProcessStartInfo(p) { UseShellExecute = true }));
         _scheduler = scheduler ?? new TaskWorkScheduler();
 
-        foreach (var c in cfg.LabelClients) Hook(Clients.AddReturn(LabelClientVm.From(c)));
+        foreach (var c in BoxLabelStore.Read(boxLabelsPath).LabelClients)
+            Hook(Clients.AddReturn(LabelClientVm.From(c)));
 
         AddClientCommand = new RelayCommand(() =>
         {
@@ -226,13 +227,44 @@ public sealed class LabelMakerViewModel : ObservableObject
         return (items, s, start, count);
     }
 
-    /// <summary>The batch went out — advance the counter and save it.</summary>
-    private void Advance(LabelClientVm client, long start, int count, string status)
+    /// <summary>Claim `count` numbers for `client` from the FRESH on-disk
+    /// counter (several stations may be printing). Returns the claimed start,
+    /// or null when the file is busy past the retry window.</summary>
+    internal long? ClaimNumbers(LabelClientVm client, int count)
     {
-        client.NextNumberText = (start + count).ToString();
-        Persist();
-        Status = status;
+        try
+        {
+            var start = BoxLabelStore.Mutate(_boxLabelsPath, doc =>
+            {
+                var c = doc.LabelClients.FirstOrDefault(x => x.Id == client.Id);
+                if (c is null)
+                {
+                    c = client.ToClient();
+                    doc.LabelClients.Add(c);
+                }
+                var s = c.NextNumber;
+                c.NextNumber = s + count;
+                return s;
+            });
+            client.NextNumberText = (start + count).ToString();
+            return start;
+        }
+        catch (ConfigException ex)
+        {
+            _dialogs.Warn(ex.Message, "OrdoSort — label maker");
+            return null;
+        }
     }
+
+    /// <summary>Rebuild the batch's items against a freshly-claimed start when
+    /// it differs from the stale on-screen number BuildBatch used — the
+    /// created/destroy dates carry over unchanged, only the codes shift.</summary>
+    private static List<BoxLabels.Item> RebuildFromClaim(
+        (List<BoxLabels.Item> Items, LabelClientVm Client, long Start, int Count) b, long claimedStart) =>
+        claimedStart == b.Start
+            ? b.Items
+            : BoxLabels.Batch(b.Client.Id, claimedStart, b.Count, b.Items[0].Created,
+                int.Parse(b.Client.DestroyDaysText.Trim()));
 
     internal void Print()
     {
@@ -242,11 +274,15 @@ public sealed class LabelMakerViewModel : ObservableObject
             _dialogs.Warn("Printing isn't available here.", "OrdoSort — label maker");
             return;
         }
-        if (!PrintSheets(b.Items, $"OrdoSort labels {b.Items[0].Code}")) return;   // cancelled
+        // Claim from the fresh file FIRST: several stations may be printing,
+        // so the sheets that actually go out must carry the claimed numbers,
+        // not whatever was on screen when this window opened.
+        if (ClaimNumbers(b.Client, b.Count) is not { } start) return;   // busy file — already warned
+        var items = RebuildFromClaim(b, start);
+        if (!PrintSheets(items, $"OrdoSort labels {items[0].Code}")) return;   // cancelled
         var sheets = (b.Count + BoxLabels.PerSheet - 1) / BoxLabels.PerSheet;
-        Advance(b.Client, b.Start, b.Count,
-            $"Sent {b.Count} label{(b.Count == 1 ? "" : "s")} "
-            + $"({sheets} sheet{(sheets == 1 ? "" : "s")}) to the printer.");
+        Status = $"Sent {b.Count} label{(b.Count == 1 ? "" : "s")} "
+            + $"({sheets} sheet{(sheets == 1 ? "" : "s")}) to the printer.";
     }
 
     internal void SavePdf() => _ = SavePdfAsync();
@@ -257,10 +293,14 @@ public sealed class LabelMakerViewModel : ObservableObject
         var dest = _dialogs.AskSaveFile("PDF files (*.pdf)|*.pdf",
             $"labels_{b.Client.Id}_{b.Start:D8}.pdf");
         if (dest is null) return;
+        // Claim from the fresh file FIRST, same reasoning as Print(): the PDF
+        // that lands on disk must carry the claimed numbers.
+        if (ClaimNumbers(b.Client, b.Count) is not { } start) return;   // busy file — already warned
+        var items = RebuildFromClaim(b, start);
         try
         {
             // rendering + writing can target a share — never on the UI thread
-            await _scheduler.Run(() => BoxLabels.RenderPdf(dest, b.Items));
+            await _scheduler.Run(() => BoxLabels.RenderPdf(dest, items));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -268,17 +308,28 @@ public sealed class LabelMakerViewModel : ObservableObject
             return;
         }
         var sheets = (b.Count + BoxLabels.PerSheet - 1) / BoxLabels.PerSheet;
-        Advance(b.Client, b.Start, b.Count,
-            $"Saved {b.Count} label{(b.Count == 1 ? "" : "s")} "
-            + $"({sheets} sheet{(sheets == 1 ? "" : "s")}) — print at 100% scale.");
+        Status = $"Saved {b.Count} label{(b.Count == 1 ? "" : "s")} "
+            + $"({sheets} sheet{(sheets == 1 ? "" : "s")}) — print at 100% scale.";
         try { _openFile(dest); } catch { /* viewer trouble isn't a label problem */ }
     }
 
-    /// <summary>Write the edited client list back to config.json.</summary>
+    /// <summary>Write the edited client list back to the box-labels file.
+    /// Editing is whole-list (this window IS the editor); counters advance
+    /// through ClaimNumbers so a concurrent printer is never clobbered.</summary>
     internal void Persist()
     {
-        _cfg.LabelClients = Clients.Select(c => c.ToClient()).ToList();
-        _saveConfig();
+        try
+        {
+            BoxLabelStore.Mutate(_boxLabelsPath, doc =>
+            {
+                doc.LabelClients = Clients.Select(c => c.ToClient()).ToList();
+                return 0;
+            });
+        }
+        catch (ConfigException ex)
+        {
+            _dialogs.Warn(ex.Message, "OrdoSort — label maker");
+        }
     }
 }
 

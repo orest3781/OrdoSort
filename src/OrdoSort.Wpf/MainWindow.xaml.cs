@@ -269,7 +269,7 @@ public partial class MainWindow : Window
 
     private void OnLabelMaker(object sender, RoutedEventArgs e) =>
         new Windows.LabelMakerWindow(new LabelMakerViewModel(
-            Shell.Cfg, Shell.SaveConfigNow, Dialogs)) { Owner = this }.ShowDialog();
+            Shell.Cfg, Shell.BoxLabelsPath, Dialogs)) { Owner = this }.ShowDialog();
 
     private void OnSettings(object sender, RoutedEventArgs e)
     {
