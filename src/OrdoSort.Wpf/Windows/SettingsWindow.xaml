@@ -164,15 +164,15 @@
                         <TextBlock Text="Naming" FontWeight="Bold" Margin="0,0,0,10" />
                         <!-- before → after beats prose: name each mode by its
                              transformation, not by an abstract label -->
-                        <RadioButton IsChecked="{Binding ModeInsert}"
+                        <RadioButton GroupName="NamingMode" IsChecked="{Binding ModeInsert}"
                                      Content='Insert at the "--"   ·   20240115--12345.pdf  →  20240115-Smith John-12345.pdf' />
-                        <RadioButton IsChecked="{Binding ModeReplace}"
+                        <RadioButton GroupName="NamingMode" IsChecked="{Binding ModeReplace}"
                                      Content='Full replace   ·   20240115--12345.pdf  →  Smith John.pdf' />
-                        <RadioButton IsChecked="{Binding ModePrefix}"
+                        <RadioButton GroupName="NamingMode" IsChecked="{Binding ModePrefix}"
                                      Content='Prefix   ·   scan001.pdf  →  Smith John-scan001.pdf' />
-                        <RadioButton IsChecked="{Binding ModeAppend}"
+                        <RadioButton GroupName="NamingMode" IsChecked="{Binding ModeAppend}"
                                      Content='Append   ·   scan001.pdf  →  scan001-Smith John.pdf' />
-                        <RadioButton IsChecked="{Binding ModeTemplate}"
+                        <RadioButton GroupName="NamingMode" IsChecked="{Binding ModeTemplate}"
                                      Content="Custom template" />
                         <Grid Margin="22,4,0,0">
                             <Grid.ColumnDefinitions>
@@ -215,9 +215,11 @@
                         <CheckBox Content="UPPERCASE names as they're typed"
                                   IsChecked="{Binding UppercaseNames}" />
                         <TextBlock Text="Enter files to:" Margin="0,4,0,2" />
-                        <RadioButton Content="the last-used destination (starts at the first)"
+                        <RadioButton GroupName="EnterMode"
+                                     Content="the last-used destination (starts at the first)"
                                      IsChecked="{Binding EnterCommits}" Margin="12,0,0,2" />
-                        <RadioButton Content="always the first destination"
+                        <RadioButton GroupName="EnterMode"
+                                     Content="always the first destination"
                                      IsChecked="{Binding EnterCommits, Converter={StaticResource InvertBool}}"
                                      Margin="12,0,0,0" />
                         <Grid Style="{StaticResource FieldRow}" Margin="0,8,0,10">

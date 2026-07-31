@@ -267,6 +267,19 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
+    public void FilingExampleUsesAMarkerFreeSampleForPrefixAndAppend()
+    {
+        var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs);
+
+        vm.ModePrefix = true;
+        Assert.Contains("scan001", vm.FilingExample);
+        Assert.DoesNotContain("--", vm.FilingExample);
+
+        vm.ModeInsert = true;
+        Assert.Contains("20240115", vm.FilingExample);
+    }
+
+    [Fact]
     public void FiveFilingModesRoundTripWithTemplate()
     {
         var cfg = LoadFromJson("""{"inbox":"C:/in","naming_mode":"append"}""");

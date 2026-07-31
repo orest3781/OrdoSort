@@ -554,12 +554,19 @@ public sealed class SettingsViewModel : ObservableObject
         get
         {
             if (SelectedRoute is not { } r) return "";
+            var routeMode = r.NamingMode.Length == 0 ? null : r.NamingMode;
             try
             {
+                // same mode-appropriate sample rule as FilingExample, but keyed
+                // off the route's EFFECTIVE mode (its own override, falling
+                // back to the Filing tab's global setting) — not just the
+                // global one, so an overridden route previews correctly too.
+                var effectiveMode = Naming.ResolveMode(routeMode, FilingMode);
+                var sample = effectiveMode is Naming.ModeInsert or Naming.ModeReplace
+                    ? "20240115--12345.pdf" : "scan001.pdf";
                 var result = Naming.BuildTarget(
-                    "20240115--12345.pdf", "SMITH JOHN",
-                    routeMode: r.NamingMode.Length == 0 ? null : r.NamingMode,
-                    globalMode: FilingMode,
+                    sample, "Smith John",
+                    routeMode: routeMode, globalMode: FilingMode,
                     routeSuffix: "", appendSuffix: false, exists: _ => false,
                     routeTemplate: r.NamingTemplate, globalTemplate: NamingTemplate);
                 return result.Filename;
@@ -880,16 +887,22 @@ public sealed class SettingsViewModel : ObservableObject
             if (UppercaseNames) name = name.ToUpperInvariant();
             if (WordSeparator.Length > 0 && !WordSeparator.Contains(' '))
                 name = name.Replace(" ", WordSeparator);
+            // Insert/Replace both work on the classic "--" scanner name;
+            // Prefix/Append/Template don't need (or want) a marker, and
+            // showing one there would contradict the scan001.pdf examples
+            // in the radio labels right above this box.
+            var sample = FilingMode is Naming.ModeInsert or Naming.ModeReplace
+                ? "20240115--12345.pdf" : "scan001.pdf";
             try
             {
                 var result = Naming.BuildTarget(
-                    "20240115--12345.pdf", name,
+                    sample, name,
                     routeMode: null, globalMode: FilingMode,
                     routeSuffix: "", appendSuffix: false, exists: _ => false,
                     globalTemplate: NamingTemplate);
                 // before → after, with the typed name in the middle — the
                 // transformation is the whole story
-                return $"20240115--12345.pdf  +  \"Smith John\"  →  {result.Filename}";
+                return $"{sample}  +  \"Smith John\"  →  {result.Filename}";
             }
             catch (ArgumentException ex)
             {
