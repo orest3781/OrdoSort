@@ -1241,15 +1241,26 @@ public sealed class SettingsViewModel : ObservableObject
     /// editor happened to load with. A target that exists but fails to
     /// parse leaves the editor's built values alone (the save path surfaces
     /// the broken file; TryBuildResult must never throw over it). No-op when
-    /// there's no config path to resolve beside, or the path didn't change.</summary>
+    /// there's no config path to resolve beside, or the path didn't
+    /// genuinely change: "changed" is decided by RESOLVED path, not the raw
+    /// string — a file dialog hands back an absolute path, and the stored
+    /// default is relative, so the same physical file can arrive spelled two
+    /// different ways. Comparing the raw strings would misread that as a
+    /// re-point and silently swap the editor's in-session edits for the
+    /// stale on-disk list.</summary>
     private void AdoptRepointedSection<TDoc>(string originalPath, string newPath,
         Action<TDoc> apply) where TDoc : class
     {
         if (_cfgPath is null) return;
-        if (string.Equals(originalPath.Trim(), newPath.Trim(), StringComparison.OrdinalIgnoreCase)) return;
-        string full;
-        try { full = Config.ResolveBeside(_cfgPath, newPath); }
+        string full, originalFull;
+        try
+        {
+            full = Config.ResolveBeside(_cfgPath, newPath.Trim());
+            originalFull = Config.ResolveBeside(_cfgPath, originalPath.Trim());
+        }
         catch (Exception) { return; }
+        var changed = !string.Equals(full, originalFull, StringComparison.OrdinalIgnoreCase);
+        if (!changed) return;
         if (!File.Exists(full)) return;
         TDoc? doc;
         try { doc = Config.ReadDoc<TDoc>(_cfgPath, newPath); }

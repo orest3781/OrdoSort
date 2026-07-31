@@ -721,6 +721,35 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
+    public void RepointingToTheSamePhysicalFileByAbsolutePathKeepsInSessionEdits()
+    {
+        // Regression: a file dialog hands back an ABSOLUTE path, while the
+        // stored default is relative. Pointing DestinationsFile at the same
+        // physical file spelled the other way must not read as "changed" —
+        // comparing raw strings did, and silently replaced a route just
+        // added in this editing session with the stale on-disk list.
+        var cfgPath = Path.Combine(_dir, "config.json");
+        var original = new Config
+        {
+            Inbox = _dir,
+            Routes = { new Route { Label = "A", Path = _dir } },
+        };
+        Config.Save(original, cfgPath);
+        var cfg = Config.Load(cfgPath);   // DestinationsFile == "destinations.json" (relative)
+
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
+        vm.AddRouteCommand.Execute(null);          // an in-session edit: route B
+        vm.SelectedRoute!.Label = "B";
+        vm.SelectedRoute!.Path = _dir;
+
+        var sameFileAbsolute = Path.Combine(_dir, "destinations.json");
+        vm.DestinationsFile = sameFileAbsolute;    // same physical file, different spelling
+
+        Assert.True(vm.TryBuildResult());
+        Assert.Equal(new[] { "A", "B" }, vm.Result!.Routes.Select(r => r.Label));
+    }
+
+    [Fact]
     public void SettingsSaveNeverRewritesBoxLabels()
     {
         // Arrange a real temp config dir with a box-labels file holding a counter
