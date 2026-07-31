@@ -621,10 +621,78 @@ public class SettingsViewModelTests : IDisposable
         Assert.Equal(16, back.UiFontSize);
         Assert.Equal("-", back.WordSeparator);
     }
+
+    [Fact]
+    public void DataFilePathsRoundTripThroughSettings()
+    {
+        var cfg = LoadFromJson("""{"inbox":"C:/in","destinations_file":"shared/dests.json"}""");
+        var vm = new SettingsViewModel(cfg, _dialogs);
+        Assert.Equal("shared/dests.json", vm.DestinationsFile);
+        vm.AlertsFile = "team-alerts.json";
+
+        Assert.True(vm.TryBuildResult());
+        var built = vm.Result!;
+        Assert.Equal("shared/dests.json", built.DestinationsFile);
+        Assert.Equal("team-alerts.json", built.AlertsFile);
+        Assert.Equal("monitored-folders.json", built.MonitoredFoldersFile); // untouched default
+    }
+
+    [Fact]
+    public void SettingsSaveNeverRewritesBoxLabels()
+    {
+        // Arrange a real temp config dir with a box-labels file holding a counter
+        var dir = Directory.CreateTempSubdirectory("ordoset_").FullName;
+        try
+        {
+            var cfgPath = Path.Combine(dir, "config.json");
+            Config.Save(new Config(), cfgPath);
+            BoxLabelStore.Mutate(Path.Combine(dir, "box-labels.json"), d =>
+                { d.LabelClients.Add(new LabelClient { Id = "ACME", NextNumber = 42 }); return 0; });
+
+            var cfg = Config.Load(cfgPath);
+            cfg.LabelClients = new();              // settings-era stale view
+            Config.Save(cfg, cfgPath);             // what ApplySettings does
+
+            Assert.Equal(42, BoxLabelStore.Read(Path.Combine(dir, "box-labels.json"))
+                .LabelClients.Single().NextNumber);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void DataFileNotesSurfaceLiveState()
+    {
+        var cfgPath = Path.Combine(_dir, "config.json");
+        Config.Save(new Config(), cfgPath);   // writes destinations.json etc. with 0 entries
+        var cfg = Config.Load(cfgPath);
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
+
+        Assert.Equal("0 entries", vm.DestinationsFileNote);
+
+        vm.DestinationsFile = "";
+        Assert.Equal("blank = the default beside config.json", vm.DestinationsFileNote);
+
+        vm.DestinationsFile = "missing-dests.json";
+        Assert.Contains("will be created on save", vm.DestinationsFileNote);
+    }
 }
 
 public class ApplySettingsTests
 {
+    [Fact]
+    public void FreshConfigForSettingsRereadsSharedSideFilesFromDisk()
+    {
+        using var fx = new ShellFixture();
+        fx.Shell.Initialize();
+        fx.Shell.SaveConfigNow();   // config.json + section files now exist on disk
+
+        // simulate an admin hand-editing the shared alerts file while the app runs
+        File.WriteAllText(Path.Combine(fx.Dir, "alerts.json"), """{"alert_texts": ["ADMIN-EDIT"]}""");
+
+        var fresh = fx.Shell.FreshConfigForSettings();
+        Assert.Contains("ADMIN-EDIT", fresh.AlertTexts);
+    }
+
     [Fact]
     public void ChangedDbPathReopensHistoryWithFreshBackupDir()
     {

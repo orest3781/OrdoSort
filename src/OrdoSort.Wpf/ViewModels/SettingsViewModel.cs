@@ -395,6 +395,10 @@ public sealed class SettingsViewModel : ObservableObject
         Deferred = current.Deferred;
         NamesFile = current.NamesFile;
         HistoryDb = current.HistoryDb;
+        DestinationsFile = current.DestinationsFile;
+        MonitoredFoldersFile = current.MonitoredFoldersFile;
+        AlertsFile = current.AlertsFile;
+        BoxLabelsFile = current.BoxLabelsFile;
         MonitorTitle = current.MonitorTitle;
         InsertMode = current.NamingMode == "insert";
         SortKey = current.Sort;
@@ -461,6 +465,14 @@ public sealed class SettingsViewModel : ObservableObject
         BrowseHistoryDbCommand = new RelayCommand(() =>
             HistoryDb = _dialogs.AskFilePath("SQLite database (*.sqlite)|*.sqlite|All files (*.*)|*.*",
                 System.IO.Path.GetFileName(HistoryDb)) ?? HistoryDb);
+        BrowseDestinationsFileCommand = new RelayCommand(() =>
+            DestinationsFile = _dialogs.AskOpenFile("JSON files (*.json)|*.json|All files (*.*)|*.*") ?? DestinationsFile);
+        BrowseMonitoredFoldersFileCommand = new RelayCommand(() =>
+            MonitoredFoldersFile = _dialogs.AskOpenFile("JSON files (*.json)|*.json|All files (*.*)|*.*") ?? MonitoredFoldersFile);
+        BrowseAlertsFileCommand = new RelayCommand(() =>
+            AlertsFile = _dialogs.AskOpenFile("JSON files (*.json)|*.json|All files (*.*)|*.*") ?? AlertsFile);
+        BrowseBoxLabelsFileCommand = new RelayCommand(() =>
+            BoxLabelsFile = _dialogs.AskOpenFile("JSON files (*.json)|*.json|All files (*.*)|*.*") ?? BoxLabelsFile);
         BrowseRoutePathCommand = new RelayCommand(() =>
         {
             if (SelectedRoute is { } r) r.Path = _dialogs.BrowseFolder(r.Path) ?? r.Path;
@@ -595,6 +607,36 @@ public sealed class SettingsViewModel : ObservableObject
         set { if (Set(ref _historyDb, value)) Raise(nameof(HistoryDbNote)); }
     }
 
+    // ---- split-config section files (destinations/monitored folders/alerts/
+    // box labels) — Settings edits the path, not the section's contents
+    private string _destinationsFile = "";
+    public string DestinationsFile
+    {
+        get => _destinationsFile;
+        set { if (Set(ref _destinationsFile, value)) Raise(nameof(DestinationsFileNote)); }
+    }
+
+    private string _monitoredFoldersFile = "";
+    public string MonitoredFoldersFile
+    {
+        get => _monitoredFoldersFile;
+        set { if (Set(ref _monitoredFoldersFile, value)) Raise(nameof(MonitoredFoldersFileNote)); }
+    }
+
+    private string _alertsFile = "";
+    public string AlertsFile
+    {
+        get => _alertsFile;
+        set { if (Set(ref _alertsFile, value)) Raise(nameof(AlertsFileNote)); }
+    }
+
+    private string _boxLabelsFile = "";
+    public string BoxLabelsFile
+    {
+        get => _boxLabelsFile;
+        set { if (Set(ref _boxLabelsFile, value)) Raise(nameof(BoxLabelsFileNote)); }
+    }
+
     // Live per-field notes — the OK-time warnings, surfaced as you type
     public string InboxNote => FolderNote(Inbox,
         "no inbox folder set — there will be nothing to process");
@@ -624,6 +666,40 @@ public sealed class SettingsViewModel : ObservableObject
                 ? $"folder doesn't exist: {dir}"
                 : "a new database will be created here";
         }
+    }
+
+    // Live per-field notes for the four section-file paths: entry count when
+    // the file's readable, "will be created" when it's missing, the
+    // ConfigException message when it's there but broken.
+    public string DestinationsFileNote => DataFileNote(DestinationsFile,
+        sp => (Config.ReadDoc<DestinationsDoc>(_cfgPath!, sp) ?? new DestinationsDoc()).Routes.Count);
+
+    public string MonitoredFoldersFileNote => DataFileNote(MonitoredFoldersFile,
+        sp => (Config.ReadDoc<MonitoredFoldersDoc>(_cfgPath!, sp) ?? new MonitoredFoldersDoc()).WatchFolders.Count);
+
+    public string AlertsFileNote => DataFileNote(AlertsFile,
+        sp => (Config.ReadDoc<AlertsDoc>(_cfgPath!, sp) ?? new AlertsDoc()).AlertTexts.Count);
+
+    public string BoxLabelsFileNote => DataFileNote(BoxLabelsFile,
+        sp => (Config.ReadDoc<BoxLabelsDoc>(_cfgPath!, sp) ?? new BoxLabelsDoc()).LabelClients.Count);
+
+    /// <summary>Shared live-note logic for the four section-file path boxes:
+    /// blank means the section default: not resolvable (no config path to
+    /// resolve beside) reads as an unusable path; missing means it'll be
+    /// created from the in-memory list on save; present means show what's
+    /// really in it (or the readable parse error, rather than a crash).</summary>
+    private string DataFileNote(string sectionPath, Func<string, int> countEntries)
+    {
+        var p = sectionPath.Trim();
+        if (p.Length == 0) return "blank = the default beside config.json";
+        if (_cfgPath is not { } cfgPath) return "not a usable path";
+        string full;
+        try { full = Config.ResolveBeside(cfgPath, p); }
+        catch (Exception) { return "not a usable path"; }
+        if (!File.Exists(full))
+            return "will be created on save — the current list is written there";
+        try { return $"{countEntries(p)} entries"; }
+        catch (ConfigException ex) { return ex.Message; }
     }
 
     private static string FolderNote(string path, string blankMeans)
@@ -932,6 +1008,10 @@ public sealed class SettingsViewModel : ObservableObject
     public RelayCommand BrowseDeferredCommand { get; }
     public RelayCommand BrowseNamesFileCommand { get; }
     public RelayCommand BrowseHistoryDbCommand { get; }
+    public RelayCommand BrowseDestinationsFileCommand { get; }
+    public RelayCommand BrowseMonitoredFoldersFileCommand { get; }
+    public RelayCommand BrowseAlertsFileCommand { get; }
+    public RelayCommand BrowseBoxLabelsFileCommand { get; }
     public RelayCommand BrowseRoutePathCommand { get; }
     public RelayCommand BrowseWatchPathCommand { get; }
 
@@ -1081,6 +1161,14 @@ public sealed class SettingsViewModel : ObservableObject
         cfg.Deferred = Deferred.Trim();
         cfg.NamesFile = NamesFile.Trim();
         cfg.HistoryDb = HistoryDb.Trim();
+        cfg.DestinationsFile = DestinationsFile.Trim().Length == 0
+            ? "destinations.json" : DestinationsFile.Trim();
+        cfg.MonitoredFoldersFile = MonitoredFoldersFile.Trim().Length == 0
+            ? "monitored-folders.json" : MonitoredFoldersFile.Trim();
+        cfg.AlertsFile = AlertsFile.Trim().Length == 0
+            ? "alerts.json" : AlertsFile.Trim();
+        cfg.BoxLabelsFile = BoxLabelsFile.Trim().Length == 0
+            ? "box-labels.json" : BoxLabelsFile.Trim();
         cfg.MonitorTitle = MonitorTitle.Trim();
         cfg.NamingMode = InsertMode ? "insert" : "replace";
         cfg.Sort = SortKey;

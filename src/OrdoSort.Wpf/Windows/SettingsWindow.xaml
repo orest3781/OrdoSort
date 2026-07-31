@@ -919,7 +919,63 @@
             <TabItem Header="Tools &amp; data">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="16,8">
-                        <TextBlock Text="Unlock PDFs" FontWeight="Bold" Margin="0,0,0,6" />
+                        <TextBlock Text="Data files" FontWeight="Bold" Margin="0,0,0,6" />
+                        <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap" Margin="0,0,0,8"
+                                   Text="Changing a path re-points the app at that file — it does not move the current contents. A missing file is created on save from the current list." />
+
+                        <Grid Style="{StaticResource FieldRow}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Destinations:" Style="{StaticResource FieldLabel}" />
+                            <TextBox Grid.Column="1" Text="{Binding DestinationsFile, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
+                                    Command="{Binding BrowseDestinationsFileCommand}" />
+                        </Grid>
+                        <TextBlock Text="{Binding DestinationsFileNote}" Style="{StaticResource NoteText}" />
+
+                        <Grid Style="{StaticResource FieldRow}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Monitored folders:" Style="{StaticResource FieldLabel}" />
+                            <TextBox Grid.Column="1" Text="{Binding MonitoredFoldersFile, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
+                                    Command="{Binding BrowseMonitoredFoldersFileCommand}" />
+                        </Grid>
+                        <TextBlock Text="{Binding MonitoredFoldersFileNote}" Style="{StaticResource NoteText}" />
+
+                        <Grid Style="{StaticResource FieldRow}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Alerts:" Style="{StaticResource FieldLabel}" />
+                            <TextBox Grid.Column="1" Text="{Binding AlertsFile, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
+                                    Command="{Binding BrowseAlertsFileCommand}" />
+                        </Grid>
+                        <TextBlock Text="{Binding AlertsFileNote}" Style="{StaticResource NoteText}" />
+
+                        <Grid Style="{StaticResource FieldRow}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Box labels:" Style="{StaticResource FieldLabel}" />
+                            <TextBox Grid.Column="1" Text="{Binding BoxLabelsFile, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
+                                    Command="{Binding BrowseBoxLabelsFileCommand}" />
+                        </Grid>
+                        <TextBlock Text="{Binding BoxLabelsFileNote}" Style="{StaticResource NoteText}" />
+
+                        <TextBlock Text="Unlock PDFs" FontWeight="Bold" Margin="0,10,0,6" />
                         <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap" Margin="0,0,0,4"
                                    Text="An unlocked PDF keeps its name and place. The locked original is moved to a dated locked_archive folder beside it, so nothing is ever overwritten and there is no setting to get wrong." />
 

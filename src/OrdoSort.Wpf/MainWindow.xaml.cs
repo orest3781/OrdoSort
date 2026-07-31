@@ -279,7 +279,7 @@ public partial class MainWindow : Window
                 "OrdoSort");
             return;
         }
-        var vm = new SettingsViewModel(Shell.Cfg, Dialogs, () => Theme.ThemeManager.Current,
+        var vm = new SettingsViewModel(Shell.FreshConfigForSettings(), Dialogs, () => Theme.ThemeManager.Current,
             Shell.CfgPath, new SoundService());
         var win = new Windows.SettingsWindow(vm) { Owner = this };
         if (win.ShowDialog() == true && vm.Result is { } cfg)

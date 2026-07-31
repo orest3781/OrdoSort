@@ -118,6 +118,20 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// <summary>box-labels.json resolved beside the config (or absolute).</summary>
     internal string BoxLabelsPath => ResolvePath(_cfg.BoxLabelsFile, _cfgPath);
 
+    /// <summary>Fresh config for the Settings window: shared side files may
+    /// have changed on disk. A load failure (e.g. a half-edited side file)
+    /// warns and falls back to the in-memory config rather than blocking.</summary>
+    internal Config FreshConfigForSettings()
+    {
+        try { return Config.Load(_cfgPath); }
+        catch (ConfigException ex)
+        {
+            _dialogs.Warn(ex.Message + "\n\nShowing the settings the app is currently running with.",
+                "OrdoSort — settings");
+            return _cfg;
+        }
+    }
+
     /// <summary>True for the moment ApplySettings is re-opening the history
     /// DB at a new path — _history is unusable until the swap lands.</summary>
     internal bool HistorySwapping { get; private set; }
