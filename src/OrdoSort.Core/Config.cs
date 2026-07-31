@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace OrdoSort.Core;
@@ -327,20 +328,77 @@ public sealed class Config
     private static List<T> Clean<T>(List<T>? items) where T : class =>
         items is null ? new() : items.Where(i => i is not null).ToList();
 
-    public static void Save(Config cfg, string path) =>
-        File.WriteAllText(path, JsonSerializer.Serialize(cfg, Opts) + "\n");
+    /// <summary>Write the main config (without the split sections) and the
+    /// Settings-owned side files. box-labels.json is bootstrap-only: created
+    /// when missing, never overwritten — its counters belong to the Box
+    /// labels tool's exclusive writer (BoxLabelStore).</summary>
+    public static void Save(Config cfg, string path)
+    {
+        var dir = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        SaveMain(cfg, path);
+        WriteDoc(path, cfg.DestinationsFile,
+            new DestinationsDoc { Routes = cfg.Routes, Extras = cfg.DestinationsFileExtras });
+        WriteDoc(path, cfg.MonitoredFoldersFile,
+            new MonitoredFoldersDoc { WatchFolders = cfg.WatchFolders, Extras = cfg.MonitoredFoldersFileExtras });
+        WriteDoc(path, cfg.AlertsFile,
+            new AlertsDoc { AlertTexts = cfg.AlertTexts, Extras = cfg.AlertsFileExtras });
+        var labels = ResolveBeside(path, cfg.BoxLabelsFile);
+        if (!File.Exists(labels))
+            WriteJson(labels,
+                new BoxLabelsDoc { LabelClients = cfg.LabelClients, Extras = cfg.BoxLabelsFileExtras });
+    }
 
-    /// <summary>Save that reports failure instead of crashing the app — a
-    /// read-only or locked config file must never take the session down.</summary>
+    private static void SaveMain(Config cfg, string path)
+    {
+        var node = JsonSerializer.SerializeToNode(cfg, Opts)!.AsObject();
+        node.Remove("routes");
+        node.Remove("watch_folders");
+        node.Remove("alert_texts");
+        node.Remove("label_clients");
+        File.WriteAllText(path, node.ToJsonString(Opts) + "\n");
+    }
+
+    private static void WriteDoc<T>(string configPath, string sectionPath, T doc) =>
+        WriteJson(ResolveBeside(configPath, sectionPath), doc);
+
+    internal static void WriteJson<T>(string fullPath, T doc) =>
+        File.WriteAllText(fullPath, JsonSerializer.Serialize(doc, Opts) + "\n");
+
+    /// <summary>Save that reports failure instead of crashing — each file is
+    /// attempted independently and every failure is named.</summary>
     public static bool TrySave(Config cfg, string path, out string error)
     {
-        try { Save(cfg, path); error = ""; return true; }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                                   or System.Security.SecurityException
-                                   or DirectoryNotFoundException)
+        var errors = new List<string>();
+        Attempt(() => SaveMain(cfg, path), path);
+        Attempt(() => WriteDoc(path, cfg.DestinationsFile,
+            new DestinationsDoc { Routes = cfg.Routes, Extras = cfg.DestinationsFileExtras }),
+            ResolveBeside(path, cfg.DestinationsFile));
+        Attempt(() => WriteDoc(path, cfg.MonitoredFoldersFile,
+            new MonitoredFoldersDoc { WatchFolders = cfg.WatchFolders, Extras = cfg.MonitoredFoldersFileExtras }),
+            ResolveBeside(path, cfg.MonitoredFoldersFile));
+        Attempt(() => WriteDoc(path, cfg.AlertsFile,
+            new AlertsDoc { AlertTexts = cfg.AlertTexts, Extras = cfg.AlertsFileExtras }),
+            ResolveBeside(path, cfg.AlertsFile));
+        Attempt(() =>
         {
-            error = $"Couldn't save settings to {path}: {ex.Message}";
-            return false;
+            var labels = ResolveBeside(path, cfg.BoxLabelsFile);
+            if (!File.Exists(labels))
+                WriteJson(labels, new BoxLabelsDoc { LabelClients = cfg.LabelClients, Extras = cfg.BoxLabelsFileExtras });
+        }, ResolveBeside(path, cfg.BoxLabelsFile));
+
+        error = string.Join("; ", errors);
+        return errors.Count == 0;
+
+        void Attempt(Action write, string file)
+        {
+            try { write(); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                       or System.Security.SecurityException
+                                       or DirectoryNotFoundException)
+            {
+                errors.Add($"Couldn't save settings to {file}: {ex.Message}");
+            }
         }
     }
 
