@@ -64,4 +64,26 @@ public class BoxLabelStoreTests : IDisposable
         Assert.Contains("another station", ex.Message);
         Assert.True(sw.ElapsedMilliseconds >= 600, "should have retried before failing");
     }
+
+    [Fact]
+    public void CallbackExceptionsPropagateUnwrappedAndFileSurvives()
+    {
+        var p = PathOf("box-labels.json");
+        BoxLabelStore.Mutate(p, d => { d.LabelClients.Add(new LabelClient { Id = "A", NextNumber = 3 }); return 0; });
+        Assert.Throws<InvalidOperationException>(() =>
+            BoxLabelStore.Mutate<int>(p, d => throw new InvalidOperationException("callback bug")));
+        Assert.Equal(3, BoxLabelStore.Read(p).LabelClients.Single().NextNumber);
+    }
+
+    [Fact]
+    public void ReadRetriesThenFailsReadablyWhenHeld()
+    {
+        var p = PathOf("box-labels.json");
+        File.WriteAllText(p, """{"label_clients":[]}""");
+        using var hold = new FileStream(p, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var ex = Assert.Throws<ConfigException>(() => BoxLabelStore.Read(p, maxWaitMs: 700));
+        Assert.Contains("another station", ex.Message);
+        Assert.True(sw.ElapsedMilliseconds >= 600);
+    }
 }
