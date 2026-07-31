@@ -6,7 +6,7 @@ public readonly record struct Rgb(byte R, byte G, byte B);
 
 /// <summary>The theme token tables (light + dark) and the WCAG 2.1 contrast
 /// math. Every text/background pairing shipped here is enforced to >= 4.5:1
-/// by ThemeTests — the same contract the Python original kept.</summary>
+/// by ThemeTests.</summary>
 public sealed record ThemePalette(
     Rgb WindowBg,      // window background
     Rgb Surface,       // cards, inputs, grids
@@ -76,8 +76,7 @@ public sealed record ThemePalette(
 
     /// <summary>Black or white — whichever actually contrasts more against the
     /// background. The single source of truth for text on route buttons and
-    /// dashboard tiles (the WinForms app duplicated a cruder luminance shortcut
-    /// in three places).</summary>
+    /// dashboard tiles.</summary>
     public static Rgb IdealForeground(Rgb bg)
     {
         var black = new Rgb(0, 0, 0);

@@ -6,7 +6,7 @@ namespace OrdoSort.Core.Tests;
 /// load failures become readable ConfigExceptions, save failures a bool.</summary>
 public class ConfigHardeningTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "frcfg_" + Guid.NewGuid());
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordocfg_" + Guid.NewGuid());
 
     public ConfigHardeningTests() => Directory.CreateDirectory(_dir);
 

@@ -75,7 +75,7 @@ public partial class MainWindow : Window
             Theme.ThemeManager.SetMode(Application.Current, Shell.Cfg.Theme);
         };
 
-        // Python-parity window lifecycle: the Ready dashboard is a compact
+        // Window lifecycle: the Ready dashboard is a compact
         // window parked in the top-right corner; the window only grows to the
         // full viewer layout while a session runs. Both geometries remembered.
         Shell.PropertyChanged += (_, e) =>

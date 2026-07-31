@@ -10,8 +10,7 @@ public enum Screen { Ready, Processing, Done }
 
 /// <summary>The app's state machine: Ready (dashboard) → Processing (filing
 /// loop) → Done (summary), plus live folder monitoring. Owns Config, History,
-/// Session. No WPF types — the whole lifecycle is unit-tested headless, which
-/// the WinForms MainForm never could be.</summary>
+/// Session. No WPF types — the whole lifecycle is unit-tested headless.</summary>
 public sealed class ShellViewModel : ObservableObject, IDisposable
 {
     private Config _cfg;               // replaced by Settings
@@ -940,7 +939,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Adopt a new config: re-open the DB if its path changed (with a
-    /// fresh daily backup for the NEW db — a gap in the WinForms port), save
+    /// fresh daily backup for the NEW db), save
     /// (warning, not crashing, on a read-only file), rebuild watchers, refresh
     /// Ready. Settings is only reachable from Ready, so no live session.</summary>
     internal void ApplySettings(Config cfg) => _ = ApplySettingsAsync(cfg);
@@ -1140,8 +1139,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
 
     /// <summary>Tab: complete the top suggestion one word at a time, honoring
-    /// the configured word separator as the boundary (Python-parity muscle
-    /// memory; Enter stays free to commit).</summary>
+    /// the configured word separator as the boundary (Enter stays free to
+    /// commit).</summary>
     internal bool CompleteNextWord()
     {
         if (Suggestions.Count == 0) return false;

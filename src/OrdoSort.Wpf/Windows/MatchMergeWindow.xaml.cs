@@ -37,7 +37,7 @@ public partial class MatchMergeWindow : Window
     {
         var items = _vm.ReviewItems;
         if (items.Count == 0) return;
-        // a fresh WebView2 per run — the WinForms version leaked one per file
+        // a fresh WebView2 per run — never reused, so nothing leaks across files
         var win = new TriageWindow(items, _vm.ChosenColumns) { Owner = this };
         win.ShowDialog();
         _vm.Absorb(win.Outcomes);

@@ -38,8 +38,8 @@ public static class PanMath
     }
 }
 
-/// <summary>Viewer gestures the Python app's users have in their fingers,
-/// grafted onto Edge's PDF viewer: Shift+scroll zooms (anchored at the
+/// <summary>Familiar viewer gestures, grafted onto Edge's PDF viewer:
+/// Shift+scroll zooms (anchored at the
 /// cursor) and left-drag pans. WebView2 hosts its own HWNDs, so WPF never
 /// sees this input — a low-level mouse hook remaps it instead:
 ///

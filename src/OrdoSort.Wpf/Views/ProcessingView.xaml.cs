@@ -36,7 +36,7 @@ public partial class ProcessingView : UserControl
                 var before = _shell.TypedName.Length;
                 if (_shell.CompleteNextWord())
                 {
-                    // Python-parity: the word Tab just added is SELECTED, so
+                    // The word Tab just added is SELECTED, so
                     // each press visibly claims one more word (and typing
                     // over it discards just that word)
                     NameBox.Select(before, NameBox.Text.Length - before);

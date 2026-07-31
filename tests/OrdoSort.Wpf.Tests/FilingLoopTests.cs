@@ -5,8 +5,7 @@ using OrdoSort.Wpf.ViewModels;
 namespace OrdoSort.Wpf.Tests;
 
 /// <summary>The filing loop, headless: real Session + History + temp folders,
-/// fake viewer. This is the coverage the WinForms app only had via the manual
-/// smoke tool.</summary>
+/// fake viewer.</summary>
 public class FilingLoopTests
 {
     private static ShellFixture Started(params string[] files)

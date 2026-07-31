@@ -8,7 +8,7 @@ namespace OrdoSort.Core.Tests;
 /// next commit would log it as &lt;vanished&gt;, which would be a lie).</summary>
 public class AuditFailureTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "fraudit_" + Guid.NewGuid());
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "ordoaudit_" + Guid.NewGuid());
     private readonly string _inbox, _dest, _deferred;
 
     public AuditFailureTests()

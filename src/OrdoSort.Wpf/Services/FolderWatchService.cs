@@ -1,7 +1,7 @@
 namespace OrdoSort.Wpf.Services;
 
-/// <summary>Live folder monitoring with the exact semantics the WinForms app
-/// proved out: any Created/Deleted/Renamed restarts a 1.5 s debounce (lets a
+/// <summary>Live folder monitoring: any Created/Deleted/Renamed restarts a
+/// 1.5 s debounce (lets a
 /// file finish downloading before we rescan), and a periodic poll backstops
 /// network shares where FileSystemWatcher change notifications never fire
 /// (SMB). The poll cadence is the config's poll_seconds — see

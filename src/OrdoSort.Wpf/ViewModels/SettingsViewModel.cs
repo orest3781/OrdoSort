@@ -326,7 +326,7 @@ public sealed class SoundChoiceVm : ObservableObject
 /// <summary>The Settings window's brain. Edits copies; OK validates (hard
 /// errors block, warnings ask "Save anyway?") and produces a NEW Config built
 /// by JSON-cloning the original — so every unedited field and every unknown
-/// key survives by construction, killing the Python result_config() footgun.</summary>
+/// key survives by construction.</summary>
 public sealed class SettingsViewModel : ObservableObject
 {
     // KeyValuePair: WPF binds properties, not tuple fields

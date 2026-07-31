@@ -36,8 +36,7 @@ internal static class SmokeUi
 }
 
 /// <summary>Modal dialogs recorded instead of shown — a blocked message loop
-/// would hang the harness. Replaces the WinForms SuppressDialogs hook that
-/// leaked into the production form.</summary>
+/// would hang the harness.</summary>
 internal sealed class RecordingDialogs : IDialogService
 {
     public List<string> Warnings { get; } = new();

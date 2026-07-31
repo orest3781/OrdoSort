@@ -4,7 +4,7 @@ namespace OrdoSort.Wpf.Tests;
 
 public class FolderWatchServiceTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "frwatch_" + Guid.NewGuid());
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordowatch_" + Guid.NewGuid());
 
     public FolderWatchServiceTests() => Directory.CreateDirectory(_dir);
 

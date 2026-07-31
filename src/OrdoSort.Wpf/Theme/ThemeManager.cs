@@ -7,7 +7,7 @@ namespace OrdoSort.Wpf.Theme;
 /// <summary>Applies a <see cref="ThemePalette"/> to the running app as
 /// "Theme.*" brush resources (consumed by Styles.xaml via DynamicResource),
 /// follows the OS light/dark preference, and re-applies live when the user
-/// changes it — matching the Python original's colorSchemeChanged behavior.</summary>
+/// changes it.</summary>
 public static class ThemeManager
 {
     public static bool IsDark { get; private set; }

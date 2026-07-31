@@ -41,8 +41,7 @@ public sealed class RenameRow
 
 /// <summary>Bulk rename: drop files, describe the change once, watch the live
 /// current → new preview, rename. Hand-edited targets survive op changes;
-/// never overwrites; one batch undo. Port of the WinForms dialog with the
-/// logic finally unit-testable.</summary>
+/// never overwrites; one batch undo. The logic is fully unit-testable.</summary>
 public sealed class BulkRenameViewModel : ObservableObject
 {
     private readonly List<string> _files = new();

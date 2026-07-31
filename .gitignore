@@ -35,10 +35,8 @@ demo-full/
 
 # Scratch audio: source material for the synthesized alert sounds. The ones
 # the app actually ships live in src/OrdoSort.Wpf/Assets/sounds/.
-# Anchored: a bare "sounds/" matches a folder of that name at ANY depth, so it
-# also swallowed the shipped assets folder named in the line above. The three
-# wavs there survived only because they were already tracked - a fourth one
-# would have been ignored without a word.
+# Anchored: a bare "sounds/" would match a folder of that name at ANY depth —
+# including the shipped assets folder named in the line above.
 /sounds/
 
 # App runtime files

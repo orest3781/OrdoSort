@@ -4,7 +4,7 @@ using Microsoft.Web.WebView2.Wpf;
 namespace OrdoSort.Wpf.Services;
 
 /// <summary>WebView2-backed viewer. Edge's built-in PDF renderer means no
-/// bundled PDF library — the same deliberate trade the WinForms app made.</summary>
+/// bundled PDF library — a deliberate size-for-dependency trade.</summary>
 public sealed class WebViewPdfViewer : IPdfViewer
 {
     private readonly WebView2 _view;

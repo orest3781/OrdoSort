@@ -26,7 +26,7 @@ public static class Reentrancy
     private static List<string> Drive()
     {
         var failures = new List<string>();
-        var root = Path.Combine(Path.GetTempPath(), "fr_reentry_" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(Path.GetTempPath(), "ordo_reentry_" + Guid.NewGuid().ToString("N"));
         var inbox = Path.Combine(root, "inbox");
         var dest = Path.Combine(root, "dest");
         foreach (var d in new[] { inbox, dest, Path.Combine(root, "deferred") })

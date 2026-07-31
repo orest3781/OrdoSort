@@ -5,8 +5,7 @@ namespace OrdoSort.Wpf;
 
 /// <summary>Startup: parse --config, load Config with a readable error dialog,
 /// boot the theme, show the shell. Uncaught exceptions append to crash.log
-/// beside the config and surface as a dialog — the app survives (the Python
-/// original's excepthook behavior).</summary>
+/// beside the config and surface as a dialog — the app survives.</summary>
 public partial class App : Application
 {
     private string _cfgPath = "";

@@ -7,7 +7,7 @@ namespace OrdoSort.Wpf.Tests;
 
 public class UnlockViewModelTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "frunlock_" + Guid.NewGuid());
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordounlock_" + Guid.NewGuid());
     private readonly Config _cfg = new();
     private int _saves;
 
@@ -264,7 +264,7 @@ public class UnlockViewModelTests : IDisposable
 
 public class BulkRenameViewModelTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "frbulk_" + Guid.NewGuid());
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordobulk_" + Guid.NewGuid());
 
     public BulkRenameViewModelTests() => Directory.CreateDirectory(_dir);
 
@@ -460,7 +460,7 @@ public class MatchMergeViewModelTests : IDisposable
         "Adam,Brown,696009058,11/10/1955\n" +
         "Frank,Evans,176797656,8/9/1997\n";
 
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "frmm_" + Guid.NewGuid());
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordomm_" + Guid.NewGuid());
     private readonly Config _cfg = new();
     private readonly FakeDialogs _dialogs = new();
     private Dictionary<string, string>? _savedHeaders;

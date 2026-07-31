@@ -7,7 +7,7 @@ namespace OrdoSort.Wpf.Tests;
 
 public class SettingsViewModelTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "frset_" + Guid.NewGuid());
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordoset_" + Guid.NewGuid());
     private readonly FakeDialogs _dialogs = new();
 
     public SettingsViewModelTests() => Directory.CreateDirectory(_dir);
@@ -27,8 +27,8 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void UnknownKeysAndToolStateSurviveOkByConstruction()
     {
-        // the Python settings dialog wiped anything it didn't carry by hand —
-        // the clone-then-patch build makes that class of bug impossible
+        // the clone-then-patch build makes it impossible for the settings
+        // dialog to wipe keys it doesn't know about
         var cfg = LoadFromJson("""
             {
               "inbox": "c:/faxes",

@@ -7,7 +7,7 @@ namespace OrdoSort.Core.Tests;
 /// at load, and never a null field that crashes on the first keystroke.</summary>
 public class ConfigNullKeysTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "frnull_" + Guid.NewGuid());
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordonull_" + Guid.NewGuid());
 
     public ConfigNullKeysTests() => Directory.CreateDirectory(_dir);
 

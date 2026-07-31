@@ -5,7 +5,7 @@ namespace OrdoSort.Wpf.Tests;
 
 public class HistoryViewModelTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "frhist_" + Guid.NewGuid());
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordohist_" + Guid.NewGuid());
     private readonly History _history;
     private readonly FakeDialogs _dialogs = new();
 

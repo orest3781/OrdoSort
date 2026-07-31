@@ -14,7 +14,7 @@ public sealed class Route
     [JsonPropertyName("naming_mode")] public string? NamingMode { get; set; }
     [JsonPropertyName("color")] public string? Color { get; set; }
 
-    // Python parity: hand-edited per-route keys survive a load/save round trip
+    // Hand-edited per-route keys survive a load/save round trip
     [JsonExtensionData] public Dictionary<string, System.Text.Json.JsonElement> Extras { get; set; } = new();
 }
 
@@ -58,7 +58,7 @@ public sealed class SoundSettings
 
 /// <summary>A saved Unlock-tool password. The password value is either
 /// DPAPI-protected ("dpapi:&lt;base64&gt;", written by the app) or legacy
-/// plaintext (hand-edited / migrated from the Python config).</summary>
+/// plaintext (hand-edited).</summary>
 public sealed class SavedPassword
 {
     [JsonPropertyName("label")] public string Label { get; set; } = "";
@@ -120,7 +120,7 @@ public sealed class Config
     /// entirely). Unknown values read as "active".</summary>
     [JsonPropertyName("tile_visibility")] public string TileVisibility { get; set; } = "active";
 
-    // Appearance (Python parity: same key names, so an old config round-trips)
+    // Appearance (key names are stable, so existing configs round-trip)
     [JsonPropertyName("ui_font_family")] public string UiFontFamily { get; set; } = "";
     [JsonPropertyName("ui_font_size")] public int UiFontSize { get; set; }   // 0 = default
 

@@ -3,8 +3,8 @@ using System.Windows.Input;
 namespace OrdoSort.Wpf.Services;
 
 /// <summary>Parses the config's free-text route hotkeys ("Ctrl+1", "F2",
-/// "Ctrl+Shift+M") into real key gestures. The WinForms app hardwired
-/// Ctrl+1-9 and treated the config field as a label; here the field binds.</summary>
+/// "Ctrl+Shift+M") into real key gestures — the config field genuinely
+/// binds; it is never just a decorative label.</summary>
 public static class HotkeyParser
 {
     public static bool TryParse(string? text, out ModifierKeys mods, out Key key)

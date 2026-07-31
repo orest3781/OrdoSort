@@ -34,7 +34,7 @@ return SmokeUi.RunSta(Drive,
 static List<string> Drive()
 {
     var failures = new List<string>();
-    var root = Path.Combine(Path.GetTempPath(), "fr_smoke_" + Guid.NewGuid().ToString("N"));
+    var root = Path.Combine(Path.GetTempPath(), "ordo_smoke_" + Guid.NewGuid().ToString("N"));
     var inbox = Path.Combine(root, "inbox");
     var dest = Path.Combine(root, "invoices");
     var deferred = Path.Combine(root, "deferred");

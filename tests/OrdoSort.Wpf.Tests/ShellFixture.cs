@@ -5,8 +5,7 @@ using OrdoSort.Wpf.ViewModels;
 namespace OrdoSort.Wpf.Tests;
 
 /// <summary>A complete headless shell over real temp folders, a real Session,
-/// and a real SQLite history — only the viewer and dialogs are fakes. This is
-/// the app the WinForms version could only exercise through the smoke tool.</summary>
+/// and a real SQLite history — only the viewer and dialogs are fakes.</summary>
 public sealed class ShellFixture : IDisposable
 {
     public string Dir { get; }
@@ -23,7 +22,7 @@ public sealed class ShellFixture : IDisposable
 
     public ShellFixture(Action<Config>? tweak = null)
     {
-        Dir = Path.Combine(Path.GetTempPath(), "frshell_" + Guid.NewGuid());
+        Dir = Path.Combine(Path.GetTempPath(), "ordoshell_" + Guid.NewGuid());
         Inbox = Path.Combine(Dir, "inbox");
         Deferred = Path.Combine(Dir, "deferred");
         RouteDir = Path.Combine(Dir, "routed");

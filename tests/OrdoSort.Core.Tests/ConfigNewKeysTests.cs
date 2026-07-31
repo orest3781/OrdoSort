@@ -2,10 +2,10 @@ using OrdoSort.Core;
 
 namespace OrdoSort.Core.Tests;
 
-/// <summary>The Python-parity keys: exact JSON names, defaults, validation.</summary>
+/// <summary>The config keys: exact JSON names, defaults, validation.</summary>
 public class ConfigNewKeysTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "frnk_" + Guid.NewGuid());
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordonk_" + Guid.NewGuid());
 
     public ConfigNewKeysTests() => Directory.CreateDirectory(_dir);
 
@@ -29,7 +29,7 @@ public class ConfigNewKeysTests : IDisposable
     }
 
     [Fact]
-    public void NewKeysRoundTripWithExactPythonNames()
+    public void NewKeysRoundTripWithExactJsonNames()
     {
         var cfg = new Config
         {

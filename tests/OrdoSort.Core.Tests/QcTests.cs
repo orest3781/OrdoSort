@@ -2,9 +2,9 @@ using OrdoSort.Core;
 
 namespace OrdoSort.Core.Tests;
 
-/// <summary>QC probes for suspected porting gaps vs the Python original.
-/// These encode the EXPECTED (Python-parity or better) behaviour — a failure
-/// here is a porting bug to fix.</summary>
+/// <summary>QC probes for edge cases in config handling and filing rules.
+/// These encode the EXPECTED behaviour — a failure here is a real bug to
+/// fix.</summary>
 public class QcTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "qctest_" + Guid.NewGuid());
@@ -15,7 +15,7 @@ public class QcTests : IDisposable
     [Fact]
     public void RouteUnknownKeysSurviveRoundTrip()
     {
-        // Python parity: hand-edited per-route keys must not be lost on save
+        // Hand-edited per-route keys must not be lost on save
         var path = Path.Combine(_dir, "c.json");
         File.WriteAllText(path, """
             {"inbox":"C:/in","routes":[

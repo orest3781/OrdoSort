@@ -1,8 +1,8 @@
 using System.Text.Json;
 
 /// <summary>Regenerate the demo: 5 sample documents in demo\inbox, empty route and
-/// set-aside folders, and a ready-to-use demo\config.json. Self-contained (no
-/// Python) — used by reset.bat. The demo folder is resolved relative to the
+/// set-aside folders, and a ready-to-use demo\config.json. Self-contained —
+/// used by reset.bat. The demo folder is resolved relative to the
 /// current directory (reset.bat cd's to the project root first).</summary>
 public static class DemoReset
 {

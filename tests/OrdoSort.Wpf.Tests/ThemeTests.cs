@@ -3,7 +3,7 @@ using OrdoSort.Wpf.Theme;
 namespace OrdoSort.Wpf.Tests;
 
 /// <summary>The visual contract: every text pairing the theme ships meets
-/// WCAG AA (4.5:1) in BOTH schemes. Ported from the Python app's theme tests.</summary>
+/// WCAG AA (4.5:1) in BOTH schemes.</summary>
 public class ThemeTests
 {
     public static IEnumerable<object[]> TextPairs()

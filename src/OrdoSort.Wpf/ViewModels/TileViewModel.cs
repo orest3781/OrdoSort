@@ -5,8 +5,8 @@ using OrdoSort.Wpf.Theme;
 namespace OrdoSort.Wpf.ViewModels;
 
 /// <summary>One monitored-folder tile on the Ready dashboard. Rendered as a
-/// real focusable button in the view (the WinForms tiles were mouse-only
-/// panels). Back/Fore are recomputed by the flash tick.</summary>
+/// real focusable button in the view (keyboard-accessible, not a mouse-only
+/// panel). Back/Fore are recomputed by the flash tick.</summary>
 public sealed class TileViewModel : ObservableObject
 {
     public string Label { get; }
