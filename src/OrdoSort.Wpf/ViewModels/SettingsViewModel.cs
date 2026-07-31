@@ -13,12 +13,14 @@ public sealed class RouteEditVm : ObservableObject
     private string _label = "", _path = "", _hotkey = "", _suffix = "", _color = "";
     private bool _appendSuffix;
     private string _namingMode = "";   // "" = session default
+    private string _namingTemplate = "";   // "" = inherit the global template
 
     public string Label { get => _label; set => Set(ref _label, value); }
     public string Hotkey { get => _hotkey; set => Set(ref _hotkey, value); }
     public string Suffix { get => _suffix; set => Set(ref _suffix, value); }
     public bool AppendSuffix { get => _appendSuffix; set => Set(ref _appendSuffix, value); }
     public string NamingMode { get => _namingMode; set => Set(ref _namingMode, value); }
+    public string NamingTemplate { get => _namingTemplate; set => Set(ref _namingTemplate, value); }
 
     public string Path
     {
@@ -92,6 +94,7 @@ public sealed class RouteEditVm : ObservableObject
         Suffix = r.Suffix,
         AppendSuffix = r.AppendSuffix,
         NamingMode = r.NamingMode ?? "",
+        NamingTemplate = r.NamingTemplate ?? "",
         Color = r.Color ?? "",
         Extras = new Dictionary<string, JsonElement>(r.Extras),
     };
@@ -104,6 +107,7 @@ public sealed class RouteEditVm : ObservableObject
         Suffix = Suffix,
         AppendSuffix = AppendSuffix,
         NamingMode = NamingMode.Length == 0 ? null : NamingMode,
+        NamingTemplate = NamingTemplate.Length == 0 ? null : NamingTemplate,
         Color = Color.Length == 0 ? null : Color.Trim(),
         Extras = new Dictionary<string, JsonElement>(Extras),
     };
@@ -355,6 +359,9 @@ public sealed class SettingsViewModel : ObservableObject
         new("", "(use the Filing setting)"),
         new("insert", "Insert at the \"--\""),
         new("replace", "Full replace"),
+        new("prefix", "Prefix"),
+        new("append", "Append"),
+        new("template", "Custom template"),
     };
 
     /// <summary>Curated tile/button palette (all pair with black or white at
@@ -400,7 +407,8 @@ public sealed class SettingsViewModel : ObservableObject
         AlertsFile = current.AlertsFile;
         BoxLabelsFile = current.BoxLabelsFile;
         MonitorTitle = current.MonitorTitle;
-        InsertMode = current.NamingMode == "insert";
+        FilingMode = current.NamingMode;
+        NamingTemplate = current.NamingTemplate;
         SortKey = current.Sort;
         EnterCommits = current.EnterCommits;
         UppercaseNames = current.UppercaseNames;
@@ -532,7 +540,36 @@ public sealed class SettingsViewModel : ObservableObject
                 or nameof(RouteEditVm.Suffix) or nameof(RouteEditVm.AppendSuffix)
                 or nameof(RouteEditVm.Color))
                 RecomputeRouteDerived();
+            if (e.PropertyName is nameof(RouteEditVm.NamingMode) or nameof(RouteEditVm.NamingTemplate)
+                && ReferenceEquals(r, SelectedRoute))
+                Raise(nameof(RouteFilingExample));
         };
+
+    /// <summary>The Destinations tab's live preview of what this route's
+    /// EFFECTIVE naming mode + template (its own override, falling back to
+    /// the Filing tab's global setting) does to a sample file — mirrors
+    /// FilingExample but for whichever route is selected.</summary>
+    public string RouteFilingExample
+    {
+        get
+        {
+            if (SelectedRoute is not { } r) return "";
+            try
+            {
+                var result = Naming.BuildTarget(
+                    "20240115--12345.pdf", "SMITH JOHN",
+                    routeMode: r.NamingMode.Length == 0 ? null : r.NamingMode,
+                    globalMode: FilingMode,
+                    routeSuffix: "", appendSuffix: false, exists: _ => false,
+                    routeTemplate: r.NamingTemplate, globalTemplate: NamingTemplate);
+                return result.Filename;
+            }
+            catch (ArgumentException ex)
+            {
+                return "⚠ " + ex.Message;
+            }
+        }
+    }
 
     /// <summary>What each route button will actually look like and answer to —
     /// the same composition rules the Processing screen uses — plus a live
@@ -765,12 +802,53 @@ public sealed class SettingsViewModel : ObservableObject
     private string _monitorTitle = "";
     public string MonitorTitle { get => _monitorTitle; set => Set(ref _monitorTitle, value); }
 
-    private bool _insertMode;
-    public bool InsertMode
+    private string _filingMode = Naming.ModeInsert;
+    public string FilingMode
     {
-        get => _insertMode;
-        set { if (Set(ref _insertMode, value)) Raise(nameof(FilingExample)); }
+        get => _filingMode;
+        set
+        {
+            if (Set(ref _filingMode, value))
+            {
+                Raise(nameof(ModeInsert));
+                Raise(nameof(ModeReplace));
+                Raise(nameof(ModePrefix));
+                Raise(nameof(ModeAppend));
+                Raise(nameof(ModeTemplate));
+                Raise(nameof(FilingExample));
+                Raise(nameof(TemplateNote));
+                Raise(nameof(RouteFilingExample));
+            }
+        }
     }
+
+    public bool ModeInsert { get => FilingMode == Naming.ModeInsert; set { if (value) FilingMode = Naming.ModeInsert; } }
+    public bool ModeReplace { get => FilingMode == Naming.ModeReplace; set { if (value) FilingMode = Naming.ModeReplace; } }
+    public bool ModePrefix { get => FilingMode == Naming.ModePrefix; set { if (value) FilingMode = Naming.ModePrefix; } }
+    public bool ModeAppend { get => FilingMode == Naming.ModeAppend; set { if (value) FilingMode = Naming.ModeAppend; } }
+    public bool ModeTemplate { get => FilingMode == Naming.ModeTemplate; set { if (value) FilingMode = Naming.ModeTemplate; } }
+
+    private string _namingTemplate = "";
+    public string NamingTemplate
+    {
+        get => _namingTemplate;
+        set
+        {
+            if (Set(ref _namingTemplate, value))
+            {
+                Raise(nameof(FilingExample));
+                Raise(nameof(TemplateNote));
+                Raise(nameof(RouteFilingExample));
+            }
+        }
+    }
+
+    /// <summary>Live validation of the custom template, shown under the
+    /// template box — blank while a different mode is selected or the
+    /// template is already valid.</summary>
+    public string TemplateNote => FilingMode == Naming.ModeTemplate
+        ? Naming.ValidateTemplate(NamingTemplate)
+        : "";
 
     private string _sortKey = "size_desc";
     public string SortKey { get => _sortKey; set => Set(ref _sortKey, value); }
@@ -806,8 +884,9 @@ public sealed class SettingsViewModel : ObservableObject
             {
                 var result = Naming.BuildTarget(
                     "20240115--12345.pdf", name,
-                    routeMode: null, globalMode: InsertMode ? "insert" : "replace",
-                    routeSuffix: "", appendSuffix: false, exists: _ => false);
+                    routeMode: null, globalMode: FilingMode,
+                    routeSuffix: "", appendSuffix: false, exists: _ => false,
+                    globalTemplate: NamingTemplate);
                 // before → after, with the typed name in the middle — the
                 // transformation is the whole story
                 return $"20240115--12345.pdf  +  \"Smith John\"  →  {result.Filename}";
@@ -947,6 +1026,7 @@ public sealed class SettingsViewModel : ObservableObject
                 RouteUpCommand.RaiseCanExecuteChanged();
                 RouteDownCommand.RaiseCanExecuteChanged();
                 DuplicateRouteCommand.RaiseCanExecuteChanged();
+                Raise(nameof(RouteFilingExample));
             }
         }
     }
@@ -1057,6 +1137,12 @@ public sealed class SettingsViewModel : ObservableObject
 
         if (WordSeparator.Contains(' '))
             errors.Add("The word separator can't contain a space.");
+
+        if (FilingMode == Naming.ModeTemplate)
+        {
+            var templateError = Naming.ValidateTemplate(NamingTemplate);
+            if (templateError.Length > 0) errors.Add(templateError);
+        }
 
         if (!int.TryParse(PollSecondsText.Trim(), out var poll)
             || poll < Config.MinPollSeconds || poll > Config.MaxPollSeconds)
@@ -1182,7 +1268,8 @@ public sealed class SettingsViewModel : ObservableObject
         cfg.BoxLabelsFile = BoxLabelsFile.Trim().Length == 0
             ? Config.DefaultBoxLabelsFile : BoxLabelsFile.Trim();
         cfg.MonitorTitle = MonitorTitle.Trim();
-        cfg.NamingMode = InsertMode ? "insert" : "replace";
+        cfg.NamingMode = FilingMode;
+        cfg.NamingTemplate = NamingTemplate.Trim();
         cfg.Sort = SortKey;
         cfg.EnterCommits = EnterCommits;
         cfg.UppercaseNames = UppercaseNames;

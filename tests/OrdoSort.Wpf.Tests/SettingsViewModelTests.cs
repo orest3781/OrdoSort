@@ -251,7 +251,7 @@ public class SettingsViewModelTests : IDisposable
         vm.WordSeparator = "-";
         Assert.Contains("20240115-SMITH-JOHN-12345.pdf", vm.FilingExample);
 
-        vm.InsertMode = false;
+        vm.ModeReplace = true;
         Assert.Contains("SMITH-JOHN.pdf", vm.FilingExample);
 
         vm.UppercaseNames = false;
@@ -264,6 +264,59 @@ public class SettingsViewModelTests : IDisposable
         var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs)
         { WordSeparator = ":" };
         Assert.StartsWith("⚠", vm.FilingExample);
+    }
+
+    [Fact]
+    public void FiveFilingModesRoundTripWithTemplate()
+    {
+        var cfg = LoadFromJson("""{"inbox":"C:/in","naming_mode":"append"}""");
+        var vm = new SettingsViewModel(cfg, _dialogs);
+        Assert.True(vm.ModeAppend);
+
+        vm.ModeTemplate = true;
+        vm.NamingTemplate = "{date}-{name}";
+
+        Assert.True(vm.TryBuildResult());
+        var built = vm.Result!;
+        Assert.Equal("template", built.NamingMode);
+        Assert.Equal("{date}-{name}", built.NamingTemplate);
+    }
+
+    [Fact]
+    public void ABadTemplateBlocksSaveWithItsOwnMessage()
+    {
+        var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs);
+        vm.ModeTemplate = true;
+        vm.NamingTemplate = "{bogus}";
+
+        Assert.False(vm.TryBuildResult());
+        Assert.Contains("bogus", Assert.Single(_dialogs.Warnings).Message);
+        Assert.Null(vm.Result);
+    }
+
+    [Fact]
+    public void RouteTemplateRoundTripsThroughTheRouteEditor()
+    {
+        var cfg = new Config
+        {
+            Inbox = _dir,
+            Routes =
+            {
+                new Route
+                {
+                    Label = "A", Path = _dir,
+                    NamingMode = "template", NamingTemplate = "{name}!",
+                },
+            },
+        };
+        var vm = new SettingsViewModel(cfg, _dialogs);
+        Assert.Equal("template", vm.Routes[0].NamingMode);
+        Assert.Equal("{name}!", vm.Routes[0].NamingTemplate);
+
+        Assert.True(vm.TryBuildResult());
+        var route = Assert.Single(vm.Result!.Routes);
+        Assert.Equal("template", route.NamingMode);
+        Assert.Equal("{name}!", route.NamingTemplate);
     }
 
     [Fact]

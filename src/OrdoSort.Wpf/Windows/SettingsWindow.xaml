@@ -162,15 +162,34 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="16,8">
                         <TextBlock Text="Naming" FontWeight="Bold" Margin="0,0,0,10" />
-                        <!-- before → after beats prose: "insert" and "replace"
-                             in one sentence read as a contradiction -->
-                        <RadioButton IsChecked="{Binding InsertMode}"
+                        <!-- before → after beats prose: name each mode by its
+                             transformation, not by an abstract label -->
+                        <RadioButton IsChecked="{Binding ModeInsert}"
                                      Content='Insert at the "--"   ·   20240115--12345.pdf  →  20240115-Smith John-12345.pdf' />
-                        <RadioButton IsChecked="{Binding InsertMode, Converter={StaticResource InvertBool}}"
+                        <RadioButton IsChecked="{Binding ModeReplace}"
                                      Content='Full replace   ·   20240115--12345.pdf  →  Smith John.pdf' />
+                        <RadioButton IsChecked="{Binding ModePrefix}"
+                                     Content='Prefix   ·   scan001.pdf  →  Smith John-scan001.pdf' />
+                        <RadioButton IsChecked="{Binding ModeAppend}"
+                                     Content='Append   ·   scan001.pdf  →  scan001-Smith John.pdf' />
+                        <RadioButton IsChecked="{Binding ModeTemplate}"
+                                     Content="Custom template" />
+                        <Grid Margin="22,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="220" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Text="{Binding NamingTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                     IsEnabled="{Binding ModeTemplate}" />
+                            <TextBlock Grid.Column="1" Style="{StaticResource SubtleText}"
+                                       VerticalAlignment="Center" Margin="8,0,0,0"
+                                       Text="tokens: {name} · {original} · {date}" />
+                        </Grid>
+                        <TextBlock Text="{Binding TemplateNote}" Style="{StaticResource NoteText}"
+                                   Margin="22,-6,0,10" />
                         <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap"
                                    Margin="22,2,0,0"
-                                   Text='Insert mode picks up only PDFs with "--" in the name; Full replace picks up every PDF. Anything else shows as "ignored" on the Ready screen.' />
+                                   Text='Insert mode picks up only PDFs with "--" in the name; every other mode picks up every PDF. Anything else shows as "ignored" on the Ready screen.' />
                         <!-- one live example tying mode + UPPERCASE + separator together -->
                         <Border Background="{DynamicResource Theme.Surface}"
                                 BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
@@ -195,8 +214,12 @@
                         <TextBlock Text="Typing" FontWeight="Bold" Margin="0,10,0,10" />
                         <CheckBox Content="UPPERCASE names as they're typed"
                                   IsChecked="{Binding UppercaseNames}" />
-                        <CheckBox Content="Enter files to the last-used destination"
-                                  IsChecked="{Binding EnterCommits}" />
+                        <TextBlock Text="Enter files to:" Margin="0,4,0,2" />
+                        <RadioButton Content="the last-used destination (starts at the first)"
+                                     IsChecked="{Binding EnterCommits}" Margin="12,0,0,2" />
+                        <RadioButton Content="always the first destination"
+                                     IsChecked="{Binding EnterCommits, Converter={StaticResource InvertBool}}"
+                                     Margin="12,0,0,0" />
                         <Grid Style="{StaticResource FieldRow}" Margin="0,8,0,10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="130" />
@@ -390,6 +413,26 @@
                                           ToolTip="Overrides the Filing tab's naming mode for this destination only" />
                             </Grid>
 
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="220" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.Style>
+                                    <Style TargetType="Grid" BasedOn="{StaticResource FieldRow}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding NamingMode}" Value="template">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <TextBlock Text="Template:" Style="{StaticResource FieldLabel}" />
+                                <TextBox Grid.Column="1"
+                                         Text="{Binding NamingTemplate, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+
                             <Grid Style="{StaticResource FieldRow}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="110" />
@@ -441,6 +484,13 @@
                                            TextTrimming="CharacterEllipsis"
                                            Foreground="{Binding PreviewFore, Converter={StaticResource RgbToBrush}}" />
                             </Border>
+                            <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap" Margin="0,4,0,0">
+                                <TextBlock.Text>
+                                    <Binding Path="DataContext.RouteFilingExample"
+                                             RelativeSource="{RelativeSource AncestorType=Window}"
+                                             StringFormat="files as: {0}" />
+                                </TextBlock.Text>
+                            </TextBlock>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
