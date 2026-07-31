@@ -139,6 +139,18 @@ public sealed class Config
     [JsonPropertyName("label_clients")] public List<LabelClient> LabelClients { get; set; } = new();
     [JsonPropertyName("sounds")] public SoundSettings Sounds { get; set; } = new();
 
+    // ---- split config: where each section lives (relative = beside config.json)
+    [JsonPropertyName("destinations_file")] public string DestinationsFile { get; set; } = "destinations.json";
+    [JsonPropertyName("monitored_folders_file")] public string MonitoredFoldersFile { get; set; } = "monitored-folders.json";
+    [JsonPropertyName("alerts_file")] public string AlertsFile { get; set; } = "alerts.json";
+    [JsonPropertyName("box_labels_file")] public string BoxLabelsFile { get; set; } = "box-labels.json";
+
+    // Unknown top-level keys of each side file, carried for round-trip
+    [JsonIgnore] public Dictionary<string, JsonElement> DestinationsFileExtras { get; set; } = new();
+    [JsonIgnore] public Dictionary<string, JsonElement> MonitoredFoldersFileExtras { get; set; } = new();
+    [JsonIgnore] public Dictionary<string, JsonElement> AlertsFileExtras { get; set; } = new();
+    [JsonIgnore] public Dictionary<string, JsonElement> BoxLabelsFileExtras { get; set; } = new();
+
     [JsonExtensionData] public Dictionary<string, JsonElement> Extras { get; set; } = new();
 
     private static readonly JsonSerializerOptions Opts = new()
@@ -190,7 +202,56 @@ public sealed class Config
             throw new ConfigException(
                 $"poll_seconds must be {MinPollSeconds}-{MaxPollSeconds}, " +
                 $"got {cfg.PollSeconds}");
+
+        // ---- split sections: a side file wins; inline (legacy) is the fallback
+        if (ReadDoc<DestinationsDoc>(path, cfg.DestinationsFile) is { } dd)
+        {
+            cfg.Routes = Clean(dd.Routes);
+            cfg.DestinationsFileExtras = dd.Extras ?? new();
+        }
+        if (ReadDoc<MonitoredFoldersDoc>(path, cfg.MonitoredFoldersFile) is { } md)
+        {
+            cfg.WatchFolders = Clean(md.WatchFolders);
+            cfg.MonitoredFoldersFileExtras = md.Extras ?? new();
+        }
+        if (ReadDoc<AlertsDoc>(path, cfg.AlertsFile) is { } ad)
+        {
+            cfg.AlertTexts = Clean(ad.AlertTexts);
+            cfg.AlertsFileExtras = ad.Extras ?? new();
+        }
+        if (ReadDoc<BoxLabelsDoc>(path, cfg.BoxLabelsFile) is { } bd)
+        {
+            cfg.LabelClients = Clean(bd.LabelClients);
+            cfg.BoxLabelsFileExtras = bd.Extras ?? new();
+        }
+        cfg.NormalizeSectionItems();
         return cfg;
+    }
+
+    /// <summary>Resolve a section-file path: absolute stays; relative lands
+    /// beside config.json (the names_file / history_db rule).</summary>
+    public static string ResolveBeside(string configPath, string sectionPath) =>
+        Path.IsPathRooted(sectionPath)
+            ? sectionPath
+            : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(configPath))!, sectionPath);
+
+    public static T? ReadDoc<T>(string configPath, string sectionPath) where T : class
+    {
+        var full = ResolveBeside(configPath, sectionPath);
+        if (!File.Exists(full)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<T>(File.ReadAllText(full), Opts)
+                   ?? throw new ConfigException($"Config file {full} is empty");
+        }
+        catch (JsonException ex)
+        {
+            throw new ConfigException($"Config file {full} is not valid JSON: {ex.Message}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new ConfigException($"Config file {full} could not be read: {ex.Message}");
+        }
     }
 
     /// <summary>An explicit JSON null means the same thing as an absent key:
@@ -217,6 +278,11 @@ public sealed class Config
         Theme ??= "auto";
         WordSeparator ??= "";
 
+        DestinationsFile ??= "destinations.json";
+        MonitoredFoldersFile ??= "monitored-folders.json";
+        AlertsFile ??= "alerts.json";
+        BoxLabelsFile ??= "box-labels.json";
+
         Routes = Clean(Routes);
         WatchFolders = Clean(WatchFolders);
         SavedPasswords = Clean(SavedPasswords);
@@ -234,6 +300,15 @@ public sealed class Config
         Sounds.Error ??= "";
         Sounds.Extras ??= new();
 
+        foreach (var p in SavedPasswords) { p.Label ??= ""; p.Password ??= ""; }
+        NormalizeSectionItems();
+    }
+
+    /// <summary>Per-item null-hardening for Routes, WatchFolders, and LabelClients.
+    /// Called by Normalize() and also by Load() after reading side files to ensure
+    /// consistency regardless of source.</summary>
+    internal void NormalizeSectionItems()
+    {
         foreach (var r in Routes)
         {
             r.Label ??= ""; r.Path ??= ""; r.Hotkey ??= ""; r.Suffix ??= "";
@@ -244,7 +319,6 @@ public sealed class Config
             w.Label ??= ""; w.Path ??= ""; w.Filetypes ??= "";
             w.Extras ??= new();
         }
-        foreach (var p in SavedPasswords) { p.Label ??= ""; p.Password ??= ""; }
         foreach (var c in LabelClients) { c.Id ??= ""; c.Extras ??= new(); }
     }
 
