@@ -539,6 +539,13 @@ public static class DemoWorkbench
             },
         };
 
+        // Config.Save only bootstraps box-labels.json when it's missing (it's
+        // the exclusive-writer's file, protected from being clobbered by an
+        // ordinary settings save) — a from-scratch workbench regen must still
+        // start the counters at the seeded values, so delete any leftover
+        // file here rather than relying on Save to do that job.
+        var boxLabels = Path.Combine(root, cfg.BoxLabelsFile);
+        if (File.Exists(boxLabels)) File.Delete(boxLabels);
         OrdoSort.Core.Config.Save(cfg, Path.Combine(root, "config.json"));
     }
 }

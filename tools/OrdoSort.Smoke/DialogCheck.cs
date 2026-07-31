@@ -15,7 +15,7 @@ public static class DialogCheck
         var errors = new List<string>();
         SmokeUi.Boot();
         var dialogs = new RecordingDialogs();
-        var dir = Directory.CreateTempSubdirectory("fr_dialogcheck").FullName;
+        var dir = Directory.CreateTempSubdirectory("ordo_dialogcheck").FullName;
 
         void Check(string name, Func<System.Windows.Window> make)
         {

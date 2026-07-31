@@ -79,8 +79,39 @@ public sealed class LabelMakerViewModel : ObservableObject
             new System.Diagnostics.ProcessStartInfo(p) { UseShellExecute = true }));
         _scheduler = scheduler ?? new TaskWorkScheduler();
 
-        foreach (var c in BoxLabelStore.Read(boxLabelsPath).LabelClients)
-            Hook(Clients.AddReturn(LabelClientVm.From(c)));
+        try
+        {
+            // Legacy inline label_clients (a pre-split config) must not be
+            // silently orphaned: if the box-labels file has never been
+            // written yet but the config still carries inline clients, seed
+            // the store from them BEFORE reading. Without this, opening the
+            // window shows an empty roster, closing it persists that empty
+            // roster, and Config.Save's bootstrap-only rule means the
+            // migration never gets another chance — the inline counters are
+            // gone for good the next time anything saves config.json.
+            if (!File.Exists(boxLabelsPath) && _cfg.LabelClients.Count > 0)
+            {
+                BoxLabelStore.Mutate(boxLabelsPath, d =>
+                {
+                    d.LabelClients = _cfg.LabelClients.Select(c => new LabelClient
+                    {
+                        Id = c.Id, DestroyDays = c.DestroyDays, NextNumber = c.NextNumber,
+                        Extras = c.Extras,
+                    }).ToList();
+                    return 0;
+                });
+            }
+
+            foreach (var c in BoxLabelStore.Read(boxLabelsPath).LabelClients)
+                Hook(Clients.AddReturn(LabelClientVm.From(c)));
+        }
+        catch (ConfigException ex)
+        {
+            // a held or corrupt file at window-open time is not fatal — warn
+            // and open with an empty roster rather than throwing into the
+            // global handler
+            _dialogs.Warn(ex.Message, "OrdoSort — label maker");
+        }
 
         AddClientCommand = new RelayCommand(() =>
         {

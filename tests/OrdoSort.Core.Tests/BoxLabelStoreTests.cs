@@ -34,6 +34,23 @@ public class BoxLabelStoreTests : IDisposable
     }
 
     [Fact]
+    public void MutateCreatesAMissingNestedDirectory()
+    {
+        // a path under a subdirectory that doesn't exist yet at all (not just
+        // a missing file) still has to succeed — a re-pointed box-labels path
+        // is exactly this shape the first time it's used
+        var p = Path.Combine(_dir, "nested", "deeper", "box-labels.json");
+        var start = BoxLabelStore.Mutate(p, doc =>
+        {
+            doc.LabelClients.Add(new LabelClient { Id = "ACME", NextNumber = 1 });
+            return 0;
+        });
+        Assert.Equal(0, start);
+        Assert.True(File.Exists(p));
+        Assert.Equal("ACME", BoxLabelStore.Read(p).LabelClients.Single().Id);
+    }
+
+    [Fact]
     public void ConcurrentIncrementsNeverCollide()
     {
         var p = PathOf("box-labels.json");

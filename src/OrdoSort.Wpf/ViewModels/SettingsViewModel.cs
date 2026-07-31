@@ -1157,18 +1157,30 @@ public sealed class SettingsViewModel : ObservableObject
         // survives by construction (no hand-maintained carry-through list).
         var cfg = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(_original))!;
 
+        // The four side-file Extras dictionaries are [JsonIgnore] (they hold
+        // JsonElement values tied to the doc types, not config.json's own
+        // shape), so the clone above drops them back to empty. Settings
+        // never edits a side file's unknown keys directly — carry the
+        // ORIGINAL's copies through by hand, or every Settings OK would quietly
+        // erase hand-added keys from destinations.json/monitored-folders.json/
+        // alerts.json/box-labels.json on the next save.
+        cfg.DestinationsFileExtras = _original.DestinationsFileExtras;
+        cfg.MonitoredFoldersFileExtras = _original.MonitoredFoldersFileExtras;
+        cfg.AlertsFileExtras = _original.AlertsFileExtras;
+        cfg.BoxLabelsFileExtras = _original.BoxLabelsFileExtras;
+
         cfg.Inbox = Inbox.Trim();
         cfg.Deferred = Deferred.Trim();
         cfg.NamesFile = NamesFile.Trim();
         cfg.HistoryDb = HistoryDb.Trim();
         cfg.DestinationsFile = DestinationsFile.Trim().Length == 0
-            ? "destinations.json" : DestinationsFile.Trim();
+            ? Config.DefaultDestinationsFile : DestinationsFile.Trim();
         cfg.MonitoredFoldersFile = MonitoredFoldersFile.Trim().Length == 0
-            ? "monitored-folders.json" : MonitoredFoldersFile.Trim();
+            ? Config.DefaultMonitoredFoldersFile : MonitoredFoldersFile.Trim();
         cfg.AlertsFile = AlertsFile.Trim().Length == 0
-            ? "alerts.json" : AlertsFile.Trim();
+            ? Config.DefaultAlertsFile : AlertsFile.Trim();
         cfg.BoxLabelsFile = BoxLabelsFile.Trim().Length == 0
-            ? "box-labels.json" : BoxLabelsFile.Trim();
+            ? Config.DefaultBoxLabelsFile : BoxLabelsFile.Trim();
         cfg.MonitorTitle = MonitorTitle.Trim();
         cfg.NamingMode = InsertMode ? "insert" : "replace";
         cfg.Sort = SortKey;
@@ -1199,7 +1211,49 @@ public sealed class SettingsViewModel : ObservableObject
                 : PasswordVault.Protect(p.Stored),
         }).ToList();
 
+        // A section re-pointed at a path that already holds a file: that
+        // file — not whatever this window happened to load with — becomes
+        // the truth (box-labels.json is excluded; it's already protected as
+        // a bootstrap-only write with its own exclusive writer).
+        AdoptRepointedSection<DestinationsDoc>(_original.DestinationsFile, cfg.DestinationsFile, d =>
+        {
+            cfg.Routes = d.Routes ?? new();
+            cfg.DestinationsFileExtras = d.Extras ?? new();
+        });
+        AdoptRepointedSection<MonitoredFoldersDoc>(_original.MonitoredFoldersFile, cfg.MonitoredFoldersFile, d =>
+        {
+            cfg.WatchFolders = d.WatchFolders ?? new();
+            cfg.MonitoredFoldersFileExtras = d.Extras ?? new();
+        });
+        AdoptRepointedSection<AlertsDoc>(_original.AlertsFile, cfg.AlertsFile, d =>
+        {
+            cfg.AlertTexts = d.AlertTexts ?? new();
+            cfg.AlertsFileExtras = d.Extras ?? new();
+        });
+
         Result = cfg;
         return true;
+    }
+
+    /// <summary>When a section's path box was changed to point at a file
+    /// that already exists, that file's contents become the truth for the
+    /// built config — an admin's shared file must win over whatever this
+    /// editor happened to load with. A target that exists but fails to
+    /// parse leaves the editor's built values alone (the save path surfaces
+    /// the broken file; TryBuildResult must never throw over it). No-op when
+    /// there's no config path to resolve beside, or the path didn't change.</summary>
+    private void AdoptRepointedSection<TDoc>(string originalPath, string newPath,
+        Action<TDoc> apply) where TDoc : class
+    {
+        if (_cfgPath is null) return;
+        if (string.Equals(originalPath.Trim(), newPath.Trim(), StringComparison.OrdinalIgnoreCase)) return;
+        string full;
+        try { full = Config.ResolveBeside(_cfgPath, newPath); }
+        catch (Exception) { return; }
+        if (!File.Exists(full)) return;
+        TDoc? doc;
+        try { doc = Config.ReadDoc<TDoc>(_cfgPath, newPath); }
+        catch (ConfigException) { return; }   // broken target: keep the built values
+        if (doc is not null) apply(doc);
     }
 }

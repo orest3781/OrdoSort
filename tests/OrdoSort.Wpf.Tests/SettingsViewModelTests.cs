@@ -638,6 +638,89 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
+    public void SettingsSavePreservesAlertsFileExtras()
+    {
+        // Settings-OK JSON-clones the original config to build the result;
+        // the four XxxFileExtras dictionaries are [JsonIgnore] (they belong
+        // to the side-file doc types, not config.json's own shape) and so
+        // don't survive that clone by construction — they have to be carried
+        // through by hand, or every Settings OK erases hand-added keys from
+        // the side files.
+        var cfgPath = Path.Combine(_dir, "config.json");
+        Config.Save(new Config(), cfgPath);   // creates alerts.json etc.
+        var alertsPath = Path.Combine(_dir, "alerts.json");
+        File.WriteAllText(alertsPath,
+            """{"alert_texts":[],"hand_added_key":"keep me"}""");
+
+        var cfg = Config.Load(cfgPath);
+        Assert.True(cfg.AlertsFileExtras.ContainsKey("hand_added_key"));
+
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
+        Assert.True(vm.TryBuildResult());
+        Config.Save(vm.Result!, cfgPath);
+
+        var onDisk = File.ReadAllText(alertsPath);
+        Assert.Contains("hand_added_key", onDisk);
+        Assert.Contains("keep me", onDisk);
+    }
+
+    [Fact]
+    public void RepointingADestinationsFileAtAnExistingFileAdoptsItInstead()
+    {
+        // the spec: re-pointing a section path at an EXISTING file means
+        // that file becomes the truth — not the editor's in-memory list,
+        // which may just be whatever this window happened to load with
+        var cfgPath = Path.Combine(_dir, "config.json");
+        var original = new Config
+        {
+            Inbox = _dir,
+            Routes = { new Route { Label = "A", Path = _dir } },
+        };
+        Config.Save(original, cfgPath);
+        var cfg = Config.Load(cfgPath);   // now backed by destinations.json, Routes == [A]
+
+        var sharedDir = Path.Combine(_dir, "shared");
+        Directory.CreateDirectory(sharedDir);
+        File.WriteAllText(Path.Combine(sharedDir, "team.json"),
+            """{"routes":[{"label":"TEAM","path":"C:/team"}],"team_key":1}""");
+
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
+        vm.DestinationsFile = "shared/team.json";
+
+        Assert.True(vm.TryBuildResult());
+        var built = vm.Result!;
+        Assert.Equal(new[] { "TEAM" }, built.Routes.Select(r => r.Label));
+        Assert.Equal("shared/team.json", built.DestinationsFile);
+        Assert.True(built.DestinationsFileExtras.ContainsKey("team_key"));
+    }
+
+    [Fact]
+    public void RepointingADestinationsFileAtABrokenExistingFileKeepsTheBuiltRoutes()
+    {
+        // a target that exists but fails to parse must not throw out of
+        // TryBuildResult — the built (editor) values are kept, and Save is
+        // left to surface the broken file rather than blocking OK on it
+        var cfgPath = Path.Combine(_dir, "config.json");
+        var original = new Config
+        {
+            Inbox = _dir,
+            Routes = { new Route { Label = "A", Path = _dir } },
+        };
+        Config.Save(original, cfgPath);
+        var cfg = Config.Load(cfgPath);
+
+        var sharedDir = Path.Combine(_dir, "shared");
+        Directory.CreateDirectory(sharedDir);
+        File.WriteAllText(Path.Combine(sharedDir, "broken.json"), "{ not json");
+
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
+        vm.DestinationsFile = "shared/broken.json";
+
+        Assert.True(vm.TryBuildResult());
+        Assert.Equal(new[] { "A" }, vm.Result!.Routes.Select(r => r.Label));
+    }
+
+    [Fact]
     public void SettingsSaveNeverRewritesBoxLabels()
     {
         // Arrange a real temp config dir with a box-labels file holding a counter
@@ -651,8 +734,16 @@ public class SettingsViewModelTests : IDisposable
 
             var cfg = Config.Load(cfgPath);
             cfg.LabelClients = new();              // settings-era stale view
-            Config.Save(cfg, cfgPath);             // what ApplySettings does
 
+            // Config.Save AND Config.TrySave both carry the bootstrap-only
+            // guard independently (TrySave is the one the app actually calls
+            // from ApplySettings/SaveConfigNow) — both need pinning here.
+            Config.Save(cfg, cfgPath);
+            Assert.Equal(42, BoxLabelStore.Read(Path.Combine(dir, "box-labels.json"))
+                .LabelClients.Single().NextNumber);
+
+            Assert.True(Config.TrySave(cfg, cfgPath, out var error));
+            Assert.Equal("", error);
             Assert.Equal(42, BoxLabelStore.Read(Path.Combine(dir, "box-labels.json"))
                 .LabelClients.Single().NextNumber);
         }
@@ -725,5 +816,28 @@ public class ApplySettingsTests
         fx.Shell.StartProcessing();
         fx.Shell.TypedName = "SMITH JOHN";
         Assert.Equal("SMITH-JOHN", fx.Shell.TypedName);
+    }
+
+    [Fact]
+    public void ToolStateSavesRefreshSharedSectionsFromDiskFirst()
+    {
+        // A tool-state save (here: Match & merge remembering its header
+        // mapping) runs a full TrySave, which rewrites all three
+        // Settings-owned side files from _cfg. _cfg is whatever this run
+        // started with, so without refreshing from disk first, this save
+        // would silently revert an admin's intervening hand-edit to the
+        // shared alerts file.
+        using var fx = new ShellFixture();
+        fx.Shell.Initialize();
+        fx.Shell.SaveConfigNow();   // config.json + section files now exist on disk
+
+        File.WriteAllText(Path.Combine(fx.Dir, "alerts.json"),
+            """{"alert_texts": ["ADMIN-TERM"]}""");
+
+        fx.Shell.SaveMergeHeaders(new Dictionary<string, string> { ["first"] = "First name" });
+
+        var onDisk = File.ReadAllText(Path.Combine(fx.Dir, "alerts.json"));
+        Assert.Contains("ADMIN-TERM", onDisk);
+        Assert.Equal("First name", Config.Load(fx.CfgPath).MergeHeaders["first"]); // the save itself still landed
     }
 }

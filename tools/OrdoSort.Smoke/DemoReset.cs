@@ -59,6 +59,12 @@ public static class DemoReset
                     AppendSuffix = false, Suffix = "", Color = "#1565c0" },
             },
         };
+        // Config.Save only bootstraps box-labels.json when it's missing (it's
+        // the exclusive-writer's file, protected from being clobbered by an
+        // ordinary settings save) — a reset must still zero it out, so delete
+        // it here rather than relying on Save to do that job.
+        var boxLabels = Path.Combine(demo, cfg.BoxLabelsFile);
+        if (File.Exists(boxLabels)) File.Delete(boxLabels);
         OrdoSort.Core.Config.Save(cfg, Path.Combine(demo, "config.json"));
 
         Console.WriteLine($"Demo reset: {names.Length} sample documents in {inbox}");

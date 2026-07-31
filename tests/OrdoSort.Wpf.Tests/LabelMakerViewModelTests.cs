@@ -33,6 +33,54 @@ public class LabelMakerViewModelTests : IDisposable
     }
 
     [Fact]
+    public void BootstrapsFromLegacyInlineLabelClientsWhenTheStoreFileIsMissing()
+    {
+        // a pre-split config: inline label_clients, but box-labels.json has
+        // never been written — opening the window must migrate the inline
+        // clients into the store rather than showing (and then persisting)
+        // an empty roster
+        var path = Path.Combine(_dir, $"box-labels-{Guid.NewGuid():N}.json");
+        Assert.False(File.Exists(path));
+        var cfg = new Config
+        {
+            LabelClients = { new LabelClient { Id = "ACME", DestroyDays = 45, NextNumber = 7 } },
+        };
+
+        var vm = new LabelMakerViewModel(cfg, path, _dialogs, () => Today, _opened.Add,
+            new InlineWorkScheduler());
+
+        Assert.True(File.Exists(path));
+        var stored = Assert.Single(BoxLabelStore.Read(path).LabelClients);
+        Assert.Equal("ACME", stored.Id);
+        Assert.Equal(45, stored.DestroyDays);
+        Assert.Equal(7, stored.NextNumber);
+
+        var shown = Assert.Single(vm.Clients);
+        Assert.Equal("ACME", shown.Id);
+        Assert.Equal("7", shown.NextNumberText);
+    }
+
+    [Fact]
+    public void DoesNotBootstrapWhenTheStoreFileAlreadyExists()
+    {
+        // the store file existing at all (even with zero clients, e.g. a
+        // deliberate reset) means the migration already happened, or was
+        // never needed — the inline clients must not be replayed over it
+        var path = Path.Combine(_dir, $"box-labels-{Guid.NewGuid():N}.json");
+        BoxLabelStore.Mutate(path, d => 0);   // file exists, roster deliberately empty
+        var cfg = new Config
+        {
+            LabelClients = { new LabelClient { Id = "STALE", NextNumber = 99 } },
+        };
+
+        var vm = new LabelMakerViewModel(cfg, path, _dialogs, () => Today, _opened.Add,
+            new InlineWorkScheduler());
+
+        Assert.Empty(vm.Clients);
+        Assert.Empty(BoxLabelStore.Read(path).LabelClients);
+    }
+
+    [Fact]
     public void LoadsClientsFromConfigAndSelectsTheFirst()
     {
         var path = PathWith(

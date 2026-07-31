@@ -945,8 +945,54 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// state: merge headers, remembered passwords).</summary>
     internal void SaveConfigNow()
     {
+        RefreshSharedSectionsFromDisk();
         if (!Config.TrySave(_cfg, _cfgPath, out var error))
             _dialogs.Warn(error, "OrdoSort — settings not saved");
+    }
+
+    /// <summary>Before a tool-state save (tile-visibility toggle, merge
+    /// headers, remembered passwords) rewrites all three Settings-owned side
+    /// files, pull each one fresh from disk first. _cfg is whatever this run
+    /// started with — without this, a full TrySave would silently revert an
+    /// admin's intervening edit to a shared file the moment any tool saves
+    /// its own unrelated state. box-labels.json is untouched here: it's
+    /// already protected as a bootstrap-only write with its own exclusive
+    /// writer (BoxLabelStore). A section whose file doesn't exist yet keeps
+    /// its in-memory values so TrySave can still create it (first-run
+    /// migration); a section whose file exists but fails to parse also keeps
+    /// the in-memory copy — a broken shared file must not block a password
+    /// save.</summary>
+    private void RefreshSharedSectionsFromDisk()
+    {
+        try
+        {
+            if (Config.ReadDoc<DestinationsDoc>(_cfgPath, _cfg.DestinationsFile) is { } dd)
+            {
+                _cfg.Routes = dd.Routes ?? new();
+                _cfg.DestinationsFileExtras = dd.Extras ?? new();
+            }
+        }
+        catch (ConfigException) { /* broken shared file: keep the in-memory copy */ }
+
+        try
+        {
+            if (Config.ReadDoc<MonitoredFoldersDoc>(_cfgPath, _cfg.MonitoredFoldersFile) is { } md)
+            {
+                _cfg.WatchFolders = md.WatchFolders ?? new();
+                _cfg.MonitoredFoldersFileExtras = md.Extras ?? new();
+            }
+        }
+        catch (ConfigException) { /* broken shared file: keep the in-memory copy */ }
+
+        try
+        {
+            if (Config.ReadDoc<AlertsDoc>(_cfgPath, _cfg.AlertsFile) is { } ad)
+            {
+                _cfg.AlertTexts = ad.AlertTexts ?? new();
+                _cfg.AlertsFileExtras = ad.Extras ?? new();
+            }
+        }
+        catch (ConfigException) { /* broken shared file: keep the in-memory copy */ }
     }
 
     internal void SaveMergeHeaders(Dictionary<string, string> headers)

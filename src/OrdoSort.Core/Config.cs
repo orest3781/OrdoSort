@@ -141,10 +141,15 @@ public sealed class Config
     [JsonPropertyName("sounds")] public SoundSettings Sounds { get; set; } = new();
 
     // ---- split config: where each section lives (relative = beside config.json)
-    [JsonPropertyName("destinations_file")] public string DestinationsFile { get; set; } = "destinations.json";
-    [JsonPropertyName("monitored_folders_file")] public string MonitoredFoldersFile { get; set; } = "monitored-folders.json";
-    [JsonPropertyName("alerts_file")] public string AlertsFile { get; set; } = "alerts.json";
-    [JsonPropertyName("box_labels_file")] public string BoxLabelsFile { get; set; } = "box-labels.json";
+    public const string DefaultDestinationsFile = "destinations.json";
+    public const string DefaultMonitoredFoldersFile = "monitored-folders.json";
+    public const string DefaultAlertsFile = "alerts.json";
+    public const string DefaultBoxLabelsFile = "box-labels.json";
+
+    [JsonPropertyName("destinations_file")] public string DestinationsFile { get; set; } = DefaultDestinationsFile;
+    [JsonPropertyName("monitored_folders_file")] public string MonitoredFoldersFile { get; set; } = DefaultMonitoredFoldersFile;
+    [JsonPropertyName("alerts_file")] public string AlertsFile { get; set; } = DefaultAlertsFile;
+    [JsonPropertyName("box_labels_file")] public string BoxLabelsFile { get; set; } = DefaultBoxLabelsFile;
 
     // Unknown top-level keys of each side file, carried for round-trip
     [JsonIgnore] public Dictionary<string, JsonElement> DestinationsFileExtras { get; set; } = new();
@@ -279,10 +284,10 @@ public sealed class Config
         Theme ??= "auto";
         WordSeparator ??= "";
 
-        DestinationsFile ??= "destinations.json";
-        MonitoredFoldersFile ??= "monitored-folders.json";
-        AlertsFile ??= "alerts.json";
-        BoxLabelsFile ??= "box-labels.json";
+        DestinationsFile ??= DefaultDestinationsFile;
+        MonitoredFoldersFile ??= DefaultMonitoredFoldersFile;
+        AlertsFile ??= DefaultAlertsFile;
+        BoxLabelsFile ??= DefaultBoxLabelsFile;
 
         Routes = Clean(Routes);
         WatchFolders = Clean(WatchFolders);

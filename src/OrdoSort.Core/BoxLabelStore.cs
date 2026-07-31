@@ -41,6 +41,13 @@ public static class BoxLabelStore
                     throw new ConfigException($"Config file {fullPath} is not valid JSON: {ex.Message}");
                 }
             }
+            catch (FileNotFoundException)
+            {
+                // deletion race: the Exists check above passed, but the file
+                // is gone by the time the FileStream opened — same meaning as
+                // never having existed, not a busy-file retry case.
+                return new BoxLabelsDoc();
+            }
             catch (IOException) when (sw.ElapsedMilliseconds + RetryDelayMs <= maxWaitMs)
             {
                 Thread.Sleep(RetryDelayMs);
@@ -62,7 +69,10 @@ public static class BoxLabelStore
     /// on-disk doc (never a stale in-memory copy), mutates it, and its
     /// return value is handed back after the write lands. Callback exceptions
     /// propagate raw (not mislabeled as file errors); file is unchanged if
-    /// callback throws before the write completes.</summary>
+    /// callback throws before the write completes. Must not be called
+    /// reentrantly on the same path from within its own callback — the
+    /// exclusive handle is still open, so a nested call would just spin
+    /// until its own outer call's retry budget expires.</summary>
     public static T Mutate<T>(string fullPath, Func<BoxLabelsDoc, T> mutate,
         int maxWaitMs = DefaultMaxWaitMs)
     {
