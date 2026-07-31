@@ -71,41 +71,16 @@ public static class BoxLabelStore
         var sw = System.Diagnostics.Stopwatch.StartNew();
         while (true)
         {
+            FileStream? fs = null;
             try
             {
-                using var fs = new FileStream(fullPath, FileMode.OpenOrCreate,
+                fs = new FileStream(fullPath, FileMode.OpenOrCreate,
                     FileAccess.ReadWrite, FileShare.None);
-
-                // Read and deserialize: fail fast on corruption (no retries for JSON errors)
-                try
-                {
-                    using var reader = new StreamReader(fs, leaveOpen: true);
-                    var text = reader.ReadToEnd();
-                    var doc = text.Trim().Length == 0
-                        ? new BoxLabelsDoc()
-                        : JsonSerializer.Deserialize<BoxLabelsDoc>(text, Opts) ?? new BoxLabelsDoc();
-                    doc.LabelClients ??= new();
-                    doc.Extras ??= new();
-
-                    // Callback executes OUTSIDE catch: exceptions propagate raw, file untouched
-                    var result = mutate(doc);
-
-                    // Write only if callback succeeded
-                    fs.Seek(0, SeekOrigin.Begin);
-                    fs.SetLength(0);
-                    using var writer = new StreamWriter(fs);
-                    writer.Write(JsonSerializer.Serialize(doc, Opts) + "\n");
-                    writer.Flush();
-                    return result;
-                }
-                catch (JsonException ex)
-                {
-                    throw new ConfigException($"Config file {fullPath} is not valid JSON: {ex.Message}");
-                }
             }
             catch (IOException) when (sw.ElapsedMilliseconds + RetryDelayMs <= maxWaitMs)
             {
                 Thread.Sleep(RetryDelayMs);
+                continue;
             }
             catch (IOException)
             {
@@ -114,8 +89,39 @@ public static class BoxLabelStore
             }
             catch (UnauthorizedAccessException ex)
             {
-                throw new ConfigException(
-                    $"box-labels file not accessible: {ex.Message} ({fullPath})");
+                throw new ConfigException($"box-labels file not accessible: {ex.Message} ({fullPath})");
+            }
+
+            using (fs)
+            {
+                string text;
+                using (var reader = new StreamReader(fs, leaveOpen: true))
+                    text = reader.ReadToEnd();
+
+                BoxLabelsDoc doc;
+                try
+                {
+                    doc = text.Trim().Length == 0
+                        ? new BoxLabelsDoc()
+                        : JsonSerializer.Deserialize<BoxLabelsDoc>(text, Opts) ?? new BoxLabelsDoc();
+                }
+                catch (JsonException ex)
+                {
+                    throw new ConfigException($"Config file {fullPath} is not valid JSON: {ex.Message}");
+                }
+                doc.LabelClients ??= new();
+                doc.Extras ??= new();
+
+                var result = mutate(doc);   // outside every classification catch
+
+                fs.Seek(0, SeekOrigin.Begin);
+                fs.SetLength(0);
+                using (var writer = new StreamWriter(fs, leaveOpen: true))
+                {
+                    writer.Write(JsonSerializer.Serialize(doc, Opts) + "\n");
+                    writer.Flush();
+                }
+                return result;
             }
         }
     }

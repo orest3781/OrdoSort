@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace OrdoSort.Core.Tests;
 
 /// <summary>The exclusive box-labels writer: fresh reads, atomic increments,
@@ -66,13 +68,24 @@ public class BoxLabelStoreTests : IDisposable
     }
 
     [Fact]
-    public void CallbackExceptionsPropagateUnwrappedAndFileSurvives()
+    public void CallbackIOExceptionPropagatesWithoutRetryAndFileSurvives()
     {
         var p = PathOf("box-labels.json");
-        BoxLabelStore.Mutate(p, d => { d.LabelClients.Add(new LabelClient { Id = "A", NextNumber = 3 }); return 0; });
-        Assert.Throws<InvalidOperationException>(() =>
-            BoxLabelStore.Mutate<int>(p, d => throw new InvalidOperationException("callback bug")));
-        Assert.Equal(3, BoxLabelStore.Read(p).LabelClients.Single().NextNumber);
+        BoxLabelStore.Mutate(p, d => { d.LabelClients.Add(
+            new LabelClient { Id = "A", NextNumber = 3 }); return 0; });
+        var calls = 0;
+        Assert.Throws<IOException>(() =>
+            BoxLabelStore.Mutate<int>(p, d => { calls++; throw new IOException("callback io bug"); }));
+        Assert.Equal(1, calls);   // never retried
+        Assert.Equal(3, BoxLabelStore.Read(p).LabelClients.Single().NextNumber); // never truncated
+    }
+
+    [Fact]
+    public void CallbackJsonExceptionPropagatesUnwrapped()
+    {
+        var p = PathOf("box-labels.json");
+        Assert.Throws<JsonException>(() =>
+            BoxLabelStore.Mutate<int>(p, d => throw new JsonException("callback json bug")));
     }
 
     [Fact]
