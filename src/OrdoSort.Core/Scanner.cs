@@ -20,11 +20,11 @@ public static class Scanner
     }
 
     /// <summary>Which files the inbox picks up: insert mode needs the "--"
-    /// marker to splice into; full replace works on ANY pdf.</summary>
+    /// marker to splice into; every other mode works on ANY pdf.</summary>
     public static bool Eligible(string filename, string mode) =>
-        mode == Naming.ModeReplace
-            ? filename.EndsWith(Naming.PdfExt, StringComparison.OrdinalIgnoreCase)
-            : Naming.InboxRegex().IsMatch(filename);
+        mode == Naming.ModeInsert
+            ? Naming.InboxRegex().IsMatch(filename)
+            : filename.EndsWith(Naming.PdfExt, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Snapshot the inbox. Never throws — problems come back in Error.</summary>
     public static ScanResult Scan(string inbox, string sort = "size_desc",
