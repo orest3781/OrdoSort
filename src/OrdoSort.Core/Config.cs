@@ -29,6 +29,7 @@ public sealed class WatchFolder
     [JsonPropertyName("recursive")] public bool Recursive { get; set; }
     [JsonPropertyName("filetypes")] public string Filetypes { get; set; } = "";   // "pdf" or "pdf,txt"; blank = any
     [JsonPropertyName("color")] public string? Color { get; set; }
+    [JsonPropertyName("section")] public string Section { get; set; } = "";
 
     [JsonExtensionData] public Dictionary<string, System.Text.Json.JsonElement> Extras { get; set; } = new();
 }
@@ -331,7 +332,7 @@ public sealed class Config
         }
         foreach (var w in WatchFolders)
         {
-            w.Label ??= ""; w.Path ??= ""; w.Filetypes ??= "";
+            w.Label ??= ""; w.Path ??= ""; w.Filetypes ??= ""; w.Section ??= "";
             w.Extras ??= new();
         }
         foreach (var c in LabelClients) { c.Id ??= ""; c.Extras ??= new(); }

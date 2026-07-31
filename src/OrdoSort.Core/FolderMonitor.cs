@@ -7,7 +7,7 @@ public static class FolderMonitor
 {
     public sealed record FolderStatus(
         string Label, string Path, string? Color, int Count, string Error,
-        IReadOnlyList<string> Matches, IReadOnlyList<string>? AlertFoldersRaw = null)
+        IReadOnlyList<string> Matches, string Section, IReadOnlyList<string>? AlertFoldersRaw = null)
     {
         /// <summary>Tiles only appear while the folder holds matching files.</summary>
         public bool HasFiles => Count > 0;
@@ -39,9 +39,9 @@ public static class FolderMonitor
     {
         var terms = alertTerms.ToList();
         if (string.IsNullOrWhiteSpace(wf.Path))
-            return new(wf.Label, wf.Path, wf.Color, 0, "no path configured", Array.Empty<string>());
+            return new(wf.Label, wf.Path, wf.Color, 0, "no path configured", Array.Empty<string>(), wf.Section);
         if (!Directory.Exists(wf.Path))
-            return new(wf.Label, wf.Path, wf.Color, 0, $"folder not available: {wf.Path}", Array.Empty<string>());
+            return new(wf.Label, wf.Path, wf.Color, 0, $"folder not available: {wf.Path}", Array.Empty<string>(), wf.Section);
 
         try
         {
@@ -63,11 +63,11 @@ public static class FolderMonitor
                 var dir = System.IO.Path.GetDirectoryName(rel) ?? "";
                 if (dir.Length > 0 && !alertFolders.Contains(dir)) alertFolders.Add(dir);
             }
-            return new(wf.Label, wf.Path, wf.Color, files.Count, "", matches, alertFolders);
+            return new(wf.Label, wf.Path, wf.Color, files.Count, "", matches, wf.Section, alertFolders);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return new(wf.Label, wf.Path, wf.Color, 0, $"can't read folder: {ex.Message}", Array.Empty<string>());
+            return new(wf.Label, wf.Path, wf.Color, 0, $"can't read folder: {ex.Message}", Array.Empty<string>(), wf.Section);
         }
     }
 
