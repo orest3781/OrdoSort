@@ -226,12 +226,15 @@ public class FilingLoopTests
     }
 
     [Fact]
-    public async Task EnterWithNoLastRouteJustHints()
+    public async Task EnterFilesToTheFirstRouteBeforeAnyRouteWasUsed()
     {
+        // last-used mode (EnterCommits=true, the fixture default), fresh
+        // session, no route pressed yet — Enter no longer hints, it files
+        // straight to route 0
         using var fx = Started("20240115--111111.pdf");
+        fx.Shell.TypedName = "SMITH JOHN";
         await fx.Shell.OnEnterAsync();
-        Assert.Contains("press a route button first", fx.Shell.StatusLine);
-        Assert.Empty(Directory.GetFiles(fx.RouteDir));
+        Assert.True(File.Exists(Path.Combine(fx.RouteDir, "20240115-SMITH JOHN-111111.pdf")));
     }
 
     [Fact]
@@ -324,7 +327,9 @@ public class FilingLoopTests
         fx.Shell.Initialize();
         fx.Shell.StartProcessing();
 
-        Assert.All(fx.Shell.Routes, r => Assert.False(r.IsEnterTarget));   // nothing used yet
+        // nothing used yet — the badge starts on route 0, not nowhere
+        Assert.True(fx.Shell.Routes[0].IsEnterTarget);
+        Assert.False(fx.Shell.Routes[1].IsEnterTarget);
 
         fx.Shell.TypedName = "SMITH JOHN";
         await fx.Shell.OnRouteAsync(1);
@@ -333,7 +338,7 @@ public class FilingLoopTests
     }
 
     [Fact]
-    public async Task NoEnterBadgeWhenEnterCommitsIsOff()
+    public async Task EnterBadgeStaysOnFirstRouteWhenEnterCommitsIsOff()
     {
         var fx = new ShellFixture(cfg => cfg.EnterCommits = false);
         using var _ = fx;
@@ -344,7 +349,96 @@ public class FilingLoopTests
 
         fx.Shell.TypedName = "WALKER SUE";
         await fx.Shell.OnRouteAsync(0);
-        Assert.All(fx.Shell.Routes, r => Assert.False(r.IsEnterTarget));   // Enter is inert
+        Assert.True(fx.Shell.Routes[0].IsEnterTarget);   // first-destination mode: always route 0
+    }
+
+    [Fact]
+    public async Task EnterFilesToTheFirstRouteInFirstDestinationMode()
+    {
+        var fx = new ShellFixture(cfg =>
+        {
+            cfg.EnterCommits = false;
+            var second = Path.Combine(cfg.Inbox, "..", "second");
+            Directory.CreateDirectory(second);
+            cfg.Routes.Add(new Route { Label = "Second", Path = second });
+        });
+        using var _ = fx;
+        fx.AddInboxFile("20240115--111111.pdf");
+        fx.AddInboxFile("20240116--222222.pdf");
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+
+        fx.Shell.TypedName = "SMITH JOHN";
+        await fx.Shell.OnRouteAsync(1);          // use route 2 first
+        fx.Shell.TypedName = "JONES AMY";
+        await fx.Shell.OnEnterAsync();
+
+        // still route 0 — first-destination mode never follows the last press
+        Assert.True(File.Exists(Path.Combine(fx.RouteDir, "20240116-JONES AMY-222222.pdf")));
+    }
+
+    [Fact]
+    public async Task EnterRefilesToTheLastUsedRoute()
+    {
+        var fx = new ShellFixture(cfg =>
+        {
+            cfg.EnterCommits = true;
+            var second = Path.Combine(cfg.Inbox, "..", "second");
+            Directory.CreateDirectory(second);
+            cfg.Routes.Add(new Route { Label = "Second", Path = second });
+        });
+        using var _ = fx;
+        fx.AddInboxFile("20240115--111111.pdf");
+        fx.AddInboxFile("20240116--222222.pdf");
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+
+        fx.Shell.TypedName = "SMITH JOHN";
+        await fx.Shell.OnRouteAsync(1);          // file one to route 2, establishing the last route
+        fx.Shell.TypedName = "JONES AMY";
+        await fx.Shell.OnEnterAsync();
+
+        Assert.True(File.Exists(Path.Combine(fx.Cfg.Routes[1].Path, "20240116-JONES AMY-222222.pdf")));
+    }
+
+    [Fact]
+    public async Task EnterTargetMarkerTracksTheMode()
+    {
+        // first-destination mode: the badge sits on route 0 before anything
+        // is filed
+        using (var fx = new ShellFixture(cfg =>
+        {
+            cfg.EnterCommits = false;
+            var second = Path.Combine(cfg.Inbox, "..", "second");
+            Directory.CreateDirectory(second);
+            cfg.Routes.Add(new Route { Label = "Second", Path = second });
+        }))
+        {
+            fx.AddInboxFile();
+            fx.Shell.Initialize();
+            fx.Shell.StartProcessing();
+            Assert.True(fx.Shell.Routes[0].IsEnterTarget);
+            Assert.False(fx.Shell.Routes[1].IsEnterTarget);
+        }
+
+        // last-used mode: after using route 2, the badge follows it there
+        using (var fx = new ShellFixture(cfg =>
+        {
+            cfg.EnterCommits = true;
+            var second = Path.Combine(cfg.Inbox, "..", "second");
+            Directory.CreateDirectory(second);
+            cfg.Routes.Add(new Route { Label = "Second", Path = second });
+        }))
+        {
+            fx.AddInboxFile();
+            fx.AddInboxFile();
+            fx.Shell.Initialize();
+            fx.Shell.StartProcessing();
+            fx.Shell.TypedName = "SMITH JOHN";
+            await fx.Shell.OnRouteAsync(1);
+            Assert.False(fx.Shell.Routes[0].IsEnterTarget);
+            Assert.True(fx.Shell.Routes[1].IsEnterTarget);
+        }
     }
 
     [Fact]

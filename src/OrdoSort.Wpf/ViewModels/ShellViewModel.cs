@@ -721,6 +721,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         BuildRoutes(problems);
         _session.Start(scan.Matching);
         _lastRoute = null;
+        MarkRouteState();   // Enter always has a target now — mark it before the first document
         _auditFailedThisSession = false;
         Screen = Screen.Processing;
         StatusLine = "";
@@ -916,7 +917,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// target depends on enter_commits; the trail rule does not.</summary>
     private void MarkRouteState()
     {
-        var enterTarget = _cfg.EnterCommits ? _lastRoute : null;
+        var enterTarget = Routes.Count == 0
+            ? (int?)null
+            : (_cfg.EnterCommits ? (_lastRoute ?? 0) : 0);
         for (var i = 0; i < Routes.Count; i++)
         {
             Routes[i].IsEnterTarget = i == enterTarget;
@@ -924,15 +927,16 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Enter files to the last-used route (when enabled in config).</summary>
+    /// <summary>Enter always files: the last-used route — starting at the
+    /// first — or always the first, per enter_commits.</summary>
     public void OnEnter() => _ = OnEnterAsync();
 
     internal Task OnEnterAsync()
     {
-        if (Screen != Screen.Processing || !_cfg.EnterCommits) return Task.CompletedTask;
-        if (_lastRoute is { } i && i < _cfg.Routes.Count) return OnRouteAsync(i);
-        StatusLine = "Enter files to the last-used route — press a route button first.";
-        return Task.CompletedTask;
+        if (Screen != Screen.Processing || _cfg.Routes.Count == 0) return Task.CompletedTask;
+        var target = _cfg.EnterCommits ? (_lastRoute ?? 0) : 0;
+        if (target >= _cfg.Routes.Count) target = 0;
+        return OnRouteAsync(target);
     }
 
     public RelayCommand ExportHistoryCommand { get; }

@@ -77,11 +77,14 @@ public class RouteTrailTests
         fx.Shell.StartProcessing();
 
         fx.Shell.TypedName = "SMITH JOHN";
-        await fx.Shell.OnRouteAsync(0);
+        await fx.Shell.OnRouteAsync(1);
 
-        // the ⏎ badge is off because Enter does not commit …
-        Assert.False(fx.Shell.Routes[0].IsEnterTarget);
+        // the ⏎ badge stays on the first destination — first-destination
+        // mode never follows the button that was actually pressed …
+        Assert.True(fx.Shell.Routes[0].IsEnterTarget);
+        Assert.False(fx.Shell.Routes[1].IsEnterTarget);
         // … but the trail still records where the document went
-        Assert.True(fx.Shell.Routes[0].IsLastUsed);
+        Assert.True(fx.Shell.Routes[1].IsLastUsed);
+        Assert.False(fx.Shell.Routes[0].IsLastUsed);
     }
 }
