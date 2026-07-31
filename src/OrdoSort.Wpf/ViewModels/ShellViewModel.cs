@@ -911,15 +911,23 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         finally { _busy = false; }
     }
 
+    /// <summary>Index of the route Enter would press right now: null while
+    /// there are no routes to press; otherwise the last-used route (falling
+    /// back to the first before anything's been filed) when enter_commits is
+    /// on, or always the first when it's off. The single source both
+    /// MarkRouteState's ⏎ badge and UpdatePreview's route override read, so
+    /// the badge, the live preview, and what Enter actually files can never
+    /// drift apart from one another.</summary>
+    private int? EnterTargetIndex() =>
+        Routes.Count == 0 ? null : (_cfg.EnterCommits ? (_lastRoute ?? 0) : 0);
+
     /// <summary>Refresh both per-route marks in one pass, so they can never
     /// drift apart: the ⏎ badge on the one button Enter would press right now,
     /// and the lit trail rule on the route this session filed to last. Enter's
     /// target depends on enter_commits; the trail rule does not.</summary>
     private void MarkRouteState()
     {
-        var enterTarget = Routes.Count == 0
-            ? (int?)null
-            : (_cfg.EnterCommits ? (_lastRoute ?? 0) : 0);
+        var enterTarget = EnterTargetIndex();
         for (var i = 0; i < Routes.Count; i++)
         {
             Routes[i].IsEnterTarget = i == enterTarget;
@@ -1080,7 +1088,11 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Live "will be filed as" preview — the same BuildTarget the
-    /// commit uses, so an illegal name (colon…) warns before the button.</summary>
+    /// commit uses, so an illegal name (colon…) warns before the button. Keyed
+    /// off the SAME route Enter would press right now (EnterTargetIndex) —
+    /// not just _lastRoute — so a fresh session (or enter_commits off) still
+    /// previews the route override Enter is actually about to use, rather
+    /// than silently ignoring it.</summary>
     private void UpdatePreview()
     {
         var current = _session.Current;
@@ -1092,7 +1104,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         }
         try
         {
-            var route = _lastRoute is { } i && i < _cfg.Routes.Count ? _cfg.Routes[i] : null;
+            var target = EnterTargetIndex();
+            var route = target is { } i && i < _cfg.Routes.Count ? _cfg.Routes[i] : null;
             var result = Naming.BuildTarget(
                 Path.GetFileName(current), TypedName,
                 route?.NamingMode, _session.SessionMode,

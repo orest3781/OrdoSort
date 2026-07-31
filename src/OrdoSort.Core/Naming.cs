@@ -53,7 +53,7 @@ public static partial class Naming
         string Filename,          // final name, including .pdf
         string CollisionSuffix,   // "" or " (2)", " (3)", ...  (Explorer style)
         string SuffixApplied,     // "" or the route suffix appended verbatim
-        string ModeUsed);         // "insert" | "replace"
+        string ModeUsed);         // one of Naming.Modes
 
     /// <summary>Strip ONE trailing ".pdf" (case-insensitive). Nothing else.</summary>
     public static string StripPdfExt(string text) =>

@@ -11,6 +11,12 @@ public sealed class Session
     private sealed record UndoEntry(long RowId, int QueueIndex, string FiledPath,
         string OriginalPath, bool WasSkip);
 
+    // Session is rebuilt from scratch by ShellViewModel.ApplySettings whenever
+    // settings change, so both _cfg and the ctor-cached SessionMode are
+    // effectively frozen for the life of one session: SessionMode is copied
+    // once, below; NamingTemplate (used by CommitCurrent) is instead read
+    // LIVE off _cfg on every commit — not cached — so a commit and the
+    // Shell's live preview always resolve the template from the same source.
     private readonly Config _cfg;
     private readonly History _history;
     private readonly LinkedList<UndoEntry> _undo = new();

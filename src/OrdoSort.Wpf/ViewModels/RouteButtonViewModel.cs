@@ -11,8 +11,9 @@ namespace OrdoSort.Wpf.ViewModels;
 /// a readable reason when the destination is unusable.</summary>
 public sealed class RouteButtonViewModel : ObservableObject
 {
-    /// <summary>True on the one button Enter would press right now (the
-    /// last-used route, when enter_commits is on) — shown as a ⏎ badge.</summary>
+    /// <summary>True on the one button Enter would press right now — the
+    /// last-used route, starting at the first, or always the first, per
+    /// enter_commits — shown as a ⏎ badge.</summary>
     private bool _isEnterTarget;
     public bool IsEnterTarget { get => _isEnterTarget; internal set => Set(ref _isEnterTarget, value); }
 

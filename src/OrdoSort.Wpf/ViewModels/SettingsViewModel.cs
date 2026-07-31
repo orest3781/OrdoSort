@@ -107,7 +107,7 @@ public sealed class RouteEditVm : ObservableObject
         Suffix = Suffix,
         AppendSuffix = AppendSuffix,
         NamingMode = NamingMode.Length == 0 ? null : NamingMode,
-        NamingTemplate = NamingTemplate.Length == 0 ? null : NamingTemplate,
+        NamingTemplate = NamingTemplate.Trim().Length == 0 ? null : NamingTemplate.Trim(),
         Color = Color.Length == 0 ? null : Color.Trim(),
         Extras = new Dictionary<string, JsonElement>(Extras),
     };
@@ -1178,6 +1178,19 @@ public sealed class SettingsViewModel : ObservableObject
                 errors.Add($"\"{label}\": the hotkey \"{r.Hotkey}\" needs a modifier — try \"Ctrl+{rawHotkey}\".");
             if (!r.ColorValid)
                 errors.Add($"\"{label}\": \"{r.Color}\" is not a color (try #2e7d32).");
+
+            // a route in template mode is validated here too — not just the
+            // global template — using the same fallback ResolveTemplate uses
+            // at commit time: the route's own template, or the Filing tab's
+            // global one when the route's box is blank.
+            if (r.NamingMode == Naming.ModeTemplate)
+            {
+                var routeTemplate = r.NamingTemplate.Trim();
+                var effectiveTemplate = routeTemplate.Length == 0 ? NamingTemplate : routeTemplate;
+                var templateError = Naming.ValidateTemplate(effectiveTemplate);
+                if (templateError.Length > 0)
+                    errors.Add($"{label}: template — {templateError}");
+            }
         }
 
         // duplicate EFFECTIVE hotkeys — the same keystroke can't file two ways

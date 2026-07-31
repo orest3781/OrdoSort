@@ -193,7 +193,7 @@ public sealed class Config
         cfg.Normalize();
         if (Array.IndexOf(Naming.Modes, cfg.NamingMode) < 0)
             throw new ConfigException(
-                $"naming_mode must be one of insert/replace, got \"{cfg.NamingMode}\"");
+                $"naming_mode must be one of {string.Join('/', Naming.Modes)}, got \"{cfg.NamingMode}\"");
         if (cfg.NamingMode == Naming.ModeTemplate)
         {
             var templateError = Naming.ValidateTemplate(cfg.NamingTemplate);

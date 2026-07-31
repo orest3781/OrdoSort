@@ -208,6 +208,26 @@ public class FilingLoopTests
     }
 
     [Fact]
+    public async Task PreviewAgreesWithWhatEnterActuallyFiles()
+    {
+        // Regression: the preview used to key off _lastRoute directly (null
+        // before anything's filed), while Enter's real target — even on a
+        // fresh session — is route 0 (last-used mode, falling back to the
+        // first). So a route-0 override the preview ignored was still the
+        // route Enter was about to use, and the two disagreed.
+        using var fx = new ShellFixture(cfg => cfg.Routes[0].NamingMode = "replace");
+        fx.AddInboxFile("20240115--111111.pdf");
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+
+        fx.Shell.TypedName = "SMITH JOHN";
+        Assert.Equal("SMITH JOHN.pdf", fx.Shell.Preview);   // route 0's replace-mode name
+
+        await fx.Shell.OnEnterAsync();
+        Assert.True(File.Exists(Path.Combine(fx.RouteDir, "SMITH JOHN.pdf")));
+    }
+
+    [Fact]
     public void TypedNameIsUppercasedWhenConfigured()
     {
         using var fx = Started("20240115--111111.pdf");
