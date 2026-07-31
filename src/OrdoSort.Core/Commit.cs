@@ -31,7 +31,8 @@ public static class Commit
     }
 
     public static CommitOutcome CommitFile(
-        string src, string typedName, Route route, string globalMode)
+        string src, string typedName, Route route, string globalMode,
+        string globalTemplate = "", DateTime? today = null)
     {
         if (!File.Exists(src))
             return new CommitOutcome(true, null, null);
@@ -44,7 +45,9 @@ public static class Commit
         Naming.NameResult Build() => Naming.BuildTarget(
             Path.GetFileName(src), typedName, route.NamingMode, globalMode,
             route.Suffix, route.AppendSuffix,
-            name => File.Exists(Path.Combine(destDir, name)));
+            name => File.Exists(Path.Combine(destDir, name)),
+            routeTemplate: route.NamingTemplate, globalTemplate: globalTemplate,
+            today: today);
 
         Naming.NameResult result;
         try { result = Build(); }

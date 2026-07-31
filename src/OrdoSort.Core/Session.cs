@@ -82,7 +82,8 @@ public sealed class Session
     public Commit.CommitOutcome CommitCurrent(string typedName, Route route)
     {
         var src = Current ?? throw new CommitError("No document is loaded.");
-        var outcome = Commit.CommitFile(src, typedName, route, SessionMode);
+        var outcome = Commit.CommitFile(src, typedName, route, SessionMode,
+            globalTemplate: _cfg.NamingTemplate);
         if (outcome.Vanished) { LogVanished(src); return outcome; }
 
         var result = outcome.NameResult!;
