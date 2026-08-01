@@ -586,7 +586,17 @@
                                         <ColumnDefinition Width="220" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="Section:" Style="{StaticResource FieldLabel}" />
-                                    <ComboBox Grid.Column="1" IsEditable="True"
+                                    <!-- IsTextSearchEnabled=False: an editable ComboBox's built-in
+                                         text search otherwise (a) auto-completes a typed prefix into
+                                         a full matching choice mid-keystroke, hijacking what was typed,
+                                         and (b) clears Text to "" whenever ItemsSource changes and the
+                                         current Text isn't found among the (freshly recomputed)
+                                         SectionChoices, which happens on every folder-selection swap,
+                                         silently blanking the previously selected folder's Section.
+                                         Proven with a throwaway WPF harness (real TextComposition input
+                                         events) before this attribute was added; removing it reproduces
+                                         both failures. -->
+                                    <ComboBox Grid.Column="1" IsEditable="True" IsTextSearchEnabled="False"
                                               ItemsSource="{Binding DataContext.SectionChoices,
                                                             RelativeSource={RelativeSource AncestorType=Window}}"
                                               Text="{Binding Section, UpdateSourceTrigger=PropertyChanged}"
