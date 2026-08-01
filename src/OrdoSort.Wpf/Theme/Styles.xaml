@@ -4,6 +4,21 @@
     <!-- All colors come from the Theme.* brushes ThemeManager materializes;
          DynamicResource keeps a live OS light/dark switch working. -->
 
+    <!-- Shared focus ring: a flat bronze outline on every focusable styled
+         control. AccentBronze renders here as a 100% flat stroke only — no
+         opacity/mix/gradient — per its WCAG-pinned contrast margin. -->
+    <Style x:Key="BronzeFocusVisual">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Border BorderBrush="{DynamicResource Theme.AccentBronze}"
+                            BorderThickness="2" CornerRadius="4" Margin="-2"
+                            SnapsToDevicePixels="True" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style TargetType="Window">
         <Setter Property="Background" Value="{DynamicResource Theme.WindowBg}" />
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
@@ -29,30 +44,17 @@
         <Setter Property="Padding" Value="12,7" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
-        <Setter Property="FocusVisualStyle">
-            <Setter.Value>
-                <Style>
-                    <Setter Property="Control.Template">
-                        <Setter.Value>
-                            <ControlTemplate>
-                                <Rectangle Margin="-3" RadiusX="6" RadiusY="6" StrokeThickness="2"
-                                           Stroke="{DynamicResource Theme.Accent}" />
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-            </Setter.Value>
-        </Setter>
+        <Setter Property="FocusVisualStyle" Value="{StaticResource BronzeFocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <!-- radius scale: buttons 6, inputs 4, cards 8, pills 12 —
-                         part of what separates "press me" from "type here" -->
+                    <!-- radius scale: buttons 4, inputs 4, cards 8, pills 12 —
+                         crisp-workbench flattens buttons/inputs to the same 4px -->
                     <Border x:Name="Chrome"
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="6"
+                            CornerRadius="4"
                             SnapsToDevicePixels="True">
                         <ContentPresenter Margin="{TemplateBinding Padding}"
                                           HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
@@ -65,6 +67,8 @@
                              on ANY background without recomputing shades. -->
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Chrome" Property="Opacity" Value="0.92" />
+                            <Setter TargetName="Chrome" Property="BorderBrush"
+                                    Value="{DynamicResource Theme.BorderStrong}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Chrome" Property="Opacity" Value="0.84" />
@@ -91,20 +95,7 @@
         <Setter Property="Padding" Value="12,7" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
-        <Setter Property="FocusVisualStyle">
-            <Setter.Value>
-                <Style>
-                    <Setter Property="Control.Template">
-                        <Setter.Value>
-                            <ControlTemplate>
-                                <Rectangle Margin="-3" RadiusX="6" RadiusY="6" StrokeThickness="2"
-                                           Stroke="{DynamicResource Theme.Accent}" />
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-            </Setter.Value>
-        </Setter>
+        <Setter Property="FocusVisualStyle" Value="{StaticResource BronzeFocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
@@ -112,7 +103,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="6"
+                            CornerRadius="4"
                             SnapsToDevicePixels="True">
                         <ContentPresenter Margin="{TemplateBinding Padding}"
                                           HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
@@ -122,6 +113,8 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Chrome" Property="Opacity" Value="0.92" />
+                            <Setter TargetName="Chrome" Property="BorderBrush"
+                                    Value="{DynamicResource Theme.BorderStrong}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Chrome" Property="Opacity" Value="0.84" />
@@ -158,7 +151,7 @@
                         <!-- hover before focus so a focused box stays accent -->
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Chrome" Property="BorderBrush"
-                                    Value="{DynamicResource Theme.SubtleText}" />
+                                    Value="{DynamicResource Theme.BorderStrong}" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Chrome" Property="BorderBrush"
@@ -198,7 +191,7 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Chrome" Property="BorderBrush"
-                                    Value="{DynamicResource Theme.SubtleText}" />
+                                    Value="{DynamicResource Theme.BorderStrong}" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Chrome" Property="BorderBrush"
@@ -330,10 +323,7 @@
                        PopupAnimation="Fade">
                     <Border Background="{DynamicResource Theme.Surface}"
                             BorderBrush="{DynamicResource Theme.Border}"
-                            BorderThickness="1" CornerRadius="6" Padding="4" Margin="0,2,8,8">
-                        <Border.Effect>
-                            <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.35" />
-                        </Border.Effect>
+                            BorderThickness="1" CornerRadius="4" Padding="4" Margin="0,2,8,8">
                         <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle" />
                     </Border>
                 </Popup>
@@ -422,10 +412,7 @@
                        PopupAnimation="Fade">
                     <Border Background="{DynamicResource Theme.Surface}"
                             BorderBrush="{DynamicResource Theme.Border}"
-                            BorderThickness="1" CornerRadius="6" Padding="4" Margin="0,0,8,8">
-                        <Border.Effect>
-                            <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.35" />
-                        </Border.Effect>
+                            BorderThickness="1" CornerRadius="4" Padding="4" Margin="0,0,8,8">
                         <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle" />
                     </Border>
                 </Popup>
@@ -527,7 +514,7 @@
                                 <ControlTemplate TargetType="ToggleButton">
                                     <Border Background="{DynamicResource Theme.Surface}"
                                             BorderBrush="{DynamicResource Theme.Border}"
-                                            BorderThickness="1" CornerRadius="6">
+                                            BorderThickness="1" CornerRadius="4">
                                         <Path HorizontalAlignment="Right" VerticalAlignment="Center"
                                               Margin="0,0,10,0" Data="M 0 0 L 4 4 L 8 0 Z"
                                               Fill="{DynamicResource Theme.SubtleText}" />
@@ -723,7 +710,7 @@
     </Style>
 
     <Style x:Key="SectionText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <Style x:Key="CaptionText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
