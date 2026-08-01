@@ -33,7 +33,7 @@ public partial class LabelMakerWindow : Window
     private bool PrintSheets(IReadOnlyList<BoxLabels.Item> items, string jobName)
     {
         var vm = (LabelMakerViewModel)DataContext;
-        var preview = new PrintPreviewWindow(LabelPrinting.BuildDocument(items), jobName,
+        var preview = new PrintPreviewWindow(LabelPrinting.BuildDocument(items, vm.DateStyle), jobName,
             msg => vm.Dialogs.Warn(msg, "OrdoSort — label maker")) { Owner = this };
         preview.ShowDialog();
         return preview.Printed;

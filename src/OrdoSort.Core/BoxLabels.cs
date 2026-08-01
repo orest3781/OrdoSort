@@ -240,8 +240,12 @@ public static class BoxLabels
     }
 
     // ------------------------------------------------------------ PDF export
-    /// <summary>Write the print-ready PDF (US letter, print at 100% scale).</summary>
-    public static void RenderPdf(string path, IReadOnlyList<Item> items)
+    /// <summary>Write the print-ready PDF (US letter, print at 100% scale).
+    /// <paramref name="dateStyle"/> is forwarded to <see cref="ComposeDrawing"/>
+    /// unchanged — same "bars"/"plain" choice as the preview and in-app
+    /// print paths, so the PDF always matches what the window showed.</summary>
+    public static void RenderPdf(string path, IReadOnlyList<Item> items,
+        string dateStyle = DateStyleBars)
     {
         if (items.Count == 0) throw new ArgumentException("Nothing to print.");
         using var doc = new PdfDocument();
@@ -253,7 +257,7 @@ public static class BoxLabels
             var page = doc.Pages[doc.PageCount - 1];
             using var gfx = XGraphics.FromPdfPage(page);
             var (x, y) = SlotOrigin(i % PerSheet);
-            var d = ComposeDrawing(items[i]);
+            var d = ComposeDrawing(items[i], dateStyle);
             foreach (var b in d.Bars)
                 gfx.DrawRectangle(XBrushes.Black, x + b.X, y + b.Y, b.W, b.H);
             foreach (var t in d.Texts)

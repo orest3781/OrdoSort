@@ -164,6 +164,24 @@
                                VerticalAlignment="Center" Margin="8,0,0,0"
                                TextTrimming="CharacterEllipsis" />
                 </Grid>
+
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="130" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Date bars:" VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <RadioButton GroupName="DateStyle" Content="black bars (white text)"
+                                     IsChecked="{Binding DataContext.DateStyleBars,
+                                                 RelativeSource={RelativeSource AncestorType=Window}}"
+                                     VerticalAlignment="Center" Margin="0,0,16,0" />
+                        <RadioButton GroupName="DateStyle" Content="plain (black text)"
+                                     IsChecked="{Binding DataContext.DateStylePlain,
+                                                 RelativeSource={RelativeSource AncestorType=Window}}"
+                                     VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
             </StackPanel>
 
             <!-- the first label, rendered exactly as it will print -->
@@ -175,6 +193,7 @@
                         Background="{DynamicResource Theme.Surface}">
                     <Grid Height="160">
                         <views:LabelPreviewControl Item="{Binding PreviewItem}"
+                                                   DateStyle="{Binding DateStyle}"
                                                    AutomationProperties.Name="Label preview" />
                         <TextBlock Text="Fix the inputs above to see the label."
                                    HorizontalAlignment="Center" VerticalAlignment="Center">

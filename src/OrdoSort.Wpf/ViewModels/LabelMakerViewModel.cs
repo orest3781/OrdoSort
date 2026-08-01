@@ -67,6 +67,18 @@ public sealed class LabelMakerViewModel : ObservableObject
 
     public ObservableCollection<LabelClientVm> Clients { get; } = new();
 
+    // ---------------------------------------------------- merge-Persist state
+    // Only ids touched during this window session get written back; every
+    // other client's row is whatever the disk currently holds (another
+    // station may have advanced its counter while this window was open).
+    private readonly HashSet<string> _dirtyIds = new();
+    private readonly HashSet<string> _removedIds = new();
+
+    // Set while ClaimNumbers pushes its post-claim number onto the VM: that
+    // update is display-only (the store already holds the advanced number),
+    // so it must NOT be mistaken for a user edit and dirty the client.
+    private bool _suppressDirty;
+
     public LabelMakerViewModel(Config cfg, string boxLabelsPath, IDialogService dialogs,
         Func<DateTime>? today = null, Action<string>? openFile = null,
         IWorkScheduler? scheduler = null)
@@ -102,7 +114,9 @@ public sealed class LabelMakerViewModel : ObservableObject
                 });
             }
 
-            foreach (var c in BoxLabelStore.Read(boxLabelsPath).LabelClients)
+            var doc = BoxLabelStore.Read(boxLabelsPath);
+            _dateStyle = BoxLabels.NormalizeDateStyle(doc.DateStyle);
+            foreach (var c in doc.LabelClients)
                 Hook(Clients.AddReturn(LabelClientVm.From(c)));
         }
         catch (ConfigException ex)
@@ -132,6 +146,7 @@ public sealed class LabelMakerViewModel : ObservableObject
                     "OrdoSort — label maker"))
                 return;
             Clients.Remove(s);
+            if (s.Id.Length > 0) _removedIds.Add(s.Id);   // a blank pristine row was never on disk
             Selected = Clients.FirstOrDefault();
         }, () => Selected is not null);
         ResetNumberCommand = new RelayCommand(
@@ -158,7 +173,20 @@ public sealed class LabelMakerViewModel : ObservableObject
 
     private LabelClientVm Hook(LabelClientVm vm)
     {
-        vm.PropertyChanged += (_, _) => RefreshPreview();
+        var lastId = vm.Id;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(LabelClientVm.Id) && vm.Id != lastId)
+            {
+                // renaming a tracked client is remove-old + dirty-new: the
+                // store may still hold a row keyed by the pre-edit id, and it
+                // must not survive alongside the new one after Persist
+                if (lastId.Length > 0) _removedIds.Add(lastId);
+                lastId = vm.Id;
+            }
+            if (!_suppressDirty && vm.Id.Length > 0) _dirtyIds.Add(vm.Id);
+            RefreshPreview();
+        };
         return vm;
     }
 
@@ -175,6 +203,44 @@ public sealed class LabelMakerViewModel : ObservableObject
             SavePdfCommand.RaiseCanExecuteChanged();
             RefreshPreview();
         }
+    }
+
+    // "bars" (default) or "plain" — seeded from the store at ctor, persisted
+    // through it immediately on change (config-ish, not counter-ish: unlike
+    // the client rows, there is no "disk wins for untouched" story to protect
+    // here, so an immediate write is both correct and cheap).
+    private string _dateStyle = BoxLabels.DateStyleBars;
+    public string DateStyle
+    {
+        get => _dateStyle;
+        set
+        {
+            if (!Set(ref _dateStyle, value)) return;
+            Raise(nameof(DateStyleBars));
+            Raise(nameof(DateStylePlain));
+            try
+            {
+                BoxLabelStore.Mutate(_boxLabelsPath, d => { d.DateStyle = value; return 0; });
+            }
+            catch (ConfigException ex)
+            {
+                _dialogs.Warn(ex.Message, "OrdoSort — label maker");
+            }
+        }
+    }
+
+    /// <summary>Two-radio pattern (Filing tab's ModeInsert/ModeReplace, etc):
+    /// bound with GroupName="DateStyle" in XAML.</summary>
+    public bool DateStyleBars
+    {
+        get => DateStyle == BoxLabels.DateStyleBars;
+        set { if (value) DateStyle = BoxLabels.DateStyleBars; }
+    }
+
+    public bool DateStylePlain
+    {
+        get => DateStyle == BoxLabels.DateStylePlain;
+        set { if (value) DateStyle = BoxLabels.DateStylePlain; }
     }
 
     private string _labelCountText = "10";
@@ -258,26 +324,51 @@ public sealed class LabelMakerViewModel : ObservableObject
         return (items, s, start, count);
     }
 
+    /// <summary>The file-only half of a claim: reads the FRESH on-disk
+    /// counter, refuses a batch that would pass <see cref="BoxLabels.MaxNumber"/>,
+    /// and advances it. Touches nothing on the VM, so it is safe to run off
+    /// the UI thread (SavePdfAsync offloads it alongside the render). Throws
+    /// <see cref="ConfigException"/> on a busy/corrupt file OR a
+    /// ceiling-breaking batch — the write never lands in either case.</summary>
+    private long ClaimNumbersCore(LabelClientVm client, int count) =>
+        BoxLabelStore.Mutate(_boxLabelsPath, doc =>
+        {
+            var c = doc.LabelClients.FirstOrDefault(x => x.Id == client.Id);
+            if (c is null)
+            {
+                c = client.ToClient();
+                doc.LabelClients.Add(c);
+            }
+            var s = c.NextNumber;
+            if (s + count - 1 > BoxLabels.MaxNumber)
+                throw new ConfigException(
+                    "this batch would pass label 99 999 999 — reset or renumber the client");
+            c.NextNumber = s + count;
+            return s;
+        });
+
+    /// <summary>Push a post-claim number onto the VM without marking the
+    /// client dirty — the store already holds the advanced number, so this is
+    /// display-only (see the merge-Persist notes on <see cref="_dirtyIds"/>).</summary>
+    private void SetClaimedNumber(LabelClientVm client, long value)
+    {
+        _suppressDirty = true;
+        try { client.NextNumberText = value.ToString(); }
+        finally { _suppressDirty = false; }
+    }
+
     /// <summary>Claim `count` numbers for `client` from the FRESH on-disk
     /// counter (several stations may be printing). Returns the claimed start,
-    /// or null when the file is busy past the retry window.</summary>
+    /// or null when the file is busy past the retry window or the claim would
+    /// pass the ceiling — either way, already warned. UI-thread only: Print()
+    /// calls this directly; SavePdfAsync uses <see cref="ClaimNumbersCore"/>
+    /// instead so the file work can run off-thread.</summary>
     internal long? ClaimNumbers(LabelClientVm client, int count)
     {
         try
         {
-            var start = BoxLabelStore.Mutate(_boxLabelsPath, doc =>
-            {
-                var c = doc.LabelClients.FirstOrDefault(x => x.Id == client.Id);
-                if (c is null)
-                {
-                    c = client.ToClient();
-                    doc.LabelClients.Add(c);
-                }
-                var s = c.NextNumber;
-                c.NextNumber = s + count;
-                return s;
-            });
-            client.NextNumberText = (start + count).ToString();
+            var start = ClaimNumbersCore(client, count);
+            SetClaimedNumber(client, start + count);
             return start;
         }
         catch (ConfigException ex)
@@ -324,43 +415,77 @@ public sealed class LabelMakerViewModel : ObservableObject
         var dest = _dialogs.AskSaveFile("PDF files (*.pdf)|*.pdf",
             $"labels_{b.Client.Id}_{b.Start:D8}.pdf");
         if (dest is null) return;
-        // Claim from the fresh file FIRST, same reasoning as Print(): the PDF
-        // that lands on disk must carry the claimed numbers.
-        if (ClaimNumbers(b.Client, b.Count) is not { } start) return;   // busy file — already warned
-        var items = RebuildFromClaim(b, start);
+        var dateStyle = _dateStyle;   // read on the UI thread before offloading
+
+        long claimedStart;
         try
         {
-            // rendering + writing can target a share — never on the UI thread
-            await _scheduler.Run(() => BoxLabels.RenderPdf(dest, items));
+            // Claim from the fresh file INSIDE the offload, same reasoning as
+            // Print(): the PDF that lands on disk must carry the claimed
+            // numbers. The claim is now alongside the render (both are file
+            // work, neither belongs on the UI thread) — if the claim throws,
+            // the render below never runs, and nothing lands on disk.
+            claimedStart = await _scheduler.Run(() =>
+            {
+                var start = ClaimNumbersCore(b.Client, b.Count);
+                var items = RebuildFromClaim(b, start);
+                BoxLabels.RenderPdf(dest, items, dateStyle);
+                return start;
+            });
+        }
+        catch (ConfigException ex)
+        {
+            _dialogs.Warn(ex.Message, "OrdoSort — label maker");
+            return;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             _dialogs.Warn("Couldn't save it: " + ex.Message, "OrdoSort — label maker");
             return;
         }
+
+        // back on the UI thread — the await above resumed via the captured
+        // SynchronizationContext, same as every other post-offload line in
+        // this file, so it is safe to touch the VM here
+        SetClaimedNumber(b.Client, claimedStart + b.Count);
         var sheets = (b.Count + BoxLabels.PerSheet - 1) / BoxLabels.PerSheet;
         Status = $"Saved {b.Count} label{(b.Count == 1 ? "" : "s")} "
             + $"({sheets} sheet{(sheets == 1 ? "" : "s")}) — print at 100% scale.";
         try { _openFile(dest); } catch { /* viewer trouble isn't a label problem */ }
     }
 
-    /// <summary>Write the edited client list back to the box-labels file.
-    /// Editing is whole-list (this window IS the editor); counters advance
-    /// through ClaimNumbers so a concurrent printer is never clobbered.</summary>
+    /// <summary>Merge only the ids touched this session back into the
+    /// box-labels file — untouched clients are left exactly as the disk holds
+    /// them, so a station that advanced someone else's counter while this
+    /// window was open (via Print/SavePdf elsewhere, or another station
+    /// entirely) is never clobbered by our stale in-memory copy of that row.
+    /// A zero-edit close writes nothing at all.</summary>
     internal void Persist()
     {
+        if (_dirtyIds.Count == 0 && _removedIds.Count == 0) return;   // zero-edit close writes nothing
         try
         {
             BoxLabelStore.Mutate(_boxLabelsPath, doc =>
             {
-                doc.LabelClients = Clients.Select(c => c.ToClient()).ToList();
+                doc.LabelClients.RemoveAll(c => _removedIds.Contains(c.Id));
+                foreach (var vm in Clients)
+                {
+                    if (!_dirtyIds.Contains(vm.Id)) continue;        // untouched: disk wins
+                    var fresh = doc.LabelClients.FirstOrDefault(c => c.Id == vm.Id);
+                    if (fresh is null) doc.LabelClients.Add(vm.ToClient());
+                    else
+                    {
+                        var edited = vm.ToClient();
+                        fresh.DestroyDays = edited.DestroyDays;
+                        fresh.NextNumber = edited.NextNumber;
+                        fresh.Extras = edited.Extras;
+                    }
+                }
                 return 0;
             });
+            _dirtyIds.Clear(); _removedIds.Clear();
         }
-        catch (ConfigException ex)
-        {
-            _dialogs.Warn(ex.Message, "OrdoSort — label maker");
-        }
+        catch (ConfigException ex) { _dialogs.Warn(ex.Message, "OrdoSort — label maker"); }
     }
 }
 

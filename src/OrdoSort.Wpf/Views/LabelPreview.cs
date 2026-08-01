@@ -63,6 +63,18 @@ public sealed class LabelPreviewControl : FrameworkElement
         set => SetValue(ItemProperty, value);
     }
 
+    public static readonly DependencyProperty DateStyleProperty = DependencyProperty.Register(
+        nameof(DateStyle), typeof(string), typeof(LabelPreviewControl),
+        new FrameworkPropertyMetadata(BoxLabels.DateStyleBars, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    /// <summary>"bars"/"plain" — bound to the window's date-style radios so
+    /// the live card always matches what will actually print.</summary>
+    public string DateStyle
+    {
+        get => (string)GetValue(DateStyleProperty);
+        set => SetValue(DateStyleProperty, value);
+    }
+
     protected override void OnRender(DrawingContext dc)
     {
         if (Item is not { } item || ActualWidth <= 0 || ActualHeight <= 0) return;
@@ -72,7 +84,7 @@ public sealed class LabelPreviewControl : FrameworkElement
         var dy = (ActualHeight - BoxLabels.LabelHeightPt * scale) / 2;
         dc.PushTransform(new TranslateTransform(dx, dy));
         dc.PushTransform(new ScaleTransform(scale, scale));
-        LabelWpfRender.DrawLabel(dc, BoxLabels.ComposeDrawing(item),
+        LabelWpfRender.DrawLabel(dc, BoxLabels.ComposeDrawing(item, DateStyle),
             VisualTreeHelper.GetDpi(this).PixelsPerDip);
         dc.Pop();
         dc.Pop();
@@ -85,7 +97,7 @@ public sealed class LabelPreviewControl : FrameworkElement
 internal static class LabelPrinting
 {
     public static System.Windows.Documents.FixedDocument BuildDocument(
-        IReadOnlyList<BoxLabels.Item> items)
+        IReadOnlyList<BoxLabels.Item> items, string dateStyle = BoxLabels.DateStyleBars)
     {
         const double pageW = BoxLabels.PageWidthPt * 96 / 72;    // 816 DIPs
         const double pageH = BoxLabels.PageHeightPt * 96 / 72;   // 1056 DIPs
@@ -96,7 +108,7 @@ internal static class LabelPrinting
             var sheet = items.Skip(i).Take(BoxLabels.PerSheet).ToList();
             var page = new System.Windows.Documents.FixedPage
             { Width = pageW, Height = pageH, Background = Brushes.White };
-            page.Children.Add(new LabelSheetElement(sheet) { Width = pageW, Height = pageH });
+            page.Children.Add(new LabelSheetElement(sheet, dateStyle) { Width = pageW, Height = pageH });
             var content = new System.Windows.Documents.PageContent();
             ((System.Windows.Markup.IAddChild)content).AddChild(page);
             doc.Pages.Add(content);
@@ -111,8 +123,14 @@ internal static class LabelPrinting
 internal sealed class LabelSheetElement : FrameworkElement
 {
     private readonly IReadOnlyList<BoxLabels.Item> _items;
+    private readonly string _dateStyle;
 
-    public LabelSheetElement(IReadOnlyList<BoxLabels.Item> items) => _items = items;
+    public LabelSheetElement(IReadOnlyList<BoxLabels.Item> items,
+        string dateStyle = BoxLabels.DateStyleBars)
+    {
+        _items = items;
+        _dateStyle = dateStyle;
+    }
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -125,7 +143,7 @@ internal sealed class LabelSheetElement : FrameworkElement
         {
             var (x, y) = BoxLabels.SlotOrigin(i);
             dc.PushTransform(new TranslateTransform(x, y));
-            LabelWpfRender.DrawLabel(dc, BoxLabels.ComposeDrawing(_items[i]), ppd);
+            LabelWpfRender.DrawLabel(dc, BoxLabels.ComposeDrawing(_items[i], _dateStyle), ppd);
             dc.Pop();
         }
         dc.Pop();

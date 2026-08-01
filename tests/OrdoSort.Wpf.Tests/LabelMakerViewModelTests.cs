@@ -315,4 +315,131 @@ public class LabelMakerViewModelTests : IDisposable
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    // --------------------------------------------------------- merge-Persist
+
+    [Fact]
+    public void MergePersistWritesEditedClientsAndLeavesUntouchedOnesAtWhateverTheDiskHolds()
+    {
+        var path = PathWith(
+            new LabelClient { Id = "AAAA", DestroyDays = 30, NextNumber = 7 },
+            new LabelClient { Id = "BBBB", DestroyDays = 30, NextNumber = 10 });
+        var vm = Vm(path);
+
+        vm.Clients.Single(c => c.Id == "AAAA").DestroyDaysText = "45";
+
+        // another station (or this window's own Print/SavePdf elsewhere)
+        // advances B's counter after this window opened — our in-memory copy
+        // of that row is now stale
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "BBBB").NextNumber = 50; return 0; });
+
+        vm.Persist();
+
+        var stored = BoxLabelStore.Read(path).LabelClients;
+        Assert.Equal(45, stored.Single(c => c.Id == "AAAA").DestroyDays);   // our edit landed
+        Assert.Equal(50, stored.Single(c => c.Id == "BBBB").NextNumber);   // disk wins — untouched by us
+    }
+
+    [Fact]
+    public void ZeroEditCloseWritesNothingEvenAfterAnExternalAdvance()
+    {
+        var path = PathWith(new LabelClient { Id = "AAAA", DestroyDays = 30, NextNumber = 7 });
+        var vm = Vm(path);
+
+        // the window never touches this client — an external advance must
+        // not be rolled back, and Persist must not write at all
+        BoxLabelStore.Mutate(path, d => { d.LabelClients.Single().NextNumber = 99; return 0; });
+        var beforeBytes = File.ReadAllBytes(path);
+
+        vm.Persist();
+
+        Assert.Equal(beforeBytes, File.ReadAllBytes(path));   // byte-identical: no write happened
+        Assert.Equal(99, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+    }
+
+    [Fact]
+    public void RenamingAClientRemovesTheOldRowAndAddsTheNewOneOnPersist()
+    {
+        // an id change is remove-old + dirty-new: the store must not end up
+        // with both the pre-edit row and the renamed one
+        var path = PathWith(new LabelClient { Id = "OLDX", DestroyDays = 30, NextNumber = 42 });
+        var vm = Vm(path);
+
+        vm.Clients.Single().Id = "newx";
+
+        vm.Persist();
+
+        var only = Assert.Single(BoxLabelStore.Read(path).LabelClients);
+        Assert.Equal("NEWX", only.Id);
+        Assert.Equal(42, only.NextNumber);       // untouched field carries over
+        Assert.Equal(30, only.DestroyDays);
+    }
+
+    [Fact]
+    public void ClaimNumbersDoesNotDirtyItsClientSoAClaimAloneClosesWithoutWriting()
+    {
+        // ClaimNumbers already wrote the advance straight to the store — the
+        // VM's own NextNumberText update afterward is display-only and must
+        // not make Persist think there is local, unsaved state to merge
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 5 });
+        var vm = Vm(path);
+
+        Assert.Equal(5, vm.ClaimNumbers(vm.Clients.Single(), 10));
+        Assert.Equal("15", vm.Clients.Single().NextNumberText);   // display updated...
+        var afterClaim = File.ReadAllBytes(path);                // ...and the claim's write already landed
+
+        vm.Persist();   // Persist has nothing of its own to write on top of that
+
+        Assert.Equal(afterClaim, File.ReadAllBytes(path));
+        Assert.Equal(15, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);   // the claim's write stands
+    }
+
+    // -------------------------------------------------------------- ceiling
+
+    [Fact]
+    public void ClaimNumbersRefusesABatchThatWouldPassTheCeilingAndLeavesTheCounterUnchanged()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = BoxLabels.MaxNumber - 1 });
+        var vm = Vm(path);
+
+        var start = vm.ClaimNumbers(vm.Clients.Single(), 3);
+
+        Assert.Null(start);
+        Assert.Contains("99 999 999", Assert.Single(_dialogs.Warnings).Message);
+        Assert.Equal(BoxLabels.MaxNumber - 1, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+    }
+
+    // ----------------------------------------------------------- date style
+
+    [Fact]
+    public void DateStyleIsSeededFromTheStoreAtOpen()
+    {
+        var path = PathWith();
+        BoxLabelStore.Mutate(path, d => { d.DateStyle = BoxLabels.DateStylePlain; return 0; });
+
+        var vm = Vm(path);
+
+        Assert.True(vm.DateStylePlain);
+        Assert.False(vm.DateStyleBars);
+    }
+
+    [Fact]
+    public void FlippingTheDateStyleRadioPersistsImmediately()
+    {
+        var path = PathWith();   // defaults to "bars"
+        var vm = Vm(path);
+        Assert.True(vm.DateStyleBars);
+
+        vm.DateStylePlain = true;
+
+        Assert.True(vm.DateStylePlain);
+        Assert.False(vm.DateStyleBars);
+        Assert.Equal(BoxLabels.DateStylePlain, BoxLabelStore.Read(path).DateStyle);
+
+        vm.DateStyleBars = true;
+
+        Assert.True(vm.DateStyleBars);
+        Assert.Equal(BoxLabels.DateStyleBars, BoxLabelStore.Read(path).DateStyle);
+    }
 }
