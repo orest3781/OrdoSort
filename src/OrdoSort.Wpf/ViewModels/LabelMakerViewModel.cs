@@ -68,10 +68,17 @@ public sealed class LabelMakerViewModel : ObservableObject
     public ObservableCollection<LabelClientVm> Clients { get; } = new();
 
     // ---------------------------------------------------- merge-Persist state
-    // Only ids touched during this window session get written back; every
+    // Only clients touched during this window session get written back; every
     // other client's row is whatever the disk currently holds (another
     // station may have advanced its counter while this window was open).
-    private readonly HashSet<string> _dirtyIds = new();
+    // Tracked by OBJECT identity (default reference equality — LabelClientVm
+    // overrides neither Equals nor GetHashCode), NOT by id string: two rows
+    // can share an id (a rename collision, or a pre-existing duplicate — both
+    // of which Persist's duplicate-id guard below still refuses to merge, but
+    // Problems()/Add don't prevent the transient state from existing), and a
+    // string-keyed set would sweep an untouched sibling into the dirty branch
+    // right along with the one actually edited.
+    private readonly HashSet<LabelClientVm> _dirty = new();
     private readonly HashSet<string> _removedIds = new();
 
     // Set while ClaimNumbers pushes its post-claim number onto the VM: that
@@ -184,7 +191,7 @@ public sealed class LabelMakerViewModel : ObservableObject
                 if (lastId.Length > 0) _removedIds.Add(lastId);
                 lastId = vm.Id;
             }
-            if (!_suppressDirty && vm.Id.Length > 0) _dirtyIds.Add(vm.Id);
+            if (!_suppressDirty && vm.Id.Length > 0) _dirty.Add(vm);
             RefreshPreview();
         };
         return vm;
@@ -349,7 +356,7 @@ public sealed class LabelMakerViewModel : ObservableObject
 
     /// <summary>Push a post-claim number onto the VM without marking the
     /// client dirty — the store already holds the advanced number, so this is
-    /// display-only (see the merge-Persist notes on <see cref="_dirtyIds"/>).</summary>
+    /// display-only (see the merge-Persist notes on <see cref="_dirty"/>).</summary>
     private void SetClaimedNumber(LabelClientVm client, long value)
     {
         _suppressDirty = true;
@@ -454,15 +461,34 @@ public sealed class LabelMakerViewModel : ObservableObject
         try { _openFile(dest); } catch { /* viewer trouble isn't a label problem */ }
     }
 
-    /// <summary>Merge only the ids touched this session back into the
+    /// <summary>Merge only the clients touched this session back into the
     /// box-labels file — untouched clients are left exactly as the disk holds
     /// them, so a station that advanced someone else's counter while this
     /// window was open (via Print/SavePdf elsewhere, or another station
     /// entirely) is never clobbered by our stale in-memory copy of that row.
-    /// A zero-edit close writes nothing at all.</summary>
+    /// A zero-edit close writes nothing at all. Refuses entirely (no partial
+    /// write) if two clients on screen share an id: merging by id is
+    /// inherently ambiguous under a collision — whichever row this loop
+    /// reaches last would silently win and the other's edits (or a
+    /// concurrent counter advance under that id) would be discarded with no
+    /// warning. Nothing here blocks a duplicate id from existing transiently
+    /// (Problems() only ever gates the currently-Selected row), so this is
+    /// the one place that must catch it before it reaches disk.</summary>
     internal void Persist()
     {
-        if (_dirtyIds.Count == 0 && _removedIds.Count == 0) return;   // zero-edit close writes nothing
+        if (_dirty.Count == 0 && _removedIds.Count == 0) return;   // zero-edit close writes nothing
+
+        var duplicate = Clients
+            .Where(c => c.Id.Length > 0)
+            .GroupBy(c => c.Id)
+            .FirstOrDefault(g => g.Count() > 1);
+        if (duplicate is not null)
+        {
+            _dialogs.Warn($"Two clients share the id \"{duplicate.Key}\" — fix the duplicate "
+                + "before closing; nothing was saved.", "OrdoSort — label maker");
+            return;
+        }
+
         try
         {
             BoxLabelStore.Mutate(_boxLabelsPath, doc =>
@@ -470,7 +496,7 @@ public sealed class LabelMakerViewModel : ObservableObject
                 doc.LabelClients.RemoveAll(c => _removedIds.Contains(c.Id));
                 foreach (var vm in Clients)
                 {
-                    if (!_dirtyIds.Contains(vm.Id)) continue;        // untouched: disk wins
+                    if (!_dirty.Contains(vm)) continue;        // untouched: disk wins
                     var fresh = doc.LabelClients.FirstOrDefault(c => c.Id == vm.Id);
                     if (fresh is null) doc.LabelClients.Add(vm.ToClient());
                     else
@@ -483,7 +509,7 @@ public sealed class LabelMakerViewModel : ObservableObject
                 }
                 return 0;
             });
-            _dirtyIds.Clear(); _removedIds.Clear();
+            _dirty.Clear(); _removedIds.Clear();
         }
         catch (ConfigException ex) { _dialogs.Warn(ex.Message, "OrdoSort — label maker"); }
     }

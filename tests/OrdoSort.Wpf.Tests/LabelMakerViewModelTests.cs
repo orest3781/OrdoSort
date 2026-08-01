@@ -319,6 +319,11 @@ public class LabelMakerViewModelTests : IDisposable
     // --------------------------------------------------------- merge-Persist
 
     [Fact]
+    // Also stands in for "untouched sibling with a UNIQUE id keeps an
+    // external advance" — the regression case for object-identity dirty
+    // tracking when ids don't collide (see the id-collision variant below,
+    // PersistRefusesUnderDuplicateIdsAndPreservesTheDisk, for the case where
+    // they do).
     public void MergePersistWritesEditedClientsAndLeavesUntouchedOnesAtWhateverTheDiskHolds()
     {
         var path = PathWith(
@@ -374,6 +379,35 @@ public class LabelMakerViewModelTests : IDisposable
         Assert.Equal("NEWX", only.Id);
         Assert.Equal(42, only.NextNumber);       // untouched field carries over
         Assert.Equal(30, only.DestroyDays);
+    }
+
+    [Fact]
+    public void PersistRefusesUnderDuplicateIdsAndPreservesTheDisk()
+    {
+        // renaming AAAA onto BBBB's id is the sharpest way to get two rows
+        // with the same id on screen at once (a pre-existing duplicate on
+        // disk would reach the same state without any rename at all — Persist
+        // must refuse either way). Merging by id is ambiguous under a
+        // collision: refuse entirely rather than silently pick a winner and
+        // discard whichever row (or concurrent counter advance) loses.
+        var path = PathWith(
+            new LabelClient { Id = "AAAA", DestroyDays = 30, NextNumber = 7 },
+            new LabelClient { Id = "BBBB", DestroyDays = 30, NextNumber = 10 });
+        var vm = Vm(path);
+
+        vm.Clients.Single(c => c.Id == "AAAA").Id = "BBBB";   // collision: two rows now say "BBBB"
+
+        // another station advances BBBB's counter while the collision sits
+        // on screen — this must survive untouched
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "BBBB").NextNumber = 99; return 0; });
+
+        vm.Persist();
+
+        Assert.Contains("share the id", Assert.Single(_dialogs.Warnings).Message);
+        var stored = BoxLabelStore.Read(path).LabelClients;
+        Assert.Equal(2, stored.Count);                                    // nothing removed
+        Assert.Equal(99, stored.Single(c => c.Id == "BBBB").NextNumber);   // nothing clobbered
     }
 
     [Fact]
