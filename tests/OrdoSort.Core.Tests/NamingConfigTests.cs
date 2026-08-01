@@ -1,6 +1,6 @@
 namespace OrdoSort.Core.Tests;
 
-/// <summary>New naming modes: pickup rule, config keys, load validation.</summary>
+/// <summary>Naming modes: pickup rule, config keys, removed-mode migration.</summary>
 public class NamingConfigTests : IDisposable
 {
     private readonly string _dir = Directory.CreateTempSubdirectory("ordonamecfg_").FullName;
@@ -12,23 +12,9 @@ public class NamingConfigTests : IDisposable
     [InlineData("replace", "plain.pdf", true)]
     [InlineData("prefix", "plain.pdf", true)]
     [InlineData("append", "plain.pdf", true)]
-    [InlineData("template", "plain.pdf", true)]
-    [InlineData("template", "not-a-pdf.txt", false)]
+    [InlineData("append", "not-a-pdf.txt", false)]
     public void PickupRequiresTheMarkerOnlyInInsertMode(string mode, string file, bool eligible) =>
         Assert.Equal(eligible, Scanner.Eligible(file, mode));
-
-    [Fact]
-    public void NamingTemplateKeysRoundTrip()
-    {
-        var path = Path.Combine(_dir, "config.json");
-        var cfg = new Config { NamingMode = "template", NamingTemplate = "{date}-{name}" };
-        cfg.Routes.Add(new Route { Label = "A", Path = "C:/a",
-            NamingMode = "template", NamingTemplate = "{name}!" });
-        Config.Save(cfg, path);
-        var back = Config.Load(path);
-        Assert.Equal("{date}-{name}", back.NamingTemplate);
-        Assert.Equal("{name}!", back.Routes.Single().NamingTemplate);
-    }
 
     [Fact]
     public void NewModesPassLoadValidation()
@@ -42,37 +28,44 @@ public class NamingConfigTests : IDisposable
     }
 
     [Fact]
-    public void GlobalTemplateModeWithBadTemplateFailsLoadReadably()
+    public void GlobalTemplateModeMigratesToReplaceAtLoad()
     {
-        var path = Path.Combine(_dir, "bad.json");
-        File.WriteAllText(path,
-            """{"inbox":"C:/in","naming_mode":"template","naming_template":"{bogus}"}""");
-        var ex = Assert.Throws<ConfigException>(() => Config.Load(path));
-        Assert.Contains("bogus", ex.Message);
-    }
-
-    [Fact]
-    public void RouteTemplatesAreNotValidatedAtLoad()
-    {
-        var path = Path.Combine(_dir, "route.json");
-        File.WriteAllText(path, """
-            {"inbox":"C:/in","routes":[
-              {"label":"A","path":"C:/a","naming_mode":"template","naming_template":"{bogus}"}]}
-            """);
-        Assert.Equal("{bogus}", Config.Load(path).Routes.Single().NamingTemplate);
-    }
-
-    [Fact]
-    public void OmittedRouteTemplateStaysNullThroughLoadAndSave()
-    {
+        // the "template" naming mode was removed 2026-08 — a config that
+        // still says it must load quietly as "replace" (the closest
+        // surviving semantics), never brick startup with a validation error
         var path = Path.Combine(_dir, "config.json");
-        var cfg = new Config();
-        cfg.Routes.Add(new Route { Label = "A", Path = "C:/a" });
-        Config.Save(cfg, path);
+        File.WriteAllText(path,
+            """{"inbox":"C:/in","naming_mode":"template","naming_template":"{date}-{name}"}""");
+        Assert.Equal("replace", Config.Load(path).NamingMode);
+    }
+
+    [Fact]
+    public void RouteTemplateModeMigratesToReplaceAtLoad()
+    {
+        // per-route overrides migrate too — including routes arriving via
+        // the destinations.json side file, the live path since the split
+        var path = Path.Combine(_dir, "config.json");
+        File.WriteAllText(path, """{"inbox":"C:/in"}""");
+        File.WriteAllText(Path.Combine(_dir, "destinations.json"), """
+            {"routes":[{"label":"A","path":"C:/a","naming_mode":"template","naming_template":"{name}!"}]}
+            """);
+        var route = Config.Load(path).Routes.Single();
+        Assert.Equal("replace", route.NamingMode);
+        // the orphaned key is untyped now — it survives in Extras, not lost
+        Assert.True(route.Extras.ContainsKey("naming_template"));
+    }
+
+    [Fact]
+    public void OrphanedNamingTemplateKeysSurviveAsInertExtras()
+    {
+        // naming_template is no longer a typed key; a hand-edited leftover
+        // rides the Extras round trip like any unknown key — not stripped
+        var path = Path.Combine(_dir, "config.json");
+        File.WriteAllText(path,
+            """{"inbox":"C:/in","naming_mode":"template","naming_template":"{date}-{name}"}""");
         var back = Config.Load(path);
-        Assert.Null(back.Routes.Single().NamingTemplate);
         Config.Save(back, path);
-        Assert.DoesNotContain("\"naming_template\": \"\"",
-            File.ReadAllText(Path.Combine(_dir, "destinations.json")));
+        Assert.Contains("naming_template", File.ReadAllText(path));
+        Assert.Equal("replace", Config.Load(path).NamingMode);
     }
 }

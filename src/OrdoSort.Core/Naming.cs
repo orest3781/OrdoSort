@@ -18,9 +18,8 @@ public static partial class Naming
     public const string ModeReplace = "replace";
     public const string ModePrefix = "prefix";
     public const string ModeAppend = "append";
-    public const string ModeTemplate = "template";
     public static readonly string[] Modes =
-        { ModeInsert, ModeReplace, ModePrefix, ModeAppend, ModeTemplate };
+        { ModeInsert, ModeReplace, ModePrefix, ModeAppend };
 
     // Inbox contract: any PDF with "--" in the stem (something on each side).
     // Insert mode splices the typed name at the FIRST "--"; the classic
@@ -36,11 +35,6 @@ public static partial class Naming
     // readably with the file left in place.
     [GeneratedRegex("""[<>:"/\\|?*\x00-\x1F]""")]
     private static partial Regex ReservedCharsRegex();
-
-    [GeneratedRegex(@"\{([a-z]+)\}")]
-    private static partial Regex TemplateTokenRegex();
-
-    private static readonly HashSet<string> TemplateTokens = new() { "name", "original", "date" };
 
     private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -75,42 +69,10 @@ public static partial class Naming
         return mode;
     }
 
-    /// <summary>"" when the template is usable; else a readable error. A
-    /// template must contain at least one known token, no unknown tokens,
-    /// and no stray braces.</summary>
-    public static string ValidateTemplate(string template)
-    {
-        if (string.IsNullOrWhiteSpace(template))
-            return "The template is empty — use tokens like {name}, {original}, {date}.";
-        var known = 0;
-        foreach (Match m in TemplateTokenRegex().Matches(template))
-        {
-            if (!TemplateTokens.Contains(m.Groups[1].Value))
-                return $"Unknown token {{{m.Groups[1].Value}}} — the tokens are " +
-                       "{name}, {original} and {date}.";
-            known++;
-        }
-        if (known == 0)
-            return "The template needs at least one token: {name}, {original} or {date}.";
-        var leftover = TemplateTokenRegex().Replace(template, "");
-        if (leftover.Contains('{') || leftover.Contains('}'))
-            return "The template has an unmatched { or } — brace tokens must be " +
-                   "{name}, {original} or {date}.";
-        return "";
-    }
-
-    /// <summary>The template that goes with the EFFECTIVE mode: a route in
-    /// template mode uses its own template, falling back to the global one
-    /// when its own is absent.</summary>
-    public static string ResolveTemplate(string? routeMode, string? routeTemplate, string globalTemplate) =>
-        routeMode == ModeTemplate
-            ? (string.IsNullOrEmpty(routeTemplate) ? globalTemplate : routeTemplate)
-            : globalTemplate;
 
     /// <summary>Filename STEM after applying the typed name per mode. A blank
     /// name preserves the original stem in every mode.</summary>
-    public static string ApplyName(string originalFilename, string typedName,
-        string mode, string template = "", DateTime? today = null)
+    public static string ApplyName(string originalFilename, string typedName, string mode)
     {
         if (Array.IndexOf(Modes, mode) < 0)
             throw new ArgumentException($"Unknown naming mode: '{mode}'");
@@ -123,18 +85,6 @@ public static partial class Naming
             case ModeReplace: return name;
             case ModePrefix: return $"{name}-{stem}";
             case ModeAppend: return $"{stem}-{name}";
-            case ModeTemplate:
-            {
-                var error = ValidateTemplate(template);
-                if (error.Length > 0) throw new ArgumentException(error);
-                var date = (today ?? DateTime.Now).ToString("yyyyMMdd");
-                return TemplateTokenRegex().Replace(template, m => m.Groups[1].Value switch
-                {
-                    "name" => name,
-                    "original" => stem,
-                    _ => date,
-                });
-            }
             default:  // insert: the typed name replaces the FIRST "--"
             {
                 var split = stem.IndexOf("--", StringComparison.Ordinal);
@@ -171,15 +121,10 @@ public static partial class Naming
         string originalFilename, string typedName,
         string? routeMode, string globalMode,
         string routeSuffix, bool appendSuffix,
-        Func<string, bool> exists,
-        string? routeTemplate = null, string globalTemplate = "",
-        DateTime? today = null)
+        Func<string, bool> exists)
     {
         var mode = ResolveMode(routeMode, globalMode);
-        var template = routeMode == ModeTemplate
-            ? ResolveTemplate(routeMode, routeTemplate, globalTemplate)
-            : globalTemplate;
-        var stem = ApplyName(originalFilename, typedName, mode, template, today);
+        var stem = ApplyName(originalFilename, typedName, mode);
 
         var suffixApplied = "";
         if (appendSuffix && !string.IsNullOrEmpty(routeSuffix))

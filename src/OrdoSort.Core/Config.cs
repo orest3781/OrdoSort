@@ -13,7 +13,6 @@ public sealed class Route
     [JsonPropertyName("append_suffix")] public bool AppendSuffix { get; set; }
     [JsonPropertyName("suffix")] public string Suffix { get; set; } = "";
     [JsonPropertyName("naming_mode")] public string? NamingMode { get; set; }
-    [JsonPropertyName("naming_template")] public string? NamingTemplate { get; set; }
     [JsonPropertyName("color")] public string? Color { get; set; }
 
     // Hand-edited per-route keys survive a load/save round trip
@@ -83,7 +82,6 @@ public sealed class Config
     [JsonPropertyName("names_file")] public string NamesFile { get; set; } = "names.txt";
     [JsonPropertyName("history_db")] public string HistoryDb { get; set; } = "history.sqlite";
     [JsonPropertyName("naming_mode")] public string NamingMode { get; set; } = "insert";
-    [JsonPropertyName("naming_template")] public string NamingTemplate { get; set; } = "";
     [JsonPropertyName("sort")] public string Sort { get; set; } = "size_desc";
     [JsonPropertyName("enter_commits")] public bool EnterCommits { get; set; } = true;
     [JsonPropertyName("uppercase_names")] public bool UppercaseNames { get; set; } = true;
@@ -195,12 +193,6 @@ public sealed class Config
         if (Array.IndexOf(Naming.Modes, cfg.NamingMode) < 0)
             throw new ConfigException(
                 $"naming_mode must be one of {string.Join('/', Naming.Modes)}, got \"{cfg.NamingMode}\"");
-        if (cfg.NamingMode == Naming.ModeTemplate)
-        {
-            var templateError = Naming.ValidateTemplate(cfg.NamingTemplate);
-            if (templateError.Length > 0)
-                throw new ConfigException($"naming_template: {templateError}");
-        }
         if (Array.IndexOf(Sorts, cfg.Sort) < 0)
             throw new ConfigException($"sort must be one of {string.Join('/', Sorts)}, " +
                                       $"got \"{cfg.Sort}\"");
@@ -286,7 +278,12 @@ public sealed class Config
         // ConfigException. Normalizing them would only mask an explicit
         // out-of-range 0 that validation is supposed to reject.
         NamingMode ??= "insert";
-        NamingTemplate ??= "";
+        // The "template" naming mode was removed (2026-08). A config that
+        // still carries it loads as "replace" — the closest surviving
+        // semantics — so an old file never fails validation over a mode
+        // that no longer exists. (Its naming_template value, if any, rides
+        // along untyped in Extras.)
+        if (NamingMode == "template") NamingMode = "replace";
         Sort ??= "size_desc";
         MonitorTitle ??= "Monitored folders";
         TileVisibility ??= "active";
@@ -329,6 +326,8 @@ public sealed class Config
         {
             r.Label ??= ""; r.Path ??= ""; r.Hotkey ??= ""; r.Suffix ??= "";
             r.Extras ??= new();
+            // removed-mode migration — see the note in Normalize()
+            if (r.NamingMode == "template") r.NamingMode = "replace";
         }
         foreach (var w in WatchFolders)
         {

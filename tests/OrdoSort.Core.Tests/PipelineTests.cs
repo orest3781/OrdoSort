@@ -177,20 +177,6 @@ public class PipelineTests : IDisposable
         Assert.True(File.Exists(src));
     }
 
-    [Fact]
-    public void CommitRendersARouteTemplate()
-    {
-        var src = MakePdf(_inbox, "scan001.pdf");
-        var route = new Route
-        {
-            Label = "R", Path = _dest,
-            NamingMode = Naming.ModeTemplate, NamingTemplate = "{date}-{name}"
-        };
-        var outcome = Commit.CommitFile(src, "SMITH JOHN", route, Naming.ModeInsert,
-            globalTemplate: "", today: new DateTime(2026, 7, 31));
-        Assert.Equal("20260731-SMITH JOHN.pdf", Path.GetFileName(outcome.NewPath!));
-    }
-
     // ---- Session (with real history) ----
     [Fact]
     public void SessionCommitLogsAndAdvances()

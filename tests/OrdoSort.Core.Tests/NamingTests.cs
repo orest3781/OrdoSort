@@ -240,78 +240,7 @@ public class NamingTests
     {
         foreach (var mode in Naming.Modes)
             Assert.Equal("20240115--1042",
-                Naming.ApplyName("20240115--1042.pdf", "  ", mode,
-                    template: "{date}-{name}", today: new DateTime(2026, 7, 31)));
+                Naming.ApplyName("20240115--1042.pdf", "  ", mode));
     }
 
-    [Fact]
-    public void TemplateRendersAllThreeTokens() =>
-        Assert.Equal("20260731-SMITH JOHN-scan001",
-            Naming.ApplyName("scan001.pdf", "SMITH JOHN", Naming.ModeTemplate,
-                template: "{date}-{name}-{original}", today: new DateTime(2026, 7, 31)));
-
-    [Fact]
-    public void TemplateKeepsLiteralText() =>
-        Assert.Equal("FAX SMITH JOHN (copy)",
-            Naming.ApplyName("scan001.pdf", "SMITH JOHN", Naming.ModeTemplate,
-                template: "FAX {name} (copy)", today: new DateTime(2026, 7, 31)));
-
-    // ---- template validation ------------------------------------------
-
-    [Theory]
-    [InlineData("", "template is empty")]
-    [InlineData("no tokens here", "at least one")]
-    [InlineData("{name}-{bogus}", "bogus")]
-    [InlineData("{name}-{", "unmatched")]
-    [InlineData("}{name}", "unmatched")]
-    public void BadTemplatesFailValidationReadably(string template, string mustMention)
-    {
-        var error = Naming.ValidateTemplate(template);
-        Assert.NotEqual("", error);
-        Assert.Contains(mustMention, error, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Theory]
-    [InlineData("{name}")]
-    [InlineData("{date}-{name}-{original}")]
-    [InlineData("FAX {name} (copy)")]
-    public void GoodTemplatesPassValidation(string template) =>
-        Assert.Equal("", Naming.ValidateTemplate(template));
-
-    // ---- template resolution ------------------------------------------
-
-    [Fact]
-    public void RouteTemplateWinsAndFallsBackToGlobal()
-    {
-        Assert.Equal("{name}!", Naming.ResolveTemplate(
-            Naming.ModeTemplate, "{name}!", "{date}"));
-        Assert.Equal("{date}", Naming.ResolveTemplate(
-            Naming.ModeTemplate, "", "{date}"));
-        Assert.Equal("{date}", Naming.ResolveTemplate(
-            Naming.ModeTemplate, null, "{date}"));
-    }
-
-    // ---- BuildTarget end to end ---------------------------------------
-
-    [Fact]
-    public void BuildTargetRendersATemplateWithSuffixAndCollision()
-    {
-        var taken = new HashSet<string> { "20260731-SMITH JOHN_TAX.pdf" };
-        var r = Naming.BuildTarget("scan001.pdf", "SMITH JOHN",
-            routeMode: Naming.ModeTemplate, globalMode: Naming.ModeInsert,
-            routeSuffix: "_TAX", appendSuffix: true,
-            exists: taken.Contains,
-            routeTemplate: "{date}-{name}", globalTemplate: "",
-            today: new DateTime(2026, 7, 31));
-        Assert.Equal("20260731-SMITH JOHN_TAX (2).pdf", r.Filename);
-        Assert.Equal(Naming.ModeTemplate, r.ModeUsed);
-    }
-
-    [Fact]
-    public void TemplateOutputStillRejectsIllegalCharacters() =>
-        Assert.Throws<ArgumentException>(() =>
-            Naming.BuildTarget("scan001.pdf", "SMITH: JOHN",
-                routeMode: null, globalMode: Naming.ModeTemplate,
-                routeSuffix: "", appendSuffix: false, exists: _ => false,
-                globalTemplate: "{name}", today: new DateTime(2026, 7, 31)));
 }

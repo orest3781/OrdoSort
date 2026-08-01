@@ -13,10 +13,7 @@ public sealed class Session
 
     // Session is rebuilt from scratch by ShellViewModel.ApplySettings whenever
     // settings change, so both _cfg and the ctor-cached SessionMode are
-    // effectively frozen for the life of one session: SessionMode is copied
-    // once, below; NamingTemplate (used by CommitCurrent) is instead read
-    // LIVE off _cfg on every commit — not cached — so a commit and the
-    // Shell's live preview always resolve the template from the same source.
+    // effectively frozen for the life of one session.
     private readonly Config _cfg;
     private readonly History _history;
     private readonly LinkedList<UndoEntry> _undo = new();
@@ -88,8 +85,7 @@ public sealed class Session
     public Commit.CommitOutcome CommitCurrent(string typedName, Route route)
     {
         var src = Current ?? throw new CommitError("No document is loaded.");
-        var outcome = Commit.CommitFile(src, typedName, route, SessionMode,
-            globalTemplate: _cfg.NamingTemplate);
+        var outcome = Commit.CommitFile(src, typedName, route, SessionMode);
         if (outcome.Vanished) { LogVanished(src); return outcome; }
 
         var result = outcome.NameResult!;
