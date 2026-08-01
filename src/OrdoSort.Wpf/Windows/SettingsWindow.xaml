@@ -25,8 +25,51 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+        <!-- Same side-nav chrome as the base TabItem style (Theme/Styles.xaml),
+             plus a 2px AccentBronze underline joining the selected state: the
+             left accent stripe still marks "this is the open section", the
+             bottom bronze line is this task's added selected-state signal.
+             The whole template is duplicated (not just the trigger) because
+             TargetName triggers can't reach a differently-styled base
+             template's named parts from a derived Style — full ownership of
+             the visual tree is required to add the second, differently
+             colored border. -->
         <Style x:Key="SectionTab" TargetType="TabItem" BasedOn="{StaticResource {x:Type TabItem}}">
             <Setter Property="MinWidth" Value="120" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Grid SnapsToDevicePixels="True">
+                            <Border x:Name="Bd" Background="Transparent" BorderThickness="3,0,0,0"
+                                    BorderBrush="Transparent" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                                  VerticalAlignment="Center" />
+                            </Border>
+                            <Border x:Name="Underline" Height="2" VerticalAlignment="Bottom"
+                                    Background="Transparent" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{DynamicResource Theme.SurfaceHover}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{DynamicResource Theme.Surface}" />
+                                <Setter TargetName="Bd" Property="BorderBrush"
+                                        Value="{DynamicResource Theme.Accent}" />
+                                <Setter TargetName="Underline" Property="Background"
+                                        Value="{DynamicResource Theme.AccentBronze}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground"
+                                        Value="{DynamicResource Theme.SubtleText}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
         <!-- theme picker cards: a mini mock of each palette beats three lines
              of radio text. Still a RadioButton underneath — keyboard, group
@@ -39,7 +82,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Sel" BorderThickness="2" CornerRadius="10"
+                        <Border x:Name="Sel" BorderThickness="2" CornerRadius="4"
                                 BorderBrush="Transparent" Background="Transparent" Padding="4">
                             <StackPanel>
                                 <ContentPresenter />
@@ -479,7 +522,7 @@
                                  label · suffix · hotkey -->
                             <TextBlock Text="Preview:" Style="{StaticResource FieldLabel}"
                                        Margin="0,14,0,4" />
-                            <Border Height="44" CornerRadius="6"
+                            <Border Height="44" CornerRadius="4"
                                     Background="{Binding PreviewBack, Converter={StaticResource RgbToBrush}}">
                                 <TextBlock Text="{Binding PreviewLabel}"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -727,7 +770,7 @@
                                                        Converter={StaticResource BoolToVis}}">
                                 <TextBlock Text="Preview:" Style="{StaticResource FieldLabel}"
                                            Margin="0,0,0,4" />
-                                <Border Width="230" MinHeight="78" CornerRadius="6" Padding="12,8"
+                                <Border Width="230" MinHeight="78" CornerRadius="4" Padding="12,8"
                                         HorizontalAlignment="Left"
                                         Background="{Binding TilePreviewBack, Converter={StaticResource RgbToBrush}}">
                                     <StackPanel>
@@ -765,7 +808,7 @@
                                 <DataTemplate>
                                     <Border Background="{DynamicResource Theme.Surface}"
                                             BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
-                                            CornerRadius="10" Padding="8,2" Margin="0,0,6,6">
+                                            CornerRadius="4" Padding="8,2" Margin="0,0,6,6">
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding}" VerticalAlignment="Center" />
                                             <Button Content="✕" Margin="6,0,0,0" Padding="2,0"
@@ -953,7 +996,7 @@
                     <TextBlock Text="Sample" Style="{StaticResource SectionText}" Margin="0,14,0,6" />
                     <Border Background="{DynamicResource Theme.Surface}"
                             BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
-                            CornerRadius="8" Padding="12,10">
+                            CornerRadius="4" Padding="12,10">
                         <StackPanel>
                             <TextBlock Text="Will be filed as:  20240115-SMITH JOHN-12345.pdf"
                                        FontFamily="{Binding UiFontFamily, Converter={StaticResource FontFamilyString}}"

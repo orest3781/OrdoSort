@@ -62,18 +62,22 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
-                                IsHitTestVisible="False">
-                        <StackPanel.Visibility>
+                    <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                            IsHitTestVisible="False" Background="{DynamicResource Theme.Surface}"
+                            BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
+                            CornerRadius="4" Padding="16">
+                        <Border.Visibility>
                             <Binding Path="Clients.Count" Converter="{StaticResource ZeroToVis}" />
-                        </StackPanel.Visibility>
-                        <Image Height="76" Margin="0,0,0,8"
-                               RenderOptions.BitmapScalingMode="HighQuality"
-                               Source="pack://application:,,,/OrdoSort;component/Assets/labels-empty.png" />
-                        <TextBlock Text="No clients yet — press Add."
-                                   Style="{StaticResource SubtleText}"
-                                   HorizontalAlignment="Center" />
-                    </StackPanel>
+                        </Border.Visibility>
+                        <StackPanel>
+                            <Image Height="76" Margin="0,0,0,8"
+                                   RenderOptions.BitmapScalingMode="HighQuality"
+                                   Source="pack://application:,,,/OrdoSort;component/Assets/labels-empty.png" />
+                            <TextBlock Text="No clients yet — press Add."
+                                       Style="{StaticResource SubtleText}"
+                                       HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
                 </Grid>
             </DockPanel>
 
@@ -189,7 +193,7 @@
                 <TextBlock Text="{Binding Preview}" FontWeight="SemiBold" TextWrapping="Wrap"
                            Margin="0,0,0,6" />
                 <Border BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
-                        CornerRadius="8" Padding="10"
+                        CornerRadius="4" Padding="10"
                         Background="{DynamicResource Theme.Surface}">
                     <Grid Height="160">
                         <views:LabelPreviewControl Item="{Binding PreviewItem}"

@@ -39,9 +39,9 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <TextBlock Text="Name (e.g. the sender):" Style="{StaticResource SubtleText}"
-                           FontSize="11" Margin="0,0,0,3" />
+                           FontSize="11" Margin="0,0,0,6" />
                 <TextBlock Grid.Column="1" Text="Password:" Style="{StaticResource SubtleText}"
-                           FontSize="11" Margin="0,0,0,3" />
+                           FontSize="11" Margin="0,0,0,6" />
                 <TextBox x:Name="NewPwLabel" Grid.Row="1" Margin="0,0,6,0"
                          AutomationProperties.Name="New password label" />
                 <PasswordBox x:Name="NewPwValue" Grid.Row="1" Grid.Column="1" Margin="0,0,6,0"

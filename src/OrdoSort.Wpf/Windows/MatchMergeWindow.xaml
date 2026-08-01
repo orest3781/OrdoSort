@@ -83,7 +83,7 @@
                            Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
                         <Border Background="{DynamicResource Theme.SurfaceRaised}"
                                 BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
-                                CornerRadius="8" Padding="10">
+                                CornerRadius="4" Padding="10">
                             <StackPanel>
                                 <TextBlock Text="Show in Review matches:" FontWeight="SemiBold"
                                            Margin="0,0,0,6" />
