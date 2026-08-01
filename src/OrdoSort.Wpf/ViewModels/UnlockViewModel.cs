@@ -142,6 +142,7 @@ public sealed class UnlockViewModel : ObservableObject
         var entry = new SavedPassword { Label = label, Password = PasswordVault.Protect(Password) };
         _cfg.SavedPasswords.Add(entry);
         Saved.Add(entry);
+        ReprotectLegacyPlaintext();
         _saveCfg();
         SaveBannerVisible = false;
         SaveBannerName = "";
@@ -166,6 +167,7 @@ public sealed class UnlockViewModel : ObservableObject
         {
             _cfg.SavedPasswords.Remove(p);
             Saved.Remove(p);
+            ReprotectLegacyPlaintext();
             _saveCfg();
         }
         SelectedSavedEntry = Saved.FirstOrDefault();
@@ -179,8 +181,27 @@ public sealed class UnlockViewModel : ObservableObject
         var entry = new SavedPassword { Label = label.Trim(), Password = PasswordVault.Protect(plain) };
         _cfg.SavedPasswords.Add(entry);
         Saved.Add(entry);
+        ReprotectLegacyPlaintext();
         _saveCfg();
         return true;
+    }
+
+    /// <summary>Opportunistic upgrade: any saved password not yet
+    /// DPAPI-protected (typically a hand-edited plaintext value in
+    /// config.json) is protected in place, right before this surface
+    /// persists. Mirrors the self-healing Settings used to do on every save
+    /// — now anchored to the surface that actually owns the saved-passwords
+    /// list. Mutates the SAME <see cref="SavedPassword"/> instances that
+    /// <c>Saved</c> holds (Saved is seeded from <c>_cfg.SavedPasswords</c> by
+    /// reference, not by copy), so the in-memory list is automatically in
+    /// sync — no separate pass over <c>Saved</c> is needed.</summary>
+    private void ReprotectLegacyPlaintext()
+    {
+        foreach (var sp in _cfg.SavedPasswords)
+        {
+            if (!PasswordVault.IsProtected(sp.Password))
+                sp.Password = PasswordVault.Protect(sp.Password);
+        }
     }
 
     public AsyncRelayCommand UnlockCommand { get; }

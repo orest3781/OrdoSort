@@ -67,14 +67,17 @@ public sealed class FontSizeTextConverter : IValueConverter
 }
 
 /// <summary>A saved password's stored value ("dpapi:…" or legacy plaintext) →
-/// the same status text the old Settings passwords list showed. Used by the
-/// Manage saved… dialog, which binds straight to the Core SavedPassword
-/// records rather than a wrapping edit view model.</summary>
+/// status text for the Manage saved… dialog, which binds straight to the
+/// Core SavedPassword records rather than a wrapping edit view model. A
+/// plaintext entry is upgraded the next time ANY saved-password change
+/// persists (add or remove — see UnlockViewModel.ReprotectLegacyPlaintext),
+/// not specifically "on next save" — the wording here must keep matching
+/// that, and the ManageSavedWindow note above the list.</summary>
 public sealed class PasswordStatusConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         value is string s && PasswordVault.IsProtected(s)
-            ? "encrypted" : "plain text — will be encrypted on next save";
+            ? "encrypted" : "plain text — encrypted the next time saved passwords change";
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();

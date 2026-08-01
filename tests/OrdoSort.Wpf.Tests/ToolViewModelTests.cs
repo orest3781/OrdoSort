@@ -441,6 +441,29 @@ public class UnlockViewModelTests : IDisposable
     }
 
     [Fact]
+    public void PersistingSavedPasswordsReProtectsLegacyPlaintextEntries()
+    {
+        // Settings used to sweep every saved password and protect any
+        // plaintext one on EVERY save, regardless of whether passwords were
+        // even touched. That self-healing moved with the list to
+        // UnlockViewModel — it must still happen, just triggered by this
+        // surface's own persist paths instead.
+        var alreadyProtected = new SavedPassword
+        { Label = "A", Password = PasswordVault.Protect("already-safe") };
+        var legacyPlain = new SavedPassword { Label = "B", Password = "hunter2" };
+        _cfg.SavedPasswords.Add(alreadyProtected);
+        _cfg.SavedPasswords.Add(legacyPlain);
+        var vm = Vm();
+
+        Assert.True(vm.AddSavedPassword("New", "x"));   // any persist path triggers the sweep
+
+        Assert.All(_cfg.SavedPasswords, p => Assert.True(PasswordVault.IsProtected(p.Password)));
+        Assert.Equal("hunter2", PasswordVault.Reveal(legacyPlain.Password));
+        Assert.Equal("already-safe", PasswordVault.Reveal(alreadyProtected.Password));
+        Assert.Equal(1, _saves);   // the sweep itself doesn't persist — only the one Add did
+    }
+
+    [Fact]
     public async Task EmptyListDisablesUnlockAndHints()
     {
         var vm = Vm();
