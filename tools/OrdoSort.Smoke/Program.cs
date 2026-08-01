@@ -14,6 +14,7 @@ using OrdoSort.Core;
 using OrdoSort.Wpf;
 
 if (args.Length > 0 && args[0] == "dialogs") return DialogCheck.Run();
+if (args.Length > 0 && args[0] == "screenshots") return Screenshots.Run(args);
 if (args.Length > 0 && args[0] == "reentrancy") return Reentrancy.Run();
 if (args.Length > 0 && args[0] == "reset-demo") return DemoReset.Run();
 if (args.Length > 0 && args[0] == "demo-full") return DemoWorkbench.Run(args);
