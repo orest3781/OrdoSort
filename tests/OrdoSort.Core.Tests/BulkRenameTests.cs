@@ -119,6 +119,17 @@ public class BulkRenameParserTests
         // stem "JUNK-SMITH JOHN": delete seg 1 -> "SMITH JOHN", then find/replace -> "X JOHN"
         Assert.Equal("X JOHN", TransformStem("JUNK-SMITH JOHN", op));
     }
+
+    [Fact]
+    public void SegmentDeleteAppliesToTheReviewRebuiltStem()
+    {
+        // A review-file stem rebuilds to "<date>-LAST-FIRST"; deleting segment 2
+        // must remove LAST from the REBUILT name, proving segment delete runs after rebuild
+        var op = new RenameOp(ReceivedDate: "20240126", DeleteSegments: new[] { 2 });
+        // "BROWN_ADAM_4_25_1966_ACME_R" rebuilds to "20240126-BROWN-ADAM"
+        // delete segment 2 -> "20240126-ADAM"
+        Assert.Equal("20240126-ADAM", TransformStem("BROWN_ADAM_4_25_1966_ACME_R", op));
+    }
 }
 
 public class BulkRenameFsTests : IDisposable
