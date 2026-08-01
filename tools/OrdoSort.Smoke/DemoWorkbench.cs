@@ -197,7 +197,7 @@ public static class DemoWorkbench
     }
 
     private sealed record WatchSpec(string Label, string Path, string Color,
-        string Filetypes, bool Recursive);
+        string Filetypes, bool Recursive, string Section);
 
     private static List<WatchSpec> BuildWatchFolders(string watchDir)
     {
@@ -218,9 +218,9 @@ public static class DemoWorkbench
 
         return new()
         {
-            new("Failed transfers", failed, "#C0392B", "pdf", true),
-            new("Rejected", rejected, "#EF6C00", "pdf", false),
-            new("Scanner out", scanner, "#455A64", "pdf", false),
+            new("Failed transfers", failed, "#C0392B", "pdf", true, "Incoming"),
+            new("Rejected", rejected, "#EF6C00", "pdf", false, "Incoming"),
+            new("Scanner out", scanner, "#455A64", "pdf", false, "Failed queues"),
         };
     }
 
@@ -508,6 +508,7 @@ public static class DemoWorkbench
                 Recursive = w.Recursive,
                 Filetypes = w.Filetypes,
                 Color = w.Color,
+                Section = w.Section,
             }).ToList(),
             // headers as written into merge/roster.csv
             MergeHeaders = new Dictionary<string, string>
