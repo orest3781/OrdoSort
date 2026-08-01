@@ -756,11 +756,38 @@
                     <StackPanel Grid.Row="3">
                         <TextBlock Text="Alerts" FontWeight="Bold" Margin="0,14,0,10" />
                         <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap"
-                                   Text="Filenames containing any of these terms flash the tile and the inbox count red (one per line). Matching ignores case and looks at filenames only:" />
-                        <TextBox Text="{Binding AlertTextsText, UpdateSourceTrigger=PropertyChanged}"
-                                 AcceptsReturn="True" Height="56" Margin="0,6,0,6"
-                                 VerticalScrollBarVisibility="Auto"
-                                 AutomationProperties.Name="Alert terms" />
+                                   Text="Filenames containing any of these terms flash the tile and the inbox count red. Matching ignores case and looks at filenames only:" />
+                        <ItemsControl ItemsSource="{Binding AlertTerms}" Focusable="False" Margin="0,4,0,4">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{DynamicResource Theme.Surface}"
+                                            BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
+                                            CornerRadius="10" Padding="8,2" Margin="0,0,6,6">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding}" VerticalAlignment="Center" />
+                                            <Button Content="✕" Margin="6,0,0,0" Padding="2,0"
+                                                    Background="Transparent" BorderThickness="0"
+                                                    Command="{Binding DataContext.RemoveAlertCommand,
+                                                              RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <DockPanel Margin="0,0,0,4">
+                            <Button DockPanel.Dock="Right" Content="Add" MinWidth="48" Margin="6,0,0,0"
+                                    Command="{Binding AddAlertCommand}" />
+                            <TextBox Text="{Binding NewAlertText, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="New alert term">
+                                <TextBox.InputBindings>
+                                    <KeyBinding Key="Return" Command="{Binding AddAlertCommand}" />
+                                </TextBox.InputBindings>
+                            </TextBox>
+                        </DockPanel>
                         <CheckBox Content="Flash alerts (uncheck for a steady highlight)"
                                   IsChecked="{Binding FlashAlerts}" />
 

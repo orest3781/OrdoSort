@@ -737,7 +737,7 @@ public class SettingsViewModelTests : IDisposable
         Assert.Contains("alerting right now", vm.TilePreviewHint);
 
         // clearing the alert terms live drops the alert state and the color
-        vm.AlertTextsText = "";
+        vm.AlertTerms.Clear();
         Assert.Equal("2", vm.TilePreviewCount);
         Assert.Equal(new OrdoSort.Wpf.Theme.Rgb(21, 101, 192), vm.TilePreviewBack);
         Assert.Equal("", vm.TilePreviewHint);
@@ -779,14 +779,29 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public void AlertTermsParseFromLinesAndCommas()
+    public void AlertChipsSeedAddDedupeRemoveAndRoundTrip()
     {
-        var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs)
+        var vm = new SettingsViewModel(new Config
         {
-            AlertTextsText = "URGENT\nSTAT, callback\n\n",
-        };
+            Inbox = _dir,
+            AlertTexts = { "URGENT", "FAX" },
+        }, _dialogs);
+        Assert.Equal(new[] { "URGENT", "FAX" }, vm.AlertTerms);   // seeded in order
+
+        vm.NewAlertText = "  legal  ";
+        vm.AddAlertCommand.Execute(null);
+        Assert.Equal("", vm.NewAlertText);
+        Assert.Equal(new[] { "URGENT", "FAX", "legal" }, vm.AlertTerms);   // trimmed on add
+
+        vm.NewAlertText = "urgent";               // case-dup
+        vm.AddAlertCommand.Execute(null);
+        Assert.Equal(3, vm.AlertTerms.Count);     // no-op, box cleared
+        Assert.Equal("", vm.NewAlertText);
+
+        vm.RemoveAlertCommand.Execute("FAX");
         Assert.True(vm.TryBuildResult());
-        Assert.Equal(new[] { "URGENT", "STAT", "callback" }, vm.Result!.AlertTexts);
+        var built = vm.Result!;
+        Assert.Equal(new[] { "URGENT", "legal" }, built.AlertTexts);
     }
 
     [Fact]

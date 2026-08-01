@@ -421,7 +421,7 @@ public sealed class SettingsViewModel : ObservableObject
         WordSeparator = current.WordSeparator;
         FlashAlerts = current.FlashAlerts;
         PollSecondsText = current.PollSeconds.ToString();
-        AlertTextsText = string.Join(Environment.NewLine, current.AlertTexts);
+        foreach (var t in current.AlertTexts) AlertTerms.Add(t);
         UiFontFamily = current.UiFontFamily;
         UiFontSizeText = current.UiFontSize == 0 ? "" : current.UiFontSize.ToString();
         _themeMode = current.Theme;
@@ -469,6 +469,17 @@ public sealed class SettingsViewModel : ObservableObject
         RemovePasswordCommand = new RelayCommand(
             () => { if (SelectedPassword is { } p) Passwords.Remove(p); SelectedPassword = Passwords.FirstOrDefault(); },
             () => SelectedPassword is not null);
+
+        AddAlertCommand = new RelayCommand(() =>
+        {
+            var term = NewAlertText.Trim();
+            NewAlertText = "";
+            if (term.Length == 0) return;
+            if (!AlertTerms.Any(t => string.Equals(t, term, StringComparison.CurrentCultureIgnoreCase)))
+                AlertTerms.Add(term);
+        });
+        RemoveAlertCommand = new RelayCommand<string>(t => AlertTerms.Remove(t));
+        AlertTerms.CollectionChanged += (_, _) => RecomputeTilePreview();
 
         BrowseInboxCommand = new RelayCommand(() => Inbox = _dialogs.BrowseFolder(Inbox) ?? Inbox);
         BrowseDeferredCommand = new RelayCommand(() => Deferred = _dialogs.BrowseFolder(Deferred) ?? Deferred);
@@ -933,17 +944,10 @@ public sealed class SettingsViewModel : ObservableObject
     public SoundChoiceVm SetAsideSound { get; private set; } = null!;
     public SoundChoiceVm ErrorSound { get; private set; } = null!;
 
-    private string _alertTextsText = "";
-    public string AlertTextsText
-    {
-        get => _alertTextsText;
-        set { if (Set(ref _alertTextsText, value)) RecomputeTilePreview(); }
-    }
+    public ObservableCollection<string> AlertTerms { get; } = new();
 
-    private List<string> ParseAlertTerms() => AlertTextsText
-        .Split(new[] { '\r', '\n', ',' },
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-        .ToList();
+    private string _newAlertText = "";
+    public string NewAlertText { get => _newAlertText; set => Set(ref _newAlertText, value); }
 
     // ------------------------------------------------------ live tile preview
     private bool _tilePreviewVisible;
@@ -981,7 +985,7 @@ public sealed class SettingsViewModel : ObservableObject
         TilePreviewVisible = w is not null;
         if (w is null) return;
 
-        var status = FolderMonitor.Status(w.ToWatchFolder(), ParseAlertTerms());
+        var status = FolderMonitor.Status(w.ToWatchFolder(), AlertTerms.ToList());
         var p = _palette();
         var baseBack = ThemePalette.ParseColor(w.Color) ?? p.TileDefaultBg;
         TilePreviewBack = status.Alerting ? p.Danger : baseBack;
@@ -1113,6 +1117,8 @@ public sealed class SettingsViewModel : ObservableObject
     public RelayCommand WatchUpCommand { get; }
     public RelayCommand WatchDownCommand { get; }
     public RelayCommand RemovePasswordCommand { get; }
+    public RelayCommand AddAlertCommand { get; }
+    public RelayCommand<string> RemoveAlertCommand { get; }
     public RelayCommand BrowseInboxCommand { get; }
     public RelayCommand BrowseDeferredCommand { get; }
     public RelayCommand BrowseNamesFileCommand { get; }
@@ -1320,7 +1326,7 @@ public sealed class SettingsViewModel : ObservableObject
         cfg.PollSeconds = int.TryParse(PollSecondsText.Trim(), out var ps)
             ? Math.Clamp(ps, Config.MinPollSeconds, Config.MaxPollSeconds)
             : Config.DefaultPollSeconds;
-        cfg.AlertTexts = ParseAlertTerms();
+        cfg.AlertTexts = AlertTerms.ToList();
         cfg.Sounds.Enabled = SoundsEnabled;
         cfg.Sounds.NewAlert = NewAlertSound.Spec;
         cfg.Sounds.Filed = FiledSound.Spec;

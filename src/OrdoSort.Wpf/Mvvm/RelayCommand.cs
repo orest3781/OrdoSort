@@ -20,6 +20,32 @@ public sealed class RelayCommand : ICommand
     public void Execute(object? parameter) => _execute();
 }
 
+/// <summary>Plain synchronous command, parameterized by the bound item —
+/// e.g. removing one chip/row out of a collection via CommandParameter,
+/// where there's no single "selected item" to hang the command off of.</summary>
+public sealed class RelayCommand<T> : ICommand
+{
+    private readonly Action<T> _execute;
+    private readonly Func<T, bool>? _canExecute;
+
+    public RelayCommand(Action<T> execute, Func<T, bool>? canExecute = null)
+    {
+        _execute = execute;
+        _canExecute = canExecute;
+    }
+
+    public event EventHandler? CanExecuteChanged;
+    public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+
+    public bool CanExecute(object? parameter) =>
+        parameter is not T t || (_canExecute?.Invoke(t) ?? true);
+
+    public void Execute(object? parameter)
+    {
+        if (parameter is T t) _execute(t);
+    }
+}
+
 /// <summary>Async command that blocks reentry: while a run is in flight,
 /// CanExecute is false and a second Execute is a no-op. This is the app-wide
 /// reentrancy guard — a fast double Enter/Ctrl+1 during the viewer-release
