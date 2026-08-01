@@ -90,7 +90,21 @@ public sealed class UnlockViewModel : ObservableObject
     internal void CancelUnlock() => _cts?.Cancel();
 
     private string _password = "";
-    public string Password { get => _password; set => Set(ref _password, value); }
+    public string Password
+    {
+        get => _password;
+        set
+        {
+            // Retyping the box after a run invalidates the offer that run
+            // earned: an unvalidated password must never look like it's
+            // covered by the "save it as:" banner. Hide-only (not a full
+            // ResetBanner) — the name the user was typing stays put, and
+            // the real protection is _bannerPassword below, which still
+            // snapshots the password that actually earned the offer even
+            // if a click slips through before the UI catches up.
+            if (Set(ref _password, value) && SaveBannerVisible) SaveBannerVisible = false;
+        }
+    }
 
     /// <summary>The verdict line: live progress while running, then
     /// "3 unlocked · 1 already unlocked · 1 failed".</summary>
@@ -109,6 +123,14 @@ public sealed class UnlockViewModel : ObservableObject
     // batch never lingers into one that didn't earn it.
     private bool _saveBannerVisible;
     public bool SaveBannerVisible { get => _saveBannerVisible; private set => Set(ref _saveBannerVisible, value); }
+
+    /// <summary>The typed password that actually earned the banner — NOT
+    /// necessarily what <see cref="Password"/> holds by the time Save is
+    /// clicked. Saved is protected from this snapshot, not from the live
+    /// box, so retyping after a run (even mid-race with a queued click)
+    /// can never cause an unvalidated password to be stored — the spec
+    /// invariant is "a password is saved only when it unlocks something".</summary>
+    private string _bannerPassword = "";
 
     private string _saveBannerText = "";
     public string SaveBannerText { get => _saveBannerText; private set => Set(ref _saveBannerText, value); }
@@ -130,22 +152,26 @@ public sealed class UnlockViewModel : ObservableObject
         SaveBannerVisible = false;
         SaveBannerText = "";
         SaveBannerName = "";
+        _bannerPassword = "";
     }
 
-    /// <summary>Saves the CURRENT typed password under the banner's name —
-    /// the same protect-and-persist flow the old "remember this password"
-    /// row used, just triggered by the banner instead of a standing field.</summary>
+    /// <summary>Saves the password that WON THE RUN (the <see
+    /// cref="_bannerPassword"/> snapshot), never whatever happens to be
+    /// sitting in the live <see cref="Password"/> box — the same
+    /// protect-and-persist flow the old "remember this password" row used,
+    /// just triggered by the banner instead of a standing field.</summary>
     private void SaveBannerPassword()
     {
         var label = SaveBannerName.Trim();
         if (label.Length == 0) return;
-        var entry = new SavedPassword { Label = label, Password = PasswordVault.Protect(Password) };
+        var entry = new SavedPassword { Label = label, Password = PasswordVault.Protect(_bannerPassword) };
         _cfg.SavedPasswords.Add(entry);
         Saved.Add(entry);
         ReprotectLegacyPlaintext();
         _saveCfg();
         SaveBannerVisible = false;
         SaveBannerName = "";
+        _bannerPassword = "";
     }
 
     // ------------------------------------------------------- manage saved…
@@ -406,6 +432,11 @@ public sealed class UnlockViewModel : ObservableObject
         // new to offer
         if (okViaTyped > 0 && !typedAlreadySaved)
         {
+            // Snapshot the password that WON, not whatever the live box
+            // holds by the time this runs — they're the same value here,
+            // but this is the one place that matters: SaveBannerPassword
+            // must protect this snapshot, never Password itself.
+            _bannerPassword = password;
             SaveBannerText = $"✓ {okViaTyped} unlocked with a new password — save it as:";
             SaveBannerVisible = true;
         }

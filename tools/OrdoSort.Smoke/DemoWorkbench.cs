@@ -518,7 +518,8 @@ public static class DemoWorkbench
                 ["control"] = "Control ID",
             },
             // plaintext here on purpose: the app re-protects these with DPAPI
-            // the next time Settings saves, which is itself worth watching
+            // the next time saved passwords change in Unlock's Manage saved…
+            // dialog or save banner, which is itself worth watching
             SavedPasswords = passwords.Select(p => new OrdoSort.Core.SavedPassword
             {
                 Label = p.Label,

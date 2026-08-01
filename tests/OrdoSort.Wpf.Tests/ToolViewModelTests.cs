@@ -139,6 +139,32 @@ public class UnlockViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task TheBannerCountsOnlyTypedWinnersNotEveryFileInAMixedRun()
+    {
+        // File A is unlocked by the typed password; file B is unlocked by a
+        // DIFFERENT, already-saved password. Only A's win is a typed win —
+        // okViaTyped must count per-file winners, not every ok result in the
+        // batch, so the banner must still say 1, not 2.
+        _cfg.SavedPasswords.Add(new SavedPassword
+        { Label = "Saved", Password = PasswordVault.Protect("saved-pw") });
+        var vm = new UnlockViewModel(_cfg, () => _saves++, unlocker: (p, pw) =>
+        {
+            var winner = p.Contains("fileA") ? "typed-pw" : "saved-pw";
+            return pw == winner
+                ? new OrdoSort.Core.Unlock.UnlockResult("ok", p, p, InPlace: true)
+                : new OrdoSort.Core.Unlock.UnlockResult("wrong_password", p, Message: "nope");
+        });
+        await vm.AddFilesAsync(new[] { Touch("fileA.pdf"), Touch("fileB.pdf") });
+        vm.Password = "typed-pw";
+
+        await vm.UnlockAsync();
+
+        Assert.Equal("2 unlocked", vm.Summary);
+        Assert.True(vm.SaveBannerVisible);
+        Assert.Equal("✓ 1 unlocked with a new password — save it as:", vm.SaveBannerText);
+    }
+
+    [Fact]
     public async Task SaveBannerCommandAddsTheEntryAndHidesTheBanner()
     {
         var vm = Vm();
@@ -160,6 +186,34 @@ public class UnlockViewModelTests : IDisposable
         Assert.Equal("secret", PasswordVault.Reveal(saved.Password));
         Assert.Same(saved, Assert.Single(vm.Saved));
         Assert.Equal(1, _saves);
+    }
+
+    [Fact]
+    public async Task RetypingThePasswordAfterARunHidesTheBannerButSaveStillProtectsTheWinner()
+    {
+        // The banner offers to save "good" because that's what unlocked the
+        // file. If the box is retyped afterward, the offer must disappear —
+        // AND, because RelayCommand.Execute never rechecks CanExecute, even
+        // a click that slips through before the UI catches up must still
+        // save the password that actually earned the offer, never whatever
+        // is live in the box at click time.
+        var vm = Vm();
+        await vm.AddFilesAsync(new[] { MakeEncrypted("locked.pdf", "good") });
+        vm.Password = "good";
+        await vm.UnlockAsync();
+        Assert.True(vm.SaveBannerVisible);
+
+        vm.SaveBannerName = "Payer A";
+        vm.Password = "bad";   // retyped after the run, before clicking Save
+
+        Assert.False(vm.SaveBannerVisible);      // the offer is gone the instant the box changes
+        Assert.Equal("Payer A", vm.SaveBannerName);   // hide-only: the typed name itself is untouched
+
+        vm.SaveBannerCommand.Execute(null);      // a click that slipped through the hide
+
+        var saved = Assert.Single(_cfg.SavedPasswords);
+        Assert.Equal("Payer A", saved.Label);
+        Assert.Equal("good", PasswordVault.Reveal(saved.Password));   // never "bad"
     }
 
     [Fact]

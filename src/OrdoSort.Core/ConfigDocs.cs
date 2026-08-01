@@ -27,6 +27,6 @@ public sealed class AlertsDoc
 public sealed class BoxLabelsDoc
 {
     [JsonPropertyName("label_clients")] public List<LabelClient> LabelClients { get; set; } = new();
-    [JsonPropertyName("date_style")] public string DateStyle { get; set; } = "bars";
+    [JsonPropertyName("date_style")] public string DateStyle { get; set; } = BoxLabels.DateStyleBars;
     [JsonExtensionData] public Dictionary<string, JsonElement> Extras { get; set; } = new();
 }
