@@ -133,11 +133,14 @@
                     <TextBox Grid.Column="1"
                              Text="{Binding NextNumberText, UpdateSourceTrigger=PropertyChanged}"
                              AutomationProperties.Name="Next label number" />
-                    <Button Grid.Column="2" Content="Reset to 1" Margin="8,0,0,0"
+                    <Button Grid.Column="2" Margin="8,0,0,0"
                             Style="{StaticResource ChipButton}" VerticalAlignment="Center"
                             ToolTip="Start this client's numbering over at 00000001"
+                            AutomationProperties.Name="Reset to 1"
                             Command="{Binding DataContext.ResetNumberCommand,
-                                      RelativeSource={RelativeSource AncestorType=Window}}" />
+                                      RelativeSource={RelativeSource AncestorType=Window}}">
+                        <TextBlock Text="Reset to 1" Style="{StaticResource ChipButtonLabel}" />
+                    </Button>
                 </Grid>
 
                 <Grid Margin="0,0,0,4">
@@ -156,12 +159,18 @@
                     <!-- whole-sheet presets: one click for the common runs -->
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0"
                                 VerticalAlignment="Center">
-                        <Button Content="10" Tag="10" Click="OnCountPreset" MinWidth="36"
-                                Style="{StaticResource ChipButton}" />
-                        <Button Content="20" Tag="20" Click="OnCountPreset" MinWidth="36"
-                                Style="{StaticResource ChipButton}" Margin="4,0,0,0" />
-                        <Button Content="30" Tag="30" Click="OnCountPreset" MinWidth="36"
-                                Style="{StaticResource ChipButton}" Margin="4,0,0,0" />
+                        <Button Tag="10" Click="OnCountPreset" MinWidth="36"
+                                Style="{StaticResource ChipButton}" AutomationProperties.Name="10">
+                            <TextBlock Text="10" Style="{StaticResource ChipButtonLabel}" />
+                        </Button>
+                        <Button Tag="20" Click="OnCountPreset" MinWidth="36"
+                                Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="20">
+                            <TextBlock Text="20" Style="{StaticResource ChipButtonLabel}" />
+                        </Button>
+                        <Button Tag="30" Click="OnCountPreset" MinWidth="36"
+                                Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="30">
+                            <TextBlock Text="30" Style="{StaticResource ChipButtonLabel}" />
+                        </Button>
                     </StackPanel>
                     <TextBlock Grid.Column="3" Text="10 per sheet · 4×2 in"
                                Style="{StaticResource SubtleText}" FontSize="11"

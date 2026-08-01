@@ -122,8 +122,11 @@
     <DockPanel Margin="12">
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right"
                     Margin="0,12,0,0">
-            <Button Content="OK" Click="OnOk" Style="{StaticResource PrimaryButton}"
-                    Width="96" IsDefault="True" Margin="0,0,8,0" />
+            <Button Click="OnOk" Style="{StaticResource PrimaryButton}"
+                    Width="96" IsDefault="True" Margin="0,0,8,0"
+                    AutomationProperties.Name="OK">
+                <TextBlock Text="OK" Style="{StaticResource PrimaryButtonLabel}" />
+            </Button>
             <Button Content="Cancel" Width="96" IsCancel="True" />
         </StackPanel>
 
@@ -851,14 +854,22 @@
                                        Margin="6,0,0,0" />
                             <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="10,0,0,0"
                                         VerticalAlignment="Center">
-                                <Button Content="5" Tag="5" Click="OnPollPreset" MinWidth="34"
-                                        Style="{StaticResource ChipButton}" />
-                                <Button Content="15" Tag="15" Click="OnPollPreset" MinWidth="34"
-                                        Style="{StaticResource ChipButton}" Margin="4,0,0,0" />
-                                <Button Content="30" Tag="30" Click="OnPollPreset" MinWidth="34"
-                                        Style="{StaticResource ChipButton}" Margin="4,0,0,0" />
-                                <Button Content="60" Tag="60" Click="OnPollPreset" MinWidth="34"
-                                        Style="{StaticResource ChipButton}" Margin="4,0,0,0" />
+                                <Button Tag="5" Click="OnPollPreset" MinWidth="34"
+                                        Style="{StaticResource ChipButton}" AutomationProperties.Name="5">
+                                    <TextBlock Text="5" Style="{StaticResource ChipButtonLabel}" />
+                                </Button>
+                                <Button Tag="15" Click="OnPollPreset" MinWidth="34"
+                                        Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="15">
+                                    <TextBlock Text="15" Style="{StaticResource ChipButtonLabel}" />
+                                </Button>
+                                <Button Tag="30" Click="OnPollPreset" MinWidth="34"
+                                        Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="30">
+                                    <TextBlock Text="30" Style="{StaticResource ChipButtonLabel}" />
+                                </Button>
+                                <Button Tag="60" Click="OnPollPreset" MinWidth="34"
+                                        Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="60">
+                                    <TextBlock Text="60" Style="{StaticResource ChipButtonLabel}" />
+                                </Button>
                             </StackPanel>
                         </Grid>
                         <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap"
@@ -978,14 +989,22 @@
                                  AutomationProperties.Name="Base text size" />
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0"
                                     VerticalAlignment="Center">
-                            <Button Content="12" Tag="12" Click="OnFontSizePreset" MinWidth="34"
-                                    Style="{StaticResource ChipButton}" />
-                            <Button Content="14" Tag="14" Click="OnFontSizePreset" MinWidth="34"
-                                    Style="{StaticResource ChipButton}" Margin="4,0,0,0" />
-                            <Button Content="16" Tag="16" Click="OnFontSizePreset" MinWidth="34"
-                                    Style="{StaticResource ChipButton}" Margin="4,0,0,0" />
-                            <Button Content="18" Tag="18" Click="OnFontSizePreset" MinWidth="34"
-                                    Style="{StaticResource ChipButton}" Margin="4,0,0,0" />
+                            <Button Tag="12" Click="OnFontSizePreset" MinWidth="34"
+                                    Style="{StaticResource ChipButton}" AutomationProperties.Name="12">
+                                <TextBlock Text="12" Style="{StaticResource ChipButtonLabel}" />
+                            </Button>
+                            <Button Tag="14" Click="OnFontSizePreset" MinWidth="34"
+                                    Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="14">
+                                <TextBlock Text="14" Style="{StaticResource ChipButtonLabel}" />
+                            </Button>
+                            <Button Tag="16" Click="OnFontSizePreset" MinWidth="34"
+                                    Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="16">
+                                <TextBlock Text="16" Style="{StaticResource ChipButtonLabel}" />
+                            </Button>
+                            <Button Tag="18" Click="OnFontSizePreset" MinWidth="34"
+                                    Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="18">
+                                <TextBlock Text="18" Style="{StaticResource ChipButtonLabel}" />
+                            </Button>
                         </StackPanel>
                         <TextBlock Grid.Column="3" Style="{StaticResource SubtleText}"
                                    VerticalAlignment="Center" Margin="8,0,0,0"
@@ -1033,14 +1052,18 @@
                                         <ComboBoxItem Content="Custom .wav…" />
                                         <ComboBoxItem Content="Silent" />
                                     </ComboBox>
-                                    <Button Grid.Column="2" Content="▶ Test" Command="{Binding TestCommand}"
+                                    <Button Grid.Column="2" Command="{Binding TestCommand}"
                                             Style="{StaticResource ChipButton}" Margin="8,0,0,0"
-                                            VerticalAlignment="Center" />
+                                            VerticalAlignment="Center" AutomationProperties.Name="Test">
+                                        <TextBlock Text="▶ Test" Style="{StaticResource ChipButtonLabel}" />
+                                    </Button>
                                     <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="8,0,0,0"
                                                 VerticalAlignment="Center"
                                                 Visibility="{Binding ShowCustom, Converter={StaticResource BoolToVis}}">
-                                        <Button Content="Browse…" Command="{Binding BrowseCommand}"
-                                                Style="{StaticResource ChipButton}" />
+                                        <Button Command="{Binding BrowseCommand}"
+                                                Style="{StaticResource ChipButton}" AutomationProperties.Name="Browse">
+                                            <TextBlock Text="Browse…" Style="{StaticResource ChipButtonLabel}" />
+                                        </Button>
                                         <TextBlock Text="{Binding CustomLabel}" Style="{StaticResource SubtleText}"
                                                    FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0"
                                                    TextTrimming="CharacterEllipsis" />

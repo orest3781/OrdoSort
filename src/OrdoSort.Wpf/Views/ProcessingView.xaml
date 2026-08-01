@@ -33,7 +33,7 @@
             <!-- a raised, bordered card — flat per the crisp-workbench spec
                  (no shadow); the margin is just breathing room inside the
                  popup, not shadow clearance -->
-            <Border Margin="0,2,8,10" CornerRadius="8"
+            <Border Margin="0,2,8,10" CornerRadius="4"
                     Background="{DynamicResource Theme.SurfaceRaised}"
                     BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1">
                 <ListBox x:Name="SuggestList" ItemsSource="{Binding Suggestions}"
@@ -109,15 +109,28 @@
                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                        Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}" />
                             <!-- the one button Enter presses right now — the
-                                 accent's one badge role (crisp-workbench spec),
-                                 a flat Theme.AccentBronze swap, not tinted by
-                                 the route's own color like the rest of the tile -->
-                            <TextBlock Text="⏎" FontWeight="Bold" ToolTip="Enter files here"
-                                       HorizontalAlignment="Right" VerticalAlignment="Center"
-                                       Margin="0,0,4,0"
-                                       Visibility="{Binding IsEnterTarget,
-                                                    Converter={StaticResource BoolToVis}}"
-                                       Foreground="{DynamicResource Theme.AccentBronze}" />
+                                 accent's one badge role (crisp-workbench spec).
+                                 A route's Back can be ANY configured color (the
+                                 button's own Foreground above is WCAG-picked
+                                 against THAT color, via IdealForeground), so a
+                                 glyph merely colored bronze could land on a
+                                 bronze-adjacent route with near-zero contrast.
+                                 Putting the glyph on its own flat bronze PLATE
+                                 sidesteps the route color entirely — the glyph
+                                 only ever has to contrast with bronze, which is
+                                 fixed per theme, so Theme.AccentBronzeText (the
+                                 same precomputed-IdealForeground pattern
+                                 ThemeManager derives it with) is correct by
+                                 construction on every route, every theme. -->
+                            <Border HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    Margin="0,0,4,0" CornerRadius="4" Padding="5,1"
+                                    Background="{DynamicResource Theme.AccentBronze}"
+                                    ToolTip="Enter files here"
+                                    Visibility="{Binding IsEnterTarget,
+                                                 Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="⏎" FontWeight="Bold"
+                                           Foreground="{DynamicResource Theme.AccentBronzeText}" />
+                            </Border>
                         </Grid>
                     </Button>
                 </DataTemplate>

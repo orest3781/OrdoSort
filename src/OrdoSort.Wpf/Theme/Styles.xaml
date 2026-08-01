@@ -48,8 +48,8 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <!-- radius scale: buttons 4, inputs 4, cards 8, pills 12 —
-                         crisp-workbench flattens buttons/inputs to the same 4px -->
+                    <!-- radius scale: buttons 4, inputs 4, cards 4, pills 12 —
+                         crisp-workbench flattens buttons/inputs/cards to the same 4px -->
                     <Border x:Name="Chrome"
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
@@ -155,7 +155,7 @@
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Chrome" Property="BorderBrush"
-                                    Value="{DynamicResource Theme.Accent}" />
+                                    Value="{DynamicResource Theme.AccentBronze}" />
                             <Setter TargetName="Chrome" Property="BorderThickness" Value="2" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
@@ -195,7 +195,7 @@
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Chrome" Property="BorderBrush"
-                                    Value="{DynamicResource Theme.Accent}" />
+                                    Value="{DynamicResource Theme.AccentBronze}" />
                             <Setter TargetName="Chrome" Property="BorderThickness" Value="2" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
@@ -718,6 +718,33 @@
         <Setter Property="FontSize" Value="11" />
     </Style>
 
+    <!-- The app-level implicit TextBlock style (TargetType="TextBlock" above,
+         Foreground=Theme.Text) is a Style Setter, and Style Setters always
+         outrank property-value INHERITANCE. That alone would suggest a more
+         specific implicit TextBlock style, scoped closer to the button, could
+         win instead — but it can't: a plain string Content is auto-wrapped by
+         ContentPresenter using an internal, special-cased template (not a
+         real ContentTemplate instantiation), and that generated TextBlock's
+         implicit-style search provably does NOT consult the templated
+         Button's own Resources at all — verified directly: neither
+         Style.Resources on PrimaryButton nor even resources added straight to
+         a real Button instance's own Resources dictionary ever reached that
+         auto-generated TextBlock; it always resolved the Application-level
+         implicit style regardless. (An explicit ContentTemplate does reach
+         it, but forcibly wraps ANY Content in a TextBlock — including the
+         icon+text StackPanel PrintPreviewWindow's Print button already uses,
+         which a template-level fix would silently swallow.)
+         The fix that's actually provable: stop relying on the auto-wrap.
+         PrimaryButtonLabel below is a NAMED (non-implicit) style, applied
+         explicitly to a real, hand-declared TextBlock at each call site
+         (`<TextBlock Text="…" Style="{StaticResource PrimaryButtonLabel}"/>`
+         as the Button's Content). A real, explicitly-styled element is never
+         auto-wrapped — ContentPresenter hosts already-a-UIElement content
+         directly, the same path PrintPreviewWindow's StackPanel already
+         takes — so ordinary StaticResource style lookup applies, unaffected
+         by the auto-wrap quirk. PrimaryButton's Foreground never changes
+         with state (hover/pressed only dim the Chrome's Opacity), so a fixed
+         DynamicResource here is correct — no need to track the button live. -->
     <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Background" Value="{DynamicResource Theme.Accent}" />
         <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
@@ -725,10 +752,34 @@
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
+    <!-- Pair with PrimaryButton above: apply explicitly to a real TextBlock
+         used as PrimaryButton's Content, never relying on the auto-wrap. -->
+    <Style x:Key="PrimaryButtonLabel" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
+    </Style>
+
     <!-- Small pill chips for one-click presets. Deliberately unlike the
          inputs they sit beside: inputs are square-cornered and hollow,
          chips are borderless pills on the hover tint that light up accent
          on hover — unmistakably pressable. -->
+    <!-- Same auto-wrap problem as PrimaryButton above, plus ChipButton's
+         label can't take a fixed DynamicResource: its hover trigger flips
+         the BUTTON's own Foreground between Theme.Text (rest, inherited from
+         the base Button style) and Theme.AccentText (hover, a
+         template-trigger Setter with no TargetName — that targets the
+         templated element itself, i.e. this Button). ChipButtonLabel below
+         is the same named-style-on-a-real-TextBlock fix as
+         PrimaryButtonLabel, except its Foreground is a live Binding
+         (RelativeSource AncestorType=Button) rather than a fixed
+         DynamicResource, so it tracks whichever Foreground the Button
+         currently has — verified directly: changing a Button's Foreground
+         at runtime does propagate through this binding to the TextBlock,
+         through both the base and the hover-triggered value. -->
+    <Style x:Key="ChipButtonLabel" TargetType="TextBlock">
+        <Setter Property="Foreground"
+                Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+    </Style>
+
     <Style x:Key="ChipButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Background" Value="{DynamicResource Theme.SurfaceHover}" />
         <Setter Property="BorderThickness" Value="0" />

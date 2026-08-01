@@ -23,8 +23,11 @@
                      Fill="{DynamicResource Theme.Success}" />
         </Grid>
 
-        <Button Content="Back to inbox" Command="{Binding RescanCommand}"
-                Style="{StaticResource PrimaryButton}" Height="42" Margin="0,18,0,0" />
+        <Button Command="{Binding RescanCommand}"
+                Style="{StaticResource PrimaryButton}" Height="42" Margin="0,18,0,0"
+                AutomationProperties.Name="Back to inbox">
+            <TextBlock Text="Back to inbox" Style="{StaticResource PrimaryButtonLabel}" />
+        </Button>
         <Button Content="Undo last   ·   Ctrl+Shift+Z" Command="{Binding UndoCommand}"
                 Height="36" Margin="0,8,0,0" />
 

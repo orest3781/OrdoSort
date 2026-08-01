@@ -27,8 +27,11 @@
             </StackPanel>
             <StackPanel DockPanel.Dock="Bottom">
                 <TextBlock x:Name="Note" Style="{StaticResource StatusText}" Margin="0,8,0,8" />
-                <Button x:Name="UseButton" Content="Use selected id" Click="OnUseSelected"
-                        Style="{StaticResource PrimaryButton}" Height="40" IsEnabled="False" />
+                <Button x:Name="UseButton" Click="OnUseSelected"
+                        Style="{StaticResource PrimaryButton}" Height="40" IsEnabled="False"
+                        AutomationProperties.Name="Use selected id">
+                    <TextBlock Text="Use selected id" Style="{StaticResource PrimaryButtonLabel}" />
+                </Button>
                 <Button Content="Skip this file" Click="OnSkip" Height="34" Margin="0,6,0,0" />
                 <!-- IsCancel: click or Esc — merges already done stay done -->
                 <Button Content="Stop reviewing" IsCancel="True" Height="34" Margin="0,6,0,0" />

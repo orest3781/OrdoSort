@@ -48,6 +48,14 @@ public static class ThemeManager
         r["Theme.BorderStrong"] = Brush(p.BorderStrong);
         r["Theme.Accent"] = Brush(p.Accent);
         r["Theme.AccentBronze"] = Brush(p.AccentBronze);
+        // Bronze is a flat 100% fill everywhere it's used (its WCAG margin is
+        // pinned to that), so anything drawn ON bronze (the enter-target
+        // badge's plate, e.g.) needs its own WCAG-picked foreground rather
+        // than whatever color happens to sit behind the plate — same
+        // IdealForeground contract TileViewModel/RouteButtonViewModel use for
+        // tiles and route buttons, just precomputed once here since bronze
+        // itself never varies per-route, only per light/dark theme.
+        r["Theme.AccentBronzeText"] = Brush(ThemePalette.IdealForeground(p.AccentBronze));
         r["Theme.AccentText"] = Brush(p.AccentText);
         r["Theme.Warning"] = Brush(p.Warning);
         r["Theme.WarningText"] = Brush(p.WarningText);

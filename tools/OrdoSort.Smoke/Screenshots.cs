@@ -111,6 +111,7 @@ public static class Screenshots
                 new BulkRenameWindow(new BulkRenameViewModel()));
             Capture(notes, outdir, theme, "MatchMerge", () =>
                 new MatchMergeWindow(new MatchMergeViewModel(Config.Load(cfgPath), _ => { }, dialogs)));
+            CaptureTriage(notes, outdir, theme);
             Capture(notes, outdir, theme, "Settings", () =>
                 new SettingsWindow(new SettingsViewModel(Config.Load(cfgPath), dialogs,
                     () => ThemeManager.Current, cfgPath, new SoundService())));
@@ -124,6 +125,7 @@ public static class Screenshots
             {
                 notes.Add($"SKIP LabelMaker-{theme}: box-labels.json wasn't staged (see earlier note)");
             }
+            CapturePrintPreview(notes, outdir, theme);
 
             CaptureHistory(notes, outdir, theme, cfgPath, dialogs);
             CaptureMainWindow(notes, outdir, theme, cfgPath);
@@ -241,6 +243,84 @@ public static class Screenshots
         timer.Stop();
         return success;
     }
+
+    // ---------------------------------------------------------------- Triage
+    /// <summary>Constructed the way DialogCheck builds it (a small in-memory
+    /// MatchMerge result set, no real MatchMerge run needed), but shown
+    /// rather than Measured so a real render happens.
+    ///
+    /// TriageWindow's constructor wires Loaded to `await _pdf.InitAsync();
+    /// await ShowCurrentAsync();` — the same WebView2 dependency
+    /// CaptureMainWindow works around, and the same "the PDF pane itself
+    /// renders blank" limitation noted there applies here too (a WPF/airspace
+    /// limitation, not something this capture can fix). Rather than pump the
+    /// dispatcher and hope a real Edge environment comes up in time (as
+    /// CaptureMainWindow does, up to 20s), this calls ShowCurrentAsync
+    /// directly first: with the viewer not yet ready, its only await
+    /// (_pdf.ShowAsync) no-ops and returns an already-completed task, so the
+    /// whole call runs synchronously start to finish — exactly the shape
+    /// DialogCheck's own duplicate-header test already proves works. That
+    /// deterministically populates the progress line and candidate grid
+    /// (the content that actually matters for this screenshot) without ever
+    /// depending on WebView2 succeeding, or waiting on it at all.
+    ///
+    /// Show() below still fires the window's own Loaded handler, which will
+    /// (redundantly, harmlessly) repeat the same population once/if a real
+    /// WebView2 environment comes up in the background — by which point this
+    /// capture has already rasterized and closed the window. Worst case that
+    /// stray continuation lands on a closed window and no-ops or throws
+    /// inside InitAsync's own try/catch; nothing here observes or waits on
+    /// it.</summary>
+    private static void CaptureTriage(List<string> notes, string outdir, string theme)
+    {
+        string? root = null;
+        try
+        {
+            root = Directory.CreateTempSubdirectory("ordo_screenshots_triage").FullName;
+            var pdfPath = Path.Combine(root, "20240101--1111111111.pdf");
+            MinimalPdf.Write(pdfPath, "TRIAGE SAMPLE");
+
+            var headers = new[] { "Last", "First", "Control" };
+            var candidates = new[]
+            {
+                new MatchMerge.Candidate("111", new Dictionary<string, string>
+                    { ["Last"] = "EVANS", ["First"] = "FRANK", ["Control"] = "111" }),
+                new MatchMerge.Candidate("112", new Dictionary<string, string>
+                    { ["Last"] = "EVANS", ["First"] = "FRANCES", ["Control"] = "112" }),
+            };
+            var items = new List<MatchMerge.MatchResult>
+            {
+                new(pdfPath, "ambiguous", "EVANS", "FRANK", Candidates: candidates),
+            };
+
+            Capture(notes, outdir, theme, "Triage", () =>
+            {
+                var win = new TriageWindow(items, headers);
+                win.ShowCurrentAsync().GetAwaiter().GetResult();
+                return win;
+            });
+        }
+        catch (Exception ex)
+        {
+            notes.Add($"SKIP Triage-{theme}: {ex.Message}");
+        }
+        finally
+        {
+            if (root is not null) { try { Directory.Delete(root, true); } catch { /* best effort */ } }
+        }
+    }
+
+    // ---------------------------------------------------------- PrintPreview
+    /// <summary>Constructed exactly the way DialogCheck builds it — a real
+    /// FixedDocument from a sample label batch, no scratch file needed (unlike
+    /// LabelMaker, nothing here persists to box-labels.json). LoadPrinters()
+    /// only enumerates the local print spooler (read-only) and Loaded only
+    /// adjusts zoom — both synchronous, so no readiness gate is needed.</summary>
+    private static void CapturePrintPreview(List<string> notes, string outdir, string theme) =>
+        Capture(notes, outdir, theme, "PrintPreview", () => new PrintPreviewWindow(
+            OrdoSort.Wpf.Views.LabelPrinting.BuildDocument(
+                BoxLabels.Batch("ABCD", 1, 12, new DateTime(2026, 7, 25), 30)),
+            "smoke", _ => { }));
 
     // --------------------------------------------------------------- History
     private static void CaptureHistory(List<string> notes, string outdir, string theme,

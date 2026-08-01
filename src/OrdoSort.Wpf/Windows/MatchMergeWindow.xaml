@@ -9,8 +9,11 @@
         <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
             <Button DockPanel.Dock="Right" Content="Close" Width="96" IsCancel="True" />
             <StackPanel Orientation="Horizontal">
-                <Button Content="{Binding MergeButtonText}" Command="{Binding MergeCommand}"
-                        Style="{StaticResource PrimaryButton}" MinWidth="120" Margin="0,0,8,0" />
+                <Button Command="{Binding MergeCommand}"
+                        Style="{StaticResource PrimaryButton}" MinWidth="120" Margin="0,0,8,0"
+                        AutomationProperties.Name="{Binding MergeButtonText}">
+                    <TextBlock Text="{Binding MergeButtonText}" Style="{StaticResource PrimaryButtonLabel}" />
+                </Button>
                 <Button Content="{Binding ReviewButtonText}" Click="OnReview"
                         IsEnabled="{Binding CanReview}" Margin="0,0,8,0" />
                 <Button Content="Undo last merge" Command="{Binding UndoCommand}" Margin="0,0,10,0" />
