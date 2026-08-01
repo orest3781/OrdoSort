@@ -99,7 +99,7 @@ public class BoxLabelsTests
     [InlineData(25, 3)]
     public void PdfHoldsTenLabelsPerSheet(int labels, int expectedPages)
     {
-        var dir = Directory.CreateTempSubdirectory("fr_labels").FullName;
+        var dir = Directory.CreateTempSubdirectory("ordoboxlabels_").FullName;
         var path = Path.Combine(dir, "labels.pdf");
         try
         {

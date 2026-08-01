@@ -964,10 +964,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     internal Task OnEnterAsync()
     {
-        if (Screen != Screen.Processing || _cfg.Routes.Count == 0) return Task.CompletedTask;
-        var target = _cfg.EnterCommits ? (_lastRoute ?? 0) : 0;
-        if (target >= _cfg.Routes.Count) target = 0;
-        return OnRouteAsync(target);
+        if (Screen != Screen.Processing) return Task.CompletedTask;
+        var target = EnterTargetIndex();
+        return target is { } i ? OnRouteAsync(i) : Task.CompletedTask;
     }
 
     public RelayCommand ExportHistoryCommand { get; }

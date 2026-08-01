@@ -9,7 +9,7 @@ namespace OrdoSort.Core.Tests;
 /// workbooks with ZipArchive so nothing depends on Excel being anywhere.</summary>
 public class XlsxTableTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("fr_xlsx").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("ordoxlsx_").FullName;
     public void Dispose() { try { Directory.Delete(_dir, true); } catch { } }
 
     private string WriteXlsx(string sheetXml, string? sharedStringsXml = null)

@@ -170,7 +170,7 @@ public class MatchMergeTests : IDisposable
 
     private static MatchMerge.Roster TokenRoster(params (string Last, string First, string Id)[] people)
     {
-        var dir = Directory.CreateTempSubdirectory("fr_tok").FullName;
+        var dir = Directory.CreateTempSubdirectory("ordotok_").FullName;
         var path = Path.Combine(dir, "roster.csv");
         var lines = new List<string> { "Last,First,Control" };
         lines.AddRange(people.Select(p => $"{p.Last},{p.First},{p.Id}"));
@@ -312,7 +312,7 @@ public class MatchMergeTests : IDisposable
         var roster = TokenRoster(("EVANS", "FRANK", "111"));
         Assert.Single(MatchMerge.TokenMatches("20240126-FRANK-EVANS", roster));
 
-        var dir = Directory.CreateTempSubdirectory("fr_already").FullName;
+        var dir = Directory.CreateTempSubdirectory("ordoalready_").FullName;
         try
         {
             var merged = Path.Combine(dir, "20240126-FRANK-EVANS-111.pdf");
@@ -332,7 +332,7 @@ public class MatchMergeTests : IDisposable
         Assert.Equal("888", hit.Candidate.ControlId);
         Assert.Equal("all segments agree", hit.Reason);
 
-        var dir = Directory.CreateTempSubdirectory("fr_accent").FullName;
+        var dir = Directory.CreateTempSubdirectory("ordoaccent_").FullName;
         try
         {
             var file = Path.Combine(dir, "20240126-GARCÍA-MARÍA.pdf");
@@ -358,7 +358,7 @@ public class MatchMergeTests : IDisposable
     public void MatchFilesEmitsSuggestedOnlyWhenExactMisses()
     {
         var roster = TokenRoster(("EVANS", "FRANK", "111"), ("SMITH", "JOHN", "888"));
-        var dir = Directory.CreateTempSubdirectory("fr_sugg").FullName;
+        var dir = Directory.CreateTempSubdirectory("ordosugg_").FullName;
         try
         {
             string Touch(string name)

@@ -6,7 +6,7 @@ namespace OrdoSort.Wpf.Tests;
 public class LabelMakerViewModelTests : IDisposable
 {
     private readonly string _dir =
-        Directory.CreateTempSubdirectory("fr_labelvm").FullName;
+        Directory.CreateTempSubdirectory("ordolabelvm_").FullName;
     private readonly FakeDialogs _dialogs = new();
     private readonly List<string> _opened = new();
     private static readonly DateTime Today = new(2026, 7, 25);

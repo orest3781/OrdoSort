@@ -1348,14 +1348,16 @@ public sealed class SettingsViewModel : ObservableObject
         Action<TDoc> apply) where TDoc : class
     {
         if (_cfgPath is null) return;
-        string full, originalFull;
+        string full, originalFull, fullCanonical, originalCanonical;
         try
         {
             full = Config.ResolveBeside(_cfgPath, newPath.Trim());
             originalFull = Config.ResolveBeside(_cfgPath, originalPath.Trim());
+            fullCanonical = Path.GetFullPath(full);
+            originalCanonical = Path.GetFullPath(originalFull);
         }
         catch (Exception) { return; }
-        var changed = !string.Equals(full, originalFull, StringComparison.OrdinalIgnoreCase);
+        var changed = !string.Equals(fullCanonical, originalCanonical, StringComparison.OrdinalIgnoreCase);
         if (!changed) return;
         if (!File.Exists(full)) return;
         TDoc? doc;
