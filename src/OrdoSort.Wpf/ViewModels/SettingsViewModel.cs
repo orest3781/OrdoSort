@@ -248,6 +248,20 @@ public sealed class WatchEditVm : ObservableObject
     };
 }
 
+/// <summary>A section-header row in the composite folder list (Dashboard
+/// tab). The header is the section's display name — first-seen casing for
+/// named groups, MonitorTitle (or "(untitled)") for the default group.</summary>
+public sealed class WatchSectionVm : ObservableObject
+{
+    private bool _isEditing;
+    private string _editText = "";
+
+    public string Header { get; init; } = "";
+    public bool IsDefault { get; init; }
+    public bool IsEditing { get => _isEditing; set => Set(ref _isEditing, value); }
+    public string EditText { get => _editText; set => Set(ref _editText, value); }
+}
+
 /// <summary>One row of the sound picker: which sound plays for one moment.
 /// The four choices (OrdoSort / Windows / Custom .wav / Silent) map to the
 /// config spec; Test plays the current choice so you hear it before saving.</summary>
@@ -524,12 +538,22 @@ public sealed class SettingsViewModel : ObservableObject
                 && e.NewItems is not null)
                 foreach (WatchEditVm w in e.NewItems) HookWatch(w);
             RecomputeTilePreview();
+            RebuildWatchRows();
         };
         RecomputeTilePreview();
+        RebuildWatchRows();
     }
 
     private void HookWatch(WatchEditVm w) =>
-        w.PropertyChanged += (_, _) => RecomputeTilePreview();
+        w.PropertyChanged += (_, e) =>
+        {
+            RecomputeTilePreview();
+            if (e.PropertyName is nameof(WatchEditVm.Section))
+            {
+                RebuildWatchRows();
+                Raise(nameof(SectionChoices));
+            }
+        };
 
     private void HookRoute(RouteEditVm r) =>
         r.PropertyChanged += (_, e) =>
@@ -804,7 +828,11 @@ public sealed class SettingsViewModel : ObservableObject
     private RelayCommand? _openBackups;
 
     private string _monitorTitle = "";
-    public string MonitorTitle { get => _monitorTitle; set => Set(ref _monitorTitle, value); }
+    public string MonitorTitle
+    {
+        get => _monitorTitle;
+        set { if (Set(ref _monitorTitle, value)) RebuildWatchRows(); }
+    }
 
     private string _filingMode = Naming.ModeInsert;
     public string FilingMode
@@ -960,6 +988,145 @@ public sealed class SettingsViewModel : ObservableObject
                     : "";
     }
 
+    private void RebuildWatchRows()
+    {
+        if (WatchFolders is null) return;   // ctor assigns MonitorTitle before the list exists
+
+        var editing = WatchRows.OfType<WatchSectionVm>().FirstOrDefault(h => h.IsEditing);
+
+        var order = new List<WatchSectionVm>();
+        var members = new Dictionary<WatchSectionVm, List<WatchEditVm>>();
+        var byKey = new Dictionary<string, WatchSectionVm>(StringComparer.CurrentCultureIgnoreCase);
+        WatchSectionVm? def = null;
+
+        foreach (var w in WatchFolders)
+        {
+            var key = w.Section.Trim();
+            WatchSectionVm h;
+            if (key.Length == 0)
+            {
+                if (def is null)
+                {
+                    def = new WatchSectionVm { Header = DefaultSectionHeader, IsDefault = true };
+                    order.Add(def);
+                    members[def] = new List<WatchEditVm>();
+                }
+                h = def;
+            }
+            else if (!byKey.TryGetValue(key, out h!))
+            {
+                h = new WatchSectionVm { Header = key };
+                byKey[key] = h;
+                order.Add(h);
+                members[h] = new List<WatchEditVm>();
+            }
+            members[h].Add(w);
+        }
+        if (def is null)
+        {
+            def = new WatchSectionVm { Header = DefaultSectionHeader, IsDefault = true };
+            order.Insert(0, def);
+            members[def] = new List<WatchEditVm>();
+        }
+
+        WatchRows.Clear();
+        foreach (var h in order)
+        {
+            WatchRows.Add(h);
+            foreach (var w in members[h]) WatchRows.Add(w);
+        }
+
+        // a header mid-rename survives the rebuild its own edits trigger
+        if (editing is not null)
+        {
+            var again = WatchRows.OfType<WatchSectionVm>().FirstOrDefault(h =>
+                h.IsDefault == editing.IsDefault
+                && (h.IsDefault || string.Equals(h.Header, editing.Header,
+                        StringComparison.CurrentCultureIgnoreCase)));
+            if (again is not null)
+            {
+                again.EditText = editing.EditText;
+                again.IsEditing = true;
+            }
+        }
+
+        Raise(nameof(SelectedWatchRow));   // re-point the ListBox at the kept selection
+    }
+
+    private string DefaultSectionHeader =>
+        MonitorTitle.Trim().Length == 0 ? "(untitled)" : MonitorTitle;
+
+    public void BeginSectionRename(WatchSectionVm h)
+    {
+        h.EditText = h.IsDefault ? MonitorTitle : h.Header;
+        h.IsEditing = true;
+    }
+
+    /// <summary>Apply a header edit: the default group's header IS
+    /// MonitorTitle; a named group's rename rewrites the Section of every
+    /// member (trimmed, case-insensitive match) — so renaming onto another
+    /// section merges, and renaming to blank moves members to the default.</summary>
+    public void CommitSectionRename(WatchSectionVm h)
+    {
+        if (!h.IsEditing) return;
+        h.IsEditing = false;
+        var t = h.EditText.Trim();
+        if (h.IsDefault)
+        {
+            MonitorTitle = t;
+            return;
+        }
+        foreach (var w in WatchFolders)
+            if (string.Equals(w.Section.Trim(), h.Header, StringComparison.CurrentCultureIgnoreCase))
+                w.Section = t;
+    }
+
+    public void CancelSectionRename(WatchSectionVm h) => h.IsEditing = false;
+
+    /// <summary>Drop semantics for the grouped list: the drop position
+    /// implies both the new section and the new flat position.</summary>
+    public void DropWatch(WatchEditVm dragged, object? over)
+    {
+        if (ReferenceEquals(dragged, over)) return;
+        switch (over)
+        {
+            case WatchEditVm target:
+            {
+                dragged.Section = target.Section;
+                var from = WatchFolders.IndexOf(dragged);
+                var to = WatchFolders.IndexOf(target);
+                if (from >= 0 && to >= 0 && from != to) WatchFolders.Move(from, to);
+                break;
+            }
+            case WatchSectionVm h:
+            {
+                dragged.Section = h.IsDefault ? "" : h.Header;
+                var first = WatchFolders.FirstOrDefault(w =>
+                    !ReferenceEquals(w, dragged)
+                    && (h.IsDefault
+                        ? w.Section.Trim().Length == 0
+                        : string.Equals(w.Section.Trim(), h.Header,
+                            StringComparison.CurrentCultureIgnoreCase)));
+                var from = WatchFolders.IndexOf(dragged);
+                var to = first is null ? WatchFolders.Count - 1 : WatchFolders.IndexOf(first);
+                if (from >= 0 && to >= 0 && from != to) WatchFolders.Move(from, to);
+                break;
+            }
+            case null:
+            {
+                var last = WatchFolders.LastOrDefault(w => !ReferenceEquals(w, dragged));
+                if (last is not null)
+                {
+                    dragged.Section = last.Section;
+                    var from = WatchFolders.IndexOf(dragged);
+                    if (from >= 0) WatchFolders.Move(from, WatchFolders.Count - 1);
+                }
+                break;
+            }
+        }
+        SelectedWatch = dragged;
+    }
+
     private string _uiFontFamily = "";
     public string UiFontFamily { get => _uiFontFamily; set => Set(ref _uiFontFamily, value); }
 
@@ -989,6 +1156,27 @@ public sealed class SettingsViewModel : ObservableObject
     // ----------------------------------------------------------- collections
     public ObservableCollection<RouteEditVm> Routes { get; }
     public ObservableCollection<WatchEditVm> WatchFolders { get; }
+
+    /// <summary>The Dashboard tab's left list: section headers interleaved
+    /// with their member folders, grouped by the same rules TileGroups uses
+    /// on Ready (first-seen over flat order, trimmed case-insensitive keys,
+    /// first-seen casing wins). The default (blank-section) group always
+    /// exists here — it is the edit surface for MonitorTitle and the drop
+    /// target for clearing a folder's section — and pins first when empty.</summary>
+    public ObservableCollection<object> WatchRows { get; } = new();
+
+    /// <summary>ListBox adapter over WatchRows: only folder rows are
+    /// selectable. Selecting a header (or the null WPF pushes during a
+    /// rebuild) is rejected and the visual selection snaps back.</summary>
+    public object? SelectedWatchRow
+    {
+        get => SelectedWatch;
+        set
+        {
+            if (value is WatchEditVm w) SelectedWatch = w;
+            else Raise(nameof(SelectedWatchRow));
+        }
+    }
 
     private RouteEditVm? _selectedRoute;
     public RouteEditVm? SelectedRoute
@@ -1020,6 +1208,7 @@ public sealed class SettingsViewModel : ObservableObject
                 WatchDownCommand.RaiseCanExecuteChanged();
                 RecomputeTilePreview();
                 Raise(nameof(SectionChoices));
+                Raise(nameof(SelectedWatchRow));
             }
         }
     }

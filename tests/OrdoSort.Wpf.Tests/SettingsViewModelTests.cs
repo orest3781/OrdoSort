@@ -878,6 +878,173 @@ public class SettingsViewModelTests : IDisposable
         vm.DestinationsFile = "missing-dests.json";
         Assert.Contains("will be created on save", vm.DestinationsFileNote);
     }
+
+    // ---- Dashboard tab rework: grouped folder list as section manager ----
+
+    private static Config WatchCfg(params (string Label, string Section)[] folders)
+    {
+        var cfg = new Config();
+        foreach (var (label, section) in folders)
+            cfg.WatchFolders.Add(new WatchFolder { Label = label, Path = "C:/x", Section = section });
+        return cfg;
+    }
+
+    [Fact]
+    public void WatchRowsGroupInFirstSeenOrderWithFoldersUnderTheirHeaders()
+    {
+        var vm = new SettingsViewModel(
+            WatchCfg(("A", "Night"), ("B", ""), ("C", "night ")), _dialogs);
+
+        // first-seen order: "Night" (from A), then the default group (from B);
+        // C's "night " folds into "Night" case-insensitively, first-seen casing wins
+        var rows = vm.WatchRows.ToList();
+        Assert.Equal(5, rows.Count);
+        var h0 = Assert.IsType<WatchSectionVm>(rows[0]);
+        Assert.Equal("Night", h0.Header);
+        Assert.False(h0.IsDefault);
+        Assert.Equal("A", Assert.IsType<WatchEditVm>(rows[1]).Label);
+        Assert.Equal("C", Assert.IsType<WatchEditVm>(rows[2]).Label);
+        var h1 = Assert.IsType<WatchSectionVm>(rows[3]);
+        Assert.True(h1.IsDefault);
+        Assert.Equal("B", Assert.IsType<WatchEditVm>(rows[4]).Label);
+    }
+
+    [Fact]
+    public void TheDefaultGroupAlwaysExistsAndPinsFirstWhenEmpty()
+    {
+        var cfg = WatchCfg(("A", "Night"));
+        cfg.MonitorTitle = "Monitored folders";
+        var vm = new SettingsViewModel(cfg, _dialogs);
+
+        var h = Assert.IsType<WatchSectionVm>(vm.WatchRows[0]);
+        Assert.True(h.IsDefault);
+        Assert.Equal("Monitored folders", h.Header);
+    }
+
+    [Fact]
+    public void RenameRewritesEveryMemberAndOnlyMembers()
+    {
+        var vm = new SettingsViewModel(
+            WatchCfg(("A", "Night"), ("B", "Day"), ("C", "night")), _dialogs);
+
+        var h = vm.WatchRows.OfType<WatchSectionVm>().Single(x => x.Header == "Night");
+        vm.BeginSectionRename(h);
+        Assert.Equal("Night", h.EditText);
+        h.EditText = "  Overnight  ";
+        vm.CommitSectionRename(h);
+
+        Assert.Equal("Overnight", vm.WatchFolders[0].Section);
+        Assert.Equal("Day", vm.WatchFolders[1].Section);
+        Assert.Equal("Overnight", vm.WatchFolders[2].Section);
+        Assert.Contains(vm.WatchRows.OfType<WatchSectionVm>(), x => x.Header == "Overnight");
+    }
+
+    [Fact]
+    public void RenameOntoAnExistingSectionMergesTheGroups()
+    {
+        var vm = new SettingsViewModel(
+            WatchCfg(("A", "Night"), ("B", "Day")), _dialogs);
+
+        var h = vm.WatchRows.OfType<WatchSectionVm>().Single(x => x.Header == "Night");
+        vm.BeginSectionRename(h);
+        h.EditText = "day";
+        vm.CommitSectionRename(h);
+
+        // one merged group; A's section is the typed text, folded with B's by case
+        var named = vm.WatchRows.OfType<WatchSectionVm>().Where(x => !x.IsDefault).ToList();
+        Assert.Single(named);
+        Assert.Equal("day", vm.WatchFolders[0].Section);
+    }
+
+    [Fact]
+    public void RenameToBlankMovesTheGroupIntoTheDefault()
+    {
+        var vm = new SettingsViewModel(WatchCfg(("A", "Night")), _dialogs);
+
+        var h = vm.WatchRows.OfType<WatchSectionVm>().Single(x => !x.IsDefault);
+        vm.BeginSectionRename(h);
+        h.EditText = "   ";
+        vm.CommitSectionRename(h);
+
+        Assert.Equal("", vm.WatchFolders[0].Section);
+        Assert.DoesNotContain(vm.WatchRows.OfType<WatchSectionVm>(), x => !x.IsDefault);
+    }
+
+    [Fact]
+    public void RenamingTheDefaultHeaderEditsMonitorTitle()
+    {
+        var cfg = WatchCfg(("A", ""));
+        cfg.MonitorTitle = "Monitored folders";
+        var vm = new SettingsViewModel(cfg, _dialogs);
+
+        var h = vm.WatchRows.OfType<WatchSectionVm>().Single(x => x.IsDefault);
+        vm.BeginSectionRename(h);
+        Assert.Equal("Monitored folders", h.EditText);
+        h.EditText = "Work queues";
+        vm.CommitSectionRename(h);
+
+        Assert.Equal("Work queues", vm.MonitorTitle);
+        Assert.Equal("", vm.WatchFolders[0].Section);   // members untouched
+        Assert.True(vm.TryBuildResult());
+        Assert.Equal("Work queues", vm.Result!.MonitorTitle);
+    }
+
+    [Fact]
+    public void DropOnAFolderAdoptsItsSectionAndPosition()
+    {
+        var vm = new SettingsViewModel(
+            WatchCfg(("A", "Night"), ("B", "Day"), ("C", "Day")), _dialogs);
+
+        vm.DropWatch(vm.WatchFolders[0], vm.WatchFolders[2]);   // A onto C
+
+        Assert.Equal("Day", vm.WatchFolders.Single(w => w.Label == "A").Section);
+        Assert.Equal(new[] { "B", "C", "A" },
+            vm.WatchFolders.Select(w => w.Label).ToArray());
+        var selected = vm.SelectedWatch;
+        Assert.NotNull(selected);
+        Assert.Equal("A", selected.Label);
+    }
+
+    [Fact]
+    public void DropOnAHeaderJoinsThatGroupAndTheDefaultHeaderClearsTheSection()
+    {
+        var vm = new SettingsViewModel(
+            WatchCfg(("A", "Night"), ("B", "")), _dialogs);
+
+        var def = vm.WatchRows.OfType<WatchSectionVm>().Single(x => x.IsDefault);
+        vm.DropWatch(vm.WatchFolders[0], def);   // A into the default group
+
+        Assert.Equal("", vm.WatchFolders.Single(w => w.Label == "A").Section);
+
+        var night = vm.WatchRows.OfType<WatchSectionVm>().SingleOrDefault(x => !x.IsDefault);
+        Assert.Null(night);   // Night emptied out, so its header is gone
+    }
+
+    [Fact]
+    public void TypingANewSectionOnTheSelectedFolderCreatesItsGroupLive()
+    {
+        var vm = new SettingsViewModel(WatchCfg(("A", "")), _dialogs);
+
+        vm.WatchFolders[0].Section = "Fresh";
+
+        Assert.Contains(vm.WatchRows.OfType<WatchSectionVm>(),
+            x => !x.IsDefault && x.Header == "Fresh");
+        // the default group stays visible even though it emptied
+        Assert.Contains(vm.WatchRows.OfType<WatchSectionVm>(), x => x.IsDefault);
+    }
+
+    [Fact]
+    public void SelectingAHeaderRowBouncesBackToTheFolder()
+    {
+        var vm = new SettingsViewModel(WatchCfg(("A", "Night")), _dialogs);
+        var folder = vm.WatchFolders[0];
+        vm.SelectedWatch = folder;
+
+        vm.SelectedWatchRow = vm.WatchRows.OfType<WatchSectionVm>().First();
+
+        Assert.Same(folder, vm.SelectedWatch);
+        Assert.Same(folder, vm.SelectedWatchRow);
+    }
 }
 
 public class ApplySettingsTests
