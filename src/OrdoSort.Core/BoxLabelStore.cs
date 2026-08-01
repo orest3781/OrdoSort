@@ -10,6 +10,16 @@ public static class BoxLabelStore
     private const int RetryDelayMs = 150;
     private const int DefaultMaxWaitMs = 5000;
 
+    // Win32 HRESULTs for "another process has this open" — the only cases
+    // worth burning the retry budget on. Everything else (disk full, bad
+    // network path, permission changes mid-run, ...) will not resolve itself
+    // in 150ms and should fail fast with its own message instead.
+    private const int ErrorSharingViolation = unchecked((int)0x80070020);
+    private const int ErrorLockViolation = unchecked((int)0x80070021);
+
+    internal static bool IsContention(IOException ex) =>
+        ex.HResult is ErrorSharingViolation or ErrorLockViolation;
+
     private static readonly JsonSerializerOptions Opts = new()
     {
         WriteIndented = true,
@@ -48,14 +58,15 @@ public static class BoxLabelStore
                 // never having existed, not a busy-file retry case.
                 return new BoxLabelsDoc();
             }
-            catch (IOException) when (sw.ElapsedMilliseconds + RetryDelayMs <= maxWaitMs)
+            catch (IOException ex) when (IsContention(ex) && sw.ElapsedMilliseconds + RetryDelayMs <= maxWaitMs)
             {
                 Thread.Sleep(RetryDelayMs);
             }
-            catch (IOException)
+            catch (IOException ex)
             {
-                throw new ConfigException(
-                    $"another station is using the box-labels file — try again ({fullPath})");
+                throw new ConfigException(IsContention(ex)
+                    ? $"another station is using the box-labels file — try again ({fullPath})"
+                    : $"box-labels file error: {ex.Message} ({fullPath})");
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -87,15 +98,16 @@ public static class BoxLabelStore
                 fs = new FileStream(fullPath, FileMode.OpenOrCreate,
                     FileAccess.ReadWrite, FileShare.None);
             }
-            catch (IOException) when (sw.ElapsedMilliseconds + RetryDelayMs <= maxWaitMs)
+            catch (IOException ex) when (IsContention(ex) && sw.ElapsedMilliseconds + RetryDelayMs <= maxWaitMs)
             {
                 Thread.Sleep(RetryDelayMs);
                 continue;
             }
-            catch (IOException)
+            catch (IOException ex)
             {
-                throw new ConfigException(
-                    $"another station is using the box-labels file — try again ({fullPath})");
+                throw new ConfigException(IsContention(ex)
+                    ? $"another station is using the box-labels file — try again ({fullPath})"
+                    : $"box-labels file error: {ex.Message} ({fullPath})");
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -121,6 +133,7 @@ public static class BoxLabelStore
                 }
                 doc.LabelClients ??= new();
                 doc.Extras ??= new();
+                doc.DateStyle = BoxLabels.NormalizeDateStyle(doc.DateStyle);
 
                 var result = mutate(doc);   // outside every classification catch
 

@@ -93,6 +93,18 @@ public static class BoxLabels
     public const int PerSheet = 10;
     public const long MaxNumber = 99_999_999;   // the code carries 8 digits
 
+    // date_style: "bars" (default) prints the created/destroy dates in white
+    // text on a black bar (readable across a storage room); "plain" drops
+    // both bars and prints the same dates in black, for printers/stock that
+    // can't lay down solid black fields cleanly.
+    public const string DateStyleBars = "bars";
+    public const string DateStylePlain = "plain";
+
+    /// <summary>Unknown or missing style → "bars" (today's only style, and
+    /// the safe default if a config file predates this setting).</summary>
+    public static string NormalizeDateStyle(string? style) =>
+        style == DateStylePlain ? DateStylePlain : DateStyleBars;
+
     /// <summary>"ABCD" + 42 → "ABCD00000042".</summary>
     public static string Compose(string clientId, long number) =>
         clientId + number.ToString("D8");
@@ -186,18 +198,27 @@ public static class BoxLabels
     /// <summary>Lay out one label: matching black date bars top and bottom
     /// (readable across a storage room), the grouped code line, and the
     /// Code 39 barcode with clear air above it so an angled scan sweep can't
-    /// catch the digit strokes.</summary>
-    public static LabelDrawing ComposeDrawing(Item item)
+    /// catch the digit strokes. <paramref name="dateStyle"/> governs ONLY the
+    /// two date bars/texts (<see cref="DateStyleBars"/>/<see cref="DateStylePlain"/>)
+    /// — the barcode bars and code line are unaffected either way.</summary>
+    public static LabelDrawing ComposeDrawing(Item item, string dateStyle = DateStyleBars)
     {
         const double w = LabelWidthPt, h = LabelHeightPt;
-        var bars = new List<BarRect> { new(0, 0, w, BarH), new(0, h - BarH, w, BarH) };
+        var plainDates = NormalizeDateStyle(dateStyle) == DateStylePlain;
+        var bars = new List<BarRect>();
+        if (!plainDates)
+        {
+            bars.Add(new(0, 0, w, BarH));            // CREATED bar
+            bars.Add(new(0, h - BarH, w, BarH));      // DESTROY bar
+        }
         var display = DisplayCode(item.Code);
         var texts = new List<TextRun>
         {
-            new($"CREATED {item.Created:yyyy-MM-dd}", 0, 0, w, BarH, 12, Mono: false, White: true),
+            new($"CREATED {item.Created:yyyy-MM-dd}", 0, 0, w, BarH, 12,
+                Mono: false, White: !plainDates),
             new(display, 0, BarH + 2, w, 34, CodeFontSize(display), Mono: true, White: false),
             new($"DESTROY AFTER {item.Destroy:yyyy-MM-dd}", 0, h - BarH, w, BarH, 12,
-                Mono: false, White: true),
+                Mono: false, White: !plainDates),
         };
 
         // 3:1 wide:narrow ratio; the bar field spans the label minus quiet

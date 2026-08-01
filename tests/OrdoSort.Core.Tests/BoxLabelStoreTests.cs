@@ -116,4 +116,37 @@ public class BoxLabelStoreTests : IDisposable
         Assert.Contains("another station", ex.Message);
         Assert.True(sw.ElapsedMilliseconds >= 600);
     }
+
+    [Fact]
+    public void DateStyleRoundTripsAndDefaultsToBars()
+    {
+        var p = PathOf("box-labels.json");
+        BoxLabelStore.Mutate(p, d => { d.DateStyle = "plain"; return 0; });
+        Assert.Equal("plain", BoxLabelStore.Read(p).DateStyle);
+        Assert.Contains("\"date_style\"", File.ReadAllText(p));
+        Assert.Equal("bars", new BoxLabelsDoc().DateStyle);
+        Assert.Equal("bars", BoxLabels.NormalizeDateStyle("neon"));
+        Assert.Equal("plain", BoxLabels.NormalizeDateStyle("plain"));
+    }
+
+    [Theory]
+    [InlineData(unchecked((int)0x80070020), true)]   // sharing violation
+    [InlineData(unchecked((int)0x80070021), true)]   // lock violation
+    [InlineData(unchecked((int)0x80070070), false)]  // disk full
+    [InlineData(unchecked((int)0x80070035), false)]  // bad network path
+    public void ContentionClassificationIsHResultBased(int hresult, bool contention) =>
+        Assert.Equal(contention, BoxLabelStore.IsContention(new IOException("x", hresult)));
+
+    [Fact]
+    public void NonContentionIOExceptionFailsFastWithItsOwnMessage()
+    {
+        // a directory where the box-labels PATH is itself an existing DIRECTORY
+        // -> FileStream open throws a non-sharing IOException immediately
+        var p = PathOf("box-labels.json");
+        Directory.CreateDirectory(p);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var ex = Assert.Throws<ConfigException>(() => BoxLabelStore.Mutate(p, d => 0));
+        Assert.True(sw.ElapsedMilliseconds < 1000, "must not burn the retry budget");
+        Assert.DoesNotContain("another station", ex.Message);
+    }
 }

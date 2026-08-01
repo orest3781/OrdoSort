@@ -171,4 +171,72 @@ public class BoxLabelsTests
         Assert.Throws<ArgumentException>(() =>
             BoxLabels.RenderPdf(Path.Combine(Path.GetTempPath(), "x.pdf"),
                 new List<BoxLabels.Item>()));
+
+    [Fact]
+    public void BarsDateStyleIsTheDefaultAndPrintsWhiteOnBlackDateBars()
+    {
+        var item = new BoxLabels.Item("ABCD00000042",
+            new DateTime(2026, 1, 1), new DateTime(2026, 1, 31));
+        var defaulted = BoxLabels.ComposeDrawing(item);
+        var explicitBars = BoxLabels.ComposeDrawing(item, BoxLabels.DateStyleBars);
+
+        // default parameter behaves exactly like an explicit "bars" request
+        Assert.Equal(explicitBars.Bars.Count, defaulted.Bars.Count);
+        Assert.Equal(explicitBars.Texts, defaulted.Texts);
+
+        var created = defaulted.Texts.Single(t => t.Text.StartsWith("CREATED"));
+        var destroy = defaulted.Texts.Single(t => t.Text.StartsWith("DESTROY"));
+        Assert.True(created.White);
+        Assert.True(destroy.White);
+
+        // the two full-width date bars (top + bottom) are present
+        Assert.Equal(2, defaulted.Bars.Count(b => b.W == BoxLabels.LabelWidthPt));
+    }
+
+    [Fact]
+    public void PlainDateStyleSuppressesOnlyTheDateBarsAndBlackensOnlyTheDateTexts()
+    {
+        var item = new BoxLabels.Item("ABCD00000042",
+            new DateTime(2026, 1, 1), new DateTime(2026, 1, 31));
+        var bars = BoxLabels.ComposeDrawing(item, BoxLabels.DateStyleBars);
+        var plain = BoxLabels.ComposeDrawing(item, BoxLabels.DateStylePlain);
+
+        // exactly the two full-width date bars vanish — the barcode bars
+        // (never full label width) are the same rects, same count, in bars
+        // mode as in plain mode
+        Assert.Equal(2, bars.Bars.Count(b => b.W == BoxLabels.LabelWidthPt));
+        Assert.Equal(0, plain.Bars.Count(b => b.W == BoxLabels.LabelWidthPt));
+        Assert.Equal(bars.Bars.Count - 2, plain.Bars.Count);
+        Assert.Equal(bars.Bars.Where(b => b.W != BoxLabels.LabelWidthPt),
+            plain.Bars.Where(b => b.W != BoxLabels.LabelWidthPt));
+
+        // same three texts either way — only the CREATED/DESTROY White flags flip
+        Assert.Equal(bars.Texts.Count, plain.Texts.Count);
+        var barsCreated = bars.Texts.Single(t => t.Text.StartsWith("CREATED"));
+        var barsDestroy = bars.Texts.Single(t => t.Text.StartsWith("DESTROY"));
+        var plainCreated = plain.Texts.Single(t => t.Text.StartsWith("CREATED"));
+        var plainDestroy = plain.Texts.Single(t => t.Text.StartsWith("DESTROY"));
+        Assert.True(barsCreated.White);
+        Assert.True(barsDestroy.White);
+        Assert.False(plainCreated.White);
+        Assert.False(plainDestroy.White);
+        Assert.Equal(barsCreated with { White = false }, plainCreated);
+        Assert.Equal(barsDestroy with { White = false }, plainDestroy);
+
+        // the code line (mono text) is untouched by date_style
+        var barsCode = bars.Texts.Single(t => t.Mono);
+        var plainCode = plain.Texts.Single(t => t.Mono);
+        Assert.Equal(barsCode, plainCode);
+        Assert.False(barsCode.White);
+
+        // cut guide (layout box) identical either way
+        Assert.Equal(bars.CutGuide, plain.CutGuide);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("neon")]
+    public void UnknownOrMissingDateStyleNormalizesToBars(string? style) =>
+        Assert.Equal(BoxLabels.DateStyleBars, BoxLabels.NormalizeDateStyle(style));
 }
