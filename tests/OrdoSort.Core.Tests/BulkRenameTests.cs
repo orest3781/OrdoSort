@@ -96,6 +96,29 @@ public class BulkRenameParserTests
     [Fact]
     public void NonMatchingReviewFileTransformsToNull() =>
         Assert.Null(TransformStem("notes", new RenameOp(ReceivedDate: "20240126")));
+
+    [Theory]
+    [InlineData("20240115-SCANRUN7-SMITH JOHN-12345", new[] { 2 }, false, "20240115-SMITH JOHN-12345")]
+    [InlineData("a-b-c", new[] { 1, 3 }, false, "b")]
+    [InlineData("a-b", new[] { 5 }, false, "a-b")]              // out of range: untouched
+    [InlineData("a--b", new[] { 2 }, false, "a-b")]             // empty segment is a segment
+    [InlineData("a--b", new int[0], false, "a--b")]             // nothing checked: lossless
+    [InlineData("a-b-c", new int[0], true, "a-b")]              // last
+    [InlineData("solo", new int[0], true, "solo")]              // last never empties a 1-segment stem
+    [InlineData("a-b-c", new[] { 1 }, true, "b")]               // positions + last combine
+    [InlineData("a-b", new[] { 1 }, true, "a-b")]               // everything would go: untouched
+    public void SegmentDeletionFollowsTheRules(string stem, int[] positions, bool last, string expected) =>
+        Assert.Equal(expected, DeleteSegmentsFromStem(stem, positions, last));
+
+    [Fact]
+    public void SegmentDeleteRunsAfterReviewRenameAndBeforeFindReplace()
+    {
+        var op = new RenameOp(
+            Find: "SMITH", Replace: "X", Prefix: "", Suffix: "", Case: "keep",
+            ReceivedDate: "", DeleteSegments: new[] { 1 }, DeleteLastSegment: false);
+        // stem "JUNK-SMITH JOHN": delete seg 1 -> "SMITH JOHN", then find/replace -> "X JOHN"
+        Assert.Equal("X JOHN", TransformStem("JUNK-SMITH JOHN", op));
+    }
 }
 
 public class BulkRenameFsTests : IDisposable

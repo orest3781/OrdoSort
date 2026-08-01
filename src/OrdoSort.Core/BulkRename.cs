@@ -37,7 +37,8 @@ public static partial class BulkRename
         string Find = "", string Replace = "",
         string Prefix = "", string Suffix = "",
         string Case = "keep",       // keep | upper | lower
-        string ReceivedDate = "");  // YYYYMMDD -> review-file rebuild
+        string ReceivedDate = "",   // YYYYMMDD -> review-file rebuild
+        IReadOnlyCollection<int>? DeleteSegments = null, bool DeleteLastSegment = false);
 
     public sealed record PlannedRename(
         string Source, string Target, bool Changed, string Note = "", bool Manual = false);
@@ -60,7 +61,23 @@ public static partial class BulkRename
         return (last, m.Groups["first"].Value);
     }
 
-    /// <summary>Order: review-file rebuild -> find/replace -> affixes -> case.
+    /// <summary>Remove 1-indexed segments (stem split on '-', empties kept —
+    /// "a--b" is three segments) plus optionally the last segment. Out-of-range
+    /// positions are ignored; the last segment of a one-segment stem stays.</summary>
+    internal static string DeleteSegmentsFromStem(
+        string stem, IReadOnlyCollection<int> positions, bool deleteLast)
+    {
+        if (positions.Count == 0 && !deleteLast) return stem;
+        var parts = stem.Split('-');
+        if (parts.Length <= 1) return stem;
+        var drop = new HashSet<int>(positions.Where(p => p >= 1 && p <= parts.Length));
+        if (deleteLast) drop.Add(parts.Length);
+        if (drop.Count >= parts.Length) return stem;   // deleting every segment is never meaningful
+        var kept = parts.Where((_, i) => !drop.Contains(i + 1)).ToArray();
+        return string.Join('-', kept);
+    }
+
+    /// <summary>Order: review-file rebuild -> segment deletion -> find/replace -> affixes -> case.
     /// Returns null when review mode is on and the stem doesn't match the
     /// layout (the caller skips the file, readably).</summary>
     public static string? TransformStem(string stem, RenameOp op)
@@ -73,6 +90,7 @@ public static partial class BulkRename
             outp = $"{op.ReceivedDate}-{parts.Value.Last.ToUpperInvariant()}" +
                    $"-{parts.Value.First.ToUpperInvariant()}";
         }
+        outp = DeleteSegmentsFromStem(outp, op.DeleteSegments ?? Array.Empty<int>(), op.DeleteLastSegment);
         if (!string.IsNullOrEmpty(op.Find))
             outp = outp.Replace(op.Find, op.Replace);
         outp = $"{op.Prefix}{outp}{op.Suffix}";
