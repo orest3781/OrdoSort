@@ -340,6 +340,12 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     // ----------------------------------------------------------- dashboard
     public ObservableCollection<TileViewModel> Tiles { get; } = new();
 
+    /// <summary>The same TileViewModel instances as <see cref="Tiles"/>,
+    /// projected into named sections (Config's per-folder Section, or the
+    /// dashboard's default title for blank sections) for grouped rendering.
+    /// Rebuilt in lockstep with Tiles — never independently.</summary>
+    public ObservableCollection<TileGroupViewModel> TileGroups { get; } = new();
+
     private string _monitorTitle = "";
     public string MonitorTitle { get => _monitorTitle; private set => Set(ref _monitorTitle, value); }
 
@@ -408,13 +414,29 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         var p = _palette();
         var signature = statuses.Select(s =>
             $"{s.Label}|{s.Path}|{s.Color}|{s.Count}|{s.Error}|{s.Alerting}"
-            + $"|{string.Join(",", s.AlertFolders)}").ToList();
+            + $"|{string.Join(",", s.AlertFolders)}|{s.Section}").ToList();
         if (!ReferenceEquals(p, _tilePalette) || !signature.SequenceEqual(_tileSignature))
         {
             _tileSignature = signature;
             _tilePalette = p;
             Tiles.Clear();
-            foreach (var s in statuses) Tiles.Add(new TileViewModel(s, p));
+            TileGroups.Clear();
+            var defaultTitle = string.IsNullOrWhiteSpace(_cfg.MonitorTitle)
+                ? "Monitored folders" : _cfg.MonitorTitle;
+            var byTitle = new Dictionary<string, TileGroupViewModel>(StringComparer.CurrentCulture);
+            foreach (var s in statuses)
+            {
+                var tile = new TileViewModel(s, p);
+                Tiles.Add(tile);
+                var title = string.IsNullOrWhiteSpace(s.Section) ? defaultTitle : s.Section;
+                if (!byTitle.TryGetValue(title, out var group))
+                {
+                    group = new TileGroupViewModel(title);
+                    byTitle[title] = group;
+                    TileGroups.Add(group);
+                }
+                group.Tiles.Add(tile);
+            }
         }
 
         MonitorTitle = _cfg.MonitorTitle;

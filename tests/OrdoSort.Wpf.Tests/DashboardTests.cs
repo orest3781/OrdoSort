@@ -356,4 +356,101 @@ public class DashboardTests
         Assert.False(fx.Shell.DashboardVisible);
         Assert.False(fx.Shell.FlashRunning);
     }
+
+    // ------------------------------------------------------------- groups
+    [Fact]
+    public void TilesGroupBySectionInFirstAppearanceOrder()
+    {
+        string? incoming1 = null, defaultFolder = null, incoming2 = null;
+        using var fx = new ShellFixture(cfg =>
+        {
+            incoming1 = Path.Combine(cfg.Inbox, "..", "incoming1");
+            defaultFolder = Path.Combine(cfg.Inbox, "..", "defaultFolder");
+            incoming2 = Path.Combine(cfg.Inbox, "..", "incoming2");
+            Directory.CreateDirectory(incoming1);
+            Directory.CreateDirectory(defaultFolder);
+            Directory.CreateDirectory(incoming2);
+            cfg.WatchFolders.Add(new WatchFolder
+            { Label = "Incoming A", Path = incoming1, Filetypes = "pdf", Section = "Incoming" });
+            cfg.WatchFolders.Add(new WatchFolder
+            { Label = "Misc", Path = defaultFolder, Filetypes = "pdf" });   // blank section -> default group
+            cfg.WatchFolders.Add(new WatchFolder
+            { Label = "Incoming B", Path = incoming2, Filetypes = "pdf", Section = "Incoming" });
+            // MonitorTitle stays default ("Monitored folders") — feeds the default group's title
+        });
+        File.WriteAllText(Path.Combine(incoming1!, "a.pdf"), "x");
+        File.WriteAllText(Path.Combine(defaultFolder!, "b.pdf"), "x");
+        File.WriteAllText(Path.Combine(incoming2!, "c.pdf"), "x");
+        fx.Shell.Initialize();
+
+        Assert.Equal(2, fx.Shell.TileGroups.Count);
+        Assert.Equal("Incoming", fx.Shell.TileGroups[0].Title);
+        Assert.Equal("Monitored folders", fx.Shell.TileGroups[1].Title);   // default heading
+        Assert.Equal(2, fx.Shell.TileGroups[0].Tiles.Count);
+        Assert.Single(fx.Shell.TileGroups[1].Tiles);
+        // the same instances live in the flat list (flash + sizing rely on it)
+        Assert.Equal(fx.Shell.Tiles.Count,
+            fx.Shell.TileGroups.Sum(g => g.Tiles.Count));
+    }
+
+    [Fact]
+    public void AnEmptySectionProducesNoGroup()
+    {
+        string? busy = null, quiet = null;
+        using var fx = new ShellFixture(cfg =>
+        {
+            busy = Path.Combine(cfg.Inbox, "..", "busy");
+            quiet = Path.Combine(cfg.Inbox, "..", "quiet");
+            Directory.CreateDirectory(busy);
+            Directory.CreateDirectory(quiet);
+            cfg.WatchFolders.Add(new WatchFolder
+            { Label = "Busy folder", Path = busy, Filetypes = "pdf", Section = "Busy" });
+            cfg.WatchFolders.Add(new WatchFolder
+            { Label = "Quiet folder", Path = quiet, Filetypes = "pdf", Section = "Quiet" });
+        });
+        File.WriteAllText(Path.Combine(busy!, "a.pdf"), "x");   // "quiet" stays empty
+        fx.Shell.Initialize();
+
+        // active-only default: the empty "Quiet" folder's status is swept out
+        // before grouping ever sees it — no empty group appears for it.
+        Assert.Single(fx.Shell.TileGroups);
+        Assert.Equal("Busy", fx.Shell.TileGroups[0].Title);
+    }
+
+    [Fact]
+    public void FlashReachesTilesInEveryGroup()
+    {
+        string? folderA = null, folderB = null;
+        using var fx = new ShellFixture(cfg =>
+        {
+            folderA = Path.Combine(cfg.Inbox, "..", "sectionA");
+            folderB = Path.Combine(cfg.Inbox, "..", "sectionB");
+            Directory.CreateDirectory(folderA);
+            Directory.CreateDirectory(folderB);
+            cfg.WatchFolders.Add(new WatchFolder
+            { Label = "A", Path = folderA, Filetypes = "pdf", Section = "A" });
+            cfg.WatchFolders.Add(new WatchFolder
+            { Label = "B", Path = folderB, Filetypes = "pdf", Section = "B" });
+            cfg.AlertTexts.Add("URGENT");
+        });
+        File.WriteAllText(Path.Combine(folderA!, "URGENT-a.pdf"), "x");
+        File.WriteAllText(Path.Combine(folderB!, "URGENT-b.pdf"), "x");
+        fx.Shell.Initialize();
+
+        Assert.Equal(2, fx.Shell.TileGroups.Count);
+        var tileA = Assert.Single(fx.Shell.TileGroups[0].Tiles);
+        var tileB = Assert.Single(fx.Shell.TileGroups[1].Tiles);
+        Assert.True(tileA.Alerting);
+        Assert.True(tileB.Alerting);
+        Assert.True(fx.Shell.FlashRunning);
+
+        var baseBackA = tileA.Back;
+        var baseBackB = tileB.Back;
+        fx.Shell.FlashTick();   // on — the same tick walks Tiles, which both groups share
+        Assert.Equal(ThemePalette.Light.Danger, tileA.Back);
+        Assert.Equal(ThemePalette.Light.Danger, tileB.Back);
+        fx.Shell.FlashTick();   // off
+        Assert.Equal(baseBackA, tileA.Back);
+        Assert.Equal(baseBackB, tileB.Back);
+    }
 }
