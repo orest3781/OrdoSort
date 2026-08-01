@@ -179,16 +179,15 @@
              even when the alerting tile is scrolled off or the window is
              unfocused (paired with the taskbar flash + chime). -->
         <Button VerticalAlignment="Bottom" HorizontalAlignment="Right"
-                Margin="0,0,20,20" MaxWidth="340" Cursor="Hand"
+                Margin="0,0,16,16" MaxWidth="340" Cursor="Hand"
                 Command="{Binding OpenToastCommand}"
                 Visibility="{Binding ToastVisible, Converter={StaticResource BoolToVis}}"
                 AutomationProperties.Name="{Binding ToastText}">
             <Button.Template>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Card" CornerRadius="10" Padding="14,12"
+                    <Border x:Name="Card" CornerRadius="4" Padding="14,12"
                             Background="{DynamicResource Theme.SurfaceRaised}"
                             BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
-                            Effect="{StaticResource Elevation1}"
                             RenderTransformOrigin="0.5,0.5">
                         <Border.RenderTransform>
                             <TranslateTransform x:Name="Slide" />
@@ -200,7 +199,7 @@
                             <StackPanel>
                                 <TextBlock Text="{Binding ToastText}" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding ToastDetail}" TextWrapping="Wrap"
-                                           Style="{StaticResource SubtleText}" Margin="0,2,0,0" />
+                                           Style="{StaticResource SubtleText}" Margin="0,6,0,0" />
                                 <TextBlock Text="Click to open the folder"
                                            Style="{StaticResource CaptionText}" Margin="0,4,0,0" />
                             </StackPanel>

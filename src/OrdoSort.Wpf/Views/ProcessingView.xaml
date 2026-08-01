@@ -30,22 +30,22 @@
                PopupAnimation="Fade"
                IsOpen="{Binding HasSuggestions, Mode=OneWay}"
                Width="{Binding ActualWidth, ElementName=NameBox}">
-            <!-- a floating card: raised surface, rounded, soft shadow (the
-                 margin is the shadow's room inside the popup) -->
+            <!-- a raised, bordered card — flat per the crisp-workbench spec
+                 (no shadow); the margin is just breathing room inside the
+                 popup, not shadow clearance -->
             <Border Margin="0,2,8,10" CornerRadius="8"
                     Background="{DynamicResource Theme.SurfaceRaised}"
-                    BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
-                    Effect="{StaticResource Elevation1}">
+                    BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1">
                 <ListBox x:Name="SuggestList" ItemsSource="{Binding Suggestions}"
                          Focusable="False" MaxHeight="220" Margin="3"
                          Background="Transparent" BorderThickness="0"
                          SelectionChanged="SuggestList_SelectionChanged" />
             </Border>
         </Popup>
-        <TextBlock Style="{StaticResource SubtleText}" FontSize="11" Margin="0,3,0,0"
+        <TextBlock Style="{StaticResource SubtleText}" FontSize="11" Margin="0,6,0,0"
                    Text="Tab completes a word · ↓ ↑ walk the matches · blank files without renaming" />
 
-        <TextBlock Text="Will be filed as:" Margin="0,12,0,2" FontWeight="SemiBold" />
+        <TextBlock Text="Will be filed as:" Margin="0,12,0,6" FontWeight="SemiBold" />
         <TextBlock Text="{Binding Preview}" TextWrapping="Wrap" MinHeight="40">
             <TextBlock.Style>
                 <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
@@ -73,7 +73,6 @@
                             IsEnabled="{Binding Enabled}"
                             ToolTip="{Binding DisabledReason}"
                             ToolTipService.ShowOnDisabled="True"
-                            Effect="{StaticResource Elevation1}"
                             HorizontalContentAlignment="Stretch"
                             Background="{Binding Back, Converter={StaticResource RgbToBrush}}"
                             Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}"
@@ -109,13 +108,16 @@
                             <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                        Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}" />
-                            <!-- the one button Enter presses right now -->
+                            <!-- the one button Enter presses right now — the
+                                 accent's one badge role (crisp-workbench spec),
+                                 a flat Theme.AccentBronze swap, not tinted by
+                                 the route's own color like the rest of the tile -->
                             <TextBlock Text="⏎" FontWeight="Bold" ToolTip="Enter files here"
                                        HorizontalAlignment="Right" VerticalAlignment="Center"
                                        Margin="0,0,4,0"
                                        Visibility="{Binding IsEnterTarget,
                                                     Converter={StaticResource BoolToVis}}"
-                                       Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}" />
+                                       Foreground="{DynamicResource Theme.AccentBronze}" />
                         </Grid>
                     </Button>
                 </DataTemplate>
@@ -135,8 +137,7 @@
         <!-- what just happened: a transient card in the pressed route's color
              (green when the route has none; amber for set-aside). Sits at the
              bottom so the buttons above never shift mid-click. -->
-        <Border CornerRadius="8" Padding="12,9" Margin="0,12,0,0"
-                Effect="{StaticResource Elevation1}"
+        <Border CornerRadius="4" Padding="12,9" Margin="0,12,0,0"
                 Background="{Binding LastActionBack, Converter={StaticResource RgbToBrush}}"
                 Visibility="{Binding LastActionVisible, Converter={StaticResource BoolToVis}}">
             <Border.Style>
@@ -158,7 +159,7 @@
             <StackPanel>
                 <TextBlock Text="{Binding LastActionText}" FontWeight="SemiBold"
                            Foreground="{Binding LastActionFore, Converter={StaticResource RgbToBrush}}" />
-                <TextBlock Text="{Binding LastActionDetail}" FontSize="11" Margin="0,2,0,0"
+                <TextBlock Text="{Binding LastActionDetail}" FontSize="11" Margin="0,6,0,0"
                            TextWrapping="Wrap"
                            Foreground="{Binding LastActionFore, Converter={StaticResource RgbToBrush}}" />
             </StackPanel>

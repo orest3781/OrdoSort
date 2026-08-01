@@ -27,8 +27,7 @@
                                                 MinHeight="78" Margin="0,0,6,6" Padding="12,8"
                                                 HorizontalContentAlignment="Left"
                                                 VerticalContentAlignment="Top"
-                                                BorderThickness="0" Cursor="Hand"
-                                                Effect="{StaticResource Elevation1}">
+                                                BorderThickness="0" Cursor="Hand">
                                             <Button.Triggers>
                                                 <!-- tiles fade in as folders light up -->
                                                 <EventTrigger RoutedEvent="Loaded">
