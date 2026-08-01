@@ -45,7 +45,9 @@ public static class ThemeManager
         r["Theme.Text"] = Brush(p.Text);
         r["Theme.SubtleText"] = Brush(p.SubtleText);
         r["Theme.Border"] = Brush(p.Border);
+        r["Theme.BorderStrong"] = Brush(p.BorderStrong);
         r["Theme.Accent"] = Brush(p.Accent);
+        r["Theme.AccentBronze"] = Brush(p.AccentBronze);
         r["Theme.AccentText"] = Brush(p.AccentText);
         r["Theme.Warning"] = Brush(p.Warning);
         r["Theme.WarningText"] = Brush(p.WarningText);

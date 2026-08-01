@@ -17,6 +17,9 @@ public class ThemeTests
             yield return new object[] { p.WarningText, p.Warning };
             yield return new object[] { p.DangerText, p.Danger };
             yield return new object[] { p.StatusAmber, p.WindowBg };
+            yield return new object[] { p.AccentBronze, p.WindowBg };
+            yield return new object[] { p.AccentBronze, p.Surface };
+            yield return new object[] { p.Text, p.TileDefaultBg };
         }
     }
 

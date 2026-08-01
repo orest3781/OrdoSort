@@ -21,15 +21,17 @@ public sealed record ThemePalette(
     Rgb DangerText,    // text on Danger
     Rgb Success,       // positive accents (Done summary)
     Rgb StatusAmber,   // the amber status line, readable on WindowBg
-    Rgb TileDefaultBg) // dashboard tile with no configured color
+    Rgb TileDefaultBg, // dashboard tile with no configured color
+    Rgb BorderStrong,  // emphasized borders (focus rings, active dividers)
+    Rgb AccentBronze)  // warm secondary accent (badges, highlights on graphite)
 {
     public static ThemePalette Light { get; } = new(
-        WindowBg: new(250, 250, 250),
+        WindowBg: new(247, 248, 249),
         Surface: new(255, 255, 255),
-        Text: new(26, 26, 26),
-        SubtleText: new(95, 95, 95),
-        Border: new(208, 208, 208),
-        Accent: new(21, 101, 192),
+        Text: new(23, 26, 31),
+        SubtleText: new(84, 90, 99),
+        Border: new(186, 192, 200),
+        Accent: new(45, 50, 58),
         AccentText: new(255, 255, 255),
         Warning: new(255, 236, 179),
         WarningText: new(102, 60, 0),
@@ -37,23 +39,27 @@ public sealed record ThemePalette(
         DangerText: new(255, 255, 255),
         Success: new(46, 125, 50),
         StatusAmber: new(146, 90, 4),
-        TileDefaultBg: new(225, 225, 225));
+        TileDefaultBg: new(228, 230, 233),
+        BorderStrong: new(120, 128, 138),
+        AccentBronze: new(140, 109, 63));
 
     public static ThemePalette Dark { get; } = new(
-        WindowBg: new(30, 30, 30),
-        Surface: new(45, 45, 45),
-        Text: new(235, 235, 235),
-        SubtleText: new(170, 170, 170),
-        Border: new(85, 85, 85),
-        Accent: new(28, 116, 210),
-        AccentText: new(255, 255, 255),
+        WindowBg: new(26, 28, 31),
+        Surface: new(38, 41, 45),
+        Text: new(233, 235, 238),
+        SubtleText: new(168, 173, 180),
+        Border: new(76, 82, 90),
+        Accent: new(205, 210, 218),
+        AccentText: new(23, 26, 31),
         Warning: new(84, 62, 8),
         WarningText: new(255, 224, 130),
         Danger: new(192, 57, 43),
         DangerText: new(255, 255, 255),
         Success: new(46, 125, 50),
         StatusAmber: new(240, 173, 78),
-        TileDefaultBg: new(60, 60, 60));
+        TileDefaultBg: new(54, 58, 63),
+        BorderStrong: new(110, 118, 128),
+        AccentBronze: new(201, 169, 106));
 
     // ---------------------------------------------------------- WCAG 2.1 math
 
