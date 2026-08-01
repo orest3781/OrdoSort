@@ -1,6 +1,5 @@
 using System.Text.Json;
 using OrdoSort.Core;
-using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.ViewModels;
 
 namespace OrdoSort.Wpf.Tests;
@@ -217,8 +216,11 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public void PlaintextPasswordsGetProtectedOnSave()
+    public void SavedPasswordsPassThroughUntouchedSettingsNoLongerOwnsThem()
     {
+        // the saved-passwords editor moved to the Unlock window's Manage
+        // saved… dialog — Settings must leave config.json's saved_passwords
+        // exactly as it found them, protected or not, added or not
         var cfg = new Config
         {
             Inbox = _dir,
@@ -227,19 +229,8 @@ public class SettingsViewModelTests : IDisposable
         var vm = new SettingsViewModel(cfg, _dialogs);
         Assert.True(vm.TryBuildResult());
         var saved = Assert.Single(vm.Result!.SavedPasswords);
-        Assert.True(PasswordVault.IsProtected(saved.Password));
-        Assert.Equal("plain", PasswordVault.Reveal(saved.Password));
-    }
-
-    [Fact]
-    public void AddPasswordStoresProtected()
-    {
-        var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs);
-        vm.AddPassword("Payer B", "s3cret");
-        Assert.True(vm.TryBuildResult());
-        var saved = Assert.Single(vm.Result!.SavedPasswords);
-        Assert.Equal("Payer B", saved.Label);
-        Assert.Equal("s3cret", PasswordVault.Reveal(saved.Password));
+        Assert.Equal("Old", saved.Label);
+        Assert.Equal("plain", saved.Password);   // untouched — not upgraded to protected
     }
 
     [Fact]
@@ -550,17 +541,6 @@ public class SettingsViewModelTests : IDisposable
         vm.SelectedWatch = vm.WatchFolders[2];
 
         Assert.Equal(new[] { "Incoming" }, vm.SectionChoices);
-    }
-
-    [Fact]
-    public void AddPasswordRefusesBlankFields()
-    {
-        var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs);
-        Assert.False(vm.AddPassword("", "secret"));
-        Assert.False(vm.AddPassword("Payer", ""));
-        Assert.Empty(vm.Passwords);
-        Assert.True(vm.AddPassword("Payer", "secret"));
-        Assert.Single(vm.Passwords);
     }
 
     [Fact]

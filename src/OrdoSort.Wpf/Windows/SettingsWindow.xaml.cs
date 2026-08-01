@@ -140,16 +140,4 @@ public partial class SettingsWindow : Window
         var to = target is null ? items.Count - 1 : items.IndexOf(target);
         if (from >= 0 && to >= 0 && from != to) items.Move(from, to);
     }
-
-    private void OnAddPassword(object sender, RoutedEventArgs e)
-    {
-        if (!_vm.AddPassword(NewPwLabel.Text, NewPwValue.Password))
-        {
-            PwHint.Text = "Give it a name and a password first.";
-            return;
-        }
-        PwHint.Text = "";
-        NewPwLabel.Text = "";
-        NewPwValue.Password = "";
-    }
 }

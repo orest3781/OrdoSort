@@ -62,18 +62,18 @@ public class UnlockViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task AWrongPasswordIsNeverRemembered()
+    public async Task AWrongPasswordIsNeverRememberedAndNeverShowsTheSaveBanner()
     {
-        // the old behavior saved the label unconditionally after the attempt —
-        // a stored wrong password would just fail again silently next session
+        // a stored wrong password would just fail again silently next
+        // session, so a failed attempt must not save anything AND must not
+        // offer to
         var vm = Vm();
         await vm.AddFilesAsync(new[] { MakeEncrypted("locked.pdf") });
         vm.Password = "wrong";
-        vm.RememberLabel = "Payer A";
         await vm.UnlockAsync();
         Assert.Empty(_cfg.SavedPasswords);
         Assert.Equal(0, _saves);
-        Assert.Equal("Payer A", vm.RememberLabel);   // kept for the retry
+        Assert.False(vm.SaveBannerVisible);
     }
 
     [Fact]
@@ -95,20 +95,92 @@ public class UnlockViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task RememberPersistsADpapiEntry()
+    public async Task ANewWorkingTypedPasswordShowsTheSaveBanner()
     {
         var vm = Vm();
         await vm.AddFilesAsync(new[] { MakeEncrypted("locked.pdf") });
         vm.Password = "secret";
-        vm.RememberLabel = "Payer A";
         await vm.UnlockAsync();
 
+        Assert.True(vm.SaveBannerVisible);
+        Assert.Equal("✓ 1 unlocked with a new password — save it as:", vm.SaveBannerText);
+        Assert.Equal("", vm.SaveBannerName);
+    }
+
+    [Fact]
+    public async Task TheBannerNeverAppearsWhenOnlyASavedPasswordDidTheWork()
+    {
+        // the box stayed blank; a saved entry is what unlocked the file — the
+        // typed password (there isn't one) earned nothing to offer saving
+        _cfg.SavedPasswords.Add(new SavedPassword
+        { Label = "X", Password = PasswordVault.Protect("secret") });
+        var vm = Vm();
+        await vm.AddFilesAsync(new[] { MakeEncrypted("locked.pdf") });
+
+        await vm.UnlockAsync();
+
+        Assert.Equal("1 unlocked", vm.Summary);
+        Assert.False(vm.SaveBannerVisible);
+    }
+
+    [Fact]
+    public async Task TheBannerStaysHiddenWhenTheTypedPasswordIsAlreadySaved()
+    {
+        _cfg.SavedPasswords.Add(new SavedPassword
+        { Label = "X", Password = PasswordVault.Protect("secret") });
+        var vm = Vm();
+        await vm.AddFilesAsync(new[] { MakeEncrypted("locked.pdf") });
+        vm.Password = "secret";   // matches the already-saved entry
+
+        await vm.UnlockAsync();
+
+        Assert.Equal("1 unlocked", vm.Summary);
+        Assert.False(vm.SaveBannerVisible);
+    }
+
+    [Fact]
+    public async Task SaveBannerCommandAddsTheEntryAndHidesTheBanner()
+    {
+        var vm = Vm();
+        await vm.AddFilesAsync(new[] { MakeEncrypted("locked.pdf") });
+        vm.Password = "secret";
+        await vm.UnlockAsync();
+        Assert.True(vm.SaveBannerVisible);
+        Assert.False(vm.SaveBannerCommand.CanExecute(null));   // no name yet
+
+        vm.SaveBannerName = "Payer A";
+        Assert.True(vm.SaveBannerCommand.CanExecute(null));
+        vm.SaveBannerCommand.Execute(null);
+
+        Assert.False(vm.SaveBannerVisible);
+        Assert.Equal("", vm.SaveBannerName);
         var saved = Assert.Single(_cfg.SavedPasswords);
         Assert.Equal("Payer A", saved.Label);
         Assert.True(PasswordVault.IsProtected(saved.Password));
         Assert.Equal("secret", PasswordVault.Reveal(saved.Password));
+        Assert.Same(saved, Assert.Single(vm.Saved));
         Assert.Equal(1, _saves);
-        Assert.Equal("", vm.RememberLabel);
+    }
+
+    [Fact]
+    public async Task TheBannerResetsAtTheStartOfTheNextRun()
+    {
+        var vm = Vm();
+        await vm.AddFilesAsync(new[] { MakeEncrypted("locked.pdf") });
+        vm.Password = "secret";
+        await vm.UnlockAsync();
+        Assert.True(vm.SaveBannerVisible);
+        vm.SaveBannerName = "partial";   // typed but never saved
+
+        vm.ClearCommand.Execute(null);
+        await vm.AddFilesAsync(new[] { MakeEncrypted("locked2.pdf", "another") });
+        vm.Password = "typo";            // this run fails outright
+        await vm.UnlockAsync();
+
+        // if the reset didn't happen at the START of this run, "partial"
+        // would still be sitting in the box — nothing else clears it
+        Assert.False(vm.SaveBannerVisible);
+        Assert.Equal("", vm.SaveBannerName);
     }
 
     [Fact]
@@ -132,6 +204,16 @@ public class UnlockViewModelTests : IDisposable
     }
 
     private string MakeEncryptedDefault(string name) => MakeEncrypted(name);
+
+    /// <summary>A plain, unencrypted stand-in .pdf — fine wherever a test
+    /// injects its own fake unlocker, since the real file content never
+    /// reaches PdfSharp.</summary>
+    private string Touch(string name)
+    {
+        var p = Path.Combine(_dir, name);
+        File.WriteAllText(p, "x");
+        return p;
+    }
 
     private static int InterlockedMax(ref int location, int value)
     {
@@ -225,13 +307,137 @@ public class UnlockViewModelTests : IDisposable
     }
 
     [Fact]
-    public void SelectingASavedPasswordFillsTheBox()
+    public async Task AutoTryTriesTheTypedPasswordBeforeSavedOnesAndStopsAtFirstSuccess()
+    {
+        var tried = new List<string>();
+        // Saved must be populated BEFORE the VM is constructed: the VM takes
+        // a one-time snapshot of cfg.SavedPasswords into its own Saved
+        // collection at construction, same as the real window does at open.
+        _cfg.SavedPasswords.Add(new SavedPassword
+        { Label = "S1", Password = PasswordVault.Protect("saved-wrong") });
+        var vm = new UnlockViewModel(_cfg, () => _saves++, unlocker: (p, pw) =>
+        {
+            tried.Add(pw);
+            return pw == "typed"
+                ? new OrdoSort.Core.Unlock.UnlockResult("ok", p, p, InPlace: true)
+                : new OrdoSort.Core.Unlock.UnlockResult("wrong_password", p, Message: "nope");
+        });
+        await vm.AddFilesAsync(new[] { Touch("f.pdf") });
+        vm.Password = "typed";
+
+        await vm.UnlockAsync();
+
+        Assert.Equal(new[] { "typed" }, tried);   // typed succeeded — the saved entry was never tried
+        Assert.Equal("1 unlocked", vm.Summary);
+    }
+
+    [Fact]
+    public async Task AutoTryFallsThroughToSavedPasswordsInOrderWhenTypedFails()
+    {
+        var tried = new List<string>();
+        _cfg.SavedPasswords.Add(new SavedPassword
+        { Label = "A", Password = PasswordVault.Protect("also-wrong") });
+        _cfg.SavedPasswords.Add(new SavedPassword
+        { Label = "B", Password = PasswordVault.Protect("the-real-one") });
+        var vm = new UnlockViewModel(_cfg, () => _saves++, unlocker: (p, pw) =>
+        {
+            tried.Add(pw);
+            return pw == "the-real-one"
+                ? new OrdoSort.Core.Unlock.UnlockResult("ok", p, p, InPlace: true)
+                : new OrdoSort.Core.Unlock.UnlockResult("wrong_password", p, Message: "nope");
+        });
+        await vm.AddFilesAsync(new[] { Touch("f.pdf") });
+        vm.Password = "typed-wrong";
+
+        await vm.UnlockAsync();
+
+        Assert.Equal(new[] { "typed-wrong", "also-wrong", "the-real-one" }, tried);
+        Assert.Equal("1 unlocked", vm.Summary);
+    }
+
+    [Fact]
+    public async Task ABlankBoxStillTriesEverySavedPasswordInOrder()
+    {
+        var tried = new List<string>();
+        _cfg.SavedPasswords.Add(new SavedPassword
+        { Label = "A", Password = PasswordVault.Protect("secret1") });
+        _cfg.SavedPasswords.Add(new SavedPassword
+        { Label = "B", Password = PasswordVault.Protect("secret2") });
+        var vm = new UnlockViewModel(_cfg, () => _saves++, unlocker: (p, pw) =>
+        {
+            tried.Add(pw);
+            return pw == "secret2"
+                ? new OrdoSort.Core.Unlock.UnlockResult("ok", p, p, InPlace: true)
+                : new OrdoSort.Core.Unlock.UnlockResult("wrong_password", p, Message: "nope");
+        });
+        await vm.AddFilesAsync(new[] { Touch("f.pdf") });
+        // Password left blank — the typed candidate is skipped entirely
+
+        await vm.UnlockAsync();
+
+        Assert.Equal(new[] { "secret1", "secret2" }, tried);
+        Assert.Equal("1 unlocked", vm.Summary);
+    }
+
+    [Fact]
+    public async Task ASavedPasswordEqualToTheTypedOneIsNeverTriedTwice()
+    {
+        var tried = new List<string>();
+        _cfg.SavedPasswords.Add(new SavedPassword
+        { Label = "Dup", Password = PasswordVault.Protect("same") });
+        _cfg.SavedPasswords.Add(new SavedPassword
+        { Label = "Other", Password = PasswordVault.Protect("other") });
+        var vm = new UnlockViewModel(_cfg, () => _saves++, unlocker: (p, pw) =>
+        {
+            tried.Add(pw);
+            return new OrdoSort.Core.Unlock.UnlockResult("wrong_password", p, Message: "nope");
+        });
+        await vm.AddFilesAsync(new[] { Touch("f.pdf") });
+        vm.Password = "same";
+
+        await vm.UnlockAsync();
+
+        Assert.Equal(new[] { "same", "other" }, tried);   // "same" attempted once, not twice
+    }
+
+    [Fact]
+    public void AddSavedPasswordStoresProtectedAndPersistsImmediately()
+    {
+        var vm = Vm();
+        Assert.True(vm.AddSavedPassword("Payer B", "s3cret"));
+
+        var saved = Assert.Single(vm.Saved);
+        Assert.Equal("Payer B", saved.Label);
+        Assert.True(PasswordVault.IsProtected(saved.Password));
+        Assert.Equal("s3cret", PasswordVault.Reveal(saved.Password));
+        Assert.Same(saved, Assert.Single(_cfg.SavedPasswords));
+        Assert.Equal(1, _saves);
+    }
+
+    [Fact]
+    public void AddSavedPasswordRefusesBlankFields()
+    {
+        var vm = Vm();
+        Assert.False(vm.AddSavedPassword("", "secret"));
+        Assert.False(vm.AddSavedPassword("Payer", ""));
+        Assert.Empty(vm.Saved);
+        Assert.Equal(0, _saves);
+    }
+
+    [Fact]
+    public void RemoveSavedCommandRemovesTheSelectedEntryAndPersists()
     {
         _cfg.SavedPasswords.Add(new SavedPassword
         { Label = "X", Password = PasswordVault.Protect("pw123") });
         var vm = Vm();
-        vm.SelectedSaved = vm.Saved[0];
-        Assert.Equal("pw123", vm.Password);
+        vm.SelectedSavedEntry = vm.Saved[0];
+        Assert.True(vm.RemoveSavedCommand.CanExecute(null));
+
+        vm.RemoveSavedCommand.Execute(null);
+
+        Assert.Empty(vm.Saved);
+        Assert.Empty(_cfg.SavedPasswords);
+        Assert.Equal(1, _saves);
     }
 
     [Fact]

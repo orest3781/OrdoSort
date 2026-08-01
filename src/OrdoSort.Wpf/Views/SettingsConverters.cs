@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows.Data;
 using System.Windows.Media;
+using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.Theme;
 
 namespace OrdoSort.Wpf.Views;
@@ -60,6 +61,20 @@ public sealed class FontSizeTextConverter : IValueConverter
         int.TryParse((value as string)?.Trim(), out var size) && size is >= 6 and <= 72
             ? (double)size
             : 14.0;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>A saved password's stored value ("dpapi:…" or legacy plaintext) →
+/// the same status text the old Settings passwords list showed. Used by the
+/// Manage saved… dialog, which binds straight to the Core SavedPassword
+/// records rather than a wrapping edit view model.</summary>
+public sealed class PasswordStatusConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is string s && PasswordVault.IsProtected(s)
+            ? "encrypted" : "plain text — will be encrypted on next save";
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();

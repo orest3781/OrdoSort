@@ -7,27 +7,15 @@ namespace OrdoSort.Wpf.Windows;
 public partial class UnlockWindow : Window
 {
     private readonly UnlockViewModel _vm;
-    private bool _syncingPw;
 
     public UnlockWindow(UnlockViewModel vm)
     {
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
-        // a saved password selection must land in the (write-only) PasswordBox
-        vm.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(vm.Password) && !_syncingPw && PwBox.Password != vm.Password)
-                PwBox.Password = vm.Password;
-        };
     }
 
-    private void OnPasswordChanged(object sender, RoutedEventArgs e)
-    {
-        _syncingPw = true;
-        _vm.Password = PwBox.Password;
-        _syncingPw = false;
-    }
+    private void OnPasswordChanged(object sender, RoutedEventArgs e) => _vm.Password = PwBox.Password;
 
     private void OnShowPw(object sender, RoutedEventArgs e)
     {
@@ -44,8 +32,12 @@ public partial class UnlockWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _vm.CancelUnlock();
+        _vm.ResetBanner();
         base.OnClosed(e);
     }
+
+    private void OnManageSaved(object sender, RoutedEventArgs e) =>
+        new ManageSavedWindow(_vm) { Owner = this }.ShowDialog();
 
     private void OnAddFiles(object sender, RoutedEventArgs e)
     {

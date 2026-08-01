@@ -16,6 +16,7 @@
             <views:SwatchCheckConverter x:Key="SwatchCheck" />
             <views:ZeroToVisibilityConverter x:Key="ZeroToVis" />
             <views:FileNameConverter x:Key="FileName" />
+            <views:PasswordStatusConverter x:Key="PasswordStatus" />
             <views:FontFamilyStringConverter x:Key="FontFamilyString" />
             <views:FontSizeTextConverter x:Key="FontSizeText" />
             <FontFamily x:Key="AppFontFamily">Segoe UI Variable Text, Segoe UI</FontFamily>

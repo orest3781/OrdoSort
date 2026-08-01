@@ -16,6 +16,7 @@
             <Button Content="Cancel" Command="{Binding CancelCommand}" Width="96"
                     Margin="0,0,8,0"
                     Visibility="{Binding IsUnlocking, Converter={StaticResource BoolToVis}}" />
+            <Button Content="Manage saved…" Click="OnManageSaved" Padding="10,0" Margin="0,0,8,0" />
             <Button Content="Close" Width="96" IsCancel="True" />
         </StackPanel>
 
@@ -71,7 +72,6 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="220" />
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="Password:" VerticalAlignment="Center" Margin="0,0,8,0" />
@@ -82,29 +82,29 @@
                          AutomationProperties.Name="Password (visible)" />
                 <CheckBox Grid.Column="2" x:Name="ShowPw" Content="Show" Margin="8,0,0,0"
                           VerticalAlignment="Center" Checked="OnShowPw" Unchecked="OnShowPw" />
-                <TextBlock Grid.Column="3" Text="Saved:" VerticalAlignment="Center"
-                           Margin="16,0,6,0" Style="{StaticResource SubtleText}" />
-                <ComboBox Grid.Column="4" MinWidth="130"
-                          ItemsSource="{Binding Saved}" DisplayMemberPath="Label"
-                          SelectedItem="{Binding SelectedSaved}"
-                          AutomationProperties.Name="Saved passwords" />
             </Grid>
 
             <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,0,0,6">
                 <TextBlock Style="{StaticResource SubtleText}" FontSize="11"
                            VerticalAlignment="Center" TextWrapping="Wrap"
-                           Text="The unlocked file keeps its name and place. The locked original is moved to a dated locked_archive folder beside it — nothing is overwritten." />
+                           Text="Every saved password is tried automatically, in addition to whatever's typed above. The unlocked file keeps its name and place — the locked original is moved to a dated locked_archive folder beside it, nothing is overwritten." />
             </StackPanel>
 
-            <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,0,0,10">
-                <TextBlock Text="Remember this password as:" VerticalAlignment="Center"
-                           Margin="0,0,6,0" />
-                <TextBox Width="160" Text="{Binding RememberLabel, UpdateSourceTrigger=PropertyChanged}"
-                         AutomationProperties.Name="Remember password as" />
-                <TextBlock Text="saved only when it unlocks something"
-                           Style="{StaticResource SubtleText}" FontSize="11"
-                           VerticalAlignment="Center" Margin="8,0,0,0" />
-            </StackPanel>
+            <!-- appears only after a run where the TYPED password (not a
+                 saved one) unlocked something new — the one-click offer to
+                 save it, so it auto-tries next time too -->
+            <Border Grid.Row="5" Background="{DynamicResource Theme.Surface}"
+                    BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
+                    CornerRadius="6" Padding="10,8" Margin="0,0,0,10"
+                    Visibility="{Binding SaveBannerVisible, Converter={StaticResource BoolToVis}}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding SaveBannerText}" VerticalAlignment="Center"
+                               Margin="0,0,10,0" />
+                    <TextBox Width="150" Text="{Binding SaveBannerName, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="Save password as" VerticalAlignment="Center" />
+                    <Button Content="Save" Command="{Binding SaveBannerCommand}" Margin="8,0,0,0" />
+                </StackPanel>
+            </Border>
 
             <TextBlock Grid.Row="6" Text="{Binding Summary}" FontWeight="SemiBold"
                        Margin="0,0,0,4" />

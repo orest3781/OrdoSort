@@ -4,8 +4,9 @@ using System.Text;
 namespace OrdoSort.Wpf.Services;
 
 /// <summary>Saved Unlock passwords, DPAPI-protected per Windows user.
-/// Hand-edited plaintext values still read fine and are re-protected the
-/// next time Settings saves.</summary>
+/// Hand-edited plaintext values still read fine (and still auto-try during
+/// Unlock) — they're upgraded to protected only if re-added through the
+/// Manage saved… dialog, which always protects on add.</summary>
 public static class PasswordVault
 {
     private const string Prefix = "dpapi:";

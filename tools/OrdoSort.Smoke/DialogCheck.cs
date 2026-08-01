@@ -7,7 +7,7 @@ using OrdoSort.Wpf.Windows;
 public static class DialogCheck
 {
     public static int Run() => SmokeUi.RunSta(Drive,
-        "DIALOGS OK — all eight construct cleanly",
+        "DIALOGS OK — all nine construct cleanly",
         "DIALOG FAIL:");
 
     private static List<string> Drive()
@@ -29,6 +29,7 @@ public static class DialogCheck
         }
 
         Check("Unlock", () => new UnlockWindow(new UnlockViewModel(new Config(), () => { })));
+        Check("ManageSaved", () => new ManageSavedWindow(new UnlockViewModel(new Config(), () => { })));
         Check("BulkRename", () => new BulkRenameWindow(new BulkRenameViewModel()));
         Check("MatchMerge", () => new MatchMergeWindow(
             new MatchMergeViewModel(new Config(), _ => { }, dialogs)));

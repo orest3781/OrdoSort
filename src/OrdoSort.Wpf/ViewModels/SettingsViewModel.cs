@@ -252,17 +252,6 @@ public sealed class WatchEditVm : ObservableObject
     };
 }
 
-/// <summary>A saved Unlock password row; the stored value is DPAPI-protected
-/// on save if it isn't already.</summary>
-public sealed class PasswordEditVm : ObservableObject
-{
-    private string _label = "";
-    public string Label { get => _label; set => Set(ref _label, value); }
-    public string Stored { get; set; } = "";
-    public string StatusText => PasswordVault.IsProtected(Stored)
-        ? "encrypted" : "plain text — will be encrypted on save";
-}
-
 /// <summary>One row of the sound picker: which sound plays for one moment.
 /// The four choices (OrdoSort / Windows / Custom .wav / Silent) map to the
 /// config spec; Test plays the current choice so you hear it before saving.</summary>
@@ -428,8 +417,6 @@ public sealed class SettingsViewModel : ObservableObject
 
         Routes = new ObservableCollection<RouteEditVm>(current.Routes.Select(RouteEditVm.From));
         WatchFolders = new ObservableCollection<WatchEditVm>(current.WatchFolders.Select(WatchEditVm.From));
-        Passwords = new ObservableCollection<PasswordEditVm>(current.SavedPasswords
-            .Select(p => new PasswordEditVm { Label = p.Label, Stored = p.Password }));
 
         AddRouteCommand = new RelayCommand(() =>
         {
@@ -465,10 +452,6 @@ public sealed class SettingsViewModel : ObservableObject
             () => SelectedWatch is not null);
         WatchUpCommand = new RelayCommand(() => MoveWatch(-1), () => CanMoveWatch(-1));
         WatchDownCommand = new RelayCommand(() => MoveWatch(+1), () => CanMoveWatch(+1));
-
-        RemovePasswordCommand = new RelayCommand(
-            () => { if (SelectedPassword is { } p) Passwords.Remove(p); SelectedPassword = Passwords.FirstOrDefault(); },
-            () => SelectedPassword is not null);
 
         AddAlertCommand = new RelayCommand(() =>
         {
@@ -524,7 +507,6 @@ public sealed class SettingsViewModel : ObservableObject
 
         SelectedRoute = Routes.FirstOrDefault();
         SelectedWatch = WatchFolders.FirstOrDefault();
-        SelectedPassword = Passwords.FirstOrDefault();
 
         // live route previews + duplicate-hotkey notes: recompute whenever a
         // route field or the route order changes. Move actions re-deliver the
@@ -1040,7 +1022,6 @@ public sealed class SettingsViewModel : ObservableObject
     // ----------------------------------------------------------- collections
     public ObservableCollection<RouteEditVm> Routes { get; }
     public ObservableCollection<WatchEditVm> WatchFolders { get; }
-    public ObservableCollection<PasswordEditVm> Passwords { get; }
 
     private RouteEditVm? _selectedRoute;
     public RouteEditVm? SelectedRoute
@@ -1101,13 +1082,6 @@ public sealed class SettingsViewModel : ObservableObject
         WatchDownCommand.RaiseCanExecuteChanged();
     }
 
-    private PasswordEditVm? _selectedPassword;
-    public PasswordEditVm? SelectedPassword
-    {
-        get => _selectedPassword;
-        set { if (Set(ref _selectedPassword, value)) RemovePasswordCommand.RaiseCanExecuteChanged(); }
-    }
-
     public RelayCommand AddRouteCommand { get; }
     public RelayCommand RemoveRouteCommand { get; }
     public RelayCommand DuplicateRouteCommand { get; }
@@ -1121,7 +1095,6 @@ public sealed class SettingsViewModel : ObservableObject
     public RelayCommand RemoveWatchCommand { get; }
     public RelayCommand WatchUpCommand { get; }
     public RelayCommand WatchDownCommand { get; }
-    public RelayCommand RemovePasswordCommand { get; }
     public RelayCommand AddAlertCommand { get; }
     public RelayCommand<string> RemoveAlertCommand { get; }
     public RelayCommand BrowseInboxCommand { get; }
@@ -1134,19 +1107,6 @@ public sealed class SettingsViewModel : ObservableObject
     public RelayCommand BrowseBoxLabelsFileCommand { get; }
     public RelayCommand BrowseRoutePathCommand { get; }
     public RelayCommand BrowseWatchPathCommand { get; }
-
-    /// <summary>False when either field is blank — the window shows a nudge
-    /// instead of silently doing nothing.</summary>
-    public bool AddPassword(string label, string plain)
-    {
-        if (label.Trim().Length == 0 || plain.Length == 0) return false;
-        Passwords.Add(new PasswordEditVm
-        {
-            Label = label.Trim(),
-            Stored = PasswordVault.Protect(plain),
-        });
-        return true;
-    }
 
     private bool CanMoveRoute(int delta)
     {
@@ -1342,14 +1302,10 @@ public sealed class SettingsViewModel : ObservableObject
         cfg.Theme = ThemeMode;
         cfg.Routes = Routes.Select(r => r.ToRoute()).ToList();
         cfg.WatchFolders = WatchFolders.Select(w => w.ToWatchFolder()).ToList();
-        cfg.SavedPasswords = Passwords.Select(p => new SavedPassword
-        {
-            Label = p.Label,
-            // legacy plaintext gets protected the first time Settings saves
-            Password = PasswordVault.IsProtected(p.Stored)
-                ? p.Stored
-                : PasswordVault.Protect(p.Stored),
-        }).ToList();
+        // SavedPasswords is no longer a Settings-owned field — the Unlock
+        // window's Manage saved… dialog is the only editor now, and it
+        // persists straight to _cfg.SavedPasswords itself. The JSON clone
+        // above already carries the original's list through untouched.
 
         // A section re-pointed at a path that already holds a file: that
         // file — not whatever this window happened to load with — becomes
