@@ -149,4 +149,20 @@ public class BoxLabelStoreTests : IDisposable
         Assert.True(sw.ElapsedMilliseconds < 1000, "must not burn the retry budget");
         Assert.DoesNotContain("another station", ex.Message);
     }
+
+    [Fact]
+    public void NonContentionIOExceptionThroughMutateFailsFastWithItsOwnMessage()
+    {
+        // an overlong filename component (>260 chars) -> FileStream open
+        // throws a genuine IOException (ERROR_INVALID_NAME, 0x8007007B) that
+        // is NOT the directory-as-file case above (that one is actually
+        // UnauthorizedAccessException on this platform) — this is the vehicle
+        // that exercises IsContention's IOException branch through Mutate.
+        var p = PathOf(new string('x', 300) + ".json");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var ex = Assert.Throws<ConfigException>(() => BoxLabelStore.Mutate(p, d => 0));
+        Assert.True(sw.ElapsedMilliseconds < 1000, "must not burn the retry budget");
+        Assert.Contains("box-labels file error", ex.Message);
+        Assert.DoesNotContain("another station", ex.Message);
+    }
 }
