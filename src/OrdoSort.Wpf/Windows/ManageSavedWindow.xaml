@@ -11,7 +11,7 @@
         </StackPanel>
 
         <StackPanel>
-            <TextBlock Text="Saved passwords" FontWeight="Bold" Margin="0,0,0,6" />
+            <TextBlock Text="Saved passwords" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
             <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap" Margin="0,0,0,8"
                        Text="Tried automatically on Unlock. Encrypted for this Windows account — a hand-edited plaintext value is encrypted the next time saved passwords change here (add or remove)." />
             <ListBox ItemsSource="{Binding Saved}" SelectedItem="{Binding SelectedSavedEntry}"
