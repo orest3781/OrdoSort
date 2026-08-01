@@ -73,14 +73,6 @@ public partial class MainWindow : Window
         {
             App.ApplyFont(Application.Current, Shell.Cfg);
             Theme.ThemeManager.SetMode(Application.Current, Shell.Cfg.Theme);
-            // Theme.TitleBar (class-level Window.Loaded hook, wired from
-            // ThemeManager.Start/Apply) already re-themes every open window's
-            // DWM title bar on this same theme change. The explicit call below
-            // uses the new Services.TitleBarChrome helper directly on this
-            // window — idempotent alongside that mechanism (same attribute,
-            // same value) — since MainWindow.xaml.cs is the one file this task
-            // may touch for wiring.
-            TitleBarChrome.ApplyDarkTitleBar(this, Theme.ThemeManager.IsDark);
         };
 
         // Window lifecycle: the Ready dashboard is a compact
@@ -108,10 +100,6 @@ public partial class MainWindow : Window
         _panZone = ViewerPanZone;
         Loaded += async (_, _) =>
         {
-            // startup dark title bar for this window (see the SettingsApplied
-            // handler above for why this call sits alongside Theme.TitleBar's
-            // own already-wired class-level hook rather than replacing it).
-            TitleBarChrome.ApplyDarkTitleBar(this, Theme.ThemeManager.IsDark);
             ViewerInputEnhancer.Register(_panZone);
             if (!await _pdf.InitAsync())
                 Dialogs.Warn(
