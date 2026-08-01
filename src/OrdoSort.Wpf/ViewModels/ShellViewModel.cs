@@ -1132,8 +1132,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 Path.GetFileName(current), TypedName,
                 route?.NamingMode, _session.SessionMode,
                 route?.Suffix ?? "", route?.AppendSuffix ?? false,
-                _ => false,
-                routeTemplate: route?.NamingTemplate, globalTemplate: _cfg.NamingTemplate);
+                _ => false);
             Preview = result.Filename;
             PreviewIsWarning = false;
         }

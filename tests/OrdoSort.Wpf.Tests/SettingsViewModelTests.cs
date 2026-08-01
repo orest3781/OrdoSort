@@ -271,133 +271,20 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public void FiveFilingModesRoundTripWithTemplate()
+    public void FourFilingModesRoundTrip()
     {
         var cfg = LoadFromJson("""{"inbox":"C:/in","naming_mode":"append","enter_commits":true}""");
         var vm = new SettingsViewModel(cfg, _dialogs);
         Assert.True(vm.ModeAppend);
         Assert.True(vm.EnterCommits);
 
-        vm.ModeTemplate = true;
-        vm.NamingTemplate = "{date}-{name}";
+        vm.ModePrefix = true;
         vm.EnterCommits = false;   // toggled live — must land in the built config too
 
         Assert.True(vm.TryBuildResult());
         var built = vm.Result!;
-        Assert.Equal("template", built.NamingMode);
-        Assert.Equal("{date}-{name}", built.NamingTemplate);
+        Assert.Equal("prefix", built.NamingMode);
         Assert.False(built.EnterCommits);
-    }
-
-    [Fact]
-    public void ABadTemplateBlocksSaveWithItsOwnMessage()
-    {
-        var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs);
-        vm.ModeTemplate = true;
-        vm.NamingTemplate = "{bogus}";
-
-        Assert.False(vm.TryBuildResult());
-        Assert.Contains("bogus", Assert.Single(_dialogs.Warnings).Message);
-        Assert.Null(vm.Result);
-    }
-
-    [Fact]
-    public void RouteTemplateRoundTripsThroughTheRouteEditor()
-    {
-        var cfg = new Config
-        {
-            Inbox = _dir,
-            Routes =
-            {
-                new Route
-                {
-                    Label = "A", Path = _dir,
-                    NamingMode = "template", NamingTemplate = "{name}!",
-                },
-            },
-        };
-        var vm = new SettingsViewModel(cfg, _dialogs);
-        Assert.Equal("template", vm.Routes[0].NamingMode);
-        Assert.Equal("{name}!", vm.Routes[0].NamingTemplate);
-
-        Assert.True(vm.TryBuildResult());
-        var route = Assert.Single(vm.Result!.Routes);
-        Assert.Equal("template", route.NamingMode);
-        Assert.Equal("{name}!", route.NamingTemplate);
-    }
-
-    [Fact]
-    public void ABadRouteTemplateOverrideBlocksSaveWithARouteLabeledMessage()
-    {
-        // a route's own template override was never checked at settings time
-        // (only the global one was) — a bogus per-route template used to
-        // sail through OK and only blow up later, mid-session, at commit
-        var cfg = new Config
-        {
-            Inbox = _dir,
-            Routes =
-            {
-                new Route
-                {
-                    Label = "Invoices", Path = _dir,
-                    NamingMode = "template", NamingTemplate = "{bogus}",
-                },
-            },
-        };
-        var vm = new SettingsViewModel(cfg, _dialogs);
-
-        Assert.False(vm.TryBuildResult());
-        var msg = Assert.Single(_dialogs.Warnings).Message;
-        Assert.Contains("bogus", msg);
-        Assert.Contains("Invoices", msg);
-        Assert.Null(vm.Result);
-    }
-
-    [Fact]
-    public void ARouteInTemplateModeWithABlankBoxFallsBackToTheGlobalTemplateAndSaves()
-    {
-        // the route's template box is left blank — it must inherit the
-        // Filing tab's global template (which is valid here), not fail as
-        // if it had no template at all
-        var cfg = new Config
-        {
-            Inbox = _dir,
-            NamingMode = "insert",
-            NamingTemplate = "{name}-{date}",
-            Routes =
-            {
-                new Route { Label = "Invoices", Path = _dir, NamingMode = "template" },
-            },
-        };
-        var vm = new SettingsViewModel(cfg, _dialogs);
-
-        Assert.True(vm.TryBuildResult());
-        Assert.Empty(_dialogs.Warnings);
-    }
-
-    [Fact]
-    public void WhitespaceOnlyRouteTemplateSavesAsNullNotAsWhitespace()
-    {
-        // RouteEditVm.ToRoute used to map the box straight through
-        // (Length == 0 ? null : NamingTemplate) WITHOUT trimming first, so a
-        // whitespace-only box saved the literal string "   " — which defeats
-        // every IsNullOrEmpty/blank fallback downstream (ResolveTemplate,
-        // the settings-time check above, Config's round-trip).
-        var cfg = new Config
-        {
-            Inbox = _dir,
-            Routes = { new Route { Label = "A", Path = _dir } },
-        };
-        var vm = new SettingsViewModel(cfg, _dialogs);
-        vm.Routes[0].NamingTemplate = "   ";
-
-        Assert.True(vm.TryBuildResult());
-        Assert.Null(vm.Result!.Routes.Single().NamingTemplate);
-
-        // a template with real content around the whitespace is trimmed, not discarded
-        vm.Routes[0].NamingTemplate = "  {name}!  ";
-        Assert.True(vm.TryBuildResult());
-        Assert.Equal("{name}!", vm.Result!.Routes.Single().NamingTemplate);
     }
 
     [Fact]

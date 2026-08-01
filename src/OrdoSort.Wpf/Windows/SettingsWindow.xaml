@@ -218,21 +218,6 @@
                                      Content='Prefix   ·   scan001.pdf  →  Smith John-scan001.pdf' />
                         <RadioButton GroupName="NamingMode" IsChecked="{Binding ModeAppend}"
                                      Content='Append   ·   scan001.pdf  →  scan001-Smith John.pdf' />
-                        <RadioButton GroupName="NamingMode" IsChecked="{Binding ModeTemplate}"
-                                     Content="Custom template" />
-                        <Grid Margin="22,4,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="220" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox Text="{Binding NamingTemplate, UpdateSourceTrigger=PropertyChanged}"
-                                     IsEnabled="{Binding ModeTemplate}" />
-                            <TextBlock Grid.Column="1" Style="{StaticResource SubtleText}"
-                                       VerticalAlignment="Center" Margin="8,0,0,0"
-                                       Text="tokens: {name} · {original} · {date}" />
-                        </Grid>
-                        <TextBlock Text="{Binding TemplateNote}" Style="{StaticResource NoteText}"
-                                   Margin="22,-6,0,10" />
                         <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap"
                                    Margin="22,2,0,0"
                                    Text='Insert mode picks up only PDFs with "--" in the name; every other mode picks up every PDF. Anything else shows as "ignored" on the Ready screen.' />
@@ -459,26 +444,6 @@
                                           SelectedValue="{Binding NamingMode}"
                                           ItemTemplate="{StaticResource KvpValueTemplate}"
                                           ToolTip="Overrides the Filing tab's naming mode for this destination only" />
-                            </Grid>
-
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="110" />
-                                    <ColumnDefinition Width="220" />
-                                </Grid.ColumnDefinitions>
-                                <Grid.Style>
-                                    <Style TargetType="Grid" BasedOn="{StaticResource FieldRow}">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding NamingMode}" Value="template">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Grid.Style>
-                                <TextBlock Text="Template:" Style="{StaticResource FieldLabel}" />
-                                <TextBox Grid.Column="1"
-                                         Text="{Binding NamingTemplate, UpdateSourceTrigger=PropertyChanged}" />
                             </Grid>
 
                             <Grid Style="{StaticResource FieldRow}">
