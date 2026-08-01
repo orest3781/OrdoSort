@@ -218,9 +218,9 @@ public static class DemoWorkbench
 
         return new()
         {
-            new("Failed transfers", failed, "#C0392B", "pdf", true, "Incoming"),
-            new("Rejected", rejected, "#EF6C00", "pdf", false, "Incoming"),
-            new("Scanner out", scanner, "#455A64", "pdf", false, "Failed queues"),
+            new("Failed transfers", failed, "#C0392B", "pdf", true, "Failed queues"),
+            new("Rejected", rejected, "#EF6C00", "pdf", false, "Scanner queues"),
+            new("Scanner out", scanner, "#455A64", "pdf", false, ""),
         };
     }
 

@@ -805,6 +805,22 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
+    public void AddAlertCommandSplitsOnCommasAndNewlines()
+    {
+        var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs);
+
+        vm.NewAlertText = "STAT, callback";
+        vm.AddAlertCommand.Execute(null);
+        Assert.Equal("", vm.NewAlertText);
+        Assert.Equal(new[] { "STAT", "callback" }, vm.AlertTerms);
+
+        vm.AlertTerms.Add("URGENT");
+        vm.NewAlertText = "urgent, NEW";   // "urgent" is a case-dup, "NEW" is not
+        vm.AddAlertCommand.Execute(null);
+        Assert.Equal(new[] { "STAT", "callback", "URGENT", "NEW" }, vm.AlertTerms);
+    }
+
+    [Fact]
     public void ResultSurvivesAConfigRoundTripOnDisk()
     {
         var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs)

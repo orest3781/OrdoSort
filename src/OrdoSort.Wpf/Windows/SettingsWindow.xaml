@@ -770,6 +770,7 @@
                                             <TextBlock Text="{Binding}" VerticalAlignment="Center" />
                                             <Button Content="✕" Margin="6,0,0,0" Padding="2,0"
                                                     Background="Transparent" BorderThickness="0"
+                                                    AutomationProperties.Name="{Binding StringFormat=Remove alert term {0}}"
                                                     Command="{Binding DataContext.RemoveAlertCommand,
                                                               RelativeSource={RelativeSource AncestorType=Window}}"
                                                     CommandParameter="{Binding}" />

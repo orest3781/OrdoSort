@@ -453,4 +453,59 @@ public class DashboardTests
         Assert.Equal(baseBackA, tileA.Back);
         Assert.Equal(baseBackB, tileB.Back);
     }
+
+    [Fact]
+    public void RenamingTheSectionHeadingUpdatesTheDefaultGroupLive()
+    {
+        using var fx = WithWatchFolder(out var watched);   // MonitorTitle = "Needs attention"
+        File.WriteAllText(Path.Combine(watched, "a.pdf"), "x");
+        fx.Shell.Initialize();
+
+        var group = Assert.Single(fx.Shell.TileGroups);
+        Assert.Equal("Needs attention", group.Title);
+
+        fx.Cfg.MonitorTitle = "Inbound queue";
+        fx.Shell.OnFolderActivity();   // nothing else changed — only the heading moved
+
+        var renamed = Assert.Single(fx.Shell.TileGroups);
+        Assert.Equal("Inbound queue", renamed.Title);
+    }
+
+    [Fact]
+    public void GroupingIgnoresCaseAndTrimsWhitespaceInSectionNames()
+    {
+        string? incomingA = null, incomingB = null, failedFolder = null, defaultFolder = null;
+        using var fx = new ShellFixture(cfg =>
+        {
+            incomingA = Path.Combine(cfg.Inbox, "..", "incomingA");
+            incomingB = Path.Combine(cfg.Inbox, "..", "incomingB");
+            failedFolder = Path.Combine(cfg.Inbox, "..", "failedFolder");
+            defaultFolder = Path.Combine(cfg.Inbox, "..", "defaultFolder");
+            Directory.CreateDirectory(incomingA);
+            Directory.CreateDirectory(incomingB);
+            Directory.CreateDirectory(failedFolder);
+            Directory.CreateDirectory(defaultFolder);
+            cfg.WatchFolders.Add(new WatchFolder
+            { Label = "Incoming A", Path = incomingA, Filetypes = "pdf", Section = "Incoming" });
+            cfg.WatchFolders.Add(new WatchFolder
+            { Label = "Incoming B", Path = incomingB, Filetypes = "pdf", Section = "incoming " });   // case + trailing space
+            cfg.WatchFolders.Add(new WatchFolder
+            { Label = "Failed", Path = failedFolder, Filetypes = "pdf", Section = "Failed" });
+            cfg.WatchFolders.Add(new WatchFolder
+            { Label = "Misc", Path = defaultFolder, Filetypes = "pdf" });   // blank -> default group
+        });
+        File.WriteAllText(Path.Combine(incomingA!, "a.pdf"), "x");
+        File.WriteAllText(Path.Combine(incomingB!, "b.pdf"), "x");
+        File.WriteAllText(Path.Combine(failedFolder!, "c.pdf"), "x");
+        File.WriteAllText(Path.Combine(defaultFolder!, "d.pdf"), "x");
+        fx.Shell.Initialize();
+
+        Assert.Equal(3, fx.Shell.TileGroups.Count);
+        Assert.Equal("Incoming", fx.Shell.TileGroups[0].Title);   // first-seen casing wins
+        Assert.Equal(2, fx.Shell.TileGroups[0].Tiles.Count);
+        Assert.Equal("Failed", fx.Shell.TileGroups[1].Title);
+        Assert.Single(fx.Shell.TileGroups[1].Tiles);
+        Assert.Equal("Monitored folders", fx.Shell.TileGroups[2].Title);   // default heading
+        Assert.Single(fx.Shell.TileGroups[2].Tiles);
+    }
 }

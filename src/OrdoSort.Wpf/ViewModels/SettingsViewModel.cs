@@ -472,11 +472,16 @@ public sealed class SettingsViewModel : ObservableObject
 
         AddAlertCommand = new RelayCommand(() =>
         {
-            var term = NewAlertText.Trim();
+            var text = NewAlertText;
             NewAlertText = "";
-            if (term.Length == 0) return;
-            if (!AlertTerms.Any(t => string.Equals(t, term, StringComparison.CurrentCultureIgnoreCase)))
-                AlertTerms.Add(term);
+            var terms = text.Split(new[] { ',', '\r', '\n' },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var term in terms)
+            {
+                if (term.Length == 0) continue;
+                if (!AlertTerms.Any(t => string.Equals(t, term, StringComparison.CurrentCultureIgnoreCase)))
+                    AlertTerms.Add(term);
+            }
         });
         RemoveAlertCommand = new RelayCommand<string>(t => AlertTerms.Remove(t));
         AlertTerms.CollectionChanged += (_, _) => RecomputeTilePreview();

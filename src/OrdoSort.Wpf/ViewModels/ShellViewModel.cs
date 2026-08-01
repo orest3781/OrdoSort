@@ -412,23 +412,24 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     {
         var statuses = swept ?? new List<FolderMonitor.FolderStatus>();
         var p = _palette();
+        var defaultTitle = string.IsNullOrWhiteSpace(_cfg.MonitorTitle)
+            ? "Monitored folders" : _cfg.MonitorTitle;
         var signature = statuses.Select(s =>
             $"{s.Label}|{s.Path}|{s.Color}|{s.Count}|{s.Error}|{s.Alerting}"
             + $"|{string.Join(",", s.AlertFolders)}|{s.Section}").ToList();
+        signature.Add(defaultTitle);
         if (!ReferenceEquals(p, _tilePalette) || !signature.SequenceEqual(_tileSignature))
         {
             _tileSignature = signature;
             _tilePalette = p;
             Tiles.Clear();
             TileGroups.Clear();
-            var defaultTitle = string.IsNullOrWhiteSpace(_cfg.MonitorTitle)
-                ? "Monitored folders" : _cfg.MonitorTitle;
-            var byTitle = new Dictionary<string, TileGroupViewModel>(StringComparer.CurrentCulture);
+            var byTitle = new Dictionary<string, TileGroupViewModel>(StringComparer.CurrentCultureIgnoreCase);
             foreach (var s in statuses)
             {
                 var tile = new TileViewModel(s, p);
                 Tiles.Add(tile);
-                var title = string.IsNullOrWhiteSpace(s.Section) ? defaultTitle : s.Section;
+                var title = string.IsNullOrWhiteSpace(s.Section) ? defaultTitle : s.Section.Trim();
                 if (!byTitle.TryGetValue(title, out var group))
                 {
                     group = new TileGroupViewModel(title);
