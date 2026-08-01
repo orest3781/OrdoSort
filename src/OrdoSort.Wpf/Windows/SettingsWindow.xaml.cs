@@ -71,6 +71,31 @@ public partial class SettingsWindow : Window
             w.Color = color;
     }
 
+    private void OnSectionRenameClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: WatchSectionVm h } btn) return;
+        _vm.BeginSectionRename(h);
+        // focus the edit box once its Visible state has applied
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (btn.Parent is StackPanel { Parent: Grid g })
+                foreach (var child in g.Children)
+                    if (child is TextBox tb) { tb.Focus(); tb.SelectAll(); }
+        }), System.Windows.Threading.DispatcherPriority.Input);
+    }
+
+    private void OnSectionEditLostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox { DataContext: WatchSectionVm h }) _vm.CommitSectionRename(h);
+    }
+
+    private void OnSectionEditKeyDown(object sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox { DataContext: WatchSectionVm h }) return;
+        if (e.Key == Key.Enter) { _vm.CommitSectionRename(h); e.Handled = true; }
+        else if (e.Key == Key.Escape) { _vm.CancelSectionRename(h); e.Handled = true; }
+    }
+
     private void OnFontSizePreset(object sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: string size }) _vm.UiFontSizeText = size;
@@ -108,6 +133,7 @@ public partial class SettingsWindow : Window
             && Math.Abs(moved.Y) < SystemParameters.MinimumVerticalDragDistance) return;
         var item = _dragItem;
         _dragItem = null;
+        if (item is not (RouteEditVm or WatchEditVm)) return;   // headers don't drag
         DragDrop.DoDragDrop((ListBox)sender, item, DragDropEffects.Move);
     }
 
@@ -128,8 +154,7 @@ public partial class SettingsWindow : Window
         }
         else if (list == WatchList && e.Data.GetData(typeof(WatchEditVm)) is WatchEditVm watch)
         {
-            MoveWithin(_vm.WatchFolders, watch, over as WatchEditVm);
-            _vm.SelectedWatch = watch;
+            _vm.DropWatch(watch, over);
         }
     }
 

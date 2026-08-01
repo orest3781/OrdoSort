@@ -514,27 +514,14 @@
                 <Grid Margin="16,8">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <StackPanel>
-                        <Grid Style="{StaticResource FieldRow}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Section heading:" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" Text="{Binding MonitorTitle, UpdateSourceTrigger=PropertyChanged}" />
-                        </Grid>
-                        <TextBlock Style="{StaticResource NoteText}" Text="Folders without a section land under this heading." />
-                    </StackPanel>
-
-                    <TextBlock Grid.Row="1" Text="Monitored folders" Style="{StaticResource SectionText}" Margin="0,14,0,10" />
+                    <TextBlock Text="Monitored folders" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
                     <!-- the folder editor takes all remaining height — a long
                          folder list gets the space, not a cramped fixed strip -->
-                    <Grid Grid.Row="2">
+                    <Grid Grid.Row="1">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="230" />
                                 <ColumnDefinition Width="*" />
@@ -548,14 +535,51 @@
                                     <Button Content="↓" Command="{Binding WatchDownCommand}" MinWidth="34" Margin="0,0,0,4"
                                             ToolTip="Move down — tiles show in this order (or drag rows)" />
                                 </WrapPanel>
-                                <ListBox x:Name="WatchList" ItemsSource="{Binding WatchFolders}"
-                                         SelectedItem="{Binding SelectedWatch}" AllowDrop="True"
+                                <ListBox x:Name="WatchList" ItemsSource="{Binding WatchRows}"
+                                         SelectedItem="{Binding SelectedWatchRow}" AllowDrop="True"
                                          PreviewMouseLeftButtonDown="List_DragArm"
                                          PreviewMouseMove="List_DragMove"
                                          Drop="List_Drop" DragOver="List_DragOver">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Orientation="Horizontal">
+                                    <ListBox.Resources>
+                                        <DataTemplate DataType="{x:Type vm:WatchSectionVm}">
+                                            <Grid>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <StackPanel.Style>
+                                                        <Style TargetType="StackPanel">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </StackPanel.Style>
+                                                    <TextBlock Text="{Binding Header}" FontWeight="SemiBold"
+                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                    <Button Content="✎" Margin="6,0,0,0" Padding="3,0"
+                                                            Background="Transparent" BorderThickness="0"
+                                                            Click="OnSectionRenameClick"
+                                                            ToolTip="Rename this section — updates every folder in it"
+                                                            AutomationProperties.Name="{Binding Header, StringFormat=Rename section {0}}" />
+                                                </StackPanel>
+                                                <TextBox Text="{Binding EditText, UpdateSourceTrigger=PropertyChanged}"
+                                                         LostFocus="OnSectionEditLostFocus"
+                                                         PreviewKeyDown="OnSectionEditKeyDown"
+                                                         AutomationProperties.Name="{Binding Header, StringFormat=Section name {0}}">
+                                                    <TextBox.Style>
+                                                        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBox.Style>
+                                                </TextBox>
+                                            </Grid>
+                                        </DataTemplate>
+                                        <DataTemplate DataType="{x:Type vm:WatchEditVm}">
+                                            <StackPanel Orientation="Horizontal" Margin="12,0,0,0">
                                                 <Rectangle Width="12" Height="12" RadiusX="2" RadiusY="2"
                                                            VerticalAlignment="Center" Margin="0,0,7,0"
                                                            Fill="{Binding Color, Converter={StaticResource ColorStringToBrush}}"
@@ -563,7 +587,7 @@
                                                 <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
                                         </DataTemplate>
-                                    </ListBox.ItemTemplate>
+                                    </ListBox.Resources>
                                 </ListBox>
                             </DockPanel>
                             <ScrollViewer Grid.Column="1" Margin="16,0,0,0" VerticalScrollBarVisibility="Auto"
@@ -587,16 +611,12 @@
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="110" />
                                         <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="180" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="Label:" Style="{StaticResource FieldLabel}" />
                                     <TextBox Grid.Column="1" Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}" />
-                                </Grid>
-                                <Grid Style="{StaticResource FieldRow}">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="110" />
-                                        <ColumnDefinition Width="220" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Section:" Style="{StaticResource FieldLabel}" />
+                                    <TextBlock Grid.Column="2" Text="Section:" Style="{StaticResource FieldLabel}" Margin="12,0,10,0" />
                                     <!-- IsTextSearchEnabled=False: an editable ComboBox's built-in
                                          text search otherwise (a) auto-completes a typed prefix into
                                          a full matching choice mid-keystroke, hijacking what was typed,
@@ -607,11 +627,11 @@
                                          Proven with a throwaway WPF harness (real TextComposition input
                                          events) before this attribute was added; removing it reproduces
                                          both failures. -->
-                                    <ComboBox Grid.Column="1" IsEditable="True" IsTextSearchEnabled="False"
+                                    <ComboBox Grid.Column="3" IsEditable="True" IsTextSearchEnabled="False"
                                               ItemsSource="{Binding DataContext.SectionChoices,
                                                             RelativeSource={RelativeSource AncestorType=Window}}"
                                               Text="{Binding Section, UpdateSourceTrigger=PropertyChanged}"
-                                              ToolTip="Dashboard group this folder appears under — blank uses the Section heading above" />
+                                              ToolTip="Dashboard group this folder appears under — or manage sections directly in the list" />
                                 </Grid>
                                 <Grid Style="{StaticResource FieldRow}">
                                     <Grid.ColumnDefinitions>
@@ -695,39 +715,42 @@
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="110" />
                                         <ColumnDefinition Width="120" />
+                                        <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Tile color:" Style="{StaticResource FieldLabel}" />
-                                    <TextBox Grid.Column="1" Text="{Binding Color, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Tile color:" Style="{StaticResource FieldLabel}"
+                                               VerticalAlignment="Top" Margin="0,4,10,0" />
+                                    <TextBox Grid.Column="1" VerticalAlignment="Top"
+                                             Text="{Binding Color, UpdateSourceTrigger=PropertyChanged}" />
+                                    <ItemsControl Grid.Column="2" Margin="8,0,0,0"
+                                                  ItemsSource="{x:Static vm:SettingsViewModel.SwatchColors}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Style="{StaticResource Swatch}" Click="OnWatchSwatch"
+                                                        Tag="{Binding}" ToolTip="{Binding}"
+                                                        AutomationProperties.Name="{Binding}"
+                                                        Foreground="{Binding Converter={StaticResource ColorStringToForeBrush}}">
+                                                    <Button.Background>
+                                                        <SolidColorBrush Color="{Binding}" />
+                                                    </Button.Background>
+                                                    <TextBlock FontWeight="Bold">
+                                                        <TextBlock.Text>
+                                                            <MultiBinding Converter="{StaticResource SwatchCheck}">
+                                                                <Binding />
+                                                                <Binding Path="DataContext.SelectedWatch.Color"
+                                                                         RelativeSource="{RelativeSource AncestorType=Window}" />
+                                                            </MultiBinding>
+                                                        </TextBlock.Text>
+                                                    </TextBlock>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </Grid>
-                                <ItemsControl ItemsSource="{x:Static vm:SettingsViewModel.SwatchColors}"
-                                              Margin="110,2,0,8">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Button Style="{StaticResource Swatch}" Click="OnWatchSwatch"
-                                                    Tag="{Binding}" ToolTip="{Binding}"
-                                                    AutomationProperties.Name="{Binding}"
-                                                    Foreground="{Binding Converter={StaticResource ColorStringToForeBrush}}">
-                                                <Button.Background>
-                                                    <SolidColorBrush Color="{Binding}" />
-                                                </Button.Background>
-                                                <TextBlock FontWeight="Bold">
-                                                    <TextBlock.Text>
-                                                        <MultiBinding Converter="{StaticResource SwatchCheck}">
-                                                            <Binding />
-                                                            <Binding Path="DataContext.SelectedWatch.Color"
-                                                                     RelativeSource="{RelativeSource AncestorType=Window}" />
-                                                        </MultiBinding>
-                                                    </TextBlock.Text>
-                                                </TextBlock>
-                                            </Button>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
                               </StackPanel>
 
                               <!-- the card exactly as Ready will show it —
@@ -764,61 +787,64 @@
                             </ScrollViewer>
                         </Grid>
 
-                    <StackPanel Grid.Row="3">
-                        <TextBlock Text="Alerts" Style="{StaticResource SectionText}" Margin="0,14,0,10" />
-                        <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap"
-                                   Text="Filenames containing any of these terms flash the tile and the inbox count red. Matching ignores case and looks at filenames only:" />
-                        <ItemsControl ItemsSource="{Binding AlertTerms}" Focusable="False" Margin="0,4,0,4">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="{DynamicResource Theme.Surface}"
-                                            BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
-                                            CornerRadius="4" Padding="8,2" Margin="0,0,6,6">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding}" VerticalAlignment="Center" />
-                                            <Button Content="✕" Margin="6,0,0,0" Padding="2,0"
-                                                    Background="Transparent" BorderThickness="0"
-                                                    AutomationProperties.Name="{Binding StringFormat=Remove alert term {0}}"
-                                                    Command="{Binding DataContext.RemoveAlertCommand,
-                                                              RelativeSource={RelativeSource AncestorType=Window}}"
-                                                    CommandParameter="{Binding}" />
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <DockPanel Margin="0,0,0,4">
-                            <Button DockPanel.Dock="Right" Content="Add" MinWidth="48" Margin="6,0,0,0"
-                                    Command="{Binding AddAlertCommand}" />
-                            <TextBox Text="{Binding NewAlertText, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="New alert term">
-                                <TextBox.InputBindings>
-                                    <KeyBinding Key="Return" Command="{Binding AddAlertCommand}" />
-                                </TextBox.InputBindings>
-                            </TextBox>
-                        </DockPanel>
-                        <CheckBox Content="Flash alerts (uncheck for a steady highlight)"
-                                  IsChecked="{Binding FlashAlerts}" />
-
-                        <Grid Margin="0,10,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="52" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Check folders every" VerticalAlignment="Center"
-                                       Margin="0,0,8,0" />
-                            <TextBox Grid.Column="1"
-                                     Text="{Binding PollSecondsText, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="Check folders every seconds" />
-                            <TextBlock Grid.Column="2" Text="sec" VerticalAlignment="Center"
-                                       Margin="6,0,0,0" />
-                            <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="10,0,0,0"
-                                        VerticalAlignment="Center">
+                    <Grid Grid.Row="2" Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="300" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Alerts" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
+                            <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap"
+                                       Text="Filenames containing these terms flash the tile and the inbox count red (ignores case):" />
+                            <ScrollViewer MaxHeight="64" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled" Focusable="False"
+                                          Margin="0,4,0,4">
+                                <ItemsControl ItemsSource="{Binding AlertTerms}" Focusable="False">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{DynamicResource Theme.Surface}"
+                                                    BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
+                                                    CornerRadius="4" Padding="8,2" Margin="0,0,6,6">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding}" VerticalAlignment="Center" />
+                                                    <Button Content="✕" Margin="6,0,0,0" Padding="2,0"
+                                                            Background="Transparent" BorderThickness="0"
+                                                            AutomationProperties.Name="{Binding StringFormat=Remove alert term {0}}"
+                                                            Command="{Binding DataContext.RemoveAlertCommand,
+                                                                      RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            CommandParameter="{Binding}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            <DockPanel Margin="0,0,0,4">
+                                <Button DockPanel.Dock="Right" Content="Add" MinWidth="48" Margin="6,0,0,0"
+                                        Command="{Binding AddAlertCommand}" />
+                                <TextBox Text="{Binding NewAlertText, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="New alert term">
+                                    <TextBox.InputBindings>
+                                        <KeyBinding Key="Return" Command="{Binding AddAlertCommand}" />
+                                    </TextBox.InputBindings>
+                                </TextBox>
+                            </DockPanel>
+                            <CheckBox Content="Flash alerts (uncheck for a steady highlight)"
+                                      IsChecked="{Binding FlashAlerts}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="16,0,0,0">
+                            <TextBlock Text="Polling" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Check folders every" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBox Width="52"
+                                         Text="{Binding PollSecondsText, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Check folders every seconds" />
+                                <TextBlock Text="sec" VerticalAlignment="Center" Margin="6,0,0,0" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                 <Button Tag="5" Click="OnPollPreset" MinWidth="34"
                                         Style="{StaticResource ChipButton}" AutomationProperties.Name="5">
                                     <TextBlock Text="5" Style="{StaticResource ChipButtonLabel}" />
@@ -836,11 +862,10 @@
                                     <TextBlock Text="60" Style="{StaticResource ChipButtonLabel}" />
                                 </Button>
                             </StackPanel>
-                        </Grid>
-                        <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap"
-                                   Margin="0,4,0,0"
-                                   Text="Lower = alerts appear sooner; higher = gentler on a network share. The inbox and set-aside folders are watched live regardless." />
-                    </StackPanel>
+                            <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Text="Lower = alerts appear sooner; higher = gentler on a network share." />
+                        </StackPanel>
+                    </Grid>
                 </Grid>
             </TabItem>
 
