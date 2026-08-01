@@ -281,7 +281,7 @@ public sealed class Config
         // The "template" naming mode was removed (2026-08). A config that
         // still carries it loads as "replace" — the closest surviving
         // semantics — so an old file never fails validation over a mode
-        // that no longer exists. (Its naming_template value, if any, rides
+        // that no longer exists. (Its old template value, if any, rides
         // along untyped in Extras.)
         if (NamingMode == "template") NamingMode = "replace";
         Sort ??= "size_desc";

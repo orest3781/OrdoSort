@@ -69,7 +69,6 @@ public static partial class Naming
         return mode;
     }
 
-
     /// <summary>Filename STEM after applying the typed name per mode. A blank
     /// name preserves the original stem in every mode.</summary>
     public static string ApplyName(string originalFilename, string typedName, string mode)
