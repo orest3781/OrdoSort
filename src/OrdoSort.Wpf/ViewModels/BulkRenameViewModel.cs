@@ -80,6 +80,21 @@ public sealed class BulkRenameViewModel : ObservableObject
     private int _caseIndex;
     public int CaseIndex { get => _caseIndex; set { if (Set(ref _caseIndex, value)) Refresh(); } }
 
+    private bool _deleteSeg1;
+    public bool DeleteSeg1 { get => _deleteSeg1; set { if (Set(ref _deleteSeg1, value)) Refresh(); } }
+
+    private bool _deleteSeg2;
+    public bool DeleteSeg2 { get => _deleteSeg2; set { if (Set(ref _deleteSeg2, value)) Refresh(); } }
+
+    private bool _deleteSeg3;
+    public bool DeleteSeg3 { get => _deleteSeg3; set { if (Set(ref _deleteSeg3, value)) Refresh(); } }
+
+    private bool _deleteSeg4;
+    public bool DeleteSeg4 { get => _deleteSeg4; set { if (Set(ref _deleteSeg4, value)) Refresh(); } }
+
+    private bool _deleteSegLast;
+    public bool DeleteSegLast { get => _deleteSegLast; set { if (Set(ref _deleteSegLast, value)) Refresh(); } }
+
     private string _status = "";
     public string Status { get => _status; private set => Set(ref _status, value); }
 
@@ -99,10 +114,21 @@ public sealed class BulkRenameViewModel : ObservableObject
     public RelayCommand UndoCommand { get; }
     public RelayCommand ClearCommand { get; }
 
-    private RenameOp CurrentOp() => new(
-        Find: Find, Replace: Replace, Prefix: Prefix, Suffix: Suffix,
-        Case: CaseIndex switch { 1 => "upper", 2 => "lower", _ => "keep" },
-        ReceivedDate: ReviewMode ? ReceivedDate.ToString("yyyyMMdd") : "");
+    private RenameOp CurrentOp()
+    {
+        var deletePositions = new List<int>();
+        if (DeleteSeg1) deletePositions.Add(1);
+        if (DeleteSeg2) deletePositions.Add(2);
+        if (DeleteSeg3) deletePositions.Add(3);
+        if (DeleteSeg4) deletePositions.Add(4);
+
+        return new(
+            Find: Find, Replace: Replace, Prefix: Prefix, Suffix: Suffix,
+            Case: CaseIndex switch { 1 => "upper", 2 => "lower", _ => "keep" },
+            ReceivedDate: ReviewMode ? ReceivedDate.ToString("yyyyMMdd") : "",
+            DeleteSegments: deletePositions.Count > 0 ? deletePositions : null,
+            DeleteLastSegment: DeleteSegLast);
+    }
 
     public void AddFiles(IEnumerable<string> paths)
     {
@@ -215,6 +241,7 @@ public sealed class BulkRenameViewModel : ObservableObject
         Find = Replace = Prefix = Suffix = "";
         CaseIndex = 0;
         ReviewMode = false;
+        DeleteSeg1 = DeleteSeg2 = DeleteSeg3 = DeleteSeg4 = DeleteSegLast = false;
         Refresh();
         UndoCommand.RaiseCanExecuteChanged();
         Status = failed.Count > 0

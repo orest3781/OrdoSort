@@ -46,6 +46,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,0,6,6" />
                 <TextBox Grid.Column="1" Margin="0,0,14,6"
@@ -65,6 +66,14 @@
                 <TextBlock Grid.Row="1" Grid.Column="2" Text="Add at end:" VerticalAlignment="Center" Margin="0,0,6,0" />
                 <TextBox Grid.Row="1" Grid.Column="3" Margin="0,0,14,0"
                          Text="{Binding Suffix, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBlock Grid.Row="2" Text="Delete segment:" VerticalAlignment="Center" Margin="0,6,6,0" />
+                <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,6,14,0">
+                    <CheckBox Content="1" IsChecked="{Binding DeleteSeg1}" Margin="0,0,8,0" />
+                    <CheckBox Content="2" IsChecked="{Binding DeleteSeg2}" Margin="0,0,8,0" />
+                    <CheckBox Content="3" IsChecked="{Binding DeleteSeg3}" Margin="0,0,8,0" />
+                    <CheckBox Content="4" IsChecked="{Binding DeleteSeg4}" Margin="0,0,8,0" />
+                    <CheckBox Content="last" IsChecked="{Binding DeleteSegLast}" />
+                </StackPanel>
             </Grid>
 
             <DockPanel Grid.Row="2" Margin="0,0,0,8">

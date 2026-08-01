@@ -679,6 +679,75 @@ public class BulkRenameViewModelTests : IDisposable
         Assert.True(File.Exists(src));
         Assert.Equal("Original names restored.", vm.Status);
     }
+
+    [Fact]
+    public void DeleteSegment2ProducesCorrectPreview()
+    {
+        var vm = new BulkRenameViewModel();
+        vm.AddFiles(new[] { Touch("A-B-C.pdf") });
+        vm.DeleteSeg2 = true;
+
+        Assert.Equal("A-C.pdf", vm.Preview[0].NewName);
+        Assert.True(vm.Preview[0].Changed);
+    }
+
+    [Fact]
+    public void DeleteSegment2AndLastProducesCorrectPreview()
+    {
+        var vm = new BulkRenameViewModel();
+        vm.AddFiles(new[] { Touch("A-B-C.pdf") });
+        vm.DeleteSeg2 = true;
+        vm.DeleteSegLast = true;
+
+        Assert.Equal("A.pdf", vm.Preview[0].NewName);
+        Assert.True(vm.Preview[0].Changed);
+    }
+
+    [Fact]
+    public void UncheckedDeleteSegmentsReturnsOriginal()
+    {
+        var vm = new BulkRenameViewModel();
+        vm.AddFiles(new[] { Touch("A-B-C.pdf") });
+        vm.DeleteSeg2 = true;
+        Assert.Equal("A-C.pdf", vm.Preview[0].NewName);
+
+        vm.DeleteSeg2 = false;
+        Assert.Equal("A-B-C.pdf", vm.Preview[0].NewName);
+        Assert.False(vm.Preview[0].Changed);
+    }
+
+    [Fact]
+    public void HandEditedTargetStillOverridesDeleteSegments()
+    {
+        var vm = new BulkRenameViewModel();
+        var src = Touch("A-B-C.pdf");
+        vm.AddFiles(new[] { src });
+        vm.DeleteSeg2 = true;
+        Assert.Equal("A-C.pdf", vm.Preview[0].NewName);
+
+        vm.SetOverride(src, "CUSTOM-NAME.pdf");
+        Assert.Equal("CUSTOM-NAME.pdf", vm.Preview[0].NewName);
+        Assert.True(vm.Preview[0].Manual);
+
+        vm.DeleteSeg2 = false;
+        Assert.Equal("CUSTOM-NAME.pdf", vm.Preview[0].NewName);
+    }
+
+    [Fact]
+    public void DeleteSegmentsResetAfterApply()
+    {
+        var vm = new BulkRenameViewModel();
+        var src = Touch("A-B-C.pdf");
+        vm.AddFiles(new[] { src });
+        vm.DeleteSeg2 = true;
+        vm.Apply();
+
+        Assert.False(vm.DeleteSeg1);
+        Assert.False(vm.DeleteSeg2);
+        Assert.False(vm.DeleteSeg3);
+        Assert.False(vm.DeleteSeg4);
+        Assert.False(vm.DeleteSegLast);
+    }
 }
 
 public class MatchMergeViewModelTests : IDisposable
