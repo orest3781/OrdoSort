@@ -116,7 +116,7 @@ public sealed class RouteEditVm : ObservableObject
 /// <summary>An editable watch-folder row (Dashboard section).</summary>
 public sealed class WatchEditVm : ObservableObject
 {
-    private string _label = "", _path = "", _filetypes = "", _color = "";
+    private string _label = "", _path = "", _filetypes = "", _color = "", _section = "";
     private bool _recursive;
 
     public string Label { get => _label; set => Set(ref _label, value); }
@@ -125,6 +125,10 @@ public sealed class WatchEditVm : ObservableObject
         get => _path;
         set { if (Set(ref _path, value)) Raise(nameof(Problem)); }
     }
+
+    /// <summary>Dashboard group this folder appears under — blank uses the
+    /// Section-heading field above the folder list.</summary>
+    public string Section { get => _section; set => Set(ref _section, value); }
 
     public string Filetypes
     {
@@ -232,6 +236,7 @@ public sealed class WatchEditVm : ObservableObject
         Filetypes = w.Filetypes,
         Recursive = w.Recursive,
         Color = w.Color ?? "",
+        Section = w.Section,
         Extras = new Dictionary<string, JsonElement>(w.Extras),
     };
 
@@ -242,6 +247,7 @@ public sealed class WatchEditVm : ObservableObject
         Filetypes = Filetypes.Trim(),
         Recursive = Recursive,
         Color = Color.Length == 0 ? null : Color.Trim(),
+        Section = Section.Trim(),
         Extras = new Dictionary<string, JsonElement>(Extras),
     };
 }
@@ -1056,9 +1062,19 @@ public sealed class SettingsViewModel : ObservableObject
                 WatchUpCommand.RaiseCanExecuteChanged();
                 WatchDownCommand.RaiseCanExecuteChanged();
                 RecomputeTilePreview();
+                Raise(nameof(SectionChoices));
             }
         }
     }
+
+    /// <summary>Sections already in use by the OTHER monitored folders —
+    /// the pick-or-type dropdown for the selected folder's Section box.</summary>
+    public IEnumerable<string> SectionChoices =>
+        WatchFolders.Where(w => !ReferenceEquals(w, SelectedWatch))
+               .Select(w => w.Section.Trim())
+               .Where(s => s.Length > 0)
+               .Distinct(StringComparer.CurrentCultureIgnoreCase)
+               .ToList();
 
     private bool CanMoveWatch(int delta)
     {

@@ -511,6 +511,48 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
+    public void WatchFolderSectionRoundTripsThroughSettings()
+    {
+        var cfg = new Config
+        {
+            Inbox = _dir,
+            WatchFolders =
+            {
+                new WatchFolder { Label = "Failed", Path = _dir, Section = "Failed queues" },
+                new WatchFolder { Label = "New", Path = _dir },   // blank section
+            },
+        };
+        var vm = new SettingsViewModel(cfg, _dialogs);
+        Assert.Equal("Failed queues", vm.WatchFolders[0].Section);
+        Assert.Equal("", vm.WatchFolders[1].Section);
+
+        vm.WatchFolders[1].Section = "Incoming";
+
+        Assert.True(vm.TryBuildResult());
+        Assert.Equal(new[] { "Failed queues", "Incoming" },
+            vm.Result!.WatchFolders.Select(w => w.Section));
+    }
+
+    [Fact]
+    public void SectionChoicesListsTheOtherFoldersDistinctSections()
+    {
+        var cfg = new Config
+        {
+            Inbox = _dir,
+            WatchFolders =
+            {
+                new WatchFolder { Label = "A", Path = _dir, Section = "Incoming" },
+                new WatchFolder { Label = "B", Path = _dir, Section = "incoming" },   // case-dup
+                new WatchFolder { Label = "C", Path = _dir },                        // blank
+            },
+        };
+        var vm = new SettingsViewModel(cfg, _dialogs);
+        vm.SelectedWatch = vm.WatchFolders[2];
+
+        Assert.Equal(new[] { "Incoming" }, vm.SectionChoices);
+    }
+
+    [Fact]
     public void AddPasswordRefusesBlankFields()
     {
         var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs);
