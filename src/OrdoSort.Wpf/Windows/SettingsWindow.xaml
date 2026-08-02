@@ -633,6 +633,9 @@
                                          Proven with a throwaway WPF harness (real TextComposition input
                                          events) before this attribute was added; removing it reproduces
                                          both failures. -->
+                                    <!-- pick-or-type: text search stays OFF so typing a
+                                         new section ("Incoming 2") isn't auto-completed
+                                         onto an existing one -->
                                     <ComboBox Grid.Column="3" IsEditable="True" IsTextSearchEnabled="False"
                                               ItemsSource="{Binding DataContext.SectionChoices,
                                                             RelativeSource={RelativeSource AncestorType=Window}}"

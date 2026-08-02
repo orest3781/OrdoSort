@@ -570,12 +570,24 @@
                                 </ControlTemplate>
                             </ToggleButton.Template>
                         </ToggleButton>
-                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                        <ContentPresenter x:Name="ContentSite" Margin="{TemplateBinding Padding}"
                                           HorizontalAlignment="Left" VerticalAlignment="Center"
                                           IsHitTestVisible="False"
                                           Content="{TemplateBinding SelectionBoxItem}"
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                           ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" />
+                        <!-- Editable mode: WPF binds editing to a part of exactly
+                             this name. The implicit TextBox style is deliberately
+                             kept (themed context menu, caret, selection); only its
+                             chrome is neutralized by these local values, which
+                             outrank style setters. The right margin keeps the
+                             drop-down arrow clickable. -->
+                        <TextBox x:Name="PART_EditableTextBox"
+                                 Visibility="Collapsed"
+                                 Margin="8,0,28,0" Padding="0" MinHeight="0"
+                                 VerticalAlignment="Center"
+                                 Background="Transparent" BorderThickness="0"
+                                 IsReadOnly="{TemplateBinding IsReadOnly}" />
                         <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom"
                                AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
                             <Border Background="{DynamicResource Theme.Surface}"
@@ -591,6 +603,10 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.5" />
+                        </Trigger>
+                        <Trigger Property="IsEditable" Value="True">
+                            <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="ContentSite" Property="Visibility" Value="Collapsed" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
