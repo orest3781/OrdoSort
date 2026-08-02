@@ -128,6 +128,25 @@
         </Setter>
     </Style>
 
+    <!-- Explicit editor menus: WPF's built-in TextBox/PasswordBox context
+         menu is made of PRIVATE MenuItem/ContextMenu subclasses, which
+         implicit styles never match (exact-type lookup) — so the themed
+         menu styles in this file can't reach it. Handing every text box a
+         menu of REAL types is the reliable route; ApplicationCommands
+         routing keeps enable/disable and the gesture text identical to
+         stock. x:Shared=False: each control gets its own instance, so one
+         menu is never torn between two placement targets. -->
+    <ContextMenu x:Key="EditorContextMenu" x:Shared="False">
+        <MenuItem Header="Cut" Command="Cut" />
+        <MenuItem Header="Copy" Command="Copy" />
+        <MenuItem Header="Paste" Command="Paste" />
+        <Separator />
+        <MenuItem Header="Select all" Command="SelectAll" />
+    </ContextMenu>
+    <ContextMenu x:Key="PasswordContextMenu" x:Shared="False">
+        <MenuItem Header="Paste" Command="Paste" />
+    </ContextMenu>
+
     <Style TargetType="TextBox">
         <Setter Property="Background" Value="{DynamicResource Theme.Surface}" />
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
@@ -136,6 +155,7 @@
         <Setter Property="Padding" Value="6,5" />
         <Setter Property="CaretBrush" Value="{DynamicResource Theme.Text}" />
         <Setter Property="SelectionBrush" Value="{DynamicResource Theme.Accent}" />
+        <Setter Property="ContextMenu" Value="{StaticResource EditorContextMenu}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
@@ -177,6 +197,7 @@
         <Setter Property="Padding" Value="6,5" />
         <Setter Property="CaretBrush" Value="{DynamicResource Theme.Text}" />
         <Setter Property="SelectionBrush" Value="{DynamicResource Theme.Accent}" />
+        <Setter Property="ContextMenu" Value="{StaticResource PasswordContextMenu}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="PasswordBox">
