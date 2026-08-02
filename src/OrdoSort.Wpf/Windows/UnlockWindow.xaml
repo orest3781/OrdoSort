@@ -42,9 +42,23 @@
                          AutomationProperties.Name="PDFs to unlock">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <!-- the filename is the news; the path is hover detail -->
+                            <!-- the filename is the news; the path is hover detail.
+                                 LOCAL Foreground bound back to the generated
+                                 ListBoxItem: an ItemTemplate assigns to the
+                                 container's ContentTemplate as a LOCAL value,
+                                 which outranks even Styles.xaml's ListBoxItem
+                                 style's own ContentTemplate Setter — so this
+                                 hand-authored TextBlock is exactly as exposed
+                                 to the "Style Setter outranks inheritance" trap
+                                 (Styles.xaml's implicit TextBlock style pins
+                                 Foreground=Theme.Text) as an auto-wrapped one;
+                                 without this binding the row stayed Theme.Text
+                                 even when selected (see Styles.xaml's
+                                 ListBoxItem comment). -->
                             <TextBlock Text="{Binding Converter={StaticResource FileName}}"
-                                       ToolTip="{Binding}" />
+                                       ToolTip="{Binding}"
+                                       Foreground="{Binding Foreground,
+                                           RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>

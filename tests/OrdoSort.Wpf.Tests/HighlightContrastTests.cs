@@ -6,7 +6,10 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using OrdoSort.Core;
 using OrdoSort.Wpf.Theme;
+using OrdoSort.Wpf.ViewModels;
+using OrdoSort.Wpf.Windows;
 
 namespace OrdoSort.Wpf.Tests;
 
@@ -53,6 +56,23 @@ public sealed class HighlightContrastFixture : IDisposable
                     Source = new Uri("pack://application:,,,/OrdoSort;component/Theme/Styles.xaml"),
                 });
             }
+            // App.xaml declares these converters as loose Application.Resources
+            // entries (not a separate merge-able ResourceDictionary), and this
+            // fixture deliberately never constructs the real App (see the
+            // class doc above) — so a real production Window that resolves
+            // one via StaticResource (UnlockWindow's BoolToVis/FileName/
+            // ZeroToVis) throws "resource not found" unless it's wired here
+            // too. These are the SAME converter TYPES App.xaml uses (not a
+            // reimplementation of their logic), just supplied under the keys
+            // production code expects, only if not already present (so this
+            // stays a no-op the moment a real App does get constructed on
+            // this Resources instance first).
+            if (!app.Resources.Contains("BoolToVis"))
+                app.Resources["BoolToVis"] = new System.Windows.Controls.BooleanToVisibilityConverter();
+            if (!app.Resources.Contains("ZeroToVis"))
+                app.Resources["ZeroToVis"] = new OrdoSort.Wpf.Views.ZeroToVisibilityConverter();
+            if (!app.Resources.Contains("FileName"))
+                app.Resources["FileName"] = new OrdoSort.Wpf.Views.FileNameConverter();
             dispatcher = Dispatcher.CurrentDispatcher;
             // ready must be set from ON this thread, after Dispatcher.CurrentDispatcher
             // exists, but BEFORE Dispatcher.Run() blocks it.
@@ -279,6 +299,203 @@ public class HighlightContrastTests : IClassFixture<HighlightContrastFixture>
         yield return new object[] { false };
         yield return new object[] { true };
     }
+
+    // ---------------------------------------------------------------- ListBox
+
+    /// <summary>Task 2 (theme-coverage audit, 2026-08-02): Styles.xaml has
+    /// ZERO ListBoxItem style, so selection currently renders through stock
+    /// WPF's default (Aero2) ListBoxItem template — the audit measured that
+    /// at 8.50-17.44:1, i.e. it ALREADY PASSES WCAG AA. A contrast-only
+    /// assertion therefore cannot fail here and would prove nothing; the
+    /// actual defect is BRAND, not contrast: the selected background is
+    /// stock Aero blue, not Theme.Accent, disagreeing with DataGridCell
+    /// (below in Styles.xaml) which already selects correctly. This test
+    /// asserts the resolved colours EQUAL the palette's Accent/AccentText
+    /// outright, which the stock blue fails regardless of its contrast
+    /// ratio.
+    ///
+    /// Uses a loose ListBoxItem (no owning ListBox needed — unlike
+    /// ComboBoxItem/MenuItem's read-only IsHighlighted above,
+    /// Selector.IsSelectedProperty is a plain public read/write DP, so no
+    /// reflection hack is needed to force it), the same
+    /// Realize-then-flip-then-Realize shape as
+    /// HighlightedComboBoxItemTextMeetsWcagAa.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SelectedListBoxItemUsesTheAccentPalette(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var container = new ListBoxItem { Content = "Invoices" };
+        Realize(container);
+        container.IsSelected = true;
+        Realize(container);
+
+        var text = FindTextElement(container)
+            ?? throw new InvalidOperationException("no TextBlock/AccessText descendant under ListBoxItem");
+        var bd = FindDescendant<Border>(container)
+            ?? throw new InvalidOperationException("no Border descendant under ListBoxItem");
+
+        var fg = ToRgb(ForegroundOf(text));
+        var bg = ToRgb(bd.Background);
+        Assert.Equal(p.Accent, bg);
+        Assert.Equal(p.AccentText, fg);
+        var ratio = ThemePalette.ContrastRatio(fg, bg);
+        Assert.True(ratio >= 4.5,
+            $"ListBoxItem selected ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+    });
+
+    /// <summary>Closes a gap the synthetic case above can't: every real
+    /// ListBox in this app (SettingsWindow's route/watch lists, LabelMaker's
+    /// client list, ManageSavedWindow, UnlockWindow's file list) supplies its
+    /// OWN ItemTemplate with hand-authored label TextBlocks, declared in
+    /// each window's own XAML — not a resource this suite can pull by key
+    /// the way ComboBoxItem's KvpValueTemplate/FontChoiceTemplate can (those
+    /// live in Styles.xaml specifically so they could be). An ItemTemplate's
+    /// TextBlock is exactly as vulnerable to the "Style Setter outranks
+    /// inheritance" trap documented throughout this file: without a LOCAL
+    /// Foreground binding back to its ListBoxItem, it resolves the
+    /// application-level implicit TextBlock style (Theme.Text) no matter
+    /// what the container's own Foreground is. Before this fix that
+    /// coincidentally read fine against stock Aero blue (near-black Text in
+    /// light mode, near-white Text in dark mode, both contrast acceptably
+    /// against a mid-tone blue) — but this app's dark-mode Accent is itself
+    /// a near-white light grey, so an unfixed label would go from
+    /// "accidentally passing" to genuinely illegible the moment the
+    /// selected background becomes Theme.Accent. UnlockWindow's FileList is
+    /// the cheapest real window to build (a bare <see cref="Config"/>, no
+    /// on-disk fixture needed), so this constructs the REAL, compiled window
+    /// and resolves its REAL FileList.ItemTemplate TextBlock via the visual
+    /// tree (never a named field — UnlockWindow's x:Name fields are
+    /// internal to OrdoSort.Wpf, which this test project has no
+    /// InternalsVisibleTo into), proving the local-Foreground-binding fix
+    /// added to UnlockWindow.xaml reaches what actually ships.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void SelectedUnlockFileListRowUsesTheAccentPalette(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var vm = new UnlockViewModel(new Config(), () => { });
+        vm.Files.Add(@"C:\inbox\20240101--1111111111.pdf");
+        var window = new UnlockWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+
+            var listBox = FindDescendant<ListBox>(window)
+                ?? throw new InvalidOperationException("no ListBox descendant under UnlockWindow");
+            listBox.SelectedIndex = 0;
+            PumpRender();
+            window.UpdateLayout();
+
+            var container = listBox.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem
+                ?? throw new InvalidOperationException("FileList row 0 never realized a container");
+
+            var text = FindTextElement(container)
+                ?? throw new InvalidOperationException("no TextBlock/AccessText descendant under FileList's ListBoxItem");
+            var bd = FindDescendant<Border>(container)
+                ?? throw new InvalidOperationException("no Border descendant under FileList's ListBoxItem");
+
+            var fg = ToRgb(ForegroundOf(text));
+            var bg = ToRgb(bd.Background);
+            Assert.Equal(p.Accent, bg);
+            Assert.Equal(p.AccentText, fg);
+            var ratio = ThemePalette.ContrastRatio(fg, bg);
+            Assert.True(ratio >= 4.5,
+                $"UnlockWindow FileList selected row ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    // ------------------------------------------------------- DocumentViewer
+
+    /// <summary>DocumentViewer's toolbar chrome (PrintPreviewWindow), Task 2:
+    /// Styles.xaml had NO ToolBar style at all, so its "MainPanelBorder"
+    /// chrome rendered stock Aero2's light-blue background (#FFEEF5FD)
+    /// regardless of theme — a stark white bar across the top of an
+    /// otherwise-dark window (rendered proof: printpreview-fixed-dark.png,
+    /// scratchpad root). A plain implicit ToolBar Style with Background/
+    /// Foreground Setters reaches it — confirmed via a visual-tree dump that
+    /// MainPanelBorder's own Background is TemplateBound to ToolBar.
+    /// Background — no retemplate needed here, unlike ComboBoxItem/TabItem/
+    /// MenuItem elsewhere in this file.
+    ///
+    /// This is a PARTIAL fix, honestly short of "no stock-white region
+    /// remains" — two pieces of the same chrome were investigated and found
+    /// unreachable via ordinary Styles.xaml declarations, not silently
+    /// dropped:
+    /// (1) The Find toolbar (Ctrl+F inside the preview) is
+    /// <c>MS.Internal.Documents.FindToolBar</c> — internal to
+    /// PresentationFramework, so no XAML in this app can name its exact
+    /// type to key an implicit style to it, and — confirmed by the same
+    /// dump — it does NOT fall back to a plain {x:Type ToolBar} style
+    /// despite deriving from ToolBar (this fix reached the real ToolBar's
+    /// MainPanelBorder but left FindToolBar's identically-named
+    /// MainPanelBorder at the stock colour). A reflection-based workaround
+    /// (resolve FindToolBar's System.Type at runtime and register a Style
+    /// under that exact key) is technically possible but wasn't taken: it
+    /// would pin this app's chrome to an undocumented internal type name
+    /// that could vanish on any .NET update, for a bar that only appears
+    /// behind an opt-in Ctrl+F, not the first-glance defect the main
+    /// toolbar was.
+    /// (2) The page-layout button group (ActualSize/PageWidth/WholePage/
+    /// TwoPages) keeps a stock light "chip" background. A matching
+    /// {x:Static ToolBar.ButtonStyleKey} Style (the mechanism that DID fix
+    /// the group separators, below) was tried and verified INERT — the same
+    /// dump showed every toolbar button's Background resolving to a
+    /// DrawingBrush byte-for-byte identically with or without that Setter,
+    /// meaning something baked into ToolBar's own stock per-button
+    /// ControlTemplate (almost certainly a template trigger) sets it
+    /// directly, outranking a plain Style Setter — reaching it would need a
+    /// full custom retemplate of the native per-button chrome, which risks
+    /// breaking the print/zoom/layout buttons' actual glyph rendering for a
+    /// cosmetic residual "chip" that reads far less jarring than the
+    /// full-width bar this fix already removes.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void PrintPreviewToolBarUsesThemeChrome(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var doc = OrdoSort.Wpf.Views.LabelPrinting.BuildDocument(
+            BoxLabels.Batch("ABCD", 1, 12, new DateTime(2026, 7, 25), 30));
+        var window = new PrintPreviewWindow(doc, "test", _ => { })
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+            window.UpdateLayout();
+
+            var toolBar = FindDescendant<ToolBar>(window)
+                ?? throw new InvalidOperationException("no ToolBar descendant under PrintPreviewWindow");
+            var separator = FindDescendant<Separator>(toolBar)
+                ?? throw new InvalidOperationException("no Separator descendant under the toolbar");
+
+            Assert.Equal(p.WindowBg, ToRgb(toolBar.Background));
+            Assert.Equal(p.Border, ToRgb(separator.Background));
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
 
     // ---------------------------------------------------------------- Calendar
 

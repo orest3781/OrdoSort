@@ -298,11 +298,27 @@
                                      PreviewMouseLeftButtonDown="List_DragArm"
                                      PreviewMouseMove="List_DragMove"
                                      Drop="List_Drop" DragOver="List_DragOver">
+                                <!-- BasedOn is required: setting ItemContainerStyle
+                                     at all REPLACES implicit-by-type lookup for
+                                     this ListBox's containers entirely (the same
+                                     "explicit wiring suppresses the fallback"
+                                     shape Task 1 found for Calendar's child
+                                     styles) — without it, this ListBox would keep
+                                     using the plain WPF default ListBoxItem no
+                                     matter what Styles.xaml says, regardless of
+                                     this override only adding one more Setter. -->
                                 <ListBox.ItemContainerStyle>
-                                    <Style TargetType="ListBoxItem">
+                                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                     </Style>
                                 </ListBox.ItemContainerStyle>
+                                <!-- Both labels get a LOCAL Foreground bound back
+                                     to the generated ListBoxItem — see
+                                     Styles.xaml's ListBoxItem style comment: an
+                                     ItemTemplate's LOCAL ContentTemplate
+                                     assignment outranks that style's own
+                                     ContentTemplate Setter, so only a call-site
+                                     fix reaches these. -->
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel>
@@ -312,8 +328,12 @@
                                                        Stroke="{DynamicResource Theme.Border}" StrokeThickness="1" />
                                             <TextBlock DockPanel.Dock="Right" Text="{Binding GestureText}"
                                                        Style="{StaticResource SubtleText}" FontSize="11"
-                                                       VerticalAlignment="Center" Margin="8,0,0,0" />
-                                            <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                                                       VerticalAlignment="Center" Margin="8,0,0,0"
+                                                       Foreground="{Binding Foreground,
+                                                           RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                                            <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"
+                                                       Foreground="{Binding Foreground,
+                                                           RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
                                         </DockPanel>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
@@ -557,8 +577,17 @@
                                                             </Style.Triggers>
                                                         </Style>
                                                     </StackPanel.Style>
+                                                    <!-- LOCAL Foreground bound back to the
+                                                         generated ListBoxItem — see Styles.xaml's
+                                                         ListBoxItem style comment: this
+                                                         DataTemplate's LOCAL ContentTemplate
+                                                         assignment outranks that style's own
+                                                         ContentTemplate Setter, so only a
+                                                         call-site fix reaches this label. -->
                                                     <TextBlock Text="{Binding Header}" FontWeight="SemiBold"
-                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                                               Foreground="{Binding Foreground,
+                                                                   RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
                                                     <Button Content="✎" Margin="6,0,0,0" Padding="3,0"
                                                             Background="Transparent" BorderThickness="0"
                                                             Click="OnSectionRenameClick"
@@ -593,7 +622,15 @@
                                                            VerticalAlignment="Center" Margin="0,0,7,0"
                                                            Fill="{Binding Color, Converter={StaticResource ColorStringToBrush}}"
                                                            Stroke="{DynamicResource Theme.Border}" StrokeThickness="1" />
-                                                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                                                <!-- LOCAL Foreground bound back to the generated
+                                                     ListBoxItem — see Styles.xaml's ListBoxItem
+                                                     style comment: this DataTemplate's LOCAL
+                                                     ContentTemplate assignment outranks that
+                                                     style's own ContentTemplate Setter, so only a
+                                                     call-site fix reaches this label. -->
+                                                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{Binding Foreground,
+                                                               RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
                                             </StackPanel>
                                         </DataTemplate>
                                     </ListBox.Resources>

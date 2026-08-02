@@ -16,13 +16,22 @@
                        Text="Tried automatically on Unlock. Encrypted for this Windows account — a hand-edited plaintext value is encrypted the next time saved passwords change here (add or remove)." />
             <ListBox ItemsSource="{Binding Saved}" SelectedItem="{Binding SelectedSavedEntry}"
                      Height="150">
+                <!-- Both labels get a LOCAL Foreground bound back to the
+                     generated ListBoxItem — see Styles.xaml's ListBoxItem
+                     style comment: an ItemTemplate's LOCAL ContentTemplate
+                     assignment outranks that style's own ContentTemplate
+                     Setter, so only a call-site fix reaches these. -->
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding Label}" FontWeight="SemiBold"
+                                       Foreground="{Binding Foreground,
+                                           RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
                             <TextBlock Text="{Binding Password, Converter={StaticResource PasswordStatus},
                                               StringFormat='   ({0})'}"
-                                       Style="{StaticResource SubtleText}" />
+                                       Style="{StaticResource SubtleText}"
+                                       Foreground="{Binding Foreground,
+                                           RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
                         </StackPanel>
                     </DataTemplate>
                 </ListBox.ItemTemplate>

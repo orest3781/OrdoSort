@@ -533,6 +533,34 @@
         </Setter>
     </Style>
 
+    <Style TargetType="ToolBar">
+        <Setter Property="Background" Value="{DynamicResource Theme.WindowBg}" />
+        <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
+    </Style>
+
+    <!-- A Separator placed INSIDE a ToolBar (the pipe divider between its
+         button groups) is assigned this keyed style by ToolBar itself
+         (ToolBar.SeparatorStyleKey), NOT the plain implicit
+         {x:Type Separator} style — measured stock at #FFB6BDC5 regardless
+         of this file's own Separator styling elsewhere. -->
+    <Style x:Key="{x:Static ToolBar.SeparatorStyleKey}" TargetType="Separator">
+        <Setter Property="Background" Value="{DynamicResource Theme.Border}" />
+    </Style>
+
+    <!-- Tried and abandoned: a matching {x:Static ToolBar.ButtonStyleKey}
+         Style with a Background Setter, hoping to reach the page-layout
+         group's stock light "chip" background (ActualSize/PageWidth/
+         WholePage/TwoPages in PrintPreviewWindow's DocumentViewer). Verified
+         inert — a diagnostic dump of the live visual tree showed every
+         toolbar Button's Background resolving to a DrawingBrush both with
+         and without this Setter, byte-for-byte identical either way, so
+         whatever sets it (almost certainly a ControlTemplate trigger baked
+         into ToolBar's own stock per-button chrome, not this Style) outranks
+         a plain Style Setter the same way every other native control in this
+         file needed a full retemplate to reach reliably. Left unfixed — see
+         PrintPreviewWindow.xaml.cs's DocumentViewer comment for the full
+         account of what's reachable here and why this part isn't. -->
+
     <Style TargetType="StatusBar">
         <Setter Property="Background" Value="{DynamicResource Theme.WindowBg}" />
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
@@ -548,6 +576,82 @@
         <Setter Property="Background" Value="{DynamicResource Theme.Surface}" />
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}" />
+    </Style>
+
+    <!-- ListBoxItem: Styles.xaml had ZERO style for this before Task 2
+         (theme-coverage audit, 2026-08-02), so selection rendered through
+         stock WPF's default (Aero2) template — measured by
+         HighlightContrastTests at a flat (218,218,218) grey in BOTH
+         palettes, i.e. it isn't reading any DynamicResource brush at all
+         (confirmed: neither SystemColors.HighlightBrushKey, which
+         ThemeManager already overrides to Theme.Accent, nor anything else
+         theme-bound). That coincidentally passes WCAG AA against Theme.Text
+         (8.50-17.44:1 per the audit) but disagrees with DataGridCell below,
+         which already selects with Theme.Accent/Theme.AccentText — this
+         style brings ListBoxItem into agreement, mirroring that same
+         Background=Transparent/Theme.Text at rest, Accent/AccentText when
+         selected contract, plus an IsMouseOver -> Theme.SurfaceHover hover
+         DataGridCell doesn't need (DataGrid rows get row-hover a different
+         way; a bare ListBox has nothing else providing one). Fully
+         retemplated rather than left as bare Setters on the stock template
+         — every OTHER native-templated control in this file needed that
+         (ComboBoxItem, TabItem, MenuItem, TextBox/PasswordBox) because a
+         stock template's own internal ControlTemplate.Triggers can set a
+         named part's Background directly, at a precedence bare Style
+         Setters on the untouched stock template can't reliably out-rank;
+         DataGridCell is the one exception in this file, and is left alone.
+         Same auto-wrap/local-Foreground trap as ComboBoxItem below for a
+         bare Content string (no ItemTemplate — this app's SuggestList in
+         ProcessingView.xaml is the one case with no ItemTemplate): fixed
+         the identical way, a ContentTemplate Setter wrapping a real
+         TextBlock with a LOCAL Foreground bound back to this ListBoxItem.
+         ItemTemplate-based ListBoxes (SettingsWindow's route/watch lists,
+         LabelMakerWindow's client list, ManageSavedWindow, UnlockWindow's
+         file list) supply their OWN label TextBlocks directly in their own
+         window's XAML — a LOCAL value there always outranks this Style's
+         ContentTemplate Setter, so each of those needed the same
+         local-Foreground-binding fix applied directly at its own call site
+         (see each window's own comment); this Style alone cannot reach
+         them. RouteList also sets ItemContainerStyle explicitly (a
+         from-scratch Style with no BasedOn) — an explicitly-set
+         ItemContainerStyle entirely REPLACES implicit-by-type lookup for
+         that ListBox's containers, so without a BasedOn back to THIS style
+         it would keep using the plain WPF default no matter what this file
+         says; fixed at that call site by adding
+         BasedOn="{StaticResource {x:Type ListBoxItem}}" there. -->
+    <Style TargetType="ListBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
+        <Setter Property="Padding" Value="8,5" />
+        <Setter Property="ContentTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}"
+                               Foreground="{Binding Foreground,
+                                   RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="Bd" Background="Transparent" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background"
+                                    Value="{DynamicResource Theme.SurfaceHover}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bd" Property="Background"
+                                    Value="{DynamicResource Theme.Accent}" />
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource Theme.AccentText}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ItemTemplate-based ComboBox item shapes: a bare TextBlock bound to

@@ -51,13 +51,27 @@
                     <ListBox ItemsSource="{Binding Clients}" SelectedItem="{Binding Selected}"
                              AutomationProperties.Name="Clients">
                         <ListBox.ItemTemplate>
+                            <!-- Both labels get a LOCAL Foreground bound back to
+                                 the generated ListBoxItem — Styles.xaml's
+                                 ListBoxItem style comment explains why: an
+                                 ItemTemplate's TextBlocks are exactly as
+                                 exposed to the "Style Setter outranks
+                                 inheritance" trap as an auto-wrapped one, and
+                                 this ItemTemplate's LOCAL ContentTemplate
+                                 assignment outranks that style's own
+                                 ContentTemplate Setter, so only a call-site
+                                 fix reaches them. -->
                             <DataTemplate>
                                 <DockPanel ToolTip="{Binding Summary}" Background="Transparent">
                                     <!-- the next number, at a glance -->
                                     <TextBlock DockPanel.Dock="Right" Text="{Binding NextNumberText}"
                                                Style="{StaticResource SubtleText}" FontSize="11"
-                                               VerticalAlignment="Center" Margin="8,0,0,0" />
-                                    <TextBlock Text="{Binding Id}" TextTrimming="CharacterEllipsis" />
+                                               VerticalAlignment="Center" Margin="8,0,0,0"
+                                               Foreground="{Binding Foreground,
+                                                   RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                                    <TextBlock Text="{Binding Id}" TextTrimming="CharacterEllipsis"
+                                               Foreground="{Binding Foreground,
+                                                   RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
                                 </DockPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
