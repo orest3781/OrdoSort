@@ -716,10 +716,374 @@
         <Setter Property="Background" Value="{DynamicResource Theme.Border}" />
     </Style>
 
-    <!-- DatePicker: the stock control is a white island in dark mode. The
-         closed control is fully themed here; the drop-down calendar keeps a
-         readable light face (its templates hardcode gradients too deep to
-         chase for one control). -->
+    <!-- Calendar family (DatePicker's drop-down popup): stock WPF's Aero2
+         theme hardcodes the popup's whole visual language — a literal
+         light LinearGradientBrush background and "#FF333333" text colours
+         baked directly into its default templates, none of it resource-
+         bound. Day numbers are worse: CalendarDayButton paints its content
+         through a bare ContentPresenter with no ContentTemplate, so WPF
+         auto-wraps the day-number string into an internal TextBlock that
+         resolves THIS file's global implicit TextBlock style
+         (Foreground=Theme.Text) instead of the stock template's own
+         hardcoded colour — the same "Style Setter outranks inheritance"
+         trap ComboBoxItem hit above (see that Style's comment;
+         ControlTemplate.Resources was measured NOT to reach an auto-wrapped
+         TextBlock either). Measured before this fix (2026-08-02): the
+         popup's background never left its hardcoded light gradient while
+         Theme.Text flipped to near-white in dark mode, so day numbers
+         rendered near-white on a near-white face — 1.02-1.95:1 across
+         every day state, all failing WCAG AA (light mode's "disabled" state
+         failed too, at 1.28:1 — the stock template dims disabled text to
+         35% opacity regardless of theme, which is faint enough to fail on
+         its own even against a merely-light background).
+         Every template below is a full reskin (not a patch on the stock
+         one): flat 4px chrome consistent with the rest of this file. The
+         day-of-week strip and month/year header text have no state-
+         dependent colour, so a plain local Foreground binding is enough.
+         CalendarDayButton/CalendarButton's day/month/year numbers DO need
+         Foreground to flip per state (Selected/Inactive/disabled), so they
+         get the same escape ComboBoxItem uses: a real, explicitly-authored
+         TextBlock via ContentTemplate with a LOCAL Foreground bound back to
+         the container, never auto-wrapped, so the Triggers below actually
+         reach the visible text.
+
+         A second, non-obvious trap found empirically while building this
+         (confirmed with a diagnostic dump of Style/Foreground/visual-tree
+         shape before and after): CalendarItem.PopulateGrids() creates every
+         CalendarDayButton/CalendarButton with
+         `SetBinding(StyleProperty, new Binding("Owner.CalendarDayButtonStyle"))`
+         (and CalendarButtonStyle for month/year cells), and Calendar's own
+         stock template hands CalendarItem its Style the same way via
+         `Style="{TemplateBinding CalendarItemStyle}"`. Unlike a Style
+         property that was simply never touched (where WPF falls back to an
+         implicit lookup-by-TargetType — how every other implicit style in
+         this file resolves), a Style property already carrying an explicit
+         binding — even one whose bound value is null, which is exactly
+         what Calendar.CalendarItemStyle/CalendarDayButtonStyle/
+         CalendarButtonStyle all default to — does NOT fall through to
+         implicit-by-type lookup at all. It falls straight to the CONTROL'S
+         OWN theme (Aero2) default style instead. A plain `<Style
+         TargetType="CalendarDayButton">` below would therefore silently
+         never apply to a real Calendar's day cells — verified directly:
+         with only a TargetType (no explicit wiring), CalendarDayButton kept
+         rendering the stock Grid/Rectangle template with Foreground
+         "#FF333333" no matter what this file's Style said. The fix is to
+         give CalendarItem/CalendarDayButton/CalendarButton's styles an
+         explicit x:Key below and wire them explicitly: CalendarDayButton/
+         CalendarButton (bound via a real C# Binding, re-evaluated on
+         change) get it through Calendar's own CalendarDayButtonStyle/
+         CalendarButtonStyle Setters below, so PopulateGrids' binding
+         resolves to a real Style instead of null. CalendarItem is different
+         — its Style is assigned via `TemplateBinding` from INSIDE Calendar's
+         own ControlTemplate, and a `TemplateBinding` there racing a Setter
+         for the same property in the same Style is a genuine ordering
+         hazard on .NET's XamlObjectWriter-based template loader (reproduced
+         directly: a `<Setter Property="CalendarItemStyle">` alongside that
+         TemplateBinding threw "'{DependencyProperty.UnsetValue}' is not a
+         valid value for property CalendarItemStyle" — the Setter hadn't
+         applied yet when the Template read it). Since this Calendar
+         template always wants this exact CalendarItem style anyway (no
+         other consumer swaps it per-instance), the fix is simpler than
+         chasing that race: reference it directly with a plain
+         `{StaticResource CalendarItemStyle}` on the `<CalendarItem>` tag
+         below, bypassing the CalendarItemStyle DP entirely. -->
+    <Style x:Key="CalendarDayButtonStyle" TargetType="CalendarDayButton">
+        <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
+        <Setter Property="MinWidth" Value="28" />
+        <Setter Property="MinHeight" Value="28" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="ContentTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}"
+                               Foreground="{Binding Foreground,
+                                   RelativeSource={RelativeSource AncestorType=CalendarDayButton}}" />
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CalendarDayButton">
+                    <Border x:Name="Chrome" Background="Transparent" BorderBrush="Transparent"
+                            BorderThickness="1" CornerRadius="4" Margin="1">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="Background"
+                                    Value="{DynamicResource Theme.SurfaceHover}" />
+                        </Trigger>
+                        <Trigger Property="IsToday" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Theme.Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsInactive" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Theme.Accent}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
+                            <Setter Property="Opacity" Value="0.85" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- CalendarButton: the month/year picker's grid cells (e.g. "Jan"..
+         "Dec", or a decade's years) — same ContentPresenter auto-wrap trap
+         and the same fix as CalendarDayButton above. -->
+    <Style x:Key="CalendarButtonStyle" TargetType="CalendarButton">
+        <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
+        <Setter Property="MinWidth" Value="56" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="ContentTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}"
+                               Foreground="{Binding Foreground,
+                                   RelativeSource={RelativeSource AncestorType=CalendarButton}}" />
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CalendarButton">
+                    <Border x:Name="Chrome" Background="Transparent" CornerRadius="4" Margin="2">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="Background"
+                                    Value="{DynamicResource Theme.SurfaceHover}" />
+                        </Trigger>
+                        <Trigger Property="IsInactive" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
+                        </Trigger>
+                        <Trigger Property="HasSelectedDays" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Theme.Accent}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
+                            <Setter Property="Opacity" Value="0.85" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="CalendarItemStyle" TargetType="CalendarItem">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CalendarItem">
+                    <ControlTemplate.Resources>
+                        <!-- day-of-week strip ("S M T W T F S"): CalendarItem
+                             LoadContent()'s this DataTemplate directly for
+                             each header cell — a real, explicitly-authored
+                             TextBlock, never auto-wrapped — so a plain
+                             local Foreground is enough; no trap here. -->
+                        <DataTemplate x:Key="{x:Static CalendarItem.DayTitleTemplateResourceKey}">
+                            <TextBlock Text="{Binding}" Foreground="{DynamicResource Theme.Text}"
+                                       FontWeight="SemiBold" FontSize="11"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Margin="0,0,0,4" />
+                        </DataTemplate>
+                    </ControlTemplate.Resources>
+                    <Border BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="4">
+                        <Grid Margin="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Button x:Name="PART_PreviousButton" Grid.Row="0" Grid.Column="0"
+                                    Width="24" Height="24" Focusable="False"
+                                    Background="Transparent" BorderThickness="0">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="Chrome" Background="Transparent" CornerRadius="4">
+                                            <Path Width="7" Height="7" Stretch="Uniform"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  Data="M 6 0 L 6 8 L 0 4 Z"
+                                                  Fill="{DynamicResource Theme.SubtleText}" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Chrome" Property="Background"
+                                                        Value="{DynamicResource Theme.SurfaceHover}" />
+                                            </Trigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="Opacity" Value="0.4" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
+                            <Button x:Name="PART_HeaderButton" Grid.Row="0" Grid.Column="1"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    FontWeight="SemiBold" Focusable="False"
+                                    Background="Transparent" BorderThickness="0" Padding="8,2">
+                                <Button.ContentTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" Foreground="{DynamicResource Theme.Text}" />
+                                    </DataTemplate>
+                                </Button.ContentTemplate>
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="Chrome" Background="{TemplateBinding Background}"
+                                                CornerRadius="4">
+                                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                              HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Chrome" Property="Background"
+                                                        Value="{DynamicResource Theme.SurfaceHover}" />
+                                            </Trigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="Opacity" Value="0.4" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
+                            <Button x:Name="PART_NextButton" Grid.Row="0" Grid.Column="2"
+                                    Width="24" Height="24" Focusable="False"
+                                    Background="Transparent" BorderThickness="0">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="Chrome" Background="Transparent" CornerRadius="4">
+                                            <Path Width="7" Height="7" Stretch="Uniform"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  Data="M 0 0 L 0 8 L 6 4 Z"
+                                                  Fill="{DynamicResource Theme.SubtleText}" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Chrome" Property="Background"
+                                                        Value="{DynamicResource Theme.SurfaceHover}" />
+                                            </Trigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="Opacity" Value="0.4" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
+                            <!-- 7 rows (day-title row + 6 week rows) x 7
+                                 columns — CalendarItem.PopulateGrids() fills
+                                 this itself; the Grid only needs to define
+                                 the matching row/column count. -->
+                            <Grid x:Name="PART_MonthView" Grid.Row="1" Grid.ColumnSpan="3" Margin="0,6,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                            </Grid>
+
+                            <!-- 3 rows x 4 columns — month picker (12
+                                 months) and decade picker (12 years) share
+                                 this same grid. -->
+                            <Grid x:Name="PART_YearView" Grid.Row="1" Grid.ColumnSpan="3" Margin="0,6,0,0"
+                                  Visibility="Hidden">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <DataTrigger Value="Year">
+                            <DataTrigger.Binding>
+                                <Binding Path="DisplayMode">
+                                    <Binding.RelativeSource>
+                                        <RelativeSource Mode="FindAncestor" AncestorType="{x:Type Calendar}" />
+                                    </Binding.RelativeSource>
+                                </Binding>
+                            </DataTrigger.Binding>
+                            <Setter TargetName="PART_MonthView" Property="Visibility" Value="Hidden" />
+                            <Setter TargetName="PART_YearView" Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                        <DataTrigger Value="Decade">
+                            <DataTrigger.Binding>
+                                <Binding Path="DisplayMode">
+                                    <Binding.RelativeSource>
+                                        <RelativeSource Mode="FindAncestor" AncestorType="{x:Type Calendar}" />
+                                    </Binding.RelativeSource>
+                                </Binding>
+                            </DataTrigger.Binding>
+                            <Setter TargetName="PART_MonthView" Property="Visibility" Value="Hidden" />
+                            <Setter TargetName="PART_YearView" Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="Calendar">
+        <Setter Property="Background" Value="{DynamicResource Theme.Surface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CalendarDayButtonStyle" Value="{StaticResource CalendarDayButtonStyle}" />
+        <Setter Property="CalendarButtonStyle" Value="{StaticResource CalendarButtonStyle}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Calendar">
+                    <StackPanel x:Name="PART_Root" HorizontalAlignment="Center">
+                        <CalendarItem x:Name="PART_CalendarItem"
+                                      Style="{StaticResource CalendarItemStyle}"
+                                      Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}" />
+                    </StackPanel>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- DatePicker: the closed control is fully themed here; the drop-down
+         Calendar (the Calendar/CalendarItem/CalendarDayButton/CalendarButton
+         family below) is fully theme-bound too now — every surface,
+         border, and text colour in the popup tracks light/dark exactly like
+         the rest of the app. -->
     <Style TargetType="DatePickerTextBox">
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="Background" Value="Transparent" />
@@ -747,6 +1111,20 @@
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="Background" Value="{DynamicResource Theme.Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}" />
+        <!-- DatePicker.OnApplyTemplate constructs its own drop-down Calendar
+             in code (`_calendar = new Calendar(); _calendar.SetBinding(
+             Calendar.StyleProperty, ...DatePicker.CalendarStyleProperty)`),
+             the same explicit-binding-suppresses-implicit-lookup shape as
+             CalendarItem's day/month buttons above — proven directly:
+             without this Setter, the popup's real Calendar (reached via a
+             real DatePicker, not a bare `new Calendar()` like this file's
+             own tests use) rendered byte-IDENTICAL PNGs in light and dark
+             mode, i.e. it was still the untouched stock template throughout.
+             `{StaticResource {x:Type Calendar}}` reaches the SAME implicit
+             Calendar style above by its auto-generated type key — no
+             separate x:Key needed, so a bare `new Calendar()` (as used by
+             HighlightContrastTests) keeps resolving it too. -->
+        <Setter Property="CalendarStyle" Value="{StaticResource {x:Type Calendar}}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="DatePicker">

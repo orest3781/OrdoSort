@@ -2,7 +2,9 @@ using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using OrdoSort.Wpf.Theme;
 
@@ -276,6 +278,175 @@ public class HighlightContrastTests : IClassFixture<HighlightContrastFixture>
     {
         yield return new object[] { false };
         yield return new object[] { true };
+    }
+
+    // ---------------------------------------------------------------- Calendar
+
+    /// <summary>The DatePicker's drop-down Calendar, reproduced directly
+    /// against the real <c>Theme/Styles.xaml</c> (Task 1, 2026-08-02): before
+    /// this fix, that file had ZERO styles for Calendar/CalendarItem/
+    /// CalendarDayButton/CalendarButton, so the stock Aero2 theme templates
+    /// were in play. Those hardcode the whole popup face — a literal light
+    /// <c>LinearGradientBrush</c> background and "#FF333333" text colours,
+    /// none of it resource-bound. Day numbers are worse: CalendarDayButton
+    /// paints its content through a bare <see cref="ContentPresenter"/> with
+    /// no ContentTemplate (the day number is a plain string), so WPF
+    /// auto-wraps it into an internal TextBlock that resolves THIS app's
+    /// global implicit TextBlock style (Foreground=Theme.Text) instead of
+    /// the stock template's own hardcoded colour — the exact same "Style
+    /// Setter outranks inheritance" trap ComboBoxItem hit above. Measured
+    /// before this fix: the popup's background never left its hardcoded
+    /// light gradient while Theme.Text flipped to near-white in dark mode,
+    /// so day numbers rendered near-white on a near-white face: 1.12-1.95:1,
+    /// both failing WCAG AA by a wide margin.
+    ///
+    /// Because the day button's own Background is never set anywhere (the
+    /// stock style only sets MinWidth/FontSize/Template, not Background, so
+    /// its Border's TemplateBinding resolves to nothing) and the ancestor
+    /// Calendar's Background is a gradient (not a flat SolidColorBrush
+    /// <c>ToRgb</c> can read), a DP-based "read the Border's Background"
+    /// check — the ComboBoxItem test's approach above — cannot resolve a
+    /// meaningful colour here. Instead this renders the real Calendar to a
+    /// bitmap (RenderTargetBitmap itself works fine on a disconnected Visual
+    /// with no Window/Show() — it's Calendar's own style resolution that
+    /// needs one, see the second doc paragraph below) and scans ACTUAL
+    /// PIXELS within the day button's bounds: the most common
+    /// colour is the background (it dominates by area over a 1-2 digit
+    /// glyph), and the pixel with the highest WCAG contrast against that
+    /// background is the glyph's fully-opaque core — never a hand-picked
+    /// coordinate, which would silently start measuring the wrong thing the
+    /// moment padding or font size changes. This also correctly captures the
+    /// "disabled" state's element-level Opacity dimming, which a plain
+    /// Foreground DP read would miss entirely (Opacity is a render-time
+    /// composite, not something the Foreground getter reflects).
+    ///
+    /// One more wrinkle found empirically while writing this: unlike
+    /// ComboBoxItem/Button/TabItem (which this app already gives an app-level
+    /// implicit style, so a "loose" ApplyTemplate+Measure+Arrange element
+    /// with no Window — see <see cref="Realize"/> — is enough), Calendar
+    /// currently has NO app-level style at all (that's this task), so it
+    /// falls through to the SYSTEM theme's default style — and THAT lookup
+    /// resolves to nothing (Style and Template both stay null, DesiredSize
+    /// stays 0x0) unless the element is part of a real, live
+    /// PresentationSource. Confirmed by direct comparison: identical
+    /// ApplyTemplate+Measure+Arrange calls left a loose Calendar's Template
+    /// null with zero visual children, while wrapping the exact same
+    /// instance in a real (offscreen) Window + Show() — the MenuItem test's
+    /// own technique above, for the same underlying reason — populated the
+    /// full month/year grids. So this test uses that Window technique too.</summary>
+    public static IEnumerable<object[]> CalendarDayStates()
+    {
+        foreach (var dark in new[] { false, true })
+        foreach (var state in new[] { "default", "today", "selected", "inactive", "disabled" })
+            yield return new object[] { state, dark };
+    }
+
+    [Theory, MemberData(nameof(CalendarDayStates))]
+    public void CalendarDayNumbersMeetWcagAa(string state, bool dark) => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark);
+
+        var calendar = new Calendar { DisplayDate = new DateTime(2024, 6, 1) };
+        if (state == "today") calendar.DisplayDate = DateTime.Today;
+        if (state == "selected") calendar.SelectedDate = new DateTime(2024, 6, 15);
+        if (state == "disabled") calendar.IsEnabled = false;
+
+        var window = new Window
+        {
+            Content = calendar, SizeToContent = SizeToContent.WidthAndHeight,
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+            window.UpdateLayout();
+
+            CalendarDayButton day = (state switch
+            {
+                "today" => FindDayButton(calendar, b => b.IsToday),
+                "selected" => FindDayButton(calendar, b => b.IsSelected),
+                "inactive" => FindDayButton(calendar, b => b.IsInactive),
+                "disabled" => FindDayButton(calendar, _ => true),
+                _ => FindDayButton(calendar, b => !b.IsToday && !b.IsSelected && !b.IsInactive && b.IsEnabled),
+            }) ?? throw new InvalidOperationException($"no CalendarDayButton found for state '{state}'");
+
+            // Sanity: a real text element paints the day number (the
+            // ComboBoxItem-style "resolve a text element" check) — the
+            // actual ratio below comes from rendered pixels (see class
+            // doc), which is what makes this correct for every state,
+            // including "disabled"'s Opacity dimming.
+            _ = FindTextElement(day)
+                ?? throw new InvalidOperationException("no TextBlock/AccessText descendant under CalendarDayButton");
+
+            var (fg, bg) = SampleRenderedMaxContrast(calendar, day);
+            var ratio = ThemePalette.ContrastRatio(fg, bg);
+            Assert.True(ratio >= 4.5,
+                $"calendar day {state} ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    private static CalendarDayButton? FindDayButton(DependencyObject root, Func<CalendarDayButton, bool> predicate)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is CalendarDayButton day && predicate(day)) return day;
+            if (FindDayButton(child, predicate) is { } nested) return nested;
+        }
+        return null;
+    }
+
+    /// <summary>Render <paramref name="root"/> to a bitmap and scan the
+    /// pixels under <paramref name="target"/>'s bounds: the most common
+    /// colour is the background (it dominates by area over a 1-2 digit
+    /// glyph), and the pixel with the highest WCAG contrast against that
+    /// background is the glyph's fully-opaque core — i.e. the actual
+    /// rendered foreground, whatever compositing (Opacity, gradients,
+    /// DynamicResource brushes) produced it.</summary>
+    private static (Rgb fg, Rgb bg) SampleRenderedMaxContrast(FrameworkElement root, FrameworkElement target)
+    {
+        var rootW = (int)Math.Ceiling(root.ActualWidth);
+        var rootH = (int)Math.Ceiling(root.ActualHeight);
+        var bmp = new RenderTargetBitmap(rootW, rootH, 96, 96, PixelFormats.Pbgra32);
+        bmp.Render(root);
+
+        var topLeft = target.TranslatePoint(new Point(0, 0), root);
+        var x0 = Math.Max(0, (int)topLeft.X);
+        var y0 = Math.Max(0, (int)topLeft.Y);
+        var w = Math.Min((int)Math.Ceiling(target.ActualWidth), rootW - x0);
+        var h = Math.Min((int)Math.Ceiling(target.ActualHeight), rootH - y0);
+        if (w <= 0 || h <= 0)
+            throw new InvalidOperationException($"CalendarDayButton has no on-screen bounds ({w}x{h})");
+
+        var stride = w * 4;
+        var pixels = new byte[stride * h];
+        bmp.CopyPixels(new Int32Rect(x0, y0, w, h), pixels, stride, 0);
+
+        var counts = new Dictionary<Rgb, int>();
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            var rgb = new Rgb(pixels[i + 2], pixels[i + 1], pixels[i]);   // Pbgra32: B,G,R,A
+            counts[rgb] = counts.GetValueOrDefault(rgb) + 1;
+        }
+        var bg = counts.OrderByDescending(kv => kv.Value).First().Key;
+
+        var bestFg = bg;
+        var bestRatio = 1.0;
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            var rgb = new Rgb(pixels[i + 2], pixels[i + 1], pixels[i]);
+            var ratio = ThemePalette.ContrastRatio(rgb, bg);
+            if (ratio > bestRatio) { bestRatio = ratio; bestFg = rgb; }
+        }
+        return (bestFg, bg);
     }
 
     // -------------------------------------------------------------- plumbing
