@@ -7,11 +7,27 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using OrdoSort.Core;
+using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.Theme;
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Windows;
 
 namespace OrdoSort.Wpf.Tests;
+
+/// <summary>A no-op IDialogService for constructing real production view
+/// models (SettingsViewModel, LabelMakerViewModel) off-screen: none of the
+/// ListBox-selection tests below ever exercise a dialog, so every member is
+/// a harmless no-op/null rather than a mock that would need maintaining.</summary>
+file sealed class NoDialogs : IDialogService
+{
+    public void Warn(string message, string title) { }
+    public void Info(string message, string title) { }
+    public bool Confirm(string message, string title) => true;
+    public string? AskSaveFile(string filter, string suggestedName) => null;
+    public string? AskOpenFile(string filter) => null;
+    public string? AskFilePath(string filter, string suggestedName) => null;
+    public string? BrowseFolder(string? startAt) => null;
+}
 
 /// <summary>Hosts the one WPF <see cref="Application"/> a process may create,
 /// with the real <c>Theme/Styles.xaml</c> merged in exactly as <c>App.xaml</c>
@@ -56,23 +72,39 @@ public sealed class HighlightContrastFixture : IDisposable
                     Source = new Uri("pack://application:,,,/OrdoSort;component/Theme/Styles.xaml"),
                 });
             }
-            // App.xaml declares these converters as loose Application.Resources
-            // entries (not a separate merge-able ResourceDictionary), and this
-            // fixture deliberately never constructs the real App (see the
-            // class doc above) — so a real production Window that resolves
-            // one via StaticResource (UnlockWindow's BoolToVis/FileName/
-            // ZeroToVis) throws "resource not found" unless it's wired here
-            // too. These are the SAME converter TYPES App.xaml uses (not a
-            // reimplementation of their logic), just supplied under the keys
-            // production code expects, only if not already present (so this
-            // stays a no-op the moment a real App does get constructed on
-            // this Resources instance first).
-            if (!app.Resources.Contains("BoolToVis"))
-                app.Resources["BoolToVis"] = new System.Windows.Controls.BooleanToVisibilityConverter();
-            if (!app.Resources.Contains("ZeroToVis"))
-                app.Resources["ZeroToVis"] = new OrdoSort.Wpf.Views.ZeroToVisibilityConverter();
-            if (!app.Resources.Contains("FileName"))
-                app.Resources["FileName"] = new OrdoSort.Wpf.Views.FileNameConverter();
+            // App.xaml declares these converters (and a couple of plain
+            // values) as loose Application.Resources entries — not a
+            // separate merge-able ResourceDictionary — and this fixture
+            // deliberately never constructs the real App (see the class doc
+            // above), so a real production Window that resolves one via
+            // StaticResource throws "resource not found" unless it's wired
+            // here too. This mirrors App.xaml's own <Application.Resources>
+            // block verbatim: the SAME converter TYPES App.xaml uses (not a
+            // reimplementation of their logic), under the same keys, added
+            // only if not already present (so this stays a no-op the moment
+            // a real App does get constructed on this Resources instance
+            // first). Grown from just BoolToVis/ZeroToVis/FileName (enough
+            // for UnlockWindow/PrintPreviewWindow) to the full App.xaml set
+            // once ManageSavedWindow (PasswordStatus) and SettingsWindow
+            // (InvertBool, ColorStringToBrush, SwatchCheck, the font
+            // converters, …) needed constructing too.
+            void AddIfMissing(string key, object value)
+            {
+                if (!app.Resources.Contains(key)) app.Resources[key] = value;
+            }
+            AddIfMissing("BoolToVis", new System.Windows.Controls.BooleanToVisibilityConverter());
+            AddIfMissing("RgbToBrush", new OrdoSort.Wpf.Views.RgbToBrushConverter());
+            AddIfMissing("InvertBool", new OrdoSort.Wpf.Views.InvertBoolConverter());
+            AddIfMissing("ColorStringToBrush", new OrdoSort.Wpf.Views.ColorStringToBrushConverter());
+            AddIfMissing("ColorStringToForeBrush", new OrdoSort.Wpf.Views.ColorStringToForeBrushConverter());
+            AddIfMissing("SwatchCheck", new OrdoSort.Wpf.Views.SwatchCheckConverter());
+            AddIfMissing("ZeroToVis", new OrdoSort.Wpf.Views.ZeroToVisibilityConverter());
+            AddIfMissing("FileName", new OrdoSort.Wpf.Views.FileNameConverter());
+            AddIfMissing("PasswordStatus", new OrdoSort.Wpf.Views.PasswordStatusConverter());
+            AddIfMissing("FontFamilyString", new OrdoSort.Wpf.Views.FontFamilyStringConverter());
+            AddIfMissing("FontSizeText", new OrdoSort.Wpf.Views.FontSizeTextConverter());
+            AddIfMissing("AppFontFamily", new FontFamily("Segoe UI Variable Text, Segoe UI"));
+            AddIfMissing("AppFontSize", 14.0);
             dispatcher = Dispatcher.CurrentDispatcher;
             // ready must be set from ON this thread, after Dispatcher.CurrentDispatcher
             // exists, but BEFORE Dispatcher.Run() blocks it.
@@ -419,6 +451,208 @@ public class HighlightContrastTests : IClassFixture<HighlightContrastFixture>
         }
     });
 
+    /// <summary>Same gap-closing purpose as the UnlockWindow test above, for
+    /// LabelMakerWindow's client list. Its ItemTemplate is a DockPanel with
+    /// TWO TextBlocks (NextNumberText docked right, Id filling the rest);
+    /// <see cref="FindTextElement"/> returns the FIRST one found in visual-
+    /// tree order, which is NextNumberText here (declared first in the
+    /// DockPanel, regardless of its Dock side) — still a real, production
+    /// label exercising the exact same local-Foreground-binding fix as Id,
+    /// so it's an equally valid proof the row's LABEL_TEXT (not just its
+    /// background) reaches Theme.AccentText when selected.
+    /// LabelMakerViewModel's constructor reads/writes a box-labels JSON file
+    /// by path; pointing it at a fresh temp path that's never created keeps
+    /// this hermetic (BoxLabelStore.Read treats "missing file" as "no
+    /// clients yet" — see its own doc comment), and the one client added
+    /// here goes straight onto the public Clients collection rather than
+    /// through the Add-command's Hook() dirty-tracking, so this window's
+    /// Closing handler (which persists only if something's dirty) writes
+    /// nothing back to that path either.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void SelectedLabelMakerClientRowUsesTheAccentPalette(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
+        var vm = new LabelMakerViewModel(new Config(), boxLabelsPath, new NoDialogs());
+        vm.Clients.Add(new LabelClientVm { Id = "TEST" });
+        var window = new LabelMakerWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+
+            var listBox = FindDescendant<ListBox>(window)
+                ?? throw new InvalidOperationException("no ListBox descendant under LabelMakerWindow");
+            listBox.SelectedIndex = 0;
+            PumpRender();
+            window.UpdateLayout();
+
+            var container = listBox.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem
+                ?? throw new InvalidOperationException("Clients row 0 never realized a container");
+
+            var text = FindTextElement(container)
+                ?? throw new InvalidOperationException("no TextBlock/AccessText descendant under the Clients row");
+            var bd = FindDescendant<Border>(container)
+                ?? throw new InvalidOperationException("no Border descendant under the Clients row");
+
+            var fg = ToRgb(ForegroundOf(text));
+            var bg = ToRgb(bd.Background);
+            Assert.Equal(p.Accent, bg);
+            Assert.Equal(p.AccentText, fg);
+            var ratio = ThemePalette.ContrastRatio(fg, bg);
+            Assert.True(ratio >= 4.5,
+                $"LabelMakerWindow Clients selected row ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>Same gap-closing purpose again, for ManageSavedWindow's
+    /// saved-password list. Its ItemTemplate is a horizontal StackPanel with
+    /// TWO TextBlocks (Label, then a SubtleText-styled password-status
+    /// annotation); <see cref="FindTextElement"/> returns the first —
+    /// Label — here.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void SelectedManageSavedRowUsesTheAccentPalette(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var vm = new UnlockViewModel(new Config(), () => { });
+        vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
+        var window = new ManageSavedWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+
+            var listBox = FindDescendant<ListBox>(window)
+                ?? throw new InvalidOperationException("no ListBox descendant under ManageSavedWindow");
+            listBox.SelectedIndex = 0;
+            PumpRender();
+            window.UpdateLayout();
+
+            var container = listBox.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem
+                ?? throw new InvalidOperationException("Saved row 0 never realized a container");
+
+            var text = FindTextElement(container)
+                ?? throw new InvalidOperationException("no TextBlock/AccessText descendant under the Saved row");
+            var bd = FindDescendant<Border>(container)
+                ?? throw new InvalidOperationException("no Border descendant under the Saved row");
+
+            var fg = ToRgb(ForegroundOf(text));
+            var bg = ToRgb(bd.Background);
+            Assert.Equal(p.Accent, bg);
+            Assert.Equal(p.AccentText, fg);
+            var ratio = ThemePalette.ContrastRatio(fg, bg);
+            Assert.True(ratio >= 4.5,
+                $"ManageSavedWindow Saved selected row ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>The riskiest of the five real call sites: SettingsWindow's
+    /// RouteList is the ONE ListBox that sets ItemContainerStyle directly
+    /// (see Styles.xaml's ListBoxItem comment) — an explicitly-assigned
+    /// ItemContainerStyle replaces implicit-by-type lookup entirely for that
+    /// ListBox's containers, so without BasedOn="{StaticResource {x:Type
+    /// ListBoxItem}}" on that inline Style, this row would silently keep
+    /// using the plain WPF default no matter what Styles.xaml says — the
+    /// central style being correct would prove nothing for this specific
+    /// list. This test's palette-equality assertions fail exactly that way
+    /// if the BasedOn wiring is ever dropped (proven directly in the task
+    /// report: temporarily removing it reproduces the stock-grey failure
+    /// this whole task started from).
+    /// SettingsViewModel's Routes collection is seeded straight from the
+    /// Config it's given (RouteEditVm.From), so a single in-memory Route on
+    /// a fresh Config is enough — no config.json on disk needed. cfgPath is
+    /// a syntactically-valid but nonexistent temp path (not null): several
+    /// of SettingsViewModel's OTHER tab properties dereference it with `!`,
+    /// and while this test only visits the Destinations tab, a real,
+    /// resolvable-but-missing path costs nothing and removes that as a
+    /// future footgun.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void SelectedSettingsRouteListRowUsesTheAccentPalette(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var cfg = new Config();
+        cfg.Routes.Add(new Route { Label = "Invoices", Path = @"C:\dest", Hotkey = "Ctrl+1" });
+        var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
+        var vm = new SettingsViewModel(cfg, new NoDialogs(),
+            () => dark ? ThemePalette.Dark : ThemePalette.Light, cfgPath);
+        var window = new SettingsWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+
+            var tabControl = FindDescendant<TabControl>(window)
+                ?? throw new InvalidOperationException("no TabControl descendant under SettingsWindow");
+            var destinationsTab = tabControl.Items.Cast<TabItem>()
+                    .FirstOrDefault(ti => ti.Header?.ToString() == "Destinations")
+                ?? throw new InvalidOperationException("no \"Destinations\" TabItem found");
+            tabControl.SelectedItem = destinationsTab;
+            window.UpdateLayout();
+            PumpRender();
+            window.UpdateLayout();
+
+            // Search the WHOLE window, not destinationsTab: TabControl hosts
+            // the selected tab's content through its own ContentPresenter
+            // (commonly "PART_SelectedContentHost"), which is never a visual
+            // descendant of the TabItem header object itself — RouteList
+            // lives under the TabControl, not under destinationsTab.
+            var listBox = FindDescendant<ListBox>(window)
+                ?? throw new InvalidOperationException("no ListBox descendant under SettingsWindow");
+            listBox.SelectedIndex = 0;
+            PumpRender();
+            window.UpdateLayout();
+
+            var container = listBox.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem
+                ?? throw new InvalidOperationException("RouteList row 0 never realized a container");
+
+            var text = FindTextElement(container)
+                ?? throw new InvalidOperationException("no TextBlock/AccessText descendant under the RouteList row");
+            var bd = FindDescendant<Border>(container)
+                ?? throw new InvalidOperationException("no Border descendant under the RouteList row");
+
+            var fg = ToRgb(ForegroundOf(text));
+            var bg = ToRgb(bd.Background);
+            Assert.Equal(p.Accent, bg);
+            Assert.Equal(p.AccentText, fg);
+            var ratio = ThemePalette.ContrastRatio(fg, bg);
+            Assert.True(ratio >= 4.5,
+                $"SettingsWindow RouteList selected row ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
     // ------------------------------------------------------- DocumentViewer
 
     /// <summary>DocumentViewer's toolbar chrome (PrintPreviewWindow), Task 2:
@@ -437,8 +671,11 @@ public class HighlightContrastTests : IClassFixture<HighlightContrastFixture>
     /// unreachable via ordinary Styles.xaml declarations, not silently
     /// dropped:
     /// (1) The Find toolbar (Ctrl+F inside the preview) is
-    /// <c>MS.Internal.Documents.FindToolBar</c> — internal to
-    /// PresentationFramework, so no XAML in this app can name its exact
+    /// <c>MS.Internal.Documents.FindToolBar</c> — internal to the
+    /// PresentationUI assembly (its Type.Assembly, confirmed by reflection,
+    /// is PresentationUI, not PresentationFramework, even though it derives
+    /// from the public System.Windows.Controls.ToolBar in
+    /// PresentationFramework), so no XAML in this app can name its exact
     /// type to key an implicit style to it, and — confirmed by the same
     /// dump — it does NOT fall back to a plain {x:Type ToolBar} style
     /// despite deriving from ToolBar (this fix reached the real ToolBar's

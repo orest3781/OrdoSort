@@ -22,9 +22,12 @@ namespace OrdoSort.Wpf.Windows;
 /// That fix is PARTIAL, and the rest is left stock deliberately, not
 /// silently:
 /// - The Find toolbar (Ctrl+F inside this preview) is
-///   <c>MS.Internal.Documents.FindToolBar</c> — internal to
-///   PresentationFramework, so no XAML in this app can name its exact type
-///   to key a style to it, and the same dump confirmed it does NOT fall back
+///   <c>MS.Internal.Documents.FindToolBar</c> — internal to the
+///   PresentationUI assembly (confirmed by reflection: its Type.Assembly is
+///   PresentationUI, not PresentationFramework, even though it derives from
+///   the public System.Windows.Controls.ToolBar in PresentationFramework),
+///   so no XAML in this app can name its exact type to key a style to it,
+///   and the same dump confirmed it does NOT fall back
 ///   to the plain ToolBar style despite deriving from ToolBar (its own
 ///   MainPanelBorder stayed the stock colour while the real ToolBar's
 ///   identically-named part correctly followed the new style). A
