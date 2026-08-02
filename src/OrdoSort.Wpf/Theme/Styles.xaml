@@ -578,10 +578,13 @@
                                           ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" />
                         <!-- Editable mode: WPF binds editing to a part of exactly
                              this name. The implicit TextBox style is deliberately
-                             kept (themed context menu, caret, selection); only its
-                             chrome is neutralized by these local values, which
-                             outrank style setters. The right margin keeps the
-                             drop-down arrow clickable. -->
+                             kept (themed context menu, caret, selection); the local
+                             values below neutralize its RESTING chrome. Its focused
+                             state still applies the app's bronze focus ring via that
+                             style's own template trigger — intentional, since this
+                             ComboBox template has no other focus affordance. The
+                             right margin keeps the drop-down arrow clickable
+                             (hit-tested: text area -> this box, arrow -> Toggle). -->
                         <TextBox x:Name="PART_EditableTextBox"
                                  Visibility="Collapsed"
                                  Margin="8,0,28,0" Padding="0" MinHeight="0"
