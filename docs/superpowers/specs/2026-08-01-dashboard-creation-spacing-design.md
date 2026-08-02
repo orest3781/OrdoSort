@@ -1,6 +1,6 @@
 # Dashboard tab: contextual creation + spacing polish — design
 
-**Date:** 2026-08-02
+**Date:** 2026-08-01
 **Status:** Approved by user (acceptance feedback on the 2026-08-01 rework:
 "section and folder creation is confusing" → contextual-creation option
 chosen; spacing review of the live-rendered tab → four fixes approved,
