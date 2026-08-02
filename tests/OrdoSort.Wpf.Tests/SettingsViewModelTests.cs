@@ -1045,6 +1045,76 @@ public class SettingsViewModelTests : IDisposable
         Assert.Same(folder, vm.SelectedWatch);
         Assert.Same(folder, vm.SelectedWatchRow);
     }
+
+    // ---- contextual creation (per-header ＋ / Add folder / Add section) ----
+
+    [Fact]
+    public void PerHeaderAddCreatesTheFolderInsideThatSection()
+    {
+        var vm = new SettingsViewModel(
+            WatchCfg(("A", "Night"), ("B", "Night"), ("C", "Day")), _dialogs);
+
+        var night = vm.WatchRows.OfType<WatchSectionVm>().Single(x => x.Header == "Night");
+        vm.AddFolderToSection(night);
+
+        Assert.Equal(new[] { "A", "B", "New folder", "C" },
+            vm.WatchFolders.Select(w => w.Label).ToArray());
+        Assert.Equal("Night", vm.WatchFolders[2].Section);
+        Assert.Equal("New folder", vm.SelectedWatch!.Label);
+    }
+
+    [Fact]
+    public void PerHeaderAddOnTheEmptyDefaultGroupClearsTheSection()
+    {
+        var vm = new SettingsViewModel(WatchCfg(("A", "Night")), _dialogs);
+
+        var def = vm.WatchRows.OfType<WatchSectionVm>().Single(x => x.IsDefault);
+        vm.AddFolderToSection(def);
+
+        Assert.Equal("", vm.SelectedWatch!.Section);
+        Assert.Equal(2, vm.WatchFolders.Count);
+    }
+
+    [Fact]
+    public void AddFolderInheritsTheSelectedFoldersSectionAndLandsAfterIt()
+    {
+        var vm = new SettingsViewModel(
+            WatchCfg(("A", "Night"), ("B", "Day")), _dialogs);
+        vm.SelectedWatch = vm.WatchFolders[0];
+
+        vm.AddWatchCommand.Execute(null);
+
+        Assert.Equal(new[] { "A", "New folder", "B" },
+            vm.WatchFolders.Select(w => w.Label).ToArray());
+        Assert.Equal("Night", vm.WatchFolders[1].Section);
+        Assert.Equal("New folder", vm.SelectedWatch!.Label);
+    }
+
+    [Fact]
+    public void AddFolderWithNothingSelectedAppendsIntoTheDefaultGroup()
+    {
+        var vm = new SettingsViewModel(new Config(), _dialogs);
+
+        vm.AddWatchCommand.Execute(null);
+
+        Assert.Equal("", Assert.Single(vm.WatchFolders).Section);
+        Assert.NotNull(vm.SelectedWatch);
+    }
+
+    [Fact]
+    public void AddSectionGeneratesUniqueNamesAndOpensTheHeaderForRename()
+    {
+        var vm = new SettingsViewModel(WatchCfg(("A", "new SECTION")), _dialogs);
+
+        var header = vm.AddSection();
+
+        Assert.NotNull(header);
+        Assert.Equal("New section 2", header!.Header);
+        Assert.True(header.IsEditing);
+        Assert.Equal("New section 2", header.EditText);
+        Assert.Equal("New section 2", vm.SelectedWatch!.Section);
+        Assert.Equal("New folder", vm.SelectedWatch.Label);
+    }
 }
 
 public class ApplySettingsTests

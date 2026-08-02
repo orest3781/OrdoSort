@@ -451,8 +451,15 @@ public sealed class SettingsViewModel : ObservableObject
 
         AddWatchCommand = new RelayCommand(() =>
         {
-            var vm = new WatchEditVm { Label = "New folder" };
-            WatchFolders.Add(vm);
+            // "Add folder": born into the SELECTED folder's section, right
+            // after it — not teleported to the default group at the far end
+            var vm = new WatchEditVm
+            {
+                Label = "New folder",
+                Section = SelectedWatch?.Section ?? "",
+            };
+            var at = SelectedWatch is { } sel ? WatchFolders.IndexOf(sel) + 1 : WatchFolders.Count;
+            WatchFolders.Insert(at, vm);
             SelectedWatch = vm;
         });
         RemoveWatchCommand = new RelayCommand(
@@ -1082,6 +1089,45 @@ public sealed class SettingsViewModel : ObservableObject
     }
 
     public void CancelSectionRename(WatchSectionVm h) => h.IsEditing = false;
+
+    /// <summary>Per-header ＋: a new folder born INTO that section, landing
+    /// right after the group's last member so it appears where you clicked
+    /// (an empty group's folder lands at the end of the flat list).</summary>
+    public void AddFolderToSection(WatchSectionVm h)
+    {
+        var vm = new WatchEditVm
+        {
+            Label = "New folder",
+            Section = h.IsDefault ? "" : h.Header,
+        };
+        var last = WatchFolders.LastOrDefault(w => h.IsDefault
+            ? w.Section.Trim().Length == 0
+            : string.Equals(w.Section.Trim(), h.Header, StringComparison.CurrentCultureIgnoreCase));
+        var at = last is null ? WatchFolders.Count : WatchFolders.IndexOf(last) + 1;
+        WatchFolders.Insert(at, vm);
+        SelectedWatch = vm;
+    }
+
+    /// <summary>"Add section": a uniquely named section born with one folder
+    /// inside (sections only exist through folders), its header opened
+    /// straight into rename mode so the next keystrokes name it. Returns the
+    /// header so the window can focus its edit box.</summary>
+    public WatchSectionVm? AddSection()
+    {
+        var name = "New section";
+        for (var n = 2; SectionKeyExists(name); n++)
+            name = $"New section {n}";
+        var vm = new WatchEditVm { Label = "New folder", Section = name };
+        WatchFolders.Add(vm);
+        SelectedWatch = vm;
+        var header = WatchRows.OfType<WatchSectionVm>().FirstOrDefault(h =>
+            !h.IsDefault && string.Equals(h.Header, name, StringComparison.CurrentCultureIgnoreCase));
+        if (header is not null) BeginSectionRename(header);
+        return header;
+    }
+
+    private bool SectionKeyExists(string name) =>
+        WatchFolders.Any(w => string.Equals(w.Section.Trim(), name, StringComparison.CurrentCultureIgnoreCase));
 
     /// <summary>Drop semantics for the grouped list: the drop position
     /// implies both the new section and the new flat position.</summary>
