@@ -450,9 +450,57 @@
         </ControlTemplate.Triggers>
     </ControlTemplate>
 
+    <!-- Same auto-wrap trap as ComboBoxItem/PrimaryButton above: the
+         MenuSubmenuItem template's IsHighlighted trigger correctly flips
+         THIS element's own Foreground to Theme.AccentText, but every
+         MenuItem.Header here is a plain string, and ContentPresenter's
+         RecognizesAccessKey auto-wrap resolves the app-level implicit
+         TextBlock style (Foreground=Theme.Text) instead of inheriting it —
+         confirmed in a REAL Menu/MenuItem (Header="_Tools" containing a
+         submenu Header="_…" item, opened via IsSubmenuOpen, the way
+         MainWindow.xaml actually declares its menu), not just a synthetic
+         harness: highlighted submenu rows measured 1.35:1 light / 1.27:1
+         dark, identical to ComboBoxItem's numbers and both WCAG AA failures.
+         (An earlier, informal QC pass recorded 11.48/12.89 for "menu hover"
+         — that number matches the Gesture TextBlock exactly, which already
+         has its own named Setter and was never broken; this MUST have
+         mismeasured Gesture instead of Header.)
+         Fixed the same way as ComboBoxItem — a HeaderTemplate Setter forcing
+         a real, explicitly-authored element with a LOCAL Foreground binding
+         — EXCEPT the wrapped element has to stay an AccessText, not a plain
+         TextBlock: every Header here carries an access-key underscore, and
+         only AccessText parses "_X" into the mnemonic underline and
+         participates in Alt+key routing (RecognizesAccessKey on the
+         ContentPresenter only drives WPF's OWN internal auto-wrap, which
+         stops applying the moment an explicit HeaderTemplate exists — so the
+         mnemonic behavior has to be reproduced explicitly here instead).
+         AccessText has its own Foreground property (it does NOT derive from
+         TextBlock — confirmed empirically while building the regression
+         test: AccessText builds a private, always-empty child TextBlock
+         internally that plays no part in painting, so anything that walks
+         "the first TextBlock descendant" to verify this must stop at an
+         AccessText too, not drill past it), so the same
+         RelativeSource-to-ancestor binding technique applies unchanged.
+         Harmless on the three roles whose Foreground never flips
+         (TopLevelHeader/TopLevelItem/SubmenuHeader — confirmed by reading
+         their own triggers above, none set Foreground): the binding just
+         resolves to the same Theme.Text those roles already rendered.
+         Measured after (submenu Header): 12.89:1 light / 11.48:1 dark.
+         Also forcibly wraps ANY Header in an AccessText — verified no
+         MenuItem.Header in this app is compound (non-string); Icon and
+         Gesture are separate content properties, never mixed into Header. -->
     <Style TargetType="MenuItem">
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="Background" Value="Transparent" />
+        <Setter Property="HeaderTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <AccessText Text="{Binding}"
+                                Foreground="{Binding Foreground,
+                                    RelativeSource={RelativeSource AncestorType=MenuItem}}" />
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
         <Style.Triggers>
             <Trigger Property="Role" Value="TopLevelHeader">
                 <Setter Property="Template" Value="{StaticResource MenuTopLevelHeader}" />
@@ -524,9 +572,43 @@
         <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}" />
     </Style>
 
+    <!-- IsHighlighted correctly flips this Style's own Foreground Setter
+         (below) to Theme.AccentText — but a plain-string Content ("Incoming",
+         "Active only", …) is auto-wrapped by ContentPresenter through an
+         internal, special-cased template, and that generated TextBlock's
+         implicit-style search resolves the APPLICATION-level implicit
+         TextBlock style (Foreground=Theme.Text) instead of inheriting this
+         element's Foreground — a Style Setter always outranks property-value
+         inheritance, the same trap PrimaryButton/ChipButton hit below.
+         Verified (2026-08-02 contrast investigation): highlighted rows
+         measured 1.35:1 light / 1.27:1 dark, both failing WCAG AA, with the
+         resting row unaffected. ControlTemplate.Resources does NOT reach
+         this auto-wrapped TextBlock either (tried first, also fails) — the
+         only technique that does is forcing a REAL, explicitly-authored
+         TextBlock via ContentTemplate below, with a LOCAL Foreground binding
+         to this element, so the auto-wrap path is never taken at all.
+         Measured after: 12.89:1 light / 11.48:1 dark.
+         This Setter only reaches ComboBoxItems that get their Content
+         directly (no ItemTemplate) — an ItemsControl with its own
+         ItemTemplate assigns it to the container's ContentTemplate as a
+         LOCAL value, which outranks this Style Setter entirely; those call
+         sites (SettingsWindow.xaml's KvpValueTemplate and font-picker
+         ItemTemplate) need the identical local-Foreground-binding fix
+         applied directly in their own templates instead. Also: this
+         forcibly wraps ANY Content in a TextBlock via {Binding} — verified
+         no ComboBoxItem in this app sets compound (non-string) Content. -->
     <Style TargetType="ComboBoxItem">
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="Padding" Value="8,5" />
+        <Setter Property="ContentTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}"
+                               Foreground="{Binding Foreground,
+                                   RelativeSource={RelativeSource AncestorType=ComboBoxItem}}" />
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBoxItem">

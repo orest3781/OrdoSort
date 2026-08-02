@@ -6,8 +6,19 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Style="{StaticResource {x:Type Window}}">
     <Window.Resources>
+        <!-- ComboBox's own ItemTemplate mechanism assigns this to each
+             generated ComboBoxItem's ContentTemplate as a LOCAL value
+             (ItemsControl.PrepareContainerForItemOverride) — that outranks
+             even the ContentTemplate Setter Styles.xaml's ComboBoxItem style
+             now carries for the plain-string case, so this bare TextBlock
+             needs its OWN local Foreground binding; the Style-level fix
+             cannot reach it. Verified (2026-08-02): highlighted rows using
+             this template failed at 1.35/1.27 with the Style fix ALONE, and
+             pass at 12.89/11.48 once this binding is added directly here. -->
         <DataTemplate x:Key="KvpValueTemplate">
-            <TextBlock Text="{Binding Value}" />
+            <TextBlock Text="{Binding Value}"
+                       Foreground="{Binding Foreground,
+                           RelativeSource={RelativeSource AncestorType=ComboBoxItem}}" />
         </DataTemplate>
         <Style x:Key="FieldLabel" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
             <Setter Property="VerticalAlignment" Value="Center" />
@@ -970,9 +981,14 @@
                                   SelectedValuePath="Key"
                                   SelectedValue="{Binding UiFontFamily}">
                             <ComboBox.ItemTemplate>
+                                <!-- Same call-site fix as KvpValueTemplate above (see its
+                                     comment): this ItemTemplate's local ContentTemplate
+                                     value outranks the Styles.xaml ComboBoxItem fix. -->
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Value}"
-                                               FontFamily="{Binding Key, Converter={StaticResource FontFamilyString}}" />
+                                               FontFamily="{Binding Key, Converter={StaticResource FontFamilyString}}"
+                                               Foreground="{Binding Foreground,
+                                                   RelativeSource={RelativeSource AncestorType=ComboBoxItem}}" />
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
