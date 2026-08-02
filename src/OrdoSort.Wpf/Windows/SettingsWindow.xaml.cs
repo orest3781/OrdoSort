@@ -96,6 +96,41 @@ public partial class SettingsWindow : Window
         else if (e.Key == Key.Escape) { _vm.CancelSectionRename(h); e.Handled = true; }
     }
 
+    private void OnSectionAddFolderClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: WatchSectionVm h }) _vm.AddFolderToSection(h);
+    }
+
+    private void OnAddSectionClick(object sender, RoutedEventArgs e)
+    {
+        if (_vm.AddSection() is not { } header) return;
+        // container generation is async — focus the header's edit box after
+        // the rebuilt list has generated it
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            WatchList.ScrollIntoView(header);
+            WatchList.UpdateLayout();
+            if (WatchList.ItemContainerGenerator.ContainerFromItem(header) is ListBoxItem item
+                && FindDescendant<TextBox>(item) is { IsVisible: true } tb)
+            {
+                tb.Focus();
+                tb.SelectAll();
+            }
+        }), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is T hit) return hit;
+            if (FindDescendant<T>(child) is { } deep) return deep;
+        }
+        return null;
+    }
+
     private void OnFontSizePreset(object sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: string size }) _vm.UiFontSizeText = size;

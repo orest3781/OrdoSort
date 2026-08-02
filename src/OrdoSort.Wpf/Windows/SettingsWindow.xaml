@@ -528,7 +528,8 @@
                             </Grid.ColumnDefinitions>
                             <DockPanel>
                                 <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
-                                    <Button Content="Add" Command="{Binding AddWatchCommand}" MinWidth="48" Margin="0,0,4,4" />
+                                    <Button Content="Add folder" Command="{Binding AddWatchCommand}" Margin="0,0,4,4" />
+                                    <Button Content="Add section" Click="OnAddSectionClick" Margin="0,0,4,4" />
                                     <Button Content="Remove" Command="{Binding RemoveWatchCommand}" Margin="0,0,4,4" />
                                     <Button Content="↑" Command="{Binding WatchUpCommand}" MinWidth="34" Margin="0,0,4,4"
                                             ToolTip="Move up — tiles show in this order (or drag rows)" />
@@ -542,7 +543,7 @@
                                          Drop="List_Drop" DragOver="List_DragOver">
                                     <ListBox.Resources>
                                         <DataTemplate DataType="{x:Type vm:WatchSectionVm}">
-                                            <Grid>
+                                            <Grid Margin="0,6,0,2">
                                                 <StackPanel Orientation="Horizontal">
                                                     <StackPanel.Style>
                                                         <Style TargetType="StackPanel">
@@ -560,6 +561,11 @@
                                                             Click="OnSectionRenameClick"
                                                             ToolTip="Rename this section — updates every folder in it"
                                                             AutomationProperties.Name="{Binding Header, StringFormat=Rename section {0}}" />
+                                                    <Button Content="＋" Margin="2,0,0,0" Padding="3,0"
+                                                            Background="Transparent" BorderThickness="0"
+                                                            Click="OnSectionAddFolderClick"
+                                                            ToolTip="Add a folder to this section"
+                                                            AutomationProperties.Name="{Binding Header, StringFormat=Add folder to section {0}}" />
                                                 </StackPanel>
                                                 <TextBox Text="{Binding EditText, UpdateSourceTrigger=PropertyChanged}"
                                                          LostFocus="OnSectionEditLostFocus"
@@ -612,11 +618,11 @@
                                         <ColumnDefinition Width="110" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="180" />
+                                        <ColumnDefinition Width="140" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="Label:" Style="{StaticResource FieldLabel}" />
                                     <TextBox Grid.Column="1" Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock Grid.Column="2" Text="Section:" Style="{StaticResource FieldLabel}" Margin="12,0,10,0" />
+                                    <TextBlock Grid.Column="2" Text="Section:" Style="{StaticResource FieldLabel}" Margin="8,0,10,0" />
                                     <!-- IsTextSearchEnabled=False: an editable ComboBox's built-in
                                          text search otherwise (a) auto-completes a typed prefix into
                                          a full matching choice mid-keystroke, hijacking what was typed,
@@ -686,14 +692,14 @@
                                     <StackPanel Grid.Column="1">
                                         <WrapPanel>
                                             <CheckBox Content="Any file" IsChecked="{Binding AnyType}"
-                                                      Margin="0,2,14,2" />
-                                            <CheckBox Content="PDF" IsChecked="{Binding TypePdf}" Margin="0,2,14,2"
+                                                      Margin="0,2,10,2" />
+                                            <CheckBox Content="PDF" IsChecked="{Binding TypePdf}" Margin="0,2,10,2"
                                                       IsEnabled="{Binding AnyType, Converter={StaticResource InvertBool}}" />
-                                            <CheckBox Content="TIFF" IsChecked="{Binding TypeTiff}" Margin="0,2,14,2"
+                                            <CheckBox Content="TIFF" IsChecked="{Binding TypeTiff}" Margin="0,2,10,2"
                                                       IsEnabled="{Binding AnyType, Converter={StaticResource InvertBool}}" />
-                                            <CheckBox Content="JPEG" IsChecked="{Binding TypeJpeg}" Margin="0,2,14,2"
+                                            <CheckBox Content="JPEG" IsChecked="{Binding TypeJpeg}" Margin="0,2,10,2"
                                                       IsEnabled="{Binding AnyType, Converter={StaticResource InvertBool}}" />
-                                            <CheckBox Content="PNG" IsChecked="{Binding TypePng}" Margin="0,2,14,2"
+                                            <CheckBox Content="PNG" IsChecked="{Binding TypePng}" Margin="0,2,10,2"
                                                       IsEnabled="{Binding AnyType, Converter={StaticResource InvertBool}}" />
                                         </WrapPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,2,0,0"
@@ -796,8 +802,9 @@
                             <TextBlock Text="Alerts" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
                             <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap"
                                        Text="Filenames containing these terms flash the tile and the inbox count red (ignores case):" />
-                            <ScrollViewer MaxHeight="64" VerticalScrollBarVisibility="Auto"
+                            <ScrollViewer MaxHeight="60" VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled" Focusable="False"
+                                          Padding="0,0,6,0"
                                           Margin="0,4,0,4">
                                 <ItemsControl ItemsSource="{Binding AlertTerms}" Focusable="False">
                                     <ItemsControl.ItemsPanel>
