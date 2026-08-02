@@ -19,9 +19,11 @@ One addition to `src/OrdoSort.Wpf/Theme/Styles.xaml`, beside the existing
 menu templates: an implicit `ContextMenu` style (with
 `OverridesDefaultStyle`) whose template mirrors the themed menu-popup
 chrome exactly — `Theme.Surface` background, 1px `Theme.Border`, 4px
-CornerRadius, 4px Padding, flat, `Theme.Text` foreground, the same
-popup-edge margin the Menu templates use. Items keep the existing implicit
-MenuItem templates untouched.
+CornerRadius, 4px Padding, flat, `Theme.Text` foreground. NO popup-edge
+margin (unlike the Menu templates, which own their Popup and its
+transparency, ContextMenu creates its own popup — a margin there risks an
+opaque dead strip). Items keep the existing implicit MenuItem templates
+untouched.
 
 ## Non-goals
 
