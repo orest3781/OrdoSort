@@ -6,20 +6,12 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Style="{StaticResource {x:Type Window}}">
     <Window.Resources>
-        <!-- ComboBox's own ItemTemplate mechanism assigns this to each
-             generated ComboBoxItem's ContentTemplate as a LOCAL value
-             (ItemsControl.PrepareContainerForItemOverride) — that outranks
-             even the ContentTemplate Setter Styles.xaml's ComboBoxItem style
-             now carries for the plain-string case, so this bare TextBlock
-             needs its OWN local Foreground binding; the Style-level fix
-             cannot reach it. Verified (2026-08-02): highlighted rows using
-             this template failed at 1.35/1.27 with the Style fix ALONE, and
-             pass at 12.89/11.48 once this binding is added directly here. -->
-        <DataTemplate x:Key="KvpValueTemplate">
-            <TextBlock Text="{Binding Value}"
-                       Foreground="{Binding Foreground,
-                           RelativeSource={RelativeSource AncestorType=ComboBoxItem}}" />
-        </DataTemplate>
+        <!-- KvpValueTemplate lives in Theme/Styles.xaml now (a real,
+             app-level ResourceDictionary, not this window's own private
+             Resources) so the regression test suite can resolve the SAME
+             production template by key instead of a hand-copied stand-in —
+             see Styles.xaml's own comment at its declaration for why the
+             local Foreground binding it carries is load-bearing. -->
         <Style x:Key="FieldLabel" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Margin" Value="0,0,10,0" />
@@ -976,22 +968,13 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="App font:" Style="{StaticResource FieldLabel}" />
                         <!-- every choice previews itself -->
+                        <!-- FontChoiceTemplate lives in Theme/Styles.xaml now, same
+                             reason as KvpValueTemplate (see its declaration there). -->
                         <ComboBox Grid.Column="1"
                                   ItemsSource="{x:Static vm:SettingsViewModel.FontChoices}"
                                   SelectedValuePath="Key"
-                                  SelectedValue="{Binding UiFontFamily}">
-                            <ComboBox.ItemTemplate>
-                                <!-- Same call-site fix as KvpValueTemplate above (see its
-                                     comment): this ItemTemplate's local ContentTemplate
-                                     value outranks the Styles.xaml ComboBoxItem fix. -->
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Value}"
-                                               FontFamily="{Binding Key, Converter={StaticResource FontFamilyString}}"
-                                               Foreground="{Binding Foreground,
-                                                   RelativeSource={RelativeSource AncestorType=ComboBoxItem}}" />
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
+                                  SelectedValue="{Binding UiFontFamily}"
+                                  ItemTemplate="{StaticResource FontChoiceTemplate}" />
                     </Grid>
                     <Grid Style="{StaticResource FieldRow}">
                         <Grid.ColumnDefinitions>

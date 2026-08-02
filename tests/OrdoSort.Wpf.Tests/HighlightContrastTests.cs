@@ -2,7 +2,6 @@ using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Threading;
 using OrdoSort.Wpf.Theme;
@@ -93,13 +92,12 @@ public sealed class HighlightContrastFixture : IDisposable
 /// the real <c>Theme/Styles.xaml</c> (no scratch harness, no screenshots): a
 /// container's trigger correctly flips the CONTAINER's own Foreground DP on
 /// IsHighlighted/IsSelected (e.g. ComboBoxItem -&gt; Theme.AccentText), but
-/// WPF's plain-string Content/Header auto-wrap builds its TextBlock (or, for
-/// an access-keyed Header, an AccessText) via an internal, special-cased
-/// template that consults the APPLICATION-level implicit TextBlock style
-/// (Styles.xaml, Foreground=Theme.Text) instead of inheriting the container's
-/// flipped value: a Style Setter always outranks property-value inheritance.
-/// Measured in Task 1 (2026-08-02): ComboBoxItem 1.35 light / 1.27 dark —
-/// both well under the WCAG AA floor of 4.5. See
+/// WPF's plain-string Content auto-wrap builds its TextBlock via an internal,
+/// special-cased template that consults the APPLICATION-level implicit
+/// TextBlock style (Styles.xaml, Foreground=Theme.Text) instead of
+/// inheriting the container's flipped value: a Style Setter always outranks
+/// property-value inheritance. Measured in Task 1 (2026-08-02): ComboBoxItem
+/// 1.35 light / 1.27 dark — both well under the WCAG AA floor of 4.5. See
 /// .superpowers/sdd/2026-08-02-highlight-text-contrast/task-1-report.md.
 ///
 /// Two independently-broken shapes exist (Task 1, Step 3): a plain-string
@@ -107,7 +105,13 @@ public sealed class HighlightContrastFixture : IDisposable
 /// an ItemTemplate-based one (NOT reachable from Styles.xaml at all —
 /// ItemsControl assigns ItemTemplate to the generated container's
 /// ContentTemplate as a LOCAL value, which outranks any Style Setter, so the
-/// call site's own template needs the same fix). Both are covered below.</summary>
+/// call site's own template needs the same fix). Both are covered below —
+/// and for the ItemTemplate shape, by resolving the REAL production
+/// templates (<c>KvpValueTemplate</c>/<c>FontChoiceTemplate</c>, both moved
+/// into Theme/Styles.xaml specifically so this suite can load them by key)
+/// rather than a hand-authored stand-in, so a future accidental revert of
+/// either template's Foreground binding fails this suite, not just a
+/// hand-copied duplicate of it.</summary>
 public class HighlightContrastTests : IClassFixture<HighlightContrastFixture>
 {
     private readonly HighlightContrastFixture _fx;
@@ -118,38 +122,46 @@ public class HighlightContrastTests : IClassFixture<HighlightContrastFixture>
         foreach (var dark in new[] { false, true })
         {
             yield return new object[] { "plain-string", dark };
-            yield return new object[] { "item-template", dark };
+            yield return new object[] { "KvpValueTemplate", dark };
+            yield return new object[] { "FontChoiceTemplate", dark };
         }
     }
 
-    /// <summary>Covers BOTH shapes Task 1 found broken:
-    /// "plain-string" mirrors MainWindow.xaml's/BulkRenameWindow.xaml's
-    /// `&lt;ComboBoxItem Content="…"/&gt;` (no ItemTemplate — the fix lives in
-    /// Styles.xaml's ComboBoxItem style, so this case exercises the REAL
-    /// Styles.xaml, merged above, unmodified by this test file); "item-template"
-    /// mirrors SettingsWindow.xaml's KvpValueTemplate/font-picker shape — a
-    /// bare `&lt;TextBlock Text="{Binding}"/&gt;` DataTemplate assigned as a
-    /// ComboBox's ItemTemplate. That assignment is reproduced directly on a
-    /// standalone ComboBoxItem via a genuine local ContentTemplate value
-    /// (ContentControl.ContentTemplate =, i.e. the exact same WPF
-    /// property-value precedence ItemsControl.PrepareContainerForItemOverride
+    /// <summary>Covers all shapes Task 1 found broken. "plain-string" mirrors
+    /// MainWindow.xaml's/BulkRenameWindow.xaml's `&lt;ComboBoxItem
+    /// Content="…"/&gt;` (no ItemTemplate — the fix lives in Styles.xaml's
+    /// ComboBoxItem style, so this case exercises the REAL Styles.xaml,
+    /// merged above, unmodified by this test file). "KvpValueTemplate" and
+    /// "FontChoiceTemplate" are resolved BY KEY straight out of that same
+    /// loaded <c>Theme/Styles.xaml</c> — the actual `DataTemplate` resources
+    /// SettingsWindow.xaml's naming-mode/process-order pickers and font
+    /// picker use via `ItemTemplate="{StaticResource …}"` — and applied as a
+    /// standalone ComboBoxItem's local `ContentTemplate` (the exact same WPF
+    /// property-value precedence `ItemsControl.PrepareContainerForItemOverride`
     /// creates internally) rather than via a real ComboBox+Popup, since the
     /// bug is a pure DependencyProperty-precedence conflict that doesn't care
-    /// who set the local value.</summary>
+    /// who set the local value. Because these are the PRODUCTION template
+    /// objects (not a copy), stripping either one's Foreground binding in
+    /// SettingsWindow.xaml/Styles.xaml — Task 1's most important finding,
+    /// the call-site shape a Styles.xaml-only fix cannot reach — fails this
+    /// test directly; proven by temporarily doing exactly that (see the
+    /// task-2 follow-up report for the pasted failing output).</summary>
     [Theory, MemberData(nameof(ComboBoxShapes))]
     public void HighlightedComboBoxItemTextMeetsWcagAa(string shape, bool dark) => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark);
 
         var container = new ComboBoxItem();
-        if (shape == "item-template")
+        if (shape == "plain-string")
         {
-            container.Content = new KeyValuePair<string, string>("k", "Failed queues");
-            container.ContentTemplate = KvpLikeTemplate();
+            container.Content = "Failed queues";
         }
         else
         {
-            container.Content = "Failed queues";
+            // shape is a resource key ("KvpValueTemplate"/"FontChoiceTemplate")
+            // in the real, loaded Theme/Styles.xaml -- not a copy.
+            container.Content = new KeyValuePair<string, string>("k", "Failed queues");
+            container.ContentTemplate = (DataTemplate)_fx.App.Resources[shape];
         }
 
         Realize(container);
@@ -168,33 +180,41 @@ public class HighlightContrastTests : IClassFixture<HighlightContrastFixture>
             $"ComboBoxItem {shape} ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
     });
 
-    /// <summary>UNRESOLVED-CONFLICT investigation (Task 2 brief): re-measure
-    /// the MenuItem submenu Header in a REAL menu, declared the way the app
-    /// declares it (MainWindow.xaml: an access-keyed `Header="_Tools"`
-    /// TopLevelHeader containing a `Header="_…"` SubmenuItem), rather than
-    /// trusting Task 1's synthetic harness or the 2026-08-01 QC round (which
-    /// most likely mismeasured the Gesture element, not the Header — its
-    /// number, 11.48/12.89, matches Gesture exactly).
+    /// <summary>UNRESOLVED-CONFLICT investigation (Task 2 brief), later
+    /// CORRECTED after independent re-verification: re-measure the MenuItem
+    /// submenu Header in a REAL menu, declared the way the app declares it
+    /// (MainWindow.xaml: an access-keyed `Header="_Tools"` TopLevelHeader
+    /// containing a `Header="_…"` SubmenuItem), rather than trusting Task 1's
+    /// synthetic harness or the 2026-08-01 QC round.
     ///
     /// Establishing which element actually paints the glyphs (per the brief)
-    /// took an extra step: an access-keyed Header resolves to
+    /// took an extra step, and an earlier version of this file got it wrong
+    /// in a way worth recording: an access-keyed Header resolves to
     /// <see cref="System.Windows.Controls.AccessText"/>, which does NOT
-    /// derive from TextBlock (confirmed empirically — a naive "first
-    /// TextBlock descendant" walk silently drills PAST it into a private,
-    /// always-empty child TextBlock AccessText builds internally, reading
-    /// that decoy's stale Foreground instead of the real one). The AccessText
-    /// element itself is what actually paints — its own Text and Foreground
-    /// both resolve correctly (confirmed: Text held the real header string,
-    /// Foreground tracked the container's flipped value) — so
-    /// <see cref="FindTextElement"/> below stops at EITHER a TextBlock or an
-    /// AccessText, whichever is found first, instead of always drilling to a
-    /// plain TextBlock leaf. Verdict once that's fixed: still FAILS, same
-    /// numbers as Task 1's synthetic harness (1.35/1.27) — see the report for
-    /// the printed evidence. Root cause matches ComboBoxItem's: Styles.xaml
-    /// has no AccessText-specific implicit style, so WPF's implicit-style
-    /// lookup walks up to the nearest ancestor type that has one
-    /// (TextBlock, Foreground=Theme.Text) — a Style Setter outranking
-    /// inheritance, same as ComboBoxItem's plain-string Content.</summary>
+    /// derive from TextBlock. A naive "first TextBlock descendant" walk
+    /// silently drills PAST the real AccessText into a private,
+    /// always-empty child TextBlock it builds internally, reading that
+    /// decoy's unrelated (Theme.Text-pinned) Foreground instead of the real
+    /// one — which is what the ORIGINAL version of this test did, producing
+    /// a false "1.35/1.27, FAILS" reading that looked identical to the real
+    /// ComboBoxItem bug and led to an unnecessary `HeaderTemplate` Setter
+    /// being added to Styles.xaml's MenuItem style. Independent re-verification
+    /// against a build with zero occurrences of "HeaderTemplate" in the
+    /// compiled OrdoSort.dll (i.e. provably pre-fix) — using the CORRECTED
+    /// <see cref="FindTextElement"/> below, which stops at EITHER a TextBlock
+    /// or an AccessText instead of always drilling to a TextBlock leaf —
+    /// found the auto-generated AccessText was ALREADY correct:
+    /// 12.89:1 light / 11.48:1 dark, PASSING. Root cause of why it was never
+    /// broken: Styles.xaml has no AccessText-specific implicit style, and
+    /// implicit-style lookup only walks an element's own .NET base-type
+    /// chain — AccessText's doesn't include TextBlock — so the "Setter
+    /// outranks inheritance" trap that breaks ComboBoxItem's plain-string
+    /// Content has no mechanism to reach AccessText at all; its Foreground
+    /// simply inherits from the MenuItem, which the MenuSubmenuItem
+    /// template's IsHighlighted trigger already flips correctly. The
+    /// `HeaderTemplate` Setter was reverted from Styles.xaml as a no-op; this
+    /// test case is kept as a regression guard and passes with or without
+    /// it (verified both ways).</summary>
     [Theory, MemberData(nameof(Palettes))]
     public void HighlightedMenuSubmenuHeaderTextMeetsWcagAa(bool dark) => _fx.Invoke(() =>
     {
@@ -256,33 +276,6 @@ public class HighlightContrastTests : IClassFixture<HighlightContrastFixture>
     {
         yield return new object[] { false };
         yield return new object[] { true };
-    }
-
-    // ---------------------------------------------------------------- shapes
-
-    /// <summary>Mirrors SettingsWindow.xaml's KvpValueTemplate (~line 9-14)
-    /// and its font-picker's inline ItemTemplate (~line 973-981) AFTER the
-    /// fix: a local Foreground binding to the ComboBoxItem ancestor added
-    /// directly on the bare TextBlock, since ItemsControl assigns
-    /// ItemTemplate to the generated container's ContentTemplate as a LOCAL
-    /// value, which outranks even Styles.xaml's own ComboBoxItem fix. Kept
-    /// as a literal XAML string (not a live extract of those resources) so
-    /// this test stays hermetic — no SettingsViewModel/SettingsWindow
-    /// construction, no App.xaml converter resources to stub. Trade-off:
-    /// doesn't catch drift in the real files by itself; kept in lockstep by
-    /// hand whenever those templates change (see task-2-report.md's
-    /// concerns).</summary>
-    private static DataTemplate KvpLikeTemplate()
-    {
-        const string Xaml = """
-            <DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-                <TextBlock Text="{Binding Value}"
-                           Foreground="{Binding Foreground,
-                               RelativeSource={RelativeSource AncestorType=ComboBoxItem}}" />
-            </DataTemplate>
-            """;
-        return (DataTemplate)XamlReader.Parse(Xaml);
     }
 
     // -------------------------------------------------------------- plumbing
