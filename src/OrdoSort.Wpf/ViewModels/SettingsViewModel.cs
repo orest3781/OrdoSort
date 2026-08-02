@@ -1213,7 +1213,15 @@ public sealed class SettingsViewModel : ObservableObject
 
     /// <summary>ListBox adapter over WatchRows: only folder rows are
     /// selectable. Selecting a header (or the null WPF pushes during a
-    /// rebuild) is rejected and the visual selection snaps back.</summary>
+    /// rebuild) is rejected and the visual selection snaps back.
+    /// Load-bearing beyond selection semantics: this guard is also the only
+    /// reason the header row's rename (✎)/add (＋) glyph Buttons in
+    /// SettingsWindow.xaml (WatchSectionVm's DataTemplate) never actually
+    /// render against a selected/IsSelected=True ListBoxItem today — those
+    /// buttons got a defensive Foreground-rebind fix anyway (2026-08-02
+    /// theme-coverage final review, Finding 2) precisely because relaxing
+    /// this guard to allow header selection would otherwise have exposed
+    /// them to the ComboBoxItem-style auto-wrap contrast trap.</summary>
     public object? SelectedWatchRow
     {
         get => SelectedWatch;

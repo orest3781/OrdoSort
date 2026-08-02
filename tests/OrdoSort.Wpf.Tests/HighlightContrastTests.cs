@@ -653,6 +653,189 @@ public class HighlightContrastTests : IClassFixture<HighlightContrastFixture>
         }
     });
 
+    // ----------------------------------------------- SubtleText de-emphasis
+
+    public static IEnumerable<object[]> PalettesAndSelection()
+    {
+        foreach (var dark in new[] { false, true })
+        foreach (var selected in new[] { false, true })
+            yield return new object[] { dark, selected };
+    }
+
+    /// <summary>Theme-coverage final review (2026-08-02), Finding 1:
+    /// NextNumberText carries Style="{StaticResource SubtleText}" AND
+    /// (before this fix) the SAME blanket LOCAL Foreground binding as its
+    /// sibling Id label — a LOCAL value always outranks a named style's
+    /// Setter, so the SubtleText de-emphasis was silently destroyed
+    /// whenever the row is unselected. The three tests in this section
+    /// escaped the SelectedXxxUsesTheAccentPalette tests above because
+    /// those only ever select the row first — where the bug is invisible,
+    /// since both the flat binding and the correct fix resolve to
+    /// Theme.AccentText once selected. This test covers BOTH states
+    /// directly: unselected must equal ThemePalette.SubtleText (proving the
+    /// de-emphasis actually survives), selected must equal
+    /// ThemePalette.AccentText (the same contract the flat binding already
+    /// gave selected rows, preserved by the DataTrigger-based fix).</summary>
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void LabelMakerNextNumberTextStaysSubtleUnlessSelected(bool dark, bool selected) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
+        var vm = new LabelMakerViewModel(new Config(), boxLabelsPath, new NoDialogs());
+        vm.Clients.Add(new LabelClientVm { Id = "TEST" });
+        var window = new LabelMakerWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+
+            var listBox = FindDescendant<ListBox>(window)
+                ?? throw new InvalidOperationException("no ListBox descendant under LabelMakerWindow");
+            listBox.SelectedIndex = selected ? 0 : -1;
+            PumpRender();
+            window.UpdateLayout();
+
+            var container = listBox.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem
+                ?? throw new InvalidOperationException("Clients row 0 never realized a container");
+
+            // NextNumberText is declared first in the DockPanel (regardless
+            // of its Dock="Right" side), so it's the FIRST Text/AccessText
+            // FindTextElement finds — same element the existing selected-only
+            // test above already resolves.
+            var text = FindTextElement(container)
+                ?? throw new InvalidOperationException("no TextBlock/AccessText descendant under the Clients row");
+
+            var fg = ToRgb(ForegroundOf(text));
+            var expected = selected ? p.AccentText : p.SubtleText;
+            Assert.Equal(expected, fg);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>Same Finding-1 gap-closing purpose as the LabelMakerWindow
+    /// test above, for ManageSavedWindow's password-status annotation.
+    /// Unlike NextNumberText/GestureText (both declared FIRST in their
+    /// DockPanel), this annotation is declared SECOND in its StackPanel
+    /// (after Label) — <see cref="FindTextElement"/> alone would resolve
+    /// Label instead, which was never broken (it never carried
+    /// Style="SubtleText"). <see cref="FindAllDescendants{T}"/> collects
+    /// every TextBlock in visual-tree order so this test can specifically
+    /// check the SECOND one.</summary>
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void ManageSavedPasswordStatusStaysSubtleUnlessSelected(bool dark, bool selected) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var vm = new UnlockViewModel(new Config(), () => { });
+        vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
+        var window = new ManageSavedWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+
+            var listBox = FindDescendant<ListBox>(window)
+                ?? throw new InvalidOperationException("no ListBox descendant under ManageSavedWindow");
+            listBox.SelectedIndex = selected ? 0 : -1;
+            PumpRender();
+            window.UpdateLayout();
+
+            var container = listBox.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem
+                ?? throw new InvalidOperationException("Saved row 0 never realized a container");
+
+            var textBlocks = FindAllDescendants<TextBlock>(container);
+            Assert.True(textBlocks.Count >= 2,
+                $"expected Label + password-status TextBlocks, found {textBlocks.Count}");
+            var passwordStatus = textBlocks[1];
+
+            var fg = ToRgb(passwordStatus.Foreground);
+            var expected = selected ? p.AccentText : p.SubtleText;
+            Assert.Equal(expected, fg);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>Same Finding-1 gap-closing purpose again, for
+    /// SettingsWindow's RouteList GestureText annotation — the riskiest of
+    /// the three, since RouteList is also the one ListBox with an explicit
+    /// ItemContainerStyle (see the RouteList test above).</summary>
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void SettingsRouteListGestureTextStaysSubtleUnlessSelected(bool dark, bool selected) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var cfg = new Config();
+        cfg.Routes.Add(new Route { Label = "Invoices", Path = @"C:\dest", Hotkey = "Ctrl+1" });
+        var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
+        var vm = new SettingsViewModel(cfg, new NoDialogs(),
+            () => dark ? ThemePalette.Dark : ThemePalette.Light, cfgPath);
+        var window = new SettingsWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+
+            var tabControl = FindDescendant<TabControl>(window)
+                ?? throw new InvalidOperationException("no TabControl descendant under SettingsWindow");
+            var destinationsTab = tabControl.Items.Cast<TabItem>()
+                    .FirstOrDefault(ti => ti.Header?.ToString() == "Destinations")
+                ?? throw new InvalidOperationException("no \"Destinations\" TabItem found");
+            tabControl.SelectedItem = destinationsTab;
+            window.UpdateLayout();
+            PumpRender();
+            window.UpdateLayout();
+
+            var listBox = FindDescendant<ListBox>(window)
+                ?? throw new InvalidOperationException("no ListBox descendant under SettingsWindow");
+            listBox.SelectedIndex = selected ? 0 : -1;
+            PumpRender();
+            window.UpdateLayout();
+
+            var container = listBox.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem
+                ?? throw new InvalidOperationException("RouteList row 0 never realized a container");
+
+            // GestureText (Dock="Right", declared FIRST in the DockPanel,
+            // after the non-Text Rectangle swatch) is the FIRST
+            // Text/AccessText FindTextElement finds — same element the
+            // existing selected-only test above already resolves.
+            var text = FindTextElement(container)
+                ?? throw new InvalidOperationException("no TextBlock/AccessText descendant under the RouteList row");
+
+            var fg = ToRgb(ForegroundOf(text));
+            var expected = selected ? p.AccentText : p.SubtleText;
+            Assert.Equal(expected, fg);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
     // ------------------------------------------------------- DocumentViewer
 
     /// <summary>DocumentViewer's toolbar chrome (PrintPreviewWindow), Task 2:
@@ -948,6 +1131,25 @@ public class HighlightContrastTests : IClassFixture<HighlightContrastFixture>
             if (FindDescendant<T>(child) is { } nested) return nested;
         }
         return null;
+    }
+
+    /// <summary>Like <see cref="FindDescendant{T}"/>, but collects EVERY
+    /// matching descendant in visual-tree (depth-first) order instead of
+    /// stopping at the first — needed where a single container has more
+    /// than one same-typed element to distinguish, e.g. ManageSavedWindow's
+    /// Label + password-status TextBlocks, which <see cref="FindTextElement"/>
+    /// alone can't tell apart.</summary>
+    private static List<T> FindAllDescendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        var results = new List<T>();
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) results.Add(match);
+            results.AddRange(FindAllDescendants<T>(child));
+        }
+        return results;
     }
 
     /// <summary>Like <see cref="FindDescendant{T}"/>, but stops at EITHER a

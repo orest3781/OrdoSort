@@ -16,11 +16,23 @@
                        Text="Tried automatically on Unlock. Encrypted for this Windows account — a hand-edited plaintext value is encrypted the next time saved passwords change here (add or remove)." />
             <ListBox ItemsSource="{Binding Saved}" SelectedItem="{Binding SelectedSavedEntry}"
                      Height="150">
-                <!-- Both labels get a LOCAL Foreground bound back to the
-                     generated ListBoxItem — see Styles.xaml's ListBoxItem
-                     style comment: an ItemTemplate's LOCAL ContentTemplate
+                <!-- Label gets a LOCAL Foreground bound back to the generated
+                     ListBoxItem — see Styles.xaml's ListBoxItem style
+                     comment: an ItemTemplate's LOCAL ContentTemplate
                      assignment outranks that style's own ContentTemplate
-                     Setter, so only a call-site fix reaches these. -->
+                     Setter, so only a call-site fix reaches it. The
+                     password-status annotation is NOT given that same
+                     blanket binding: it also carries
+                     Style="{StaticResource SubtleText}" for its
+                     de-emphasised at-rest look, and a LOCAL Foreground on
+                     the SAME TextBlock as that Style's Setter would outrank
+                     it, silently pinning it to full-emphasis Theme.Text
+                     whenever the row is unselected (found in the
+                     2026-08-02 theme-coverage final review). Fixed with a
+                     conditional Style instead: BasedOn SubtleText so its
+                     Setter still applies at rest, with a DataTrigger that
+                     only overrides Foreground to Theme.AccentText while the
+                     row is selected. -->
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <StackPanel Orientation="Horizontal">
@@ -28,10 +40,19 @@
                                        Foreground="{Binding Foreground,
                                            RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
                             <TextBlock Text="{Binding Password, Converter={StaticResource PasswordStatus},
-                                              StringFormat='   ({0})'}"
-                                       Style="{StaticResource SubtleText}"
-                                       Foreground="{Binding Foreground,
-                                           RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                                              StringFormat='   ({0})'}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSelected,
+                                                RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                                Value="True">
+                                                <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </StackPanel>
                     </DataTemplate>
                 </ListBox.ItemTemplate>

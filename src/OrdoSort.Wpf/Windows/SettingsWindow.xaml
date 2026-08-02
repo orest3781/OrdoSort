@@ -312,13 +312,31 @@
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                     </Style>
                                 </ListBox.ItemContainerStyle>
-                                <!-- Both labels get a LOCAL Foreground bound back
-                                     to the generated ListBoxItem — see
+                                <!-- Label gets a LOCAL Foreground bound back to
+                                     the generated ListBoxItem — see
                                      Styles.xaml's ListBoxItem style comment: an
                                      ItemTemplate's LOCAL ContentTemplate
                                      assignment outranks that style's own
                                      ContentTemplate Setter, so only a call-site
-                                     fix reaches these. -->
+                                     fix reaches it. GestureText is NOT given
+                                     that same blanket binding: it also carries
+                                     Style="{StaticResource SubtleText}" for its
+                                     de-emphasised at-rest look, and a LOCAL
+                                     Foreground on the SAME TextBlock as that
+                                     Style's Setter would outrank it, silently
+                                     pinning GestureText to full-emphasis
+                                     Theme.Text whenever the row is unselected
+                                     (found in the 2026-08-02 theme-coverage
+                                     final review — the same "LOCAL value beats
+                                     Style Setter" trap as ComboBoxItem's
+                                     ItemTemplate case elsewhere in this app,
+                                     just discovered here inverted, since the
+                                     LOCAL value was the fix that time). Fixed
+                                     with a conditional Style instead: BasedOn
+                                     SubtleText so its Setter still applies at
+                                     rest, with a DataTrigger that only
+                                     overrides Foreground to Theme.AccentText
+                                     while the row is selected. -->
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel>
@@ -327,10 +345,19 @@
                                                        Fill="{Binding Color, Converter={StaticResource ColorStringToBrush}}"
                                                        Stroke="{DynamicResource Theme.Border}" StrokeThickness="1" />
                                             <TextBlock DockPanel.Dock="Right" Text="{Binding GestureText}"
-                                                       Style="{StaticResource SubtleText}" FontSize="11"
-                                                       VerticalAlignment="Center" Margin="8,0,0,0"
-                                                       Foreground="{Binding Foreground,
-                                                           RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                                                       FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsSelected,
+                                                                RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                                                Value="True">
+                                                                <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                             <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"
                                                        Foreground="{Binding Foreground,
                                                            RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
@@ -588,16 +615,48 @@
                                                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                                                Foreground="{Binding Foreground,
                                                                    RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
-                                                    <Button Content="✎" Margin="6,0,0,0" Padding="3,0"
+                                                    <!-- Defensive fix (2026-08-02 theme-coverage
+                                                         final review, Finding 2): a plain-string
+                                                         Button.Content auto-wraps into a TextBlock
+                                                         that resolves the APPLICATION-level
+                                                         implicit TextBlock style (Theme.Text)
+                                                         instead of inheriting this Button's own
+                                                         Foreground — the same "Style Setter
+                                                         outranks inheritance" trap as
+                                                         ComboBoxItem/PrimaryButton/ChipButton
+                                                         elsewhere in this app. An explicit
+                                                         TextBlock with the sibling Header label's
+                                                         own LOCAL Foreground binding sidesteps the
+                                                         auto-wrap entirely, matching Header's
+                                                         unselected-Theme.Text/selected-
+                                                         Theme.AccentText behaviour exactly.
+                                                         Currently UNREACHABLE:
+                                                         SettingsViewModel.SelectedWatchRow rejects
+                                                         header-row selection outright, so this
+                                                         row's ListBoxItem never actually reports
+                                                         IsSelected=True — see that property's own
+                                                         doc comment. Fixed anyway, cheaply, so a
+                                                         future relaxation of that guard doesn't
+                                                         silently reintroduce the ComboBoxItem-style
+                                                         1.27-1.35:1 contrast failure here. -->
+                                                    <Button Margin="6,0,0,0" Padding="3,0"
                                                             Background="Transparent" BorderThickness="0"
                                                             Click="OnSectionRenameClick"
                                                             ToolTip="Rename this section — updates every folder in it"
-                                                            AutomationProperties.Name="{Binding Header, StringFormat=Rename section {0}}" />
-                                                    <Button Content="＋" Margin="2,0,0,0" Padding="3,0"
+                                                            AutomationProperties.Name="{Binding Header, StringFormat=Rename section {0}}">
+                                                        <TextBlock Text="✎"
+                                                                   Foreground="{Binding Foreground,
+                                                                       RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                                                    </Button>
+                                                    <Button Margin="2,0,0,0" Padding="3,0"
                                                             Background="Transparent" BorderThickness="0"
                                                             Click="OnSectionAddFolderClick"
                                                             ToolTip="Add a folder to this section"
-                                                            AutomationProperties.Name="{Binding Header, StringFormat=Add folder to section {0}}" />
+                                                            AutomationProperties.Name="{Binding Header, StringFormat=Add folder to section {0}}">
+                                                        <TextBlock Text="＋"
+                                                                   Foreground="{Binding Foreground,
+                                                                       RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                                                    </Button>
                                                 </StackPanel>
                                                 <TextBox Text="{Binding EditText, UpdateSourceTrigger=PropertyChanged}"
                                                          LostFocus="OnSectionEditLostFocus"
