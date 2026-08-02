@@ -459,6 +459,33 @@
         </Setter>
     </Style>
 
+    <!-- ContextMenu: the right-click popup chrome. The stock template is a
+         hardcoded LIGHT plate (the same trap the MenuItem note above
+         describes) — and every right-click menu in this app is WPF's
+         built-in editor menu (Cut/Copy/Paste), so this one implicit style
+         themes them all. Items already resolve the retemplated MenuItem
+         roles. No outer margin: unlike the Menu templates, which own their
+         Popup and its transparency, ContextMenu creates its own popup — a
+         margin here can render as an opaque dead strip. -->
+    <Style TargetType="ContextMenu">
+        <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
+        <Setter Property="Background" Value="{DynamicResource Theme.Surface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}" />
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1" CornerRadius="4" Padding="4">
+                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style TargetType="StatusBar">
         <Setter Property="Background" Value="{DynamicResource Theme.WindowBg}" />
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
