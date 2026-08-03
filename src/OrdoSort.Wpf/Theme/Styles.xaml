@@ -650,7 +650,12 @@
          DataGridCell is the one exception in this file, and is left alone.
          Same auto-wrap/local-Foreground trap as ComboBoxItem below for a
          bare Content string (this app's SuggestList in ProcessingView.xaml
-         is the one list with no ItemTemplate): fixed with the keyed
+         is the one list whose ITEMS are plain strings — WatchList sets no
+         ItemTemplate either, so "the one list with no ItemTemplate", as this
+         sentence read until 2026-08-03, was false in the same way the
+         comment it replaced was; its rows are view models drawn by DataType
+         templates, which is exactly the distinction the enumeration below
+         turns on): fixed with the keyed
          PlainStringListItemTemplate below, a real TextBlock with a LOCAL
          Foreground bound back to this ListBoxItem — but applied through a
          ContentTemplateSelector, NOT a blanket ContentTemplate Setter. See
@@ -779,30 +784,71 @@
          resting row unaffected. ControlTemplate.Resources does NOT reach
          this auto-wrapped TextBlock either (tried first, also fails) — the
          only technique that does is forcing a REAL, explicitly-authored
-         TextBlock via ContentTemplate below, with a LOCAL Foreground binding
-         to this element, so the auto-wrap path is never taken at all.
-         Measured after: 12.89:1 light / 11.48:1 dark.
-         This Setter only reaches ComboBoxItems that get their Content
+         TextBlock (PlainStringComboItemTemplate below) with a LOCAL
+         Foreground binding to this element, so the auto-wrap path is never
+         taken at all. Measured after: 12.89:1 light / 11.48:1 dark.
+
+         Applied through a ContentTemplateSelector, NOT a blanket
+         ContentTemplate Setter (Task 8b fix round 1, 2026-08-03 — the
+         ListBoxItem style above got the identical treatment one round
+         earlier, for a Critical that this style's shape would have produced
+         next). A non-null ContentTemplate from ANY source suppresses THREE
+         things at once: ContentPresenter's implicit DataType-keyed template
+         lookup, its UIElement passthrough, and any ItemTemplateSelector the
+         call site set. ChooseTemplate resolves ContentTemplate ->
+         ContentTemplateSelector -> its own built-in default selector and
+         stops at the first hit — a RESOLUTION order, which is why a LOCAL
+         ContentTemplateSelector loses to this Style's Setter even though it
+         outranks it in DependencyProperty precedence. All three shapes are
+         pinned executably by ContentTemplateSetterTests; see
+         PlainStringOnlyTemplateSelector's own doc comment for the mechanism.
+         The sentence that used to sit here instead — "verified no
+         ComboBoxItem in this app sets compound (non-string) Content" — was
+         true when written and is still true today, and is exactly the
+         decaying-premise shape that hid Task 8b's Critical through a full
+         audit; it is not what this style should rest on.
+
+         One measured consequence of narrowing it, recorded rather than left
+         to be rediscovered: ComboBox.UpdateSelectionBoxItem copies the
+         SELECTED CONTAINER's ContentTemplate into SelectionBoxItemTemplate to
+         paint the CLOSED face, and there is no SelectionBoxItemTemplateSelector
+         for it to consult instead. So the closed face now takes WPF's
+         plain-string auto-wrap rather than this template — whose FindAncestor
+         Foreground binding could not resolve out there anyway, there being no
+         ComboBoxItem above the selection box. Both paths land on Theme.Text;
+         measured legible against Theme.Surface in both palettes and pinned by
+         ClosedComboBoxStillShowsTheSelectedItemLegibly.
+
+         These Setters only reach ComboBoxItems that get their Content
          directly (no ItemTemplate) — an ItemsControl with its own
          ItemTemplate assigns it to the container's ContentTemplate as a
          LOCAL value, which outranks this Style Setter entirely; those call
          sites (SettingsWindow.xaml's KvpValueTemplate and font-picker
          ItemTemplate) need the identical local-Foreground-binding fix
-         applied directly in their own templates instead. Also: this
-         forcibly wraps ANY Content in a TextBlock via {Binding} — verified
-         no ComboBoxItem in this app sets compound (non-string) Content. -->
+         applied directly in their own templates instead. -->
+
+    <!-- Keyed here rather than inline in the Setter for the same reason as
+         PlainStringListItemTemplate/KvpValueTemplate above: the test suite
+         resolves both BY KEY out of the real, loaded Styles.xaml, so an edit
+         to the shipped template fails those tests instead of drifting away
+         from a hand-copied stand-in. Kept separate from
+         PlainStringListItemTemplate rather than shared — sharing WOULD work,
+         since ComboBoxItem derives from ListBoxItem and would satisfy that
+         template's AncestorType=ListBoxItem lookup, but a template named for
+         one control silently serving another is how this file got into
+         trouble in the first place. -->
+    <DataTemplate x:Key="PlainStringComboItemTemplate">
+        <TextBlock Text="{Binding}"
+                   Foreground="{Binding Foreground,
+                       RelativeSource={RelativeSource AncestorType=ComboBoxItem}}" />
+    </DataTemplate>
+    <theme:PlainStringOnlyTemplateSelector x:Key="PlainStringComboItemSelector"
+                                           PlainStringTemplate="{StaticResource PlainStringComboItemTemplate}" />
+
     <Style TargetType="ComboBoxItem">
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="Padding" Value="8,5" />
-        <Setter Property="ContentTemplate">
-            <Setter.Value>
-                <DataTemplate>
-                    <TextBlock Text="{Binding}"
-                               Foreground="{Binding Foreground,
-                                   RelativeSource={RelativeSource AncestorType=ComboBoxItem}}" />
-                </DataTemplate>
-            </Setter.Value>
-        </Setter>
+        <Setter Property="ContentTemplateSelector" Value="{StaticResource PlainStringComboItemSelector}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBoxItem">
@@ -975,7 +1021,27 @@
          other consumer swaps it per-instance), the fix is simpler than
          chasing that race: reference it directly with a plain
          `{StaticResource CalendarItemStyle}` on the `<CalendarItem>` tag
-         below, bypassing the CalendarItemStyle DP entirely. -->
+         below, bypassing the CalendarItemStyle DP entirely.
+
+         DELIBERATELY NOT CONVERTED to a ContentTemplateSelector (Task 8b fix
+         round 1, 2026-08-03), unlike ListBoxItem's and ComboBoxItem's Setters
+         of the identical shape above. That trap needs three things: content
+         that is not a string, a call site able to supply it, and a style able
+         to reach that call site. A Calendar cell has none. WPF's own
+         CalendarItem.PopulateGrids is the ONLY thing that ever sets these
+         cells' Content, and it sets a preformatted day-number/month/year
+         STRING (the DateTime goes to DataContext, never to Content) — so the
+         string branch is the only one ChooseTemplate could ever take here, and
+         a string-only selector would be behaviourally identical to the blanket
+         Setter. And both styles are KEYED, reachable only through Calendar's
+         own CalendarDayButtonStyle/CalendarButtonStyle Setters below (the
+         paragraph above is why they cannot be implicit), so there is no "next
+         author" to leave a hole for — which was the entire argument for
+         converting the other two. That premise is PINNED, not asserted:
+         ContentTemplateSetterTests.CalendarCellsCanOnlyEverCarryStringContent
+         drives a real Calendar in both display modes and fails if a future
+         .NET ever hands these cells anything but a string, or if either style
+         ever becomes implicit. -->
     <Style x:Key="CalendarDayButtonStyle" TargetType="CalendarDayButton">
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="MinWidth" Value="28" />
