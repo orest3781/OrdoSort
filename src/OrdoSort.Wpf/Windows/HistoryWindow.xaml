@@ -39,8 +39,22 @@
             </DataGrid.RowStyle>
             <DataGrid.Columns>
                 <DataGridTextColumn Header="When" Binding="{Binding When}" Width="140" />
-                <DataGridTextColumn Header="Original" Binding="{Binding Original}" Width="*" />
-                <DataGridTextColumn Header="Filed as" Binding="{Binding FiledAs}" Width="*" />
+                <!-- MinWidth: a DataGridColumn's default MinWidth is 20px, and
+                     a Show() that's never subsequently resized (this app's own
+                     headless Screenshots.cs QA tool; any other headless/CI
+                     render) can leave Width="*" columns stuck at that bare
+                     20px forever — WPF only recomputes star-column widths
+                     from a genuine later SizeChanged, which a real on-screen
+                     window gets for free (WM_SIZE/WM_ACTIVATE) but a headless
+                     Show()+UpdateLayout() never does. A real, interactively-
+                     shown window is unaffected either way (confirmed:
+                     screenshotting the live app resolves these to their fair
+                     share, 0 rows and 5 rows alike) — this floor exists so
+                     the one path that IS affected still shows a legible
+                     filename prefix instead of hiding it entirely. See
+                     .superpowers/sdd/2026-08-02-audit-remediation/task-1-report.md. -->
+                <DataGridTextColumn Header="Original" Binding="{Binding Original}" Width="*" MinWidth="120" />
+                <DataGridTextColumn Header="Filed as" Binding="{Binding FiledAs}" Width="*" MinWidth="120" />
                 <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="160" />
                 <DataGridTextColumn Header="Route" Binding="{Binding Route}" Width="120" />
                 <DataGridCheckBoxColumn Header="Undone" Binding="{Binding Reverted}" Width="70" />

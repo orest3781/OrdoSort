@@ -122,10 +122,13 @@
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
+                        <!-- MinWidth: see HistoryWindow.xaml's identical comment
+                             on its Original/Filed-as columns — same DataGrid
+                             star-column-vs-headless-Show() issue, same fix. -->
                         <DataGridTextColumn Header="Current name" Binding="{Binding Current}"
-                                            IsReadOnly="True" Width="*" />
+                                            IsReadOnly="True" Width="*" MinWidth="120" />
                         <DataGridTextColumn Header="New name  ·  click or press F2 to edit"
-                                            Binding="{Binding NewName}" Width="*">
+                                            Binding="{Binding NewName}" Width="*" MinWidth="120">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                     <Style.Triggers>

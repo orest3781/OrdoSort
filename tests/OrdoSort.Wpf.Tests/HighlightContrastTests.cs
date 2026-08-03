@@ -29,6 +29,21 @@ file sealed class NoDialogs : IDialogService
     public string? BrowseFolder(string? startAt) => null;
 }
 
+/// <summary>Declares the shared collection every consumer of
+/// <see cref="HighlightContrastFixture"/> must join via
+/// <c>[Collection(HighlightContrastTests.Name)]</c> instead of its own
+/// <c>IClassFixture&lt;HighlightContrastFixture&gt;</c>: xunit constructs an
+/// <c>ICollectionFixture</c> exactly ONCE per collection (shared by every
+/// class in it) and never runs two classes in the SAME collection in
+/// parallel with each other — both properties this fixture's single
+/// dedicated STA thread and process-wide <see cref="Application"/> depend on.
+/// See <see cref="HighlightContrastFixture"/>'s own class doc for the two
+/// distinct crashes reproduced without this.</summary>
+[CollectionDefinition(HighlightContrastTests.Name)]
+public sealed class HighlightContrastCollection : ICollectionFixture<HighlightContrastFixture>
+{
+}
+
 /// <summary>Hosts the one WPF <see cref="Application"/> a process may create,
 /// with the real <c>Theme/Styles.xaml</c> merged in exactly as <c>App.xaml</c>
 /// does — so every test in this class resolves the SAME DynamicResource
@@ -48,7 +63,26 @@ file sealed class NoDialogs : IDialogService
 /// "The calling thread must be STA" on an ordinary xunit worker thread even
 /// with no Window ever shown — confirmed empirically here (not assumed).
 /// One thread for the whole fixture (not one per test) because
-/// <see cref="Application"/> may only be constructed once per process.</summary>
+/// <see cref="Application"/> may only be constructed once per process — and,
+/// just as importantly, because it's a <c>DispatcherObject</c> pinned to
+/// whichever thread creates it: every consumer must reuse this SAME instance
+/// (and therefore this same thread's <see cref="Dispatcher"/>), never spin up
+/// a second one. <see cref="HighlightContrastCollection"/> (above) is what
+/// enforces that: two test classes each independently declaring
+/// <c>IClassFixture&lt;HighlightContrastFixture&gt;</c> get TWO separate
+/// instances on TWO separate threads — the second thread's
+/// <c>Application.Current ?? new Application(…)</c> check either races the
+/// first (crashing with "Cannot create more than one
+/// System.Windows.Application instance") or, if it loses that race and reuses
+/// the first thread's `Application.Current`, then throws "The calling thread
+/// cannot access this object because a different thread owns it" the moment
+/// it touches any DispatcherObject member (e.g. <c>Application.Windows</c>)
+/// from its OWN thread. Both reproduced empirically while adding
+/// <see cref="DataGridStarColumnTests"/> as a second consumer (Task 1,
+/// 2026-08-02) — fixed by switching every consumer from
+/// <c>IClassFixture&lt;&gt;</c> to the shared collection, which guarantees
+/// xunit constructs this fixture exactly once for however many test classes
+/// use it.</summary>
 public sealed class HighlightContrastFixture : IDisposable
 {
     private readonly Thread _thread;
@@ -166,8 +200,16 @@ public sealed class HighlightContrastFixture : IDisposable
 /// rather than a hand-authored stand-in, so a future accidental revert of
 /// either template's Foreground binding fails this suite, not just a
 /// hand-copied duplicate of it.</summary>
-public class HighlightContrastTests : IClassFixture<HighlightContrastFixture>
+[Collection(Name)]
+public class HighlightContrastTests
 {
+    /// <summary>Shared with every other test class that needs the same
+    /// <see cref="HighlightContrastFixture"/> (currently also
+    /// <see cref="DataGridStarColumnTests"/>) via <c>[Collection(Name)]</c> —
+    /// see <see cref="HighlightContrastCollection"/> and the fixture's own
+    /// class doc for why a second, independent instance is unsafe.</summary>
+    public const string Name = "HighlightContrastFixture collection";
+
     private readonly HighlightContrastFixture _fx;
     public HighlightContrastTests(HighlightContrastFixture fx) => _fx = fx;
 
