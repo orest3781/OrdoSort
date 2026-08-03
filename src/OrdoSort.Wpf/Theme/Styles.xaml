@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:theme="clr-namespace:OrdoSort.Wpf.Theme"
                     xmlns:views="clr-namespace:OrdoSort.Wpf.Views">
 
     <!-- All colors come from the Theme.* brushes ThemeManager materializes;
@@ -640,39 +641,65 @@
          Setters on the untouched stock template can't reliably out-rank;
          DataGridCell is the one exception in this file, and is left alone.
          Same auto-wrap/local-Foreground trap as ComboBoxItem below for a
-         bare Content string (no ItemTemplate — this app's SuggestList in
-         ProcessingView.xaml is the one case with no ItemTemplate): fixed
-         the identical way, a ContentTemplate Setter wrapping a real
-         TextBlock with a LOCAL Foreground bound back to this ListBoxItem.
-         ItemTemplate-based ListBoxes (SettingsWindow's route/watch lists,
-         LabelMakerWindow's client list, ManageSavedWindow, UnlockWindow's
-         file list) supply their OWN label TextBlocks directly in their own
-         window's XAML — a LOCAL value there always outranks this Style's
-         ContentTemplate Setter, so each of those needed the same
-         local-Foreground-binding fix applied directly at its own call site
-         (see each window's own comment); this Style alone cannot reach
-         them. RouteList also sets ItemContainerStyle explicitly (a
-         from-scratch Style with no BasedOn) — an explicitly-set
-         ItemContainerStyle entirely REPLACES implicit-by-type lookup for
-         that ListBox's containers, so without a BasedOn back to THIS style
-         it would keep using the plain WPF default no matter what this file
-         says; fixed at that call site by adding
-         BasedOn="{StaticResource {x:Type ListBoxItem}}" there. -->
+         bare Content string (this app's SuggestList in ProcessingView.xaml
+         is the one list with no ItemTemplate): fixed with the keyed
+         PlainStringListItemTemplate below, a real TextBlock with a LOCAL
+         Foreground bound back to this ListBoxItem — but applied through a
+         ContentTemplateSelector, NOT a blanket ContentTemplate Setter. See
+         PlainStringOnlyTemplateSelector's own doc comment for the full
+         account; the short version is that a non-null ContentTemplate from
+         ANY source suppresses ContentPresenter's implicit DataType-keyed
+         DataTemplate lookup outright, and the blanket Setter this style
+         used to carry therefore killed SettingsWindow's WatchList, whose
+         two row shapes are declared as DataType templates in its own
+         <ListBox.Resources> (Task 8b, 2026-08-03 — six rows of
+         "OrdoSort.Wpf.ViewModels.WatchSectionVm" on screen).
+
+         How each of this app's other ListBoxes relates to this style:
+
+         * ItemTemplate-based lists (SettingsWindow's RouteList,
+           LabelMakerWindow's client list, ManageSavedWindow, UnlockWindow's
+           file list) supply their OWN label TextBlocks in their own
+           window's XAML. ItemsControl assigns ItemTemplate to each
+           generated container's ContentTemplate as a LOCAL value, and a
+           local value outranks a Style Setter — so those lists never saw
+           the old Setter, and each needed the local-Foreground-binding fix
+           applied at its own call site (see each window's own comment).
+           That is true of an ItemTemplate specifically, and was WRONGLY
+           written here as if it were true of any call-site template.
+         * DataType-template lists (SettingsWindow's WatchList) set NEITHER
+           ItemTemplate NOR ItemContainerStyle, so their containers have no
+           local ContentTemplate at all and this style's Setters DO reach
+           them. There is no local value to outrank anything — the absence
+           of one is exactly what let the old Setter through.
+         * RouteList also sets ItemContainerStyle explicitly — an
+           explicitly-set ItemContainerStyle entirely REPLACES
+           implicit-by-type lookup for that ListBox's containers, so
+           without a BasedOn back to THIS style it would keep using the
+           plain WPF default no matter what this file says; fixed at that
+           call site by adding BasedOn="{StaticResource {x:Type
+           ListBoxItem}}" there. -->
+
+    <!-- Declared here (an app-level ResourceDictionary), not inline in the
+         Setter, for the same reason as KvpValueTemplate/FontChoiceTemplate
+         below: the test suite resolves it BY KEY out of the real, loaded
+         Styles.xaml, so a future edit to the shipped template fails those
+         tests instead of drifting away from a hand-copied stand-in. -->
+    <DataTemplate x:Key="PlainStringListItemTemplate">
+        <TextBlock Text="{Binding}"
+                   Foreground="{Binding Foreground,
+                       RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+    </DataTemplate>
+    <theme:PlainStringOnlyTemplateSelector x:Key="PlainStringListItemSelector"
+                                           PlainStringTemplate="{StaticResource PlainStringListItemTemplate}" />
+
     <Style TargetType="ListBoxItem">
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="Padding" Value="8,5" />
         <!-- Task 8: focus-ring coverage — see the CheckBox/RadioButton pair
              above. -->
         <Setter Property="FocusVisualStyle" Value="{StaticResource BronzeFocusVisual}" />
-        <Setter Property="ContentTemplate">
-            <Setter.Value>
-                <DataTemplate>
-                    <TextBlock Text="{Binding}"
-                               Foreground="{Binding Foreground,
-                                   RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
-                </DataTemplate>
-            </Setter.Value>
-        </Setter>
+        <Setter Property="ContentTemplateSelector" Value="{StaticResource PlainStringListItemSelector}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ListBoxItem">

@@ -649,12 +649,26 @@
                                                         </Style>
                                                     </StackPanel.Style>
                                                     <!-- LOCAL Foreground bound back to the
-                                                         generated ListBoxItem — see Styles.xaml's
-                                                         ListBoxItem style comment: this
-                                                         DataTemplate's LOCAL ContentTemplate
-                                                         assignment outranks that style's own
-                                                         ContentTemplate Setter, so only a
-                                                         call-site fix reaches this label. -->
+                                                         generated ListBoxItem: without it this
+                                                         TextBlock resolves the APPLICATION-level
+                                                         implicit TextBlock style (Theme.Text)
+                                                         rather than inheriting the container's
+                                                         selected Theme.AccentText — a Style Setter
+                                                         outranking inheritance, same as every other
+                                                         row label in this app.
+
+                                                         NOTE (corrected, Task 8b 2026-08-03): these
+                                                         templates are implicit DataType templates in
+                                                         WatchList's own <ListBox.Resources>, which
+                                                         is NOT a ContentTemplate assignment of any
+                                                         kind — local or otherwise. The comment that
+                                                         used to sit here claimed the opposite, and
+                                                         that wrong premise is what hid the fact that
+                                                         Styles.xaml's blanket ContentTemplate Setter
+                                                         suppressed these templates entirely (a
+                                                         ContentPresenter only does DataType lookup
+                                                         when ContentTemplate is null). See
+                                                         PlainStringOnlyTemplateSelector. -->
                                                     <TextBlock Text="{Binding Header}" FontWeight="SemiBold"
                                                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                                                Foreground="{Binding Foreground,
@@ -726,11 +740,14 @@
                                                            Fill="{Binding Color, Converter={StaticResource ColorStringToBrush}}"
                                                            Stroke="{DynamicResource Theme.Border}" StrokeThickness="1" />
                                                 <!-- LOCAL Foreground bound back to the generated
-                                                     ListBoxItem — see Styles.xaml's ListBoxItem
-                                                     style comment: this DataTemplate's LOCAL
-                                                     ContentTemplate assignment outranks that
-                                                     style's own ContentTemplate Setter, so only a
-                                                     call-site fix reaches this label. -->
+                                                     ListBoxItem — same reason, and the same
+                                                     Task-8b correction, as the section header's
+                                                     label above: this template is an implicit
+                                                     DataType template in WatchList's own
+                                                     <ListBox.Resources>, NOT a local
+                                                     ContentTemplate, so it is reached (and was
+                                                     suppressed) by Styles.xaml's ListBoxItem
+                                                     style rather than outranking it. -->
                                                 <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"
                                                            Foreground="{Binding Foreground,
                                                                RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
