@@ -99,6 +99,28 @@ public class UnexpectedErrorTests
     }
 
     [Fact]
+    public void EnterReportsAnUnexpectedExceptionInsteadOfSwallowingIt()
+    {
+        // Regression: OnEnter used to call OnRouteAsync directly, bypassing
+        // RouteCommand and its OnError channel — a button press was protected
+        // from an unforeseen fault, but pressing Enter (the app's primary
+        // filing gesture) let the exception disappear as an unobserved task.
+        using var fx = new ShellFixture();
+        fx.AddInboxFile("20240115--111111.pdf");
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+
+        Exception? logged = null;
+        fx.Shell.UnexpectedError += ex => logged = ex;
+        fx.Viewer.ThrowOnRelease = new InvalidOperationException("enter exploded");
+        fx.Shell.OnEnter();
+
+        Assert.NotNull(logged);
+        Assert.Equal("enter exploded", logged!.Message);
+        Assert.Contains(fx.Dialogs.Warnings, w => w.Message.Contains("enter exploded"));
+    }
+
+    [Fact]
     public void TheBusyGuardIsReleasedAfterAnUnexpectedFailure()
     {
         using var fx = new ShellFixture();

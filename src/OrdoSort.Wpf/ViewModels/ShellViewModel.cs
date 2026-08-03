@@ -962,11 +962,19 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// first — or always the first, per enter_commits.</summary>
     public void OnEnter() => _ = OnEnterAsync();
 
+    /// <summary>Fires the resolved route through RouteCommand — never
+    /// OnRouteAsync directly — so Enter gets exactly the same OnError
+    /// reporting and reentrancy guard a button press gets. A button click is
+    /// routed through AsyncRelayCommand already; Enter is the app's primary
+    /// filing gesture and must not be the one path where an exception can go
+    /// unobserved.</summary>
     internal Task OnEnterAsync()
     {
         if (Screen != Screen.Processing) return Task.CompletedTask;
         var target = EnterTargetIndex();
-        return target is { } i ? OnRouteAsync(i) : Task.CompletedTask;
+        if (target is not { } i) return Task.CompletedTask;
+        RouteCommand.Execute(i);
+        return RouteCommand.Completion;
     }
 
     public RelayCommand ExportHistoryCommand { get; }
@@ -1043,32 +1051,52 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     internal async Task ApplySettingsAsync(Config cfg)
     {
-        var oldDb = ResolvePath(_cfg.HistoryDb, _cfgPath);
+        var oldDbSetting = _cfg.HistoryDb;
+        var oldDb = ResolvePath(oldDbSetting, _cfgPath);
         var newDb = ResolvePath(cfg.HistoryDb, _cfgPath);
-        _cfg = cfg;
-        if (!Config.TrySave(cfg, _cfgPath, out var error))
-            _dialogs.Warn(error, "OrdoSort — settings not saved");
         if (!string.Equals(oldDb, newDb, StringComparison.OrdinalIgnoreCase))
         {
             // the backup copies the whole DB file — off the UI thread, it can
-            // live on a share. While the swap runs, _history points at a
-            // disposed instance: HistorySwapping gates the two UI entry
-            // points (History window, CSV export) that could touch it.
-            var old = _history;
+            // live on a share. While the swap runs, _history still points at
+            // the OLD (live) instance: HistorySwapping gates the two UI entry
+            // points (History window, CSV export) that could touch it mid-swap.
+            //
+            // The new History is built FIRST and the old one is disposed only
+            // once the new one exists and is open. If construction throws,
+            // _history must still be the live old instance — autocomplete,
+            // CSV export and the History window must not go dark for the
+            // rest of the session just because the new path didn't pan out.
             HistorySwapping = true;
             try
             {
-                _history = await _scheduler.Run(() =>
+                var fresh = await _scheduler.Run(() =>
                 {
-                    old.Dispose();
                     HistoryBackup.BackupDaily(newDb,
                         Path.Combine(Path.GetDirectoryName(Path.GetFullPath(newDb))!, "backups"),
                         DateTime.Now);
                     return new History(newDb);
                 });
+                _history.Dispose();
+                _history = fresh;
+            }
+            catch (Exception ex)
+            {
+                // Keep the old, still-open database live for the rest of the
+                // session. Don't let the broken path ride along into the
+                // config we're about to persist below — otherwise the next
+                // save (or the next launch) would silently retry, and fail
+                // against, the same unreachable path.
+                cfg.HistoryDb = oldDbSetting;
+                _dialogs.Warn(
+                    $"Couldn't open the new history database at \"{newDb}\":\n\n{ex.Message}" +
+                    "\n\nKeeping the previous database for this session.",
+                    "OrdoSort — history database");
             }
             finally { HistorySwapping = false; }
         }
+        _cfg = cfg;
+        if (!Config.TrySave(cfg, _cfgPath, out var error))
+            _dialogs.Warn(error, "OrdoSort — settings not saved");
         _session = new Session(cfg, _history);
         await _scheduler.Run(() => _watch.SetFolders(cfg.Inbox, cfg.Deferred));
         _watch.SetPollInterval(cfg.PollSeconds * 1000);   // adopt a changed cadence live

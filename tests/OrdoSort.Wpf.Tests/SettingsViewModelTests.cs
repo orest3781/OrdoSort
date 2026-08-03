@@ -1365,6 +1365,36 @@ public class ApplySettingsTests
     }
 
     [Fact]
+    public void HistorySwapFailureLeavesTheOldHistoryUsable()
+    {
+        // Regression: ApplySettingsAsync used to dispose the old History
+        // BEFORE constructing the new one. If `new History(newDb)` throws,
+        // _history was left pointing at a disposed connection — autocomplete,
+        // CSV export and the History window would then fail silently for the
+        // rest of the session, with no message to the user.
+        using var fx = new ShellFixture();
+        fx.Shell.Initialize();
+
+        // A plain file sits where the new db's directory needs to be
+        // created, so History's constructor (Directory.CreateDirectory)
+        // throws deterministically.
+        var blocker = Path.Combine(fx.Dir, "blocked");
+        File.WriteAllText(blocker, "not a directory");
+        var newDb = Path.Combine(blocker, "sub", "audit.sqlite");
+
+        var clone = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(fx.Cfg))!;
+        clone.HistoryDb = newDb;
+        fx.Shell.ApplySettings(clone);
+
+        // the shell must still have a USABLE history — not a disposed handle
+        var count = fx.Shell.History.ExportCsv(Path.Combine(fx.Dir, "export.csv"));
+        Assert.Equal(0, count);
+
+        // and the user must have been told the swap failed
+        Assert.NotEmpty(fx.Dialogs.Warnings);
+    }
+
+    [Fact]
     public void WordSeparatorTakesEffectImmediately()
     {
         using var fx = new ShellFixture();
