@@ -282,7 +282,9 @@ public partial class MainWindow : Window
         var vm = new SettingsViewModel(Shell.FreshConfigForSettings(), Dialogs, () => Theme.ThemeManager.Current,
             Shell.CfgPath, new SoundService(), uiContext: SynchronizationContext.Current);
         var win = new Windows.SettingsWindow(vm) { Owner = this };
-        if (win.ShowDialog() == true && vm.Result is { } cfg)
+        var accepted = win.ShowDialog() == true;
+        vm.Dispose();   // cancel any still-armed per-field/per-row probes now the dialog is closing
+        if (accepted && vm.Result is { } cfg)
             Shell.ApplySettings(cfg);
     }
 

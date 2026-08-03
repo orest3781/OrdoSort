@@ -1268,6 +1268,66 @@ public class SettingsViewModelTests : IDisposable
         Assert.True(sw.ElapsedMilliseconds < 50,
             $"setting a watch folder's Path blocked for {sw.ElapsedMilliseconds}ms on the UI thread");
     }
+
+    // ---- Task 2 follow-up: clearing a path must cancel its in-flight probe,
+    // not just skip past it — otherwise the stale probe resolves later and
+    // silently overwrites the note/Problem for a path the user no longer has.
+
+    [Fact]
+    public void ClearingInboxCancelsTheInFlightProbeInsteadOfLettingItOverwriteTheNote()
+    {
+        // A slow directoryExists (the shape of a stalled SMB round trip)
+        // that, if not cancelled, resolves LONG after the box is cleared.
+        var vm = new SettingsViewModel(new Config(), _dialogs,
+            directoryExists: p => { Thread.Sleep(500); return Directory.Exists(p); });
+
+        vm.Inbox = _dir;   // arms a slow probe for a real, existing folder
+        vm.Inbox = "";     // cleared inside the debounce+I/O window — no I/O needed for blank
+
+        // blank needs no I/O: this must be correct immediately
+        Assert.Contains("no inbox folder set", vm.InboxNote);
+
+        // Wait past BOTH the debounce (300ms) and the slow probe (500ms).
+        // If the stale probe for _dir wasn't cancelled, it resolves here
+        // and silently overwrites the note with "" (the real answer for a
+        // folder the user no longer has configured).
+        Thread.Sleep(1200);
+        Assert.Contains("no inbox folder set", vm.InboxNote);
+    }
+
+    [Fact]
+    public void ClearingARoutePathCancelsTheInFlightValidateRouteProbe()
+    {
+        var vm = new SettingsViewModel(new Config(), _dialogs,
+            validateRoute: r => { Thread.Sleep(500); return Config.ValidateRoute(r); });
+        vm.AddRouteCommand.Execute(null);
+        var route = vm.Routes[0];
+
+        route.Path = _dir;   // arms a slow probe for a real, writable folder
+        route.Path = "";     // cleared inside the debounce+I/O window
+
+        Assert.Equal("no destination path configured", route.Problem);
+
+        Thread.Sleep(1200);
+        Assert.Equal("no destination path configured", route.Problem);
+    }
+
+    [Fact]
+    public void ClearingAWatchFolderPathCancelsTheInFlightProbe()
+    {
+        var vm = new SettingsViewModel(new Config(), _dialogs,
+            directoryExists: p => { Thread.Sleep(500); return Directory.Exists(p); });
+        vm.AddWatchCommand.Execute(null);
+        var w = vm.WatchFolders[0];
+
+        w.Path = _dir;   // arms a slow probe for a real folder
+        w.Path = "";     // cleared inside the debounce+I/O window
+
+        Assert.Equal("no folder chosen yet", w.Problem);
+
+        Thread.Sleep(1200);
+        Assert.Equal("no folder chosen yet", w.Problem);
+    }
 }
 
 public class ApplySettingsTests

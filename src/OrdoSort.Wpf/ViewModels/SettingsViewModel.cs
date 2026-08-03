@@ -67,14 +67,12 @@ public sealed class RouteEditVm : ObservableObject, IDisposable
     private void TriggerProblemCheck(bool immediate = false)
     {
         var raw = Path.Trim();
-        if (raw.Length == 0)
-        {
-            Set(ref _problem, "no destination path configured", nameof(Problem));
-            return;
-        }
-        Set(ref _problem, "", nameof(Problem));   // neutral while pending
         var route = new Route { Path = raw };
-        _problemProbe.Trigger(() => _validateRoute(route), immediate);
+        _problemProbe.Resolve(
+            raw.Length == 0 ? "no destination path configured" : null,
+            neutralValue: "",
+            compute: () => _validateRoute(route),
+            immediate);
     }
 
     /// <summary>Force a re-check — e.g. right after "Create folder" makes the
@@ -287,13 +285,11 @@ public sealed class WatchEditVm : ObservableObject, IDisposable
     private void TriggerProblemCheck(bool immediate = false)
     {
         var p = Path.Trim();
-        if (p.Length == 0)
-        {
-            Set(ref _problem, "no folder chosen yet", nameof(Problem));
-            return;
-        }
-        Set(ref _problem, "", nameof(Problem));   // neutral while pending
-        _problemProbe.Trigger(() => _directoryExists(p) ? "" : $"folder doesn't exist: {p}", immediate);
+        _problemProbe.Resolve(
+            p.Length == 0 ? "no folder chosen yet" : null,
+            neutralValue: "",
+            compute: () => _directoryExists(p) ? "" : $"folder doesn't exist: {p}",
+            immediate);
     }
 
     /// <summary>Force a re-check — e.g. right after "Create folder" makes the
@@ -432,7 +428,7 @@ public sealed class SoundChoiceVm : ObservableObject
 /// errors block, warnings ask "Save anyway?") and produces a NEW Config built
 /// by JSON-cloning the original — so every unedited field and every unknown
 /// key survives by construction.</summary>
-public sealed class SettingsViewModel : ObservableObject
+public sealed class SettingsViewModel : ObservableObject, IDisposable
 {
     // KeyValuePair: WPF binds properties, not tuple fields
     public static readonly KeyValuePair<string, string>[] FontChoices =
@@ -878,27 +874,28 @@ public sealed class SettingsViewModel : ObservableObject
 
     private void RecomputeInboxNote(bool immediate = false) =>
         RecomputeFolderNote(Inbox, "no inbox folder set — there will be nothing to process",
-            _inboxProbe, v => Set(ref _inboxNote, v, nameof(InboxNote)), immediate);
+            _inboxProbe, immediate);
 
     private string _deferredNote = "";
     public string DeferredNote => _deferredNote;
     private readonly DebouncedProbe<string> _deferredProbe;
 
     private void RecomputeDeferredNote(bool immediate = false) =>
-        RecomputeFolderNote(Deferred, "",
-            _deferredProbe, v => Set(ref _deferredNote, v, nameof(DeferredNote)), immediate);
+        RecomputeFolderNote(Deferred, "", _deferredProbe, immediate);
 
     /// <summary>Shared live-note logic for a folder path box: blank/relative
-    /// answers instantly (no I/O); otherwise the note goes neutral and the
-    /// real Directory.Exists check is (re)triggered on <paramref name="probe"/>.</summary>
-    private void RecomputeFolderNote(string path, string blankMeans,
-        DebouncedProbe<string> probe, Action<string> setNote, bool immediate)
+    /// answers instantly (no I/O — <see cref="DebouncedProbe{T}.Resolve"/>
+    /// cancels whatever's pending before applying it, so a probe armed by an
+    /// earlier, longer value can never survive to overwrite this); otherwise
+    /// the note goes neutral and the real Directory.Exists check is
+    /// (re)triggered on <paramref name="probe"/>.</summary>
+    private void RecomputeFolderNote(string path, string blankMeans, DebouncedProbe<string> probe, bool immediate)
     {
         var p = path.Trim();
-        if (p.Length == 0) { setNote(blankMeans); return; }
-        if (!Path.IsPathRooted(p)) { setNote("relative — resolved beside the config file"); return; }
-        setNote("");   // neutral while pending
-        probe.Trigger(() => _directoryExists(p) ? "" : $"folder doesn't exist: {p}", immediate);
+        string? fastPath = p.Length == 0 ? blankMeans
+            : !Path.IsPathRooted(p) ? "relative — resolved beside the config file"
+            : null;
+        probe.Resolve(fastPath, "", () => _directoryExists(p) ? "" : $"folder doesn't exist: {p}", immediate);
     }
 
     private string _namesFileNote = "";
@@ -908,11 +905,10 @@ public sealed class SettingsViewModel : ObservableObject
     private void RecomputeNamesFileNote(bool immediate = false)
     {
         var p = NamesFile.Trim();
-        if (p.Length == 0) { Set(ref _namesFileNote, "", nameof(NamesFileNote)); return; }
-        if (!Path.IsPathRooted(p))
-        { Set(ref _namesFileNote, "relative — resolved beside the config file", nameof(NamesFileNote)); return; }
-        Set(ref _namesFileNote, "", nameof(NamesFileNote));   // neutral while pending
-        _namesFileProbe.Trigger(() => _fileExists(p)
+        string? fastPath = p.Length == 0 ? ""
+            : !Path.IsPathRooted(p) ? "relative — resolved beside the config file"
+            : null;
+        _namesFileProbe.Resolve(fastPath, "", () => _fileExists(p)
             ? "" : "file doesn't exist yet (optional — it seeds the name suggestions)", immediate);
     }
 
@@ -923,11 +919,10 @@ public sealed class SettingsViewModel : ObservableObject
     private void RecomputeHistoryDbNote(bool immediate = false)
     {
         var p = HistoryDb.Trim();
-        if (p.Length == 0) { Set(ref _historyDbNote, "", nameof(HistoryDbNote)); return; }
-        if (!Path.IsPathRooted(p))
-        { Set(ref _historyDbNote, "relative — kept beside the config file", nameof(HistoryDbNote)); return; }
-        Set(ref _historyDbNote, "", nameof(HistoryDbNote));   // neutral while pending
-        _historyDbProbe.Trigger(() =>
+        string? fastPath = p.Length == 0 ? ""
+            : !Path.IsPathRooted(p) ? "relative — kept beside the config file"
+            : null;
+        _historyDbProbe.Resolve(fastPath, "", () =>
         {
             if (_fileExists(p)) return "";
             var dir = Path.GetDirectoryName(p);
@@ -947,7 +942,7 @@ public sealed class SettingsViewModel : ObservableObject
     private void RecomputeDestinationsFileNote(bool immediate = false) =>
         RecomputeDataFileNote(DestinationsFile,
             sp => (Config.ReadDoc<DestinationsDoc>(_cfgPath!, sp) ?? new DestinationsDoc()).Routes.Count,
-            _destinationsFileProbe, v => Set(ref _destinationsFileNote, v, nameof(DestinationsFileNote)), immediate);
+            _destinationsFileProbe, immediate);
 
     private string _monitoredFoldersFileNote = "";
     public string MonitoredFoldersFileNote => _monitoredFoldersFileNote;
@@ -956,8 +951,7 @@ public sealed class SettingsViewModel : ObservableObject
     private void RecomputeMonitoredFoldersFileNote(bool immediate = false) =>
         RecomputeDataFileNote(MonitoredFoldersFile,
             sp => (Config.ReadDoc<MonitoredFoldersDoc>(_cfgPath!, sp) ?? new MonitoredFoldersDoc()).WatchFolders.Count,
-            _monitoredFoldersFileProbe,
-            v => Set(ref _monitoredFoldersFileNote, v, nameof(MonitoredFoldersFileNote)), immediate);
+            _monitoredFoldersFileProbe, immediate);
 
     private string _alertsFileNote = "";
     public string AlertsFileNote => _alertsFileNote;
@@ -966,7 +960,7 @@ public sealed class SettingsViewModel : ObservableObject
     private void RecomputeAlertsFileNote(bool immediate = false) =>
         RecomputeDataFileNote(AlertsFile,
             sp => (Config.ReadDoc<AlertsDoc>(_cfgPath!, sp) ?? new AlertsDoc()).AlertTexts.Count,
-            _alertsFileProbe, v => Set(ref _alertsFileNote, v, nameof(AlertsFileNote)), immediate);
+            _alertsFileProbe, immediate);
 
     private string _boxLabelsFileNote = "";
     public string BoxLabelsFileNote => _boxLabelsFileNote;
@@ -975,7 +969,7 @@ public sealed class SettingsViewModel : ObservableObject
     private void RecomputeBoxLabelsFileNote(bool immediate = false) =>
         RecomputeDataFileNote(BoxLabelsFile,
             sp => (Config.ReadDoc<BoxLabelsDoc>(_cfgPath!, sp) ?? new BoxLabelsDoc()).LabelClients.Count,
-            _boxLabelsFileProbe, v => Set(ref _boxLabelsFileNote, v, nameof(BoxLabelsFileNote)), immediate);
+            _boxLabelsFileProbe, immediate);
 
     /// <summary>Shared live-note logic for the four section-file path boxes:
     /// blank means the section default: not resolvable (no config path to
@@ -983,18 +977,23 @@ public sealed class SettingsViewModel : ObservableObject
     /// created from the in-memory list on save; present means show what's
     /// really in it (or the readable parse error, rather than a crash). Only
     /// the File.Exists gate and the read itself touch disk, so only those
-    /// run on <paramref name="probe"/>, off the UI thread.</summary>
+    /// run on <paramref name="probe"/>, off the UI thread — the fast-path
+    /// branches resolve through <see cref="DebouncedProbe{T}.Resolve"/>,
+    /// which cancels any probe a longer-lived value already armed.</summary>
     private void RecomputeDataFileNote(string sectionPath, Func<string, int> countEntries,
-        DebouncedProbe<string> probe, Action<string> setNote, bool immediate)
+        DebouncedProbe<string> probe, bool immediate)
     {
         var p = sectionPath.Trim();
-        if (p.Length == 0) { setNote("blank = the default beside config.json"); return; }
-        if (_cfgPath is not { } cfgPath) { setNote("not a usable path"); return; }
-        string full;
-        try { full = Config.ResolveBeside(cfgPath, p); }
-        catch (Exception) { setNote("not a usable path"); return; }
-        setNote("");   // neutral while pending
-        probe.Trigger(() =>
+        string? fastPath;
+        var full = "";
+        if (p.Length == 0) fastPath = "blank = the default beside config.json";
+        else if (_cfgPath is not { } cfgPath) fastPath = "not a usable path";
+        else
+        {
+            try { full = Config.ResolveBeside(cfgPath, p); fastPath = null; }
+            catch (Exception) { fastPath = "not a usable path"; }
+        }
+        probe.Resolve(fastPath, "", () =>
         {
             if (!_fileExists(full))
                 return "will be created on save — the current list is written there";
@@ -1775,5 +1774,25 @@ public sealed class SettingsViewModel : ObservableObject
         try { doc = Config.ReadDoc<TDoc>(_cfgPath, newPath); }
         catch (ConfigException) { return; }   // broken target: keep the built values
         if (doc is not null) apply(doc);
+    }
+
+    /// <summary>Disposes the 8 per-field note probes and every current
+    /// route/watch row's own Problem probe. Called by the window host
+    /// (MainWindow.OnSettings) once the Settings dialog closes — any probe
+    /// still armed at that point is a bounded, one-shot Timer that would
+    /// otherwise fire into a no-longer-observed view model (harmless, but
+    /// needless); disposing cancels it outright instead of waiting it out.</summary>
+    public void Dispose()
+    {
+        _inboxProbe.Dispose();
+        _deferredProbe.Dispose();
+        _namesFileProbe.Dispose();
+        _historyDbProbe.Dispose();
+        _destinationsFileProbe.Dispose();
+        _monitoredFoldersFileProbe.Dispose();
+        _alertsFileProbe.Dispose();
+        _boxLabelsFileProbe.Dispose();
+        foreach (var r in Routes) r.Dispose();
+        foreach (var w in WatchFolders) w.Dispose();
     }
 }

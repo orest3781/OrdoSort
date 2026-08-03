@@ -23,8 +23,17 @@ namespace OrdoSort.Wpf.Services;
 /// gap (the user kept typing while the old probe was still in flight), this
 /// probe's result is dropped instead of overwriting a newer one. A lock
 /// around the (generation, pending compute) pair keeps that check honest
-/// against the timer callback, which runs on a thread-pool thread.</summary>
-public sealed class DebouncedProbe<T> : IDisposable
+/// against the timer callback, which runs on a thread-pool thread.
+///
+/// <see cref="Cancel"/> exists for the OTHER half of that guarantee: a
+/// caller with a synchronous, no-I/O answer (a blank or relative path) MUST
+/// cancel whatever's pending before applying that answer directly — merely
+/// returning early leaves a previously-armed probe alive, and it can still
+/// resolve later and silently overwrite the answer for whatever the user
+/// has since changed to. <see cref="Resolve"/> packages that shape (fast
+/// path vs. neutral-then-probe) as the one mechanism every call site should
+/// share, rather than each hand-rolling the same two branches.</summary>
+public sealed class DebouncedProbe<T> : IDisposable where T : class
 {
     private readonly IWorkScheduler _scheduler;
     private readonly SynchronizationContext? _uiContext;
@@ -47,6 +56,29 @@ public sealed class DebouncedProbe<T> : IDisposable
         _timer = new System.Threading.Timer(_ => Fire());
     }
 
+    /// <summary>Either resolve synchronously — <paramref name="fastPathResult"/>
+    /// non-null means no I/O is needed (a blank/relative path, an unusable
+    /// section path, etc.) — cancelling any in-flight/pending probe so it can
+    /// never later overwrite this answer; or, when null, go neutral
+    /// (<paramref name="neutralValue"/>, typically "") and (re)trigger the
+    /// real, debounced, off-thread check. This is the one shared shape
+    /// behind every call site that needs it — RouteEditVm/WatchEditVm's
+    /// Problem, and SettingsViewModel's per-field notes — because six
+    /// hand-copied versions of "short-circuit without cancelling" is exactly
+    /// how a stale probe was able to silently overwrite a note for a path
+    /// the user had already cleared.</summary>
+    public void Resolve(T? fastPathResult, T neutralValue, Func<T> compute, bool immediate = false)
+    {
+        if (fastPathResult is not null)
+        {
+            Cancel();
+            _apply(fastPathResult);
+            return;
+        }
+        _apply(neutralValue);
+        Trigger(compute, immediate);
+    }
+
     /// <summary>Schedule <paramref name="compute"/> to run after the debounce
     /// interval (or immediately — still off the UI thread — when
     /// <paramref name="immediate"/> is set, for the very first check on
@@ -63,11 +95,30 @@ public sealed class DebouncedProbe<T> : IDisposable
         _timer.Change(immediate ? 0 : _intervalMs, Timeout.Infinite);
     }
 
+    /// <summary>Cancel whatever's pending: bumps the generation (so an
+    /// already-in-flight probe's eventual result is discarded as stale) and
+    /// disarms the timer (so a not-yet-fired one never runs at all).</summary>
+    public void Cancel()
+    {
+        if (_disposed) return;
+        lock (_gate)
+        {
+            _generation++;
+            _pendingCompute = null;
+        }
+        _timer.Change(Timeout.Infinite, Timeout.Infinite);
+    }
+
     private void Fire()
     {
         long generation;
         Func<T>? compute;
-        lock (_gate) { generation = _generation; compute = _pendingCompute; }
+        lock (_gate)
+        {
+            generation = _generation;
+            compute = _pendingCompute;
+            _pendingCompute = null;   // consumed — don't hold the closure alive past this
+        }
         if (compute is null) return;
         _ = RunAsync(generation, compute);
     }
@@ -78,9 +129,9 @@ public sealed class DebouncedProbe<T> : IDisposable
         try { result = await _scheduler.Run(compute).ConfigureAwait(false); }
         catch { return; }   // a failed probe just leaves the previous note in place
 
-        // Superseded by a later keystroke while the probe was in flight —
-        // that newer Trigger() owns the timer now and will apply its own
-        // result; this stale one must never win the race and overwrite it.
+        // Superseded by a later keystroke (or a cancel) while the probe was
+        // in flight — that newer call owns the timer now and will apply its
+        // own result; this stale one must never win the race and overwrite it.
         lock (_gate) { if (_generation != generation) return; }
 
         if (_uiContext is null) _apply(result);
