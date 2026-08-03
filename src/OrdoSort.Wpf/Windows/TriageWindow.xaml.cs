@@ -24,6 +24,15 @@ public partial class TriageWindow : Window
     /// same pattern as MainWindow's own <c>Dialogs</c> property.</summary>
     internal IDialogService Dialogs { get; set; }
 
+    /// <summary>True once this window has started closing. WebView2 cold
+    /// start is not instant, and "Stop reviewing" is IsCancel="True" — so
+    /// Close() can land while InitAndShowAsync below is still mid-flight.
+    /// Set in the Closed handler BEFORE Viewer.Dispose(), and checked after
+    /// each await in InitAndShowAsync, so a continuation that resumes after
+    /// the window is gone never touches the (by then disposed) Viewer and
+    /// never shows a MessageBox owned by an already-closed window.</summary>
+    internal bool IsClosed { get; private set; }
+
     /// <summary>Which item is being reviewed. Exposed only so the smoke
     /// test can drive every item's render path in turn without going
     /// through the full rename/skip plumbing.</summary>
@@ -60,6 +69,9 @@ public partial class TriageWindow : Window
         ViewerInputEnhancer.Register(_panZone);
         Closed += (_, _) =>
         {
+            // set BEFORE Dispose() — InitAndShowAsync's post-await checks
+            // must see this the instant they resume, not race Dispose() itself
+            IsClosed = true;
             ViewerInputEnhancer.Unregister(_panZone);
             // this window's WebView2 is deliberately fresh per review pass (see
             // MatchMergeWindow.OnReview) rather than reused — but nothing
@@ -73,14 +85,26 @@ public partial class TriageWindow : Window
                 Header = h,
                 Binding = new Binding($"[{h}]"),
             });
-        Loaded += async (_, _) =>
-        {
-            if (!await _pdf.InitAsync())
-                Dialogs.Warn(
-                    "The PDF viewer (WebView2) failed to start:\n\n" + _pdf.InitError,
-                    "OrdoSort");
-            await ShowCurrentAsync();
-        };
+        Loaded += async (_, _) => await InitAndShowAsync(_pdf.InitAsync);
+    }
+
+    /// <summary>The Loaded flow: init the viewer, warn on failure, show the
+    /// first document — each step re-checked against <see cref="IsClosed"/>
+    /// first, since the window can close (Escape → "Stop reviewing",
+    /// IsCancel="True") while any one of these is still in flight. Takes the
+    /// init call as a delegate (rather than calling <c>_pdf.InitAsync</c>
+    /// directly) so a test can control exactly when it resolves without
+    /// needing a real, untimeable WebView2 startup.</summary>
+    internal async Task InitAndShowAsync(Func<Task<bool>> initAsync)
+    {
+        var ok = await initAsync();
+        if (IsClosed) return;   // closed while InitAsync was pending — Viewer's already disposed
+        if (!ok)
+            Dialogs.Warn(
+                "The PDF viewer (WebView2) failed to start:\n\n" + _pdf.InitError,
+                "OrdoSort");
+        if (IsClosed) return;   // closed during the warning's modal loop, or between the two checks
+        await ShowCurrentAsync();
     }
 
     private MatchMerge.MatchResult? Current => _index < _items.Count ? _items[_index] : null;
