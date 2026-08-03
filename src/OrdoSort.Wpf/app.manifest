@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<!--
+  Declares per-monitor-v2 DPI awareness for OrdoSort.
+
+  Without this file, the SDK still embeds a default manifest (assemblyIdentity
+  + trustInfo/asInvoker only — confirmed by inspecting the pre-fix exe's
+  embedded RT_MANIFEST resource) but it carries NO <dpiAware>/<dpiAwareness>
+  element at all, so the process defaults to DPI-*unaware*: Windows bitmap-
+  scales (blurs) it at anything above 100% — the default on most current
+  laptops (125%/150%) — and worse across mixed-DPI multi-monitor setups.
+
+  The two elements below form the standard graceful fallback chain
+  Microsoft documents for exactly this scenario
+  (https://learn.microsoft.com/windows/win32/hidpi/setting-the-default-dpi-awareness-for-a-process):
+    - <dpiAwareness>PerMonitorV2</dpiAwareness> is read by Windows 10
+      version 1607+ and wins whenever present.
+    - <dpiAware>true</dpiAware> is read by every OS back to Vista and is
+      the one older Windows versions fall back to when the newer element
+      isn't understood — system-DPI-aware rather than fully unaware.
+  net8.0-windows + WPF supports Per-Monitor V2 properly (unlike WinForms,
+  which needs extra per-control work), so no further app changes are needed
+  for this to take effect.
+-->
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.0.0.0" name="OrdoSort.app"/>
+
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
+    <security>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+    </windowsSettings>
+  </application>
+</assembly>

@@ -9,6 +9,9 @@
     <AssemblyName>OrdoSort</AssemblyName>
     <RootNamespace>OrdoSort.Wpf</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
+    <!-- Per-monitor-v2 DPI awareness (with a graceful fallback for older
+         Windows) — see app.manifest's own comment for why this is needed. -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>

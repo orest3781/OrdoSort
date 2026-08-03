@@ -7,7 +7,9 @@ namespace OrdoSort.Wpf.Theme;
 /// <summary>Applies a <see cref="ThemePalette"/> to the running app as
 /// "Theme.*" brush resources (consumed by Styles.xaml via DynamicResource),
 /// follows the OS light/dark preference, and re-applies live when the user
-/// changes it.</summary>
+/// changes it. Steps aside from overriding the native SystemColors.* keys
+/// entirely while Windows High Contrast is on, live-reevaluated the same
+/// way.</summary>
 public static class ThemeManager
 {
     public static bool IsDark { get; private set; }
@@ -17,13 +19,30 @@ public static class ThemeManager
     /// theme key. Only auto reacts to the OS preference changing.</summary>
     public static string Mode { get; private set; } = "auto";
 
+    /// <summary>Indirection over <c>SystemParameters.HighContrast</c> — a
+    /// static BCL property that can't be faked directly — so tests can
+    /// simulate Windows High Contrast ON/OFF without touching real OS
+    /// accessibility settings. Internal (not private) only so tests can
+    /// override it via <c>InternalsVisibleTo</c>; production code never
+    /// assigns to this field. Same "settable only by tests" seam pattern as
+    /// <see cref="App._crashDir"/>.</summary>
+    internal static Func<bool> IsHighContrast = () => SystemParameters.HighContrast;
+
     public static void Start(Application app, string mode = "auto")
     {
         TitleBar.Hook();
         SetMode(app, mode);
         SystemEvents.UserPreferenceChanged += (_, e) =>
         {
-            if (Mode == "auto" &&
+            if (e.Category == UserPreferenceCategory.Accessibility)
+                // High Contrast (SPI_SETHIGHCONTRAST) — and any other
+                // accessibility toggle — lands in this category. Re-apply
+                // with the CURRENT dark/light state (not derived again from
+                // the OS preference) so the SystemColors step-aside gate
+                // re-evaluates live, regardless of whether Mode is "auto" or
+                // pinned to a fixed light/dark choice.
+                app.Dispatcher.BeginInvoke(() => Apply(app, IsDark));
+            else if (Mode == "auto" &&
                 e.Category is UserPreferenceCategory.General or UserPreferenceCategory.Color)
                 app.Dispatcher.BeginInvoke(() => Apply(app, ReadOsPrefersDark()));
         };
@@ -75,17 +94,42 @@ public static class ThemeManager
 
         // Native-templated controls (menus, scrollbars, dialogs) read the
         // SystemColors brush keys — override them so dark mode reaches the
-        // parts we don't retemplate.
-        r[SystemColors.WindowBrushKey] = Brush(p.Surface);
-        r[SystemColors.WindowTextBrushKey] = Brush(p.Text);
-        r[SystemColors.ControlBrushKey] = Brush(p.WindowBg);
-        r[SystemColors.ControlTextBrushKey] = Brush(p.Text);
-        r[SystemColors.MenuBrushKey] = Brush(p.Surface);
-        r[SystemColors.MenuTextBrushKey] = Brush(p.Text);
-        r[SystemColors.MenuBarBrushKey] = Brush(p.WindowBg);
-        r[SystemColors.HighlightBrushKey] = Brush(p.Accent);
-        r[SystemColors.HighlightTextBrushKey] = Brush(p.AccentText);
-        r[SystemColors.GrayTextBrushKey] = Brush(p.SubtleText);
+        // parts we don't retemplate. BUT: a user who has turned on Windows
+        // High Contrast has done so as an accessibility need, not a cosmetic
+        // preference — silently overriding it with our own palette would
+        // defeat the OS setting. Step aside entirely in that case (do not
+        // substitute a bespoke HC theme): REMOVE any override rather than
+        // merely skip re-adding one, because Apply() re-runs live when HC is
+        // toggled ON while the app is already running with a PRIOR override
+        // sitting in this same ResourceDictionary — skipping the assignment
+        // would leave that stale app-palette brush in place instead of
+        // letting the real SystemColors resolve through.
+        if (IsHighContrast())
+        {
+            r.Remove(SystemColors.WindowBrushKey);
+            r.Remove(SystemColors.WindowTextBrushKey);
+            r.Remove(SystemColors.ControlBrushKey);
+            r.Remove(SystemColors.ControlTextBrushKey);
+            r.Remove(SystemColors.MenuBrushKey);
+            r.Remove(SystemColors.MenuTextBrushKey);
+            r.Remove(SystemColors.MenuBarBrushKey);
+            r.Remove(SystemColors.HighlightBrushKey);
+            r.Remove(SystemColors.HighlightTextBrushKey);
+            r.Remove(SystemColors.GrayTextBrushKey);
+        }
+        else
+        {
+            r[SystemColors.WindowBrushKey] = Brush(p.Surface);
+            r[SystemColors.WindowTextBrushKey] = Brush(p.Text);
+            r[SystemColors.ControlBrushKey] = Brush(p.WindowBg);
+            r[SystemColors.ControlTextBrushKey] = Brush(p.Text);
+            r[SystemColors.MenuBrushKey] = Brush(p.Surface);
+            r[SystemColors.MenuTextBrushKey] = Brush(p.Text);
+            r[SystemColors.MenuBarBrushKey] = Brush(p.WindowBg);
+            r[SystemColors.HighlightBrushKey] = Brush(p.Accent);
+            r[SystemColors.HighlightTextBrushKey] = Brush(p.AccentText);
+            r[SystemColors.GrayTextBrushKey] = Brush(p.SubtleText);
+        }
 
         TitleBar.ApplyAll(app);   // window chrome follows the theme too
     }
