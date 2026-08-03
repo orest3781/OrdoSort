@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows;
 using OrdoSort.Core;
 
@@ -77,8 +78,12 @@ public partial class App : Application
     }
 
     /// <summary>Where crash.log goes: beside the config. Static so the shell can
-    /// route an unexpected filing-loop exception here too.</summary>
-    private static string _crashDir = ".";
+    /// route an unexpected filing-loop exception here too. Internal (not
+    /// private) only so tests can redirect it to a throwaway temp directory
+    /// instead of writing crash.log into the test binary's working directory
+    /// — the same "settable only by tests" pattern as
+    /// <see cref="Unlock.LargeFileThresholdBytes"/>.</summary>
+    internal static string _crashDir = ".";
 
     internal static void LogCrash(Exception? ex)
     {
@@ -86,8 +91,10 @@ public partial class App : Application
         try
         {
             var dir = _crashDir;
+            // Invariant: a stored record (a shared crash.log line), not a
+            // display string — must not shift shape with the station's locale.
             File.AppendAllText(Path.Combine(dir, "crash.log"),
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {ex}\n\n");
+                $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)}] {ex}\n\n");
         }
         catch (Exception) { /* crash logging must never crash */ }
     }

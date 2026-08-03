@@ -1,3 +1,4 @@
+using System.Globalization;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 
@@ -36,10 +37,12 @@ public static class Unlock
     }
 
     /// <summary>Where a replaced original is kept, beside the file itself and
-    /// dated so a day's worth lands together.</summary>
+    /// dated so a day's worth lands together. Invariant: this becomes a real
+    /// folder name on disk, and two stations with different Windows locales
+    /// must land on the SAME name for the same day.</summary>
     public static string ArchiveFolderFor(string src, DateTime? now = null) =>
         Path.Combine(Path.GetDirectoryName(src)!,
-            "locked_archive_" + (now ?? DateTime.Now).ToString("yyyyMMdd"));
+            "locked_archive_" + (now ?? DateTime.Now).ToString("yyyyMMdd", CultureInfo.InvariantCulture));
 
     /// <summary>At or over this size a file is not buffered: File.ReadAllBytes
     /// has a hard 2GB wall, and the buffered path transiently holds roughly

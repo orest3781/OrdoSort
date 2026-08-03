@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 
 namespace OrdoSort.Core;
@@ -68,8 +69,11 @@ public sealed class History : IDisposable
         Migrate();
     }
 
+    /// <summary>Invariant: this is the stored ts_utc value, read back by every
+    /// station that opens this shared audit log — it must not shift shape
+    /// with whatever locale a given station's Windows happens to have.</summary>
     public static string UtcNow() =>
-        DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:sszzz");
+        DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:sszzz", CultureInfo.InvariantCulture);
 
     private void Migrate()
     {

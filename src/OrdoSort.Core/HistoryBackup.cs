@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace OrdoSort.Core;
 
 /// <summary>
@@ -19,7 +21,12 @@ public static class HistoryBackup
         {
             if (!File.Exists(dbPath)) return null;
             Directory.CreateDirectory(backupDir);
-            var dest = Path.Combine(backupDir, $"history-{today:yyyyMMdd}.sqlite");
+            // Invariant: this is a real file name on disk, and the "keep
+            // newest N" prune below relies on these names sorting
+            // chronologically — a locale-shaped year would break both the
+            // name and the sort.
+            var dest = Path.Combine(backupDir,
+                $"history-{today.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}.sqlite");
             if (!File.Exists(dest))
                 File.Copy(dbPath, dest);   // once per day; File.Copy won't overwrite
 

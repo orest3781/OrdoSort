@@ -1,3 +1,4 @@
+using System.Globalization;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 
@@ -212,13 +213,16 @@ public static class BoxLabels
             bars.Add(new(0, h - BarH, w, BarH));      // DESTROY bar
         }
         var display = DisplayCode(item.Code);
+        // Invariant: these strings are printed on a physical label (and the
+        // in-app preview shows exactly what prints) — the date shape can't
+        // depend on the printing station's Windows locale.
         var texts = new List<TextRun>
         {
-            new($"CREATED {item.Created:yyyy-MM-dd}", 0, 0, w, BarH, 12,
-                Mono: false, White: !plainDates),
+            new($"CREATED {item.Created.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}",
+                0, 0, w, BarH, 12, Mono: false, White: !plainDates),
             new(display, 0, BarH + 2, w, 34, CodeFontSize(display), Mono: true, White: false),
-            new($"DESTROY AFTER {item.Destroy:yyyy-MM-dd}", 0, h - BarH, w, BarH, 12,
-                Mono: false, White: !plainDates),
+            new($"DESTROY AFTER {item.Destroy.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}",
+                0, h - BarH, w, BarH, 12, Mono: false, White: !plainDates),
         };
 
         // 3:1 wide:narrow ratio; the bar field spans the label minus quiet

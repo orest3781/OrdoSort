@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Mvvm;
 using static OrdoSort.Core.BulkRename;
@@ -125,7 +126,9 @@ public sealed class BulkRenameViewModel : ObservableObject
         return new(
             Find: Find, Replace: Replace, Prefix: Prefix, Suffix: Suffix,
             Case: CaseIndex switch { 1 => "upper", 2 => "lower", _ => "keep" },
-            ReceivedDate: ReviewMode ? ReceivedDate.ToString("yyyyMMdd") : "",
+            // Invariant: this stem is rebuilt into the actual on-disk file
+            // name (BulkRename.TransformStem), so it can't vary by station.
+            ReceivedDate: ReviewMode ? ReceivedDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture) : "",
             DeleteSegments: deletePositions.Count > 0 ? deletePositions : null,
             DeleteLastSegment: DeleteSegLast);
     }
@@ -183,9 +186,11 @@ public sealed class BulkRenameViewModel : ObservableObject
     /// <summary>What a stray's editor opens with. In review mode the batch
     /// already has a date, so seed the prefix and let the caret sit after it —
     /// the typing left to do is the name, which is the part only a person can
-    /// supply.</summary>
+    /// supply. Invariant, like the op's own ReceivedDate above: this seed
+    /// becomes the file name unless the person changes it, and it must match
+    /// the shape every other file in the same batch just got.</summary>
     private string SeedFor(string fallback) =>
-        ReviewMode ? ReceivedDate.ToString("yyyyMMdd") + "-" : fallback;
+        ReviewMode ? ReceivedDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture) + "-" : fallback;
 
     /// <summary>The next row still waiting on a name, wrapping. -1 when there
     /// are none, so Enter simply commits on a finished batch.</summary>
