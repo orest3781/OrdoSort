@@ -26,9 +26,24 @@ public partial class ProcessingView : UserControl
         NameBox.CaretIndex = NameBox.Text.Length;
     }
 
-    private void NameBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    /// <summary>True while an IME composition owns this keystroke. WPF
+    /// reports the key that resolves a composition (often Enter, confirming
+    /// a CJK candidate) as <see cref="Key.ImeProcessed"/> rather than the
+    /// literal key — treating that as one of this view's own Enter/Tab/arrow
+    /// verbs would file the document (or otherwise act) on what was really
+    /// just confirming a composed name, not a genuine keystroke aimed at this
+    /// app. Internal + static (rather than inlined into the handler below) so
+    /// a test can drive it directly with a real KeyEventArgs.</summary>
+    internal static bool IsImeComposing(KeyEventArgs e) => e.Key == Key.ImeProcessed;
+
+    /// <summary>Internal, not private, so a test can call it directly with a
+    /// synthesized KeyEventArgs and prove the Enter contract end to end: a
+    /// genuine Enter still files (see ShellViewModel.EnterTargetIndex/
+    /// OnEnter — that contract is unchanged here), while one WPF reports as
+    /// IME-owned does not.</summary>
+    internal void NameBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (_shell is null) return;
+        if (_shell is null || IsImeComposing(e)) return;
         var shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
         switch (e.Key)
         {

@@ -37,7 +37,10 @@ public partial class MatchMergeWindow : Window
     {
         var items = _vm.ReviewItems;
         if (items.Count == 0) return;
-        // a fresh WebView2 per run — never reused, so nothing leaks across files
+        // a fresh WebView2 per run — never reused, so nothing leaks across
+        // files; TriageWindow disposes its own Viewer on Closed, so its
+        // browser process doesn't outlive THIS window either, across
+        // repeated review passes
         var win = new TriageWindow(items, _vm.ChosenColumns) { Owner = this };
         win.ShowDialog();
         _vm.Absorb(win.Outcomes);

@@ -20,6 +20,10 @@ public partial class TriageWindow : Window
     private int _index;
     private bool _whyColumnShown;
 
+    /// <summary>Swappable so the smoke harness can record instead of block —
+    /// same pattern as MainWindow's own <c>Dialogs</c> property.</summary>
+    internal IDialogService Dialogs { get; set; }
+
     /// <summary>Which item is being reviewed. Exposed only so the smoke
     /// test can drive every item's render path in turn without going
     /// through the full rename/skip plumbing.</summary>
@@ -38,6 +42,7 @@ public partial class TriageWindow : Window
         InitializeComponent();
         _items = items;
         _headers = headers;
+        Dialogs = new DialogService(this);
         Viewer.CreationProperties = new Microsoft.Web.WebView2.Wpf.CoreWebView2CreationProperties
         {
             AdditionalBrowserArguments = "--disable-smooth-scrolling",
@@ -53,7 +58,15 @@ public partial class TriageWindow : Window
             return PanMath.PanZone(device, dpi.DpiScaleX, dpi.DpiScaleY);
         };
         ViewerInputEnhancer.Register(_panZone);
-        Closed += (_, _) => ViewerInputEnhancer.Unregister(_panZone);
+        Closed += (_, _) =>
+        {
+            ViewerInputEnhancer.Unregister(_panZone);
+            // this window's WebView2 is deliberately fresh per review pass (see
+            // MatchMergeWindow.OnReview) rather than reused — but nothing
+            // reused it on the way out either, so its browser process
+            // survived the window unless disposed here explicitly.
+            Viewer.Dispose();
+        };
         foreach (var h in _headers)
             Candidates.Columns.Add(new DataGridTextColumn
             {
@@ -62,7 +75,10 @@ public partial class TriageWindow : Window
             });
         Loaded += async (_, _) =>
         {
-            await _pdf.InitAsync();
+            if (!await _pdf.InitAsync())
+                Dialogs.Warn(
+                    "The PDF viewer (WebView2) failed to start:\n\n" + _pdf.InitError,
+                    "OrdoSort");
             await ShowCurrentAsync();
         };
     }
