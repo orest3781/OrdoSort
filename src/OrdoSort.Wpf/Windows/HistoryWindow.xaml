@@ -46,13 +46,23 @@
                      20px forever — WPF only recomputes star-column widths
                      from a genuine later SizeChanged, which a real on-screen
                      window gets for free (WM_SIZE/WM_ACTIVATE) but a headless
-                     Show()+UpdateLayout() never does. A real, interactively-
-                     shown window is unaffected either way (confirmed:
-                     screenshotting the live app resolves these to their fair
-                     share, 0 rows and 5 rows alike) — this floor exists so
-                     the one path that IS affected still shows a legible
-                     filename prefix instead of hiding it entirely. See
-                     .superpowers/sdd/2026-08-02-audit-remediation/task-1-report.md. -->
+                     Show()+UpdateLayout() never does. At this window's
+                     DEFAULT size (980px), a real, interactively-shown window
+                     is unaffected either way (confirmed: screenshotting the
+                     live app resolves these to their fair share, ~222px each,
+                     0 rows and 5 rows alike).
+                     This floor is NOT just a QA-harness accommodation, though:
+                     measured with a real on-screen resize (UI Automation
+                     TransformPattern) down to this window's own MinWidth
+                     (700px above) — pre-fix, a real user shrinking the window
+                     that far fair-shares these two columns down to 82px each;
+                     post-fix, the same real resize clamps them to this 120px
+                     floor instead (~46% wider), compressing the fixed-width
+                     columns (When/Name/Route/Undone) to compensate — visible
+                     at this extreme as Undone's own header text truncating to
+                     "Undo". So this floor also protects a real user who
+                     shrinks the window, not only this project's screenshots.
+                     See .superpowers/sdd/2026-08-02-audit-remediation/task-1-report.md. -->
                 <DataGridTextColumn Header="Original" Binding="{Binding Original}" Width="*" MinWidth="120" />
                 <DataGridTextColumn Header="Filed as" Binding="{Binding FiledAs}" Width="*" MinWidth="120" />
                 <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="160" />

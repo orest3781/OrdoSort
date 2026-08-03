@@ -21,15 +21,29 @@
 
 ---
 
-### Task 1: Confirm, then fix, the collapsing DataGrid columns
+### Task 1: Confirm, then fix, the collapsing DataGrid columns — DONE, 2026-08-02
 
 **Files:** `src/OrdoSort.Wpf/Windows/HistoryWindow.xaml(.cs)`, `src/OrdoSort.Wpf/Windows/BulkRenameWindow.xaml(.cs)` · Test: `tests/OrdoSort.Wpf.Tests/`
 
 Measured: both windows pin their `Width="*"` columns to `MinWidth` 20 on first layout (History: When 140 · **Original 20** · **Filed as 20** · Name 160 · Route 120 · Undone 70, 406px unused. BulkRename: **Current 20** · **New 20** · Note 220). Every ancestor reports correct width. Eight further `UpdateLayout()` passes changed nothing; a ±1px resize snapped them to 222px / 277px.
 
-- [ ] **Step 1: Confirm on-screen.** Launch the real app (`--config demo-full\config.json`), open History and Bulk rename, and observe whether the columns are collapsed in an interactively-shown window. Record the answer. **If they render correctly on-screen**, the defect is specific to `Show()`-without-resize and the fix target narrows — say so and adjust Step 3 accordingly rather than forcing the planned fix.
+**Corrected disposition (Step 1 confirmed this, as directed):** a real,
+interactively-shown window does NOT reproduce the collapse — on-screen, both
+windows resolve to their genuine fair share (~222px/~277px), 0 and 5 rows
+alike. The defect is confined to headless/off-screen rendering (this
+project's own `Screenshots.cs` QA gallery, and this task's own regression
+test) — no real user was ever affected. The audit record
+(`docs/superpowers/audits/2026-08-02-ui-audit.md`) was updated to reflect
+this: what was C1 (Critical) is now M10 (Minor) there. The fix still shipped
+(an explicit `MinWidth="120"` floor) because it makes this project's own QA
+screenshots trustworthy again, and because a follow-up measurement found it
+also protects a real user who shrinks the History window to its own declared
+minimum width. Full report:
+`.superpowers/sdd/2026-08-02-audit-remediation/task-1-report.md`.
 
-- [ ] **Step 2: Write the failing test.** A headless test that constructs each window the way `Screenshots.cs` does, shows it off-screen, `UpdateLayout()`, and asserts each star column's `ActualWidth` is a fair share (> 100px), not `MinWidth`:
+- [x] **Step 1: Confirm on-screen.** Launch the real app (`--config demo-full\config.json`), open History and Bulk rename, and observe whether the columns are collapsed in an interactively-shown window. Record the answer. **If they render correctly on-screen**, the defect is specific to `Show()`-without-resize and the fix target narrows — say so and adjust Step 3 accordingly rather than forcing the planned fix.
+
+- [x] **Step 2: Write the failing test.** A headless test that constructs each window the way `Screenshots.cs` does, shows it off-screen, `UpdateLayout()`, and asserts each star column's `ActualWidth` is a fair share (> 100px), not `MinWidth`:
 
 ```csharp
 [Theory]
@@ -44,15 +58,23 @@ public void StarColumnsGetTheirShareOfWidth(string window)
 }
 ```
 
-- [ ] **Step 3: Run it — it MUST FAIL** at 20px. Paste the output.
+- [x] **Step 3: Run it — it MUST FAIL** at 20px. Paste the output.
 
-- [ ] **Step 4: Implement.** Preferred fix in order of cleanliness: (a) give the star columns an explicit sensible `MinWidth` so even the unresolved pass is usable AND set `ColumnWidth`/explicit proportional widths that resolve on first pass; (b) if that does not hold, force one layout re-evaluation after the window is shown (e.g. re-assert widths on `ContentRendered`), which is what the ±1px nudge proved works. Do NOT ship a resize hack that visibly flickers — measure whichever you choose.
+- [x] **Step 4: Implement.** Preferred fix in order of cleanliness: (a) give the star columns an explicit sensible `MinWidth` so even the unresolved pass is usable AND set `ColumnWidth`/explicit proportional widths that resolve on first pass; (b) if that does not hold, force one layout re-evaluation after the window is shown (e.g. re-assert widths on `ContentRendered`), which is what the ±1px nudge proved works. Do NOT ship a resize hack that visibly flickers — measure whichever you choose.
 
-- [ ] **Step 5: Test passes; run full suites** — `dotnet build OrdoSort.sln && dotnet test OrdoSort.sln -v minimal` → 728 + new, 0 failed.
+  Shipped (a)'s `MinWidth` half only: three separate code-behind attempts at
+  the "resolve on first pass"/"force one layout re-evaluation" half (a column-
+  Width toggle, and a genuine Window.Width nudge both in `Loaded` and
+  post-Show, on- and off-screen) all measured as NOT actually re-resolving
+  `ActualWidth` in-process, despite verifiably changing real layout geometry
+  — see the Task 1 report for the measurements. Shipping only the proven part
+  rather than a non-working trick was the deliberate call.
 
-- [ ] **Step 6: Render proof.** Save `fixed-history-dark.png` and `fixed-bulkrename-dark.png` to the scratchpad root; confirm both star columns are wide and their headers legible.
+- [x] **Step 5: Test passes; run full suites** — `dotnet build OrdoSort.sln && dotnet test OrdoSort.sln -v minimal` → 730 (728 + 2 new), 0 failed.
 
-- [ ] **Step 7: Commit** `fix(ui): DataGrid star columns get their width on first layout`.
+- [x] **Step 6: Render proof.** Save `fixed-history-dark.png` and `fixed-bulkrename-dark.png` to the scratchpad root; confirm both star columns are wide and their headers legible.
+
+- [x] **Step 7: Commit** `fix(ui): DataGrid star columns get their width on first layout`.
 
 ---
 

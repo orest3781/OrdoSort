@@ -25,10 +25,26 @@ everything that warrants a fix into one remediation program.
 ### A. Correctness & safety
 
 1. **DataGrid star columns collapse** (pass 1 C1) — `History` and `BulkRename`
-   pin `Width="*"` columns to `MinWidth` 20 on first layout. Measured; a ±1px
-   resize fixes them, proving it is the first-pass computation. **Confirm
-   on-screen once before fixing** (the measurement was headless; a real user's
-   window centering may already supply the nudge, which changes the fix).
+   pinned `Width="*"` columns to `MinWidth` 20 on first layout. Measured; a
+   ±1px resize fixed them, proving it was the first-pass computation.
+   **Confirm on-screen once before fixing** (the measurement was headless; a
+   real user's window centering may already supply the nudge, which changes
+   the fix).
+
+   **DONE, 2026-08-02 — corrected disposition.** On-screen confirmation (the
+   directed first step) found real, interactively-shown windows resolve
+   correctly (~222px/~277px fair share, 0 and 5 rows) — the collapse is
+   confined to headless/off-screen rendering (this project's own
+   `Screenshots.cs` QA gallery), not a real-user "correctness & safety" defect
+   as pass 1 originally framed it. Pass 1's audit record was updated to
+   reflect this: C1 is reclassified Minor (now M10) there. The fix still
+   shipped — `MinWidth="120"` on all four star columns — because (a) it makes
+   this project's own QA screenshots of these windows trustworthy again, and
+   (b) a follow-up measurement found it also protects a real user who shrinks
+   the History window to its own declared minimum width (700px), where the
+   star columns' natural fair share would otherwise fall to ~82px. Full
+   writeup, including three other fix attempts that measured as not working:
+   `.superpowers/sdd/2026-08-02-audit-remediation/task-1-report.md`.
 2. **Blocking file I/O on the UI thread per keystroke** (pass 2 C1) —
    `SettingsViewModel.cs:713-775` (live path notes), `:36`
    (`RouteEditVm.Problem` → `Config.ValidateRoute`, which **creates and deletes

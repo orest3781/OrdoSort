@@ -124,7 +124,18 @@
                     <DataGrid.Columns>
                         <!-- MinWidth: see HistoryWindow.xaml's identical comment
                              on its Original/Filed-as columns — same DataGrid
-                             star-column-vs-headless-Show() issue, same fix. -->
+                             star-column-vs-headless-Show() issue, same fix.
+                             Unlike History, this floor is PURELY a headless/QA
+                             accommodation here: measured with the same real
+                             on-screen resize down to this window's own
+                             MinWidth (700px) — both star columns still fair-
+                             share to ~217px each, well above the 120px floor,
+                             so it never engages for a real user even at the
+                             narrowest window size (this window's fixed "Note"
+                             column, 220px, is much narrower relative to the
+                             window than History's four fixed columns
+                             combined, leaving more room for the two star
+                             columns regardless). -->
                         <DataGridTextColumn Header="Current name" Binding="{Binding Current}"
                                             IsReadOnly="True" Width="*" MinWidth="120" />
                         <DataGridTextColumn Header="New name  ·  click or press F2 to edit"
