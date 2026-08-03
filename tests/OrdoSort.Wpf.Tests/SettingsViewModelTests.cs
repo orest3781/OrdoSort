@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Text.Json;
+using System.Threading;
 using OrdoSort.Core;
 using OrdoSort.Wpf.ViewModels;
 
@@ -21,6 +23,24 @@ public class SettingsViewModelTests : IDisposable
         var path = Path.Combine(_dir, Guid.NewGuid() + ".json");
         File.WriteAllText(path, json);
         return Config.Load(path);
+    }
+
+    /// <summary>Live path notes now run their real Directory.Exists/
+    /// File.Exists/Config.ReadDoc check debounced and off the UI thread (Task
+    /// 2 — see DebouncedProbe), so a fresh construction or edit doesn't
+    /// reflect the real answer the instant it returns. Poll for it instead of
+    /// asserting immediately — this is what "eventually correct" means for an
+    /// async check; the timeout is generous, but a local-disk probe should
+    /// land in well under a second.</summary>
+    private static void WaitFor(Func<bool> condition, string because, int timeoutMs = 3000)
+    {
+        var sw = Stopwatch.StartNew();
+        while (!condition())
+        {
+            if (sw.ElapsedMilliseconds > timeoutMs)
+                Assert.Fail($"condition never became true within {timeoutMs}ms: {because}");
+            Thread.Sleep(5);
+        }
     }
 
     [Fact]
@@ -351,18 +371,21 @@ public class SettingsViewModelTests : IDisposable
     public void PathNotesSurfaceProblemsLive()
     {
         var vm = new SettingsViewModel(new Config(), _dialogs);
+        // blank needs no I/O — resolved synchronously, no wait
         Assert.Contains("no inbox folder set", vm.InboxNote);
 
         vm.Inbox = Path.Combine(_dir, "missing");
-        Assert.Contains("doesn't exist", vm.InboxNote);
+        WaitFor(() => vm.InboxNote.Contains("doesn't exist"), "InboxNote should report the missing folder");
 
         vm.Inbox = _dir;
-        Assert.Equal("", vm.InboxNote);
+        WaitFor(() => vm.InboxNote == "", "InboxNote should clear once the real folder resolves");
 
+        // relative-path answers also need no I/O — synchronous
         vm.HistoryDb = "history.sqlite";
         Assert.Contains("relative", vm.HistoryDbNote);
         vm.HistoryDb = Path.Combine(_dir, "new-audit.sqlite");
-        Assert.Contains("new database will be created", vm.HistoryDbNote);
+        WaitFor(() => vm.HistoryDbNote.Contains("new database will be created"),
+            "HistoryDbNote should report a new database once the real check resolves");
     }
 
     [Fact]
@@ -438,10 +461,17 @@ public class SettingsViewModelTests : IDisposable
             Inbox = _dir,
             WatchFolders = { new WatchFolder { Label = "W", Path = Path.Combine(_dir, "missing") } },
         }, _dialogs);
-        Assert.Contains("doesn't exist", vm.WatchFolders[0].Problem);
+        // real Directory.Exists checks are debounced and off the UI thread
+        // (Task 2) — poll for the eventual result instead of asserting the
+        // instant construction/the setter returns.
+        WaitFor(() => vm.WatchFolders[0].Problem.Contains("doesn't exist"),
+            "a missing watch folder should eventually report the problem");
 
         vm.WatchFolders[0].Path = _dir;
-        Assert.Equal("", vm.WatchFolders[0].Problem);
+        WaitFor(() => vm.WatchFolders[0].Problem == "",
+            "an existing watch folder should eventually clear the problem");
+
+        // blank needs no I/O — resolved synchronously, no wait
         vm.WatchFolders[0].Path = "";
         Assert.Contains("no folder", vm.WatchFolders[0].Problem);
     }
@@ -456,11 +486,13 @@ public class SettingsViewModelTests : IDisposable
             WatchFolders = { new WatchFolder { Label = "W", Path = missing } },
         }, _dialogs);
         vm.SelectedWatch = vm.WatchFolders[0];
-        Assert.Contains("doesn't exist", vm.SelectedWatch.Problem);
+        WaitFor(() => vm.SelectedWatch.Problem.Contains("doesn't exist"),
+            "a missing watch folder should eventually report the problem");
 
         vm.CreateWatchFolderCommand.Execute(null);
         Assert.True(Directory.Exists(missing));
-        Assert.Equal("", vm.SelectedWatch.Problem);
+        WaitFor(() => vm.SelectedWatch.Problem == "",
+            "the note should clear once the folder exists and the re-triggered check resolves");
         Assert.Empty(_dialogs.Warnings);
     }
 
@@ -870,13 +902,18 @@ public class SettingsViewModelTests : IDisposable
         var cfg = Config.Load(cfgPath);
         var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
 
-        Assert.Equal("0 entries", vm.DestinationsFileNote);
+        // Config.ReadDoc is a real file read, debounced and off the UI
+        // thread (Task 2) — even the just-loaded initial value needs a poll.
+        WaitFor(() => vm.DestinationsFileNote == "0 entries",
+            "the freshly-saved destinations.json should read back as 0 entries");
 
+        // blank needs no I/O — resolved synchronously, no wait
         vm.DestinationsFile = "";
         Assert.Equal("blank = the default beside config.json", vm.DestinationsFileNote);
 
         vm.DestinationsFile = "missing-dests.json";
-        Assert.Contains("will be created on save", vm.DestinationsFileNote);
+        WaitFor(() => vm.DestinationsFileNote.Contains("will be created on save"),
+            "a missing destinations file should eventually report it'll be created");
     }
 
     // ---- Dashboard tab rework: grouped folder list as section manager ----
@@ -1114,6 +1151,122 @@ public class SettingsViewModelTests : IDisposable
         Assert.Equal("New section 2", header.EditText);
         Assert.Equal("New section 2", vm.SelectedWatch!.Section);
         Assert.Equal("New folder", vm.SelectedWatch.Label);
+    }
+
+    // ---- Task 2: path checks must never block the UI thread -------------
+
+    [Fact]
+    public void TypingAPathDoesNotBlockOnTheProbe()
+    {
+        // A deliberately slow stand-in for Directory.Exists — exactly the
+        // shape of a stalled SMB round trip. Wired straight into the seam
+        // (SettingsViewModel's directoryExists ctor param) so the check
+        // below hits it on every keystroke, same as the real UI does.
+        var vm = new SettingsViewModel(new Config(), _dialogs,
+            directoryExists: p => { Thread.Sleep(300); return Directory.Exists(p); });
+
+        // A bound TextBlock reacts to InboxNote's PropertyChanged
+        // SYNCHRONOUSLY, on whatever thread raised it — WPF bindings don't
+        // defer unless IsAsync is set, which SettingsWindow.xaml doesn't.
+        // Subscribing and re-reading the note here reproduces exactly what
+        // the real window's binding does, without needing a live window.
+        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.InboxNote)) _ = vm.InboxNote; };
+
+        var sw = Stopwatch.StartNew();
+        vm.Inbox = @"\\unreachable\share\inbox";
+        sw.Stop();
+
+        Assert.True(sw.ElapsedMilliseconds < 50,
+            $"setting Inbox blocked for {sw.ElapsedMilliseconds}ms on the UI thread");
+    }
+
+    [Fact]
+    public void TheNoteEventuallyReflectsTheRealPathState()
+    {
+        // Proves the other half of the fix: it isn't "never check" — the
+        // note settles on the real answer once the debounced, off-thread
+        // probe completes.
+        var vm = new SettingsViewModel(new Config(), _dialogs);
+
+        vm.Inbox = _dir;   // real, existing folder
+        WaitFor(() => vm.InboxNote == "", "InboxNote should eventually clear for a real, existing folder");
+
+        vm.Inbox = Path.Combine(_dir, "does-not-exist");
+        WaitFor(() => vm.InboxNote.Contains("doesn't exist"),
+            "InboxNote should eventually report a folder that doesn't exist");
+    }
+
+    [Fact]
+    public void RoutePathDoesNotBlockOnTheValidateRouteProbe()
+    {
+        // RouteEditVm.Problem -> Config.ValidateRoute creates+deletes a real
+        // probe file in the destination folder — the other named offender.
+        var vm = new SettingsViewModel(new Config(), _dialogs,
+            validateRoute: r => { Thread.Sleep(300); return Config.ValidateRoute(r); });
+        vm.AddRouteCommand.Execute(null);
+        var route = vm.Routes[0];
+        route.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(route.Problem)) _ = route.Problem; };
+
+        var sw = Stopwatch.StartNew();
+        route.Path = _dir;
+        sw.Stop();
+
+        Assert.True(sw.ElapsedMilliseconds < 50,
+            $"setting a route's Path blocked for {sw.ElapsedMilliseconds}ms on the UI thread");
+    }
+
+    [Fact]
+    public void ValidateRouteProbeRunsOncePerPauseNotPerKeystroke()
+    {
+        var calls = 0;
+        var vm = new SettingsViewModel(new Config(), _dialogs,
+            validateRoute: r => { Interlocked.Increment(ref calls); return Config.ValidateRoute(r); });
+        vm.AddRouteCommand.Execute(null);   // blank Path: the ctor's own priming check is synchronous, no I/O
+        var route = vm.Routes[0];
+        Assert.Equal(0, calls);
+
+        // simulate typing a destination character by character, faster than
+        // the debounce window — exactly the keystroke burst the audit flagged
+        var target = _dir;
+        for (var i = 1; i <= target.Length; i++)
+            route.Path = target.Substring(0, i);
+
+        WaitFor(() => route.Problem == "", "the route's Problem should eventually resolve for the real folder");
+        Thread.Sleep(350);   // no more keystrokes coming; let the debounce fully settle
+
+        Assert.Equal(1, calls);   // the probe file was created/deleted once, not once per character
+    }
+
+    [Fact]
+    public void RouteProblemEventuallyReflectsTheRealValidateRouteResult()
+    {
+        var vm = new SettingsViewModel(new Config(), _dialogs);
+        vm.AddRouteCommand.Execute(null);
+        var route = vm.Routes[0];
+
+        route.Path = _dir;   // exists and is writable
+        WaitFor(() => route.Problem == "", "an existing, writable destination should eventually clear the problem");
+
+        route.Path = Path.Combine(_dir, "missing");
+        WaitFor(() => route.Problem.Contains("does not exist"),
+            "a missing destination should eventually report it");
+    }
+
+    [Fact]
+    public void WatchFolderPathDoesNotBlockOnTheProbe()
+    {
+        var vm = new SettingsViewModel(new Config(), _dialogs,
+            directoryExists: p => { Thread.Sleep(300); return Directory.Exists(p); });
+        vm.AddWatchCommand.Execute(null);
+        var w = vm.WatchFolders[0];
+        w.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(w.Problem)) _ = w.Problem; };
+
+        var sw = Stopwatch.StartNew();
+        w.Path = _dir;
+        sw.Stop();
+
+        Assert.True(sw.ElapsedMilliseconds < 50,
+            $"setting a watch folder's Path blocked for {sw.ElapsedMilliseconds}ms on the UI thread");
     }
 }
 

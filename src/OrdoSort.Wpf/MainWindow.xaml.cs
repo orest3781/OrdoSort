@@ -280,7 +280,7 @@ public partial class MainWindow : Window
             return;
         }
         var vm = new SettingsViewModel(Shell.FreshConfigForSettings(), Dialogs, () => Theme.ThemeManager.Current,
-            Shell.CfgPath, new SoundService());
+            Shell.CfgPath, new SoundService(), uiContext: SynchronizationContext.Current);
         var win = new Windows.SettingsWindow(vm) { Owner = this };
         if (win.ShowDialog() == true && vm.Result is { } cfg)
             Shell.ApplySettings(cfg);

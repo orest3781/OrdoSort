@@ -640,7 +640,8 @@ public class HighlightContrastTests
         cfg.Routes.Add(new Route { Label = "Invoices", Path = @"C:\dest", Hotkey = "Ctrl+1" });
         var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(),
-            () => dark ? ThemePalette.Dark : ThemePalette.Light, cfgPath);
+            () => dark ? ThemePalette.Dark : ThemePalette.Light, cfgPath,
+            uiContext: System.Threading.SynchronizationContext.Current);
         var window = new SettingsWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
@@ -830,7 +831,8 @@ public class HighlightContrastTests
         cfg.Routes.Add(new Route { Label = "Invoices", Path = @"C:\dest", Hotkey = "Ctrl+1" });
         var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(),
-            () => dark ? ThemePalette.Dark : ThemePalette.Light, cfgPath);
+            () => dark ? ThemePalette.Dark : ThemePalette.Light, cfgPath,
+            uiContext: System.Threading.SynchronizationContext.Current);
         var window = new SettingsWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,

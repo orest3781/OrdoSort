@@ -8,11 +8,32 @@ using OrdoSort.Wpf.Theme;
 namespace OrdoSort.Wpf.ViewModels;
 
 /// <summary>An editable route row (master-detail in the Routes section).</summary>
-public sealed class RouteEditVm : ObservableObject
+public sealed class RouteEditVm : ObservableObject, IDisposable
 {
+    // Seam over Config.ValidateRoute (which creates+deletes a real probe
+    // file in the destination folder) so tests can substitute a fast or
+    // deliberately slow stand-in instead of touching a real/SMB folder.
+    private readonly Func<Route, string> _validateRoute;
+
+    // Off-thread, debounced: ValidateRoute's probe file must never run per
+    // keystroke of the destination box, and must never block the UI thread —
+    // see DebouncedProbe for the mechanism (mirrors ShellViewModel's
+    // gather-off-thread/apply-on-UI pattern).
+    private readonly DebouncedProbe<string> _problemProbe;
+
     private string _label = "", _path = "", _hotkey = "", _suffix = "", _color = "";
     private bool _appendSuffix;
     private string _namingMode = "";   // "" = session default
+
+    public RouteEditVm(Func<Route, string>? validateRoute = null,
+        IWorkScheduler? scheduler = null, SynchronizationContext? uiContext = null,
+        int probeDelayMs = 300)
+    {
+        _validateRoute = validateRoute ?? Config.ValidateRoute;
+        _problemProbe = new DebouncedProbe<string>(scheduler ?? new TaskWorkScheduler(),
+            uiContext, v => Set(ref _problem, v, nameof(Problem)), probeDelayMs);
+        TriggerProblemCheck();   // blank Path answers "no destination path configured" synchronously
+    }
 
     public string Label { get => _label; set => Set(ref _label, value); }
     public string Hotkey { get => _hotkey; set => Set(ref _hotkey, value); }
@@ -23,7 +44,7 @@ public sealed class RouteEditVm : ObservableObject
     public string Path
     {
         get => _path;
-        set { if (Set(ref _path, value)) Raise(nameof(Problem)); }
+        set { if (Set(ref _path, value)) TriggerProblemCheck(); }
     }
 
     public string Color
@@ -32,11 +53,36 @@ public sealed class RouteEditVm : ObservableObject
         set { if (Set(ref _color, value)) Raise(nameof(ColorValid)); }
     }
 
-    /// <summary>Live destination check, shown in the detail form.</summary>
-    public string Problem => Config.ValidateRoute(new Route { Path = Path });
+    private string _problem = "";
+
+    /// <summary>Live destination check, shown in the detail form. Blank
+    /// (no path) answers instantly — no I/O needed; otherwise this is the
+    /// last-applied result of the debounced, off-thread ValidateRoute probe.
+    /// Stays blank/neutral while a check is in flight so a keystroke never
+    /// flashes a stale "does not exist".</summary>
+    public string Problem => _problem;
+
     public bool ColorValid => Color.Length == 0 || ThemePalette.ParseColor(Color) is not null;
 
-    internal void RefreshProblem() => Raise(nameof(Problem));
+    private void TriggerProblemCheck(bool immediate = false)
+    {
+        var raw = Path.Trim();
+        if (raw.Length == 0)
+        {
+            Set(ref _problem, "no destination path configured", nameof(Problem));
+            return;
+        }
+        Set(ref _problem, "", nameof(Problem));   // neutral while pending
+        var route = new Route { Path = raw };
+        _problemProbe.Trigger(() => _validateRoute(route), immediate);
+    }
+
+    /// <summary>Force a re-check — e.g. right after "Create folder" makes the
+    /// destination exist, or right after load so a real path's initial state
+    /// doesn't wait out a full debounce window before showing anything.</summary>
+    internal void RefreshProblem(bool immediate = false) => TriggerProblemCheck(immediate);
+
+    public void Dispose() => _problemProbe.Dispose();
 
     // Derived by SettingsViewModel.RecomputeRouteDerived (it knows the route's
     // position, which decides the Ctrl+1-9 fallback and duplicate detection).
@@ -84,17 +130,27 @@ public sealed class RouteEditVm : ObservableObject
     /// through so a hand-edited key survives Settings-OK.</summary>
     public Dictionary<string, JsonElement> Extras { get; init; } = new();
 
-    public static RouteEditVm From(Route r) => new()
+    public static RouteEditVm From(Route r, Func<Route, string>? validateRoute = null,
+        IWorkScheduler? scheduler = null, SynchronizationContext? uiContext = null, int probeDelayMs = 300)
     {
-        Label = r.Label,
-        Path = r.Path,
-        Hotkey = r.Hotkey,
-        Suffix = r.Suffix,
-        AppendSuffix = r.AppendSuffix,
-        NamingMode = r.NamingMode ?? "",
-        Color = r.Color ?? "",
-        Extras = new Dictionary<string, JsonElement>(r.Extras),
-    };
+        var vm = new RouteEditVm(validateRoute, scheduler, uiContext, probeDelayMs)
+        {
+            Label = r.Label,
+            Path = r.Path,
+            Hotkey = r.Hotkey,
+            Suffix = r.Suffix,
+            AppendSuffix = r.AppendSuffix,
+            NamingMode = r.NamingMode ?? "",
+            Color = r.Color ?? "",
+            Extras = new Dictionary<string, JsonElement>(r.Extras),
+        };
+        // the object initializer's Path assignment above already queued a
+        // normal-debounce check; supersede it with an immediate (still
+        // off-thread) one so a freshly-loaded row's real state doesn't sit
+        // behind an artificial ~300ms wait before showing anything
+        vm.RefreshProblem(immediate: true);
+        return vm;
+    }
 
     public Route ToRoute() => new()
     {
@@ -110,16 +166,34 @@ public sealed class RouteEditVm : ObservableObject
 }
 
 /// <summary>An editable watch-folder row (Dashboard section).</summary>
-public sealed class WatchEditVm : ObservableObject
+public sealed class WatchEditVm : ObservableObject, IDisposable
 {
+    // Seam over Directory.Exists so tests can substitute a fast or
+    // deliberately slow stand-in instead of touching a real/SMB folder.
+    private readonly Func<string, bool> _directoryExists;
+
+    // Off-thread, debounced — same mechanism as RouteEditVm's Problem probe;
+    // see DebouncedProbe.
+    private readonly DebouncedProbe<string> _problemProbe;
+
     private string _label = "", _path = "", _filetypes = "", _color = "", _section = "";
     private bool _recursive;
+
+    public WatchEditVm(Func<string, bool>? directoryExists = null,
+        IWorkScheduler? scheduler = null, SynchronizationContext? uiContext = null,
+        int probeDelayMs = 300)
+    {
+        _directoryExists = directoryExists ?? Directory.Exists;
+        _problemProbe = new DebouncedProbe<string>(scheduler ?? new TaskWorkScheduler(),
+            uiContext, v => Set(ref _problem, v, nameof(Problem)), probeDelayMs);
+        TriggerProblemCheck();   // blank Path answers "no folder chosen yet" synchronously
+    }
 
     public string Label { get => _label; set => Set(ref _label, value); }
     public string Path
     {
         get => _path;
-        set { if (Set(ref _path, value)) Raise(nameof(Problem)); }
+        set { if (Set(ref _path, value)) TriggerProblemCheck(); }
     }
 
     /// <summary>Dashboard group this folder appears under — blank uses the
@@ -202,18 +276,32 @@ public sealed class WatchEditVm : ObservableObject
         Raise(nameof(OtherTypes));
     }
 
-    /// <summary>Live folder check (parity with the route detail panel).</summary>
-    public string Problem
+    private string _problem = "";
+
+    /// <summary>Live folder check (parity with the route detail panel). Blank
+    /// (no folder chosen) answers instantly; otherwise this is the
+    /// last-applied result of the debounced, off-thread Directory.Exists
+    /// probe — neutral while a check is in flight.</summary>
+    public string Problem => _problem;
+
+    private void TriggerProblemCheck(bool immediate = false)
     {
-        get
+        var p = Path.Trim();
+        if (p.Length == 0)
         {
-            var p = Path.Trim();
-            if (p.Length == 0) return "no folder chosen yet";
-            return Directory.Exists(p) ? "" : $"folder doesn't exist: {p}";
+            Set(ref _problem, "no folder chosen yet", nameof(Problem));
+            return;
         }
+        Set(ref _problem, "", nameof(Problem));   // neutral while pending
+        _problemProbe.Trigger(() => _directoryExists(p) ? "" : $"folder doesn't exist: {p}", immediate);
     }
 
-    internal void RefreshProblem() => Raise(nameof(Problem));
+    /// <summary>Force a re-check — e.g. right after "Create folder" makes the
+    /// folder exist, or right after load so a real path's initial state
+    /// doesn't wait out a full debounce window before showing anything.</summary>
+    internal void RefreshProblem(bool immediate = false) => TriggerProblemCheck(immediate);
+
+    public void Dispose() => _problemProbe.Dispose();
 
     public string Color
     {
@@ -225,16 +313,24 @@ public sealed class WatchEditVm : ObservableObject
 
     public Dictionary<string, JsonElement> Extras { get; init; } = new();
 
-    public static WatchEditVm From(WatchFolder w) => new()
+    public static WatchEditVm From(WatchFolder w, Func<string, bool>? directoryExists = null,
+        IWorkScheduler? scheduler = null, SynchronizationContext? uiContext = null, int probeDelayMs = 300)
     {
-        Label = w.Label,
-        Path = w.Path,
-        Filetypes = w.Filetypes,
-        Recursive = w.Recursive,
-        Color = w.Color ?? "",
-        Section = w.Section,
-        Extras = new Dictionary<string, JsonElement>(w.Extras),
-    };
+        var vm = new WatchEditVm(directoryExists, scheduler, uiContext, probeDelayMs)
+        {
+            Label = w.Label,
+            Path = w.Path,
+            Filetypes = w.Filetypes,
+            Recursive = w.Recursive,
+            Color = w.Color ?? "",
+            Section = w.Section,
+            Extras = new Dictionary<string, JsonElement>(w.Extras),
+        };
+        // see RouteEditVm.From: supersede the object initializer's
+        // normal-debounce check with an immediate (still off-thread) one
+        vm.RefreshProblem(immediate: true);
+        return vm;
+    }
 
     public WatchFolder ToWatchFolder() => new()
     {
@@ -381,16 +477,62 @@ public sealed class SettingsViewModel : ObservableObject
     private readonly Func<ThemePalette> _palette;
     private readonly string? _cfgPath;
 
+    // Seams over Directory.Exists/File.Exists — the live per-field notes
+    // below (Inbox/Deferred/NamesFile/HistoryDb/the four section files) probe
+    // real paths, which are routinely slow or unreachable network shares;
+    // tests substitute a fast or deliberately slow stand-in here instead.
+    private readonly Func<string, bool> _directoryExists;
+    private readonly Func<string, bool> _fileExists;
+    private readonly Func<Route, string> _validateRoute;
+
+    // Off-thread + debounced, mirroring ShellViewModel's own gather
+    // (thread pool) → apply (UI) shape: _scheduler runs each probe off the
+    // UI thread, _uiContext marshals the result back since a bare
+    // System.Threading.Timer callback (unlike an awaited continuation) has
+    // no captured context of its own.
+    private readonly IWorkScheduler _scheduler;
+    private readonly SynchronizationContext? _uiContext;
+    private readonly int _probeDelayMs;
+
     public Config? Result { get; private set; }
 
     public SettingsViewModel(Config current, IDialogService dialogs,
         Func<ThemePalette>? palette = null, string? cfgPath = null,
-        ISoundService? sounds = null)
+        ISoundService? sounds = null,
+        Func<string, bool>? directoryExists = null,
+        Func<string, bool>? fileExists = null,
+        Func<Route, string>? validateRoute = null,
+        IWorkScheduler? scheduler = null,
+        SynchronizationContext? uiContext = null,
+        int probeDelayMs = 300)
     {
         _original = current;
         _dialogs = dialogs;
         _palette = palette ?? (() => ThemePalette.Light);
         _cfgPath = cfgPath;
+        _directoryExists = directoryExists ?? Directory.Exists;
+        _fileExists = fileExists ?? File.Exists;
+        _validateRoute = validateRoute ?? Config.ValidateRoute;
+        _scheduler = scheduler ?? new TaskWorkScheduler();
+        _uiContext = uiContext;
+        _probeDelayMs = probeDelayMs;
+
+        _inboxProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
+            v => Set(ref _inboxNote, v, nameof(InboxNote)), _probeDelayMs);
+        _deferredProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
+            v => Set(ref _deferredNote, v, nameof(DeferredNote)), _probeDelayMs);
+        _namesFileProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
+            v => Set(ref _namesFileNote, v, nameof(NamesFileNote)), _probeDelayMs);
+        _historyDbProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
+            v => Set(ref _historyDbNote, v, nameof(HistoryDbNote)), _probeDelayMs);
+        _destinationsFileProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
+            v => Set(ref _destinationsFileNote, v, nameof(DestinationsFileNote)), _probeDelayMs);
+        _monitoredFoldersFileProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
+            v => Set(ref _monitoredFoldersFileNote, v, nameof(MonitoredFoldersFileNote)), _probeDelayMs);
+        _alertsFileProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
+            v => Set(ref _alertsFileNote, v, nameof(AlertsFileNote)), _probeDelayMs);
+        _boxLabelsFileProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
+            v => Set(ref _boxLabelsFileNote, v, nameof(BoxLabelsFileNote)), _probeDelayMs);
 
         SoundsEnabled = current.Sounds.Enabled;
         NewAlertSound = new SoundChoiceVm("New alert", SoundEvent.NewAlert,
@@ -410,6 +552,18 @@ public sealed class SettingsViewModel : ObservableObject
         MonitoredFoldersFile = current.MonitoredFoldersFile;
         AlertsFile = current.AlertsFile;
         BoxLabelsFile = current.BoxLabelsFile;
+        // the assignments above already queued normal-debounce checks;
+        // supersede them with immediate (still off-thread) ones so the
+        // window's initial state doesn't sit behind an artificial ~300ms
+        // wait before showing anything real
+        RecomputeInboxNote(immediate: true);
+        RecomputeDeferredNote(immediate: true);
+        RecomputeNamesFileNote(immediate: true);
+        RecomputeHistoryDbNote(immediate: true);
+        RecomputeDestinationsFileNote(immediate: true);
+        RecomputeMonitoredFoldersFileNote(immediate: true);
+        RecomputeAlertsFileNote(immediate: true);
+        RecomputeBoxLabelsFileNote(immediate: true);
         MonitorTitle = current.MonitorTitle;
         FilingMode = current.NamingMode;
         SortKey = current.Sort;
@@ -423,24 +577,26 @@ public sealed class SettingsViewModel : ObservableObject
         UiFontSizeText = current.UiFontSize == 0 ? "" : current.UiFontSize.ToString();
         _themeMode = current.Theme;
 
-        Routes = new ObservableCollection<RouteEditVm>(current.Routes.Select(RouteEditVm.From));
-        WatchFolders = new ObservableCollection<WatchEditVm>(current.WatchFolders.Select(WatchEditVm.From));
+        Routes = new ObservableCollection<RouteEditVm>(
+            current.Routes.Select(r => RouteEditVm.From(r, _validateRoute, _scheduler, _uiContext, _probeDelayMs)));
+        WatchFolders = new ObservableCollection<WatchEditVm>(
+            current.WatchFolders.Select(w => WatchEditVm.From(w, _directoryExists, _scheduler, _uiContext, _probeDelayMs)));
 
         AddRouteCommand = new RelayCommand(() =>
         {
-            var vm = new RouteEditVm { Label = "New destination" };
+            var vm = new RouteEditVm(_validateRoute, _scheduler, _uiContext, _probeDelayMs) { Label = "New destination" };
             Routes.Add(vm);
             SelectedRoute = vm;
         });
         RemoveRouteCommand = new RelayCommand(
-            () => { if (SelectedRoute is { } r) Routes.Remove(r); SelectedRoute = Routes.FirstOrDefault(); },
+            () => { if (SelectedRoute is { } r) { Routes.Remove(r); r.Dispose(); } SelectedRoute = Routes.FirstOrDefault(); },
             () => SelectedRoute is not null);
         DuplicateRouteCommand = new RelayCommand(() =>
         {
             if (SelectedRoute is not { } src) return;
             // a sibling to tweak: everything copied except the hotkey (a
             // duplicate hotkey would collide the moment it lands)
-            var copy = RouteEditVm.From(src.ToRoute());
+            var copy = RouteEditVm.From(src.ToRoute(), _validateRoute, _scheduler, _uiContext, _probeDelayMs);
             copy.Label = src.Label.Trim() + " copy";
             copy.Hotkey = "";
             Routes.Insert(Routes.IndexOf(src) + 1, copy);
@@ -453,7 +609,7 @@ public sealed class SettingsViewModel : ObservableObject
         {
             // "Add folder": born into the SELECTED folder's section, right
             // after it — not teleported to the default group at the far end
-            var vm = new WatchEditVm
+            var vm = new WatchEditVm(_directoryExists, _scheduler, _uiContext, _probeDelayMs)
             {
                 Label = "New folder",
                 Section = SelectedWatch?.Section ?? "",
@@ -463,7 +619,7 @@ public sealed class SettingsViewModel : ObservableObject
             SelectedWatch = vm;
         });
         RemoveWatchCommand = new RelayCommand(
-            () => { if (SelectedWatch is { } w) WatchFolders.Remove(w); SelectedWatch = WatchFolders.FirstOrDefault(); },
+            () => { if (SelectedWatch is { } w) { WatchFolders.Remove(w); w.Dispose(); } SelectedWatch = WatchFolders.FirstOrDefault(); },
             () => SelectedWatch is not null);
         WatchUpCommand = new RelayCommand(() => MoveWatch(-1), () => CanMoveWatch(-1));
         WatchDownCommand = new RelayCommand(() => MoveWatch(+1), () => CanMoveWatch(+1));
@@ -655,28 +811,28 @@ public sealed class SettingsViewModel : ObservableObject
     public string Inbox
     {
         get => _inbox;
-        set { if (Set(ref _inbox, value)) Raise(nameof(InboxNote)); }
+        set { if (Set(ref _inbox, value)) RecomputeInboxNote(); }
     }
 
     private string _deferred = "";
     public string Deferred
     {
         get => _deferred;
-        set { if (Set(ref _deferred, value)) Raise(nameof(DeferredNote)); }
+        set { if (Set(ref _deferred, value)) RecomputeDeferredNote(); }
     }
 
     private string _namesFile = "";
     public string NamesFile
     {
         get => _namesFile;
-        set { if (Set(ref _namesFile, value)) Raise(nameof(NamesFileNote)); }
+        set { if (Set(ref _namesFile, value)) RecomputeNamesFileNote(); }
     }
 
     private string _historyDb = "";
     public string HistoryDb
     {
         get => _historyDb;
-        set { if (Set(ref _historyDb, value)) Raise(nameof(HistoryDbNote)); }
+        set { if (Set(ref _historyDb, value)) RecomputeHistoryDbNote(); }
     }
 
     // ---- split-config section files (destinations/monitored folders/alerts/
@@ -685,101 +841,166 @@ public sealed class SettingsViewModel : ObservableObject
     public string DestinationsFile
     {
         get => _destinationsFile;
-        set { if (Set(ref _destinationsFile, value)) Raise(nameof(DestinationsFileNote)); }
+        set { if (Set(ref _destinationsFile, value)) RecomputeDestinationsFileNote(); }
     }
 
     private string _monitoredFoldersFile = "";
     public string MonitoredFoldersFile
     {
         get => _monitoredFoldersFile;
-        set { if (Set(ref _monitoredFoldersFile, value)) Raise(nameof(MonitoredFoldersFileNote)); }
+        set { if (Set(ref _monitoredFoldersFile, value)) RecomputeMonitoredFoldersFileNote(); }
     }
 
     private string _alertsFile = "";
     public string AlertsFile
     {
         get => _alertsFile;
-        set { if (Set(ref _alertsFile, value)) Raise(nameof(AlertsFileNote)); }
+        set { if (Set(ref _alertsFile, value)) RecomputeAlertsFileNote(); }
     }
 
     private string _boxLabelsFile = "";
     public string BoxLabelsFile
     {
         get => _boxLabelsFile;
-        set { if (Set(ref _boxLabelsFile, value)) Raise(nameof(BoxLabelsFileNote)); }
+        set { if (Set(ref _boxLabelsFile, value)) RecomputeBoxLabelsFileNote(); }
     }
 
-    // Live per-field notes — the OK-time warnings, surfaced as you type
-    public string InboxNote => FolderNote(Inbox,
-        "no inbox folder set — there will be nothing to process");
-    public string DeferredNote => FolderNote(Deferred, "");
+    // Live per-field notes — the OK-time warnings, surfaced as you type.
+    // Each is a cached field: Directory.Exists/File.Exists/Config.ReadDoc are
+    // network round trips over SMB, so the real check runs debounced and off
+    // the UI thread (DebouncedProbe, one instance per field so editing one
+    // path can never invalidate another's in-flight check) — the getter just
+    // returns whatever was last applied. A blank/relative-path answer needs
+    // no I/O and is always resolved synchronously, with no pending gap.
+    private string _inboxNote = "";
+    public string InboxNote => _inboxNote;
+    private readonly DebouncedProbe<string> _inboxProbe;
 
-    public string NamesFileNote
+    private void RecomputeInboxNote(bool immediate = false) =>
+        RecomputeFolderNote(Inbox, "no inbox folder set — there will be nothing to process",
+            _inboxProbe, v => Set(ref _inboxNote, v, nameof(InboxNote)), immediate);
+
+    private string _deferredNote = "";
+    public string DeferredNote => _deferredNote;
+    private readonly DebouncedProbe<string> _deferredProbe;
+
+    private void RecomputeDeferredNote(bool immediate = false) =>
+        RecomputeFolderNote(Deferred, "",
+            _deferredProbe, v => Set(ref _deferredNote, v, nameof(DeferredNote)), immediate);
+
+    /// <summary>Shared live-note logic for a folder path box: blank/relative
+    /// answers instantly (no I/O); otherwise the note goes neutral and the
+    /// real Directory.Exists check is (re)triggered on <paramref name="probe"/>.</summary>
+    private void RecomputeFolderNote(string path, string blankMeans,
+        DebouncedProbe<string> probe, Action<string> setNote, bool immediate)
     {
-        get
-        {
-            var p = NamesFile.Trim();
-            if (p.Length == 0) return "";
-            if (!Path.IsPathRooted(p)) return "relative — resolved beside the config file";
-            return File.Exists(p) ? "" : "file doesn't exist yet (optional — it seeds the name suggestions)";
-        }
+        var p = path.Trim();
+        if (p.Length == 0) { setNote(blankMeans); return; }
+        if (!Path.IsPathRooted(p)) { setNote("relative — resolved beside the config file"); return; }
+        setNote("");   // neutral while pending
+        probe.Trigger(() => _directoryExists(p) ? "" : $"folder doesn't exist: {p}", immediate);
     }
 
-    public string HistoryDbNote
+    private string _namesFileNote = "";
+    public string NamesFileNote => _namesFileNote;
+    private readonly DebouncedProbe<string> _namesFileProbe;
+
+    private void RecomputeNamesFileNote(bool immediate = false)
     {
-        get
+        var p = NamesFile.Trim();
+        if (p.Length == 0) { Set(ref _namesFileNote, "", nameof(NamesFileNote)); return; }
+        if (!Path.IsPathRooted(p))
+        { Set(ref _namesFileNote, "relative — resolved beside the config file", nameof(NamesFileNote)); return; }
+        Set(ref _namesFileNote, "", nameof(NamesFileNote));   // neutral while pending
+        _namesFileProbe.Trigger(() => _fileExists(p)
+            ? "" : "file doesn't exist yet (optional — it seeds the name suggestions)", immediate);
+    }
+
+    private string _historyDbNote = "";
+    public string HistoryDbNote => _historyDbNote;
+    private readonly DebouncedProbe<string> _historyDbProbe;
+
+    private void RecomputeHistoryDbNote(bool immediate = false)
+    {
+        var p = HistoryDb.Trim();
+        if (p.Length == 0) { Set(ref _historyDbNote, "", nameof(HistoryDbNote)); return; }
+        if (!Path.IsPathRooted(p))
+        { Set(ref _historyDbNote, "relative — kept beside the config file", nameof(HistoryDbNote)); return; }
+        Set(ref _historyDbNote, "", nameof(HistoryDbNote));   // neutral while pending
+        _historyDbProbe.Trigger(() =>
         {
-            var p = HistoryDb.Trim();
-            if (p.Length == 0) return "";
-            if (!Path.IsPathRooted(p)) return "relative — kept beside the config file";
-            if (File.Exists(p)) return "";
+            if (_fileExists(p)) return "";
             var dir = Path.GetDirectoryName(p);
-            return dir is not null && !Directory.Exists(dir)
+            return dir is not null && !_directoryExists(dir)
                 ? $"folder doesn't exist: {dir}"
                 : "a new database will be created here";
-        }
+        }, immediate);
     }
 
     // Live per-field notes for the four section-file paths: entry count when
     // the file's readable, "will be created" when it's missing, the
     // ConfigException message when it's there but broken.
-    public string DestinationsFileNote => DataFileNote(DestinationsFile,
-        sp => (Config.ReadDoc<DestinationsDoc>(_cfgPath!, sp) ?? new DestinationsDoc()).Routes.Count);
+    private string _destinationsFileNote = "";
+    public string DestinationsFileNote => _destinationsFileNote;
+    private readonly DebouncedProbe<string> _destinationsFileProbe;
 
-    public string MonitoredFoldersFileNote => DataFileNote(MonitoredFoldersFile,
-        sp => (Config.ReadDoc<MonitoredFoldersDoc>(_cfgPath!, sp) ?? new MonitoredFoldersDoc()).WatchFolders.Count);
+    private void RecomputeDestinationsFileNote(bool immediate = false) =>
+        RecomputeDataFileNote(DestinationsFile,
+            sp => (Config.ReadDoc<DestinationsDoc>(_cfgPath!, sp) ?? new DestinationsDoc()).Routes.Count,
+            _destinationsFileProbe, v => Set(ref _destinationsFileNote, v, nameof(DestinationsFileNote)), immediate);
 
-    public string AlertsFileNote => DataFileNote(AlertsFile,
-        sp => (Config.ReadDoc<AlertsDoc>(_cfgPath!, sp) ?? new AlertsDoc()).AlertTexts.Count);
+    private string _monitoredFoldersFileNote = "";
+    public string MonitoredFoldersFileNote => _monitoredFoldersFileNote;
+    private readonly DebouncedProbe<string> _monitoredFoldersFileProbe;
 
-    public string BoxLabelsFileNote => DataFileNote(BoxLabelsFile,
-        sp => (Config.ReadDoc<BoxLabelsDoc>(_cfgPath!, sp) ?? new BoxLabelsDoc()).LabelClients.Count);
+    private void RecomputeMonitoredFoldersFileNote(bool immediate = false) =>
+        RecomputeDataFileNote(MonitoredFoldersFile,
+            sp => (Config.ReadDoc<MonitoredFoldersDoc>(_cfgPath!, sp) ?? new MonitoredFoldersDoc()).WatchFolders.Count,
+            _monitoredFoldersFileProbe,
+            v => Set(ref _monitoredFoldersFileNote, v, nameof(MonitoredFoldersFileNote)), immediate);
+
+    private string _alertsFileNote = "";
+    public string AlertsFileNote => _alertsFileNote;
+    private readonly DebouncedProbe<string> _alertsFileProbe;
+
+    private void RecomputeAlertsFileNote(bool immediate = false) =>
+        RecomputeDataFileNote(AlertsFile,
+            sp => (Config.ReadDoc<AlertsDoc>(_cfgPath!, sp) ?? new AlertsDoc()).AlertTexts.Count,
+            _alertsFileProbe, v => Set(ref _alertsFileNote, v, nameof(AlertsFileNote)), immediate);
+
+    private string _boxLabelsFileNote = "";
+    public string BoxLabelsFileNote => _boxLabelsFileNote;
+    private readonly DebouncedProbe<string> _boxLabelsFileProbe;
+
+    private void RecomputeBoxLabelsFileNote(bool immediate = false) =>
+        RecomputeDataFileNote(BoxLabelsFile,
+            sp => (Config.ReadDoc<BoxLabelsDoc>(_cfgPath!, sp) ?? new BoxLabelsDoc()).LabelClients.Count,
+            _boxLabelsFileProbe, v => Set(ref _boxLabelsFileNote, v, nameof(BoxLabelsFileNote)), immediate);
 
     /// <summary>Shared live-note logic for the four section-file path boxes:
     /// blank means the section default: not resolvable (no config path to
     /// resolve beside) reads as an unusable path; missing means it'll be
     /// created from the in-memory list on save; present means show what's
-    /// really in it (or the readable parse error, rather than a crash).</summary>
-    private string DataFileNote(string sectionPath, Func<string, int> countEntries)
+    /// really in it (or the readable parse error, rather than a crash). Only
+    /// the File.Exists gate and the read itself touch disk, so only those
+    /// run on <paramref name="probe"/>, off the UI thread.</summary>
+    private void RecomputeDataFileNote(string sectionPath, Func<string, int> countEntries,
+        DebouncedProbe<string> probe, Action<string> setNote, bool immediate)
     {
         var p = sectionPath.Trim();
-        if (p.Length == 0) return "blank = the default beside config.json";
-        if (_cfgPath is not { } cfgPath) return "not a usable path";
+        if (p.Length == 0) { setNote("blank = the default beside config.json"); return; }
+        if (_cfgPath is not { } cfgPath) { setNote("not a usable path"); return; }
         string full;
         try { full = Config.ResolveBeside(cfgPath, p); }
-        catch (Exception) { return "not a usable path"; }
-        if (!File.Exists(full))
-            return "will be created on save — the current list is written there";
-        try { return $"{countEntries(p)} entries"; }
-        catch (ConfigException ex) { return ex.Message; }
-    }
-
-    private static string FolderNote(string path, string blankMeans)
-    {
-        var p = path.Trim();
-        if (p.Length == 0) return blankMeans;
-        if (!Path.IsPathRooted(p)) return "relative — resolved beside the config file";
-        return Directory.Exists(p) ? "" : $"folder doesn't exist: {p}";
+        catch (Exception) { setNote("not a usable path"); return; }
+        setNote("");   // neutral while pending
+        probe.Trigger(() =>
+        {
+            if (!_fileExists(full))
+                return "will be created on save — the current list is written there";
+            try { return $"{countEntries(p)} entries"; }
+            catch (ConfigException ex) { return ex.Message; }
+        }, immediate);
     }
 
     /// <summary>One-click fix for "folder doesn't exist" — creates the whole
@@ -1095,7 +1316,7 @@ public sealed class SettingsViewModel : ObservableObject
     /// (an empty group's folder lands at the end of the flat list).</summary>
     public void AddFolderToSection(WatchSectionVm h)
     {
-        var vm = new WatchEditVm
+        var vm = new WatchEditVm(_directoryExists, _scheduler, _uiContext, _probeDelayMs)
         {
             Label = "New folder",
             Section = h.IsDefault ? "" : h.Header,
@@ -1117,7 +1338,7 @@ public sealed class SettingsViewModel : ObservableObject
         var name = "New section";
         for (var n = 2; SectionKeyExists(name); n++)
             name = $"New section {n}";
-        var vm = new WatchEditVm { Label = "New folder", Section = name };
+        var vm = new WatchEditVm(_directoryExists, _scheduler, _uiContext, _probeDelayMs) { Label = "New folder", Section = name };
         WatchFolders.Add(vm);
         SelectedWatch = vm;
         var header = WatchRows.OfType<WatchSectionVm>().FirstOrDefault(h =>
@@ -1407,18 +1628,18 @@ public sealed class SettingsViewModel : ObservableObject
         var warnings = new List<string>();
         if (Inbox.Trim().Length == 0)
             warnings.Add("No inbox folder is set — there will be nothing to process.");
-        else if (!Directory.Exists(Inbox.Trim()))
+        else if (!_directoryExists(Inbox.Trim()))
             warnings.Add($"The inbox folder doesn't exist: {Inbox.Trim()}");
-        if (Deferred.Trim().Length > 0 && !Directory.Exists(Deferred.Trim()))
+        if (Deferred.Trim().Length > 0 && !_directoryExists(Deferred.Trim()))
             warnings.Add($"The set-aside folder doesn't exist: {Deferred.Trim()}");
         foreach (var r in Routes)
         {
-            var problem = Config.ValidateRoute(r.ToRoute());
+            var problem = _validateRoute(r.ToRoute());
             if (problem.Length > 0) warnings.Add($"\"{r.Label.Trim()}\": {problem}");
         }
         foreach (var w in WatchFolders)
         {
-            if (w.Path.Trim().Length > 0 && !Directory.Exists(w.Path.Trim()))
+            if (w.Path.Trim().Length > 0 && !_directoryExists(w.Path.Trim()))
                 warnings.Add($"\"{w.Label.Trim()}\": folder doesn't exist: {w.Path.Trim()}");
         }
         return warnings;
