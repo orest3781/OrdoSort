@@ -163,8 +163,21 @@
                  mnemonics (the audit's "complete and collision-free" finding)
                  live in a different Window entirely, so they cannot collide
                  with these regardless of AccessKeyManager scoping — verified
-                 by inspection, not touched here. -->
-            <TabItem Header="_General">
+                 by inspection, not touched here.
+
+                 The AutomationProperties.Name beside each Header is the
+                 screen-reader label, pinned explicitly so it can never
+                 inherit the "_" marker from the header literal. Measured on
+                 this WPF, one run, same window: the peer TabControl actually
+                 publishes to the UIA tree (a TabItemAutomationPeer) already
+                 ran the header through AccessText.RemoveAccessKeyMarker and
+                 reported "General" — but the TabItem's own wrapper peer
+                 (what CreatePeerForElement hands back) reported "_General"
+                 verbatim. An explicit Name makes BOTH report the plain
+                 label, so the announced name no longer depends on an
+                 undocumented strip inside one peer class. Asserted three
+                 ways in SettingsKeyboardAccessTests. -->
+            <TabItem Header="_General" AutomationProperties.Name="General">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="16,8">
                         <TextBlock Text="Folders" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
@@ -234,7 +247,7 @@
             </TabItem>
 
             <!-- ============================================== Filing -->
-            <TabItem Header="_Filing">
+            <TabItem Header="_Filing" AutomationProperties.Name="Filing">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="16,8">
                         <TextBlock Text="Naming" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
@@ -301,7 +314,7 @@
             </TabItem>
 
             <!-- ============================================== Routes -->
-            <TabItem Header="_Destinations">
+            <TabItem Header="_Destinations" AutomationProperties.Name="Destinations">
                 <Grid Margin="16,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="230" />
@@ -589,7 +602,7 @@
             </TabItem>
 
             <!-- ============================================== Dashboard -->
-            <TabItem Header="Dash_board">
+            <TabItem Header="Dash_board" AutomationProperties.Name="Dashboard">
                 <Grid Margin="16,8">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -1010,7 +1023,7 @@
             </TabItem>
 
             <!-- ============================================== Appearance -->
-            <TabItem Header="_Appearance">
+            <TabItem Header="_Appearance" AutomationProperties.Name="Appearance">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="16,8">
                     <TextBlock Text="Colors" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
@@ -1213,7 +1226,7 @@
             </TabItem>
 
             <!-- ============================================== Data files -->
-            <TabItem Header="Da_ta files">
+            <TabItem Header="Da_ta files" AutomationProperties.Name="Data files">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="16,8">
                         <TextBlock Text="Data files" Style="{StaticResource SectionText}" Margin="0,0,0,6" />

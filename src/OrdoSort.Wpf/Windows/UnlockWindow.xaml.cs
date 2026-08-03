@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 using Microsoft.Win32;
 using OrdoSort.Wpf.ViewModels;
 
@@ -16,6 +17,31 @@ public partial class UnlockWindow : Window
     }
 
     private void OnPasswordChanged(object sender, RoutedEventArgs e) => _vm.Password = PwBox.Password;
+
+    /// <summary>Enter in the save offer's "save password as" box saves the
+    /// password — it must never reach the Unlock button's
+    /// <c>IsDefault="True"</c>.
+    ///
+    /// <see cref="UnlockViewModel.UnlockAsync"/> calls ResetBanner at the
+    /// start of every run, so falling through re-runs the whole batch AND
+    /// destroys the very offer being answered. Measured before this guard,
+    /// with the offer up, "Acme scans" typed and focus in the box: unlocker
+    /// invocations 1 -> 2, SaveBannerName back to "", 0 saved entries.
+    ///
+    /// PreviewKeyDown rather than KeyDown, and <c>Handled</c> set
+    /// UNCONDITIONALLY — including when the name is still blank, where
+    /// SaveBannerCommand's CanExecute gate declines: a handled PreviewKeyDown
+    /// is never promoted to KeyDown, which is what keeps AccessKeyManager
+    /// (where IsDefault registers "\r") from seeing the key at all. Re-running
+    /// the batch is never what Enter in this box means, blank name or not.
+    /// Only Enter is touched; every other key falls through to the TextBox
+    /// unchanged.</summary>
+    private void OnSaveNameKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+        if (_vm.SaveBannerCommand.CanExecute(null)) _vm.SaveBannerCommand.Execute(null);
+    }
 
     private void OnShowPw(object sender, RoutedEventArgs e)
     {

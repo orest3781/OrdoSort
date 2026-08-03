@@ -122,8 +122,14 @@
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="{Binding SaveBannerText}" VerticalAlignment="Center"
                                Margin="0,0,10,0" />
+                    <!-- Enter here means Save, never "run the batch again":
+                         the Unlock button is IsDefault, and UnlockAsync calls
+                         ResetBanner at the start of every run, so falling
+                         through would restart the whole batch AND wipe the
+                         offer being answered. See OnSaveNameKeyDown. -->
                     <TextBox Width="150" Text="{Binding SaveBannerName, UpdateSourceTrigger=PropertyChanged}"
-                             AutomationProperties.Name="Save password as" VerticalAlignment="Center" />
+                             AutomationProperties.Name="Save password as" VerticalAlignment="Center"
+                             PreviewKeyDown="OnSaveNameKeyDown" />
                     <Button Content="Save" Command="{Binding SaveBannerCommand}" Margin="8,0,0,0" />
                 </StackPanel>
             </Border>

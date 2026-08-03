@@ -71,8 +71,9 @@ file sealed class NoDialogs : IDialogService
 ///    Border found 0 bronze pixels for the very same focused Button whose
 ///    Window render found 364.
 ///
-/// 2. FOCUS VISUALS ARE OFF BY DEFAULT ON THIS MACHINE, AND A SYNTHETIC Tab
-///    DOES NOT TURN THEM ON. KeyboardNavigation only builds the adorner when
+/// 2. FOCUS VISUALS ARE OFF BY DEFAULT ON THIS MACHINE, AND NO AMOUNT OF
+///    INPUT PLUMBING TURNS THEM ON. KeyboardNavigation only builds the
+///    adorner when
 ///    <c>SystemParameters.KeyboardCues || KeyboardNavigation.AlwaysShowFocusVisual</c>
 ///    — Windows' "hide focus rectangles until the keyboard is used" default
 ///    leaves KeyboardCues false (measured: False here), so a bare
@@ -81,25 +82,50 @@ file sealed class NoDialogs : IDialogService
 ///    <see cref="InputManager"/> — the technique that works for
 ///    <see cref="UnlockEnterKeyTests"/> — DOES move focus but leaves
 ///    AlwaysShowFocusVisual false (measured: focus moved to the next Button,
-///    adorner count still 0). WPF sets that flag from the RAW Win32 keyboard
-///    input report, a stage the InputManager staging pipeline is entered
-///    below, so nothing short of a real HWND message pump reaches it. The
-///    honest options were therefore (a) set the very flag WPF itself sets,
-///    or (b) downgrade to a property assertion. This file does (a): the
-///    internal static is flipped for the duration of the assertion and
-///    restored afterwards, so everything downstream — adorner creation,
-///    FocusVisualStyle resolution, template instantiation, rasterisation —
-///    is the real WPF code path, painting real pixels.
+///    adorner count still 0).
 ///
-/// 3. A FocusVisualStyle STYLE SETTER IS NOT ALWAYS ENOUGH. CheckBox and
-///    RadioButton keep the stock template, and the stock template assigns
-///    FocusVisualStyle from a template trigger on HasContent=True — which
-///    outranks a Style Setter in DP precedence. Measured:
-///    GetValueSource returned TemplateTrigger and the rendered ring was the
-///    OS dashed rectangle, while ComboBox/ListBoxItem/TabItem (whose styles
-///    do supply a template) returned Style and rendered bronze. The
-///    FocusVisualStyle identity assertion below is what names this when it
-///    happens; a matching Style trigger in Styles.xaml is what fixes it.
+///    WHY, precisely — established by an opcode-level IL scan of
+///    PresentationFramework, replacing an earlier and WRONG claim in this
+///    file that WPF sets the flag "from the raw Win32 keyboard input report,
+///    upstream of where synthetic KeyEventArgs enter the pipeline". It has
+///    nothing to do with the input pipeline at all. The backing field
+///    <c>_alwaysShowFocusVisual</c> is written by exactly two methods:
+///    <c>set_AlwaysShowFocusVisual</c> and <c>KeyboardNavigation..cctor</c>.
+///    The setter has exactly ONE call site — <c>SystemResources.
+///    InvalidateTreeResources</c> — and the instruction immediately before
+///    that call is <c>call SystemParameters.get_KeyboardCues</c>. It is read
+///    in exactly one place, <c>KeyboardNavigation.ShowFocusVisual</c>. So the
+///    flag is an OS-SETTING CACHE, seeded at type initialization and
+///    refreshed on a system-settings/theme change — not an input artifact.
+///    Real hardware keystrokes do not flip it either; what flips it is
+///    Windows' own SPI_SETKEYBOARDCUES broadcast.
+///
+///    That leaves the flag as the ONLY gate, so the honest options were
+///    (a) set the very flag WPF itself sets, or (b) downgrade to a property
+///    assertion. This file does (a): the internal static is flipped for the
+///    duration of the assertion and restored afterwards, so everything
+///    downstream — adorner creation, FocusVisualStyle resolution, template
+///    instantiation, rasterisation — is the real WPF code path, painting
+///    real pixels.
+///
+/// 3. A FocusVisualStyle STYLE SETTER IS NOT ALWAYS ENOUGH, AND THE FULL
+///    ORDER IS StyleTrigger &gt; TemplateTrigger &gt; Style setter. CheckBox
+///    and RadioButton keep the stock template, and the stock template assigns
+///    FocusVisualStyle from a template trigger whose condition is
+///    <c>HasContent</c> — confirmed by measuring CONTENT-LESS controls, not
+///    inferred. Measured, per value source:
+///    <code>
+///    CheckBox    Content="Option"   -> TemplateTrigger  (Setter alone: no-op)
+///    RadioButton Content="Option"   -> TemplateTrigger  (Setter alone: no-op)
+///    CheckBox    no Content         -> Style            (Setter alone: wins)
+///    ComboBox/ListBoxItem/TabItem   -> Style            (own template, no such trigger)
+///    </code>
+///    So the plain Setter was a COMPLETE no-op for every content-bearing
+///    CheckBox/RadioButton — i.e. all of them in this app — and is only
+///    load-bearing for the content-less case the stock trigger never fires
+///    for. Both are kept in Styles.xaml for that reason. The FocusVisualStyle
+///    identity assertion below is what names this when it regresses; the
+///    matching Style trigger is what fixes it.
 ///
 /// Shares HighlightContrastFixture's single STA thread/Application (see that
 /// fixture's own class doc). NOTE: every control must be CONSTRUCTED inside
@@ -280,6 +306,59 @@ public class FocusRingCoverageTests
         yield return new object[] { false };
         yield return new object[] { true };
     }
+
+    /// <summary>The precedence ordering from the class doc's point 3, kept as
+    /// an executable fact instead of prose — this repo's ledger reuses
+    /// recorded mechanisms across tasks, so "StyleTrigger &gt; TemplateTrigger
+    /// &gt; Style setter" needs to fail loudly if it ever stops being true.
+    ///
+    /// It also pins the one thing the pixel cases above cannot: that the
+    /// PLAIN Setter retained alongside the trigger is load-bearing rather than
+    /// decorative. It is a complete no-op for a content-bearing CheckBox (the
+    /// stock template's own HasContent trigger outranks it) and the only thing
+    /// covering a content-less one (that trigger never fires) — which is also
+    /// the direct measurement of the stock trigger's CONDITION, previously
+    /// only inferred from the value source.</summary>
+    [Fact]
+    public void FocusVisualStyleResolvesByStyleTriggerWithContentAndBySetterWithout() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+
+        var withContent = new CheckBox { Content = "Option" };
+        var contentless = new CheckBox();
+        var panel = new StackPanel();
+        panel.Children.Add(withContent);
+        panel.Children.Add(contentless);
+
+        var window = HostWindow(panel);
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+            window.UpdateLayout();
+
+            Assert.True(withContent.HasContent);
+            Assert.False(contentless.HasContent);
+
+            Assert.Equal(BaseValueSource.StyleTrigger,
+                DependencyPropertyHelper
+                    .GetValueSource(withContent, FrameworkElement.FocusVisualStyleProperty)
+                    .BaseValueSource);
+            Assert.Equal(BaseValueSource.Style,
+                DependencyPropertyHelper
+                    .GetValueSource(contentless, FrameworkElement.FocusVisualStyleProperty)
+                    .BaseValueSource);
+
+            var bronze = _fx.App.Resources["BronzeFocusVisual"];
+            Assert.Same(bronze, withContent.FocusVisualStyle);
+            Assert.Same(bronze, contentless.FocusVisualStyle);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
 
     [Theory, MemberData(nameof(Palettes))]
     public void CheckBoxShowsTheBronzeFocusRing(bool dark) =>

@@ -158,6 +158,108 @@ public class SettingsKeyboardAccessTests
         }
     });
 
+    /// <summary>Header literal -> what a screen reader must ANNOUNCE for that
+    /// tab: the plain label, with no access-key marker in it.
+    ///
+    /// This is the companion the mnemonic assertions above cannot make: giving
+    /// the six headers access keys put a literal "_" into the header literal,
+    /// and nothing above notices if that leaks into what gets announced.
+    ///
+    /// A TabItem has TWO peers and they did NOT agree. Measured on this WPF,
+    /// one run, one window, before any AutomationProperties.Name existed:
+    /// <code>
+    /// header="_General"    TabItemAutomationPeer="General"     (UIA tree)
+    ///                      TabItemWrapperAutomationPeer="_General"
+    /// header="Da_ta files" TabItemAutomationPeer="Data files"  (UIA tree)
+    ///                      TabItemWrapperAutomationPeer="Da_ta files"
+    /// MenuItem "_File"  -> MenuItemAutomationPeer="File"
+    /// Button   "_Save"  -> ButtonAutomationPeer="Save"
+    /// </code>
+    /// So the peer a screen reader really walks — the
+    /// <see cref="TabItemAutomationPeer"/> that
+    /// <c>TabControlAutomationPeer.GetChildren()</c> publishes — was ALREADY
+    /// clean: its GetNameCore runs the result through
+    /// <c>AccessText.RemoveAccessKeyMarker</c>, exactly like MenuItem and
+    /// ButtonBase. What carried the raw "_General" was the TabItem's own
+    /// wrapper peer, which <c>UIElementAutomationPeer.CreatePeerForElement</c>
+    /// hands back but which WPF never publishes as a UIA element (it exists to
+    /// serve the item peer, and its EventsSource points back at it).
+    ///
+    /// The fix is an explicit <c>AutomationProperties.Name</c> per tab —
+    /// preferred by <c>FrameworkElementAutomationPeer.GetNameCore</c> over
+    /// every fallback, the same mechanism
+    /// <see cref="ReorderButtonsAnnounceWhatTheyMove"/> already relies on — so
+    /// both peers report the plain label and the announced name no longer
+    /// rides on an undocumented strip inside one peer class. All three
+    /// readings are asserted below; only two of them were ever red.</summary>
+    public static IEnumerable<object[]> TabAutomationNames()
+    {
+        yield return new object[] { "_General", "General" };
+        yield return new object[] { "_Filing", "Filing" };
+        yield return new object[] { "_Destinations", "Destinations" };
+        yield return new object[] { "Dash_board", "Dashboard" };
+        yield return new object[] { "_Appearance", "Appearance" };
+        yield return new object[] { "Da_ta files", "Data files" };
+    }
+
+    /// <summary>Three readings, because no one of them is sufficient:
+    /// <list type="number">
+    /// <item>the <see cref="TabItemAutomationPeer"/> published in the UIA tree
+    /// — the outcome that actually matters, and the one that was already
+    /// green (it stays here so a future header edit that drops the label, or
+    /// a WPF that stops stripping, is still caught);</item>
+    /// <item>the wrapper peer <c>CreatePeerForElement</c> hands back — the
+    /// reading that carried the raw "_General";</item>
+    /// <item>the attached property itself — what makes the name explicit
+    /// rather than inferred.</item>
+    /// </list></summary>
+    [Theory, MemberData(nameof(TabAutomationNames))]
+    public void EachSettingsTabAnnouncesItsNameWithoutTheAccessKeyMarker(string header, string expected) =>
+        _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var window = BuildSettingsWindow();
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+            window.UpdateLayout();
+
+            var tabControl = Descendants<TabControl>(window).FirstOrDefault()
+                ?? throw new InvalidOperationException("no TabControl descendant under SettingsWindow");
+            var tab = tabControl.Items.Cast<TabItem>()
+                    .FirstOrDefault(ti => ti.Header?.ToString() == header)
+                ?? throw new InvalidOperationException($"no TabItem with Header \"{header}\"");
+
+            var tabControlPeer = UIElementAutomationPeer.CreatePeerForElement(tabControl)
+                ?? throw new InvalidOperationException("no automation peer for the TabControl");
+            var itemPeers = (tabControlPeer.GetChildren() ?? new List<AutomationPeer>())
+                .OfType<TabItemAutomationPeer>()
+                .ToList();
+            var peer = itemPeers.FirstOrDefault(p => ReferenceEquals(p.Item, tab))
+                ?? throw new InvalidOperationException(
+                    $"the TabControl's peer published no TabItemAutomationPeer for \"{header}\" " +
+                    $"(found: {(itemPeers.Count == 0 ? "none at all" : string.Join(", ", itemPeers.Select(p => $"\"{p.GetName()}\"")))})");
+
+            // (1) what the screen reader is handed
+            Assert.Equal(expected, peer.GetName());
+
+            // (2) the TabItem's own wrapper peer — this is the reading that
+            // reported "_General" verbatim
+            var wrapperPeer = UIElementAutomationPeer.CreatePeerForElement(tab)
+                ?? throw new InvalidOperationException($"no automation peer for the \"{header}\" TabItem");
+            Assert.Equal(expected, wrapperPeer.GetName());
+
+            // (3) the mechanism that guarantees both
+            Assert.Equal(expected, AutomationProperties.GetName(tab));
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
     /// <summary>All six are distinct — the whole reason Dashboard and Data
     /// files use non-initial letters. Asserted against the LIVE registrations
     /// rather than the literals, so a future header edit that quietly
@@ -367,5 +469,121 @@ public class SettingsKeyboardAccessTests
         {
             window.Close();
         }
+    });
+
+    /// <summary>The last hop the handler-level test above deliberately stops
+    /// short of: Escape pressed with focus really inside the hotkey-capture
+    /// box CLOSES the dialog. Both tests are kept — this one proves the
+    /// outcome, the one above pins WHY (and keeps its positive control that
+    /// ordinary keys are still captured, which this one cannot express).
+    ///
+    /// The report for this task claimed such a test was impossible because
+    /// <c>ShowDialog()</c> would deadlock the fixture's single STA thread.
+    /// That was wrong: ShowDialog pumps a NESTED DISPATCHER FRAME, so work
+    /// posted to this same dispatcher before the call runs INSIDE that frame,
+    /// on this very thread, while the dialog is up. That is also what makes
+    /// <c>Button.IsCancel</c> reachable at all — IsCancel closes a dialog by
+    /// assigning <c>Window.DialogResult</c>, which throws on a <c>Show()</c>n
+    /// window, so no Show()-based test can ever exercise it.
+    ///
+    /// Escape must go through <see cref="InputManager"/>, not
+    /// <c>RaiseEvent</c>: <c>IsCancel</c> registers "\x1B" with
+    /// <see cref="AccessKeyManager"/> (exactly as <c>IsDefault</c> registers
+    /// "\r" — see <see cref="UnlockEnterKeyTests"/>), and AccessKeyManager
+    /// only ever sees a key in InputManager's POST-process stage, which a
+    /// bare tree bubble never reaches. It is also why the hotkey handler's
+    /// <c>e.Handled = false</c> is load-bearing: a handled PreviewKeyDown is
+    /// never promoted to KeyDown, so AccessKeyManager never sees the key.
+    ///
+    /// The watchdog is what makes this a test rather than a hang: against a
+    /// build where Escape is swallowed the dialog simply stays up forever, so
+    /// the timer force-closes it and the run FAILS on <c>timedOut</c> instead
+    /// of blocking the suite.</summary>
+    [Fact]
+    public void EscapeInTheHotkeyBoxClosesTheSettingsDialog() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var window = BuildSettingsWindow();
+        var dispatcher = Dispatcher.CurrentDispatcher;
+
+        var reached = false;
+        var focusedHotkeyBox = false;
+        var visibleAfterEscape = true;
+        var timedOut = false;
+        Exception? failure = null;
+
+        var watchdog = new DispatcherTimer(TimeSpan.FromSeconds(20), DispatcherPriority.Send,
+            (_, _) => { timedOut = true; window.Close(); }, dispatcher);
+
+        dispatcher.BeginInvoke(new Action(() =>
+        {
+            try
+            {
+                var tabControl = Descendants<TabControl>(window).FirstOrDefault()
+                    ?? throw new InvalidOperationException("no TabControl descendant under SettingsWindow");
+                tabControl.SelectedItem = tabControl.Items.Cast<TabItem>()
+                    .First(ti => ti.Header?.ToString() == "_Destinations");
+                window.UpdateLayout();
+                PumpRender();
+                window.UpdateLayout();
+
+                var listBox = Descendants<ListBox>(window).FirstOrDefault()
+                    ?? throw new InvalidOperationException("no route ListBox under SettingsWindow");
+                listBox.SelectedIndex = 0;
+                window.UpdateLayout();
+                PumpRender();
+                window.UpdateLayout();
+
+                var hotkeyBox = Descendants<TextBox>(window)
+                        .FirstOrDefault(t => AutomationProperties.GetName(t) == "Hotkey — press keys to set")
+                    ?? throw new InvalidOperationException("no hotkey TextBox under SettingsWindow");
+
+                hotkeyBox.Focus();
+                Keyboard.Focus(hotkeyBox);
+                focusedHotkeyBox = hotkeyBox.IsKeyboardFocused;
+
+                var source = PresentationSource.FromVisual(window)
+                    ?? throw new InvalidOperationException("no PresentationSource for the SettingsWindow");
+                InputManager.Current.ProcessInput(
+                    new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Escape)
+                    {
+                        RoutedEvent = Keyboard.PreviewKeyDownEvent,
+                    });
+
+                visibleAfterEscape = window.IsVisible;
+                reached = true;
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+                window.Close();
+            }
+        }), DispatcherPriority.ApplicationIdle);
+
+        bool? dialogResult;
+        try
+        {
+            dialogResult = window.ShowDialog();
+        }
+        finally
+        {
+            watchdog.Stop();
+        }
+
+        if (failure is not null)
+            throw new InvalidOperationException(
+                "the posted Escape never got as far as pressing the key", failure);
+
+        Assert.False(timedOut,
+            "Escape with focus in the hotkey-capture box did NOT close the Settings dialog — " +
+            "it stayed up until the watchdog force-closed it, which is exactly the swallowed-Escape " +
+            "defect (a handled PreviewKeyDown is never promoted to KeyDown, so the Cancel button's " +
+            "IsCancel registration in AccessKeyManager never sees the key)");
+        Assert.True(reached, "the Escape press never ran");
+        Assert.True(focusedHotkeyBox,
+            "the hotkey-capture box never took keyboard focus, so this proves nothing about it");
+        Assert.False(visibleAfterEscape,
+            "the dialog was still visible immediately after Escape reached the input pipeline");
+        Assert.False(dialogResult);   // IsCancel closes by setting DialogResult = false
     });
 }

@@ -335,8 +335,12 @@
          and RadioButton in the app, i.e. all of them. A Style trigger
          outranks a template trigger, so duplicating the value there is what
          actually wins; the plain Setter stays for the content-less case, which
-         the stock trigger never fires for. Every case here is proven by
-         rendering real pixels in FocusRingCoverageTests. -->
+         the stock trigger never fires for. That HasContent condition is not
+         an inference from the value source — a content-less CheckBox was
+         measured separately and reports value source Style, i.e. the plain
+         Setter DOES win there. Full order, all three legs measured:
+         StyleTrigger > TemplateTrigger > Style setter. Every case here is
+         proven by rendering real pixels in FocusRingCoverageTests. -->
     <Style TargetType="CheckBox">
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="Margin" Value="0,4" />
