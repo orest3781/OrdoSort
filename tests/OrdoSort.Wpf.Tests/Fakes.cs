@@ -18,7 +18,18 @@ public sealed class FakeViewer : IPdfViewer
     /// fault inside the commit path.</summary>
     public Exception? ThrowOnRelease { get; set; }
 
-    public Task ShowAsync(string path) { Shown.Add(path); return Task.CompletedTask; }
+    /// <summary>When set, ShowAsync throws it. ReleaseAsync is not on the undo
+    /// path at all, so this is the only viewer seam that can stand in for an
+    /// unforeseen fault while UNDOING — the load of the restored document is
+    /// the last thing OnUndoAsync awaits.</summary>
+    public Exception? ThrowOnShow { get; set; }
+
+    public Task ShowAsync(string path)
+    {
+        Shown.Add(path);
+        if (ThrowOnShow is { } boom) throw boom;
+        return Task.CompletedTask;
+    }
 
     public async Task ReleaseAsync()
     {

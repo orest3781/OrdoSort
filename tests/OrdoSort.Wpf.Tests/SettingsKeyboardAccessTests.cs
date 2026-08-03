@@ -50,16 +50,25 @@ public class SettingsKeyboardAccessTests
         Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
 
     /// <summary>Header literal -> the access key WPF derives from it. WPF
-    /// takes the character after the first single underscore, which is why
-    /// three of these are NOT the initial letter: General/Filing/
-    /// Destinations/Dashboard/Appearance/Data files would otherwise be
-    /// G/F/D/D/A/D — a three-way collision on D.</summary>
+    /// takes the character after the first single underscore, which is why one
+    /// of these is NOT the initial letter: General/Filing/Destinations/
+    /// Monitored folders/Appearance/Data files would otherwise be
+    /// G/F/D/M/A/D — a collision on D, so Data files takes "T" from "Da_ta".
+    ///
+    /// Task 9 (copy and terminology) renamed the fourth tab from "Dashboard"
+    /// to "Monitored folders" — the name its own section header, the Data
+    /// files label and Config.MonitorTitle's default already used. That
+    /// retired the old "B" (from "Dash_board", which existed only because
+    /// "Dashboard" made a third D) and freed the mnemonic back to an initial
+    /// letter. M was unclaimed, so the set is G/F/D/M/A/T; the distinctness
+    /// assertion below is what actually guards that, against live
+    /// registrations rather than these literals.</summary>
     public static IEnumerable<object[]> TabHeaders()
     {
         yield return new object[] { "_General", "G" };
         yield return new object[] { "_Filing", "F" };
         yield return new object[] { "_Destinations", "D" };
-        yield return new object[] { "Dash_board", "B" };
+        yield return new object[] { "_Monitored folders", "M" };
         yield return new object[] { "_Appearance", "A" };
         yield return new object[] { "Da_ta files", "T" };
     }
@@ -92,7 +101,7 @@ public class SettingsKeyboardAccessTests
     // ------------------------------------------------------- Step 4: mnemonics
 
     /// <summary>The registration proof: after the window is up, WPF's own
-    /// <see cref="AccessKeyManager"/> reports each of G/F/D/B/A/T as a live
+    /// <see cref="AccessKeyManager"/> reports each of G/F/D/M/A/T as a live
     /// access key for THIS window's scope. Nothing about the markup is
     /// inspected — if the header ContentPresenter ever loses
     /// RecognizesAccessKey, or a header is retyped without its underscore,
@@ -197,7 +206,7 @@ public class SettingsKeyboardAccessTests
         yield return new object[] { "_General", "General" };
         yield return new object[] { "_Filing", "Filing" };
         yield return new object[] { "_Destinations", "Destinations" };
-        yield return new object[] { "Dash_board", "Dashboard" };
+        yield return new object[] { "_Monitored folders", "Monitored folders" };
         yield return new object[] { "_Appearance", "Appearance" };
         yield return new object[] { "Da_ta files", "Data files" };
     }
@@ -260,10 +269,11 @@ public class SettingsKeyboardAccessTests
         }
     });
 
-    /// <summary>All six are distinct — the whole reason Dashboard and Data
-    /// files use non-initial letters. Asserted against the LIVE registrations
-    /// rather than the literals, so a future header edit that quietly
-    /// reintroduces the D/D/D collision fails here.</summary>
+    /// <summary>All six are distinct — the whole reason Data files uses a
+    /// non-initial letter. Asserted against the LIVE registrations rather
+    /// than the literals, so a future header edit that quietly reintroduces
+    /// a D collision (Destinations/Data files, and "Dashboard" before Task 9
+    /// renamed it) fails here rather than in a user's hands.</summary>
     [Fact]
     public void TheSixSettingsTabAccessKeysAreAllDistinct() => _fx.Invoke(() =>
     {
@@ -325,7 +335,7 @@ public class SettingsKeyboardAccessTests
             var otherScope = PresentationSource.FromVisual(other)!;
             Assert.NotSame(settingsScope, otherScope);
 
-            foreach (var key in new[] { "G", "F", "D", "B", "A", "T" })
+            foreach (var key in new[] { "G", "F", "D", "M", "A", "T" })
             {
                 Assert.True(AccessKeyManager.IsKeyRegistered(settingsScope, key),
                     $"Alt+{key} missing from SettingsWindow's scope");
@@ -349,8 +359,8 @@ public class SettingsKeyboardAccessTests
         // header of the tab that hosts them, glyph, expected screen-reader name
         yield return new object[] { "_Destinations", "↑", "Move destination up" };
         yield return new object[] { "_Destinations", "↓", "Move destination down" };
-        yield return new object[] { "Dash_board", "↑", "Move folder up" };
-        yield return new object[] { "Dash_board", "↓", "Move folder down" };
+        yield return new object[] { "_Monitored folders", "↑", "Move folder up" };
+        yield return new object[] { "_Monitored folders", "↓", "Move folder down" };
     }
 
     /// <summary>The four ↑/↓ reorder buttons announced nothing but their

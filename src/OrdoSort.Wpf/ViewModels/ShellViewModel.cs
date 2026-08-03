@@ -79,9 +79,12 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
         // Without these the async commands swallow every unexpected exception:
         // a failed filing would look like a button that simply did nothing.
-        RouteCommand.OnError += ReportUnexpected;
-        SkipCommand.OnError += ReportUnexpected;
-        UndoCommand.OnError += ReportUnexpected;
+        // Each says WHICH action stopped: "the last action" is all the shared
+        // handler could ever have said, and a user who pressed a destination
+        // button and one who pressed Undo need different reassurance.
+        RouteCommand.OnError += ex => ReportUnexpected(ex, "Filing that document");
+        SkipCommand.OnError += ex => ReportUnexpected(ex, "Setting that document aside");
+        UndoCommand.OnError += ex => ReportUnexpected(ex, "Undoing the last filing");
 
         _watch.Activity += OnFolderActivity;
     }
@@ -90,12 +93,34 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// put it in crash.log. The user is warned either way.</summary>
     public event Action<Exception>? UnexpectedError;
 
-    private void ReportUnexpected(Exception ex)
+    /// <summary>2026-08-02 audit finding I6: this used to open "Something went
+    /// wrong" and then paste the raw exception message into the dialog —
+    /// wording that tells a user neither what happened nor what to do, and
+    /// text like "Object reference not set to an instance of an object" that
+    /// only a developer can read. The rest of the app (Session's audit-failure
+    /// copy, Commit's CommitError messages) names the document, says where it
+    /// ended up and stops; this now does the same.
+    ///
+    /// The claim about the document is deliberately conservative rather than
+    /// precise, because this handler cannot know which side of the move the
+    /// fault landed on. What IS guaranteed, and is what the user needs: the
+    /// app only ever MOVES files (see Commit's class doc — never deleted,
+    /// never overwritten), so the document is in exactly one of two places and
+    /// looking will settle it. The raw text is not lost, it just goes where it
+    /// is useful: <see cref="UnexpectedError"/> is wired to App.LogCrash, which
+    /// appends the full exception to crash.log beside the config.</summary>
+    /// <param name="action">What the user was doing, sentence-initial —
+    /// "Filing that document", etc.</param>
+    private void ReportUnexpected(Exception ex, string action)
     {
         UnexpectedError?.Invoke(ex);
         _dialogs.Warn(
-            "Something went wrong and the last action may not have finished.\n\n" +
-            ex.Message + "\n\nDetails were written to crash.log.", "OrdoSort");
+            $"{action} didn't finish.\n\n" +
+            "Nothing was deleted — OrdoSort only ever moves files, so the document " +
+            "is either where it started or where it was going. Check both before " +
+            "trying again.\n\n" +
+            "The technical details were written to crash.log, beside your config file.",
+            "OrdoSort — that didn't finish");
     }
 
     /// <summary>Tell the user a document moved but went unrecorded, and keep

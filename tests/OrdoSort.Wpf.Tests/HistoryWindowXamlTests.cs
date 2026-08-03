@@ -54,6 +54,46 @@ public class HistoryWindowXamlTests
         try { File.Delete(dbPath); } catch { /* best effort */ }
     }
 
+    /// <summary>2026-08-02 audit finding I4, Task 9: this grid was the one
+    /// place in the app that showed a user the word "Route". Everywhere else
+    /// — the Settings tab, its buttons, its validation text — says
+    /// "Destination".
+    ///
+    /// The second half is the part that matters most, and is why this asserts
+    /// the binding as well as the header: "Route" is the INTERNAL name and had
+    /// to survive the rename. <c>HistoryRow.Route</c>, the <c>routes</c>
+    /// config key, the <c>Route</c>/<c>RouteButtonViewModel</c> types and the
+    /// history table's own <c>route_label</c>/<c>route_path</c> columns are
+    /// all unchanged; a rename that had followed the label into the binding
+    /// path would have produced an empty column, silently.</summary>
+    [Fact]
+    public void TheHistoryGridSaysDestinationButStillBindsRoute() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var (win, history, dbPath) = BuildWindow();
+        try
+        {
+            var grid = FindDescendant<DataGrid>(win)
+                ?? throw new InvalidOperationException("No DataGrid descendant found");
+            var headers = grid.Columns.Select(c => c.Header?.ToString() ?? "").ToList();
+
+            Assert.Contains("Destination", headers);
+            Assert.DoesNotContain("Route", headers);
+
+            var column = grid.Columns.OfType<DataGridTextColumn>()
+                .First(c => (string)c.Header == "Destination");
+            var binding = Assert.IsType<Binding>(column.Binding);
+            Assert.Equal("Route", binding.Path.Path);
+
+            // the machine-read side of the same rename: the CSV export writes
+            // the history table's own column names, which are NOT user-facing
+            // copy and must not follow the label
+            Assert.Contains("route_label", History.Columns);
+            Assert.Contains("route_path", History.Columns);
+        }
+        finally { Cleanup(win, history, dbPath); }
+    });
+
     [Fact]
     public void EmptyHistoryShowsTheNoFilingsMessage() => _fx.Invoke(() =>
     {
@@ -141,16 +181,23 @@ public class HistoryWindowXamlTests
         }
     });
 
-    /// <summary>Task 7 Step 3: the Name/Route columns clipped without ellipsis
-    /// or any way to recover the full value. Asserted directly on each
-    /// column's ElementStyle (the column-level style WPF applies to the
-    /// generated per-cell TextBlock) rather than a realized cell, since
-    /// DataGrid virtualizes cells and this property is fixed at the column
-    /// level regardless of which rows are realized.</summary>
+    /// <summary>Task 7 Step 3: the two fixed-width text columns clipped
+    /// without ellipsis or any way to recover the full value. Asserted
+    /// directly on each column's ElementStyle (the column-level style WPF
+    /// applies to the generated per-cell TextBlock) rather than a realized
+    /// cell, since DataGrid virtualizes cells and this property is fixed at
+    /// the column level regardless of which rows are realized.
+    ///
+    /// Header and binding path are separate parameters because Task 9 made
+    /// them differ: the column a user reads is headed "Destination" while the
+    /// property behind it is still <c>HistoryRow.Route</c>. Collapsing them
+    /// back into one argument would quietly re-couple the label to the
+    /// internal name.</summary>
     [Theory]
-    [InlineData("Name")]
-    [InlineData("Route")]
-    public void NameAndRouteColumnsTrimWithEllipsisAndCarryATooltip(string header) => _fx.Invoke(() =>
+    [InlineData("Name", "Name")]
+    [InlineData("Destination", "Route")]
+    public void NameAndDestinationColumnsTrimWithEllipsisAndCarryATooltip(
+        string header, string bindingPath) => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
         var (win, history, dbPath) = BuildWindow();
@@ -174,7 +221,7 @@ public class HistoryWindowXamlTests
                 .FirstOrDefault(s => s.Property == FrameworkElement.ToolTipProperty);
             Assert.NotNull(tooltipSetter);
             var binding = Assert.IsType<Binding>(tooltipSetter!.Value);
-            Assert.Equal(header, binding.Path.Path);
+            Assert.Equal(bindingPath, binding.Path.Path);
         }
         finally { Cleanup(win, history, dbPath); }
     });

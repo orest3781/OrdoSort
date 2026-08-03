@@ -142,11 +142,16 @@
 
         <Button Command="{Binding StartCommand}"
                 Style="{StaticResource PrimaryButton}" Height="48" Margin="0,14,0,0"
-                FontSize="15" AutomationProperties.Name="Start Processing">
+                FontSize="15" AutomationProperties.Name="Start processing">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Style="{StaticResource Icon}" Text="&#xE768;" FontSize="15"
                            Margin="0,0,9,0" Foreground="{DynamicResource Theme.AccentText}" />
-                <TextBlock Text="Start Processing"
+                <!-- sentence case, like every other button in the app
+                     (2026-08-02 audit M4 — this was the only Title-Case one).
+                     The AutomationProperties.Name above must match what is
+                     rendered, or a screen-reader user and a sighted user are
+                     told two different labels. -->
+                <TextBlock Text="Start processing"
                            Foreground="{DynamicResource Theme.AccentText}" />
             </StackPanel>
         </Button>

@@ -95,7 +95,17 @@ public class UnexpectedErrorTests
 
         Assert.NotNull(logged);
         Assert.Equal("viewer exploded", logged!.Message);
-        Assert.Contains(fx.Dialogs.Warnings, w => w.Message.Contains("viewer exploded"));
+
+        // The raw exception text goes to the crash.log channel (UnexpectedError,
+        // asserted above — MainWindow wires it to App.LogCrash) and NOT into the
+        // dialog. Task 9 / audit finding I6: the dialog used to open "Something
+        // went wrong" and paste the developer text in, which named neither the
+        // action nor its consequence.
+        var warning = Assert.Single(fx.Dialogs.Warnings);
+        Assert.DoesNotContain("viewer exploded", warning.Message);
+        Assert.DoesNotContain("Something went wrong", warning.Message);
+        Assert.Contains("Filing that document didn't finish", warning.Message);
+        Assert.Contains("crash.log", warning.Message);
     }
 
     [Fact]
@@ -117,7 +127,55 @@ public class UnexpectedErrorTests
 
         Assert.NotNull(logged);
         Assert.Equal("enter exploded", logged!.Message);
-        Assert.Contains(fx.Dialogs.Warnings, w => w.Message.Contains("enter exploded"));
+        var warning = Assert.Single(fx.Dialogs.Warnings);
+        Assert.DoesNotContain("enter exploded", warning.Message);
+        Assert.Contains("Filing that document didn't finish", warning.Message);
+    }
+
+    /// <summary>The shared handler used to say "the last action", which was the
+    /// most it could say — one <c>Action&lt;Exception&gt;</c> subscribed to
+    /// three commands. Each command now names what the user was doing, so the
+    /// first line of the dialog matches the button they actually pressed.
+    /// Undo is the sharpest case: told "filing didn't finish" after pressing
+    /// Undo, a user would look in the wrong folder.</summary>
+    [Theory]
+    [InlineData("file", "Filing that document didn't finish.")]
+    [InlineData("skip", "Setting that document aside didn't finish.")]
+    [InlineData("undo", "Undoing the last filing didn't finish.")]
+    public void EachActionNamesItselfWhenItFailsUnexpectedly(string action, string expectedOpening)
+    {
+        using var fx = new ShellFixture();
+        fx.AddInboxFile("20240115--111111.pdf");
+        fx.AddInboxFile("20240115--222222.pdf");
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+
+        switch (action)
+        {
+            case "file":
+                fx.Viewer.ThrowOnRelease = new InvalidOperationException("boom");
+                fx.Shell.RouteCommand.Execute(0);
+                break;
+            case "skip":
+                fx.Viewer.ThrowOnRelease = new InvalidOperationException("boom");
+                fx.Shell.SkipCommand.Execute(null);
+                break;
+            case "undo":
+                // File one for real first, so there is something to undo.
+                // ReleaseAsync is not on the undo path; the fault has to come
+                // from loading the restored document back into the viewer.
+                fx.Shell.RouteCommand.Execute(0);
+                Assert.Empty(fx.Dialogs.Warnings);
+                fx.Viewer.ThrowOnShow = new InvalidOperationException("boom");
+                fx.Shell.UndoCommand.Execute(null);
+                break;
+        }
+
+        var warning = Assert.Single(fx.Dialogs.Warnings);
+        Assert.StartsWith(expectedOpening, warning.Message);
+        Assert.DoesNotContain("boom", warning.Message);
+        Assert.Contains("crash.log", warning.Message);
+        Assert.Equal("OrdoSort — that didn't finish", warning.Title);
     }
 
     [Fact]

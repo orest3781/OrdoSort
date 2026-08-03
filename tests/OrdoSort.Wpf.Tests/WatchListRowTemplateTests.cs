@@ -117,13 +117,16 @@ public class WatchListRowTemplateTests
 
         var tabControl = FindDescendant<TabControl>(window)
             ?? throw new InvalidOperationException("no TabControl descendant under SettingsWindow");
-        // The header literal carries an access-key marker ("Dash_board") and
-        // Task 9 may re-word it; comparing on the marker-stripped text keeps
-        // this test tied to the tab a user sees, not to one spelling of it.
-        var dashboard = tabControl.Items.Cast<TabItem>()
-                .FirstOrDefault(ti => (ti.Header?.ToString() ?? "").Replace("_", "") == "Dashboard")
-            ?? throw new InvalidOperationException("no \"Dashboard\" TabItem found");
-        tabControl.SelectedItem = dashboard;
+        // The header literal carries an access-key marker; comparing on the
+        // marker-stripped text keeps this test tied to the tab a user sees,
+        // not to one spelling of it. Task 9 renamed this tab from "Dashboard"
+        // to "Monitored folders" (and moved its mnemonic from B to M) — the
+        // stripped comparison is what made that a one-line edit here rather
+        // than five.
+        var monitoredFolders = tabControl.Items.Cast<TabItem>()
+                .FirstOrDefault(ti => (ti.Header?.ToString() ?? "").Replace("_", "") == "Monitored folders")
+            ?? throw new InvalidOperationException("no \"Monitored folders\" TabItem found");
+        tabControl.SelectedItem = monitoredFolders;
         window.UpdateLayout();
         PumpRender();
         window.UpdateLayout();

@@ -7,6 +7,34 @@ using OrdoSort.Wpf.Theme;
 
 namespace OrdoSort.Wpf.ViewModels;
 
+/// <summary>One live per-field note in Settings, plus whether it is something
+/// the user must DO something about.
+///
+/// The distinction exists because these boxes say two different kinds of
+/// thing through one control: "relative — resolved beside the config file" and
+/// "12 entries" are facts about a valid setting, while "folder doesn't exist:
+/// X" and a section file's parse error are things that will bite at OK time.
+/// Before the 2026-08-02 audit (finding M3) every note rendered amber, which
+/// is this app's needs-attention colour everywhere else — so amber meant
+/// nothing here. Severity is decided at the branch that composes the message
+/// (a <see cref="Problem"/>/<see cref="Info"/> call site, not a lookup), and
+/// travels with the text through <see cref="Services.DebouncedProbe{T}"/> so
+/// an off-thread probe result can never land a new message next to the old
+/// message's colour.</summary>
+/// <param name="Text">What the note says; "" hides it.</param>
+/// <param name="NeedsAttention">True only for a state the user should fix.</param>
+public sealed record FieldNote(string Text, bool NeedsAttention)
+{
+    /// <summary>No note at all.</summary>
+    public static readonly FieldNote Clear = new("", false);
+
+    /// <summary>A fact about a perfectly good setting.</summary>
+    public static FieldNote Info(string text) => new(text, false);
+
+    /// <summary>Something the user should fix.</summary>
+    public static FieldNote Problem(string text) => new(text, true);
+}
+
 /// <summary>An editable route row (master-detail in the Routes section).</summary>
 public sealed class RouteEditVm : ObservableObject, IDisposable
 {
@@ -513,22 +541,30 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         _uiContext = uiContext;
         _probeDelayMs = probeDelayMs;
 
-        _inboxProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
-            v => Set(ref _inboxNote, v, nameof(InboxNote)), _probeDelayMs);
-        _deferredProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
-            v => Set(ref _deferredNote, v, nameof(DeferredNote)), _probeDelayMs);
-        _namesFileProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
-            v => Set(ref _namesFileNote, v, nameof(NamesFileNote)), _probeDelayMs);
-        _historyDbProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
-            v => Set(ref _historyDbNote, v, nameof(HistoryDbNote)), _probeDelayMs);
-        _destinationsFileProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
-            v => Set(ref _destinationsFileNote, v, nameof(DestinationsFileNote)), _probeDelayMs);
-        _monitoredFoldersFileProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
-            v => Set(ref _monitoredFoldersFileNote, v, nameof(MonitoredFoldersFileNote)), _probeDelayMs);
-        _alertsFileProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
-            v => Set(ref _alertsFileNote, v, nameof(AlertsFileNote)), _probeDelayMs);
-        _boxLabelsFileProbe = new DebouncedProbe<string>(_scheduler, _uiContext,
-            v => Set(ref _boxLabelsFileNote, v, nameof(BoxLabelsFileNote)), _probeDelayMs);
+        _inboxProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
+            v => ApplyNote(v, ref _inboxNote, ref _inboxNoteNeedsAttention,
+                nameof(InboxNote), nameof(InboxNoteNeedsAttention)), _probeDelayMs);
+        _deferredProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
+            v => ApplyNote(v, ref _deferredNote, ref _deferredNoteNeedsAttention,
+                nameof(DeferredNote), nameof(DeferredNoteNeedsAttention)), _probeDelayMs);
+        _namesFileProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
+            v => ApplyNote(v, ref _namesFileNote, ref _namesFileNoteNeedsAttention,
+                nameof(NamesFileNote), nameof(NamesFileNoteNeedsAttention)), _probeDelayMs);
+        _historyDbProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
+            v => ApplyNote(v, ref _historyDbNote, ref _historyDbNoteNeedsAttention,
+                nameof(HistoryDbNote), nameof(HistoryDbNoteNeedsAttention)), _probeDelayMs);
+        _destinationsFileProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
+            v => ApplyNote(v, ref _destinationsFileNote, ref _destinationsFileNoteNeedsAttention,
+                nameof(DestinationsFileNote), nameof(DestinationsFileNoteNeedsAttention)), _probeDelayMs);
+        _monitoredFoldersFileProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
+            v => ApplyNote(v, ref _monitoredFoldersFileNote, ref _monitoredFoldersFileNoteNeedsAttention,
+                nameof(MonitoredFoldersFileNote), nameof(MonitoredFoldersFileNoteNeedsAttention)), _probeDelayMs);
+        _alertsFileProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
+            v => ApplyNote(v, ref _alertsFileNote, ref _alertsFileNoteNeedsAttention,
+                nameof(AlertsFileNote), nameof(AlertsFileNoteNeedsAttention)), _probeDelayMs);
+        _boxLabelsFileProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
+            v => ApplyNote(v, ref _boxLabelsFileNote, ref _boxLabelsFileNoteNeedsAttention,
+                nameof(BoxLabelsFileNote), nameof(BoxLabelsFileNoteNeedsAttention)), _probeDelayMs);
 
         SoundsEnabled = current.Sounds.Enabled;
         NewAlertSound = new SoundChoiceVm("New alert", SoundEvent.NewAlert,
@@ -861,27 +897,42 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         set { if (Set(ref _boxLabelsFile, value)) RecomputeBoxLabelsFileNote(); }
     }
 
-    // Live per-field notes — the OK-time warnings, surfaced as you type.
+    // Live per-field notes — surfaced as you type.
     // Each is a cached field: Directory.Exists/File.Exists/Config.ReadDoc are
     // network round trips over SMB, so the real check runs debounced and off
     // the UI thread (DebouncedProbe, one instance per field so editing one
     // path can never invalidate another's in-flight check) — the getter just
     // returns whatever was last applied. A blank/relative-path answer needs
     // no I/O and is always resolved synchronously, with no pending gap.
+    //
+    // Each note also publishes a ...NeedsAttention flag, because these boxes
+    // say two quite different kinds of thing and the 2026-08-02 audit (M3)
+    // found them wearing one colour. "relative — resolved beside the config
+    // file" and "12 entries" are FACTS; "folder doesn't exist: X" is a
+    // PROBLEM. SettingsWindow's NoteText style reads the flag (through Tag)
+    // and spends amber only on the second kind. The flag is decided here, at
+    // the branch that produces the message, rather than by matching text in
+    // XAML — two of the problem messages are interpolated and could not be
+    // matched by literal anyway.
     private string _inboxNote = "";
     public string InboxNote => _inboxNote;
-    private readonly DebouncedProbe<string> _inboxProbe;
+    private bool _inboxNoteNeedsAttention;
+    public bool InboxNoteNeedsAttention => _inboxNoteNeedsAttention;
+    private readonly DebouncedProbe<FieldNote> _inboxProbe;
 
     private void RecomputeInboxNote(bool immediate = false) =>
-        RecomputeFolderNote(Inbox, "no inbox folder set — there will be nothing to process",
+        RecomputeFolderNote(Inbox,
+            FieldNote.Problem("no inbox folder set — there will be nothing to process"),
             _inboxProbe, immediate);
 
     private string _deferredNote = "";
     public string DeferredNote => _deferredNote;
-    private readonly DebouncedProbe<string> _deferredProbe;
+    private bool _deferredNoteNeedsAttention;
+    public bool DeferredNoteNeedsAttention => _deferredNoteNeedsAttention;
+    private readonly DebouncedProbe<FieldNote> _deferredProbe;
 
     private void RecomputeDeferredNote(bool immediate = false) =>
-        RecomputeFolderNote(Deferred, "", _deferredProbe, immediate);
+        RecomputeFolderNote(Deferred, FieldNote.Clear, _deferredProbe, immediate);
 
     /// <summary>Shared live-note logic for a folder path box: blank/relative
     /// answers instantly (no I/O — <see cref="DebouncedProbe{T}.Resolve"/>
@@ -889,46 +940,58 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// earlier, longer value can never survive to overwrite this); otherwise
     /// the note goes neutral and the real Directory.Exists check is
     /// (re)triggered on <paramref name="probe"/>.</summary>
-    private void RecomputeFolderNote(string path, string blankMeans, DebouncedProbe<string> probe, bool immediate)
+    private void RecomputeFolderNote(string path, FieldNote blankMeans,
+        DebouncedProbe<FieldNote> probe, bool immediate)
     {
         var p = path.Trim();
-        string? fastPath = p.Length == 0 ? blankMeans
-            : !Path.IsPathRooted(p) ? "relative — resolved beside the config file"
+        FieldNote? fastPath = p.Length == 0 ? blankMeans
+            : !Path.IsPathRooted(p) ? FieldNote.Info("relative — resolved beside the config file")
             : null;
-        probe.Resolve(fastPath, "", () => _directoryExists(p) ? "" : $"folder doesn't exist: {p}", immediate);
+        probe.Resolve(fastPath, FieldNote.Clear,
+            () => _directoryExists(p) ? FieldNote.Clear : FieldNote.Problem($"folder doesn't exist: {p}"),
+            immediate);
     }
 
     private string _namesFileNote = "";
     public string NamesFileNote => _namesFileNote;
-    private readonly DebouncedProbe<string> _namesFileProbe;
+    private bool _namesFileNoteNeedsAttention;
+    public bool NamesFileNoteNeedsAttention => _namesFileNoteNeedsAttention;
+    private readonly DebouncedProbe<FieldNote> _namesFileProbe;
 
     private void RecomputeNamesFileNote(bool immediate = false)
     {
         var p = NamesFile.Trim();
-        string? fastPath = p.Length == 0 ? ""
-            : !Path.IsPathRooted(p) ? "relative — resolved beside the config file"
+        FieldNote? fastPath = p.Length == 0 ? FieldNote.Clear
+            : !Path.IsPathRooted(p) ? FieldNote.Info("relative — resolved beside the config file")
             : null;
-        _namesFileProbe.Resolve(fastPath, "", () => _fileExists(p)
-            ? "" : "file doesn't exist yet (optional — it seeds the name suggestions)", immediate);
+        // "doesn't exist yet" is Info, not Problem: the note says "(optional)"
+        // in its own words, nothing is broken, and the file gets written the
+        // first time a name is learned.
+        _namesFileProbe.Resolve(fastPath, FieldNote.Clear, () => _fileExists(p)
+            ? FieldNote.Clear
+            : FieldNote.Info("file doesn't exist yet (optional — it seeds the name suggestions)"),
+            immediate);
     }
 
     private string _historyDbNote = "";
     public string HistoryDbNote => _historyDbNote;
-    private readonly DebouncedProbe<string> _historyDbProbe;
+    private bool _historyDbNoteNeedsAttention;
+    public bool HistoryDbNoteNeedsAttention => _historyDbNoteNeedsAttention;
+    private readonly DebouncedProbe<FieldNote> _historyDbProbe;
 
     private void RecomputeHistoryDbNote(bool immediate = false)
     {
         var p = HistoryDb.Trim();
-        string? fastPath = p.Length == 0 ? ""
-            : !Path.IsPathRooted(p) ? "relative — kept beside the config file"
+        FieldNote? fastPath = p.Length == 0 ? FieldNote.Clear
+            : !Path.IsPathRooted(p) ? FieldNote.Info("relative — kept beside the config file")
             : null;
-        _historyDbProbe.Resolve(fastPath, "", () =>
+        _historyDbProbe.Resolve(fastPath, FieldNote.Clear, () =>
         {
-            if (_fileExists(p)) return "";
+            if (_fileExists(p)) return FieldNote.Clear;
             var dir = Path.GetDirectoryName(p);
             return dir is not null && !_directoryExists(dir)
-                ? $"folder doesn't exist: {dir}"
-                : "a new database will be created here";
+                ? FieldNote.Problem($"folder doesn't exist: {dir}")
+                : FieldNote.Info("a new database will be created here");
         }, immediate);
     }
 
@@ -937,7 +1000,9 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     // ConfigException message when it's there but broken.
     private string _destinationsFileNote = "";
     public string DestinationsFileNote => _destinationsFileNote;
-    private readonly DebouncedProbe<string> _destinationsFileProbe;
+    private bool _destinationsFileNoteNeedsAttention;
+    public bool DestinationsFileNoteNeedsAttention => _destinationsFileNoteNeedsAttention;
+    private readonly DebouncedProbe<FieldNote> _destinationsFileProbe;
 
     private void RecomputeDestinationsFileNote(bool immediate = false) =>
         RecomputeDataFileNote(DestinationsFile,
@@ -946,7 +1011,9 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     private string _monitoredFoldersFileNote = "";
     public string MonitoredFoldersFileNote => _monitoredFoldersFileNote;
-    private readonly DebouncedProbe<string> _monitoredFoldersFileProbe;
+    private bool _monitoredFoldersFileNoteNeedsAttention;
+    public bool MonitoredFoldersFileNoteNeedsAttention => _monitoredFoldersFileNoteNeedsAttention;
+    private readonly DebouncedProbe<FieldNote> _monitoredFoldersFileProbe;
 
     private void RecomputeMonitoredFoldersFileNote(bool immediate = false) =>
         RecomputeDataFileNote(MonitoredFoldersFile,
@@ -955,7 +1022,9 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     private string _alertsFileNote = "";
     public string AlertsFileNote => _alertsFileNote;
-    private readonly DebouncedProbe<string> _alertsFileProbe;
+    private bool _alertsFileNoteNeedsAttention;
+    public bool AlertsFileNoteNeedsAttention => _alertsFileNoteNeedsAttention;
+    private readonly DebouncedProbe<FieldNote> _alertsFileProbe;
 
     private void RecomputeAlertsFileNote(bool immediate = false) =>
         RecomputeDataFileNote(AlertsFile,
@@ -964,7 +1033,9 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     private string _boxLabelsFileNote = "";
     public string BoxLabelsFileNote => _boxLabelsFileNote;
-    private readonly DebouncedProbe<string> _boxLabelsFileProbe;
+    private bool _boxLabelsFileNoteNeedsAttention;
+    public bool BoxLabelsFileNoteNeedsAttention => _boxLabelsFileNoteNeedsAttention;
+    private readonly DebouncedProbe<FieldNote> _boxLabelsFileProbe;
 
     private void RecomputeBoxLabelsFileNote(bool immediate = false) =>
         RecomputeDataFileNote(BoxLabelsFile,
@@ -981,25 +1052,40 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// branches resolve through <see cref="DebouncedProbe{T}.Resolve"/>,
     /// which cancels any probe a longer-lived value already armed.</summary>
     private void RecomputeDataFileNote(string sectionPath, Func<string, int> countEntries,
-        DebouncedProbe<string> probe, bool immediate)
+        DebouncedProbe<FieldNote> probe, bool immediate)
     {
         var p = sectionPath.Trim();
-        string? fastPath;
+        FieldNote? fastPath;
         var full = "";
-        if (p.Length == 0) fastPath = "blank = the default beside config.json";
-        else if (_cfgPath is not { } cfgPath) fastPath = "not a usable path";
+        if (p.Length == 0) fastPath = FieldNote.Info("blank = the default beside config.json");
+        else if (_cfgPath is not { } cfgPath) fastPath = FieldNote.Problem("not a usable path");
         else
         {
             try { full = Config.ResolveBeside(cfgPath, p); fastPath = null; }
-            catch (Exception) { fastPath = "not a usable path"; }
+            catch (Exception) { fastPath = FieldNote.Problem("not a usable path"); }
         }
-        probe.Resolve(fastPath, "", () =>
+        probe.Resolve(fastPath, FieldNote.Clear, () =>
         {
             if (!_fileExists(full))
-                return "will be created on save — the current list is written there";
-            try { return $"{countEntries(p)} entries"; }
-            catch (ConfigException ex) { return ex.Message; }
+                return FieldNote.Info("will be created on save — the current list is written there");
+            // A ConfigException message here is a real, broken file the user
+            // must fix before OK will work — the one branch of the four that
+            // earns amber.
+            try { return FieldNote.Info($"{countEntries(p)} entries"); }
+            catch (ConfigException ex) { return FieldNote.Problem(ex.Message); }
         }, immediate);
+    }
+
+    /// <summary>Publish one note's text and its severity together, so a
+    /// binding can never see a new message beside the previous message's
+    /// colour. Text first: the flag only ever changes how the text is
+    /// painted, so a listener that reacts to the text and re-reads the flag
+    /// gets the matching pair either way.</summary>
+    private void ApplyNote(FieldNote note, ref string text, ref bool needsAttention,
+        string textProperty, string attentionProperty)
+    {
+        Set(ref text, note.Text, textProperty);
+        Set(ref needsAttention, note.NeedsAttention, attentionProperty);
     }
 
     /// <summary>One-click fix for "folder doesn't exist" — creates the whole

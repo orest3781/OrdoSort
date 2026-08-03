@@ -15,12 +15,24 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // 2026-08-02 audit finding I6: this used to say "Something went wrong"
+        // and then paste the raw exception message in — a phrase that carries
+        // no information and developer text a user cannot act on. The raw
+        // detail isn't lost, it goes to crash.log (LogCrash, above); the
+        // dialog now says what happened, what it means for the user's
+        // documents, and where to find the detail. The reassurance is a real
+        // guarantee, not a soothing noise: Commit only ever MOVES files —
+        // never deletes, never overwrites (see its class doc).
         DispatcherUnhandledException += (_, ex) =>
         {
             LogCrash(ex.Exception);
             MessageBox.Show(
-                "Something went wrong — details were written to crash.log.\n\n" +
-                ex.Exception.Message, "OrdoSort", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "OrdoSort hit a problem it wasn't expecting and stopped what it was doing.\n\n" +
+                "No document was lost — OrdoSort only ever moves files, never deletes them, " +
+                "so anything it was part-way through is either where it started or where it " +
+                "was going.\n\n" +
+                "The technical details were written to crash.log, beside your config file.",
+                "OrdoSort — unexpected problem", MessageBoxButton.OK, MessageBoxImage.Warning);
             ex.Handled = true;
         };
         AppDomain.CurrentDomain.UnhandledException += (_, ex) =>

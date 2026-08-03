@@ -19,13 +19,46 @@
         <Style x:Key="FieldRow" TargetType="Grid">
             <Setter Property="Margin" Value="0,0,0,10" />
         </Style>
-        <!-- per-field live note: amber, collapsed while empty -->
-        <Style x:Key="NoteText" TargetType="TextBlock" BasedOn="{StaticResource StatusText}">
+        <!-- Per-field live note: collapsed while empty, subtle by default,
+             amber ONLY when it needs attention.
+             2026-08-02 audit M3 — this used to derive from StatusText, so
+             every note was amber, including purely informational ones
+             ("relative — resolved beside the config file", "12 entries",
+             "a new database will be created here"). Amber means needs-attention
+             everywhere else in this app; spending it on facts spends it on
+             nothing.
+             The severity rides on Tag so ONE shared style can carry the
+             trigger: each note binds its own ...NoteNeedsAttention flag there
+             (the view model decides, per branch, which of its messages is a
+             problem — see SettingsViewModel.FieldNote). Deliberately NOT a
+             DataTrigger matching the note TEXT: two of the four problem
+             messages are interpolated ("folder doesn't exist: {path}", a
+             ConfigException message) and so cannot be matched by literal, and
+             a XAML copy of a C# string is the decaying-premise shape this
+             codebase has already been bitten by.
+             The amber Setter lives in Style.Triggers, not as a local
+             Foreground on each TextBlock: a Style TRIGGER outranks the
+             BasedOn Setter, whereas a local value would outrank BOTH and
+             pin one colour forever. TextWrapping is restated because it came
+             from StatusText, which is no longer the base.
+             Tag is typed `object`, so a DataTrigger comparing it to the
+             literal Value="True" is relying on WPF converting one side at
+             match time rather than on a compile-time type. That it really
+             fires is MEASURED, not assumed: against a build with this trigger
+             removed, CopyAndTerminologyTests' informational cases go red while
+             its amber cases stay green, and with the trigger present the amber
+             cases resolve Theme.StatusAmber — which this style has no other
+             source for. -->
+        <Style x:Key="NoteText" TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
             <Setter Property="Margin" Value="130,-6,0,10" />
+            <Setter Property="TextWrapping" Value="Wrap" />
             <Style.Triggers>
                 <Trigger Property="Text" Value="">
                     <Setter Property="Visibility" Value="Collapsed" />
                 </Trigger>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource Theme.StatusAmber}" />
+                </DataTrigger>
             </Style.Triggers>
         </Style>
         <!-- Same side-nav chrome as the base TabItem style (Theme/Styles.xaml),
@@ -152,12 +185,18 @@
                  RecognizesAccessKey="True" on the header ContentPresenter, so
                  an "_" marker here is all that's needed. Checked for
                  collisions before assigning: General/Filing/Destinations/
-                 Dashboard/Appearance/Data files start with G/F/D/D/A/D — three
-                 D's — so Dashboard and Data files each use a distinct
-                 non-initial letter instead (Das_hboard would collide with the
-                 initial D too, so Dash_board's "B" was picked; Data files
-                 uses "T" from "Da_ta") to keep all six unique: G, F, D, B, A,
-                 T. This window has no OTHER access-keyed control to collide
+                 Monitored folders/Appearance/Data files start with
+                 G/F/D/M/A/D — one collision, on D — so Data files uses a
+                 non-initial letter instead ("T" from "Da_ta") to keep all six
+                 unique: G, F, D, M, A, T.
+
+                 Task 9 (2026-08-02 audit finding I5) renamed the fourth tab
+                 from "Dashboard" to "Monitored folders", which retired the
+                 old "B" mnemonic (it came from Dash_board, picked only
+                 because "Dashboard" started with a third D). "Monitored
+                 folders" starts with M, which nothing else here claims, so
+                 the mnemonic is now the initial letter like four of the other
+                 five. This window has no OTHER access-keyed control to collide
                  with (grepped: zero pre-existing "_X" markers anywhere else in
                  this file). Separately, MainWindow.xaml's own File/Tools menu
                  mnemonics (the audit's "complete and collision-free" finding)
@@ -193,7 +232,8 @@
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseInboxCommand}" />
                         </Grid>
-                        <TextBlock Text="{Binding InboxNote}" Style="{StaticResource NoteText}" />
+                        <TextBlock Text="{Binding InboxNote}" Tag="{Binding InboxNoteNeedsAttention}"
+                                   Style="{StaticResource NoteText}" />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
@@ -206,7 +246,8 @@
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseDeferredCommand}" />
                         </Grid>
-                        <TextBlock Text="{Binding DeferredNote}" Style="{StaticResource NoteText}" />
+                        <TextBlock Text="{Binding DeferredNote}" Tag="{Binding DeferredNoteNeedsAttention}"
+                                   Style="{StaticResource NoteText}" />
 
                         <TextBlock Text="Files" Style="{StaticResource SectionText}" Margin="0,10,0,10" />
 
@@ -221,7 +262,8 @@
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseNamesFileCommand}" />
                         </Grid>
-                        <TextBlock Text="{Binding NamesFileNote}" Style="{StaticResource NoteText}" />
+                        <TextBlock Text="{Binding NamesFileNote}" Tag="{Binding NamesFileNoteNeedsAttention}"
+                                   Style="{StaticResource NoteText}" />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
@@ -234,7 +276,8 @@
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseHistoryDbCommand}" />
                         </Grid>
-                        <TextBlock Text="{Binding HistoryDbNote}" Style="{StaticResource NoteText}" />
+                        <TextBlock Text="{Binding HistoryDbNote}" Tag="{Binding HistoryDbNoteNeedsAttention}"
+                                   Style="{StaticResource NoteText}" />
                         <DockPanel Margin="0,2,0,0">
                             <Button DockPanel.Dock="Right" Content="Open backups folder"
                                     Command="{Binding OpenBackupsCommand}" Margin="8,0,0,0"
@@ -601,8 +644,20 @@
                 </Grid>
             </TabItem>
 
-            <!-- ============================================== Dashboard -->
-            <TabItem Header="Dash_board" AutomationProperties.Name="Dashboard">
+            <!-- ===================================== Monitored folders -->
+            <!-- Was "Dashboard" until Task 9 (audit finding I5): the tab, its
+                 own section header below and the Data files tab's label for
+                 the same file all named one feature three-quarters of the way
+                 differently. "Monitored folders" wins because it is what the
+                 rest of the app already says — the section header here, the
+                 Data files label, MainWindow's tile-visibility tooltip, and
+                 Config.MonitorTitle's own default (the heading a user sees on
+                 the Ready screen). "Dashboard" appeared in exactly two
+                 user-visible places, both on this tab, and nowhere else in
+                 the product; it stays only as an internal word (Ready-screen
+                 code, DashboardTests). Tab header + first section header
+                 matching is the pattern the Data files tab already uses. -->
+            <TabItem Header="_Monitored folders" AutomationProperties.Name="Monitored folders">
                 <Grid Margin="16,8">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -800,7 +855,7 @@
                                               ItemsSource="{Binding DataContext.SectionChoices,
                                                             RelativeSource={RelativeSource AncestorType=Window}}"
                                               Text="{Binding Section, UpdateSourceTrigger=PropertyChanged}"
-                                              ToolTip="Dashboard group this folder appears under — or manage sections directly in the list" />
+                                              ToolTip="Group this folder's tile appears under — or manage sections directly in the list" />
                                 </Grid>
                                 <Grid Style="{StaticResource FieldRow}">
                                     <Grid.ColumnDefinitions>
@@ -1261,7 +1316,8 @@
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseDestinationsFileCommand}" />
                         </Grid>
-                        <TextBlock Text="{Binding DestinationsFileNote}" Style="{StaticResource NoteText}" />
+                        <TextBlock Text="{Binding DestinationsFileNote}" Tag="{Binding DestinationsFileNoteNeedsAttention}"
+                                   Style="{StaticResource NoteText}" />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
@@ -1274,7 +1330,8 @@
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseMonitoredFoldersFileCommand}" />
                         </Grid>
-                        <TextBlock Text="{Binding MonitoredFoldersFileNote}" Style="{StaticResource NoteText}" />
+                        <TextBlock Text="{Binding MonitoredFoldersFileNote}" Tag="{Binding MonitoredFoldersFileNoteNeedsAttention}"
+                                   Style="{StaticResource NoteText}" />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
@@ -1287,7 +1344,8 @@
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseAlertsFileCommand}" />
                         </Grid>
-                        <TextBlock Text="{Binding AlertsFileNote}" Style="{StaticResource NoteText}" />
+                        <TextBlock Text="{Binding AlertsFileNote}" Tag="{Binding AlertsFileNoteNeedsAttention}"
+                                   Style="{StaticResource NoteText}" />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
@@ -1300,7 +1358,8 @@
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseBoxLabelsFileCommand}" />
                         </Grid>
-                        <TextBlock Text="{Binding BoxLabelsFileNote}" Style="{StaticResource NoteText}" />
+                        <TextBlock Text="{Binding BoxLabelsFileNote}" Tag="{Binding BoxLabelsFileNoteNeedsAttention}"
+                                   Style="{StaticResource NoteText}" />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
