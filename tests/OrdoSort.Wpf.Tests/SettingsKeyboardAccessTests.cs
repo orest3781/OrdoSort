@@ -574,12 +574,21 @@ public class SettingsKeyboardAccessTests
             throw new InvalidOperationException(
                 "the posted Escape never got as far as pressing the key", failure);
 
+        // `reached` FIRST, deliberately: a watchdog timeout has two possible
+        // causes and only one of them is the defect. If the posted body never
+        // ran at all — ApplicationIdle starvation, or the arrangement throwing
+        // before ProcessInput — then `timedOut` is true for a reason that has
+        // nothing to do with Escape, and asserting it first would report the
+        // swallowed-Escape message for a harness problem. Not a flakiness fix:
+        // the green path takes ~218ms against a 20s watchdog, ~90x margin.
+        Assert.True(reached,
+            "the Escape press never ran — the posted arrangement did not reach ProcessInput, so this " +
+            "run says nothing about Escape either way (a harness problem, not the swallowed-Escape defect)");
         Assert.False(timedOut,
             "Escape with focus in the hotkey-capture box did NOT close the Settings dialog — " +
             "it stayed up until the watchdog force-closed it, which is exactly the swallowed-Escape " +
             "defect (a handled PreviewKeyDown is never promoted to KeyDown, so the Cancel button's " +
             "IsCancel registration in AccessKeyManager never sees the key)");
-        Assert.True(reached, "the Escape press never ran");
         Assert.True(focusedHotkeyBox,
             "the hotkey-capture box never took keyboard focus, so this proves nothing about it");
         Assert.False(visibleAfterEscape,

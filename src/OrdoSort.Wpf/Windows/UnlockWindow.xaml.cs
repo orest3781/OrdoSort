@@ -28,19 +28,71 @@ public partial class UnlockWindow : Window
     /// with the offer up, "Acme scans" typed and focus in the box: unlocker
     /// invocations 1 -> 2, SaveBannerName back to "", 0 saved entries.
     ///
-    /// PreviewKeyDown rather than KeyDown, and <c>Handled</c> set
-    /// UNCONDITIONALLY — including when the name is still blank, where
-    /// SaveBannerCommand's CanExecute gate declines: a handled PreviewKeyDown
-    /// is never promoted to KeyDown, which is what keeps AccessKeyManager
-    /// (where IsDefault registers "\r") from seeing the key at all. Re-running
-    /// the batch is never what Enter in this box means, blank name or not.
-    /// Only Enter is touched; every other key falls through to the TextBox
-    /// unchanged.</summary>
+    /// PreviewKeyDown rather than a KeyBinding, and <c>Handled</c> set
+    /// UNCONDITIONALLY — including when the name is still blank and
+    /// SaveBannerCommand's CanExecute gate declines. A handled PreviewKeyDown
+    /// is never promoted to KeyDown, so the key never reaches InputManager's
+    /// POST-PROCESS stage, which is the only stage AccessKeyManager — where
+    /// IsDefault registers "\r" — ever sees. That block is stated here, in
+    /// our own code, and is what the tests assert directly.
+    ///
+    /// CORRECTED 2026-08-03: an earlier version of this comment justified the
+    /// unconditional Handled by claiming CommandManager.TranslateInput only
+    /// sets Handled when CanExecute is true, so a KeyBinding would have let
+    /// the blank-name case fall through to the default button. That is FALSE
+    /// and was disproved at opcode level: set_Handled sits OUTSIDE the
+    /// CanExecute branch, and `continueRouting` (init false) is only
+    /// reassigned inside the RoutedCommand branch — SaveBannerCommand is a
+    /// RelayCommand, so Handled would have come back true either way.
+    /// Measured: with a KeyBinding, CanExecute false still fired the bound
+    /// command 0 times AND the default button 0 times (a control with no
+    /// KeyBinding fired the default button 1 time, so the harness could see
+    /// it). A KeyBinding would therefore have WORKED — but only via an
+    /// undocumented detail of TranslateInput's non-routed branch. The reason
+    /// to keep this handler is that it blocks the default button explicitly
+    /// rather than by side effect. See task-8-report.md "Fix round 2".
+    ///
+    /// Re-running the batch is never what Enter in this box means, blank name
+    /// or not. Only Enter is touched; every other key falls through to the
+    /// TextBox unchanged.</summary>
     private void OnSaveNameKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter) return;
         e.Handled = true;
         if (_vm.SaveBannerCommand.CanExecute(null)) _vm.SaveBannerCommand.Execute(null);
+    }
+
+    /// <summary>Keyboard focus must not be left standing on the save offer
+    /// after the offer goes away. Both ways of answering it strand focus,
+    /// measured against the build before this handler existed:
+    /// <code>
+    /// Enter in the save box:  focus stays on the now-Collapsed TextBox, whose
+    ///                         PreviewKeyDown keeps swallowing Enter — the NEXT
+    ///                         Enter does nothing at all (invoked 1 -> 1)
+    /// Space on Save button:   the button collapses AND (SaveBannerName back to
+    ///                         "") disables, so WPF punts focus to the Window —
+    ///                         Enter still works, but focus is on no control
+    /// </code>
+    /// Hooking the banner's own visibility covers both, and does so at the one
+    /// moment focus is still inside it: measured, IsVisibleChanged fires with
+    /// the save box / Save button still focused and still a descendant, BEFORE
+    /// the disable that would otherwise punt focus to the Window. It also
+    /// covers the third route in — a fresh unlock run calling ResetBanner
+    /// while focus sits in the offer.
+    ///
+    /// The password box is the right landing spot: it is where the next
+    /// keystroke belongs and it makes Enter live again immediately.
+    /// PwBox/PwPlain swap on the "Show" checkbox, so focus follows whichever
+    /// is actually visible — Keyboard.Focus on a Collapsed element silently
+    /// lands nowhere.</summary>
+    private void OnSaveBannerVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (SaveBanner.IsVisible) return;
+        if (Keyboard.FocusedElement is not System.Windows.Media.Visual focused) return;
+        if (!SaveBanner.IsAncestorOf(focused)) return;
+
+        if (PwBox.IsVisible) Keyboard.Focus(PwBox);
+        else if (PwPlain.IsVisible) Keyboard.Focus(PwPlain);
     }
 
     private void OnShowPw(object sender, RoutedEventArgs e)

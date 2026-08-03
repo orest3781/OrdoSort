@@ -121,11 +121,15 @@ file sealed class NoDialogs : IDialogService
 ///    ComboBox/ListBoxItem/TabItem   -> Style            (own template, no such trigger)
 ///    </code>
 ///    So the plain Setter was a COMPLETE no-op for every content-bearing
-///    CheckBox/RadioButton — i.e. all of them in this app — and is only
-///    load-bearing for the content-less case the stock trigger never fires
-///    for. Both are kept in Styles.xaml for that reason. The FocusVisualStyle
-///    identity assertion below is what names this when it regresses; the
-///    matching Style trigger is what fixes it.
+///    CheckBox/RadioButton — i.e. all of them in this app — and only wins for
+///    a content-less one, which this application does not currently have:
+///    counted 2026-08-03, all 29 CheckBox/RadioButton in the app supply
+///    Content and the three ThemeCard radios use a keyed style that bypasses
+///    the implicit one. Both legs are kept in Styles.xaml anyway, the Setter
+///    as defence in depth; the case below measures it so "dead in this app"
+///    never quietly becomes "broken when someone needs it". The
+///    FocusVisualStyle identity assertion is what names this when it
+///    regresses; the matching Style trigger is what fixes it.
 ///
 /// Shares HighlightContrastFixture's single STA thread/Application (see that
 /// fixture's own class doc). NOTE: every control must be CONSTRUCTED inside
@@ -312,13 +316,19 @@ public class FocusRingCoverageTests
     /// recorded mechanisms across tasks, so "StyleTrigger &gt; TemplateTrigger
     /// &gt; Style setter" needs to fail loudly if it ever stops being true.
     ///
-    /// It also pins the one thing the pixel cases above cannot: that the
-    /// PLAIN Setter retained alongside the trigger is load-bearing rather than
-    /// decorative. It is a complete no-op for a content-bearing CheckBox (the
-    /// stock template's own HasContent trigger outranks it) and the only thing
-    /// covering a content-less one (that trigger never fires) — which is also
-    /// the direct measurement of the stock trigger's CONDITION, previously
-    /// only inferred from the value source.</summary>
+    /// It also pins the one thing the pixel cases above cannot: what the PLAIN
+    /// Setter retained alongside the trigger actually does. It is a complete
+    /// no-op for a content-bearing CheckBox (the stock template's own
+    /// HasContent trigger outranks it) and the only thing covering a
+    /// content-less one (that trigger never fires) — which is also the direct
+    /// measurement of the stock trigger's CONDITION, previously only inferred
+    /// from the value source.
+    ///
+    /// Honest scope: the content-less control below is CONSTRUCTED HERE. No
+    /// content-less CheckBox or RadioButton exists anywhere in the shipping
+    /// XAML (all 29 supply Content), so the Setter is defence in depth, not
+    /// cover for a live case — this test is what keeps it working for the day
+    /// one appears rather than proof that one already has.</summary>
     [Fact]
     public void FocusVisualStyleResolvesByStyleTriggerWithContentAndBySetterWithout() => _fx.Invoke(() =>
     {

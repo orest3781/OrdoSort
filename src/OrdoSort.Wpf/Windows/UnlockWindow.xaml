@@ -115,9 +115,10 @@
             <!-- appears only after a run where the TYPED password (not a
                  saved one) unlocked something new — the one-click offer to
                  save it, so it auto-tries next time too -->
-            <Border Grid.Row="5" Background="{DynamicResource Theme.Surface}"
+            <Border Grid.Row="5" x:Name="SaveBanner" Background="{DynamicResource Theme.Surface}"
                     BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
                     CornerRadius="4" Padding="10,8" Margin="0,0,0,10"
+                    IsVisibleChanged="OnSaveBannerVisibilityChanged"
                     Visibility="{Binding SaveBannerVisible, Converter={StaticResource BoolToVis}}">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="{Binding SaveBannerText}" VerticalAlignment="Center"

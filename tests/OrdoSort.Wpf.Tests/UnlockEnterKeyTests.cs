@@ -65,14 +65,24 @@ public class UnlockEnterKeyTests
     private static void PumpRender() =>
         Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
 
-    private static void SimulateEnterKey(UIElement target, PresentationSource source)
+    private static void SimulateKey(PresentationSource source, Key key, RoutedEvent routedEvent) =>
+        InputManager.Current.ProcessInput(
+            new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, key) { RoutedEvent = routedEvent });
+
+    private static void SimulateEnterKey(UIElement target, PresentationSource source) =>
+        SimulateKey(source, Key.Enter, Keyboard.PreviewKeyDownEvent);
+
+    /// <summary>Names whatever currently holds keyboard focus well enough to
+    /// tell the stranded-focus cases apart in a failure message: the save box
+    /// and the password boxes are all plain WPF types, so a bare type name
+    /// cannot distinguish "Save password as" from "Password (visible)".</summary>
+    private static string FocusedNow() => Keyboard.FocusedElement switch
     {
-        var preview = new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Enter)
-        {
-            RoutedEvent = Keyboard.PreviewKeyDownEvent,
-        };
-        InputManager.Current.ProcessInput(preview);
-    }
+        null => "nothing at all",
+        FrameworkElement fe when AutomationProperties.GetName(fe).Length > 0 =>
+            $"{fe.GetType().Name} \"{AutomationProperties.GetName(fe)}\"",
+        var other => other.GetType().Name,
+    };
 
     private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
     {
@@ -339,10 +349,196 @@ public class UnlockEnterKeyTests
         }
     });
 
+    /// <summary>Answering the offer must not strand keyboard focus on the
+    /// offer. Before <c>OnSaveBannerVisibilityChanged</c> existed, focus
+    /// stayed on the now-<c>Collapsed</c> "Save password as" box — whose own
+    /// PreviewKeyDown handler goes on swallowing Enter — so the very next
+    /// Enter did NOTHING:
+    /// <code>
+    /// after save: FocusedElement=TextBox stillTheCollapsedSaveBox=True saveBoxVisible=False
+    /// Enter again:                                       invoked 1 -> 1
+    /// (control) same window, focus put back on PwBox by hand: invoked 1 -> 2
+    /// </code>
+    /// A dead keyboard gesture in the middle of a keyboard-accessibility
+    /// task. Note this is invisible to
+    /// <see cref="EnterOutsideTheSaveBoxStillUnlocksWhileTheOfferIsUp"/>,
+    /// which re-focuses PwBox by hand first — that is the control line above,
+    /// and it passes either way.
+    ///
+    /// So this asserts the OUTCOME (the next Enter unlocks again) as well as
+    /// the mechanism (focus is really on PwBox), because the outcome is the
+    /// part a user feels.</summary>
+    [Fact]
+    public void EnterToSaveReturnsFocusToThePasswordBoxSoTheNextEnterStillUnlocks() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+
+        var cfg = new Config();
+        var invoked = new List<(string Path, string Password)>();
+        var vm = new UnlockViewModel(cfg, () => { },
+            unlocker: (path, password) =>
+            {
+                invoked.Add((path, password));
+                return new Unlock.UnlockResult("ok", path, path, InPlace: true);
+            },
+            fileSize: _ => 0);
+        vm.Files.Add(@"C:\inbox\20240101--1111111111.pdf");
+
+        var window = OffScreen(vm);
+        try
+        {
+            var saveAs = ArrangeSaveOffer(window, vm, invoked);
+            saveAs.Text = "Acme scans";
+            saveAs.Focus();
+            Keyboard.Focus(saveAs);
+            Assert.True(saveAs.IsKeyboardFocused, "the save-as box never took keyboard focus");
+
+            var source = PresentationSource.FromVisual(window)!;
+            SimulateEnterKey(saveAs, source);
+            PumpUntilComplete(vm.UnlockCommand.Completion);
+
+            Assert.Single(cfg.SavedPasswords);       // the save really happened
+            Assert.False(saveAs.IsVisible);          // and the offer really went away
+
+            Assert.True(ReferenceEquals(window.PwBox, Keyboard.FocusedElement),
+                "after Enter-to-save, keyboard focus should be back on the password box, but it is on " +
+                $"{FocusedNow()} — focus stranded on the collapsed save box means the next Enter is " +
+                "swallowed by that box's own PreviewKeyDown handler and does nothing");
+
+            // the part a user feels: Enter works again, with no Tab first
+            SimulateEnterKey(window.PwBox, source);
+            PumpUntilComplete(vm.UnlockCommand.Completion);
+            Assert.Equal(2, invoked.Count);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>The same stranding by the other route, which is why the fix
+    /// hangs off the banner's own visibility rather than off the Enter
+    /// handler. Pressing Space on the Save button (real key events through
+    /// <see cref="InputManager"/>, so ButtonBase's own Space-to-Click path
+    /// runs) collapsed the banner AND — SaveBannerName goes back to "" —
+    /// disabled the button, so WPF punted focus to the Window itself:
+    /// <code>
+    /// before: after Space, FocusedElement=UnlockWindow (no control focused)
+    /// </code>
+    /// Milder than the Enter route (Enter still reaches the default button
+    /// from the Window, so nothing is DEAD here) but the same lost place in
+    /// the tab order, and the same fix covers it. Measured ordering, which is
+    /// what makes one hook enough: the banner's IsVisibleChanged fires while
+    /// the Save button is still focused and still a descendant, BEFORE the
+    /// disable that would punt focus.</summary>
+    [Fact]
+    public void SavingWithTheSaveButtonAlsoReturnsFocusToThePasswordBox() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+
+        var cfg = new Config();
+        var invoked = new List<(string Path, string Password)>();
+        var vm = new UnlockViewModel(cfg, () => { },
+            unlocker: (path, password) =>
+            {
+                invoked.Add((path, password));
+                return new Unlock.UnlockResult("ok", path, path, InPlace: true);
+            },
+            fileSize: _ => 0);
+        vm.Files.Add(@"C:\inbox\20240101--1111111111.pdf");
+
+        var window = OffScreen(vm);
+        try
+        {
+            var saveAs = ArrangeSaveOffer(window, vm, invoked);
+            saveAs.Text = "Acme scans";
+
+            // located inside the banner, not by Content == "Save": the window
+            // has other buttons and this one is the only one under SaveBanner
+            var saveButton = Assert.Single(Descendants<Button>(window.SaveBanner));
+            saveButton.Focus();
+            Keyboard.Focus(saveButton);
+            Assert.True(saveButton.IsKeyboardFocused, "the Save button never took keyboard focus");
+
+            var source = PresentationSource.FromVisual(window)!;
+            SimulateKey(source, Key.Space, Keyboard.PreviewKeyDownEvent);
+            SimulateKey(source, Key.Space, Keyboard.PreviewKeyUpEvent);
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Background);
+
+            Assert.Single(cfg.SavedPasswords);   // Space really did click it
+            Assert.False(saveButton.IsVisible);
+
+            Assert.True(ReferenceEquals(window.PwBox, Keyboard.FocusedElement),
+                "after saving from the Save button, keyboard focus should be back on the password box, " +
+                $"but it is on {FocusedNow()} — focus on the Window itself means no control is focused " +
+                "and the tab order restarts from the top");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>The password field is two controls swapped by the "Show"
+    /// checkbox, and <c>Keyboard.Focus</c> on a Collapsed element lands
+    /// nowhere at all — so the returned focus has to follow the toggle.
+    /// This is the only cover for the PwPlain branch of
+    /// <c>OnSaveBannerVisibilityChanged</c>.</summary>
+    [Fact]
+    public void TheReturnedFocusFollowsTheShowPasswordToggle() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+
+        var cfg = new Config();
+        var invoked = new List<(string Path, string Password)>();
+        var vm = new UnlockViewModel(cfg, () => { },
+            unlocker: (path, password) =>
+            {
+                invoked.Add((path, password));
+                return new Unlock.UnlockResult("ok", path, path, InPlace: true);
+            },
+            fileSize: _ => 0);
+        vm.Files.Add(@"C:\inbox\20240101--1111111111.pdf");
+
+        var window = OffScreen(vm);
+        try
+        {
+            var saveAs = ArrangeSaveOffer(window, vm, invoked);
+
+            // the real gesture: ticking Show swaps PasswordBox for TextBox
+            window.ShowPw.IsChecked = true;
+            window.UpdateLayout();
+            Assert.False(window.PwBox.IsVisible);
+            Assert.True(window.PwPlain.IsVisible);
+
+            saveAs.Text = "Acme scans";
+            saveAs.Focus();
+            Keyboard.Focus(saveAs);
+
+            var source = PresentationSource.FromVisual(window)!;
+            SimulateEnterKey(saveAs, source);
+            PumpUntilComplete(vm.UnlockCommand.Completion);
+
+            Assert.Single(cfg.SavedPasswords);
+            Assert.True(ReferenceEquals(window.PwPlain, Keyboard.FocusedElement),
+                "with \"Show\" ticked the visible password field is PwPlain, so focus should return " +
+                $"there, but it is on {FocusedNow()}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
     /// <summary>The other half, and the guard against over-fixing: Enter
     /// ANYWHERE ELSE in the window must still run the batch, including while
     /// the save offer is up. A fix that swallowed Return window-wide, or
-    /// dropped IsDefault, would pass the test above and fail this one.</summary>
+    /// dropped IsDefault, would pass the test above and fail this one.
+    ///
+    /// It re-focuses PwBox by hand, which is exactly why it CANNOT see the
+    /// stranded-focus defect —
+    /// <see cref="EnterToSaveReturnsFocusToThePasswordBoxSoTheNextEnterStillUnlocks"/>
+    /// is the test that can.</summary>
     [Fact]
     public void EnterOutsideTheSaveBoxStillUnlocksWhileTheOfferIsUp() => _fx.Invoke(() =>
     {
