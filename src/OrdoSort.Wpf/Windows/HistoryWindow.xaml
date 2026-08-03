@@ -23,52 +23,96 @@
                        Style="{StaticResource SubtleText}" />
         </DockPanel>
 
-        <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
-                  IsReadOnly="True" HeadersVisibility="Column"
-                  SelectionMode="Single" CanUserAddRows="False">
-            <DataGrid.RowStyle>
-                <Style TargetType="DataGridRow">
-                    <Setter Property="Background" Value="Transparent" />
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding Reverted}" Value="True">
-                            <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
-                            <Setter Property="FontStyle" Value="Italic" />
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </DataGrid.RowStyle>
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="When" Binding="{Binding When}" Width="140" />
-                <!-- MinWidth: a DataGridColumn's default MinWidth is 20px, and
-                     a Show() that's never subsequently resized (this app's own
-                     headless Screenshots.cs QA tool; any other headless/CI
-                     render) can leave Width="*" columns stuck at that bare
-                     20px forever — WPF only recomputes star-column widths
-                     from a genuine later SizeChanged, which a real on-screen
-                     window gets for free (WM_SIZE/WM_ACTIVATE) but a headless
-                     Show()+UpdateLayout() never does. At this window's
-                     DEFAULT size (980px), a real, interactively-shown window
-                     is unaffected either way (confirmed: screenshotting the
-                     live app resolves these to their fair share, ~222px each,
-                     0 rows and 5 rows alike).
-                     This floor is NOT just a QA-harness accommodation, though:
-                     measured with a real on-screen resize (UI Automation
-                     TransformPattern) down to this window's own MinWidth
-                     (700px above) — pre-fix, a real user shrinking the window
-                     that far fair-shares these two columns down to 82px each;
-                     post-fix, the same real resize clamps them to this 120px
-                     floor instead (~46% wider), compressing the fixed-width
-                     columns (When/Name/Route/Undone) to compensate — visible
-                     at this extreme as Undone's own header text truncating to
-                     "Undo". So this floor also protects a real user who
-                     shrinks the window, not only this project's screenshots.
-                     See .superpowers/sdd/2026-08-02-audit-remediation/task-1-report.md. -->
-                <DataGridTextColumn Header="Original" Binding="{Binding Original}" Width="*" MinWidth="120" />
-                <DataGridTextColumn Header="Filed as" Binding="{Binding FiledAs}" Width="*" MinWidth="120" />
-                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="160" />
-                <DataGridTextColumn Header="Route" Binding="{Binding Route}" Width="120" />
-                <DataGridCheckBoxColumn Header="Undone" Binding="{Binding Reverted}" Width="70" />
-            </DataGrid.Columns>
-        </DataGrid>
+        <Grid>
+            <DataGrid ItemsSource="{Binding RowsView}" AutoGenerateColumns="False"
+                      IsReadOnly="True" HeadersVisibility="Column"
+                      SelectionMode="Single" CanUserAddRows="False">
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="Background" Value="Transparent" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Reverted}" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
+                                <Setter Property="FontStyle" Value="Italic" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="When" Binding="{Binding When}" Width="140" />
+                    <!-- MinWidth: a DataGridColumn's default MinWidth is 20px, and
+                         a Show() that's never subsequently resized (this app's own
+                         headless Screenshots.cs QA tool; any other headless/CI
+                         render) can leave Width="*" columns stuck at that bare
+                         20px forever — WPF only recomputes star-column widths
+                         from a genuine later SizeChanged, which a real on-screen
+                         window gets for free (WM_SIZE/WM_ACTIVATE) but a headless
+                         Show()+UpdateLayout() never does. At this window's
+                         DEFAULT size (980px), a real, interactively-shown window
+                         is unaffected either way (confirmed: screenshotting the
+                         live app resolves these to their fair share, ~222px each,
+                         0 rows and 5 rows alike).
+                         This floor is NOT just a QA-harness accommodation, though:
+                         measured with a real on-screen resize (UI Automation
+                         TransformPattern) down to this window's own MinWidth
+                         (700px above) — pre-fix, a real user shrinking the window
+                         that far fair-shares these two columns down to 82px each;
+                         post-fix, the same real resize clamps them to this 120px
+                         floor instead (~46% wider), compressing the fixed-width
+                         columns (When/Name/Route/Undone) to compensate — visible
+                         at this extreme as Undone's own header text truncating to
+                         "Undo". So this floor also protects a real user who
+                         shrinks the window, not only this project's screenshots.
+                         See .superpowers/sdd/2026-08-02-audit-remediation/task-1-report.md. -->
+                    <DataGridTextColumn Header="Original" Binding="{Binding Original}" Width="*" MinWidth="120" />
+                    <DataGridTextColumn Header="Filed as" Binding="{Binding FiledAs}" Width="*" MinWidth="120" />
+                    <!-- TextTrimming/ToolTip: these two are fixed-width and
+                         clip without ellipsis or any way to recover the full
+                         value today (2026-08-02 audit-remediation, Task 7
+                         Step 3). Original/Filed-as above don't need this: they're
+                         the star columns Task 1 already gave a MinWidth floor. -->
+                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="160">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                <Setter Property="ToolTip" Value="{Binding Name}" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <!-- Header="Route": Task 9 renames this to "Destination" —
+                         not done here, left alone so this task doesn't collide
+                         with that later rename. -->
+                    <DataGridTextColumn Header="Route" Binding="{Binding Route}" Width="120">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                <Setter Property="ToolTip" Value="{Binding Route}" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridCheckBoxColumn Header="Undone" Binding="{Binding Reverted}" Width="70" />
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- Empty states: distinguished so a history that's never had
+                 anything filed into it doesn't read the same as a search
+                 that just came up empty. -->
+            <TextBlock x:Name="EmptyHistoryText"
+                       Text="No filings recorded yet. Documents you file will appear here."
+                       Style="{StaticResource SubtleText}" TextWrapping="Wrap"
+                       HorizontalAlignment="Center" Margin="10,36,10,10" IsHitTestVisible="False">
+                <TextBlock.Visibility>
+                    <Binding Path="IsEmpty" Converter="{StaticResource BoolToVis}" />
+                </TextBlock.Visibility>
+            </TextBlock>
+            <TextBlock x:Name="NoMatchesText"
+                       Text="No filings match your search."
+                       Style="{StaticResource SubtleText}" TextWrapping="Wrap"
+                       HorizontalAlignment="Center" Margin="10,36,10,10" IsHitTestVisible="False">
+                <TextBlock.Visibility>
+                    <Binding Path="NoMatches" Converter="{StaticResource BoolToVis}" />
+                </TextBlock.Visibility>
+            </TextBlock>
+        </Grid>
     </DockPanel>
 </Window>

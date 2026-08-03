@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Windows.Data;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Mvvm;
 using OrdoSort.Wpf.Services;
@@ -45,11 +47,24 @@ public sealed class HistoryViewModel : ObservableObject
     private readonly History _history;
     private readonly IDialogService _dialogs;
     private readonly IWorkScheduler _scheduler;
-    private List<HistoryRow> _loaded = new();
     private long _total;
     private bool _showedAll;
 
+    /// <summary>Every currently-loaded row (unfiltered) — replaced wholesale
+    /// only by <see cref="LoadAsync"/> (startup, Show all), never by typing
+    /// in Find. <see cref="RowsView"/> is the filtered view the grid actually
+    /// binds to.</summary>
     public ObservableCollection<HistoryRow> Rows { get; } = new();
+
+    /// <summary>The live filtered view over <see cref="Rows"/>. Typing in
+    /// Find re-evaluates the filter predicate against the SAME HistoryRow
+    /// instances already sitting in <see cref="Rows"/> — no Clear()/Add(), no
+    /// re-materialised list. History is the app's one unbounded-growth
+    /// collection, so a per-keystroke rebuild of the whole list is the
+    /// instance that matters; this is why filtering is a view over the data,
+    /// not a rewrite of it.</summary>
+    public ICollectionView RowsView { get; }
+
     public RelayCommand ShowAllCommand { get; }
     public RelayCommand ExportCommand { get; }
 
@@ -59,6 +74,8 @@ public sealed class HistoryViewModel : ObservableObject
         _history = history;
         _dialogs = dialogs;
         _scheduler = scheduler ?? new TaskWorkScheduler();
+        RowsView = CollectionViewSource.GetDefaultView(Rows);
+        RowsView.Filter = o => _filter.Length == 0 || (o is HistoryRow r && r.Matches(_filter));
         ShowAllCommand = new RelayCommand(() => _ = LoadAsync(all: true), () => !_showedAll);
         ExportCommand = new RelayCommand(() => _ = ExportAsync());
         _ = LoadAsync(all: false);
@@ -68,11 +85,21 @@ public sealed class HistoryViewModel : ObservableObject
     public string Filter
     {
         get => _filter;
-        set { if (Set(ref _filter, value)) Refresh(); }
+        set { if (Set(ref _filter, value)) ApplyFilter(); }
     }
 
     private string _footerText = "";
     public string FooterText { get => _footerText; private set => Set(ref _footerText, value); }
+
+    /// <summary>No filings recorded at all — distinct from <see cref="NoMatches"/>
+    /// (filings exist, but none match the current search) so the empty-state
+    /// message can tell a genuinely empty history apart from a too-narrow
+    /// search.</summary>
+    private bool _isEmpty;
+    public bool IsEmpty { get => _isEmpty; private set => Set(ref _isEmpty, value); }
+
+    private bool _noMatches;
+    public bool NoMatches { get => _noMatches; private set => Set(ref _noMatches, value); }
 
     public bool CanShowAll => !_showedAll;
 
@@ -85,26 +112,30 @@ public sealed class HistoryViewModel : ObservableObject
                 .Select(HistoryRow.From).ToList();
             return (loaded, (long)history.Count());
         });
-        _loaded = rows;
-        _total = total;   // cached — the filter never re-queries
+        _total = total;
         _showedAll = all || rows.Count < InitialLoad;
+        Rows.Clear();
+        foreach (var r in rows) Rows.Add(r);
         ShowAllCommand.RaiseCanExecuteChanged();
         Raise(nameof(CanShowAll));
-        Refresh();
+        ApplyFilter();
     }
 
-    /// <summary>Pure in-memory: reapply the filter to the loaded rows.</summary>
-    private void Refresh()
+    /// <summary>Pure in-memory, and — unlike the old Rows.Clear()/Add()
+    /// approach — no rebuild of the underlying collection: RowsView.Refresh()
+    /// only re-runs the Filter predicate over the SAME HistoryRow instances
+    /// already in Rows, so a keystroke costs a predicate scan, never a
+    /// collection rebuild.</summary>
+    private void ApplyFilter()
     {
-        var visible = Filter.Length == 0
-            ? _loaded
-            : _loaded.Where(r => r.Matches(Filter)).ToList();
-        Rows.Clear();
-        foreach (var r in visible) Rows.Add(r);
+        RowsView.Refresh();
+        var visibleCount = RowsView.Cast<HistoryRow>().Count();
+        IsEmpty = Rows.Count == 0;
+        NoMatches = !IsEmpty && visibleCount == 0;
 
         FooterText = _showedAll
-            ? $"{Rows.Count} of {_total} filings shown"
-            : $"Showing the latest {Rows.Count} of {_total} filings";
+            ? $"{visibleCount} of {_total} filings shown"
+            : $"Showing the latest {visibleCount} of {_total} filings";
     }
 
     internal async Task ExportAsync()
