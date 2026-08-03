@@ -314,14 +314,49 @@
         </Style.Triggers>
     </Style>
 
+    <!-- Task 8 (audit remediation, 2026-08-02): the shared bronze focus ring
+         (BronzeFocusVisual, declared at the top of this file) was only ever
+         wired to Button and ToggleButton — CheckBox, RadioButton, ComboBox,
+         ListBoxItem and TabItem fell through to the stock OS dashed
+         rectangle, the one place the theme's focus language broke. Extended
+         to all five below. No template change is needed for any of them:
+         FocusVisualStyle only tells WPF which adorner to draw around the
+         element's own bounds on keyboard focus, independent of the
+         ControlTemplate. A plain Setter is enough for ComboBox, ListBoxItem
+         and TabItem (all three of those styles supply their own template, so
+         nothing outranks it) — but NOT for the CheckBox/RadioButton pair
+         immediately below, which is why they also carry a Style TRIGGER:
+         those two keep the STOCK template, and the stock template assigns
+         FocusVisualStyle from a TEMPLATE TRIGGER on HasContent=True, which
+         outranks a plain Style Setter. Measured directly, not deduced:
+         DependencyPropertyHelper.GetValueSource reported TemplateTrigger for
+         both and the rendered ring stayed the OS dashed rectangle — the
+         Setter alone was silently a no-op for every content-bearing CheckBox
+         and RadioButton in the app, i.e. all of them. A Style trigger
+         outranks a template trigger, so duplicating the value there is what
+         actually wins; the plain Setter stays for the content-less case, which
+         the stock trigger never fires for. Every case here is proven by
+         rendering real pixels in FocusRingCoverageTests. -->
     <Style TargetType="CheckBox">
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="Margin" Value="0,4" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource BronzeFocusVisual}" />
+        <Style.Triggers>
+            <Trigger Property="HasContent" Value="True">
+                <Setter Property="FocusVisualStyle" Value="{StaticResource BronzeFocusVisual}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <Style TargetType="RadioButton">
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="Margin" Value="0,4" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource BronzeFocusVisual}" />
+        <Style.Triggers>
+            <Trigger Property="HasContent" Value="True">
+                <Setter Property="FocusVisualStyle" Value="{StaticResource BronzeFocusVisual}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <Style TargetType="Menu">
@@ -622,6 +657,9 @@
     <Style TargetType="ListBoxItem">
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="Padding" Value="8,5" />
+        <!-- Task 8: focus-ring coverage — see the CheckBox/RadioButton pair
+             above. -->
+        <Setter Property="FocusVisualStyle" Value="{StaticResource BronzeFocusVisual}" />
         <Setter Property="ContentTemplate">
             <Setter.Value>
                 <DataTemplate>
@@ -750,6 +788,14 @@
         <Setter Property="Background" Value="{DynamicResource Theme.Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}" />
         <Setter Property="Padding" Value="8,5" />
+        <!-- Task 8: focus-ring coverage — see the CheckBox/RadioButton pair
+             above. Only reached when focus lands on the ComboBox itself
+             (the ordinary, non-editable case); an IsEditable="True" ComboBox
+             instead moves focus to PART_EditableTextBox, whose own
+             IsKeyboardFocused template trigger already gives it a bronze
+             border (see this file's ComboBox template comment below) — this
+             Setter doesn't reach that case and doesn't need to. -->
+        <Setter Property="FocusVisualStyle" Value="{StaticResource BronzeFocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBox">
@@ -1270,6 +1316,12 @@
     <Style TargetType="TabItem">
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="Padding" Value="14,9" />
+        <!-- Task 8: focus-ring coverage — see the CheckBox/RadioButton pair
+             above. SettingsWindow.xaml's "SectionTab" style is
+             BasedOn="{StaticResource {x:Type TabItem}}" and sets no
+             FocusVisualStyle of its own, so this Setter is inherited there
+             too without touching that window's XAML. -->
+        <Setter Property="FocusVisualStyle" Value="{StaticResource BronzeFocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">

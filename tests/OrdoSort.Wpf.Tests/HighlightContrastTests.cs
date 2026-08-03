@@ -656,7 +656,12 @@ public class HighlightContrastTests
             var tabControl = FindDescendant<TabControl>(window)
                 ?? throw new InvalidOperationException("no TabControl descendant under SettingsWindow");
             var destinationsTab = tabControl.Items.Cast<TabItem>()
-                    .FirstOrDefault(ti => ti.Header?.ToString() == "Destinations")
+                    // Task 8 gave this header an access-key marker
+                    // ("_Destinations"); TabItem.Header itself is the raw
+                    // literal string (RecognizesAccessKey only affects how
+                    // the ContentPresenter renders it), so this comparison
+                    // needs the underscore too.
+                    .FirstOrDefault(ti => ti.Header?.ToString() == "_Destinations")
                 ?? throw new InvalidOperationException("no \"Destinations\" TabItem found");
             tabControl.SelectedItem = destinationsTab;
             window.UpdateLayout();
@@ -847,7 +852,12 @@ public class HighlightContrastTests
             var tabControl = FindDescendant<TabControl>(window)
                 ?? throw new InvalidOperationException("no TabControl descendant under SettingsWindow");
             var destinationsTab = tabControl.Items.Cast<TabItem>()
-                    .FirstOrDefault(ti => ti.Header?.ToString() == "Destinations")
+                    // Task 8 gave this header an access-key marker
+                    // ("_Destinations"); TabItem.Header itself is the raw
+                    // literal string (RecognizesAccessKey only affects how
+                    // the ContentPresenter renders it), so this comparison
+                    // needs the underscore too.
+                    .FirstOrDefault(ti => ti.Header?.ToString() == "_Destinations")
                 ?? throw new InvalidOperationException("no \"Destinations\" TabItem found");
             tabControl.SelectedItem = destinationsTab;
             window.UpdateLayout();

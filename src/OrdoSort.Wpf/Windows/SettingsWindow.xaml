@@ -82,6 +82,15 @@
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Margin" Value="0,0,10,0" />
             <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
+            <!-- Task 8 (focus-ring coverage): this Style has no BasedOn back
+                 to the implicit {x:Type RadioButton} style Theme/Styles.xaml
+                 just gave a FocusVisualStyle Setter — an explicit x:Key
+                 style entirely bypasses implicit-by-type lookup, so that
+                 Setter would silently never reach these three theme-card
+                 RadioButtons without repeating it here (the exact
+                 "named style suppresses the base Style's Setters" shape
+                 flagged for this task). -->
+            <Setter Property="FocusVisualStyle" Value="{StaticResource BronzeFocusVisual}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
@@ -137,7 +146,25 @@
                     ItemContainerStyle="{StaticResource SectionTab}">
 
             <!-- ============================================== General -->
-            <TabItem Header="General">
+            <!-- Task 8: access keys on all six tab headers below — both
+                 TabItem control templates (Theme/Styles.xaml's base style and
+                 this window's own SectionTab) already set
+                 RecognizesAccessKey="True" on the header ContentPresenter, so
+                 an "_" marker here is all that's needed. Checked for
+                 collisions before assigning: General/Filing/Destinations/
+                 Dashboard/Appearance/Data files start with G/F/D/D/A/D — three
+                 D's — so Dashboard and Data files each use a distinct
+                 non-initial letter instead (Das_hboard would collide with the
+                 initial D too, so Dash_board's "B" was picked; Data files
+                 uses "T" from "Da_ta") to keep all six unique: G, F, D, B, A,
+                 T. This window has no OTHER access-keyed control to collide
+                 with (grepped: zero pre-existing "_X" markers anywhere else in
+                 this file). Separately, MainWindow.xaml's own File/Tools menu
+                 mnemonics (the audit's "complete and collision-free" finding)
+                 live in a different Window entirely, so they cannot collide
+                 with these regardless of AccessKeyManager scoping — verified
+                 by inspection, not touched here. -->
+            <TabItem Header="_General">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="16,8">
                         <TextBlock Text="Folders" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
@@ -207,7 +234,7 @@
             </TabItem>
 
             <!-- ============================================== Filing -->
-            <TabItem Header="Filing">
+            <TabItem Header="_Filing">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="16,8">
                         <TextBlock Text="Naming" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
@@ -274,7 +301,7 @@
             </TabItem>
 
             <!-- ============================================== Routes -->
-            <TabItem Header="Destinations">
+            <TabItem Header="_Destinations">
                 <Grid Margin="16,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="230" />
@@ -288,9 +315,11 @@
                                     ToolTip="A copy of the selected destination to tweak (hotkey left blank)" />
                             <Button Content="Remove" Command="{Binding RemoveRouteCommand}" Margin="0,0,4,4" />
                             <Button Content="↑" Command="{Binding RouteUpCommand}" MinWidth="34" Margin="0,0,4,4"
-                                    ToolTip="Move up — buttons show in this order (or drag rows)" />
+                                    ToolTip="Move up — buttons show in this order (or drag rows)"
+                                    AutomationProperties.Name="Move destination up" />
                             <Button Content="↓" Command="{Binding RouteDownCommand}" MinWidth="34" Margin="0,0,0,4"
-                                    ToolTip="Move down — buttons show in this order (or drag rows)" />
+                                    ToolTip="Move down — buttons show in this order (or drag rows)"
+                                    AutomationProperties.Name="Move destination down" />
                         </WrapPanel>
                         <Grid>
                             <ListBox x:Name="RouteList" ItemsSource="{Binding Routes}"
@@ -560,7 +589,7 @@
             </TabItem>
 
             <!-- ============================================== Dashboard -->
-            <TabItem Header="Dashboard">
+            <TabItem Header="Dash_board">
                 <Grid Margin="16,8">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -582,9 +611,11 @@
                                     <Button Content="Add section" Click="OnAddSectionClick" Margin="0,0,4,4" />
                                     <Button Content="Remove" Command="{Binding RemoveWatchCommand}" Margin="0,0,4,4" />
                                     <Button Content="↑" Command="{Binding WatchUpCommand}" MinWidth="34" Margin="0,0,4,4"
-                                            ToolTip="Move up — tiles show in this order (or drag rows)" />
+                                            ToolTip="Move up — tiles show in this order (or drag rows)"
+                                            AutomationProperties.Name="Move folder up" />
                                     <Button Content="↓" Command="{Binding WatchDownCommand}" MinWidth="34" Margin="0,0,0,4"
-                                            ToolTip="Move down — tiles show in this order (or drag rows)" />
+                                            ToolTip="Move down — tiles show in this order (or drag rows)"
+                                            AutomationProperties.Name="Move folder down" />
                                 </WrapPanel>
                                 <ListBox x:Name="WatchList" ItemsSource="{Binding WatchRows}"
                                          SelectedItem="{Binding SelectedWatchRow}" AllowDrop="True"
@@ -979,7 +1010,7 @@
             </TabItem>
 
             <!-- ============================================== Appearance -->
-            <TabItem Header="Appearance">
+            <TabItem Header="_Appearance">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="16,8">
                     <TextBlock Text="Colors" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
@@ -1182,7 +1213,7 @@
             </TabItem>
 
             <!-- ============================================== Data files -->
-            <TabItem Header="Data files">
+            <TabItem Header="Da_ta files">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="16,8">
                         <TextBlock Text="Data files" Style="{StaticResource SectionText}" Margin="0,0,0,6" />

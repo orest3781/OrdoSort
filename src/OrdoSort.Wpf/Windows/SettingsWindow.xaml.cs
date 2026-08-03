@@ -38,6 +38,21 @@ public partial class SettingsWindow : Window
             case Key.Tab:
                 e.Handled = false;   // keep keyboard navigation working
                 return;
+            case Key.Escape:
+                // Decision: Escape closes the dialog (Cancel), not "cancel
+                // capture and stay open". There is no separate draft state
+                // to unwind here — every recognized key already commits
+                // straight into the bound Hotkey property below via
+                // UpdateSource, so "cancel capture" has nothing distinct to
+                // roll back. Letting Escape through unhandled (same
+                // exemption as Tab, just above) restores the ordinary
+                // Windows-dialog convention every other control in this
+                // window already gets for free via the Cancel button's
+                // IsCancel="True" — the previous unconditional
+                // e.Handled = true swallowed it before it ever reached that,
+                // recording the literal hotkey "Escape" instead.
+                e.Handled = false;
+                return;
             case Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift
                 or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin:
                 return;              // modifiers alone aren't a hotkey yet
