@@ -31,13 +31,13 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <Grid Margin="0,0,0,8">
+            <Grid Style="{StaticResource FieldRow}" Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="Roster:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBlock Text="Roster:" Style="{StaticResource FieldLabel}" Margin="0,0,8,0" />
                 <Grid Grid.Column="1">
                     <TextBox Text="{Binding RosterPath, Mode=OneWay}" IsReadOnly="True" />
                     <TextBlock Text="no roster loaded yet — pick the spreadsheet (CSV or Excel) with names and Control IDs"

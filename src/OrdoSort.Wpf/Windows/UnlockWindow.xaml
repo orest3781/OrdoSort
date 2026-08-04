@@ -89,14 +89,14 @@
                            TextTrimming="CharacterEllipsis" />
             </DockPanel>
 
-            <Grid Grid.Row="3" Margin="0,0,0,8">
+            <Grid Grid.Row="3" Style="{StaticResource FieldRow}" Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="220" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="Password:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBlock Text="Password:" Style="{StaticResource FieldLabel}" Margin="0,0,8,0" />
                 <PasswordBox Grid.Column="1" x:Name="PwBox" PasswordChanged="OnPasswordChanged"
                              AutomationProperties.Name="Password" />
                 <TextBox Grid.Column="1" x:Name="PwPlain" Visibility="Collapsed"

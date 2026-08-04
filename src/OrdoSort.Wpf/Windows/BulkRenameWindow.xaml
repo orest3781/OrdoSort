@@ -37,7 +37,7 @@
                             IsEnabled="{Binding ReviewMode}" Width="130" />
             </StackPanel>
 
-            <Grid Grid.Row="1" Margin="0,0,0,10">
+            <Grid Grid.Row="1" Style="{StaticResource FieldRow}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="170" />

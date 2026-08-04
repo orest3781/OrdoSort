@@ -130,13 +130,13 @@
                     </Style>
                 </StackPanel.Style>
 
-                <Grid Margin="0,0,0,10">
+                <Grid Style="{StaticResource FieldRow}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="130" />
                         <ColumnDefinition Width="140" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="Client id:" VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <TextBlock Text="Client id:" Style="{StaticResource FieldLabel}" />
                     <TextBox x:Name="IdBox" Grid.Column="1" CharacterCasing="Upper" MaxLength="8"
                              Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}"
                              AutomationProperties.Name="Client id" />
@@ -145,13 +145,13 @@
                                VerticalAlignment="Center" Margin="8,0,0,0" />
                 </Grid>
 
-                <Grid Margin="0,0,0,10">
+                <Grid Style="{StaticResource FieldRow}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="130" />
                         <ColumnDefinition Width="140" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="Keep boxes (days):" VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <TextBlock Text="Keep boxes (days):" Style="{StaticResource FieldLabel}" />
                     <TextBox Grid.Column="1"
                              Text="{Binding DestroyDaysText, UpdateSourceTrigger=PropertyChanged}"
                              AutomationProperties.Name="Keep boxes days" />
@@ -160,13 +160,13 @@
                                VerticalAlignment="Center" Margin="8,0,0,0" />
                 </Grid>
 
-                <Grid Margin="0,0,0,10">
+                <Grid Style="{StaticResource FieldRow}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="130" />
                         <ColumnDefinition Width="140" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="Next label number:" VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <TextBlock Text="Next label number:" Style="{StaticResource FieldLabel}" />
                     <TextBox Grid.Column="1"
                              Text="{Binding NextNumberText, UpdateSourceTrigger=PropertyChanged}"
                              AutomationProperties.Name="Next label number" />
@@ -180,14 +180,14 @@
                     </Button>
                 </Grid>
 
-                <Grid Margin="0,0,0,4">
+                <Grid Style="{StaticResource FieldRow}" Margin="0,0,0,4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="130" />
                         <ColumnDefinition Width="60" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="Labels to print:" VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <TextBlock Text="Labels to print:" Style="{StaticResource FieldLabel}" />
                     <TextBox Grid.Column="1"
                              Text="{Binding DataContext.LabelCountText,
                                     RelativeSource={RelativeSource AncestorType=Window},
@@ -215,12 +215,12 @@
                                TextTrimming="CharacterEllipsis" />
                 </Grid>
 
-                <Grid Margin="0,0,0,4">
+                <Grid Style="{StaticResource FieldRow}" Margin="0,0,0,4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="130" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="Date bars:" VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <TextBlock Text="Date bars:" Style="{StaticResource FieldLabel}" />
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                         <RadioButton GroupName="DateStyle" Content="black bars (white text)"
                                      IsChecked="{Binding DataContext.DateStyleBars,
