@@ -1,0 +1,248 @@
+# OrdoSort — Full Audit, 2026-08-04
+
+Nine parallel read-only audits at HEAD `b78ce53` (33 commits, `main` synced with origin, 879 tests green). Dimensions: data integrity, concurrency/lifetime, security, resilience, config/migration, performance/scale, build/distribution, test quality, dependencies/docs/hygiene.
+
+This is deliberately **not** a third UI pass. Two UI audits (`2026-08-02-ui-audit.md`, `-pass2.md`) already swept that surface and their findings are remediated; re-running them would mostly re-find fixed work. These nine cover the angles those passes did not.
+
+## Method and its limits
+
+Every audit was **static**. Nothing was built, run, or profiled — nine concurrent rebuilds would have corrupted each other's view of the tree. That bounds what this document can claim, and the bound is marked per finding:
+
+- **[V]** — verified by me directly against the code during synthesis, independently of the agent that reported it.
+- **[A]** — agent-verified statically with a code citation; I did not re-check it.
+- **[U]** — **unverified**; needs a dynamic test, a second process, or a real network share to settle. Treat as a hypothesis, not a defect.
+
+This codebase has a documented history of confident false readings surviving until someone re-measured, so nothing here should be actioned on the strength of its severity label alone — check the mark first.
+
+**Severity is normalized across all nine audits, not taken from them.** Individual audits disagreed on scale (one dimension labelled four findings Critical that another dimension's rubric would have called Important). The scale used here:
+
+| | Meaning |
+|---|---|
+| **Critical** | Data loss, corruption, or an unusable app, in ordinary use, with no user error |
+| **Important** | Real user harm under plausible conditions, or a broken promise the app makes in its own words |
+| **Minor** | Robustness, hygiene, or quality — no user-visible harm on a normal day |
+
+## Headline
+
+**No finding shows OrdoSort destroying a user's document in ordinary filing.** The core commit / skip / undo / bulk-rename / match-merge paths were traced end to end and genuinely never overwrite or delete: every move funnels through a non-overwriting `File.Move` behind a collision guard, and every user-supplied name funnels through `Naming.RejectIllegal`. The data-integrity audit went looking for a document-destroying path in normal use and could not construct one. That is the single most important result in this document, and it is the foundation everything below sits on.
+
+What the audit did find is that **the app's two central promises have leaks at the edges** — and those promises are load-bearing, because the app puts them in front of users verbatim:
+
+> *"Nothing was deleted — OrdoSort only ever moves files, so the document is either where it started or where it was going."*
+
+Four independent findings each break one half of that sentence, and no single audit could see the pattern because each owned only one of them.
+
+---
+
+## Theme 1 — The audit-log and move guarantees leak at the edges
+
+**1.1 — Exit or OS shutdown mid-commit silently loses the audit row. [V] Critical**
+
+`MainWindow.xaml.cs:113-115` — the `Closing` handler opens with `if (_reallyExit) return;`, taking no busy check at all. `_reallyExit` is set by File > Exit and by `Application.SessionEnding` (OS shutdown/restart). `Closed` then runs `Shell.Dispose()` → `_history.Dispose()`, while `CommitCurrent` is still moving the file and writing its row on a thread-pool thread (`ShellViewModel.cs:876` — `await _scheduler.Run(() => _session.CommitCurrent(typed, route))`).
+
+The file moves. The row does not get written. The app's stated invariant — every move is in the log — is broken, and the disposal races an active SQLite command besides.
+
+The sharpest detail: the same handler's *other* branch carries the comment `// respects the mid-commit busy guard`. The guard exists and is trusted three lines below. The exit path is the one place that skips it. A user pressing File > Exit while the last document files, or Windows restarting for updates, is not an exotic scenario.
+
+**1.2 — `Unlock` holds the product's only overwrite and only foreign-file delete. [V] Important**
+
+Across all of `OrdoSort.Core` there are exactly three places that can delete or overwrite: a self-created write-probe (`Config.cs:447-448`, benign), backup pruning (`HistoryBackup.cs:38`), and `Unlock`.
+
+- `Unlock.cs:146` — `File.WriteAllBytes(target, unlockedBytes)` truncates whatever is at `target`, under a check-then-act gap after `CollisionFree`.
+- `Unlock.cs:250` — the failure path calls `RemoveQuietly(target)`, deleting a file this process may not have created. On the shared folder the app is explicitly designed for, that can be a file another station just placed.
+
+The race window itself is **[U]** — proving it needs two processes. The *capability* is **[V]**: this is the one place the "only ever moves files" sentence is not literally true.
+
+**1.3 — Unlock's in-place swap has a crash window that strands the document in a third place. [A] Important**
+
+`Unlock.cs:261-301`. A kill or power loss between the two moves leaves `X.unlocking.pdf` plus the original in `locked_archive_YYYYMMDD` — a location the reassurance copy never names. The leftover can also re-enter the inbox queue.
+
+**1.4 — An interrupted cross-volume move can give garbage the canonical name. [A]/[U] Important**
+
+`Commit.cs:24,44-47`. `File.Move` across volumes is copy-then-delete. Interrupted, it can leave a partial file at the destination; on retry the collision counter hands the *real* document the `" (2)"` suffix while the partial keeps the canonical name — and nothing detects it afterwards. The crash case is verified by construction **[A]**; whether Win32 `MoveFileEx` cleans up its own partial on a non-crash failure is **[U]**.
+
+**1.5 — Undo's three failure branches are entirely untested. [V] Important**
+
+`Commit.cs:92` (filed file gone), `:94` (original name reused), `:97` (inbox folder vanished). Zero `.cs` test files reference `UndoAction` — the only matches are compiled DLLs. Undo is the safety net for a mis-filed document, and its failure handling is the least-exercised code in the product.
+
+---
+
+## Theme 2 — Shared-config, multi-station mode is under-defended
+
+The app documents a `--config <shared-path>` mode with several workstations against one share. That mode is where most of the remaining risk lives.
+
+**2.1 — Settings > OK silently clobbers another station's concurrent edit. [V] Critical**
+
+`RefreshSharedSectionsFromDisk()` (`ShellViewModel.cs:1053`) has exactly **one** caller: `SaveConfigNow()` at `:1036`, whose own doc comment scopes it to "tool windows saving their own state". The primary Settings-OK path (`SettingsViewModel.ApplySettingsAsync`) never calls it.
+
+Two people editing settings on two stations, no crash and no hand-editing required: the second to press OK overwrites the first's destinations/monitored-folders/alerts with a stale in-memory copy, with no warning. The correct fix already exists in the codebase — it was simply never wired to the main save path.
+
+**2.2 — A 0-byte `box-labels.json` silently wipes every counter. [V] Critical**
+
+`BoxLabelStore.Mutate:126-128` treats empty content as `new BoxLabelsDoc()`. `BoxLabelStore.Read:44-51` hands the same empty string to `Deserialize` and throws `ConfigException("not valid JSON")`. **The two functions disagree about what a 0-byte file means**, and `Mutate` is the one that then truncates and rewrites (`:140-143`).
+
+So: a crash mid-write leaves 0 bytes → the next station's box claim reads "no clients yet", wipes all counters, and can reissue box numbers already printed on physical boxes. Physical-world consequences, no crash needed on the second station.
+
+**2.3 — No file is written atomically, anywhere. [V] Critical**
+
+`Config.SaveMain`/`WriteDoc` use `File.WriteAllText`; `BoxLabelStore.Mutate` uses `Seek(0)` + `SetLength(0)` + write, in place. No temp-file-then-`File.Replace` anywhere. Disk-full or a kill mid-write destroys the previously valid file. For `config.json` that bricks every station sharing it until someone fixes it by hand, because `Config.Load` throws and `App.xaml.cs` responds with `Shutdown(1)`.
+
+This one finding is the root cause of 2.2 and compounds 3.1. It is the highest-leverage fix in the document.
+
+**2.4 — LabelMaker's dirty tracking is per-row, not per-field. [A] Important**
+
+Editing an unrelated field on a client and closing the window writes back that client's *stale* `NextNumber`, rolling back a counter another station already advanced — duplicate box numbers, contradicting the code's own stated intent.
+
+**2.5 — Settings tells users something false about relative paths. [A] Important**
+
+The Settings UI says a relative Inbox/Deferred path is "resolved beside the config file". Verified false by grep across the runtime: `Scanner.Scan`, `FolderMonitor`, `Session` and `OpenFolder` all use the raw string. Only `names_file`, `history_db` and the four `*_file` overrides actually resolve beside the config. This breaks the documented shared-config mode and misleads precisely the user trying to set it up.
+
+**2.6 — Unsynchronized SQLite connection and unsynchronized session queue. [V]/[A] Important**
+
+`History.cs:48` holds one `SqliteConnection` with no synchronization; File > Export/View history is reachable during Processing and runs concurrently with `LogCommit` **[A]**. Separately, `Session.Current` (`Session.cs:45`) reads `Pos` twice in one expression — `Pos < Queue.Count ? Queue[Pos] : null` — so a `Pos++` on the commit thread between the two reads throws `IndexOutOfRangeException` on the UI thread at the last document **[V]**.
+
+---
+
+## Theme 3 — First run and deployment
+
+**3.1 — First run in a non-writable folder leaves an invisible, un-closeable process. [V] Critical**
+
+Full chain, every link verified:
+
+1. `Config.Load:172-176` calls `Save(fresh, path)` on first run with no guard — unlike the read path beside it.
+2. `Config.Save` → `SaveMain` → `File.WriteAllText`. Every `ConfigException` wrapper in the file (`:182-260`) is on the **read** path; the write path is unwrapped, so this surfaces as `UnauthorizedAccessException`.
+3. `App.xaml.cs:51` catches only `ConfigException`. The exception escapes `OnStartup`.
+4. `DispatcherUnhandledException` (`:28-37`) shows a dialog and sets `ex.Handled = true` — but never calls `Shutdown()`.
+5. `App.xaml:5` sets `ShutdownMode="OnMainWindowClose"`, and no window was ever created.
+
+Result: the process survives with no window and no way to close it but Task Manager. Install to `Program Files`, run as a normal user, and this is the first thing a new user experiences.
+
+It compounds: the dialog tells the user "The technical details were written to crash.log, beside your config file" — but `LogCrash` (`:100-110`) writes to that same unwritable directory inside a swallowing `try`. The message is false in exactly the case that produces it.
+
+**3.2 — Releases ship unsigned. [A] Important**
+
+A `v*` tag produces two unsigned single-file `win-x64` zips (framework-dependent and self-contained). The Trusted-Signing step is wired but skipped, confirmed by there being zero signing secrets configured. SmartScreen will block non-developer users on first run — the exact audience.
+
+**3.3 — No version anywhere, and no About box. [A] Important**
+
+Every non-tag build defaults to `1.0.0.0`, and the app has no About dialog at all. A user cannot tell you what version they are running, which makes every future bug report harder.
+
+**3.4 — No LICENSE, on a public repo shipping binaries. [V] Important**
+
+No `LICENSE`/`COPYING` in the repo root, on a public repository whose README invites downloads, while the single-file exe embeds WebView2's BSD-licensed native DLL with no third-party notices.
+
+**3.5 — WebView2 prerequisite undocumented; its failure is a raw dump. [A] Minor**
+
+The Evergreen runtime is present on current Windows 11 but not guaranteed. There is no bootstrapper, check, or documented prerequisite, and init failure surfaces `ex.ToString()`.
+
+---
+
+## Theme 4 — Security
+
+Threat model: a malicious PDF or spreadsheet, a hostile share, another user on the same machine. Not a remote attacker.
+
+**4.1 — The PDF viewer is completely unhardened. [V] Important**
+
+`WebViewPdfViewer.cs:31-47` creates the environment and calls `EnsureCoreWebView2Async`. That is all. Zero matches across all source for `NavigationStarting`, `NewWindowRequested`, or any `CoreWebView2Settings` property; the only browser argument set is `--disable-smooth-scrolling`. `ShowAsync` then navigates to a `file://` URL.
+
+So the app's defining untrusted input — a PDF arriving from a scanner or a share — is rendered by a browser with every default capability on. A link annotation can navigate the pane to any http(s) or `file:` URL, run script there, spawn popups, and start downloads. The natural attack is a convincing fake "enter the PDF password" prompt inside the app's own viewer pane. Mitigating: there is no host-object or web-message bridge, so there is no path back into the process.
+
+**4.2 — Config-controlled absolute paths give an arbitrary-file write. [A] Important**
+
+`Config.cs:240-243` accepts *absolute* `destinations_file` / `alerts_file` / `monitored_folders_file`, and `Save`/`TrySave` writes JSON there unconditionally. On the shared deployment the code explicitly anticipates, anyone who can write `config.json` gets a file of their choosing overwritten on the victim's machine at the next settings save. `Route.Path` likewise can silently redirect filed documents to a hostile UNC share.
+
+**4.3 — Legacy plaintext passwords never expire at rest. [A] Important**
+
+`ReprotectLegacyPlaintext` has three callers, all on save paths; nothing sweeps at load. A hand-edited plaintext entry stays plaintext in `config.json` forever if the saved list is never touched. (DPAPI scope `CurrentUser` with null entropy is the correct choice here — do not "fix" it to `LocalMachine`.)
+
+**4.4 — Verified non-findings, recorded so nobody re-litigates them. [A]**
+
+Path traversal is genuinely blocked: `Naming.RejectIllegal` (`Naming.cs:104-113`) rejects separators, colons, wildcards, control characters and device names, and *every* write funnels through it — including MatchMerge's roster-driven renames via `BulkRename.Plan:141`. SQL is parameterized. CSV export already guards formula injection. All three `Process.Start` calls pass a single existing path with no argument string. `XlsxTable` is safe from XXE (`XDocument.Load` prohibits DTDs) and zip-slip (nothing is extracted) — though a crafted cell reference like `r="AAAAAA1"` can drive a ~12M-slot allocation (`XlsxTable.cs:49,116-125`), a local DoS only.
+
+---
+
+## Theme 5 — Performance and scale
+
+Envelope: inbox/session of tens to ~2,000 files; ~10 routes; history is an intentionally unbounded, never-pruned SQLite audit log, shared over SMB by design — plausibly tens of thousands of rows within a year.
+
+**5.1 — The history table has no indexes at all. [V] Important**
+
+Zero `CREATE INDEX` statements anywhere in the codebase. `RankedNames()` (`History.cs:152-164`) runs `GROUP BY name_entered ... ORDER BY MAX(ts_utc) DESC` — a full-table scan, unindexed on every column it touches — and it runs after **every** commit, skip and undo via `Completer.Names` → `RefreshCompleterAsync`. Off-thread, but awaited before the next document loads. The cost grows for the life of a table that is never pruned.
+
+**5.2 — Bulk Rename does synchronous file I/O per keystroke on the UI thread. [A] Important**
+
+Every Find/Replace/Prefix/Suffix setter calls `Refresh()` with no debounce, and `BulkRename.Free()` (`:159-161`) does a `File.Exists()` per loaded file. Every other live-validation field in the app already uses `DebouncedProbe` for exactly this; Bulk Rename is the one that was never wired to it — in the tool built for batches, over SMB.
+
+**5.3 — First paint blocks on a full DB copy, once a day. [V] Important**
+
+`ShellViewModel`'s constructor (`:63-66`) runs `HistoryBackup.BackupDaily` — a whole-file `File.Copy` of the history DB — then opens SQLite synchronously, before `MainWindow`'s constructor returns and before `Show()`. The history *swap* path at `:1118-1124` does the identical work correctly inside `_scheduler.Run(...)`. The codebase already knows the right pattern; the constructor predates it.
+
+**5.4 — Settings tile preview probes the filesystem per keystroke. [A] Important**
+
+`SettingsViewModel.cs:742-751,1283` runs `FolderMonitor.Status` (a `Directory.Exists` plus a possibly-recursive enumeration) synchronously on the UI thread for each keystroke in the selected watch row — the un-fixed sibling of the `DebouncedProbe` work already done elsewhere.
+
+---
+
+## Theme 6 — Test quality
+
+**The suite is genuinely strong, and this matters for reading everything above.** The auditor went hunting specifically for tests that would still pass with their production code reverted and **found none** in either project. Core does real filesystem round trips, real concurrency (parallel writes, SQLite busy-timeout), and picked `th-TH` over `ja-JP` for culture tests because the authors understood why the latter would not catch the bug. The historical `ThemeTests` false-assurance defect is visibly fixed: it now tests only pure palette math, with live assertions moved to files that read *resolved* control properties.
+
+Findings are consequently thin, and that is a real result rather than an absence of effort:
+
+- **[A] Minor** — `QcTests.MatchMergeControlIdWithColonIsSafeToo` has a dead `if (outcomes.Count > 0)` branch; tracing `MergeOne`→`Plan`→`Execute` proves `outcomes` is always empty, so that assertion never runs.
+- **[A] Minor** — `WatchListRowTemplateTests.OpenDashboard` can leak a shown `SettingsWindow` into the shared process-wide `Application` if it throws before returning (no `try/finally`), poisoning every later test in that collection.
+- **Untested surface, ranked by user risk:** (1) `Commit.UndoAction`'s three failure branches **[V]**; (2) `Config.ValidateRoute`/`ProbeWritable`'s "not a folder" and "not writable" branches; (3) `LabelPrinting.BuildDocument` — the code that builds the physical printed sheet has no tests, unlike the Core math it wraps.
+
+---
+
+## Theme 7 — Dependencies and hygiene
+
+| Package | Pinned | Latest | Licence | Verdict |
+|---|---|---|---|---|
+| Microsoft.Data.Sqlite | 8.0.11 | 10.0.10 | MIT | **CVE-2025-6965** via transitive `SQLitePCLRaw` — see below |
+| Microsoft.Web.WebView2 | 1.0.2903.40 | 1.0.4129.50 | Proprietary MS (redistribution OK) | Aging; runtime patches independently |
+| PdfSharp | 6.1.1 | 6.2.4 | MIT | Clean; API used is stable |
+| System.Security.Cryptography.ProtectedData | 8.0.0 | 10.0.10 | MIT | Clean |
+| xunit / runner / Test.Sdk / coverlet | 2.5.3 / 2.5.3 / 17.8.0 / 6.0.0 | — | Apache-2.0 / MIT | Test-only, no advisories, aging |
+
+**7.1 — SQLite CVE, with an unexpected reachability path. [V] Important**
+
+`SQLitePCLRaw` resolves to exactly **2.1.6** — the unpinned floor — confirmed from `project.assets.json`. That carries the vulnerable bundled native SQLite.
+
+Two audits each held half of this and neither could see it whole: the history DB is *designed* to live on an SMB share, and the config audit independently established that share is writable by other stations. A SQLite-level memory-corruption bug plus "another user can write your database file" is a narrow but real path from hostile-share to code execution. Neither dimension is alarming alone.
+
+**7.2 — .NET 8 reaches end of life 2026-11-10 [A]** — about three months out, for a v1.0 shipping now on `net8.0`.
+
+**7.3 — `.claude/worktrees/` is 798 MB of stale scratch, untracked but not ignored. [V] Minor**
+
+`.gitignore` has no `.claude` entry. All six worktree HEADs are ancestors of `main` and clean — nothing unique is in them, safe to delete. One `git add -A` from ignoring them would be unpleasant.
+
+**7.4 — Documentation is accurate. [A]** No false or stale claims were found in `README.md` or elsewhere; every spot-checked claim verified exact against code. Zero `TODO`/`HACK`/`FIXME` in `src`, `tests` or `tools`; no commented-out code; no committed `bin`/`obj`; no version drift across the five csproj files; `demo-full/` is correctly ignored and contains only synthetic names.
+
+---
+
+## What to fix, in order
+
+Ranked by (harm × likelihood) ÷ effort, not by severity label.
+
+1. **Atomic writes everywhere** (2.3) — temp file + `File.Replace` in `Config.SaveMain`/`WriteDoc` and `BoxLabelStore.Mutate`. One pattern, three call sites, and it is the root cause of 2.2 and a compounding factor in 3.1.
+2. **Guard the first-run config save** (3.1) — and make the crash handler `Shutdown()` when no window exists. Small, and it is the first thing a new user can hit.
+3. **Hold close until the in-flight commit completes** (1.1) — checking the busy guard on the `_reallyExit` path closes the disposed-connection race for free.
+4. **Call `RefreshSharedSectionsFromDisk` from Settings-OK** (2.1) — the fix already exists; wire it to the second path.
+5. **Harden the WebView2 viewer** (4.1) — ~20 lines in one `InitAsync`, no workflow change.
+6. **Make `Mutate` and `Read` agree about a 0-byte file** (2.2) — falls out of 1, but assert it directly too.
+7. **Index the history table** (5.1) — `name_entered`, `reverted`, `ts_utc`.
+8. **Test `UndoAction`'s three failure branches** (1.5) — the safety net deserves a test.
+9. **Debounce Bulk Rename and the Settings tile preview** (5.2, 5.4) — the pattern is already proven in this codebase.
+10. **Release hygiene before `v1.0.0`** (3.2–3.5) — sign, stamp a version, add an About box, add LICENSE + third-party notices, document the WebView2 prerequisite.
+
+Items 1–4 are what I would not ship `v1.0.0` without.
+
+## Open questions needing dynamic proof
+
+Not defects — hypotheses this static pass could not settle:
+
+- Whether an interrupted cross-volume `File.Move` leaves an orphaned partial at the destination (1.4). Needs a disk-full or kill test across volumes.
+- Whether `Unlock`'s `CollisionFree` → `WriteAllBytes` gap is actually winnable (1.2). Needs two processes against one shared folder.
+- Whether `HistoryBackup`'s raw `File.Copy` of a live SQLite file produces a torn backup in practice, and whether the 14-day prune can rotate away every good one.
+- Whether `BoxLabelStore`'s HResult retry-or-fail-fast list matches real SMB error codes, and how it behaves against a stale lock from a crashed station.
