@@ -181,3 +181,75 @@ for the rest of the session, with no message to the user.
    scaled display.
 5. **I1, I2, I7** — viewer lifetime, init-failure reporting, IME guard.
 6. **I5, I6, I8**, then minors.
+
+---
+
+## Verify-then-decide outcomes (2026-08-03, Task 5)
+
+Two open questions the audit could not answer from a screenshot, settled by
+measurement against the real, compiled `OrdoSort.dll` (confirmed pre-fix by
+grepping the built assembly: zero occurrences of `ContentTemplate` or
+`HeaderTemplate`, one occurrence of `DeleteSegLast`, before any change was
+made). Full method and raw numbers in
+`.superpowers/sdd/2026-08-03-audit-remediation-finish/task-5-report.md`.
+
+### (a) BulkRenameWindow's fifth delete-segment checkbox — REAL DEFECT, fixed
+
+`BulkRenameWindow.xaml:78`, `<CheckBox Content="last" .../>`, rendered with
+no visible label while its siblings (`"1"`…`"4"`) showed theirs.
+
+**Measured, not the anticipated trap.** This was suspected to be the
+auto-wrap "Style Setter outranks inheritance" contrast trap this codebase
+has hit five times before. It was not: a rendered-pixel WCAG probe of the
+label's own bounds read exactly **1.00** (foreground == background, zero
+paint at all) in both palettes — but the resolved Foreground DP, Brush/
+element Opacity, Visibility and `UIElement.Clip` were all completely normal
+at every level from the TextBlock up to the Window. A DP-only check would
+have reported everything fine and missed the bug entirely.
+
+**Root cause: layout overflow, not colour.** The five checkboxes' combined
+desired width is 182px; they sit in a Grid column fixed at `Width="170"`
+(shared with two TextBoxes on other rows in the same Grid, which do need
+that width). No element reported a `.Clip`, and `StackPanel.ActualWidth`
+itself read the full unclamped 182px — but WPF still applies an internal,
+DP-invisible render clip when an element's arranged `RenderSize` exceeds
+what its own parent's `Arrange` call gave it. Because the StackPanel packs
+children left-to-right, the 12px overflow landed entirely on the LAST
+child. Proof: a column-by-column pixel scan of the whole row found the
+fifth checkbox's own glyph square painted fine, nothing painted to its
+right; re-rendering the identical bound `CheckBox` with no surrounding
+width constraint painted "last" perfectly (49 distinct rendered colours).
+
+**Fix:** `Grid.ColumnSpan="3"` on the delete-segment `StackPanel`
+(`BulkRenameWindow.xaml`). Columns 2–3 carry no other content on that row,
+so this costs nothing and gives ~170+Auto+170px of headroom.
+
+**After fix:** WCAG ratio **16.40:1 (light) / 14.30:1 (dark)** — comfortably
+above the 4.5 floor, in the same range as the numbered siblings. Regression
+test: `tests/OrdoSort.Wpf.Tests/BulkRenameDeleteSegLastLabelTests.cs`
+(`DeleteSegLastCheckboxLabelPaintsAndMeetsWcagAa`), asserting the resolved
+rendered contrast, not a palette-pair DP read — a DP-only assertion would
+have passed even on the broken build.
+
+### (b) TriageWindow's two candidate rows — NOT A DEFECT
+
+`TriageWindow.xaml:41-42`'s `Candidates` DataGrid (`SelectionMode="Single"`)
+appeared to render both rows in the selected treatment in the audit's
+screenshot.
+
+**Measured:** built off-screen with one file under review and two
+candidates, selected index 0. `DataGridRow.IsSelected`: row 0 = **True**,
+row 1 = **False**. The row container's own `Background` never encodes
+selection (by design — Styles.xaml's alternating-row stripe is a separate
+layer from the selected overlay), so the real answer is at the
+`DataGridCell` level, where `Styles.xaml`'s `DataGridCell` style actually
+applies the selected colour: cell 0 `IsSelected=True`, resolved/rendered
+Background = **Theme.Accent** `(45,50,58)`; cell 1 `IsSelected=False`,
+resolved/rendered Background = **Theme.WindowBg** `(247,248,249)` (the
+correct alternating-row stripe, not Accent). Selection state and rendered
+paint agree exactly, 1:1, for both rows — confirmed visually too
+(`triage-two-candidates-light.png` in the same artifacts folder: row "Row
+One" dark/selected, "Row Two" plain). `SelectionMode` was also confirmed
+still `Single` and not overridden anywhere in code.
+
+**Verdict:** demo/screenshot-reading artifact, not a bug. Nothing changed.

@@ -70,7 +70,35 @@
                 <TextBox Grid.Row="1" Grid.Column="3" Margin="0,0,14,0"
                          Text="{Binding Suffix, UpdateSourceTrigger=PropertyChanged}" />
                 <TextBlock Grid.Row="2" Text="Delete segment:" VerticalAlignment="Center" Margin="0,6,6,0" />
-                <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,6,14,0">
+                <!-- ColumnSpan="3": this row's own five checkboxes measure
+                     182px wide (Task 5, 2026-08-03 audit-remediation-finish),
+                     12px over column 1's fixed 170px — the width every other
+                     row's TextBox/ComboBox in this same Grid legitimately
+                     needs, so it can't just be widened for this row alone.
+                     Measured (headless, real Theme/Styles.xaml, off-screen
+                     Show()+UpdateLayout()): with ColumnSpan="1" the fifth
+                     checkbox's own glyph square painted fine (it fits inside
+                     170px) but its "last" text painted NOTHING — zero pixels
+                     differed from the window background, confirmed both by a
+                     column-by-column pixel scan of the whole row and by a
+                     WCAG contrast probe reading exactly 1.00 (fg==bg) even
+                     though the TextBlock's resolved Foreground DP, Opacity,
+                     Visibility and Clip were all completely normal at every
+                     level of the visual tree — i.e. NOT the auto-wrap
+                     Setter-outranks-inheritance trap this app has hit before
+                     elsewhere (that trap still resolves a WRONG but PAINTED
+                     colour; this was zero paint at all). Re-rendering the
+                     identical bound CheckBox with no surrounding width
+                     constraint reproduced it perfectly (49 distinct rendered
+                     colours, "last" fully legible) — isolating the cause to
+                     this row overflowing its column, not the checkbox itself.
+                     Columns 2–3 carry no content on this row (only "Add at
+                     end:"/its TextBox use them, on Row 1), so spanning into
+                     them costs nothing here and gives ~170+Auto+170px of
+                     headroom, comfortably covering the 182px this row needs
+                     even at larger configured font sizes. -->
+                <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3"
+                            Orientation="Horizontal" VerticalAlignment="Center" Margin="0,6,14,0">
                     <CheckBox Content="1" IsChecked="{Binding DeleteSeg1}" Margin="0,0,8,0" />
                     <CheckBox Content="2" IsChecked="{Binding DeleteSeg2}" Margin="0,0,8,0" />
                     <CheckBox Content="3" IsChecked="{Binding DeleteSeg3}" Margin="0,0,8,0" />
