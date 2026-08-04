@@ -139,10 +139,14 @@ public class UnexpectedErrorTests
     /// Undo is the sharpest case: told "filing didn't finish" after pressing
     /// Undo, a user would look in the wrong folder.</summary>
     [Theory]
-    [InlineData("file", "Filing that document didn't finish.")]
-    [InlineData("skip", "Setting that document aside didn't finish.")]
-    [InlineData("undo", "Undoing the last filing didn't finish.")]
-    public void EachActionNamesItselfWhenItFailsUnexpectedly(string action, string expectedOpening)
+    [InlineData("file", "Filing that document didn't finish.",
+        "either where it started or where it was going")]
+    [InlineData("skip", "Setting that document aside didn't finish.",
+        "either where it started or where it was going")]
+    [InlineData("undo", "Undoing the last filing didn't finish.",
+        "either back in the inbox or still in the folder it was filed to")]
+    public void EachActionNamesItselfWhenItFailsUnexpectedly(
+        string action, string expectedOpening, string expectedWhereabouts)
     {
         using var fx = new ShellFixture();
         fx.AddInboxFile("20240115--111111.pdf");
@@ -173,9 +177,44 @@ public class UnexpectedErrorTests
 
         var warning = Assert.Single(fx.Dialogs.Warnings);
         Assert.StartsWith(expectedOpening, warning.Message);
+        Assert.Contains(expectedWhereabouts, warning.Message);
         Assert.DoesNotContain("boom", warning.Message);
         Assert.Contains("crash.log", warning.Message);
         Assert.Equal("OrdoSort — that didn't finish", warning.Title);
+    }
+
+    /// <summary>The reassurance sentence runs backwards for Undo, and only for
+    /// Undo. "The document is either where it started or where it was going"
+    /// is true of filing and of setting aside — both begin in the inbox — but
+    /// Undo runs the move in reverse, so its "where it started" is the
+    /// DESTINATION folder and its "where it was going" is the inbox. A user
+    /// who has just pressed Undo reads "where it started" as the inbox and
+    /// goes looking in the one place the sentence was not describing.
+    ///
+    /// Asserted on the message the fake dialog actually received, not on the
+    /// format string: the point is what a user reads.</summary>
+    [Fact]
+    public void UndoDoesNotDescribeTheTwoPlacesBackwards()
+    {
+        using var fx = new ShellFixture();
+        fx.AddInboxFile("20240115--111111.pdf");
+        fx.AddInboxFile("20240115--222222.pdf");
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+
+        fx.Shell.RouteCommand.Execute(0);          // something to undo
+        Assert.Empty(fx.Dialogs.Warnings);
+        fx.Viewer.ThrowOnShow = new InvalidOperationException("boom");
+        fx.Shell.UndoCommand.Execute(null);
+
+        var warning = Assert.Single(fx.Dialogs.Warnings);
+        Assert.Contains("back in the inbox", warning.Message);
+        Assert.Contains("still in the folder it was filed to", warning.Message);
+        Assert.DoesNotContain("where it started", warning.Message);
+        Assert.DoesNotContain("where it was going", warning.Message);
+        // the guarantee itself must survive the rewording
+        Assert.Contains("Nothing was deleted", warning.Message);
+        Assert.Contains("only ever moves files", warning.Message);
     }
 
     [Fact]

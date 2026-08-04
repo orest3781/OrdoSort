@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -60,14 +61,36 @@ public class CopyAndTerminologyTests
             WindowStartupLocation = WindowStartupLocation.Manual,
         };
 
-    private static SettingsViewModel BuildSettingsVm(bool dark, out string cfgPath)
+    private static SettingsViewModel BuildSettingsVm(bool dark, out string cfgPath,
+        int probeDelayMs = 300)
     {
         var cfg = new Config();
         cfg.Routes.Add(new Route { Label = "Invoices", Path = @"C:\dest", Hotkey = "Ctrl+1" });
         cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_copy_" + Guid.NewGuid(), "config.json");
         return new SettingsViewModel(cfg, new NoDialogs(),
             () => dark ? ThemePalette.Dark : ThemePalette.Light, cfgPath,
-            uiContext: SynchronizationContext.Current);
+            uiContext: SynchronizationContext.Current, probeDelayMs: probeDelayMs);
+    }
+
+    /// <summary>Pump this thread's dispatcher until <paramref name="settled"/>
+    /// holds, YIELDING between checks (a DispatcherTimer inside a nested
+    /// DispatcherFrame) rather than sleeping on the very thread the awaited
+    /// work has to be posted back to. The per-field notes resolve off-thread
+    /// through <see cref="OrdoSort.Wpf.Services.DebouncedProbe{T}"/> and come
+    /// back via SynchronizationContext.Post, so nothing arrives at all unless
+    /// this thread keeps dispatching.</summary>
+    private static void PumpUntil(Func<bool> settled, Func<string> describe)
+    {
+        if (settled()) return;
+        var frame = new DispatcherFrame();
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        var timer = new DispatcherTimer(TimeSpan.FromMilliseconds(10),
+            DispatcherPriority.Background,
+            (_, _) => { if (settled() || DateTime.UtcNow > deadline) frame.Continue = false; },
+            Dispatcher.CurrentDispatcher);
+        try { Dispatcher.PushFrame(frame); }
+        finally { timer.Stop(); }
+        Assert.True(settled(), describe());
     }
 
     // ------------------------------------------- I5: one word for one feature
@@ -264,6 +287,269 @@ public class CopyAndTerminologyTests
                 $"{(dark ? "dark" : "light")}: subtle note {fg} on {source} {bg} = {ratio:F2}");
         }
         finally { window.Close(); }
+    });
+
+    /// <summary>One per-field note: which tab it lives on, the view-model
+    /// property carrying its text, and two states it can really be driven
+    /// into through production logic — never a literal copied out of the
+    /// XAML.</summary>
+    private sealed record NoteCase(
+        string Tab, string TextProperty,
+        Action<SettingsViewModel> First, string FirstText, bool FirstNeedsAttention,
+        Action<SettingsViewModel> Then, string ThenText, bool ThenNeedsAttention);
+
+    /// <summary>The severity mechanism is an EIGHT-way coupling between XAML
+    /// and C#: one shared <c>NoteText</c> style carries the amber trigger, and
+    /// each of the eight note TextBlocks has to hand it its own flag through
+    /// <c>Tag="{Binding …NoteNeedsAttention}"</c>. Drop one of those eight
+    /// attributes in a later edit and nothing throws: the binding simply
+    /// isn't there, Tag stays null, the trigger never fires, and that one note
+    /// is permanently subtle — silently de-emphasising, for instance, History
+    /// database's missing-folder warning or a data file's ConfigException
+    /// parse error. The narrower predecessor of this test only ever exercised
+    /// InboxNote, so seven of the eight were unguarded.
+    ///
+    /// Everything here is RESOLVED RUNTIME STATE, the same standard the tab
+    /// mnemonics are held to: the TextBlocks are located in a real
+    /// SettingsWindow by their Text BINDING PATH, the flag is read off the
+    /// live view model by that path's name (so a note whose property was
+    /// renamed or deleted fails rather than being skipped), the Tag binding's
+    /// own path is checked to be the matching flag (which colour alone cannot
+    /// catch when two notes are the same severity), and the colour is the
+    /// brush the element actually resolved.
+    ///
+    /// Both states of every note are driven through production logic. Seven
+    /// reach amber. <c>NamesFileNote</c> deliberately cannot: its "file
+    /// doesn't exist yet" branch is Info by design (the field is optional and
+    /// the file is written the first time a name is learned), and asserting
+    /// that here is what stops a later edit from quietly promoting it.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EveryFieldNoteCarriesItsOwnSeverityToItsRenderedColour(bool dark) => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark);
+        var vm = BuildSettingsVm(dark, out var cfgPath, probeDelayMs: 0);
+        var cfgDir = Path.GetDirectoryName(cfgPath)!;
+        Directory.CreateDirectory(cfgDir);
+        // never created: the "folder doesn't exist" branches need a real miss
+        var absent = Path.Combine(Path.GetTempPath(), "ordo_absent_" + Guid.NewGuid());
+        foreach (var name in new[] { "destinations", "folders", "alerts", "labels" })
+            File.WriteAllText(Path.Combine(cfgDir, $"broken-{name}.json"), "{ not json");
+
+        const string relative = "relative — resolved beside the config file";
+        var cases = new[]
+        {
+            new NoteCase("General", nameof(vm.InboxNote),
+                v => v.Inbox = "inbox", relative, false,
+                v => v.Inbox = "", "no inbox folder set", true),
+            new NoteCase("General", nameof(vm.DeferredNote),
+                v => v.Deferred = "set-aside", relative, false,
+                v => v.Deferred = absent, "folder doesn't exist", true),
+            // the one note with no problem branch at all — see the class doc
+            new NoteCase("General", nameof(vm.NamesFileNote),
+                v => v.NamesFile = "names-list.txt", relative, false,
+                v => v.NamesFile = Path.Combine(absent, "names.txt"),
+                "file doesn't exist yet", false),
+            new NoteCase("General", nameof(vm.HistoryDbNote),
+                v => v.HistoryDb = "history-db.sqlite",
+                "relative — kept beside the config file", false,
+                v => v.HistoryDb = Path.Combine(absent, "history.sqlite"),
+                "folder doesn't exist", true),
+            new NoteCase("Data files", nameof(vm.DestinationsFileNote),
+                v => v.DestinationsFile = "", "blank = the default beside config.json", false,
+                v => v.DestinationsFile = "broken-destinations.json", "is not valid JSON", true),
+            new NoteCase("Data files", nameof(vm.MonitoredFoldersFileNote),
+                v => v.MonitoredFoldersFile = "", "blank = the default beside config.json", false,
+                v => v.MonitoredFoldersFile = "broken-folders.json", "is not valid JSON", true),
+            new NoteCase("Data files", nameof(vm.AlertsFileNote),
+                v => v.AlertsFile = "", "blank = the default beside config.json", false,
+                v => v.AlertsFile = "broken-alerts.json", "is not valid JSON", true),
+            new NoteCase("Data files", nameof(vm.BoxLabelsFileNote),
+                v => v.BoxLabelsFile = "", "blank = the default beside config.json", false,
+                v => v.BoxLabelsFile = "broken-labels.json", "is not valid JSON", true),
+        };
+
+        var window = BuildSettingsWindow(vm);
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+
+            AssertPhase(window, vm, cases, dark, second: false);
+            AssertPhase(window, vm, cases, dark, second: true);
+        }
+        finally
+        {
+            window.Close();
+            try { Directory.Delete(cfgDir, true); } catch (IOException) { }
+        }
+    });
+
+    private static string NoteText(SettingsViewModel vm, string property) =>
+        (string)(typeof(SettingsViewModel).GetProperty(property)
+            ?? throw new InvalidOperationException($"SettingsViewModel has no {property}"))
+            .GetValue(vm)!;
+
+    private static bool NoteFlag(SettingsViewModel vm, string property) =>
+        (bool)(typeof(SettingsViewModel).GetProperty(property + "NeedsAttention")
+            ?? throw new InvalidOperationException(
+                $"SettingsViewModel has no {property}NeedsAttention — the severity " +
+                $"flag {property}'s note binds to Tag no longer exists"))
+            .GetValue(vm)!;
+
+    /// <summary>Drive all eight notes into one of their two states at once,
+    /// wait for the off-thread probes to land, then read every note's rendered
+    /// colour tab by tab (a TabControl only realises the SELECTED tab's
+    /// content, so the four General notes and the four Data files notes are
+    /// never in the visual tree at the same moment). Every mismatch is
+    /// collected before failing, so one run names all of them.</summary>
+    private static void AssertPhase(Window window, SettingsViewModel vm,
+        NoteCase[] cases, bool dark, bool second)
+    {
+        (string Text, bool Amber) Expected(NoteCase c) =>
+            second ? (c.ThenText, c.ThenNeedsAttention) : (c.FirstText, c.FirstNeedsAttention);
+
+        foreach (var c in cases) (second ? c.Then : c.First)(vm);
+
+        PumpUntil(
+            () => cases.All(c =>
+            {
+                var (text, amber) = Expected(c);
+                return NoteText(vm, c.TextProperty).Contains(text, StringComparison.Ordinal)
+                       && NoteFlag(vm, c.TextProperty) == amber;
+            }),
+            () => $"notes never settled ({(second ? "second" : "first")} state): " +
+                  string.Join("; ", cases.Select(c =>
+                      $"{c.TextProperty}=\"{NoteText(vm, c.TextProperty)}\"" +
+                      $"/{NoteFlag(vm, c.TextProperty)}")));
+
+        var palette = dark ? ThemePalette.Dark : ThemePalette.Light;
+        var tabControl = Descendants<TabControl>(window).First();
+        var tabs = tabControl.Items.Cast<TabItem>().ToList();
+        var problems = new List<string>();
+
+        foreach (var tabName in cases.Select(c => c.Tab).Distinct())
+        {
+            tabControl.SelectedItem = tabs.First(t =>
+                (t.Header?.ToString() ?? "").Replace("_", "") == tabName);
+            window.UpdateLayout();
+            PumpRender();
+            window.UpdateLayout();
+
+            var notes = Descendants<TextBlock>(window)
+                .Select(t => (Block: t,
+                    Path: BindingOperations.GetBinding(t, TextBlock.TextProperty)?.Path.Path))
+                .Where(x => x.Path is not null)
+                .ToDictionary(x => x.Path!, x => x.Block, StringComparer.Ordinal);
+
+            foreach (var c in cases.Where(c => c.Tab == tabName))
+            {
+                var (text, amber) = Expected(c);
+                var where = $"{(dark ? "dark" : "light")} {c.TextProperty}";
+                if (!notes.TryGetValue(c.TextProperty, out var note))
+                {
+                    problems.Add($"{where}: no TextBlock on the \"{tabName}\" tab binds Text to it");
+                    continue;
+                }
+
+                if (!note.Text.Contains(text, StringComparison.Ordinal))
+                    problems.Add($"{where}: rendered \"{note.Text}\", expected to contain \"{text}\"");
+                if (note.Visibility != Visibility.Visible)
+                    problems.Add($"{where}: {note.Visibility}, so nothing is read at all");
+
+                // the Tag binding is what hands this note's own severity to the
+                // one shared style's trigger; a dropped attribute leaves it null
+                var tagPath = BindingOperations.GetBinding(note, FrameworkElement.TagProperty)?.Path.Path;
+                if (tagPath != c.TextProperty + "NeedsAttention")
+                    problems.Add($"{where}: Tag is bound to \"{tagPath ?? "(nothing)"}\", " +
+                                 $"expected \"{c.TextProperty}NeedsAttention\"");
+                if (note.Tag is not bool flag) problems.Add($"{where}: Tag resolved to " +
+                    $"{note.Tag?.ToString() ?? "null"}, so the amber trigger can never match");
+                else if (flag != amber)
+                    problems.Add($"{where}: Tag carries {flag}, view model says {amber}");
+
+                var expected = amber ? palette.StatusAmber : palette.SubtleText;
+                var actual = ToRgb(note.Foreground);
+                if (expected != actual)
+                    problems.Add($"{where}: \"{note.Text}\" resolved {actual}, expected " +
+                                 $"{(amber ? "StatusAmber" : "SubtleText")} {expected}");
+            }
+        }
+
+        Assert.True(problems.Count == 0,
+            $"{(second ? "second" : "first")} state:\n  " + string.Join("\n  ", problems));
+    }
+
+    // ------------------------------- I6: the dialog's promise about crash.log
+
+    /// <summary>The dialog for an unexpected filing fault ends "The technical
+    /// details were written to crash.log, beside your config file" — and since
+    /// this task removed the raw exception text from the dialog itself, that
+    /// channel is now the ONLY way a developer ever sees what actually threw.
+    /// It hangs on one line in MainWindow's constructor
+    /// (<c>Shell.UnexpectedError += App.LogCrash;</c>). Delete it in a later
+    /// refactor and every test still passes while the dialog keeps promising a
+    /// file that is never written.
+    ///
+    /// Measured against a REAL MainWindow, not a re-creation of its wiring:
+    /// the handler is read off the live ShellViewModel's event field and
+    /// invoked, and crash.log is then read back. (Reflection is the only way
+    /// in — a field-like event can only be raised by its declaring type — but
+    /// what it reads is the actual subscription list the app built.) The
+    /// window is never Show()n, so its Loaded handler never starts a real
+    /// WebView2 environment; the same trick TriageWindowDisposalTests uses.
+    /// App's own DispatcherUnhandledException handler needs no equivalent —
+    /// it calls LogCrash inline rather than through an event.</summary>
+    [Fact]
+    public void TheShellsUnexpectedErrorChannelReallyReachesCrashLog() => _fx.Invoke(() =>
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ordo_crashlog_" + Guid.NewGuid());
+        Directory.CreateDirectory(dir);
+        var cfg = new Config
+        {
+            Inbox = Path.Combine(dir, "inbox"),
+            HistoryDb = Path.Combine(dir, "history.sqlite"),
+        };
+        Directory.CreateDirectory(cfg.Inbox);
+        var previousCrashDir = App._crashDir;
+        App._crashDir = dir;
+
+        var window = new MainWindow(cfg, Path.Combine(dir, "config.json"))
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            var subscribers = (Action<Exception>?)typeof(ShellViewModel)
+                .GetField(nameof(ShellViewModel.UnexpectedError),
+                    BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(window.Shell);
+
+            Assert.True(subscribers is not null,
+                "nothing is subscribed to ShellViewModel.UnexpectedError — the dialog " +
+                "promises crash.log, so the raw exception has nowhere left to go");
+
+            subscribers!(new InvalidOperationException("the detail the dialog no longer shows"));
+
+            var log = Path.Combine(dir, "crash.log");
+            Assert.True(File.Exists(log), $"no crash.log was written to {dir}");
+            var text = File.ReadAllText(log);
+            Assert.Contains("the detail the dialog no longer shows", text);
+            Assert.Contains(nameof(InvalidOperationException), text);
+        }
+        finally
+        {
+            window.Close();
+            App._crashDir = previousCrashDir;
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            for (var i = 0; i < 10; i++)
+            {
+                try { Directory.Delete(dir, true); break; } catch (IOException) { Thread.Sleep(50); }
+            }
+        }
     });
 
     private static Rgb ToRgb(Brush? brush)

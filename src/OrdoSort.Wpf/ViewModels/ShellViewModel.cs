@@ -84,7 +84,10 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // button and one who pressed Undo need different reassurance.
         RouteCommand.OnError += ex => ReportUnexpected(ex, "Filing that document");
         SkipCommand.OnError += ex => ReportUnexpected(ex, "Setting that document aside");
-        UndoCommand.OnError += ex => ReportUnexpected(ex, "Undoing the last filing");
+        // Undo is the one action whose two places are the OTHER way round, so
+        // it cannot share the default sentence — see ReportUnexpected.
+        UndoCommand.OnError += ex => ReportUnexpected(ex, "Undoing the last filing",
+            "either back in the inbox or still in the folder it was filed to");
 
         _watch.Activity += OnFolderActivity;
     }
@@ -111,13 +114,23 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// appends the full exception to crash.log beside the config.</summary>
     /// <param name="action">What the user was doing, sentence-initial —
     /// "Filing that document", etc.</param>
-    private void ReportUnexpected(Exception ex, string action)
+    /// <param name="whereabouts">The two places the document can be, as the
+    /// user would name them. The default reads correctly for filing and for
+    /// setting aside — both start in the inbox and end somewhere else — but
+    /// NOT for Undo, which runs the move backwards: after pressing Undo,
+    /// "where it started" is the destination folder and "where it was going"
+    /// is the inbox, which is the exact opposite of how a user reads those
+    /// words. Undo therefore passes its own sentence. The guarantee itself is
+    /// unchanged in every case: the document is in one of exactly two places,
+    /// because the app only ever moves files.</param>
+    private void ReportUnexpected(Exception ex, string action,
+        string whereabouts = "either where it started or where it was going")
     {
         UnexpectedError?.Invoke(ex);
         _dialogs.Warn(
             $"{action} didn't finish.\n\n" +
             "Nothing was deleted — OrdoSort only ever moves files, so the document " +
-            "is either where it started or where it was going. Check both before " +
+            $"is {whereabouts}. Check both before " +
             "trying again.\n\n" +
             "The technical details were written to crash.log, beside your config file.",
             "OrdoSort — that didn't finish");
