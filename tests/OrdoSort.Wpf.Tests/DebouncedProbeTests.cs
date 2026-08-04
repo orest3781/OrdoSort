@@ -106,6 +106,31 @@ public class DebouncedProbeTests
         lock (applied) Assert.Equal(new[] { "only" }, applied);
     }
 
+    /// <summary>M2 (2026-08-03 final-review): Dispose() must cancel an
+    /// in-flight probe outright, the same guarantee <see cref="Cancel"/>
+    /// gives and the one every caller's own doc promises (e.g.
+    /// SettingsViewModel.Dispose: "disposing cancels it outright instead of
+    /// waiting it out"). Triggers a probe (reaches the scheduler, i.e. past
+    /// Fire()), disposes while it's still pending there, THEN releases it —
+    /// mirroring the real race: a probe already running when the owning
+    /// view model is torn down. The result must never reach <c>applied</c>.</summary>
+    [Fact]
+    public void DisposeDropsAnInFlightProbesResultInsteadOfApplyingIt()
+    {
+        var scheduler = new ManualWorkScheduler();
+        var applied = new List<string>();
+        var probe = new DebouncedProbe<string>(scheduler, uiContext: null, v => { lock (applied) applied.Add(v); }, intervalMs: 0);
+
+        probe.Trigger(() => "late", immediate: true);
+        WaitFor(() => scheduler.PendingCount == 1, "the probe's work should reach the scheduler");
+
+        probe.Dispose();   // the view model that owns this probe is gone
+
+        scheduler.Release(0);
+        Thread.Sleep(200);   // give the (wrongly) applied result a generous moment to show up
+        lock (applied) Assert.Empty(applied);
+    }
+
     /// <summary>Debounce semantics: rapid re-triggering (the shape of fast
     /// keystrokes) must only ever let the LAST call's work reach the
     /// scheduler — earlier ones are cancelled outright, never merely

@@ -26,11 +26,15 @@ public partial class TriageWindow : Window
 
     /// <summary>True once this window has started closing. WebView2 cold
     /// start is not instant, and "Stop reviewing" is IsCancel="True" — so
-    /// Close() can land while InitAndShowAsync below is still mid-flight.
-    /// Set in the Closed handler BEFORE Viewer.Dispose(), and checked after
-    /// each await in InitAndShowAsync, so a continuation that resumes after
-    /// the window is gone never touches the (by then disposed) Viewer and
-    /// never shows a MessageBox owned by an already-closed window.</summary>
+    /// Close() can land while InitAndShowAsync below is still mid-flight, OR
+    /// while a decision (<see cref="UseSelectedAsync"/>'s up-to-2s
+    /// <c>ReleaseAsync</c> await, accepted via Enter) is. Set in the Closed
+    /// handler BEFORE Viewer.Dispose(), checked after each await in
+    /// InitAndShowAsync AND at the top of <see cref="ShowCurrentAsync"/> —
+    /// the single choke point every post-decision continuation calls back
+    /// into — so a continuation that resumes after the window is gone never
+    /// touches the (by then disposed) Viewer and never shows a MessageBox
+    /// owned by an already-closed window.</summary>
     internal bool IsClosed { get; private set; }
 
     /// <summary>Which item is being reviewed. Exposed only so the smoke
@@ -111,6 +115,12 @@ public partial class TriageWindow : Window
 
     internal async Task ShowCurrentAsync()
     {
+        // the decision path (UseSelectedAsync, after its ReleaseAsync await)
+        // and OnSkip both call back in here — this is the one place that
+        // guards all of them against a window that closed (and disposed
+        // Viewer) while they were suspended, rather than re-checking
+        // IsClosed at every call site
+        if (IsClosed) return;
         var r = Current;
         if (r is null) { Close(); return; }
         Progress.Text = $"{_index + 1} / {_items.Count}";
@@ -203,7 +213,21 @@ public partial class TriageWindow : Window
         }
     }
 
-    private async void OnUseSelected(object sender, RoutedEventArgs e)
+    private async void OnUseSelected(object sender, RoutedEventArgs e) =>
+        await UseSelectedAsync(_pdf.ReleaseAsync);
+
+    /// <summary>The Enter/click decision path. Takes the release call as a
+    /// delegate — same reason as <see cref="InitAndShowAsync"/>'s
+    /// <c>initAsync</c> parameter — so a test can hold it open across a
+    /// Close() without a real, untimeable WebView2 release. <c>ReleaseAsync</c>
+    /// is the one await here with genuine (up to 2s) latency, so it's the
+    /// only point where "Stop reviewing" (Escape, IsCancel="True") can land
+    /// mid-flight; MergeOne still runs when it resumes — the rename is
+    /// correct and must complete either way, window open or not — and only
+    /// <see cref="ShowCurrentAsync"/>'s own <see cref="IsClosed"/> guard
+    /// decides whether to touch the (by then possibly disposed) Viewer
+    /// afterward.</summary>
+    internal async Task UseSelectedAsync(Func<Task> releaseAsync)
     {
         var r = Current;
         if (_busy || r is null || Candidates.SelectedIndex < 0) return;
@@ -212,7 +236,7 @@ public partial class TriageWindow : Window
         {
             var candidate = CandidatesOf(r)[Candidates.SelectedIndex];
 
-            await _pdf.ReleaseAsync();   // Edge lets go of the file before the rename
+            await releaseAsync();   // Edge lets go of the file before the rename
             var outcomes = MatchMerge.MergeOne(r.Source, candidate.ControlId);
             if (outcomes[0].Final is null)
             {

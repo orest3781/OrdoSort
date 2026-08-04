@@ -138,8 +138,22 @@ public sealed class DebouncedProbe<T> : IDisposable where T : class
         else _uiContext.Post(_ => _apply(result), null);
     }
 
+    /// <summary>Same guarantee as <see cref="Cancel"/>, for good reason:
+    /// disposal must cancel whatever's pending outright (per every caller's
+    /// doc, e.g. SettingsViewModel.Dispose's "disposing cancels it outright
+    /// instead of waiting it out"), not merely stop new work from being
+    /// scheduled. Without bumping the generation here, a probe already past
+    /// <see cref="Fire"/> (armed and running on the scheduler, generation
+    /// already captured) would still find its stale generation matching on
+    /// return and call <c>_apply</c> on a view model this object was just
+    /// told to let go of.</summary>
     public void Dispose()
     {
+        lock (_gate)
+        {
+            _generation++;
+            _pendingCompute = null;
+        }
         _disposed = true;
         _timer.Dispose();
     }

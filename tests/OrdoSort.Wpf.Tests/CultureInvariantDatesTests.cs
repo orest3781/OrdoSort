@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using OrdoSort.Wpf.ViewModels;
 
 namespace OrdoSort.Wpf.Tests;
@@ -14,6 +15,20 @@ namespace OrdoSort.Wpf.Tests;
 /// ThaiBuddhistCalendar (year 2569, not 2026), which actually forces a
 /// different string out of a Calendar-driven custom pattern.
 /// </summary>
+// M3 (2026-08-03 final-review): CrashLogTimestampIsCultureInvariant below
+// mutates the static OrdoSort.Wpf.App._crashDir seam — the exact same one
+// CopyAndTerminologyTests.TheShellsUnexpectedErrorChannelReallyReachesCrashLog
+// mutates. Undeclared, this class defaults to its own (class-named) xUnit
+// collection, which runs in PARALLEL with CopyAndTerminologyTests' collection
+// (no xunit.runner.json disables that) — an unlucky interleaving has one
+// test's crash.log land in the other's temp dir. Joining the same shared
+// collection every other static/process-wide-state test in this project
+// already uses (see HighlightContrastFixture's class doc) is how this suite
+// isolates exactly this class of seam; this class doesn't need the
+// fixture's STA Application itself (none of these three tests touch WPF),
+// so it isn't taken as a constructor parameter — only the collection's
+// "never run two of my classes concurrently" guarantee is needed here.
+[Collection(HighlightContrastTests.Name)]
 public class CultureInvariantDatesTests : IDisposable
 {
     private readonly string _dir = Directory.CreateTempSubdirectory("ordoculttest_").FullName;
@@ -103,5 +118,41 @@ public class CultureInvariantDatesTests : IDisposable
         {
             OrdoSort.Wpf.App._crashDir = prevDir;
         }
+    }
+}
+
+/// <summary>M3's actual fix is xUnit collection membership, not a code path —
+/// the race it closes is a scheduler interleaving on the order of
+/// milliseconds, which by construction can't be forced to reproduce on
+/// demand (a timing-based test would either always pass or be flaky, never a
+/// reliable "fails without the fix"). This instead pins the mechanism the fix
+/// actually relies on: both classes that mutate the static
+/// <see cref="OrdoSort.Wpf.App._crashDir"/> seam must declare the SAME
+/// <c>[Collection(...)]</c> name, since that — not anything about either
+/// class's own behavior — is what stops xUnit from ever running them
+/// concurrently. Pre-fix, <see cref="CultureInvariantDatesTests"/> had no
+/// [Collection] attribute at all, so <c>cultureCollection</c> below was null
+/// and this failed; a future edit that drops the attribute or typos the name
+/// fails it again.</summary>
+public class CrashDirTestCollectionMembershipTests
+{
+    // Reads the [Collection("...")] name via CustomAttributeData's
+    // constructor argument rather than CollectionAttribute.Name — robust
+    // against exactly which xunit.core build resolves at compile time,
+    // and it's the constructor argument, not a settled property, that
+    // xUnit's own discovery reads to group classes into one collection.
+    private static string? CollectionNameOf(Type t) =>
+        t.GetCustomAttributesData()
+            .FirstOrDefault(a => a.AttributeType.FullName == "Xunit.CollectionAttribute")
+            ?.ConstructorArguments.FirstOrDefault().Value as string;
+
+    [Fact]
+    public void CultureInvariantDatesTestsSharesCopyAndTerminologyTestsCollection()
+    {
+        var cultureCollection = CollectionNameOf(typeof(CultureInvariantDatesTests));
+        var copyCollection = CollectionNameOf(typeof(CopyAndTerminologyTests));
+
+        Assert.NotNull(cultureCollection);
+        Assert.Equal(copyCollection, cultureCollection);
     }
 }
