@@ -6,6 +6,7 @@ using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Threading;
 using OrdoSort.Wpf.Theme;
+using OrdoSort.Wpf.ViewModels;
 
 namespace OrdoSort.Wpf.Tests;
 
@@ -40,15 +41,25 @@ internal sealed class ComboRowProbeTemplateSelector : DataTemplateSelector
 /// <c>ContentTemplate=NON-NULL</c> on its containers, so that template was dead
 /// markup, exactly as WatchList's were.
 ///
-/// This was never a shipping defect — all nine ComboBoxes in the app either set
-/// ItemTemplate (SettingsWindow's process-order/naming-mode/font pickers, via
-/// KvpValueTemplate/FontChoiceTemplate) or use plain strings (MainWindow's tile
+/// For the DROP-DOWN rows it was latent, not live — all ELEVEN ComboBoxes in
+/// the app (round 1 said "nine" while enumerating eleven; corrected in fix
+/// round 2) either set ItemTemplate (three: SettingsWindow's
+/// process-order/naming-mode pickers via KvpValueTemplate, its font picker via
+/// FontChoiceTemplate) or carry plain-string content (eight: MainWindow's tile
 /// filter, BulkRenameWindow's case picker, SettingsWindow's sound picker,
 /// MatchMergeWindow's three header pickers, PrintPreviewWindow's printer list,
-/// SettingsWindow's editable section picker). It was a LATENT one, and the
-/// decisive reason Task 8b chose the selector remedy over a one-instance patch
-/// was that it "leaves the next author no hole" — which was only true of the
-/// next ListBox author. The only thing standing between the next COMBOBOX
+/// SettingsWindow's editable section picker). Zero DataType-templated
+/// ComboBoxes, zero ItemTemplateSelector anywhere in src/ outside Theme/.
+///
+/// For the CLOSED FACE it was live and had been all along, which round 1 got
+/// backwards — see
+/// <see cref="ClosedComboBoxStillShowsTheSelectedItemLegibly"/>: removing the
+/// blanket Setter silently repaired a real dark-mode WCAG failure (1.44:1 ->
+/// 12.23:1) on the six <c>&lt;ComboBoxItem&gt;</c>-children instances.
+///
+/// The decisive reason Task 8b chose the selector remedy over a one-instance
+/// patch was that it "leaves the next author no hole" — which was only true of
+/// the next ListBox author. The only thing standing between the next COMBOBOX
 /// author and a repeat of the Critical was a call-site comment reading
 /// "verified no ComboBoxItem in this app sets compound (non-string) Content":
 /// the same decaying-premise shape that hid the original bug through a full
@@ -233,28 +244,58 @@ public class ContentTemplateSetterTests
         });
     });
 
-    /// <summary>Part 3 of 3, and the one genuinely new risk narrowing THIS
-    /// Setter carries (the ListBox one had no equivalent): the CLOSED
-    /// ComboBox. Its face is a separate ContentPresenter inside the ComboBox
-    /// template bound to <c>SelectionBoxItem</c>/<c>SelectionBoxItemTemplate</c>,
-    /// and <c>ComboBox.UpdateSelectionBoxItem</c> copies the selected
-    /// CONTAINER's ContentTemplate into that property — a DataTemplate this
-    /// remedy deliberately stops setting. There is no
-    /// SelectionBoxItemTemplateSelector, so the closed face necessarily changes
-    /// path here, from "the themed template with a FindAncestor Foreground
-    /// binding that cannot resolve outside a ComboBoxItem" to WPF's plain
-    /// string auto-wrap. Both land on Theme.Text; this pins that the visible
-    /// text survives and stays legible against Theme.Surface in BOTH
-    /// palettes.</summary>
+    /// <summary>Part 3 of 3 — the CLOSED ComboBox, i.e. the face the user looks
+    /// at when nothing is dropped down. It is a separate ContentPresenter inside
+    /// the ComboBox's OWN template, bound to
+    /// <c>SelectionBoxItem</c>/<c>SelectionBoxItemTemplate</c>, and there is no
+    /// SelectionBoxItemTemplateSelector — so every question about the closed
+    /// face is a question about which DataTemplate
+    /// <c>ComboBox.UpdateSelectionBoxItem</c> puts in that property, and about
+    /// whether that template's bindings can still resolve OUT THERE, outside
+    /// any ComboBoxItem.
+    ///
+    /// It runs over all THREE shapes the app actually ships (see
+    /// <see cref="SelectionBoxItemTemplateComesFromTheSelectedItemNeverFromItsContainer"/>
+    /// for the mechanism that decides which template each gets) and BOTH
+    /// palettes, because the two facts this covers were each invisible from one
+    /// angle:
+    ///
+    /// * The <c>&lt;ComboBoxItem&gt;</c>-children shape (MainWindow's tile
+    ///   filter, BulkRenameWindow's case picker, the four Settings sound
+    ///   pickers) was a LIVE dark-mode WCAG failure until fix round 1 removed
+    ///   the blanket ContentTemplate Setter: the item IS a ContentControl, so
+    ///   its ContentTemplate — the Setter's, whose Foreground binding is a
+    ///   FindAncestor on ComboBoxItem that cannot resolve on the selection
+    ///   box — became the SelectionBoxItemTemplate, and the closed face fell
+    ///   back to the DP default, BLACK. Measured on screen: (0,0,0) on dark
+    ///   Theme.Surface (38,41,45) = 1.44:1; after, (233,235,238) = 12.23:1.
+    /// * The <c>ItemTemplate</c> shape (the two KvpValueTemplate pickers and
+    ///   the FontChoiceTemplate font picker) had the IDENTICAL failure from the
+    ///   identical cause, was untouched by that round, and was still live at
+    ///   `8bdab38` — 1.44:1 on screen in dark mode, three times over.
+    ///
+    /// The version of this test that shipped in fix round 1 drove only
+    /// <c>ItemsSource = string[]</c>, the ONE shape whose
+    /// SelectionBoxItemTemplate is null on both sides of every change here. It
+    /// passed before and after because the path it was named for was never
+    /// entered. Hence the shape parameter — and hence
+    /// <see cref="ClosedFaceProbe"/> asserting the SelectionBoxItemTemplate it
+    /// expects, so a future edit that quietly stops exercising a path fails
+    /// instead of going quiet again.
+    ///
+    /// Both assertions are load-bearing, and in opposite palettes: the ratio
+    /// catches dark mode (1.44:1), and the exact-colour comparison catches
+    /// light mode, where the very same broken binding produces BLACK on white —
+    /// 21.00:1, a perfectly legible wrong answer. Checking only contrast is why
+    /// a full theme audit walked past this three times.</summary>
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ClosedComboBoxStillShowsTheSelectedItemLegibly(bool dark) => _fx.Invoke(() =>
+    [MemberData(nameof(ClosedFaceCases))]
+    public void ClosedComboBoxStillShowsTheSelectedItemLegibly(string shape, bool dark) => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark);
         var palette = dark ? ThemePalette.Dark : ThemePalette.Light;
 
-        var combo = new ComboBox { ItemsSource = new[] { "Active only", "All", "Hidden" } };
+        var (combo, expectedText, expectsSelectionBoxTemplate) = ClosedFaceProbe(shape);
         var window = OffScreenWindow(combo);
         try
         {
@@ -265,19 +306,167 @@ public class ContentTemplateSetterTests
             window.UpdateLayout();
 
             Assert.False(combo.IsDropDownOpen);
-            var face = FindAllDescendants<TextBlock>(combo).FirstOrDefault(t => t.Text == "Active only")
+
+            var face = FindAllDescendants<TextBlock>(combo).FirstOrDefault(t => t.Text == expectedText)
                 ?? throw new InvalidOperationException(
-                    "the closed ComboBox does not display the selected item's text at all; " +
+                    $"the closed ComboBox [{shape}] does not display the selected item's text at all; " +
                     $"visible texts: [{string.Join(", ", FindAllDescendants<TextBlock>(combo).Select(t => $"\"{t.Text}\""))}]");
 
             var fg = Assert.IsAssignableFrom<SolidColorBrush>(face.Foreground);
-            var ratio = ThemePalette.ContrastRatio(
-                new Rgb(fg.Color.R, fg.Color.G, fg.Color.B), palette.Surface);
+            var rgb = new Rgb(fg.Color.R, fg.Color.G, fg.Color.B);
+            var ratio = ThemePalette.ContrastRatio(rgb, palette.Surface);
+
             Assert.True(ratio >= 4.5,
-                $"closed ComboBox face ({(dark ? "dark" : "light")}): " +
-                $"{fg.Color} on {palette.Surface} = {ratio:F2}");
+                $"closed ComboBox face [{shape}, {(dark ? "dark" : "light")}]: " +
+                $"{rgb} on Theme.Surface {palette.Surface} = {ratio:F2}:1");
+            // ...and it must be Theme.Text, not merely something legible. A
+            // failed FindAncestor Foreground binding yields the DP default —
+            // black — which passes the ratio check on the light palette at
+            // 21.00:1 while being exactly as broken as the dark one.
+            Assert.Equal(palette.Text, rgb);
+
+            // LAST, deliberately: the path this shape is here to exercise,
+            // pinned rather than assumed, so a future edit that stops driving
+            // it fails instead of going quiet the way the round-1 version of
+            // this test did. It runs after the measurements so that a
+            // regression in what the USER sees is what gets printed first.
+            if (expectsSelectionBoxTemplate)
+                Assert.Same(combo.ItemTemplate, combo.SelectionBoxItemTemplate);
+            else
+                Assert.Null(combo.SelectionBoxItemTemplate);
         }
         finally { window.Close(); }
+    });
+
+    public static TheoryData<string, bool> ClosedFaceCases()
+    {
+        var data = new TheoryData<string, bool>();
+        foreach (var shape in new[] { "itemssource-strings", "comboboxitem-children", "itemtemplate-kvp", "itemtemplate-font" })
+        foreach (var dark in new[] { false, true })
+            data.Add(shape, dark);
+        return data;
+    }
+
+    /// <summary>The four closed-face shapes, each built the way a real call
+    /// site builds it and — for the two ItemTemplate ones — through the actual
+    /// SHIPPED template and the actual production choice arrays, resolved by
+    /// key out of the loaded Styles.xaml. Returns the text the closed face must
+    /// show and whether SelectionBoxItemTemplate is expected to be the
+    /// ItemTemplate (as opposed to null).</summary>
+    private (ComboBox Combo, string Text, bool HasSelectionBoxTemplate) ClosedFaceProbe(string shape)
+    {
+        switch (shape)
+        {
+            // MatchMergeWindow's three header pickers, PrintPreviewWindow's
+            // printer list, SettingsWindow's editable section picker.
+            case "itemssource-strings":
+                return (new ComboBox { ItemsSource = new[] { "Active only", "All", "Hidden" } },
+                        "Active only", false);
+
+            // MainWindow's tile filter, BulkRenameWindow's case picker, and the
+            // four Settings sound pickers. The item is a ContentControl, so
+            // UpdateSelectionBoxItem takes ITS ContentTemplate — which is
+            // exactly what the blanket Setter used to supply.
+            case "comboboxitem-children":
+            {
+                var combo = new ComboBox();
+                foreach (var s in new[] { "Active only", "All", "Hidden" })
+                    combo.Items.Add(new ComboBoxItem { Content = s });
+                return (combo, "Active only", false);
+            }
+
+            // SettingsWindow's "Process order" (Filing) and naming-mode
+            // (Destinations) pickers.
+            case "itemtemplate-kvp":
+                return (new ComboBox
+                        {
+                            ItemTemplate = (DataTemplate)_fx.App.Resources["KvpValueTemplate"],
+                            ItemsSource = SettingsViewModel.SortChoices,
+                        },
+                        SettingsViewModel.SortChoices[0].Value, true);
+
+            // SettingsWindow's "App font" picker (Appearance).
+            case "itemtemplate-font":
+                return (new ComboBox
+                        {
+                            ItemTemplate = (DataTemplate)_fx.App.Resources["FontChoiceTemplate"],
+                            ItemsSource = SettingsViewModel.FontChoices,
+                        },
+                        SettingsViewModel.FontChoices[0].Value, true);
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(shape), shape, "unknown closed-face shape");
+        }
+    }
+
+    /// <summary>The mechanism the two comments above rest on, stated so it can
+    /// be falsified instead of believed. Fix round 1 wrote — in
+    /// <c>Styles.xaml</c>, in PlainStringOnlyTemplateSelector's doc comment and
+    /// in its report — that <c>ComboBox.UpdateSelectionBoxItem</c> "copies the
+    /// SELECTED CONTAINER's ContentTemplate" into SelectionBoxItemTemplate.
+    /// That is wrong, and the wrongness had consequences: it is why the closed
+    /// face was pinned with the one item shape (<c>ItemsSource = string[]</c>)
+    /// whose containers get a template but whose selection box never does, so
+    /// the test could not fail.
+    ///
+    /// What it actually does (PresentationFramework 8.0.27,
+    /// ComboBox.UpdateSelectionBoxItem): it reads <c>InternalSelectedItem</c> —
+    /// the ITEM — and if that item is itself a <see cref="ContentControl"/> it
+    /// unwraps to <c>item.Content</c> and takes <c>item.ContentTemplate</c>;
+    /// otherwise it takes the ComboBox's own <c>ItemTemplate</c>. The generated
+    /// container is never consulted at all. The two probes below say exactly
+    /// that: give the CONTAINERS a template via ItemContainerStyle and the
+    /// selection box ignores it; give the ITEM one and the selection box takes
+    /// it.
+    ///
+    /// This matters beyond bookkeeping. "Container" and "item" coincide for
+    /// <c>&lt;ComboBoxItem&gt;</c> children — which is why the wrong sentence
+    /// still described that case correctly — and diverge for every other shape,
+    /// including the <c>ItemTemplate</c> shape whose live dark-mode failure the
+    /// wrong sentence steered three review rounds away from.</summary>
+    [Fact]
+    public void SelectionBoxItemTemplateComesFromTheSelectedItemNeverFromItsContainer() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+
+        var containersTemplate = ProbeRowTemplate();
+        var itemsOwnTemplate = ProbeRowTemplate();
+        Assert.NotSame(containersTemplate, itemsOwnTemplate);
+
+        // An explicit ItemContainerStyle is the only way to put a
+        // ContentTemplate on the CONTAINERS without also putting one anywhere
+        // else — the shape the wrong sentence predicts would drive the closed
+        // face.
+        Style ContainerStyle() => new(typeof(ComboBoxItem))
+        {
+            Setters = { new Setter(ComboBoxItem.ContentTemplateProperty, containersTemplate) },
+        };
+
+        // (a) a plain, non-ContentControl item: the container has a template,
+        //     the selection box has none.
+        var plain = new ComboBox { ItemContainerStyle = ContainerStyle() };
+        plain.Items.Add("Active only");
+        plain.SelectedIndex = 0;
+        WithOpenDropDown(plain, container =>
+        {
+            Assert.Same(containersTemplate, container.ContentTemplate);
+            Assert.Null(plain.ItemTemplate);
+            Assert.Null(plain.SelectionBoxItemTemplate);
+        });
+
+        // (b) an item that IS a ContentControl and carries its own template:
+        //     the selection box takes the ITEM's, still not the container's,
+        //     and unwraps the item to its Content.
+        var wrapping = new ComboBox { ItemContainerStyle = ContainerStyle() };
+        wrapping.Items.Add(new Label { Content = RowLabel, ContentTemplate = itemsOwnTemplate });
+        wrapping.SelectedIndex = 0;
+        WithOpenDropDown(wrapping, container =>
+        {
+            Assert.Same(containersTemplate, container.ContentTemplate);
+            Assert.Same(itemsOwnTemplate, wrapping.SelectionBoxItemTemplate);
+            Assert.NotSame(container.ContentTemplate, wrapping.SelectionBoxItemTemplate);
+            Assert.Equal(RowLabel, wrapping.SelectionBoxItem);
+        });
     });
 
     // ------------------------------------------- the Calendar styles, decided
@@ -291,13 +480,23 @@ public class ContentTemplateSetterTests
     /// comment — because "verified nothing in this app does X" is precisely the
     /// decaying premise that hid Task 8b's Critical.
     ///
-    /// * Content: every cell's Content is set by WPF's OWN
-    ///   <c>CalendarItem.PopulateGrids</c>/<c>SetDayButtons</c>, to a
-    ///   preformatted day-number or month/year STRING. It is not databound and
-    ///   there is no public API to change it — the DataContext carries the
-    ///   DateTime, the Content never does. So the string branch of
-    ///   ChooseTemplate is the only one these cells could ever take, and a
-    ///   string-only template is behaviourally identical to a blanket one.
+    /// * Content: every cell's Content is set by WPF's OWN CalendarItem, and
+    ///   the API it sets it through is STATICALLY TYPED to string —
+    ///   <c>internal void SetContentInternal(string)</c>, the only
+    ///   Content-setting member CalendarDayButton and CalendarButton declare.
+    ///   That is a stronger fact than "it currently happens to pass a string",
+    ///   which is all the round-1 wording claimed, and it is asserted by
+    ///   reflection below rather than believed. (The round-1 comment also named
+    ///   the wrong callers: <c>PopulateGrids</c> only CREATES the cells and
+    ///   never touches Content; the setters are
+    ///   <c>SetMonthModeCalendarDayButtons</c>, <c>SetMonthButtons</c> and
+    ///   <c>SetYearButtons</c>, and there is no <c>SetDayButtons</c> at all.)
+    ///   The DateTime rides on DataContext, never on Content. So the string
+    ///   branch of ChooseTemplate is the only one these cells could ever take,
+    ///   and a string-only template is behaviourally identical to a blanket
+    ///   one. Content is of course a public settable property on any
+    ///   ContentControl — the claim is about what can REACH these cells, which
+    ///   is the "Reach" bullet below.
     /// * Reach: both styles are KEYED, and are attached only through
     ///   Calendar's own CalendarDayButtonStyle/CalendarButtonStyle Setters
     ///   (see that Style's comment for why an implicit TargetType style cannot
@@ -323,6 +522,19 @@ public class ContentTemplateSetterTests
         Assert.IsType<Style>(_fx.App.Resources["CalendarButtonStyle"]);
         Assert.False(_fx.App.Resources.Contains(typeof(CalendarDayButton)));
         Assert.False(_fx.App.Resources.Contains(typeof(CalendarButton)));
+
+        // The API WPF sets these cells' Content through is typed to string, so
+        // no future CalendarItem could hand one a DateTime without this going
+        // red first. Stated as a type, not as an observation about today's
+        // values — the distinction the keep-the-Setter decision turns on.
+        foreach (var cell in new[] { typeof(CalendarDayButton), typeof(CalendarButton) })
+        {
+            var setter = cell.GetMethod("SetContentInternal",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.True(setter is not null, $"{cell.Name}.SetContentInternal(string) no longer exists");
+            Assert.Equal(typeof(void), setter!.ReturnType);
+            Assert.Equal(typeof(string), Assert.Single(setter.GetParameters()).ParameterType);
+        }
 
         var calendar = new Calendar { DisplayDate = new DateTime(2024, 6, 1) };
         var window = new Window

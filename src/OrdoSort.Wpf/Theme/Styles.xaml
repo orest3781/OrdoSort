@@ -737,22 +737,69 @@
     </Style>
 
     <!-- ItemTemplate-based ComboBox item shapes: a bare TextBlock bound to
-         the item, given a LOCAL Foreground binding to its ComboBoxItem
-         ancestor. Declared HERE (an app-level ResourceDictionary), not in
-         the window that uses them, specifically so both this file's own
-         ComboBoxItem fix below AND these two templates are real, loaded
-         production resources the test suite resolves by key — not a
-         hand-copied stand-in that could silently drift from what actually
-         ships. Verified (2026-08-02): ItemsControl assigns ItemTemplate to
-         the generated container's ContentTemplate as a LOCAL value, which
-         outranks even the ComboBoxItem style's own ContentTemplate Setter
-         below — so this binding is not optional decoration, it is the ONLY
-         thing that fixes this shape. Without it: 1.35:1 light / 1.27:1 dark
-         (WCAG AA failure). With it: 12.89:1 light / 11.48:1 dark. -->
+         the item, given a LOCAL Foreground binding. Declared HERE (an
+         app-level ResourceDictionary), not in the window that uses them,
+         specifically so both this file's own ComboBoxItem fix below AND
+         these two templates are real, loaded production resources the test
+         suite resolves by key — not a hand-copied stand-in that could
+         silently drift from what actually ships. Verified (2026-08-02):
+         ItemsControl assigns ItemTemplate to the generated container's
+         ContentTemplate as a LOCAL value, which outranks even the
+         ComboBoxItem style's own Setters below — so this binding is not
+         optional decoration, it is the ONLY thing that fixes this shape.
+         Without it: 1.35:1 light / 1.27:1 dark (WCAG AA failure). With it:
+         12.89:1 light / 11.48:1 dark.
+
+         WHY A PriorityBinding AND NOT A PLAIN FindAncestor (Task 8b fix
+         round 2, 2026-08-03 — this was a LIVE Critical, on screen, in the
+         shipped app, for as long as these templates have existed). An
+         ItemTemplate is used in TWO places, not one. ItemsControl gives it
+         to each drop-down row, where a ComboBoxItem ancestor exists; and
+         ComboBox.UpdateSelectionBoxItem ALSO assigns it to
+         SelectionBoxItemTemplate, which paints the CLOSED face through a
+         ContentPresenter inside the ComboBox's own ControlTemplate, where
+         there is no ComboBoxItem anywhere above it. A FindAncestor that
+         finds nothing does not inherit and does not fall back to this
+         element's Style: the binding never attaches and the DP keeps its
+         DEFAULT value, which for TextBlock.Foreground is BLACK. Measured on
+         screen at 8bdab38 on all three call sites (Filing "Process order",
+         Destinations naming mode, Appearance "App font"): (0,0,0) on dark
+         Theme.Surface (38,41,45) = 1.44:1, a WCAG AA failure — and 21.00:1
+         on the light palette, which is why a full theme audit and three QC
+         rounds walked past it. After: (233,235,238) = 12.23:1 dark,
+         (23,26,31) = 17.44:1 light.
+
+         The two Bindings below name the two hosts explicitly and in the
+         order ChooseTemplate reaches them, so a reader can check the claim
+         instead of trusting it: a ComboBoxItem when this template is
+         painting a ROW (its Foreground is what the ComboBoxItem style's
+         IsHighlighted trigger flips to Theme.AccentText — the whole point of
+         binding to an ancestor rather than hardcoding a brush), and the
+         ComboBox itself when it is painting the CLOSED FACE (Theme.Text from
+         the ComboBox style below, or whatever a call site set locally).
+         PriorityBinding takes the first binding that produces a value and
+         treats an unresolvable FindAncestor as no value, so the row case is
+         unchanged from before — re-measured on screen after this change,
+         resting row 12.23:1 dark / 17.44:1 light and highlighted row 11.48:1
+         dark / 12.89:1 light, i.e. the numbers HighlightContrastTests already
+         pins. Rejected: FallbackValue, which cannot hold a DynamicResource
+         and so would freeze one palette's colour into a theme-switching app;
+         and collapsing the two into one FindAncestor on a base type broad
+         enough to match both hosts (AncestorType=Control), which would leave
+         the next reader to work out for themselves which control it lands on
+         in each case — being unable to check a claim at a glance is how the
+         wrong mechanism survived three rounds in this very file. Pinned in
+         both palettes and all three shipped shapes by
+         ContentTemplateSetterTests.ClosedComboBoxStillShowsTheSelectedItemLegibly. -->
     <DataTemplate x:Key="KvpValueTemplate">
-        <TextBlock Text="{Binding Value}"
-                   Foreground="{Binding Foreground,
-                       RelativeSource={RelativeSource AncestorType=ComboBoxItem}}" />
+        <TextBlock Text="{Binding Value}">
+            <TextBlock.Foreground>
+                <PriorityBinding>
+                    <Binding Path="Foreground" RelativeSource="{RelativeSource AncestorType=ComboBoxItem}" />
+                    <Binding Path="Foreground" RelativeSource="{RelativeSource AncestorType=ComboBox}" />
+                </PriorityBinding>
+            </TextBlock.Foreground>
+        </TextBlock>
     </DataTemplate>
 
     <!-- Same fix as KvpValueTemplate above, for SettingsWindow.xaml's font
@@ -766,9 +813,14 @@
     <views:FontFamilyStringConverter x:Key="FontFamilyStringForChoiceTemplate" />
     <DataTemplate x:Key="FontChoiceTemplate">
         <TextBlock Text="{Binding Value}"
-                   FontFamily="{Binding Key, Converter={StaticResource FontFamilyStringForChoiceTemplate}}"
-                   Foreground="{Binding Foreground,
-                       RelativeSource={RelativeSource AncestorType=ComboBoxItem}}" />
+                   FontFamily="{Binding Key, Converter={StaticResource FontFamilyStringForChoiceTemplate}}">
+            <TextBlock.Foreground>
+                <PriorityBinding>
+                    <Binding Path="Foreground" RelativeSource="{RelativeSource AncestorType=ComboBoxItem}" />
+                    <Binding Path="Foreground" RelativeSource="{RelativeSource AncestorType=ComboBox}" />
+                </PriorityBinding>
+            </TextBlock.Foreground>
+        </TextBlock>
     </DataTemplate>
 
     <!-- IsHighlighted correctly flips this Style's own Foreground Setter
@@ -808,24 +860,52 @@
          decaying-premise shape that hid Task 8b's Critical through a full
          audit; it is not what this style should rest on.
 
-         One measured consequence of narrowing it, recorded rather than left
-         to be rediscovered: ComboBox.UpdateSelectionBoxItem copies the
-         SELECTED CONTAINER's ContentTemplate into SelectionBoxItemTemplate to
-         paint the CLOSED face, and there is no SelectionBoxItemTemplateSelector
-         for it to consult instead. So the closed face now takes WPF's
-         plain-string auto-wrap rather than this template — whose FindAncestor
-         Foreground binding could not resolve out there anyway, there being no
-         ComboBoxItem above the selection box. Both paths land on Theme.Text;
-         measured legible against Theme.Surface in both palettes and pinned by
-         ClosedComboBoxStillShowsTheSelectedItemLegibly.
+         What narrowing it did to the CLOSED face — CORRECTED in fix round 2
+         (2026-08-03), because round 1 wrote the mechanism down backwards and
+         then pinned it with a test the wrong mechanism made inert.
+
+         WRONG (round 1): "UpdateSelectionBoxItem copies the SELECTED
+         CONTAINER's ContentTemplate into SelectionBoxItemTemplate."
+         RIGHT (PresentationFramework 8.0.27, ComboBox.UpdateSelectionBoxItem,
+         and asserted by
+         ContentTemplateSetterTests.SelectionBoxItemTemplateComesFromTheSelectedItemNeverFromItsContainer):
+         it reads InternalSelectedItem — the ITEM — and if that item is itself
+         a ContentControl it unwraps to item.Content and takes
+         item.ContentTemplate; otherwise it takes the ComboBox's own
+         ItemTemplate. The generated container is NEVER consulted. The two
+         coincide for <ComboBoxItem> children, which is why the wrong sentence
+         still described that one case correctly, and diverge everywhere else.
+
+         So this Setter WAS reaching the closed face, through the item, and
+         the round-1 conversion silently repaired a LIVE dark-mode WCAG
+         failure rather than merely avoiding a new one: the blanket template's
+         FindAncestor Foreground binding cannot resolve out on the selection
+         box (there is no ComboBoxItem above it), so TextBlock.Foreground fell
+         back to its DP default — BLACK. Measured on the six
+         <ComboBoxItem>-children instances (MainWindow's tile filter,
+         BulkRenameWindow's case picker, the four Settings sound pickers):
+         before (0,0,0) on Theme.Surface (38,41,45) = 1.44:1; after
+         (233,235,238) = 12.23:1. There is no SelectionBoxItemTemplateSelector,
+         so those faces now take WPF's plain-string auto-wrap, which lands on
+         Theme.Text by the app-level implicit TextBlock style. Pinned in both
+         palettes and all three shipped shapes by
+         ClosedComboBoxStillShowsTheSelectedItemLegibly — whose round-1
+         version drove ItemsSource=string[], the ONE shape whose selection box
+         gets no template either way, and so could not fail.
 
          These Setters only reach ComboBoxItems that get their Content
          directly (no ItemTemplate) — an ItemsControl with its own
          ItemTemplate assigns it to the container's ContentTemplate as a
-         LOCAL value, which outranks this Style Setter entirely; those call
-         sites (SettingsWindow.xaml's KvpValueTemplate and font-picker
-         ItemTemplate) need the identical local-Foreground-binding fix
-         applied directly in their own templates instead. -->
+         LOCAL value, and ChooseTemplate finds that at step 1 and never
+         reaches the selector this style sets at step 2 (a resolution order,
+         not a precedence one — see the paragraph above); those call sites
+         (SettingsWindow.xaml's KvpValueTemplate and font-picker
+         ItemTemplate) carry their own local Foreground binding instead, and
+         it has to be a PriorityBinding rather than a plain FindAncestor
+         precisely because an ItemTemplate — unlike anything in this style —
+         is ALSO what paints that ComboBox's closed face. See those two
+         templates above; the same 1.44:1 black was live there until fix
+         round 2. -->
 
     <!-- Keyed here rather than inline in the Setter for the same reason as
          PlainStringListItemTemplate/KvpValueTemplate above: the test suite
@@ -1028,20 +1108,37 @@
          of the identical shape above. That trap needs three things: content
          that is not a string, a call site able to supply it, and a style able
          to reach that call site. A Calendar cell has none. WPF's own
-         CalendarItem.PopulateGrids is the ONLY thing that ever sets these
-         cells' Content, and it sets a preformatted day-number/month/year
-         STRING (the DateTime goes to DataContext, never to Content) — so the
-         string branch is the only one ChooseTemplate could ever take here, and
-         a string-only selector would be behaviourally identical to the blanket
-         Setter. And both styles are KEYED, reachable only through Calendar's
+         CalendarItem is the only thing that ever sets these cells' Content,
+         and — the point, sharpened in fix round 2 — the API it does it
+         through is STATICALLY TYPED to string: CalendarDayButton and
+         CalendarButton each declare exactly one Content-setting member of
+         their own, `internal void SetContentInternal(string)`. That is a
+         stronger claim than "today it happens to pass a string", which is all
+         round 1 recorded, and it is asserted by reflection in the test named
+         below. (Round 1 also named the wrong callers: PopulateGrids only
+         CREATES the cells and never touches Content; the setters are
+         SetMonthModeCalendarDayButtons, SetMonthButtons and SetYearButtons,
+         and there is no SetDayButtons at all. Corrected here because a
+         comment whose whole value is being a checkable premise has to name
+         things a reader can actually go and check.) The DateTime rides on
+         DataContext, never on Content — so the string branch is the only one
+         ChooseTemplate could ever take here, and a string-only selector would
+         be behaviourally identical to the blanket Setter. And both styles are
+         KEYED, reachable only through Calendar's
          own CalendarDayButtonStyle/CalendarButtonStyle Setters below (the
          paragraph above is why they cannot be implicit), so there is no "next
          author" to leave a hole for — which was the entire argument for
          converting the other two. That premise is PINNED, not asserted:
          ContentTemplateSetterTests.CalendarCellsCanOnlyEverCarryStringContent
          drives a real Calendar in both display modes and fails if a future
-         .NET ever hands these cells anything but a string, or if either style
-         ever becomes implicit. -->
+         .NET ever hands these cells anything but a string, if SetContentInternal
+         ever stops taking one, or if either style ever becomes implicit.
+
+         Note also what these two styles are NOT exposed to, unlike the
+         ComboBoxItem style above: a CalendarDayButton has no "closed face" —
+         nothing copies its ContentTemplate anywhere else — so the FindAncestor
+         Foreground binding below has exactly one host and cannot fall back to
+         black the way KvpValueTemplate's did. -->
     <Style x:Key="CalendarDayButtonStyle" TargetType="CalendarDayButton">
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="MinWidth" Value="28" />

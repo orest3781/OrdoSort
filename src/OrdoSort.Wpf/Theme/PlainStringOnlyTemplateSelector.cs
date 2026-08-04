@@ -50,7 +50,32 @@ namespace OrdoSort.Wpf.Theme;
 /// way the old blanket Setter's template did. Call sites that draw their own
 /// labels carry the local Foreground binding themselves (WatchList's two
 /// DataType templates do); a bare unhandled object would be legible but
-/// off-palette when selected.</summary>
+/// off-palette when selected.
+///
+/// ONE ASYMMETRY BETWEEN THE TWO STYLES THIS SERVES, and the reason it is
+/// spelled out here rather than left to be rediscovered a third time
+/// (Task 8b fix round 2, 2026-08-03). A ListBoxItem's template is only ever
+/// used to paint a row. A ComboBoxItem's is also, indirectly, what paints the
+/// CLOSED ComboBox: <c>ComboBox.UpdateSelectionBoxItem</c> reads
+/// <c>InternalSelectedItem</c> — the ITEM, never the generated container — and
+/// if that item is itself a <see cref="ContentControl"/> (which
+/// <c>&lt;ComboBoxItem Content="…"/&gt;</c> children are) it unwraps to
+/// <c>item.Content</c> and takes <c>item.ContentTemplate</c>; otherwise it
+/// takes the ComboBox's own <c>ItemTemplate</c>. That copy lands in
+/// <c>SelectionBoxItemTemplate</c>, and there is no
+/// SelectionBoxItemTemplateSelector, so THIS class is never consulted out
+/// there. Which is exactly as well: a template whose Foreground is a
+/// FindAncestor on ComboBoxItem cannot resolve on the selection box — no
+/// ComboBoxItem is above it — and an unresolvable FindAncestor leaves the DP
+/// at its DEFAULT, which for TextBlock.Foreground is BLACK, not the inherited
+/// or styled value. Converting the ComboBoxItem style to this selector
+/// therefore repaired a live 1.44:1 dark-mode face rather than risking one.
+/// Any template that a ComboBox may use as its <c>ItemTemplate</c> has to
+/// survive both hosts — see KvpValueTemplate/FontChoiceTemplate in
+/// Styles.xaml, which do it with a PriorityBinding over
+/// ComboBoxItem-then-ComboBox. Asserted, not asserted-in-prose, by
+/// ContentTemplateSetterTests.SelectionBoxItemTemplateComesFromTheSelectedItemNeverFromItsContainer
+/// and ClosedComboBoxStillShowsTheSelectedItemLegibly.</summary>
 public sealed class PlainStringOnlyTemplateSelector : DataTemplateSelector
 {
     /// <summary>The template to use when — and only when — the content is a
