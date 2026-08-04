@@ -1104,27 +1104,27 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Border CornerRadius="8,0,0,8" Background="#F4F4F7"
-                                        BorderBrush="#D8D8DE" BorderThickness="1,1,0,1">
+                                <Border CornerRadius="8,0,0,8" Background="{DynamicResource Light.WindowBg}"
+                                        BorderBrush="{DynamicResource Light.Border}" BorderThickness="1,1,0,1">
                                     <StackPanel Margin="9,9,5,9">
-                                        <Border Height="16" CornerRadius="4" Background="#FFFFFF"
-                                                BorderBrush="#E2E2E8" BorderThickness="1" />
-                                        <Rectangle Height="4" RadiusX="2" RadiusY="2" Fill="#9A9AA3"
+                                        <Border Height="16" CornerRadius="4" Background="{DynamicResource Light.Surface}"
+                                                BorderBrush="{DynamicResource Light.Border}" BorderThickness="1" />
+                                        <Rectangle Height="4" RadiusX="2" RadiusY="2" Fill="{DynamicResource Light.SubtleText}"
                                                    Margin="0,7,8,0" />
                                         <Border Width="30" Height="11" CornerRadius="5.5"
-                                                Background="#1565C0" HorizontalAlignment="Left"
+                                                Background="{DynamicResource Light.Accent}" HorizontalAlignment="Left"
                                                 Margin="0,8,0,0" />
                                     </StackPanel>
                                 </Border>
-                                <Border Grid.Column="1" CornerRadius="0,8,8,0" Background="#1B1B1F"
-                                        BorderBrush="#3A3A41" BorderThickness="0,1,1,1">
+                                <Border Grid.Column="1" CornerRadius="0,8,8,0" Background="{DynamicResource Dark.WindowBg}"
+                                        BorderBrush="{DynamicResource Dark.Border}" BorderThickness="0,1,1,1">
                                     <StackPanel Margin="5,9,9,9">
-                                        <Border Height="16" CornerRadius="4" Background="#26262B"
-                                                BorderBrush="#3A3A41" BorderThickness="1" />
-                                        <Rectangle Height="4" RadiusX="2" RadiusY="2" Fill="#7F7F88"
+                                        <Border Height="16" CornerRadius="4" Background="{DynamicResource Dark.Surface}"
+                                                BorderBrush="{DynamicResource Dark.Border}" BorderThickness="1" />
+                                        <Rectangle Height="4" RadiusX="2" RadiusY="2" Fill="{DynamicResource Dark.SubtleText}"
                                                    Margin="0,7,8,0" />
                                         <Border Width="30" Height="11" CornerRadius="5.5"
-                                                Background="#4C8FD6" HorizontalAlignment="Left"
+                                                Background="{DynamicResource Dark.Accent}" HorizontalAlignment="Left"
                                                 Margin="0,8,0,0" />
                                     </StackPanel>
                                 </Border>
@@ -1133,15 +1133,15 @@
                         <RadioButton Style="{StaticResource ThemeCard}" Tag="Light"
                                      IsChecked="{Binding ThemeLight}"
                                      AutomationProperties.Name="Always light">
-                            <Border Width="112" Height="70" CornerRadius="8" Background="#F4F4F7"
-                                    BorderBrush="#D8D8DE" BorderThickness="1">
+                            <Border Width="112" Height="70" CornerRadius="8" Background="{DynamicResource Light.WindowBg}"
+                                    BorderBrush="{DynamicResource Light.Border}" BorderThickness="1">
                                 <StackPanel Margin="10,9">
-                                    <Border Height="16" CornerRadius="4" Background="#FFFFFF"
-                                            BorderBrush="#E2E2E8" BorderThickness="1" />
-                                    <Rectangle Height="4" RadiusX="2" RadiusY="2" Fill="#9A9AA3"
+                                    <Border Height="16" CornerRadius="4" Background="{DynamicResource Light.Surface}"
+                                            BorderBrush="{DynamicResource Light.Border}" BorderThickness="1" />
+                                    <Rectangle Height="4" RadiusX="2" RadiusY="2" Fill="{DynamicResource Light.SubtleText}"
                                                Margin="0,7,26,0" />
                                     <Border Width="44" Height="11" CornerRadius="5.5"
-                                            Background="#1565C0" HorizontalAlignment="Left"
+                                            Background="{DynamicResource Light.Accent}" HorizontalAlignment="Left"
                                             Margin="0,8,0,0" />
                                 </StackPanel>
                             </Border>
@@ -1149,15 +1149,15 @@
                         <RadioButton Style="{StaticResource ThemeCard}" Tag="Dark"
                                      IsChecked="{Binding ThemeDark}"
                                      AutomationProperties.Name="Always dark">
-                            <Border Width="112" Height="70" CornerRadius="8" Background="#1B1B1F"
-                                    BorderBrush="#3A3A41" BorderThickness="1">
+                            <Border Width="112" Height="70" CornerRadius="8" Background="{DynamicResource Dark.WindowBg}"
+                                    BorderBrush="{DynamicResource Dark.Border}" BorderThickness="1">
                                 <StackPanel Margin="10,9">
-                                    <Border Height="16" CornerRadius="4" Background="#26262B"
-                                            BorderBrush="#3A3A41" BorderThickness="1" />
-                                    <Rectangle Height="4" RadiusX="2" RadiusY="2" Fill="#7F7F88"
+                                    <Border Height="16" CornerRadius="4" Background="{DynamicResource Dark.Surface}"
+                                            BorderBrush="{DynamicResource Dark.Border}" BorderThickness="1" />
+                                    <Rectangle Height="4" RadiusX="2" RadiusY="2" Fill="{DynamicResource Dark.SubtleText}"
                                                Margin="0,7,26,0" />
                                     <Border Width="44" Height="11" CornerRadius="5.5"
-                                            Background="#4C8FD6" HorizontalAlignment="Left"
+                                            Background="{DynamicResource Dark.Accent}" HorizontalAlignment="Left"
                                             Margin="0,8,0,0" />
                                 </StackPanel>
                             </Border>

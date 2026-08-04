@@ -92,6 +92,21 @@ public static class ThemeManager
         r["Theme.SurfaceRaised"] = Brush(
             dark ? Mix(p.Surface, new Rgb(255, 255, 255), 0.06) : p.Surface);
 
+        // The Appearance tab's preview cards show BOTH palettes side by side,
+        // so they cannot use Theme.* — those follow the active theme. These
+        // keys are palette-fixed and identical in every theme. Published here
+        // rather than as XAML literals because the literals drifted a whole
+        // refresh behind (2026-08-03: the cards still showed the pre-refresh
+        // Material blue accent).
+        foreach (var (prefix, pal) in new[] { ("Light", ThemePalette.Light), ("Dark", ThemePalette.Dark) })
+        {
+            r[$"{prefix}.WindowBg"] = Brush(pal.WindowBg);
+            r[$"{prefix}.Surface"] = Brush(pal.Surface);
+            r[$"{prefix}.Border"] = Brush(pal.Border);
+            r[$"{prefix}.SubtleText"] = Brush(pal.SubtleText);
+            r[$"{prefix}.Accent"] = Brush(pal.Accent);
+        }
+
         // Native-templated controls (menus, scrollbars, dialogs) read the
         // SystemColors brush keys — override them so dark mode reaches the
         // parts we don't retemplate. BUT: a user who has turned on Windows
