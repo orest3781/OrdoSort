@@ -310,3 +310,96 @@ and shrink under the user's cursor as they click through Filing → Monitored
 folders → Appearance, none of which is a size the user asked for. Static
 dead space is the passive failure mode; a bouncing dialog is the active,
 noticeable one. No code changed.
+
+---
+
+## Open defect carried forward (2026-08-04, Task 7 measurement, recorded at the Task 8 gate)
+
+### SettingsWindow's 12 remaining fixed-`130px` label columns clip at large configured text size — MEASURED, UNFIXED
+
+This is the other half of I6 (`SettingsWindow.xaml:147`, "Fixed-pixel label
+columns vs configurable text size"). Task 7 measured it for real, fixed the
+self-contained half of it, and ran into a genuine structural coupling on the
+rest. Recorded here so the coupling and its cost are on the record, not only
+in a throwaway scratch report.
+
+**Count correction:** a naive `Width="130"` grep over-counts at 19. The real
+`ColumnDefinition Width="130"` label-column count is **17**: 12 in
+`SettingsWindow.xaml`, 5 in `LabelMakerWindow.xaml`. The other 2 of the 19
+are `BulkRenameWindow.xaml`'s `Button MinWidth="130"` and `DatePicker
+Width="130"` — neither is a label column and neither is part of this
+finding.
+
+**Measured — real clipping confirmed**, by forcing
+`Application.Resources["AppFontSize"]` (the `DynamicResource` every
+window's base style reads, `App.xaml.cs:89`) and rendering Settings' four
+affected tabs (General/Filing/Appearance/Data files — the only tabs whose
+label column is `Width="130"`; Destinations and Monitored folders use
+different column widths and aren't part of this finding) plus LabelMaker,
+off-screen, both palettes:
+
+- **At 24pt** (a realistic "user turned up text size," ~1.7× the 14pt
+  default): in Settings' General tab, `"Set-aside folder:"` renders as
+  `"Set-aside fo"` and `"History database:"` as `"History dat"` — clipped
+  and overlapping their own textboxes. Short labels (`"Inbox:"`) still fit.
+  LabelMaker's `"Keep boxes (days):"` and `"Next label number:"` clipped
+  the same way before its fix (see below).
+- **At 72pt** (the literal validated ceiling — `SettingsViewModel.cs`
+  ~1651-1652 rejects anything `< 6 or > 72`): clipping stops being limited
+  to label columns at all. `OK`/`Cancel` (`Width="96"`), tab headers, and
+  LabelMaker's `Print…`/`Save PDF…` (`Width="110"`) all truncate too, and
+  LabelMaker's fixed `Height="560"` window collapses outright — its `Auto`
+  preview row, now enormous, starves the `*` detail row of any space, so
+  the "Client id:" row is pushed out of the visible window entirely, not
+  merely clipped. At the literal maximum the 130px columns are one symptom
+  among several of a bigger problem (fixed window dimensions, no
+  `SizeToContent`, several other fixed-width controls) that a 17-column fix
+  cannot solve on its own.
+
+**Fixed: LabelMaker's 5 sites.** Each of LabelMaker's 5 label rows has no
+coupling to anything else — the row's caption text lives in the same `Grid`
+as the column it labels, so widening column 0 only shifts columns 1+ right,
+with nothing external to break. All 5
+`<ColumnDefinition Width="130" />` became
+`<ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />`, with
+`Grid.IsSharedSizeScope="True"` added to the containing `StackPanel` (the
+"selected client" panel, common ancestor of all 5 rows). Re-rendered at
+24pt: all 5 labels render in full, aligned to the widest
+(`"Next label number:"`), textboxes uniformly starting at the same X.
+Re-rendered at normal (14pt) size: unchanged — `SharedSizeGroup` computes to
+essentially the same ~140px the fixed value used, confirmed against the
+standard screenshot pass.
+
+**Not fixed: SettingsWindow's 12 sites — a real coupling, not a shortcut
+skipped.** `SettingsWindow.xaml:46`'s `NoteText` style hard-codes
+`Margin="130,-6,0,10"` to visually indent each field's informational note
+(`"relative — resolved beside the config file"`, etc.) under its textbox
+column — keyed to the *exact same* `130` the `ColumnDefinition`s use, but
+as a sibling `TextBlock`'s static margin, not part of the row's `Grid`. 8 of
+Settings' 12 affected rows have a following `NoteText` sibling (General's 4:
+Inbox, Set-aside, Names list, History database; Data files' 4: Destinations,
+Monitored folders, Alerts, Box labels). Converting only the
+`ColumnDefinition`s to `Auto`+`SharedSizeGroup` would let the label column
+grow past 130px at large text sizes while the note's margin stays pinned at
+130 — silently trading "label text clips" for "note text no longer lines up
+under its field" on 8 of the 12 rows.
+
+The remaining 4 rows (Filing's 2, Appearance's 2) have no `NoteText`
+sibling and could be converted cleanly on their own — but doing that while
+leaving General/Data files fixed would make label-column behavior
+*inconsistent between tabs in the same window* (some tabs scale with text
+size, others don't), undermining the point of `FieldLabel` being one shared
+style across the whole window (`Theme/Styles.xaml:1729-1736`).
+
+**What a correct fix would have to restructure:** all 8 `NoteText` rows
+would need to become `Grid`-integrated — a new row inside each `FieldRow`
+`Grid`, spanning from column 1 — instead of an externally-margined sibling
+`TextBlock` keyed to a magic-number margin. That is real structural work
+across 8 rows in `SettingsWindow.xaml`, not a column-definition edit, and it
+was out of scope for the task that found it.
+
+**Verdict:** measured, real, evidenced defect in both windows; fixed
+cleanly where the fix was self-contained (LabelMaker, 5/17 sites); left
+unfixed where a correct fix requires restructuring a coupled style
+(`SettingsWindow.xaml`'s `NoteText` margin, 12/17 sites). Flagged here as
+the follow-up rather than shipped as a partial, inconsistent patch.
