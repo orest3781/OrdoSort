@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> Tasks 10–12 continue in 2026-08-03-audit-remediation-finish.md.
+
 **Goal:** Fix everything the two UI audit passes found worth fixing — 3 critical correctness/threading defects, the platform and robustness gaps, the keyboard and copy issues, and the consistency drift — each proven by measurement and QC-reviewed before the next package starts.
 
 **Architecture:** Twelve independently reviewable work packages ordered by risk: correctness first (layout defect, UI-thread I/O, error-channel bypass, disposal, invariant dates), then platform/robustness, then one-surface improvements, then keyboard/copy/consistency, then verify-then-decide items and minors. Each package ends green with its own tests.
@@ -78,13 +80,13 @@ public void StarColumnsGetTheirShareOfWidth(string window)
 
 ---
 
-### Task 2: Get file I/O off the UI thread in Settings
+### Task 2: Get file I/O off the UI thread in Settings — DONE, 536eecd (+ 3820408)
 
 **Files:** `src/OrdoSort.Wpf/ViewModels/SettingsViewModel.cs` · Test: `tests/OrdoSort.Wpf.Tests/SettingsViewModelTests.cs`
 
 Three sites do synchronous I/O per keystroke: `:713-775` (live path notes — `Directory.Exists`/`File.Exists`/`Config.ReadDoc`), `:36` (`RouteEditVm.Problem` → `Config.ValidateRoute`, which **creates and deletes a real probe file**), `:206-213` (`WatchEditVm.Problem` → `Directory.Exists`). Against a slow or unreachable UNC path this freezes the window on every character.
 
-- [ ] **Step 1: Write the failing test.** Prove the current behaviour blocks: inject a path-checking seam whose probe blocks for ~300ms, set the bound property (as a keystroke would), and assert the setter returns promptly (e.g. < 50ms) — it will not today.
+- [x] **Step 1: Write the failing test.** Prove the current behaviour blocks: inject a path-checking seam whose probe blocks for ~300ms, set the bound property (as a keystroke would), and assert the setter returns promptly (e.g. < 50ms) — it will not today.
 
 ```csharp
 [Fact]
@@ -101,19 +103,19 @@ public void TypingAPathDoesNotBlockOnTheProbe()
 
 If `SettingsViewModel` has no seam for the filesystem check, introduce a minimal one (a `Func<string,bool>`/small interface defaulted to the real implementation) — that seam is part of this task.
 
-- [ ] **Step 2: Run it — MUST FAIL** (blocked for ~300ms). Paste the output.
+- [x] **Step 2: Run it — MUST FAIL** (blocked for ~300ms). Paste the output.
 
-- [ ] **Step 3: Implement.** Debounce (~300ms after typing stops) and run the check off the dispatcher, following the pattern `ShellViewModel.cs:230-233,737-741` already uses. While a check is pending the note stays optimistic/neutral — never flash "does not exist" mid-typing. Ensure a later result cannot overwrite a newer one (drop stale results). `ValidateRoute`'s probe file must not run per keystroke at all.
+- [x] **Step 3: Implement.** Debounce (~300ms after typing stops) and run the check off the dispatcher, following the pattern `ShellViewModel.cs:230-233,737-741` already uses. While a check is pending the note stays optimistic/neutral — never flash "does not exist" mid-typing. Ensure a later result cannot overwrite a newer one (drop stale results). `ValidateRoute`'s probe file must not run per keystroke at all.
 
-- [ ] **Step 4: Test passes.** Add a second test proving the note eventually reflects the result (pump/await the debounce), so the fix isn't "never check".
+- [x] **Step 4: Test passes.** Add a second test proving the note eventually reflects the result (pump/await the debounce), so the fix isn't "never check".
 
-- [ ] **Step 5: Full suites green.**
+- [x] **Step 5: Full suites green.**
 
-- [ ] **Step 6: Commit** `fix(settings): path checks are debounced and off the UI thread`.
+- [x] **Step 6: Commit** `fix(settings): path checks are debounced and off the UI thread`.
 
 ---
 
-### Task 3: Route Enter through the command; make the history swap safe
+### Task 3: Route Enter through the command; make the history swap safe — DONE, 051d2ff
 
 **Files:** `src/OrdoSort.Wpf/ViewModels/ShellViewModel.cs` · Test: `tests/OrdoSort.Wpf.Tests/`
 
@@ -121,25 +123,25 @@ Two defects in one file:
 - `:963` — `OnEnter` calls `OnRouteAsync` directly, bypassing `AsyncRelayCommand`'s `OnError`. Clicking a destination is protected; pressing Enter — the app's primary gesture — is not.
 - `:1057-1071` — `ApplySettingsAsync` disposes the old `History` before constructing the new one; if construction throws, `_history` references a disposed object and the fault is unobserved (fire-and-forget at `:1042`), silently breaking autocomplete, CSV export and the History window for the session.
 
-- [ ] **Step 1: Write both failing tests.** (a) Make a filing action throw and assert the error reaches the same channel a button press would (no unobserved exception, user sees the failure). (b) Make `new History(path)` throw and assert the shell still has a usable history afterwards and the user was told.
+- [x] **Step 1: Write both failing tests.** (a) Make a filing action throw and assert the error reaches the same channel a button press would (no unobserved exception, user sees the failure). (b) Make `new History(path)` throw and assert the shell still has a usable history afterwards and the user was told.
 
-- [ ] **Step 2: Run — both MUST FAIL.** Paste output.
+- [x] **Step 2: Run — both MUST FAIL.** Paste output.
 
-- [ ] **Step 3: Implement.** (a) `OnEnter` executes `RouteCommand` for the resolved index rather than calling `OnRouteAsync`. (b) Construct the new `History` FIRST; only dispose the old one once the new instance exists; on failure keep the old, report through the normal warning path, and leave `_history` valid.
+- [x] **Step 3: Implement.** (a) `OnEnter` executes `RouteCommand` for the resolved index rather than calling `OnRouteAsync`. (b) Construct the new `History` FIRST; only dispose the old one once the new instance exists; on failure keep the old, report through the normal warning path, and leave `_history` valid.
 
-- [ ] **Step 4: Tests pass; full suites green.**
+- [x] **Step 4: Tests pass; full suites green.**
 
-- [ ] **Step 5: Commit** `fix(shell): Enter files through the command; history swap can't strand a disposed db`.
+- [x] **Step 5: Commit** `fix(shell): Enter files through the command; history swap can't strand a disposed db`.
 
 ---
 
-### Task 4: Invariant dates for anything written down
+### Task 4: Invariant dates for anything written down — DONE, aa2a9f0
 
 **Files:** `src/OrdoSort.Core/Unlock.cs:42`, `src/OrdoSort.Core/History.cs:72`, `src/OrdoSort.Core/BoxLabels.cs:217,220`, `src/OrdoSort.Wpf/ViewModels/BulkRenameViewModel.cs:128,188` · Test: `tests/OrdoSort.Core.Tests/`
 
 Dates formatted with `CurrentCulture` reach filenames, folder names, printed labels and the audit log, so two stations with different locales produce different names for the same document. **Forward-only** — nothing already on disk is rewritten.
 
-- [ ] **Step 1: Write the failing test.** Run each formatting path under a deliberately different culture and assert the output is identical to the invariant one:
+- [x] **Step 1: Write the failing test.** Run each formatting path under a deliberately different culture and assert the output is identical to the invariant one:
 
 ```csharp
 [Theory]
@@ -159,94 +161,94 @@ public void WrittenDatesAreCultureIndependent(string culture)
 }
 ```
 
-- [ ] **Step 2: Run — MUST FAIL** under at least one culture. Paste output.
+- [x] **Step 2: Run — MUST FAIL** under at least one culture. Paste output.
 
-- [ ] **Step 3: Implement.** `InvariantCulture` (or an explicit fixed pattern) at each of the six sites. **Display-only formatting stays culture-aware** — do not change dates shown in the History grid or status text unless they are also written. State in the commit which sites you judged "written" vs "displayed".
+- [x] **Step 3: Implement.** `InvariantCulture` (or an explicit fixed pattern) at each of the six sites. **Display-only formatting stays culture-aware** — do not change dates shown in the History grid or status text unless they are also written. State in the commit which sites you judged "written" vs "displayed".
 
-- [ ] **Step 4: Tests pass; full suites green.**
+- [x] **Step 4: Tests pass; full suites green.**
 
-- [ ] **Step 5: Commit** `fix(core): dates written into names, labels and the log are culture-invariant`.
+- [x] **Step 5: Commit** `fix(core): dates written into names, labels and the log are culture-invariant`.
 
 ---
 
-### Task 5: Viewer lifetime, init reporting, IME guard
+### Task 5: Viewer lifetime, init reporting, IME guard — DONE, 3e5c731 (+ b7b34ac)
 
 **Files:** `src/OrdoSort.Wpf/Windows/TriageWindow.xaml.cs`, `src/OrdoSort.Wpf/Windows/MatchMergeWindow.xaml.cs`, `src/OrdoSort.Wpf/Views/ProcessingView.xaml.cs`
 
-- [ ] **Step 1: Implement three fixes.**
+- [x] **Step 1: Implement three fixes.**
   (a) Dispose the per-review WebView2 on window close (`TriageWindow.xaml.cs:44-45`, `MatchMergeWindow.xaml.cs:41-43`) — currently one leaks per "Review matches" pass.
   (b) `TriageWindow.xaml.cs:63-67` — check `InitAsync()`'s bool as `MainWindow.xaml.cs:104-107` does, and tell the user when the viewer can't start instead of showing a blank pane.
   (c) `ProcessingView.xaml.cs:63-66` — ignore `Key.ImeProcessed` and in-progress composition before treating Enter as "file this document" (today a CJK user confirming a candidate files the document).
 
-- [ ] **Step 2: Test what is testable headlessly** — at minimum a test that Enter with `Key.ImeProcessed` does NOT commit, and one asserting the viewer is disposed on close. If the WebView2 disposal can't be asserted headlessly, say so explicitly rather than skipping silently.
+- [x] **Step 2: Test what is testable headlessly** — at minimum a test that Enter with `Key.ImeProcessed` does NOT commit, and one asserting the viewer is disposed on close. If the WebView2 disposal can't be asserted headlessly, say so explicitly rather than skipping silently.
 
-- [ ] **Step 3: Full suites green.**
+- [x] **Step 3: Full suites green.**
 
-- [ ] **Step 4: Commit** `fix(ui): viewer disposal and init reporting; Enter ignores IME composition`.
+- [x] **Step 4: Commit** `fix(ui): viewer disposal and init reporting; Enter ignores IME composition`.
 
 ---
 
-### Task 6: DPI manifest + High Contrast step-aside
+### Task 6: DPI manifest + High Contrast step-aside — DONE, cedbfa2
 
 **Files:** create `src/OrdoSort.Wpf/app.manifest`; modify `src/OrdoSort.Wpf/OrdoSort.Wpf.csproj`, `src/OrdoSort.Wpf/Theme/ThemeManager.cs`
 
-- [ ] **Step 1: DPI.** Add an `app.manifest` declaring per-monitor-v2 DPI awareness and reference it via `<ApplicationManifest>`. Today the app is DPI-unaware and bitmap-scales (blurry) at 125%/150%, the default on most current laptops.
+- [x] **Step 1: DPI.** Add an `app.manifest` declaring per-monitor-v2 DPI awareness and reference it via `<ApplicationManifest>`. Today the app is DPI-unaware and bitmap-scales (blurry) at 125%/150%, the default on most current laptops.
 
-- [ ] **Step 2: High Contrast.** `ThemeManager.cs:79-88` currently overwrites `SystemColors.*` unconditionally. Consult `SystemParameters.HighContrast`: when true, skip the override entirely so the OS palette shows through, and re-evaluate when the setting changes (the same mechanism that already watches the light/dark preference). Per the approved decision this is step-aside, NOT a bespoke HC theme.
+- [x] **Step 2: High Contrast.** `ThemeManager.cs:79-88` currently overwrites `SystemColors.*` unconditionally. Consult `SystemParameters.HighContrast`: when true, skip the override entirely so the OS palette shows through, and re-evaluate when the setting changes (the same mechanism that already watches the light/dark preference). Per the approved decision this is step-aside, NOT a bespoke HC theme.
 
-- [ ] **Step 3: Test.** Assert the palette application is skipped when a High-Contrast flag seam reports true (introduce a tiny seam if `SystemParameters` can't be faked). Verify the manifest is actually embedded (inspect the built exe or assert the csproj property).
+- [x] **Step 3: Test.** Assert the palette application is skipped when a High-Contrast flag seam reports true (introduce a tiny seam if `SystemParameters` can't be faked). Verify the manifest is actually embedded (inspect the built exe or assert the csproj property).
 
-- [ ] **Step 4: Launch sanity** — the app still starts and themes normally with HC off.
+- [x] **Step 4: Launch sanity** — the app still starts and themes normally with HC off.
 
-- [ ] **Step 5: Full suites green. Commit** `feat(platform): per-monitor DPI awareness; step aside for High Contrast`.
+- [x] **Step 5: Full suites green. Commit** `feat(platform): per-monitor DPI awareness; step aside for High Contrast`.
 
 ---
 
-### Task 7: History window — filtering, empty state, trimming
+### Task 7: History window — filtering, empty state, trimming — DONE, 10d5ac3
 
 **Files:** `src/OrdoSort.Wpf/ViewModels/HistoryViewModel.cs`, `src/OrdoSort.Wpf/Windows/HistoryWindow.xaml` · Test: `tests/OrdoSort.Wpf.Tests/HistoryViewModelTests.cs`
 
-- [ ] **Step 1: Filtering.** `:97-108` currently does `Rows.Clear()` + per-item `Add()` on every Find keystroke; History is the unbounded collection. Replace with an `ICollectionView` filter (or equivalent) so typing doesn't re-materialise the list. Add a test asserting the row objects are not recreated per keystroke (e.g. same instances before/after a filter change).
+- [x] **Step 1: Filtering.** `:97-108` currently does `Rows.Clear()` + per-item `Add()` on every Find keystroke; History is the unbounded collection. Replace with an `ICollectionView` filter (or equivalent) so typing doesn't re-materialise the list. Add a test asserting the row objects are not recreated per keystroke (e.g. same instances before/after a filter change).
 
-- [ ] **Step 2: Empty state.** The grid renders as a blank void today. Add a message consistent with the app's existing empty states (which echo their own button's wording) — e.g. "No filings recorded yet. Documents you file will appear here."
+- [x] **Step 2: Empty state.** The grid renders as a blank void today. Add a message consistent with the app's existing empty states (which echo their own button's wording) — e.g. "No filings recorded yet. Documents you file will appear here."
 
-- [ ] **Step 3: Trimming.** Add `TextTrimming="CharacterEllipsis"` (and tooltips carrying the full value) to the fixed-width `Name`/`Route` columns, which clip today.
+- [x] **Step 3: Trimming.** Add `TextTrimming="CharacterEllipsis"` (and tooltips carrying the full value) to the fixed-width `Name`/`Route` columns, which clip today.
 
-- [ ] **Step 4: Full suites green. Commit** `feat(history): filter without rebuilding, empty state, trimmed columns`.
+- [x] **Step 4: Full suites green. Commit** `feat(history): filter without rebuilding, empty state, trimmed columns`.
 
 ---
 
-### Task 8: Keyboard and accessibility
+### Task 8: Keyboard and accessibility — DONE, ad99128 (+ dddac41, cb50988)
 
 **Files:** `src/OrdoSort.Wpf/Windows/UnlockWindow.xaml`, `src/OrdoSort.Wpf/Windows/SettingsWindow.xaml(.cs)`, `src/OrdoSort.Wpf/Theme/Styles.xaml`
 
-- [ ] **Step 1: Unlock — Enter does nothing.** `UnlockWindow.xaml:12-24`: give the Unlock button `IsDefault="True"` (or bind Return on the password box). Test: simulating Return with a password entered invokes unlock.
+- [x] **Step 1: Unlock — Enter does nothing.** `UnlockWindow.xaml:12-24`: give the Unlock button `IsDefault="True"` (or bind Return on the password box). Test: simulating Return with a password entered invokes unlock.
 
-- [ ] **Step 2: Settings — Esc is swallowed.** `SettingsWindow.xaml.cs:27-57` handles every key unconditionally (Tab exempted), so Esc records the hotkey "Escape" instead of closing the dialog. Let Escape through (and decide deliberately whether Escape should also cancel capture — state the choice).
+- [x] **Step 2: Settings — Esc is swallowed.** `SettingsWindow.xaml.cs:27-57` handles every key unconditionally (Tab exempted), so Esc records the hotkey "Escape" instead of closing the dialog. Let Escape through (and decide deliberately whether Escape should also cancel capture — state the choice).
 
-- [ ] **Step 3: Focus ring coverage.** `Styles.xaml:48,99` assigns `BronzeFocusVisual` only to Button/ToggleButton. Extend to CheckBox, RadioButton, ComboBox, ListBoxItem and TabItem, which currently show the OS dashed rectangle. Verify by rendering a focused instance of each in both palettes.
+- [x] **Step 3: Focus ring coverage.** `Styles.xaml:48,99` assigns `BronzeFocusVisual` only to Button/ToggleButton. Extend to CheckBox, RadioButton, ComboBox, ListBoxItem and TabItem, which currently show the OS dashed rectangle. Verify by rendering a focused instance of each in both palettes.
 
-- [ ] **Step 4: Names and mnemonics.** `AutomationProperties.Name` on the four ↑/↓ reorder buttons (`SettingsWindow.xaml:290-293,584-587`) and the ✎/＋ glyph buttons; access keys on the six Settings tab headers (both tab templates already set `RecognizesAccessKey="True"`, and no existing mnemonic may collide — check).
+- [x] **Step 4: Names and mnemonics.** `AutomationProperties.Name` on the four ↑/↓ reorder buttons (`SettingsWindow.xaml:290-293,584-587`) and the ✎/＋ glyph buttons; access keys on the six Settings tab headers (both tab templates already set `RecognizesAccessKey="True"`, and no existing mnemonic may collide — check).
 
-- [ ] **Step 5: Full suites green. Commit** `feat(a11y): Enter in Unlock, Esc in Settings, focus ring coverage, control names`.
+- [x] **Step 5: Full suites green. Commit** `feat(a11y): Enter in Unlock, Esc in Settings, focus ring coverage, control names`.
 
 ---
 
-### Task 9: Copy and terminology
+### Task 9: Copy and terminology — DONE, 8bdab38 (+ da84d2e, b837b84, 6ece125)
 
 **Files:** `src/OrdoSort.Wpf/Windows/HistoryWindow.xaml`, `src/OrdoSort.Wpf/Windows/SettingsWindow.xaml`, `src/OrdoSort.Wpf/Views/ReadyView.xaml`, `src/OrdoSort.Wpf/ViewModels/ShellViewModel.cs`, `src/OrdoSort.Wpf/App.xaml.cs`
 
 User-facing text only — config keys, `routes` schema and internal type names are unchanged.
 
-- [ ] **Step 1: One word per concept.** "Route" → "Destination" in user-facing text (`HistoryWindow.xaml:45`); reconcile the Settings tab titled "Dashboard" with its own section header and Data-files label so one name wins for monitored folders (`SettingsWindow.xaml:563,571,1211`). Sweep for other instances of each pair before editing so the change is complete.
+- [x] **Step 1: One word per concept.** "Route" → "Destination" in user-facing text (`HistoryWindow.xaml:45`); reconcile the Settings tab titled "Dashboard" with its own section header and Data-files label so one name wins for monitored folders (`SettingsWindow.xaml:563,571,1211`). Sweep for other instances of each pair before editing so the change is complete.
 
-- [ ] **Step 2: The catch-all error.** `ShellViewModel.cs:96-98` and `App.xaml.cs:20-22` open with "Something went wrong" then dump raw exception text. Replace with a plain statement of what failed, that the file was left where it is, and where the detail went (crash.log) — matching the tone the filing loop already uses.
+- [x] **Step 2: The catch-all error.** `ShellViewModel.cs:96-98` and `App.xaml.cs:20-22` open with "Something went wrong" then dump raw exception text. Replace with a plain statement of what failed, that the file was left where it is, and where the detail went (crash.log) — matching the tone the filing loop already uses.
 
-- [ ] **Step 3: Sentence case.** "Start Processing" → "Start processing" (`ReadyView.xaml:145,149`), the only Title-Case button in the app.
+- [x] **Step 3: Sentence case.** "Start Processing" → "Start processing" (`ReadyView.xaml:145,149`), the only Title-Case button in the app.
 
-- [ ] **Step 4: Informational notes off the amber status colour** to `SubtleText` — amber elsewhere means needs-attention (Settings' "relative — resolved beside the config file" pair).
+- [x] **Step 4: Informational notes off the amber status colour** to `SubtleText` — amber elsewhere means needs-attention (Settings' "relative — resolved beside the config file" pair).
 
-- [ ] **Step 5: Full suites green** (update any test asserting the old strings). **Commit** `docs(ui): one word per concept; plain error copy; sentence case`.
+- [x] **Step 5: Full suites green** (update any test asserting the old strings). **Commit** `docs(ui): one word per concept; plain error copy; sentence case`.
 
 ---
 
