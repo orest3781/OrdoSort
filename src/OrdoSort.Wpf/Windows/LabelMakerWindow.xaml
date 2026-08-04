@@ -119,7 +119,16 @@
             </DockPanel>
 
             <!-- selected client -->
-            <StackPanel Grid.Column="1" Margin="16,0,0,0" DataContext="{Binding Selected}">
+            <!-- IsSharedSizeScope: the five rows below share the LabelCol
+                 SharedSizeGroup on their first column (2026-08-04, Task 7)
+                 so the label column grows with the configured text size
+                 instead of clipping at a fixed 130px, while all five stay
+                 aligned to the widest label ("Next label number:"). Without
+                 IsSharedSizeScope="True" on a common ancestor, SharedSizeGroup
+                 has no scope to coordinate within and the columns silently
+                 go back to sizing independently. -->
+            <StackPanel Grid.Column="1" Margin="16,0,0,0" DataContext="{Binding Selected}"
+                        Grid.IsSharedSizeScope="True">
                 <StackPanel.Style>
                     <Style TargetType="StackPanel">
                         <Style.Triggers>
@@ -132,7 +141,7 @@
 
                 <Grid Style="{StaticResource FieldRow}">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="130" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                         <ColumnDefinition Width="140" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
@@ -147,7 +156,7 @@
 
                 <Grid Style="{StaticResource FieldRow}">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="130" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                         <ColumnDefinition Width="140" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
@@ -162,7 +171,7 @@
 
                 <Grid Style="{StaticResource FieldRow}">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="130" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                         <ColumnDefinition Width="140" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
@@ -182,7 +191,7 @@
 
                 <Grid Style="{StaticResource FieldRow}" Margin="0,0,0,4">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="130" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                         <ColumnDefinition Width="60" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -217,7 +226,7 @@
 
                 <Grid Style="{StaticResource FieldRow}" Margin="0,0,0,4">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="130" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="Date bars:" Style="{StaticResource FieldLabel}" />

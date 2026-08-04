@@ -253,3 +253,60 @@ One" dark/selected, "Row Two" plain). `SelectionMode` was also confirmed
 still `Single` and not overridden anywhere in code.
 
 **Verdict:** demo/screenshot-reading artifact, not a bug. Nothing changed.
+
+---
+
+## Verify-then-decide outcomes (2026-08-04, Task 7)
+
+Two more open questions from the M1/M2 minors above, settled by rendering the
+real, compiled windows off-screen rather than guessing from a screenshot.
+Full numbers, PNGs and the width/font sweep in
+`.superpowers/sdd/2026-08-03-audit-remediation-finish/task-7-report.md`.
+
+### (a) Ready screen's set-aside banner (M1) — REAL DEFECT, fixed
+
+`ShellViewModel.cs:359-370` (`ApplyDeferred`) builds `DeferredAlert` as
+`"⚠ {count} set-aside file{s} waiting{age}   —   click to open"`, rendered by
+`MainWindow.xaml:105-128`'s full-width `TextWrapping="Wrap"` banner Button.
+`MainWindow.xaml.cs`'s `EnterCompact` puts the Ready screen in a narrow
+"compact" window: `MinWidth = 400`, default `Width = 470`.
+
+**Measured, not just the literal instruction.** Rendering at the literal
+*minimum* width (400px) alone would have reported no defect — at 400–425px
+the whole `"click to open"` clause wraps cleanly onto its own line. The
+actual bug only appears in the reachable range *above* the floor: at the
+compact mode's own **default** width (470px, what a user sees before ever
+resizing) the phrase splits `"click to"` / `"open"`; at 440px it splits
+`"click"` / `"to open"`. This reproduces the original M1 finding exactly. A
+width sweep (400/410/425/440/460/470, both palettes) was necessary to catch
+it — the single width named in the task brief would have missed it.
+
+**Fix:** non-breaking spaces inside `"click to open"` only
+(`ShellViewModel.cs:376-377`); the em dash before it keeps regular spaces
+because that break point already reads fine (proof: it's exactly where the
+400–425px renders wrap, with no complaint). Re-verified across the same six
+widths, both palettes, after the fix: `"click to open"` never splits again.
+No test existed asserting the exact wrapped-glyph sequence (the closest,
+`ShellReadyTests.cs:52`, only checks a `Contains` on the count phrase), so
+none needed updating.
+
+### (b) Settings' General-tab dead space (M2) — accepted, no change
+
+Settings' `TabControl` (`SettingsWindow.xaml:171`) sits in a fixed
+`Height="820"` window (not `SizeToContent`), so all six tabs share one
+height sized for the *tallest* tab's content, and General — the first tab a
+user sees — is far from tallest: General's `TabItem` body
+(`SettingsWindow.xaml:212-283`) is 71 lines of XAML with 4 field rows;
+Monitored folders (`:654-1092`) is 438 lines; Destinations (`:353-654`) is
+301; Appearance (`:1092-1295`) is 203. A light-theme render of the General
+tab at default size (`Settings-light.png` in the task-7 report) shows the
+tab's real content ending around a third of the way down the 820px window,
+the rest plain background — the audit's "~55% empty" estimate holds up.
+
+**Decision: accept, per the brief's own recommendation.** A `TabControl`
+that resizes the whole dialog on every tab click is a worse experience than
+a dialog with some empty space on its shortest tab — the window would grow
+and shrink under the user's cursor as they click through Filing → Monitored
+folders → Appearance, none of which is a size the user asked for. Static
+dead space is the passive failure mode; a bouncing dialog is the active,
+noticeable one. No code changed.

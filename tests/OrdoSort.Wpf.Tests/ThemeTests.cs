@@ -1,4 +1,5 @@
 using OrdoSort.Wpf.Theme;
+using OrdoSort.Wpf.Views;
 
 namespace OrdoSort.Wpf.Tests;
 
@@ -63,5 +64,26 @@ public class ThemeTests
         Assert.Null(ThemePalette.ParseColor(""));
         Assert.Null(ThemePalette.ParseColor(null));
         Assert.Null(ThemePalette.ParseColor("not-a-color"));
+    }
+
+    // 2026-08-04 (Task 7): ThemeManager.Brush allocates and freezes a NEW
+    // SolidColorBrush every call; the dashboard re-evaluates RgbToBrushConverter
+    // per tile per refresh, so without caching that's a fresh brush per tick.
+    // RgbToBrushConverter caches by Rgb — assert the cache actually shares one
+    // instance (not just an equal one) and that the shared brush is frozen.
+    [Fact]
+    public void RgbToBrushConverterCachesAndFreezesTheSameInstance()
+    {
+        var converter = new RgbToBrushConverter();
+        var rgb = new Rgb(46, 125, 50);
+
+        var first = converter.Convert(rgb, typeof(System.Windows.Media.Brush), null,
+            System.Globalization.CultureInfo.InvariantCulture);
+        var second = converter.Convert(rgb, typeof(System.Windows.Media.Brush), null,
+            System.Globalization.CultureInfo.InvariantCulture);
+
+        Assert.Same(first, second);
+        var brush = Assert.IsType<System.Windows.Media.SolidColorBrush>(first);
+        Assert.True(brush.IsFrozen);
     }
 }

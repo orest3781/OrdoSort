@@ -365,8 +365,16 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             1 => "   ·   oldest 1 day",
             var d => $"   ·   oldest {d} days",
         };
+        // "click to open" (non-breaking spaces): measured at the
+        // MainWindow's compact-mode default/minimum widths (2026-08-03,
+        // Task 7), the banner's TextWrapping="Wrap" TextBlock
+        // (MainWindow.xaml:114) splits this three-word phrase mid-clause —
+        // "click to" / "open" at 470px (the compact mode's own default
+        // width), "click" / "to open" at 440px — reproducing the 2026-08-02
+        // audit's M1 finding. The em dash before it is a fine, intentional
+        // break point and is left as regular spaces.
         DeferredAlert = $"⚠ {info.Count} set-aside file{(info.Count == 1 ? "" : "s")} waiting"
-            + age + "   —   click to open";
+            + age + "   —   click to open";
     }
 
     private async Task RefreshDeferredAsync()
