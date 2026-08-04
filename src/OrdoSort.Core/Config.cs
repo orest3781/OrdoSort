@@ -363,6 +363,53 @@ public sealed class Config
                 new BoxLabelsDoc { LabelClients = cfg.LabelClients, Extras = cfg.BoxLabelsFileExtras });
     }
 
+    /// <summary>Write via a sibling temp file, then replace — so an observer
+    /// of <paramref name="fullPath"/> sees the complete old content or the
+    /// complete new content, never a truncated or empty file. The previous
+    /// File.WriteAllText truncated in place; a crash or a full disk in the
+    /// gap destroyed a valid config, and on a shared config that took every
+    /// station down until someone repaired it by hand (2026-08-04 audit 2.3).
+    ///
+    /// The temp file is a sibling, never %TEMP%: replace is only atomic
+    /// within one volume, and the config can live on a share.</summary>
+    /// <summary>Write via a sibling temp file, then replace — so an observer
+    /// of <paramref name="fullPath"/> sees the complete old content or the
+    /// complete new content, never a truncated or empty file. The previous
+    /// File.WriteAllText truncated in place; a crash or a full disk in the
+    /// gap destroyed a valid config, and on a shared config that took every
+    /// station down until someone repaired it by hand (2026-08-04 audit 2.3).
+    ///
+    /// The temp file is a sibling, never %TEMP%: replace is only atomic
+    /// within one volume, and the config can live on a share.</summary>
+    internal static void WriteAtomic(string fullPath, string content)
+    {
+        var tmp = fullPath + ".tmp";
+        // Encoding matches File.WriteAllText's default (UTF-8, no BOM), so
+        // this change cannot alter a single byte of what lands on disk.
+        File.WriteAllText(tmp, content);
+        try
+        {
+            // File.Move is atomic on NTFS. Retry on access errors since the
+            // destination might be open for reading.
+            for (var attempt = 0; attempt < 50; attempt++)
+            {
+                try
+                {
+                    File.Move(tmp, fullPath, overwrite: true);
+                    return;
+                }
+                catch (IOException) when (attempt < 49) { }
+                catch (UnauthorizedAccessException) when (attempt < 49) { }
+                System.Threading.Thread.Sleep(10);
+            }
+        }
+        catch
+        {
+            try { File.Delete(tmp); } catch { /* best effort */ }
+            throw;
+        }
+    }
+
     private static void SaveMain(Config cfg, string path)
     {
         var node = JsonSerializer.SerializeToNode(cfg, Opts)!.AsObject();
@@ -370,14 +417,14 @@ public sealed class Config
         node.Remove("watch_folders");
         node.Remove("alert_texts");
         node.Remove("label_clients");
-        File.WriteAllText(path, node.ToJsonString(Opts) + "\n");
+        WriteAtomic(path, node.ToJsonString(Opts) + "\n");
     }
 
     private static void WriteDoc<T>(string configPath, string sectionPath, T doc) =>
         WriteJson(ResolveBeside(configPath, sectionPath), doc);
 
     internal static void WriteJson<T>(string fullPath, T doc) =>
-        File.WriteAllText(fullPath, JsonSerializer.Serialize(doc, Opts) + "\n");
+        WriteAtomic(fullPath, JsonSerializer.Serialize(doc, Opts) + "\n");
 
     /// <summary>Save that reports failure instead of crashing — each file is
     /// attempted independently and every failure is named.</summary>
