@@ -371,16 +371,10 @@ public sealed class Config
     /// station down until someone repaired it by hand (2026-08-04 audit 2.3).
     ///
     /// The temp file is a sibling, never %TEMP%: replace is only atomic
-    /// within one volume, and the config can live on a share.</summary>
-    /// <summary>Write via a sibling temp file, then replace — so an observer
-    /// of <paramref name="fullPath"/> sees the complete old content or the
-    /// complete new content, never a truncated or empty file. The previous
-    /// File.WriteAllText truncated in place; a crash or a full disk in the
-    /// gap destroyed a valid config, and on a shared config that took every
-    /// station down until someone repaired it by hand (2026-08-04 audit 2.3).
-    ///
-    /// The temp file is a sibling, never %TEMP%: replace is only atomic
-    /// within one volume, and the config can live on a share.</summary>
+    /// within one volume, and the config can live on a share. Retries up to
+    /// 500ms if the destination is held open for reading (Config.Load uses
+    /// File.ReadAllText with no FileShare.Delete), allowing readers to
+    /// release the handle so the atomic replace completes.</summary>
     internal static void WriteAtomic(string fullPath, string content)
     {
         var tmp = fullPath + ".tmp";
@@ -389,13 +383,19 @@ public sealed class Config
         File.WriteAllText(tmp, content);
         try
         {
-            // File.Move is atomic on NTFS. Retry on access errors since the
-            // destination might be open for reading.
+            // File.Replace preserves the destination's ACLs and is the
+            // strongest primitive Windows offers, but it REQUIRES the
+            // destination to exist — hence the fallback for first creation.
+            // Retry on access errors since the destination might be open for
+            // reading, and the retries allow readers to release the handle.
             for (var attempt = 0; attempt < 50; attempt++)
             {
                 try
                 {
-                    File.Move(tmp, fullPath, overwrite: true);
+                    if (File.Exists(fullPath))
+                        File.Replace(tmp, fullPath, destinationBackupFileName: null);
+                    else
+                        File.Move(tmp, fullPath);
                     return;
                 }
                 catch (IOException) when (attempt < 49) { }

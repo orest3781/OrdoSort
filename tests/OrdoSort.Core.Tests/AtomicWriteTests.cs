@@ -22,7 +22,9 @@ public class AtomicWriteTests : IDisposable
     public void Dispose() { try { Directory.Delete(_dir, true); } catch { } }
 
     /// <summary>The destination is never observed empty or partial. A writer
-    /// that truncates in place fails this: the reader catches it at 0 bytes.</summary>
+    /// that truncates in place fails this: the reader catches it at 0 bytes.
+    /// The reader opens with full sharing (including FileShare.Delete) so the
+    /// writer can proceed and actually truncate, making the failure observable.</summary>
     [Fact]
     public void TheDestinationIsNeverObservedEmptyOrPartial()
     {
@@ -37,11 +39,19 @@ public class AtomicWriteTests : IDisposable
         {
             while (!Volatile.Read(ref stop))
             {
-                string seen;
-                try { seen = File.ReadAllText(path); }
-                catch (IOException) { continue; }   // sharing violation is fine
-                if (seen != oldContent && seen != newContent)
-                    bad.Add(seen.Length == 0 ? "<empty>" : $"<partial {seen.Length}>");
+                try
+                {
+                    // Open with full sharing to let the writer proceed and actually
+                    // truncate, so truncation errors are observable.
+                    using var fs = new FileStream(path, FileMode.Open, FileAccess.Read,
+                        FileShare.Read | FileShare.Write | FileShare.Delete, bufferSize: 4096, useAsync: false);
+                    using var sr = new StreamReader(fs);
+                    string seen = sr.ReadToEnd();
+                    if (seen != oldContent && seen != newContent)
+                        bad.Add(seen.Length == 0 ? "<empty>" : $"<partial {seen.Length}>");
+                }
+                catch (FileNotFoundException) { }  // file was replaced, that's ok
+                catch (IOException) { }            // any transient I/O error is ok
             }
         });
 
@@ -76,5 +86,27 @@ public class AtomicWriteTests : IDisposable
         Assert.Equal("{\"a\":1}", File.ReadAllText(path));
         Config.WriteAtomic(path, "{\"b\":2}");
         Assert.Equal("{\"b\":2}", File.ReadAllText(path));
+    }
+
+    /// <summary>When the destination is held open beyond the retry budget
+    /// (~500ms), the write fails loudly and leaves no .tmp sibling.</summary>
+    [Fact]
+    public void WriteFailsAndCleansUpWhenRetryBudgetExhausted()
+    {
+        var path = Path.Combine(_dir, "config.json");
+        File.WriteAllText(path, "{\"initial\":\"content\"}");
+
+        // Hold the destination open for longer than the retry budget (500ms).
+        using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read,
+            FileShare.Read, bufferSize: 4096, useAsync: false))
+        {
+            // Attempt to write while the file is exclusively held.
+            var ex = Assert.Throws<IOException>(() => Config.WriteAtomic(path, "{\"new\":\"content\"}"));
+            Assert.NotNull(ex);  // Must throw loudly, not silently fail.
+        }
+
+        // No .tmp sibling should be left behind after failure.
+        var files = Directory.GetFiles(_dir).Select(Path.GetFileName).OrderBy(n => n).ToArray();
+        Assert.Equal(new[] { "config.json" }, files);
     }
 }
