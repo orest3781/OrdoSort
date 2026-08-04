@@ -6,6 +6,8 @@
     <!-- All colors come from the Theme.* brushes ThemeManager materializes;
          DynamicResource keeps a live OS light/dark switch working. -->
 
+    <!-- Spacing rhythm as practised: 4/6/8/10/12/14/16 (6 occurs 91×, 8 occurs 87×, 10 occurs 60×, 4 occurs 57×) -->
+
     <!-- Shared focus ring: a flat bronze outline on every focusable styled
          control. AccentBronze renders here as a 100% flat stroke only — no
          opacity/mix/gradient — per its WCAG-pinned contrast margin. -->
