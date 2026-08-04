@@ -62,7 +62,7 @@
                                  ContentTemplate Setter, so only a call-site
                                  fix reaches it. NextNumberText is NOT given
                                  that same blanket binding: it also carries
-                                 Style="{StaticResource SubtleText}" for its
+                                 an inline Style BasedOn CaptionText for its
                                  de-emphasised at-rest look, and a LOCAL
                                  Foreground on the SAME TextBlock as that
                                  Style's Setter would outrank it, silently
@@ -70,17 +70,18 @@
                                  Theme.Text whenever the row is unselected
                                  (found in the 2026-08-02 theme-coverage final
                                  review). Fixed with a conditional Style
-                                 instead: BasedOn SubtleText so its Setter
-                                 still applies at rest, with a DataTrigger that
-                                 only overrides Foreground to Theme.AccentText
-                                 while the row is selected. -->
+                                 instead: BasedOn CaptionText (small AND
+                                 de-emphasised) so its Setter still applies at
+                                 rest, with a DataTrigger that only overrides
+                                 Foreground to Theme.AccentText while the row
+                                 is selected. -->
                             <DataTemplate>
                                 <DockPanel ToolTip="{Binding Summary}" Background="Transparent">
                                     <!-- the next number, at a glance -->
                                     <TextBlock DockPanel.Dock="Right" Text="{Binding NextNumberText}"
-                                               FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0">
+                                               VerticalAlignment="Center" Margin="8,0,0,0">
                                         <TextBlock.Style>
-                                            <Style TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsSelected,
                                                         RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
@@ -140,7 +141,7 @@
                              Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}"
                              AutomationProperties.Name="Client id" />
                     <TextBlock Grid.Column="2" Text="2-8 letters or digits"
-                               Style="{StaticResource SubtleText}" FontSize="11"
+                               Style="{StaticResource CaptionText}"
                                VerticalAlignment="Center" Margin="8,0,0,0" />
                 </Grid>
 
@@ -155,7 +156,7 @@
                              Text="{Binding DestroyDaysText, UpdateSourceTrigger=PropertyChanged}"
                              AutomationProperties.Name="Keep boxes days" />
                     <TextBlock Grid.Column="2" Text="sets the destruction date"
-                               Style="{StaticResource SubtleText}" FontSize="11"
+                               Style="{StaticResource CaptionText}"
                                VerticalAlignment="Center" Margin="8,0,0,0" />
                 </Grid>
 
@@ -209,7 +210,7 @@
                         </Button>
                     </StackPanel>
                     <TextBlock Grid.Column="3" Text="10 per sheet · 4×2 in"
-                               Style="{StaticResource SubtleText}" FontSize="11"
+                               Style="{StaticResource CaptionText}"
                                VerticalAlignment="Center" Margin="8,0,0,0"
                                TextTrimming="CharacterEllipsis" />
                 </Grid>

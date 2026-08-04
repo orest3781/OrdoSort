@@ -42,7 +42,7 @@
                          SelectionChanged="SuggestList_SelectionChanged" />
             </Border>
         </Popup>
-        <TextBlock Style="{StaticResource SubtleText}" FontSize="11" Margin="0,6,0,0"
+        <TextBlock Style="{StaticResource CaptionText}" Margin="0,6,0,0"
                    Text="Tab completes a word · ↓ ↑ walk the matches · blank files without renaming" />
 
         <TextBlock Text="Will be filed as:" Margin="0,12,0,6" FontWeight="SemiBold" />
@@ -172,7 +172,7 @@
             <StackPanel>
                 <TextBlock Text="{Binding LastActionText}" FontWeight="SemiBold"
                            Foreground="{Binding LastActionFore, Converter={StaticResource RgbToBrush}}" />
-                <TextBlock Text="{Binding LastActionDetail}" FontSize="11" Margin="0,6,0,0"
+                <TextBlock Text="{Binding LastActionDetail}" Style="{StaticResource CaptionTextOnSurface}" Margin="0,6,0,0"
                            TextWrapping="Wrap"
                            Foreground="{Binding LastActionFore, Converter={StaticResource RgbToBrush}}" />
             </StackPanel>

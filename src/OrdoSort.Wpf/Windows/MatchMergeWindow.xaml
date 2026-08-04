@@ -41,10 +41,9 @@
                 <Grid Grid.Column="1">
                     <TextBox Text="{Binding RosterPath, Mode=OneWay}" IsReadOnly="True" />
                     <TextBlock Text="no roster loaded yet — pick the spreadsheet (CSV or Excel) with names and Control IDs"
-                               FontSize="11"
                                VerticalAlignment="Center" Margin="8,0" IsHitTestVisible="False">
                         <TextBlock.Style>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
                                 <Setter Property="Visibility" Value="Collapsed" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding RosterPath}" Value="">
@@ -99,13 +98,13 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                                 <TextBlock Text="nothing ticked = the name and id columns"
-                                           Style="{StaticResource SubtleText}" FontSize="11"
+                                           Style="{StaticResource CaptionText}"
                                            Margin="0,6,0,0" />
                             </StackPanel>
                         </Border>
                     </Popup>
-                    <TextBlock Text="{Binding AddNote}" Style="{StaticResource SubtleText}"
-                               FontSize="11" VerticalAlignment="Center"
+                    <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
+                               VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis" />
                 </StackPanel>
             </DockPanel>

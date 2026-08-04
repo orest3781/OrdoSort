@@ -94,8 +94,8 @@
                     <Button Content="Add a folder's files…" Click="OnAddFolder" Margin="0,0,6,0" />
                     <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,0" />
                     <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,0" />
-                    <TextBlock Text="{Binding AddNote}" Style="{StaticResource SubtleText}"
-                               FontSize="11" VerticalAlignment="Center"
+                    <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
+                               VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis" />
                 </StackPanel>
             </DockPanel>

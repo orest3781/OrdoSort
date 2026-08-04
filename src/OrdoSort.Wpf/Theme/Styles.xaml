@@ -1616,6 +1616,14 @@
         <Setter Property="FontSize" Value="11" />
     </Style>
 
+    <!-- The caption rung at full text weight. Most captions are hints and
+         should be de-emphasised (CaptionText above); these few carry content
+         the user actually reads — the last action's detail line, a subfolder
+         path, a live preview note — and are small only to fit, not to recede. -->
+    <Style x:Key="CaptionTextOnSurface" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="11" />
+    </Style>
+
     <!-- The app-level implicit TextBlock style (TargetType="TextBlock" above,
          Foreground=Theme.Text) is a Style Setter, and Style Setters always
          outrank property-value INHERITANCE. That alone would suggest a more

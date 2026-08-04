@@ -84,8 +84,8 @@
                 <Button Content="Add files…" Click="OnAddFiles" Margin="0,0,6,0" />
                 <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,0" />
                 <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,0" />
-                <TextBlock Text="{Binding AddNote}" Style="{StaticResource SubtleText}"
-                           FontSize="11" VerticalAlignment="Center"
+                <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
+                           VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" />
             </DockPanel>
 
@@ -107,7 +107,7 @@
             </Grid>
 
             <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,0,0,6">
-                <TextBlock Style="{StaticResource SubtleText}" FontSize="11"
+                <TextBlock Style="{StaticResource CaptionText}"
                            VerticalAlignment="Center" TextWrapping="Wrap"
                            Text="Every saved password is tried automatically, in addition to whatever's typed above. The unlocked file keeps its name and place — the locked original is moved to a dated locked_archive folder beside it, nothing is overwritten." />
             </StackPanel>

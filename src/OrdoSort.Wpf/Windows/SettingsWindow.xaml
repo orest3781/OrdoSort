@@ -405,7 +405,7 @@
                                      ContentTemplate Setter, so only a call-site
                                      fix reaches it. GestureText is NOT given
                                      that same blanket binding: it also carries
-                                     Style="{StaticResource SubtleText}" for its
+                                     an inline Style BasedOn CaptionText for its
                                      de-emphasised at-rest look, and a LOCAL
                                      Foreground on the SAME TextBlock as that
                                      Style's Setter would outrank it, silently
@@ -418,10 +418,11 @@
                                      just discovered here inverted, since the
                                      LOCAL value was the fix that time). Fixed
                                      with a conditional Style instead: BasedOn
-                                     SubtleText so its Setter still applies at
-                                     rest, with a DataTrigger that only
-                                     overrides Foreground to Theme.AccentText
-                                     while the row is selected. -->
+                                     CaptionText (small AND de-emphasised) so
+                                     its Setter still applies at rest, with a
+                                     DataTrigger that only overrides Foreground
+                                     to Theme.AccentText while the row is
+                                     selected. -->
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel>
@@ -430,9 +431,9 @@
                                                        Fill="{Binding Color, Converter={StaticResource ColorStringToBrush}}"
                                                        Stroke="{DynamicResource Theme.Border}" StrokeThickness="1" />
                                             <TextBlock DockPanel.Dock="Right" Text="{Binding GestureText}"
-                                                       FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0">
+                                                       VerticalAlignment="Center" Margin="8,0,0,0">
                                                 <TextBlock.Style>
-                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding IsSelected,
                                                                 RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
@@ -927,7 +928,7 @@
                                             <TextBox Width="120" Text="{Binding OtherTypes}"
                                                      AutomationProperties.Name="Other file types" />
                                             <TextBlock Text="e.g. docx"
-                                                       Style="{StaticResource SubtleText}" FontSize="11"
+                                                       Style="{StaticResource CaptionText}"
                                                        VerticalAlignment="Center" Margin="8,0,0,0" />
                                         </StackPanel>
                                     </StackPanel>
@@ -995,7 +996,7 @@
                                         <TextBlock Text="{Binding TilePreviewCount}" FontSize="27"
                                                    FontWeight="Bold" Margin="0,2,0,0"
                                                    Foreground="{Binding TilePreviewFore, Converter={StaticResource RgbToBrush}}" />
-                                        <TextBlock Text="{Binding TilePreviewNote}" FontSize="11"
+                                        <TextBlock Text="{Binding TilePreviewNote}" Style="{StaticResource CaptionTextOnSurface}"
                                                    TextTrimming="CharacterEllipsis"
                                                    Visibility="{Binding HasTilePreviewNote,
                                                                 Converter={StaticResource BoolToVis}}"
@@ -1003,7 +1004,7 @@
                                     </StackPanel>
                                 </Border>
                                 <TextBlock Text="{Binding TilePreviewHint}"
-                                           Style="{StaticResource SubtleText}" FontSize="11"
+                                           Style="{StaticResource CaptionText}"
                                            TextWrapping="Wrap" MaxWidth="380"
                                            HorizontalAlignment="Left" Margin="0,4,0,0" />
                               </StackPanel>
@@ -1275,8 +1276,8 @@
                                                 Style="{StaticResource ChipButton}" AutomationProperties.Name="Browse">
                                             <TextBlock Text="Browse…" Style="{StaticResource ChipButtonLabel}" />
                                         </Button>
-                                        <TextBlock Text="{Binding CustomLabel}" Style="{StaticResource SubtleText}"
-                                                   FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0"
+                                        <TextBlock Text="{Binding CustomLabel}" Style="{StaticResource CaptionText}"
+                                                   VerticalAlignment="Center" Margin="8,0,0,0"
                                                    TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
                                 </Grid>
