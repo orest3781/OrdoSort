@@ -52,7 +52,14 @@ public sealed class WebViewPdfViewer : IPdfViewer
             // ...nor open a second window to do it in.
             core.NewWindowRequested += (_, e) => e.Handled = true;
 
-            // ...nor start a download. Nothing in this app's workflow downloads.
+            // ...nor start a download. Nothing in this app's workflow downloads
+            // a file through the pane — filing/setting aside is done through
+            // the app's own toolbar/hotkeys against the ORIGINAL file on disk,
+            // never through the browser. This also means the PDF toolbar's
+            // Save / "Save as" now silently no-ops (final review, Finding 4a,
+            // 2026-08-05): that is the intended effect of this line, not a
+            // missed case — nothing downstream in this app expects a copy to
+            // land in Downloads.
             core.DownloadStarting += (_, e) => e.Cancel = true;
 
             var s = core.Settings;
@@ -119,20 +126,53 @@ public sealed class WebViewPdfViewer : IPdfViewer
     }
 
     /// <summary>Navigate to a blank page and wait for completion so Edge
-    /// releases the PDF file handle before the move — proven by the smoke test.</summary>
+    /// releases the PDF file handle before the move — proven by the smoke test.
+    ///
+    /// A navigation the guard just CANCELLED (e.g. a link click in the
+    /// document that's about to be released) also raises NavigationCompleted,
+    /// with IsSuccess=false — it is not only about:blank's own completion that
+    /// can land on this handler (final review, Finding 3, 2026-08-05). If that
+    /// cancelled navigation's completion arrives between subscribing below and
+    /// the about:blank navigation's OWN completion, resolving on "any"
+    /// NavigationCompleted lets the commit proceed while Edge still holds the
+    /// file handle — the move then fails against a perfectly good document.
+    /// NavigationId is what WebView2 uses to correlate a given Navigate() call
+    /// with its own completion event, so it's what this uses too: capture the
+    /// id of the about:blank navigation THIS call started (via NavigationStarting,
+    /// the only place the id is paired with the URI) and resolve only when
+    /// NavigationCompleted reports that same id.</summary>
     public async Task ReleaseAsync()
     {
         if (!_ready) return;
         _expected = null;
+        var core = _view.CoreWebView2;
         var tcs = new TaskCompletionSource();
-        void Handler(object? s, CoreWebView2NavigationCompletedEventArgs e)
+        ulong? blankNavigationId = null;
+
+        void OnStarting(object? s, CoreWebView2NavigationStartingEventArgs e)
         {
-            _view.CoreWebView2.NavigationCompleted -= Handler;
+            if (blankNavigationId is null
+                && string.Equals(e.Uri, "about:blank", StringComparison.OrdinalIgnoreCase))
+                blankNavigationId = e.NavigationId;
+        }
+        void OnCompleted(object? s, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            if (blankNavigationId is null || e.NavigationId != blankNavigationId) return;
             tcs.TrySetResult();
         }
-        _view.CoreWebView2.NavigationCompleted += Handler;
-        _view.CoreWebView2.Navigate("about:blank");
-        await Task.WhenAny(tcs.Task, Task.Delay(2000));
+
+        core.NavigationStarting += OnStarting;
+        core.NavigationCompleted += OnCompleted;
+        try
+        {
+            core.Navigate("about:blank");
+            await Task.WhenAny(tcs.Task, Task.Delay(2000));
+        }
+        finally
+        {
+            core.NavigationStarting -= OnStarting;
+            core.NavigationCompleted -= OnCompleted;
+        }
     }
 
     /// <summary>Current document URL — used by the smoke test to prove the

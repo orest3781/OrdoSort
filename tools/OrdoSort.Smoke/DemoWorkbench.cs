@@ -253,7 +253,15 @@ public static class DemoWorkbench
             else
             {
                 var tag = alert ? (i % 24 == 0 ? "URGENT_" : "RUSH_") : "";
-                name = $"{tag}{date:yyyyMMdd}--{id}.pdf";
+                // one deliberately awkward filename — spaces, an en dash, a
+                // non-ASCII numero sign — so the corpus actually exercises
+                // WebViewPdfViewer.IsPermittedNavigation's comparison between
+                // .NET's and Chromium's URL canonicalizers on something other
+                // than bare ASCII (final review Finding 2, 2026-08-05; every
+                // OTHER name generated here is plain ASCII digits).
+                name = i == 1
+                    ? $"Fall 2024 – №7 (draft)--{id}.pdf"
+                    : $"{tag}{date:yyyyMMdd}--{id}.pdf";
                 matching++;
                 if (alert) alerting++;
             }
