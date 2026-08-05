@@ -10,6 +10,11 @@ public sealed class WebViewPdfViewer : IPdfViewer
     private readonly WebView2 _view;
     private bool _ready;
 
+    /// <summary>What this viewer last asked to navigate to. A hostile PDF
+    /// cannot forge it: only ShowAsync/Blank/ReleaseAsync set it, immediately
+    /// before calling Navigate.</summary>
+    private string? _expected;
+
     public WebViewPdfViewer(WebView2 view) => _view = view;
 
     public string? InitError { get; private set; }
@@ -36,6 +41,39 @@ public sealed class WebViewPdfViewer : IPdfViewer
             var env = await CoreWebView2Environment.CreateAsync(
                 browserExecutableFolder: null, userDataFolder: UserDataFolder);
             await _view.EnsureCoreWebView2Async(env);
+
+            var core = _view.CoreWebView2;
+
+            // A link annotation in a hostile PDF must not be able to steer this
+            // pane anywhere — the fake in-app password prompt is the attack.
+            core.NavigationStarting += (_, e) =>
+                e.Cancel = !IsPermittedNavigation(e.Uri, _expected);
+
+            // ...nor open a second window to do it in.
+            core.NewWindowRequested += (_, e) => e.Handled = true;
+
+            // ...nor start a download. Nothing in this app's workflow downloads.
+            core.DownloadStarting += (_, e) => e.Cancel = true;
+
+            var s = core.Settings;
+            s.AreHostObjectsAllowed = false;        // no bridge into the process
+            s.IsWebMessageEnabled = false;          // ditto; nothing uses it
+            s.AreDefaultScriptDialogsEnabled = false; // no alert()/prompt() as UI
+            s.AreDevToolsEnabled = false;
+            s.IsPasswordAutosaveEnabled = false;    // this app handles documents,
+            s.IsGeneralAutofillEnabled = false;     // never web forms
+            s.IsStatusBarEnabled = false;
+            // DELIBERATELY LEFT ENABLED (user's decision, security-only change):
+            // AreDefaultContextMenusEnabled and AreBrowserAcceleratorKeysEnabled —
+            // right-click and Ctrl+P in the pane keep working as today.
+
+            // Measured 2026-08-05: Edge's built-in PDF renderer keeps working with
+            // script off — the toolbar (page nav, zoom, print) and the page content
+            // both rendered correctly against the demo-full workbench (267 PDFs) with
+            // this set to false, confirmed by looking at the running app, not just at
+            // CurrentUrl. See task-1-report.md for the screenshots and method.
+            s.IsScriptEnabled = false;
+
             _ready = true;
             return true;
         }
@@ -46,16 +84,38 @@ public sealed class WebViewPdfViewer : IPdfViewer
         }
     }
 
+    /// <summary>The navigation policy, as a pure function so it can be tested
+    /// without a browser. Permits about:blank (ReleaseAsync depends on it) and
+    /// the exact document the viewer just asked for — nothing else. Compared
+    /// case-insensitively because Windows paths are case-insensitive and Edge
+    /// may normalise the URL it reports back; refusing the expected document
+    /// over casing would blank the pane on a legitimate file, which is worse
+    /// than the attack this prevents.</summary>
+    internal static bool IsPermittedNavigation(string requested, string? expected)
+    {
+        if (string.Equals(requested, "about:blank", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return expected is not null
+            && string.Equals(requested, expected, StringComparison.OrdinalIgnoreCase);
+    }
+
     public Task ShowAsync(string path)
     {
         if (_ready)
-            _view.CoreWebView2.Navigate(new Uri(Path.GetFullPath(path)).AbsoluteUri);
+        {
+            _expected = new Uri(Path.GetFullPath(path)).AbsoluteUri;
+            _view.CoreWebView2.Navigate(_expected);
+        }
         return Task.CompletedTask;
     }
 
     public void Blank()
     {
-        if (_ready) _view.CoreWebView2.Navigate("about:blank");
+        if (_ready)
+        {
+            _expected = null;
+            _view.CoreWebView2.Navigate("about:blank");
+        }
     }
 
     /// <summary>Navigate to a blank page and wait for completion so Edge
@@ -63,6 +123,7 @@ public sealed class WebViewPdfViewer : IPdfViewer
     public async Task ReleaseAsync()
     {
         if (!_ready) return;
+        _expected = null;
         var tcs = new TaskCompletionSource();
         void Handler(object? s, CoreWebView2NavigationCompletedEventArgs e)
         {
