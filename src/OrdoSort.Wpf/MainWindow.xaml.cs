@@ -115,7 +115,20 @@ public partial class MainWindow : Window
         // really closes from the dashboard, File > Exit, or OS shutdown.
         Closing += (_, e) =>
         {
-            if (_reallyExit) return;
+            if (_reallyExit)
+            {
+                // The file moves on a thread-pool thread and the audit row is
+                // written after it. Closing here disposes the shell — and the
+                // History connection — out from under that, so the document
+                // moves and the log entry is lost. Let the in-flight commit
+                // land first; it is bounded by a single file move.
+                if (Shell.IsBusy)
+                {
+                    e.Cancel = true;
+                    _ = FinishClosingWhenIdle();
+                }
+                return;
+            }
             if (Shell.IsProcessing)
             {
                 e.Cancel = true;
@@ -142,6 +155,16 @@ public partial class MainWindow : Window
 
     private void OnExit(object sender, RoutedEventArgs e)
     {
+        _reallyExit = true;
+        Close();
+    }
+
+    /// <summary>Re-issue the close once the in-flight commit has landed. The
+    /// timeout is a backstop: OS shutdown will not wait forever, and a hung
+    /// move must not make the app unclosable — the far worse failure.</summary>
+    private async Task FinishClosingWhenIdle()
+    {
+        await Shell.WaitForIdleAsync(TimeSpan.FromSeconds(10));
         _reallyExit = true;
         Close();
     }

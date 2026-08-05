@@ -716,6 +716,22 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private int? _lastRoute;
     private bool _busy;   // cross-command reentrancy guard (commit/skip/undo)
 
+    /// <summary>True while a commit/skip/undo is mid-flight. Exposed so the
+    /// window can refuse to finish closing underneath one — see MainWindow's
+    /// Closing handler (2026-08-04 audit 1.1).</summary>
+    internal bool IsBusy => _busy;
+
+    /// <summary>Wait for the in-flight commit to finish, up to
+    /// <paramref name="timeout"/>. Returns false if it did not. Polls on the
+    /// UI thread because _busy is only ever written there.</summary>
+    internal async Task<bool> WaitForIdleAsync(TimeSpan timeout)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (_busy && sw.Elapsed < timeout)
+            await Task.Delay(25);
+        return !_busy;
+    }
+
     /// <summary>True once any commit/skip/undo this session has hit an
     /// AuditError. The log line must never claim "every move is in the log"
     /// in the same session where one demonstrably was not — see
