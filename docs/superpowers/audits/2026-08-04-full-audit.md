@@ -36,7 +36,9 @@ Four independent findings each break one half of that sentence, and no single au
 
 ## Theme 1 — The audit-log and move guarantees leak at the edges
 
-**1.1 — Exit or OS shutdown mid-commit silently loses the audit row. [V] Critical**
+**1.1 — Exit or OS shutdown mid-commit silently loses the audit row. [V] Critical — FIXED `e15bdb4` (bound `3373560`)**
+
+> Fixed: `MainWindow`'s `Closing` handler now checks `ShellViewModel.IsBusy` before letting the `_reallyExit` path land, and re-issues the close once the in-flight commit finishes (`e15bdb4`, capped at a 10s backstop). A code-review round found the backstop itself could leave the window permanently unclosable if a commit never finished; `3373560` adds a one-shot `_forceClosing` bypass so the timeout is genuinely terminal. Verified end to end by Task 6's gate: `File > Exit` and the second-launch first-run path both leave no surviving process.
 
 `MainWindow.xaml.cs:113-115` — the `Closing` handler opens with `if (_reallyExit) return;`, taking no busy check at all. `_reallyExit` is set by File > Exit and by `Application.SessionEnding` (OS shutdown/restart). `Closed` then runs `Shell.Dispose()` → `_history.Dispose()`, while `CommitCurrent` is still moving the file and writing its row on a thread-pool thread (`ShellViewModel.cs:876` — `await _scheduler.Run(() => _session.CommitCurrent(typed, route))`).
 
@@ -71,23 +73,29 @@ The race window itself is **[U]** — proving it needs two processes. The *capab
 
 The app documents a `--config <shared-path>` mode with several workstations against one share. That mode is where most of the remaining risk lives.
 
-**2.1 — Settings > OK silently clobbers another station's concurrent edit. [V] Critical**
+**2.1 — Settings > OK silently clobbers another station's concurrent edit. [V] Critical — FIXED `a7d8407` (refined `86be636`)**
 
 `RefreshSharedSectionsFromDisk()` (`ShellViewModel.cs:1053`) has exactly **one** caller: `SaveConfigNow()` at `:1036`, whose own doc comment scopes it to "tool windows saving their own state". The primary Settings-OK path (`SettingsViewModel.ApplySettingsAsync`) never calls it.
 
-Two people editing settings on two stations, no crash and no hand-editing required: the second to press OK overwrites the first's destinations/monitored-folders/alerts with a stale in-memory copy, with no warning. The correct fix already exists in the codebase — it was simply never wired to the main save path.
+Two people editing settings on two stations, no crash and no hand-editing required: the second to press OK overwrites the first's destinations/monitored-folders/alerts with a stale in-memory copy, with no warning.
 
-**2.2 — A 0-byte `box-labels.json` silently wipes every counter. [V] Critical**
+> **This audit's own recommended fix below ("call `RefreshSharedSectionsFromDisk` from Settings-OK") was wrong, and it is worth recording why.** That helper's entire purpose is to *overwrite* the in-memory shared sections with whatever is currently on disk — it is correct for a tool window that has no edits of its own to lose. Settings is the opposite case: its whole reason for existing is that the user is *changing* those sections. Wiring it in would have silently discarded the user's own edits on every save, trading one silent-clobber bug for another. The actual fix is conflict *detection*, not refresh: `FreshConfigForSettings()` fingerprints the three shared section files when the Settings session opens (a SHA-256 of each file's bytes, per `86be636` — an initial `(path, mtime, length)` fingerprint in `a7d8407` produced false-positive prompts whenever a peer rewrote a section with byte-identical content). `ApplySettingsAsync` re-fingerprints before saving and, on a mismatch, asks the user via `IDialogService.Confirm`, naming the changed section(s); declining leaves both disk and the in-memory `_cfg` untouched. `SaveConfigNow`'s own `RefreshSharedSectionsFromDisk` call is unchanged — this fix added a second, different mechanism to the path that needed one, rather than reusing the wrong tool.
+
+**2.2 — A 0-byte `box-labels.json` silently wipes every counter. [V] Critical — FIXED `fe8b110`**
 
 `BoxLabelStore.Mutate:126-128` treats empty content as `new BoxLabelsDoc()`. `BoxLabelStore.Read:44-51` hands the same empty string to `Deserialize` and throws `ConfigException("not valid JSON")`. **The two functions disagree about what a 0-byte file means**, and `Mutate` is the one that then truncates and rewrites (`:140-143`).
 
 So: a crash mid-write leaves 0 bytes → the next station's box claim reads "no clients yet", wipes all counters, and can reissue box numbers already printed on physical boxes. Physical-world consequences, no crash needed on the second station.
 
-**2.3 — No file is written atomically, anywhere. [V] Critical**
+> Fixed: `fe8b110` closes the gap two ways rather than reusing Task 1's temp-file pattern (which cannot apply here — `Mutate`'s exclusive `FileStream` *is* the cross-station mutex, and swapping the file would release the lock other stations wait on). `existedBefore`, captured via `File.Exists` before the stream opens, lets `Mutate` distinguish genuine first-run-empty from crash-mid-write-empty and refuse the latter exactly as `Read` does; and the write order was changed from truncate-then-write to write-then-truncate so a fresh crash cannot produce a 0-byte state either.
+
+**2.3 — No file is written atomically, anywhere. [V] Critical — FIXED `ceada04` (review round `d52208c`)**
 
 `Config.SaveMain`/`WriteDoc` use `File.WriteAllText`; `BoxLabelStore.Mutate` uses `Seek(0)` + `SetLength(0)` + write, in place. No temp-file-then-`File.Replace` anywhere. Disk-full or a kill mid-write destroys the previously valid file. For `config.json` that bricks every station sharing it until someone fixes it by hand, because `Config.Load` throws and `App.xaml.cs` responds with `Shutdown(1)`.
 
 This one finding is the root cause of 2.2 and compounds 3.1. It is the highest-leverage fix in the document.
+
+> Fixed: `Config` writes now go through a temp file + `File.Replace`, with a 500ms retry budget (50 × 10ms) for a concurrent reader holding the destination open (`ceada04`). `d52208c` is a review-round follow-up: it restored `File.Replace` (preserving ACLs) in place of an initial delete-then-move approach, documented the retry budget, and added a retry-exhaustion test. `BoxLabelStore` deliberately does **not** use this pattern — see 2.2 above for why.
 
 **2.4 — LabelMaker's dirty tracking is per-row, not per-field. [A] Important**
 
@@ -105,7 +113,7 @@ The Settings UI says a relative Inbox/Deferred path is "resolved beside the conf
 
 ## Theme 3 — First run and deployment
 
-**3.1 — First run in a non-writable folder leaves an invisible, un-closeable process. [V] Critical**
+**3.1 — First run in a non-writable folder leaves an invisible, un-closeable process. [V] Critical — FIXED `ea49754`**
 
 Full chain, every link verified:
 
@@ -118,6 +126,8 @@ Full chain, every link verified:
 Result: the process survives with no window and no way to close it but Task Manager. Install to `Program Files`, run as a normal user, and this is the first thing a new user experiences.
 
 It compounds: the dialog tells the user "The technical details were written to crash.log, beside your config file" — but `LogCrash` (`:100-110`) writes to that same unwritable directory inside a swallowing `try`. The message is false in exactly the case that produces it.
+
+> Fixed (`ea49754`): `Config.Load`'s first-run bootstrap write now wraps `IOException`/`UnauthorizedAccessException`/`NotSupportedException` as a `ConfigException` with an actionable message — the same treatment every other `Load` failure already got. `App`'s `DispatcherUnhandledException` handler now calls `Shutdown(1)` whenever `MainWindow` is still null, closing the whole class of windowless-startup-failure, not just this one cause. `LogCrash` now returns whether it actually wrote `crash.log`, so the crash dialog no longer promises a file a locked-down folder just failed to produce. Task 6's gate ran this against a real unwritable location (a config path whose parent segment is a file, not a directory — the same construction `FirstRunFailureTests.AnUnwritableLocationIsReportedAsAConfigurationProblem` uses) rather than relying on the unit test alone: the app showed the honest message above and `tasklist` confirmed no process survived dismissing it.
 
 **3.2 — Releases ship unsigned. [A] Important**
 
@@ -225,18 +235,20 @@ Two audits each held half of this and neither could see it whole: the history DB
 
 Ranked by (harm × likelihood) ÷ effort, not by severity label.
 
-1. **Atomic writes everywhere** (2.3) — temp file + `File.Replace` in `Config.SaveMain`/`WriteDoc` and `BoxLabelStore.Mutate`. One pattern, three call sites, and it is the root cause of 2.2 and a compounding factor in 3.1.
-2. **Guard the first-run config save** (3.1) — and make the crash handler `Shutdown()` when no window exists. Small, and it is the first thing a new user can hit.
-3. **Hold close until the in-flight commit completes** (1.1) — checking the busy guard on the `_reallyExit` path closes the disposed-connection race for free.
-4. **Call `RefreshSharedSectionsFromDisk` from Settings-OK** (2.1) — the fix already exists; wire it to the second path.
+**Update, 2026-08-04 (Task 6 gate):** items 1–4 and 6 below are done — all five v1.0.0-blocking findings (1.1, 2.1, 2.2, 2.3, 3.1) are fixed, reviewed, and gated (Release build, full suites at Core 375 / Wpf 520, `demo-full` smoke, and — for 3.1 specifically — a real launch against a real unwritable folder, not just the unit test). See each finding above for its commit SHA(s). Item 4's actual fix diverged from this list's own recommendation below — see the note under 2.1 for why the recommendation was wrong.
+
+1. ~~**Atomic writes everywhere** (2.3) — temp file + `File.Replace` in `Config.SaveMain`/`WriteDoc` and `BoxLabelStore.Mutate`. One pattern, three call sites, and it is the root cause of 2.2 and a compounding factor in 3.1.~~ **DONE — `ceada04`, review round `d52208c`.** (`BoxLabelStore.Mutate` ended up using a different mechanism than "the same pattern" implied here; see 2.2's note.)
+2. ~~**Guard the first-run config save** (3.1) — and make the crash handler `Shutdown()` when no window exists. Small, and it is the first thing a new user can hit.~~ **DONE — `ea49754`.**
+3. ~~**Hold close until the in-flight commit completes** (1.1) — checking the busy guard on the `_reallyExit` path closes the disposed-connection race for free.~~ **DONE — `e15bdb4`, bound by `3373560`.**
+4. ~~**Call `RefreshSharedSectionsFromDisk` from Settings-OK** (2.1) — the fix already exists; wire it to the second path.~~ **DONE, but not as recommended here — `a7d8407`, refined `86be636`.** This recommendation was wrong: `RefreshSharedSectionsFromDisk` overwrites the shared sections with disk content, which is correct for the tool-window caller it already had and would have discarded the user's own Settings edits on every save. The shipped fix is conflict detection by content hash instead — see the note under 2.1.
 5. **Harden the WebView2 viewer** (4.1) — ~20 lines in one `InitAsync`, no workflow change.
-6. **Make `Mutate` and `Read` agree about a 0-byte file** (2.2) — falls out of 1, but assert it directly too.
+6. ~~**Make `Mutate` and `Read` agree about a 0-byte file** (2.2) — falls out of 1, but assert it directly too.~~ **DONE — `fe8b110`.** Landed as its own fix, not as a byproduct of item 1: item 1's temp-file pattern doesn't apply to `Mutate` (see 2.2's note).
 7. **Index the history table** (5.1) — `name_entered`, `reverted`, `ts_utc`.
 8. **Test `UndoAction`'s three failure branches** (1.5) — the safety net deserves a test.
 9. **Debounce Bulk Rename and the Settings tile preview** (5.2, 5.4) — the pattern is already proven in this codebase.
 10. **Release hygiene before `v1.0.0`** (3.2–3.5) — sign, stamp a version, add an About box, add LICENSE + third-party notices, document the WebView2 prerequisite.
 
-Items 1–4 are what I would not ship `v1.0.0` without.
+Items 1–4 were what I would not ship `v1.0.0` without — done as of this update. Item 10 (release hygiene) still stands between this codebase and a `v1.0.0` tag.
 
 ## Open questions needing dynamic proof
 
