@@ -86,6 +86,35 @@ public sealed class History : IDisposable
         }
         if (!cols.Contains("reverted_ts"))
             Exec("ALTER TABLE history ADD COLUMN reverted_ts TEXT NOT NULL DEFAULT ''");
+
+        // Audit finding 5.1 (2026-08-04): the history table had no indexes at
+        // all, and RankedNames() ran a full-table GROUP BY after every
+        // commit, skip and undo, against a table this app never prunes.
+        // Measured on a 100k-row fixture (2,000 distinct names, ~5%
+        // reverted, ~3% blank name_entered): before, EXPLAIN QUERY PLAN
+        // showed `SCAN history` plus two TEMP B-TREEs, and RankedNames()
+        // took ~73ms best-of-5. A plain (non-partial) index on the same
+        // three columns produced an almost identical-looking plan but was
+        // *worse* than no index at all (~437ms) — it doesn't cover
+        // `reverted`, so SQLite still paid a table lookup per index row.
+        // This partial index's WHERE matches the query's WHERE exactly, so
+        // SQLite can prove it applies, scan it alone as a covering index,
+        // and never touch the table: RankedNames() dropped to ~17ms (4.3x).
+        // Count() and Rows() are untouched by design (see progress ledger).
+        // Write cost: LogCommit touches this index on every insert (it
+        // always writes reverted = 0) — measured 8.494ms/call before vs
+        // 8.536ms/call after, 1,000 real LogCommit calls, best of 3 — inside
+        // the noise floor already imposed by synchronous=FULL's per-call
+        // fsync. One-time cost of building this on an existing 100k-row
+        // database — paid by ShellViewModel's synchronous constructor on the
+        // first launch after upgrade — measured ~110-130ms: not perceptible
+        // as a hang. Re-measure before assuming this still earns its keep if
+        // the query, the table's shape, or the row count changes materially.
+        Exec("""
+            CREATE INDEX IF NOT EXISTS ix_history_ranked_names
+                ON history(name_entered, ts_utc, id)
+                WHERE reverted = 0 AND name_entered != ''
+            """);
     }
 
     private void Exec(string sql)
@@ -147,21 +176,42 @@ public sealed class History : IDisposable
         return Read(cmd);
     }
 
+    private const string RankedNamesSql =
+        "SELECT name_entered FROM history" +
+        " WHERE name_entered != '' AND reverted = 0" +
+        " GROUP BY name_entered" +
+        " ORDER BY MAX(ts_utc) DESC, COUNT(*) DESC, MAX(id) DESC";
+
     /// <summary>Distinct committed names, most recently used first, then by how
     /// often — the autocomplete order. Blank and reverted rows don't count.</summary>
     public List<string> RankedNames()
     {
         using var cmd = _conn.CreateCommand();
-        cmd.CommandText =
-            "SELECT name_entered FROM history" +
-            " WHERE name_entered != '' AND reverted = 0" +
-            " GROUP BY name_entered" +
-            " ORDER BY MAX(ts_utc) DESC, COUNT(*) DESC, MAX(id) DESC";
+        cmd.CommandText = RankedNamesSql;
         var names = new List<string>();
         using var r = cmd.ExecuteReader();
         while (r.Read()) names.Add(r.GetString(0));
         return names;
     }
+
+    /// <summary>EXPLAIN QUERY PLAN for RankedNames()'s exact SQL — shares the
+    /// constant with RankedNames() itself so the plan under test can never
+    /// silently drift from the query actually run. Test-only.</summary>
+    internal string ExplainRankedNames()
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "EXPLAIN QUERY PLAN " + RankedNamesSql;
+        using var r = cmd.ExecuteReader();
+        var detailCol = r.GetOrdinal("detail");
+        var lines = new List<string>();
+        while (r.Read()) lines.Add(r.GetString(detailCol));
+        return string.Join("\n", lines);
+    }
+
+    /// <summary>Runs arbitrary SQL against the shared connection. Test-only —
+    /// lets a test simulate an existing database (e.g. drop an index) without
+    /// exposing the connection itself.</summary>
+    internal void ExecForTests(string sql) => Exec(sql);
 
     /// <summary>Write the whole table to CSV (Excel-friendly BOM), chronological.
     /// Returns the row count. Cells that a spreadsheet would read as a formula
