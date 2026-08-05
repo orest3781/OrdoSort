@@ -111,7 +111,13 @@ public sealed class History : IDisposable
         // not just this CREATE INDEX statement) at 157.5-163.7ms: not
         // perceptible as a hang. Re-measure before assuming this still earns
         // its keep if the query, the table's shape, or the row count changes
-        // materially.
+        // materially. Permanent cost: this index makes the on-disk database
+        // itself bigger — measured 14.2MB to 19.8MB (+39%) on the same
+        // 100k-row fixture — and HistoryBackup.BackupDaily copies the whole
+        // file once a day before first paint; measured copy-time impact was
+        // 6.0ms to 8.1ms locally, i.e. roughly 1-2MB more once a day at the
+        // audit's stated envelope — not enough on its own to worsen the
+        // known synchronous-startup finding (5.3), but part of the ledger.
         Exec("""
             CREATE INDEX IF NOT EXISTS ix_history_ranked_names
                 ON history(name_entered, ts_utc, id)
@@ -214,6 +220,25 @@ public sealed class History : IDisposable
     /// lets a test simulate an existing database (e.g. drop an index) without
     /// exposing the connection itself.</summary>
     internal void ExecForTests(string sql) => Exec(sql);
+
+    /// <summary>The CREATE INDEX text SQLite stored verbatim in sqlite_master
+    /// for the named index, or null if no such index exists. Test-only — this
+    /// is how a test tells a partial index from a plain one: EXPLAIN QUERY
+    /// PLAN prints the identical "SCAN history USING INDEX &lt;name&gt;" line
+    /// for both, so plan text alone cannot catch someone dropping the WHERE
+    /// clause. Reads from sqlite_master rather than PRAGMA index_list's
+    /// `partial` column because sqlite_master storing the original DDL text
+    /// verbatim is foundational SQLite behaviour with no version-gated
+    /// introspection surface, whereas `partial` is a specific pragma column
+    /// (added 3.15.0, 2016) whose absence on some future bundled build would
+    /// make a test built on it silently stop asserting anything.</summary>
+    internal string? IndexSql(string indexName)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = $name";
+        cmd.Parameters.AddWithValue("$name", indexName);
+        return cmd.ExecuteScalar() as string;
+    }
 
     /// <summary>Write the whole table to CSV (Excel-friendly BOM), chronological.
     /// Returns the row count. Cells that a spreadsheet would read as a formula

@@ -74,6 +74,27 @@ public class HistoryIndexTests : IDisposable
         Assert.Contains("ix_history_ranked_names", plan, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>The plan-text checks above are not enough by themselves: a
+    /// plain (non-partial) index on the same three columns, under the same
+    /// name, produces the exact same "SCAN history USING INDEX
+    /// ix_history_ranked_names" plan line — this SQLite build never prints
+    /// "COVERING" here — while running at unindexed speed, because it
+    /// doesn't cover `reverted` and pays a table lookup per index row.
+    /// Measured 2026-08-05: partial 18.2ms vs plain 64.9ms vs no index
+    /// 67.2ms on a 100k-row fixture — a plain index is not a rounding error,
+    /// it is the 6x regression History.cs:90-114 documents shipping unnoticed.
+    /// This asserts the one thing that actually distinguishes the two: the
+    /// WHERE clause SQLite stored verbatim in sqlite_master's DDL text for
+    /// this index.</summary>
+    [Fact]
+    public void TheIndexIsPartialNotPlain()
+    {
+        using var h = Seeded();
+        var sql = h.IndexSql("ix_history_ranked_names");
+        Assert.NotNull(sql);
+        Assert.Contains("WHERE reverted = 0", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>The index must arrive on databases that already exist — every
     /// station upgrading has one. Simulates that by dropping the index from an
     /// open database and reopening.</summary>
