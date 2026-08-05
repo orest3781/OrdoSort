@@ -67,8 +67,11 @@ public partial class MainWindow : Window
         };
         Shell.AlertArrived += () => { if (!IsActive) TaskbarFlash.Flash(this); };
         // a filing-loop exception the view model didn't expect still reaches
-        // crash.log — the user has already been warned by then
-        Shell.UnexpectedError += App.LogCrash;
+        // crash.log — the user has already been warned by then. The lambda
+        // (rather than a method-group `+= App.LogCrash`) is needed because
+        // LogCrash now returns bool (whether the write succeeded) while this
+        // event is Action<Exception>; the return value isn't needed here.
+        Shell.UnexpectedError += ex => App.LogCrash(ex);
         Shell.SettingsApplied += () =>
         {
             App.ApplyFont(Application.Current, Shell.Cfg);

@@ -25,15 +25,24 @@ public partial class App : Application
         // never deletes, never overwrites (see its class doc).
         DispatcherUnhandledException += (_, ex) =>
         {
-            LogCrash(ex.Exception);
+            var logged = LogCrash(ex.Exception);
             MessageBox.Show(
                 "OrdoSort hit a problem it wasn't expecting and stopped what it was doing.\n\n" +
                 "No document was lost — OrdoSort only ever moves files, never deletes them, " +
                 "so anything it was part-way through is either where it started or where it " +
                 "was going.\n\n" +
-                "The technical details were written to crash.log, beside your config file.",
+                (logged
+                    ? "The technical details were written to crash.log, beside your config file."
+                    : "The technical details could not be written to crash.log — the location " +
+                      "may not be writable."),
                 "OrdoSort — unexpected problem", MessageBoxButton.OK, MessageBoxImage.Warning);
             ex.Handled = true;
+            // Handled keeps a running app alive, which is right once there is
+            // a window to go back to. Before MainWindow exists there is
+            // nothing to return to, and ShutdownMode=OnMainWindowClose means
+            // nothing will ever close the process — it just lingers invisibly
+            // (2026-08-04 audit 3.1).
+            if (MainWindow is null) Shutdown(1);
         };
         AppDomain.CurrentDomain.UnhandledException += (_, ex) =>
             LogCrash(ex.ExceptionObject as Exception);
@@ -97,9 +106,14 @@ public partial class App : Application
     /// <see cref="Unlock.LargeFileThresholdBytes"/>.</summary>
     internal static string _crashDir = ".";
 
-    internal static void LogCrash(Exception? ex)
+    /// <summary>Appends <paramref name="ex"/> to crash.log beside the config.
+    /// Returns whether the write actually succeeded, so callers that promise
+    /// the user "the details are in crash.log" (the DispatcherUnhandledException
+    /// dialog) can tell the truth when that same unwritable location that
+    /// caused the crash also blocks the log (2026-08-04 audit 3.1).</summary>
+    internal static bool LogCrash(Exception? ex)
     {
-        if (ex is null) return;
+        if (ex is null) return false;
         try
         {
             var dir = _crashDir;
@@ -107,7 +121,8 @@ public partial class App : Application
             // display string — must not shift shape with the station's locale.
             File.AppendAllText(Path.Combine(dir, "crash.log"),
                 $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)}] {ex}\n\n");
+            return true;
         }
-        catch (Exception) { /* crash logging must never crash */ }
+        catch (Exception) { return false; /* crash logging must never crash */ }
     }
 }

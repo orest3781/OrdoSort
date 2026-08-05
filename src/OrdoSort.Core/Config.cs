@@ -172,7 +172,23 @@ public sealed class Config
         if (!File.Exists(path))
         {
             var fresh = new Config();
-            Save(fresh, path);
+            try
+            {
+                Save(fresh, path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                          or NotSupportedException)
+            {
+                // Every other failure in Load is a ConfigException, and
+                // App.OnStartup catches exactly that. An unguarded write
+                // failure here escaped startup entirely and left a windowless,
+                // un-closeable process (2026-08-04 audit 3.1).
+                throw new ConfigException(
+                    $"OrdoSort couldn't create its settings file at {path}: {ex.Message}\n\n" +
+                    "This usually means the folder is read-only — for example if OrdoSort was " +
+                    "installed under Program Files. Move it somewhere you can write, such as " +
+                    "your Documents folder, or start it with --config pointing at a writable path.");
+            }
             return fresh;
         }
         Config cfg;
