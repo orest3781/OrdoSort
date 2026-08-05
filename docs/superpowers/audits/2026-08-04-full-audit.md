@@ -151,11 +151,13 @@ The Evergreen runtime is present on current Windows 11 but not guaranteed. There
 
 Threat model: a malicious PDF or spreadsheet, a hostile share, another user on the same machine. Not a remote attacker.
 
-**4.1 — The PDF viewer is completely unhardened. [V] Important**
+**4.1 — The PDF viewer is completely unhardened. [V] Important — FIXED `f821dfe`**
 
 `WebViewPdfViewer.cs:31-47` creates the environment and calls `EnsureCoreWebView2Async`. That is all. Zero matches across all source for `NavigationStarting`, `NewWindowRequested`, or any `CoreWebView2Settings` property; the only browser argument set is `--disable-smooth-scrolling`. `ShowAsync` then navigates to a `file://` URL.
 
 So the app's defining untrusted input — a PDF arriving from a scanner or a share — is rendered by a browser with every default capability on. A link annotation can navigate the pane to any http(s) or `file:` URL, run script there, spawn popups, and start downloads. The natural attack is a convincing fake "enter the PDF password" prompt inside the app's own viewer pane. Mitigating: there is no host-object or web-message bridge, so there is no path back into the process.
+
+> Fixed (`f821dfe`): `WebViewPdfViewer.InitAsync` now gates every navigation through a pure `IsPermittedNavigation` predicate enforced by a `NavigationStarting` handler — only the document the viewer itself asked to show is allowed (`about:blank` is always permitted too, because `ReleaseAsync` depends on it); anything else, including a link annotation to `http(s)://`, `file://`, or `javascript:`, is silently refused. `NewWindowRequested` is blocked and `DownloadStarting` is cancelled. Settings now turn off host objects, web messages, script dialogs, devtools, password autosave, general autofill, and the status bar. The going-in hypothesis was that `IsScriptEnabled = false` might not be viable — Edge's built-in PDF viewer is itself a web application, so disabling script could break rendering — and that hypothesis turned out **false**: a real launch against `demo-full`, screenshotted at the pixel level (not just navigation-checked), showed the PDF toolbar and page text rendering correctly with script off, across more than one document. So the pane ships with **both** script disabled and the navigation allowlist, rather than leaning on the allowlist as the sole defense. `AreDefaultContextMenusEnabled` and `AreBrowserAcceleratorKeysEnabled` were deliberately left on — a stated user decision, security-only with no UX change — and the gate confirmed a right-click inside the pane still opens the standard Edge context menu (Back/Forward/Refresh/Print/Rotate/Send tab to your devices).
 
 **4.2 — Config-controlled absolute paths give an arbitrary-file write. [A] Important**
 
@@ -241,7 +243,7 @@ Ranked by (harm × likelihood) ÷ effort, not by severity label.
 2. ~~**Guard the first-run config save** (3.1) — and make the crash handler `Shutdown()` when no window exists. Small, and it is the first thing a new user can hit.~~ **DONE — `ea49754`.**
 3. ~~**Hold close until the in-flight commit completes** (1.1) — checking the busy guard on the `_reallyExit` path closes the disposed-connection race for free.~~ **DONE — `e15bdb4`, bound by `3373560`.**
 4. ~~**Call `RefreshSharedSectionsFromDisk` from Settings-OK** (2.1) — the fix already exists; wire it to the second path.~~ **DONE, but not as recommended here — `a7d8407`, refined `86be636`.** This recommendation was wrong: `RefreshSharedSectionsFromDisk` overwrites the shared sections with disk content, which is correct for the tool-window caller it already had and would have discarded the user's own Settings edits on every save. The shipped fix is conflict detection by content hash instead — see the note under 2.1.
-5. **Harden the WebView2 viewer** (4.1) — ~20 lines in one `InitAsync`, no workflow change.
+5. ~~**Harden the WebView2 viewer** (4.1) — ~20 lines in one `InitAsync`, no workflow change.~~ **DONE — `f821dfe`.** Landed close to the original scope, plus one empirical correction: the plan's own worry that script might have to stay on for rendering to survive turned out false — `IsScriptEnabled = false` was measured, not assumed, and kept. See 4.1's note.
 6. ~~**Make `Mutate` and `Read` agree about a 0-byte file** (2.2) — falls out of 1, but assert it directly too.~~ **DONE — `fe8b110`.** Landed as its own fix, not as a byproduct of item 1: item 1's temp-file pattern doesn't apply to `Mutate` (see 2.2's note).
 7. **Index the history table** (5.1) — `name_entered`, `reverted`, `ts_utc`.
 8. **Test `UndoAction`'s three failure branches** (1.5) — the safety net deserves a test.
