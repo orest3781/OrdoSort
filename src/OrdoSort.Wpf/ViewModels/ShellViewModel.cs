@@ -8,6 +8,23 @@ namespace OrdoSort.Wpf.ViewModels;
 
 public enum Screen { Ready, Processing, Done }
 
+/// <summary>Cheap per-file conflict marker: last-write time + length, not a
+/// hash. Enough to notice a peer station wrote the file between two
+/// snapshots, far cheaper than reading and hashing three JSON files on
+/// every Settings open and save.</summary>
+internal readonly record struct FileStamp(string Path, DateTime LastWriteUtc, long Length);
+
+/// <summary>Fingerprint of the three shared side files the Settings window
+/// can change (destinations, monitored folders, alerts) at one instant. A
+/// file that doesn't exist fingerprints as null rather than some sentinel —
+/// first-run creation, or a section repointed at a file nobody has written
+/// yet, must not read as a conflict. Two null fingerprints compare equal;
+/// null against a real stamp does not.</summary>
+internal sealed record SectionFingerprint(
+    FileStamp? Destinations,
+    FileStamp? MonitoredFolders,
+    FileStamp? Alerts);
+
 /// <summary>The app's state machine: Ready (dashboard) → Processing (filing
 /// loop) → Done (summary), plus live folder monitoring. Owns Config, History,
 /// Session. No WPF types — the whole lifecycle is unit-tested headless.</summary>
@@ -15,6 +32,13 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 {
     private Config _cfg;               // replaced by Settings
     private readonly string _cfgPath;
+    // Fingerprint of the shared section files taken the moment the Settings
+    // window opened (FreshConfigForSettings) — compared again in
+    // ApplySettingsAsync just before saving, so a peer station's edit that
+    // landed while this station's dialog was open is caught instead of
+    // silently overwritten. Null when no Settings editing session is in
+    // flight (e.g. ApplySettings invoked without opening Settings first).
+    private SectionFingerprint? _settingsSnapshot;
     private History _history;          // re-opened if history_db changes
     private Session _session;
     private readonly IPdfViewer _viewer;
@@ -158,9 +182,13 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     /// <summary>Fresh config for the Settings window: shared side files may
     /// have changed on disk. A load failure (e.g. a half-edited side file)
-    /// warns and falls back to the in-memory config rather than blocking.</summary>
+    /// warns and falls back to the in-memory config rather than blocking.
+    /// This is also the moment the user's editing session begins, so it's
+    /// where the conflict-detection snapshot is taken (see
+    /// <see cref="_settingsSnapshot"/> and <see cref="ApplySettingsAsync"/>).</summary>
     internal Config FreshConfigForSettings()
     {
+        _settingsSnapshot = SnapshotSections();
         try { return Config.Load(_cfgPath); }
         catch (ConfigException ex)
         {
@@ -168,6 +196,34 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 "OrdoSort — settings");
             return _cfg;
         }
+    }
+
+    /// <summary>Fingerprint the three shared side files as they stand right
+    /// now, keyed off _cfg's current file names. Internal so tests can
+    /// assert on it directly (e.g. that a missing file fingerprints as
+    /// null, not as "changed").</summary>
+    internal SectionFingerprint SnapshotSections() => new(
+        StampSection(_cfg.DestinationsFile),
+        StampSection(_cfg.MonitoredFoldersFile),
+        StampSection(_cfg.AlertsFile));
+
+    private FileStamp? StampSection(string sectionFile)
+    {
+        var path = ResolvePath(sectionFile, _cfgPath);
+        if (!File.Exists(path)) return null;
+        var info = new FileInfo(path);
+        return new FileStamp(path, info.LastWriteTimeUtc, info.Length);
+    }
+
+    /// <summary>Human-readable names of the sections that differ between two
+    /// fingerprints, in a fixed order, for the conflict prompt.</summary>
+    private static List<string> ChangedSectionNames(SectionFingerprint before, SectionFingerprint after)
+    {
+        var changed = new List<string>();
+        if (before.Destinations != after.Destinations) changed.Add("destinations");
+        if (before.MonitoredFolders != after.MonitoredFolders) changed.Add("monitored folders");
+        if (before.Alerts != after.Alerts) changed.Add("alerts");
+        return changed;
     }
 
     /// <summary>True for the moment ApplySettings is re-opening the history
@@ -1113,6 +1169,29 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     internal async Task ApplySettingsAsync(Config cfg)
     {
+        // Audit 2.1: two stations editing Settings concurrently — the second
+        // to press OK would otherwise silently overwrite the first. If a
+        // snapshot was taken when this station's Settings window opened,
+        // re-snapshot now and compare; a difference means a peer station
+        // saved a shared section while this dialog was open. The decision
+        // to proceed anyway is the user's, not the app's. Consumed (set to
+        // null) either way — this editing session is over the moment this
+        // method runs, whether it goes on to save or bails out below.
+        if (_settingsSnapshot is { } openedAt)
+        {
+            _settingsSnapshot = null;
+            var changed = ChangedSectionNames(openedAt, SnapshotSections());
+            if (changed.Count > 0)
+            {
+                var proceed = _dialogs.Confirm(
+                    $"Another station changed the {string.Join(" and ", changed)} while you had " +
+                    "Settings open. Saving now will replace their changes with yours. Save anyway, " +
+                    "or cancel and reopen Settings to see theirs?",
+                    "OrdoSort — settings conflict");
+                if (!proceed) return;   // abandon: _cfg, history, watchers all left untouched
+            }
+        }
+
         var oldDbSetting = _cfg.HistoryDb;
         var oldDb = ResolvePath(oldDbSetting, _cfgPath);
         var newDb = ResolvePath(cfg.HistoryDb, _cfgPath);

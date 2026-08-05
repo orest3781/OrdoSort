@@ -45,6 +45,7 @@ public sealed class FakeDialogs : IDialogService
 {
     public List<(string Message, string Title)> Warnings { get; } = new();
     public List<(string Message, string Title)> Infos { get; } = new();
+    public List<(string Message, string Title)> Confirms { get; } = new();
     public bool ConfirmAnswer { get; set; } = true;
     public string? NextSaveFile { get; set; }
     public string? NextOpenFile { get; set; }
@@ -53,7 +54,12 @@ public sealed class FakeDialogs : IDialogService
 
     public void Warn(string message, string title) => Warnings.Add((message, title));
     public void Info(string message, string title) => Infos.Add((message, title));
-    public bool Confirm(string message, string title) => ConfirmAnswer;
+
+    public bool Confirm(string message, string title)
+    {
+        Confirms.Add((message, title));
+        return ConfirmAnswer;
+    }
     public string? AskSaveFile(string filter, string suggested) => NextSaveFile;
     public string? AskOpenFile(string filter) => NextOpenFile;
     public string? AskFilePath(string filter, string suggested) => NextFilePath;
