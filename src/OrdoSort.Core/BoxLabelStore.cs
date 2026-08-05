@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 
 namespace OrdoSort.Core;
@@ -92,6 +93,13 @@ public static class BoxLabelStore
         var sw = System.Diagnostics.Stopwatch.StartNew();
         while (true)
         {
+            // 0 bytes means two very different things once the FileStream
+            // opens below. A file THIS call just created (OpenOrCreate) is
+            // first run. A file that already existed and is now empty is a
+            // crash mid-write. Must be captured before the FileStream open,
+            // since OpenOrCreate itself would otherwise bring the file into
+            // existence and erase the distinction.
+            var existedBefore = File.Exists(fullPath);
             FileStream? fs = null;
             try
             {
@@ -123,8 +131,20 @@ public static class BoxLabelStore
                 BoxLabelsDoc doc;
                 try
                 {
+                    // 0 bytes means two very different things. A file this
+                    // call just created is first run. A file that already
+                    // existed and is now empty is a crash mid-write — and
+                    // treating that as "no clients yet" is how the counters
+                    // got wiped (2026-08-04 audit 2.2). Read has always
+                    // thrown here; Mutate must agree, because Mutate is the
+                    // one that writes back.
                     doc = text.Trim().Length == 0
-                        ? new BoxLabelsDoc()
+                        ? (existedBefore
+                            ? throw new ConfigException(
+                                $"the box-labels file is empty, which means a previous save was " +
+                                $"interrupted — restore it from a backup before claiming more " +
+                                $"box numbers ({fullPath})")
+                            : new BoxLabelsDoc())
                         : JsonSerializer.Deserialize<BoxLabelsDoc>(text, Opts) ?? new BoxLabelsDoc();
                 }
                 catch (JsonException ex)
@@ -137,13 +157,18 @@ public static class BoxLabelStore
 
                 var result = mutate(doc);   // outside every classification catch
 
+                // Write first, truncate after. The old order (SetLength(0)
+                // then write) put the file through a 0-byte state on every
+                // save; a crash there is what the guard above now has to
+                // refuse. This ordering removes the state instead of
+                // detecting it. Not a substitute for the guard — an
+                // already-damaged file can still arrive from an older build.
+                var bytes = new UTF8Encoding(false).GetBytes(
+                    JsonSerializer.Serialize(doc, Opts) + "\n");
                 fs.Seek(0, SeekOrigin.Begin);
-                fs.SetLength(0);
-                using (var writer = new StreamWriter(fs, leaveOpen: true))
-                {
-                    writer.Write(JsonSerializer.Serialize(doc, Opts) + "\n");
-                    writer.Flush();
-                }
+                fs.Write(bytes, 0, bytes.Length);
+                fs.Flush(flushToDisk: true);
+                fs.SetLength(bytes.Length);
                 return result;
             }
         }
