@@ -122,7 +122,14 @@ public partial class MainWindow : Window
                 // History connection — out from under that, so the document
                 // moves and the log entry is lost. Let the in-flight commit
                 // land first; it is bounded by a single file move.
-                if (Shell.IsBusy)
+                //
+                // _forceClosing is the escape hatch for FinishClosingWhenIdle's
+                // OWN re-entrant Close() call: without it, a commit that is
+                // still busy at the timeout would hit this same branch again,
+                // cancel again, and re-arm another FinishClosingWhenIdle —
+                // forever. A hung move must end in a closed app, not an
+                // unclosable one; that would be worse than the bug this fixes.
+                if (Shell.IsBusy && !_forceClosing)
                 {
                     e.Cancel = true;
                     _ = FinishClosingWhenIdle();
@@ -153,6 +160,19 @@ public partial class MainWindow : Window
 
     private bool _reallyExit;
 
+    /// <summary>Set immediately before FinishClosingWhenIdle's own re-entrant
+    /// Close() call, so THAT re-entry into the Closing handler above cannot
+    /// be cancelled again — whether the wait actually went idle or hit
+    /// <see cref="CloseIdleTimeout"/>. Never set anywhere else.</summary>
+    private bool _forceClosing;
+
+    /// <summary>How long FinishClosingWhenIdle waits for a mid-flight commit
+    /// before forcing the close through anyway. Internal (not private) only
+    /// so the timeout-path test can shrink it well below 10 seconds —
+    /// production code never assigns to this. Same "settable only by tests"
+    /// seam pattern as <see cref="Theme.ThemeManager.IsHighContrast"/>.</summary>
+    internal TimeSpan CloseIdleTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
     private void OnExit(object sender, RoutedEventArgs e)
     {
         _reallyExit = true;
@@ -161,11 +181,16 @@ public partial class MainWindow : Window
 
     /// <summary>Re-issue the close once the in-flight commit has landed. The
     /// timeout is a backstop: OS shutdown will not wait forever, and a hung
-    /// move must not make the app unclosable — the far worse failure.</summary>
+    /// move must not make the app unclosable — the far worse failure. Sets
+    /// _forceClosing right before its own Close() call (same synchronous
+    /// call, no await between them) so that re-entry into Closing always
+    /// lands — a commit that outlives the timeout gets its close forced
+    /// through rather than restarting the wait forever.</summary>
     private async Task FinishClosingWhenIdle()
     {
-        await Shell.WaitForIdleAsync(TimeSpan.FromSeconds(10));
+        await Shell.WaitForIdleAsync(CloseIdleTimeout);
         _reallyExit = true;
+        _forceClosing = true;
         Close();
     }
 

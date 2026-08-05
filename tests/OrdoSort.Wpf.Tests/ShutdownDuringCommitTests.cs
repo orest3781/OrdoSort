@@ -229,4 +229,112 @@ public class ShutdownDuringCommitTests
             }
         }
     }
+
+    /// <summary>Fix round 1 (code review, 2026-08-04): the first version of
+    /// this fix awaited <c>WaitForIdleAsync(10s)</c> and then called
+    /// <c>Close()</c> unconditionally — but <c>Close()</c> re-raises Closing,
+    /// and the handler re-checked <c>Shell.IsBusy</c> with no bypass. A
+    /// commit that outlived the 10 seconds hit the SAME branch again,
+    /// cancelled again, and armed another <c>FinishClosingWhenIdle</c> —
+    /// forever. The window never closed. That is a worse defect than the one
+    /// this task set out to fix: the brief named this exact risk ("a fix that
+    /// holds the close can make the app unclosable… If WaitForIdleAsync times
+    /// out, does Close() definitely proceed?") and the first round answered
+    /// "no" without any test ever exercising the timeout path — every other
+    /// test here always releases its gate, so the wait always resolves via
+    /// the happy path, not the timeout.
+    ///
+    /// This test never releases the gate at all: the commit is stuck forever,
+    /// exactly modelling a genuinely hung file move. <see cref="MainWindow.CloseIdleTimeout"/>
+    /// is shrunk to 150ms (production default 10s is untouched — this is the
+    /// seam the review asked for, not a change to shipped behaviour) so the
+    /// test doesn't itself take 10 seconds. It asserts the window closes
+    /// anyway once the backstop elapses, AND that <c>Shell.IsBusy</c> is
+    /// STILL true at that moment — proof the close was forced through by the
+    /// timeout, not because the commit happened to finish.</summary>
+    [Fact]
+    public void ExitingMidCommitForcesTheCloseThroughOnceTheBackstopExpires()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ordo_exit_timeout_" + Guid.NewGuid());
+        var inbox = Path.Combine(dir, "inbox");
+        var deferred = Path.Combine(dir, "deferred");
+        var routeDir = Path.Combine(dir, "routed");
+        Directory.CreateDirectory(inbox);
+        Directory.CreateDirectory(deferred);
+        Directory.CreateDirectory(routeDir);
+        var cfgPath = Path.Combine(dir, "config.json");
+        var cfg = new Config
+        {
+            Inbox = inbox,
+            Deferred = deferred,
+            HistoryDb = Path.Combine(dir, "history.sqlite"),
+            Sort = "filename_asc",
+            Routes = { new Route { Label = "Filed", Path = routeDir, Color = "#2e7d32" } },
+        };
+        File.WriteAllText(Path.Combine(inbox, "20240115--222222.pdf"), "pdf");
+
+        // Deliberately never Release()d: the commit this test starts stays
+        // "in flight" for the rest of the test, modelling a hung file move.
+        var gate = new GateWorkScheduler();
+        MainWindow window = null!;
+        ShellViewModel shell = null!;
+        var closed = false;
+
+        try
+        {
+            _fx.Invoke(() =>
+            {
+                window = new MainWindow(cfg, cfgPath)
+                {
+                    Left = -20000, Top = 0, ShowActivated = false,
+                    WindowStartupLocation = WindowStartupLocation.Manual,
+                };
+                shell = window.Shell;
+                SetScheduler(shell, gate);
+                window.Closed += (_, _) => closed = true;
+                window.CloseIdleTimeout = TimeSpan.FromMilliseconds(150);
+                shell.StartProcessing();
+            });
+
+            WaitFor(() => shell.Screen == Screen.Processing, "the session should have started");
+
+            _fx.Invoke(() =>
+            {
+                shell.TypedName = "SMITH JOHN";
+                gate.ArmHold();
+                shell.RouteCommand.Execute(0);
+                Assert.True(shell.IsBusy,
+                    "the commit should already be in flight, blocked on the gate scheduler");
+            });
+
+            _fx.Invoke(() =>
+            {
+                InvokeOnExit(window);
+                Assert.False(closed,
+                    "the first Closing pass should still defer while the commit is in flight");
+            });
+
+            // No gate.Release() here — the whole point of this test.
+            WaitFor(() => closed,
+                "the 150ms CloseIdleTimeout backstop should force the close through even " +
+                "though the commit never finished",
+                timeoutMs: 5000);
+
+            _fx.Invoke(() => Assert.True(shell.IsBusy,
+                "the commit should STILL be stuck (the gate was never released) — proving the " +
+                "window closed BECAUSE the timeout forced it through, not because the commit " +
+                "actually finished"));
+        }
+        finally
+        {
+            gate.Release();   // let the stuck background thread unwind; idempotent
+            if (!closed)
+                _fx.Invoke(() => window.Close());
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            for (var i = 0; i < 10; i++)
+            {
+                try { Directory.Delete(dir, true); break; } catch { Thread.Sleep(50); }
+            }
+        }
+    }
 }
