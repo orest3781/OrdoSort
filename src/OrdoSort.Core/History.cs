@@ -107,9 +107,11 @@ public sealed class History : IDisposable
         // the noise floor already imposed by synchronous=FULL's per-call
         // fsync. One-time cost of building this on an existing 100k-row
         // database — paid by ShellViewModel's synchronous constructor on the
-        // first launch after upgrade — measured ~110-130ms: not perceptible
-        // as a hang. Re-measure before assuming this still earns its keep if
-        // the query, the table's shape, or the row count changes materially.
+        // first launch after upgrade — measured end-to-end (new History(path),
+        // not just this CREATE INDEX statement) at 157.5-163.7ms: not
+        // perceptible as a hang. Re-measure before assuming this still earns
+        // its keep if the query, the table's shape, or the row count changes
+        // materially.
         Exec("""
             CREATE INDEX IF NOT EXISTS ix_history_ranked_names
                 ON history(name_entered, ts_utc, id)
