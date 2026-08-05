@@ -26,7 +26,7 @@ public class AtomicWriteTests : IDisposable
     /// The reader opens with full sharing (including FileShare.Delete) so the
     /// writer can proceed and actually truncate, making the failure observable.</summary>
     [Fact]
-    public void TheDestinationIsNeverObservedEmptyOrPartial()
+    public async Task TheDestinationIsNeverObservedEmptyOrPartial()
     {
         var path = Path.Combine(_dir, "config.json");
         var oldContent = "{\"old\":\"" + new string('o', 200_000) + "\"}";
@@ -61,7 +61,7 @@ public class AtomicWriteTests : IDisposable
             Config.WriteAtomic(path, oldContent);
         }
         Volatile.Write(ref stop, true);
-        reader.Wait();
+        await reader;
 
         Assert.Empty(bad);
     }
@@ -108,5 +108,36 @@ public class AtomicWriteTests : IDisposable
         // No .tmp sibling should be left behind after failure.
         var files = Directory.GetFiles(_dir).Select(Path.GetFileName).OrderBy(n => n).ToArray();
         Assert.Equal(new[] { "config.json" }, files);
+    }
+
+    /// <summary>The retry loop is d52208c's entire behavioral claim: a
+    /// concurrent reader holding the destination open (Config.Load uses
+    /// File.ReadAllText, no FileShare.Delete) must not make a save fail where
+    /// it would have succeeded once the reader let go. The other three tests
+    /// in this file stay green with the loop deleted outright — the
+    /// exhaustion test above just throws on attempt 1 instead of attempt 50,
+    /// and the atomicity test's reader opens with FileShare.Delete so Replace
+    /// never contends. This is the one test that actually needs the loop
+    /// (2026-08 audit finding 2): hold the destination open for less than the
+    /// 500ms retry budget, release it, and require the write to have
+    /// succeeded — not thrown — with the new content landed.</summary>
+    [Fact]
+    public async Task WriteSucceedsOnceAReaderReleasesWithinTheRetryBudget()
+    {
+        var path = Path.Combine(_dir, "config.json");
+        File.WriteAllText(path, "{\"initial\":\"content\"}");
+
+        using var hold = new FileStream(path, FileMode.Open, FileAccess.Read,
+            FileShare.Read, bufferSize: 4096, useAsync: false);
+        var releaser = Task.Run(() =>
+        {
+            Thread.Sleep(100);
+            hold.Dispose();
+        });
+
+        Config.WriteAtomic(path, "{\"new\":\"content\"}");
+        await releaser;
+
+        Assert.Equal("{\"new\":\"content\"}", File.ReadAllText(path));
     }
 }

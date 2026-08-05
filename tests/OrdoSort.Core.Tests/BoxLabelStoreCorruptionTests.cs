@@ -43,9 +43,20 @@ public class BoxLabelStoreCorruptionTests : IDisposable
         Assert.True(File.Exists(path));
     }
 
-    /// <summary>A shrinking write must never pass through a 0-byte state:
-    /// write first, truncate after. Asserted on the file's own bytes after a
-    /// large-to-small rewrite, and on the fact that the result parses.</summary>
+    /// <summary>Every *completed* Mutate call — including a large-to-small
+    /// rewrite — leaves the file valid, non-empty, and parseable, which this
+    /// test pins on the final bytes. What it does NOT prove: that the
+    /// write-then-truncate ordering (write first, truncate after, rather than
+    /// the old truncate-then-write) ever mattered. A final-state assertion
+    /// cannot observe a mid-crash 0-byte window, and this test still passes
+    /// with that ordering reverted — a completed call ends valid either way.
+    /// The guard that actually closes the counter-wipe harm is `existedBefore`
+    /// in Mutate, pinned by MutateRefusesAZeroByteFileInsteadOfWipingTheCounters
+    /// above: if a crash DOES leave a 0-byte file mid-write, that guard
+    /// refuses to read it as "no clients yet" and throws instead of silently
+    /// wiping the counters. The write-then-truncate ordering only narrows how
+    /// often a crash forces a restore-from-backup; it is not what makes the
+    /// wipe impossible (2026-08 audit finding 3).</summary>
     [Fact]
     public void AShrinkingWriteLeavesAValidFileNotAnEmptyOne()
     {

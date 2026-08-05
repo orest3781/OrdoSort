@@ -361,7 +361,12 @@ public sealed class Config
     /// <summary>Write the main config (without the split sections) and the
     /// Settings-owned side files. box-labels.json is bootstrap-only: created
     /// when missing, never overwritten — its counters belong to the Box
-    /// labels tool's exclusive writer (BoxLabelStore).</summary>
+    /// labels tool's exclusive writer (BoxLabelStore). The bootstrap write
+    /// goes through <see cref="WriteAtomicNew"/>, not <see cref="WriteAtomic"/>:
+    /// it must never fall back to File.Replace, because File.Replace is what
+    /// let this bootstrap wait out a peer's BoxLabelStore.Mutate lock and then
+    /// clobber the counters that peer had just written (2026-08 audit
+    /// finding 1). See WriteAtomicNew's doc comment for the full story.</summary>
     public static void Save(Config cfg, string path)
     {
         var dir = Path.GetDirectoryName(Path.GetFullPath(path));
@@ -375,7 +380,7 @@ public sealed class Config
             new AlertsDoc { AlertTexts = cfg.AlertTexts, Extras = cfg.AlertsFileExtras });
         var labels = ResolveBeside(path, cfg.BoxLabelsFile);
         if (!File.Exists(labels))
-            WriteJson(labels,
+            WriteJsonNew(labels,
                 new BoxLabelsDoc { LabelClients = cfg.LabelClients, Extras = cfg.BoxLabelsFileExtras });
     }
 
@@ -390,15 +395,27 @@ public sealed class Config
     /// within one volume, and the config can live on a share. Retries up to
     /// 500ms if the destination is held open for reading (Config.Load uses
     /// File.ReadAllText with no FileShare.Delete), allowing readers to
-    /// release the handle so the atomic replace completes.</summary>
+    /// release the handle so the atomic replace completes.
+    ///
+    /// This is for files where a newer replacement is always correct — the
+    /// main config and the destinations/monitored-folders/alerts side files,
+    /// all owned exclusively by whichever station last hit Save. It must
+    /// NOT be used for box-labels.json's bootstrap write: see
+    /// <see cref="WriteAtomicNew"/>.</summary>
     internal static void WriteAtomic(string fullPath, string content)
     {
-        var tmp = fullPath + ".tmp";
-        // Encoding matches File.WriteAllText's default (UTF-8, no BOM), so
-        // this change cannot alter a single byte of what lands on disk.
-        File.WriteAllText(tmp, content);
+        // GUID-suffixed, not a fixed "<file>.tmp": two stations saving the
+        // same file concurrently used to share one tmp name, so one station
+        // could install the other's bytes, or find its own tmp deleted out
+        // from under it mid-retry (2026-08 audit finding 4a).
+        var tmp = $"{fullPath}.{Guid.NewGuid():N}.tmp";
         try
         {
+            // Encoding matches File.WriteAllText's default (UTF-8, no BOM),
+            // so this cannot alter a single byte of what lands on disk. Moved
+            // inside the try (2026-08 audit finding 4b): a disk-full failure
+            // here used to strand a partial tmp outside any cleanup path.
+            File.WriteAllText(tmp, content);
             // File.Replace preserves the destination's ACLs and is the
             // strongest primitive Windows offers, but it REQUIRES the
             // destination to exist — hence the fallback for first creation.
@@ -426,6 +443,64 @@ public sealed class Config
         }
     }
 
+    /// <summary>Create-only atomic write, for files whose ownership belongs to
+    /// someone else once they exist — today, only box-labels.json's bootstrap.
+    /// Unlike <see cref="WriteAtomic"/>, this NEVER falls back to File.Replace:
+    /// it only ever File.Moves the tmp sibling into place, and if the
+    /// destination has appeared by the time that move runs, that is a SUCCESS,
+    /// not a retry-and-overwrite. The peer that created it — another
+    /// station's BoxLabelStore.Mutate, or another station's own bootstrap —
+    /// holds newer truth than our snapshot.
+    ///
+    /// Why this matters: Config.Save's box-labels.json bootstrap guards with
+    /// `if (!File.Exists(labels))` before calling this, but that guard and
+    /// this write are not atomic together. Station B's Mutate can create the
+    /// file, advance a counter, and release its exclusive lock entirely
+    /// inside that gap. The old WriteAtomic re-checked File.Exists *inside*
+    /// its own retry loop and switched to File.Replace the instant the
+    /// destination appeared — so Station A would wait out B's lock via the
+    /// retry loop and then silently replace B's freshly written counters
+    /// with A's stale in-memory snapshot: a box number already printed on a
+    /// physical box gets reissued (2026-08 audit finding 1). File.Move has no
+    /// such fallback: it fails outright when the destination exists, and
+    /// that failure is exactly the signal this method treats as done.</summary>
+    internal static void WriteAtomicNew(string fullPath, string content)
+    {
+        var tmp = $"{fullPath}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.WriteAllText(tmp, content);
+            BeforeCreateOnlyMove?.Invoke(fullPath);
+            try
+            {
+                File.Move(tmp, fullPath);
+            }
+            catch (IOException) when (File.Exists(fullPath))
+            {
+                // The destination exists now — someone else won. Their
+                // content stands; ours is discarded. This is success.
+                File.Delete(tmp);
+            }
+        }
+        catch
+        {
+            try { File.Delete(tmp); } catch { /* best effort */ }
+            throw;
+        }
+    }
+
+    /// <summary>Test seam: invoked immediately before WriteAtomicNew's move
+    /// with the destination path being written, so a test can
+    /// deterministically simulate a peer creating that destination in the
+    /// gap between a caller's own File.Exists guard and this write landing —
+    /// the exact race finding 1 describes. It receives the path (rather than
+    /// firing blind) so that other tests' unrelated WriteAtomicNew calls,
+    /// which run this same process-wide hook when xUnit parallelizes test
+    /// classes, can no-op instead of racing to write a path they don't own.
+    /// Real callers never set this. Same "settable only by tests" seam
+    /// pattern as Theme.ThemeManager.IsHighContrast.</summary>
+    internal static Action<string>? BeforeCreateOnlyMove;
+
     private static void SaveMain(Config cfg, string path)
     {
         var node = JsonSerializer.SerializeToNode(cfg, Opts)!.AsObject();
@@ -441,6 +516,12 @@ public sealed class Config
 
     internal static void WriteJson<T>(string fullPath, T doc) =>
         WriteAtomic(fullPath, JsonSerializer.Serialize(doc, Opts) + "\n");
+
+    /// <summary>Serializes and writes via <see cref="WriteAtomicNew"/> — see
+    /// that method for why box-labels.json's bootstrap needs create-only
+    /// semantics instead of <see cref="WriteJson"/>.</summary>
+    internal static void WriteJsonNew<T>(string fullPath, T doc) =>
+        WriteAtomicNew(fullPath, JsonSerializer.Serialize(doc, Opts) + "\n");
 
     /// <summary>Save that reports failure instead of crashing — each file is
     /// attempted independently and every failure is named.</summary>
@@ -469,7 +550,7 @@ public sealed class Config
         {
             var labels = ResolveBeside(path, cfg.BoxLabelsFile);
             if (!File.Exists(labels))
-                WriteJson(labels, new BoxLabelsDoc { LabelClients = cfg.LabelClients, Extras = cfg.BoxLabelsFileExtras });
+                WriteJsonNew(labels, new BoxLabelsDoc { LabelClients = cfg.LabelClients, Extras = cfg.BoxLabelsFileExtras });
         }, ResolveBeside(path, cfg.BoxLabelsFile));
 
         error = string.Join("; ", errors);

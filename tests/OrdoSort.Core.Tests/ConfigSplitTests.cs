@@ -127,6 +127,52 @@ public class ConfigSplitTests : IDisposable
         Assert.DoesNotContain("STALE", File.ReadAllText(Path.Combine(_dir, "box-labels.json")));
     }
 
+    /// <summary>The bootstrap race finding 1 describes: box-labels.json does
+    /// not exist when Config.Save's `if (!File.Exists(labels))` guard runs
+    /// (Station A, first save on a fresh shared folder), but a peer
+    /// (Station B's BoxLabelStore.Mutate, or another station's own bootstrap)
+    /// creates the file with real counters in the gap between that guard and
+    /// the write landing. The old WriteAtomic re-checked File.Exists inside
+    /// its own retry loop and switched to File.Replace the instant it saw the
+    /// peer's file — waiting out the peer's lock and then clobbering its
+    /// counters. Config.BeforeCreateOnlyMove simulates the peer landing in
+    /// that exact gap, deterministically, instead of racing real threads.
+    /// The peer's content must survive; A's stale in-memory snapshot must
+    /// not land.</summary>
+    [Fact]
+    public void BootstrapLeavesAPeerCreatedBoxLabelsFileIntact()
+    {
+        var cfg = Write("config.json", """{"inbox":"C:/in"}""");
+        var labelsPath = Path.Combine(_dir, "box-labels.json");
+        Assert.False(File.Exists(labelsPath));   // the guard must see "missing"
+
+        var c = Config.Load(cfg);
+        c.LabelClients = new() { new LabelClient { Id = "STALE", NextNumber = 1 } };
+
+        const string peerContent =
+            """{"label_clients":[{"id":"REAL","destroy_days":30,"next_number":99}]}""";
+        // Filtered by path: xUnit runs other test classes' Config.Save calls
+        // concurrently, and this hook is process-wide, so an unrelated
+        // bootstrap for some OTHER test's box-labels.json must no-op here
+        // rather than racing to write ours.
+        Config.BeforeCreateOnlyMove = fp =>
+        {
+            if (fp == labelsPath) File.WriteAllText(labelsPath, peerContent);
+        };
+        try
+        {
+            Config.Save(c, cfg);   // must not throw, must not clobber the peer's write
+        }
+        finally
+        {
+            Config.BeforeCreateOnlyMove = null;
+        }
+
+        var finalContent = File.ReadAllText(labelsPath);
+        Assert.Contains("\"REAL\"", finalContent);
+        Assert.DoesNotContain("STALE", finalContent);
+    }
+
     [Fact]
     public void SideFileExtrasSurviveSaveRoundTrip()
     {
