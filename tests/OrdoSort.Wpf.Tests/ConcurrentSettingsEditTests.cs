@@ -16,6 +16,9 @@ public class ConcurrentSettingsEditTests
     private static string PeerAlerts(string text) =>
         $$"""{"alert_texts":["{{text}}"]}""";
 
+    private static string PeerMonitoredFolders(string label) =>
+        $$"""{"watch_folders":[{"label":"{{label}}","path":"C:/peer"}]}""";
+
     [Fact]
     public void PeerEditToDestinationsWhileSettingsIsOpenIsDetectedAndDecliningKeepsThePeersRoutes()
     {
@@ -97,7 +100,7 @@ public class ConcurrentSettingsEditTests
     }
 
     [Fact]
-    public void MultipleChangedSectionsAreAllNamedInThePrompt()
+    public void MultipleChangedSectionsAreAllNamedInThePromptWithNaturalPhrasing()
     {
         using var fx = new ShellFixture();
         fx.Shell.Initialize();
@@ -105,15 +108,49 @@ public class ConcurrentSettingsEditTests
 
         var fresh = fx.Shell.FreshConfigForSettings();
         File.WriteAllText(Path.Combine(fx.Dir, "destinations.json"), PeerDestinations("PEER"));
+        File.WriteAllText(Path.Combine(fx.Dir, "monitored-folders.json"), PeerMonitoredFolders("PEER"));
         File.WriteAllText(Path.Combine(fx.Dir, "alerts.json"), PeerAlerts("PEER-ALERT"));
 
         var mine = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(fresh))!;
         fx.Dialogs.ConfirmAnswer = false;
         fx.Shell.ApplySettings(mine);
 
+        // All three named, joined the way a sentence needs — not
+        // "destinations and monitored folders and alerts".
         var ask = Assert.Single(fx.Dialogs.Confirms);
-        Assert.Contains("destinations", ask.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("alerts", ask.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("destinations, monitored folders, and alerts", ask.Message,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ByteIdenticalRewriteOfASectionFileDoesNotPromptForConflict()
+    {
+        // SaveConfigNow (the header-bar tile-visibility toggle, remembered
+        // match/merge headers, saved Unlock passwords — none of them a
+        // Settings edit) rewrites all three shared section files on every
+        // call via Config.TrySave, whether or not their content actually
+        // changed. A peer station doing any of that while this station's
+        // Settings window happens to be open must not trip the conflict
+        // prompt when what it wrote is byte-identical to what was already
+        // there — that would be a false positive, not a real conflict.
+        using var fx = new ShellFixture();
+        fx.Shell.Initialize();
+        fx.Shell.SaveConfigNow();   // config.json + section files now exist on disk
+
+        var fresh = fx.Shell.FreshConfigForSettings();
+
+        // Simulate a peer's unrelated SaveConfigNow: destinations.json gets
+        // rewritten with exactly the same bytes it already had.
+        var destPath = Path.Combine(fx.Dir, "destinations.json");
+        File.WriteAllBytes(destPath, (byte[])File.ReadAllBytes(destPath).Clone());
+
+        var mine = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(fresh))!;
+        mine.WordSeparator = "-";   // this station's own, unrelated Settings edit
+
+        fx.Shell.ApplySettings(mine);
+
+        Assert.Empty(fx.Dialogs.Confirms);
+        Assert.Equal("-", fx.Shell.Cfg.WordSeparator);   // the save still went through
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Security.Cryptography;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Mvvm;
 using OrdoSort.Wpf.Services;
@@ -8,11 +9,15 @@ namespace OrdoSort.Wpf.ViewModels;
 
 public enum Screen { Ready, Processing, Done }
 
-/// <summary>Cheap per-file conflict marker: last-write time + length, not a
-/// hash. Enough to notice a peer station wrote the file between two
-/// snapshots, far cheaper than reading and hashing three JSON files on
-/// every Settings open and save.</summary>
-internal readonly record struct FileStamp(string Path, DateTime LastWriteUtc, long Length);
+/// <summary>Per-file conflict marker: a content hash, not file metadata.
+/// SaveConfigNow (tile-visibility toggle, merge headers, saved passwords —
+/// none of them Settings edits) rewrites all three shared section files on
+/// every call via Config.TrySave, whether or not their content changed, so
+/// last-write-time and length both change on a save that made no actual
+/// edit to a given section. Hashing the bytes is the only comparison that
+/// tells "changed" from "rewritten unchanged" apart, and these files are
+/// small enough that the cost is a non-issue.</summary>
+internal readonly record struct FileStamp(string Hash);
 
 /// <summary>Fingerprint of the three shared side files the Settings window
 /// can change (destinations, monitored folders, alerts) at one instant. A
@@ -211,8 +216,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     {
         var path = ResolvePath(sectionFile, _cfgPath);
         if (!File.Exists(path)) return null;
-        var info = new FileInfo(path);
-        return new FileStamp(path, info.LastWriteTimeUtc, info.Length);
+        var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+        return new FileStamp(hash);
     }
 
     /// <summary>Human-readable names of the sections that differ between two
@@ -225,6 +230,16 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         if (before.Alerts != after.Alerts) changed.Add("alerts");
         return changed;
     }
+
+    /// <summary>Joins section names the way a sentence needs, not just
+    /// "a and b and c": "x", "x and y", or "x, y, and z".</summary>
+    private static string JoinNaturally(IReadOnlyList<string> items) => items.Count switch
+    {
+        0 => "",
+        1 => items[0],
+        2 => $"{items[0]} and {items[1]}",
+        _ => string.Join(", ", items.Take(items.Count - 1)) + ", and " + items[^1],
+    };
 
     /// <summary>True for the moment ApplySettings is re-opening the history
     /// DB at a new path — _history is unusable until the swap lands.</summary>
@@ -1184,7 +1199,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             if (changed.Count > 0)
             {
                 var proceed = _dialogs.Confirm(
-                    $"Another station changed the {string.Join(" and ", changed)} while you had " +
+                    $"Another station changed the {JoinNaturally(changed)} while you had " +
                     "Settings open. Saving now will replace their changes with yours. Save anyway, " +
                     "or cancel and reopen Settings to see theirs?",
                     "OrdoSort — settings conflict");
