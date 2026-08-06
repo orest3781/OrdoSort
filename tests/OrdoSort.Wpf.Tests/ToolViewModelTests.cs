@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.ViewModels;
@@ -563,6 +564,23 @@ public class BulkRenameViewModelTests : IDisposable
         return p;
     }
 
+    /// <summary>The preview now computes off the UI thread through a debounced
+    /// probe (Task 2 — see DebouncedProbe/BulkRenameViewModel.Refresh), so a
+    /// property set (even an "immediate" one — the timer callback still fires
+    /// on a threadpool thread) doesn't reflect in Preview/CountsLine/
+    /// NeedsNameCount the instant the setter returns. Poll for it, same shape
+    /// as SettingsViewModelTests.WaitFor/TilePreviewProbeTests.WaitFor.</summary>
+    private static void WaitFor(Func<bool> condition, string because, int timeoutMs = 3000)
+    {
+        var sw = Stopwatch.StartNew();
+        while (!condition())
+        {
+            if (sw.ElapsedMilliseconds > timeoutMs)
+                Assert.Fail($"condition never became true within {timeoutMs}ms: {because}");
+            Thread.Sleep(5);
+        }
+    }
+
     [Fact]
     public void CountsLineAndAddNoteTrackTheBatch()
     {
@@ -570,15 +588,17 @@ public class BulkRenameViewModelTests : IDisposable
         var a = Touch("scan_001.pdf");
         var b = Touch("keep.pdf");
         vm.AddFiles(new[] { a, b, a });   // duplicate ignored
-        Assert.Contains("2 added", vm.AddNote);
+        Assert.Contains("2 added", vm.AddNote);   // set synchronously, not through the probe
         Assert.Contains("1 ignored", vm.AddNote);
 
         vm.Find = "scan";
         vm.Replace = "fax";
-        Assert.Equal("2 files · 1 will change", vm.CountsLine);
+        WaitFor(() => vm.CountsLine == "2 files · 1 will change",
+            "CountsLine should eventually reflect the Find/Replace once the debounced probe completes");
 
         vm.RemoveFiles(new[] { b });
-        Assert.Equal("1 file · 1 will change", vm.CountsLine);
+        WaitFor(() => vm.CountsLine == "1 file · 1 will change",
+            "CountsLine should eventually reflect the removal");
         Assert.Single(vm.Preview);
     }
 
@@ -590,7 +610,8 @@ public class BulkRenameViewModelTests : IDisposable
                             Touch("notes_only.pdf") });
         vm.ReceivedDate = new DateTime(2024, 1, 26);
         vm.ReviewMode = true;
-        Assert.Contains("1 will change", vm.CountsLine);
+        WaitFor(() => vm.CountsLine.Contains("1 will change"),
+            "CountsLine should eventually report the one file that changed");
         // was "1 won't (name didn't parse)" — a dead end. It now names the
         // number of files waiting on you, which is the thing to act on.
         Assert.Contains("1 need a name", vm.CountsLine);
@@ -598,7 +619,11 @@ public class BulkRenameViewModelTests : IDisposable
 
     /// <summary>Six strays in a batch of seventy-five is the real workload, so
     /// the tool has to make those six quick to fix rather than make the other
-    /// sixty-nine expressible in a pattern language.</summary>
+    /// sixty-nine expressible in a pattern language.
+    ///
+    /// Waits for the probe to settle before returning so the four tests below
+    /// that assert on Preview/NeedsNameCount immediately after calling this
+    /// don't each need their own WaitFor.</summary>
     private BulkRenameViewModel BatchWithStrays()
     {
         var vm = new BulkRenameViewModel();
@@ -611,6 +636,7 @@ public class BulkRenameViewModelTests : IDisposable
         });
         vm.ReceivedDate = new DateTime(2024, 8, 2);
         vm.ReviewMode = true;
+        WaitFor(() => vm.NeedsNameCount == 2, "the batch's preview should settle before the caller asserts on it");
         return vm;
     }
 
@@ -655,7 +681,7 @@ public class BulkRenameViewModelTests : IDisposable
         var vm = BatchWithStrays();
         vm.SetOverride(vm.Preview[1].Source, "20240802-ODD-ONE");
 
-        Assert.Equal(1, vm.NeedsNameCount);
+        WaitFor(() => vm.NeedsNameCount == 1, "NeedsNameCount should drop once the hand edit is applied");
         Assert.Equal(3, vm.IndexOfNextNeedingName(-1));
         Assert.False(vm.Preview[1].NeedsName);
     }
@@ -668,7 +694,12 @@ public class BulkRenameViewModelTests : IDisposable
         vm.Find = "scan";
         vm.Replace = "fax";
 
-        Assert.Equal(0, vm.NeedsNameCount);
+        // NeedsNameCount defaults to 0 before any compute ever runs, so gate
+        // on Preview actually being populated too — otherwise this would
+        // trivially "pass" against the untouched initial state and never
+        // prove the probe ran at all.
+        WaitFor(() => vm.Preview.Count == 1 && vm.NeedsNameCount == 0,
+            "NeedsNameCount should settle at zero once the preview computes");
         Assert.Equal(-1, vm.IndexOfNextNeedingName(-1));
         Assert.DoesNotContain("need a name", vm.CountsLine);
     }
@@ -681,7 +712,8 @@ public class BulkRenameViewModelTests : IDisposable
         vm.Find = "scan";
         vm.Replace = "fax";
 
-        Assert.Equal("fax_001.pdf", vm.Preview[0].NewName);
+        WaitFor(() => vm.Preview.Count == 2 && vm.Preview[0].NewName == "fax_001.pdf",
+            "the preview should eventually reflect the Find/Replace");
         Assert.True(vm.Preview[0].Changed);
         Assert.False(vm.Preview[1].Changed);
         Assert.Equal("Rename 1 file", vm.RenameButtonText);
@@ -694,7 +726,8 @@ public class BulkRenameViewModelTests : IDisposable
         vm.AddFiles(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf") });
         vm.ReceivedDate = new DateTime(2024, 1, 26);
         vm.ReviewMode = true;
-        Assert.Equal("20240126-BROWN-ADAM.pdf", vm.Preview[0].NewName);
+        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "20240126-BROWN-ADAM.pdf",
+            "the preview should eventually reflect the review-mode rebuild");
     }
 
     [Fact]
@@ -704,14 +737,20 @@ public class BulkRenameViewModelTests : IDisposable
         var src = Touch("scan_001.pdf");
         vm.AddFiles(new[] { src });
         vm.SetOverride(src, "CUSTOM NAME.pdf");   // typed extension is stripped
-        vm.Find = "scan";
-        vm.Replace = "fax";
-
-        Assert.Equal("CUSTOM NAME.pdf", vm.Preview[0].NewName);
+        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "CUSTOM NAME.pdf",
+            "the preview should eventually reflect the hand edit");
         Assert.True(vm.Preview[0].Manual);
 
+        vm.Find = "scan";
+        vm.Replace = "fax";
+        // the override still beats the op — no visible change expected, but
+        // give the probe a chance to run and confirm it stays put
+        WaitFor(() => vm.Preview[0].NewName == "CUSTOM NAME.pdf",
+            "the hand edit should survive the op change");
+
         vm.SetOverride(src, "");   // clearing goes back to the op result
-        Assert.Equal("fax_001.pdf", vm.Preview[0].NewName);
+        WaitFor(() => vm.Preview[0].NewName == "fax_001.pdf",
+            "clearing the override should fall back to the op result");
     }
 
     [Fact]
@@ -741,7 +780,8 @@ public class BulkRenameViewModelTests : IDisposable
         vm.AddFiles(new[] { Touch("A-B-C.pdf") });
         vm.DeleteSeg2 = true;
 
-        Assert.Equal("A-C.pdf", vm.Preview[0].NewName);
+        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
+            "the preview should eventually reflect DeleteSeg2");
         Assert.True(vm.Preview[0].Changed);
     }
 
@@ -753,7 +793,8 @@ public class BulkRenameViewModelTests : IDisposable
         vm.DeleteSeg2 = true;
         vm.DeleteSegLast = true;
 
-        Assert.Equal("A.pdf", vm.Preview[0].NewName);
+        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A.pdf",
+            "the preview should eventually reflect DeleteSeg2 + DeleteSegLast");
         Assert.True(vm.Preview[0].Changed);
     }
 
@@ -763,10 +804,12 @@ public class BulkRenameViewModelTests : IDisposable
         var vm = new BulkRenameViewModel();
         vm.AddFiles(new[] { Touch("A-B-C.pdf") });
         vm.DeleteSeg2 = true;
-        Assert.Equal("A-C.pdf", vm.Preview[0].NewName);
+        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
+            "the preview should eventually reflect DeleteSeg2");
 
         vm.DeleteSeg2 = false;
-        Assert.Equal("A-B-C.pdf", vm.Preview[0].NewName);
+        WaitFor(() => vm.Preview[0].NewName == "A-B-C.pdf",
+            "the preview should eventually revert once DeleteSeg2 is unchecked");
         Assert.False(vm.Preview[0].Changed);
     }
 
@@ -777,14 +820,19 @@ public class BulkRenameViewModelTests : IDisposable
         var src = Touch("A-B-C.pdf");
         vm.AddFiles(new[] { src });
         vm.DeleteSeg2 = true;
-        Assert.Equal("A-C.pdf", vm.Preview[0].NewName);
+        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
+            "the preview should eventually reflect DeleteSeg2");
 
         vm.SetOverride(src, "CUSTOM-NAME.pdf");
-        Assert.Equal("CUSTOM-NAME.pdf", vm.Preview[0].NewName);
+        WaitFor(() => vm.Preview[0].NewName == "CUSTOM-NAME.pdf",
+            "the preview should eventually reflect the hand edit");
         Assert.True(vm.Preview[0].Manual);
 
         vm.DeleteSeg2 = false;
-        Assert.Equal("CUSTOM-NAME.pdf", vm.Preview[0].NewName);
+        // the override still beats the op — no visible change expected, but
+        // give the probe a chance to run and confirm it stays put
+        WaitFor(() => vm.Preview[0].NewName == "CUSTOM-NAME.pdf",
+            "the hand edit should survive DeleteSeg2 being unchecked");
     }
 
     [Fact]

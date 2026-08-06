@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Mvvm;
+using OrdoSort.Wpf.Services;
 using static OrdoSort.Core.BulkRename;
 
 namespace OrdoSort.Wpf.ViewModels;
@@ -42,28 +43,57 @@ public sealed class RenameRow
 
 /// <summary>Bulk rename: drop files, describe the change once, watch the live
 /// current → new preview, rename. Hand-edited targets survive op changes;
-/// never overwrites; one batch undo. The logic is fully unit-testable.</summary>
-public sealed class BulkRenameViewModel : ObservableObject
+/// never overwrites; one batch undo. The logic is fully unit-testable.
+///
+/// The preview's only I/O is Plan's File.Exists check (BulkRename.cs:159-161,
+/// more per collision) — expensive enough on an SMB destination that it must
+/// never run on the UI thread per keystroke. Refresh is split into a compute
+/// closure (Plan — pure plus File.Exists, touches no bound state, safe off
+/// thread) and an apply step (ApplyPlans — mutates Preview and friends, only
+/// ever run on the UI thread via DebouncedProbe's marshal), the same
+/// gather/apply shape RouteEditVm/WatchEditVm already use for their own
+/// probes (SettingsViewModel.cs:56-64,208-216).</summary>
+public sealed class BulkRenameViewModel : ObservableObject, IDisposable
 {
     private readonly List<string> _files = new();
     private readonly Dictionary<string, string> _overrides = new();   // source -> hand-edited stem
     private List<RenameOutcome> _lastOutcomes = new();
 
+    // Off-thread, debounced: Plan's File.Exists check must never run per
+    // keystroke of Find/Replace/Prefix/Suffix, and must never block the UI
+    // thread — see DebouncedProbe. One shared probe for the whole preview
+    // (not one per field, unlike SettingsViewModel's several independent
+    // notes): only the latest edit's Plan() result is ever worth applying,
+    // so coalescing every trigger onto one timer is exactly the wanted
+    // behavior, not a shortcut.
+    private readonly DebouncedProbe<List<PlannedRename>> _plansProbe;
+
     public ObservableCollection<RenameRow> Preview { get; } = new();
 
-    public BulkRenameViewModel()
+    public BulkRenameViewModel(IWorkScheduler? scheduler = null,
+        SynchronizationContext? uiContext = null, int probeDelayMs = 300)
     {
+        _plansProbe = new DebouncedProbe<List<PlannedRename>>(
+            scheduler ?? new TaskWorkScheduler(), uiContext, ApplyPlans, probeDelayMs);
         RenameCommand = new RelayCommand(Apply, () => _changed > 0);
         UndoCommand = new RelayCommand(UndoBatch, () => _lastOutcomes.Count > 0);
-        ClearCommand = new RelayCommand(() => { _files.Clear(); _overrides.Clear(); Refresh(); });
+        ClearCommand = new RelayCommand(
+            () => { _files.Clear(); _overrides.Clear(); Refresh(immediate: true); });
     }
 
+    public void Dispose() => _plansProbe.Dispose();
+
     // ------------------------------------------------------------ op fields
+    // ReviewMode/ReceivedDate/CaseIndex/DeleteSeg* are single clicks, not a
+    // keystroke burst — immediate keeps them feeling as responsive as they
+    // did when Refresh ran synchronously. Find/Replace/Prefix/Suffix are
+    // typed, so THEY debounce — that's the literal per-keystroke churn
+    // finding 5.2 is about.
     private bool _reviewMode;
-    public bool ReviewMode { get => _reviewMode; set { if (Set(ref _reviewMode, value)) Refresh(); } }
+    public bool ReviewMode { get => _reviewMode; set { if (Set(ref _reviewMode, value)) Refresh(immediate: true); } }
 
     private DateTime _receivedDate = DateTime.Today;
-    public DateTime ReceivedDate { get => _receivedDate; set { if (Set(ref _receivedDate, value)) Refresh(); } }
+    public DateTime ReceivedDate { get => _receivedDate; set { if (Set(ref _receivedDate, value)) Refresh(immediate: true); } }
 
     private string _find = "";
     public string Find { get => _find; set { if (Set(ref _find, value)) Refresh(); } }
@@ -79,22 +109,22 @@ public sealed class BulkRenameViewModel : ObservableObject
 
     /// <summary>0 keep, 1 UPPERCASE, 2 lowercase.</summary>
     private int _caseIndex;
-    public int CaseIndex { get => _caseIndex; set { if (Set(ref _caseIndex, value)) Refresh(); } }
+    public int CaseIndex { get => _caseIndex; set { if (Set(ref _caseIndex, value)) Refresh(immediate: true); } }
 
     private bool _deleteSeg1;
-    public bool DeleteSeg1 { get => _deleteSeg1; set { if (Set(ref _deleteSeg1, value)) Refresh(); } }
+    public bool DeleteSeg1 { get => _deleteSeg1; set { if (Set(ref _deleteSeg1, value)) Refresh(immediate: true); } }
 
     private bool _deleteSeg2;
-    public bool DeleteSeg2 { get => _deleteSeg2; set { if (Set(ref _deleteSeg2, value)) Refresh(); } }
+    public bool DeleteSeg2 { get => _deleteSeg2; set { if (Set(ref _deleteSeg2, value)) Refresh(immediate: true); } }
 
     private bool _deleteSeg3;
-    public bool DeleteSeg3 { get => _deleteSeg3; set { if (Set(ref _deleteSeg3, value)) Refresh(); } }
+    public bool DeleteSeg3 { get => _deleteSeg3; set { if (Set(ref _deleteSeg3, value)) Refresh(immediate: true); } }
 
     private bool _deleteSeg4;
-    public bool DeleteSeg4 { get => _deleteSeg4; set { if (Set(ref _deleteSeg4, value)) Refresh(); } }
+    public bool DeleteSeg4 { get => _deleteSeg4; set { if (Set(ref _deleteSeg4, value)) Refresh(immediate: true); } }
 
     private bool _deleteSegLast;
-    public bool DeleteSegLast { get => _deleteSegLast; set { if (Set(ref _deleteSegLast, value)) Refresh(); } }
+    public bool DeleteSegLast { get => _deleteSegLast; set { if (Set(ref _deleteSegLast, value)) Refresh(immediate: true); } }
 
     private string _status = "";
     public string Status { get => _status; private set => Set(ref _status, value); }
@@ -146,7 +176,7 @@ public sealed class BulkRenameViewModel : ObservableObject
             : ignored > 0
                 ? $"{added} added · {ignored} ignored (missing, or already listed)"
                 : "";
-        Refresh();
+        Refresh(immediate: true);
     }
 
     public void RemoveFiles(IEnumerable<string> sources)
@@ -157,7 +187,7 @@ public sealed class BulkRenameViewModel : ObservableObject
             _overrides.Remove(s);
         }
         AddNote = "";
-        Refresh();
+        Refresh(immediate: true);
     }
 
     /// <summary>A hand-edited "New name" cell. Empty text clears the override;
@@ -170,7 +200,7 @@ public sealed class BulkRenameViewModel : ObservableObject
             text = text[..^ext.Length].Trim();
         if (text.Length == 0) _overrides.Remove(source);
         else _overrides[source] = text;
-        Refresh();
+        Refresh(immediate: true);
     }
 
     private int _needsNameCount;
@@ -204,9 +234,39 @@ public sealed class BulkRenameViewModel : ObservableObject
         return -1;
     }
 
-    private void Refresh()
+    /// <summary>Snapshot the current op/files/overrides on the UI thread (all
+    /// three are cheap, no-I/O reads) and (re)arm the plan probe. The compute
+    /// closure below captures only these snapshots — never <c>this</c>,
+    /// <see cref="Preview"/>, or any bound property — so it stays safe to run
+    /// off the UI thread no matter when the probe actually fires.</summary>
+    private void Refresh(bool immediate = false)
     {
-        var plans = Plan(_files, CurrentOp(), _overrides);
+        var op = CurrentOp();
+        var filesSnapshot = _files.ToList();
+        var overridesSnapshot = new Dictionary<string, string>(_overrides);
+
+        if (filesSnapshot.Count == 0)
+        {
+            // Plan's only I/O is a File.Exists per file — with nothing to
+            // iterate there's genuinely no I/O to defer, so (like a blank
+            // path in RouteEditVm/WatchEditVm) this resolves synchronously,
+            // cancelling anything still in flight so a slow, now-stale probe
+            // can never land after this and repopulate Preview.
+            _plansProbe.Cancel();
+            ApplyPlans(new List<PlannedRename>());
+            return;
+        }
+
+        _plansProbe.Trigger(() => Plan(filesSnapshot, op, overridesSnapshot), immediate);
+    }
+
+    /// <summary>Everything from the old synchronous Refresh from
+    /// Preview.Clear() onward. Only ever runs on the UI thread — either
+    /// directly (the empty-batch fast path above) or via DebouncedProbe's
+    /// SynchronizationContext marshal — so mutating Preview (an
+    /// ObservableCollection bound to the DataGrid) here is safe.</summary>
+    private void ApplyPlans(List<PlannedRename> plans)
+    {
         Preview.Clear();
         _changed = 0;
         foreach (var pr in plans)
@@ -247,7 +307,7 @@ public sealed class BulkRenameViewModel : ObservableObject
         CaseIndex = 0;
         ReviewMode = false;
         DeleteSeg1 = DeleteSeg2 = DeleteSeg3 = DeleteSeg4 = DeleteSegLast = false;
-        Refresh();
+        Refresh(immediate: true);
         UndoCommand.RaiseCanExecuteChanged();
         Status = failed.Count > 0
             ? $"Renamed {renamed.Count}; {failed.Count} failed — e.g. " +
@@ -263,7 +323,7 @@ public sealed class BulkRenameViewModel : ObservableObject
         for (var i = 0; i < _files.Count; i++)
             if (restored.TryGetValue(_files[i], out var s)) _files[i] = s;
         _lastOutcomes = new List<RenameOutcome>();
-        Refresh();
+        Refresh(immediate: true);
         UndoCommand.RaiseCanExecuteChanged();
         Status = problems.Count > 0 ? string.Join("; ", problems) : "Original names restored.";
     }

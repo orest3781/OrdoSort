@@ -310,8 +310,12 @@ public partial class MainWindow : Window
         new Windows.UnlockWindow(new UnlockViewModel(Shell.Cfg, Shell.SaveConfigNow))
         { Owner = this }.ShowDialog();
 
-    private void OnBulkRename(object sender, RoutedEventArgs e) =>
-        new Windows.BulkRenameWindow(new BulkRenameViewModel()) { Owner = this }.ShowDialog();
+    private void OnBulkRename(object sender, RoutedEventArgs e)
+    {
+        var vm = new BulkRenameViewModel(uiContext: SynchronizationContext.Current);
+        new Windows.BulkRenameWindow(vm) { Owner = this }.ShowDialog();
+        vm.Dispose();   // cancel any still-armed preview probe now the dialog is closing
+    }
 
     private void OnMatchMerge(object sender, RoutedEventArgs e) =>
         new Windows.MatchMergeWindow(new MatchMergeViewModel(

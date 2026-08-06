@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
 using OrdoSort.Wpf.ViewModels;
@@ -56,6 +57,22 @@ public class CultureInvariantDatesTests : IDisposable
         }
     }
 
+    /// <summary>BulkRenameViewModel's preview now computes off the UI thread
+    /// through a debounced probe (Task 2, 2026-08-05 debounce pair — see
+    /// DebouncedProbe/BulkRenameViewModel.Refresh), so Preview doesn't reflect
+    /// a property set the instant the setter returns — poll for it, same
+    /// shape as SettingsViewModelTests.WaitFor.</summary>
+    private static void WaitFor(Func<bool> condition, string because, int timeoutMs = 3000)
+    {
+        var sw = Stopwatch.StartNew();
+        while (!condition())
+        {
+            if (sw.ElapsedMilliseconds > timeoutMs)
+                Assert.Fail($"condition never became true within {timeoutMs}ms: {because}");
+            Thread.Sleep(5);
+        }
+    }
+
     // ---- BulkRenameViewModel.cs:128 — the received-date stem that rebuilds
     // an actual review filename via BulkRename.Plan/Execute ----
 
@@ -71,6 +88,7 @@ public class CultureInvariantDatesTests : IDisposable
             vm.ReviewMode = true;
             vm.ReceivedDate = new DateTime(2026, 8, 2);
 
+            WaitFor(() => vm.Preview.Count == 1, "the preview should eventually compute");
             var row = Assert.Single(vm.Preview);
             Assert.Equal("20260802-SMITH-JOHN.pdf", row.NewName);
         });
@@ -90,6 +108,7 @@ public class CultureInvariantDatesTests : IDisposable
             vm.ReviewMode = true;
             vm.ReceivedDate = new DateTime(2026, 8, 2);
 
+            WaitFor(() => vm.Preview.Count == 1, "the preview should eventually compute");
             var row = Assert.Single(vm.Preview);
             Assert.True(row.NeedsName);
             Assert.Equal("20260802-", row.EditSeed);
