@@ -509,6 +509,14 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private readonly Func<string, bool> _fileExists;
     private readonly Func<Route, string> _validateRoute;
 
+    // Seam over FolderMonitor.Status — Directory.Exists plus a RECURSIVE
+    // Directory.EnumerateFiles when the watched folder is marked recursive —
+    // for the live tile preview below. Same reasoning as the three seams
+    // above, and FolderMonitor.Status's own signature already fits a Func
+    // exactly, so nothing about its shape had to change to make it
+    // substitutable.
+    private readonly Func<WatchFolder, IEnumerable<string>, FolderMonitor.FolderStatus> _folderStatus;
+
     // Off-thread + debounced, mirroring ShellViewModel's own gather
     // (thread pool) → apply (UI) shape: _scheduler runs each probe off the
     // UI thread, _uiContext marshals the result back since a bare
@@ -526,6 +534,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         Func<string, bool>? directoryExists = null,
         Func<string, bool>? fileExists = null,
         Func<Route, string>? validateRoute = null,
+        Func<WatchFolder, IEnumerable<string>, FolderMonitor.FolderStatus>? folderStatus = null,
         IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null,
         int probeDelayMs = 300)
@@ -537,6 +546,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         _directoryExists = directoryExists ?? Directory.Exists;
         _fileExists = fileExists ?? File.Exists;
         _validateRoute = validateRoute ?? Config.ValidateRoute;
+        _folderStatus = folderStatus ?? FolderMonitor.Status;
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _uiContext = uiContext;
         _probeDelayMs = probeDelayMs;
@@ -565,6 +575,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         _boxLabelsFileProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
             v => ApplyNote(v, ref _boxLabelsFileNote, ref _boxLabelsFileNoteNeedsAttention,
                 nameof(BoxLabelsFileNote), nameof(BoxLabelsFileNoteNeedsAttention)), _probeDelayMs);
+        _tilePreviewProbe = new DebouncedProbe<FolderMonitor.FolderStatus>(
+            _scheduler, _uiContext, ApplyTilePreviewStatus, _probeDelayMs);
 
         SoundsEnabled = current.Sounds.Enabled;
         NewAlertSound = new SoundChoiceVm("New alert", SoundEvent.NewAlert,
@@ -670,7 +682,11 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             }
         });
         RemoveAlertCommand = new RelayCommand<string>(t => AlertTerms.Remove(t));
-        AlertTerms.CollectionChanged += (_, _) => RecomputeTilePreview();
+        // a discrete add/remove of a whole term, not a per-keystroke edit
+        // (NewAlertText itself isn't wired to this) — immediate skips the
+        // artificial debounce wait the same way a freshly-loaded row's own
+        // Problem probe does (see RouteEditVm.From/WatchEditVm.From)
+        AlertTerms.CollectionChanged += (_, _) => RecomputeTilePreview(immediate: true);
 
         BrowseInboxCommand = new RelayCommand(() => Inbox = _dialogs.BrowseFolder(Inbox) ?? Inbox);
         BrowseDeferredCommand = new RelayCommand(() => Deferred = _dialogs.BrowseFolder(Deferred) ?? Deferred);
@@ -704,7 +720,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             CreateFolder(SelectedWatch?.Path, () =>
             {
                 SelectedWatch?.RefreshProblem();
-                RecomputeTilePreview();
+                RecomputeTilePreview(immediate: true);   // the folder was just created — show its real state right away
             }));
         OpenWatchFolderCommand = new RelayCommand(() => OpenFolderOrExplain(SelectedWatch?.Path));
 
@@ -732,17 +748,25 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             if (e.Action != System.Collections.Specialized.NotifyCollectionChangedAction.Move
                 && e.NewItems is not null)
                 foreach (WatchEditVm w in e.NewItems) HookWatch(w);
-            RecomputeTilePreview();
+            RecomputeTilePreview(immediate: true);   // a row was added/removed — a discrete action, not a keystroke
             RebuildWatchRows();
         };
-        RecomputeTilePreview();
+        RecomputeTilePreview(immediate: true);
         RebuildWatchRows();
     }
 
+    // The recompute below only ever renders SelectedWatch, so a keystroke on
+    // a NON-selected row previously ran a full (possibly recursive)
+    // FolderMonitor.Status enumeration whose result was thrown away — this
+    // guard is that fix. The Section branch stays UNCONDITIONAL: it drives
+    // RebuildWatchRows/SectionChoices, which must reflect every row's
+    // section, not just the selected one — narrowing it here would break
+    // dashboard grouping the moment an unselected row's Section changes.
     private void HookWatch(WatchEditVm w) =>
         w.PropertyChanged += (_, e) =>
         {
-            RecomputeTilePreview();
+            if (ReferenceEquals(w, SelectedWatch))
+                RecomputeTilePreview();
             if (e.PropertyName is nameof(WatchEditVm.Section))
             {
                 RebuildWatchRows();
@@ -1271,21 +1295,87 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private string _tilePreviewHint = "";
     public string TilePreviewHint { get => _tilePreviewHint; private set => Set(ref _tilePreviewHint, value); }
 
+    // Off-thread, debounced — same mechanism as the eight per-field note
+    // probes above. FolderMonitor.Status does Directory.Exists plus, when
+    // the watched folder is marked Recursive, a RECURSIVE
+    // Directory.EnumerateFiles, so (finding 5.4[A]) it must never run
+    // synchronously on the UI thread for every keystroke in a watched
+    // folder's fields. See DebouncedProbe and RecomputeTilePreview.
+    private readonly DebouncedProbe<FolderMonitor.FolderStatus> _tilePreviewProbe;
+
+    // The probe's neutral "no data yet" value — recognized by REFERENCE in
+    // ApplyTilePreviewStatus, not by any field of FolderStatus. Count == 0
+    // can't double as "haven't checked": that's FolderMonitor's genuine
+    // answer for a real, empty folder, so it has to stay distinguishable
+    // from "the probe hasn't come back yet".
+    private static readonly FolderMonitor.FolderStatus PendingTileStatus =
+        new("", "", null, 0, "", Array.Empty<string>(), "");
+
     /// <summary>The dashboard card exactly as Ready will show it — computed
     /// against the REAL folder, so the count, the alert state, and the
-    /// subfolder note are live while you configure.</summary>
-    private void RecomputeTilePreview()
+    /// subfolder note are live while you configure.
+    ///
+    /// Only FolderMonitor.Status costs I/O — everything else here (palette
+    /// lookup, ParseColor, IdealForeground, the label) is pure. So
+    /// TilePreviewVisible/Label update instantly, every call; only the
+    /// status-derived properties (TilePreviewCount, TilePreviewNote,
+    /// TilePreviewHint, and the alerting-dependent colours) wait on
+    /// <see cref="_tilePreviewProbe"/> through <see cref="ApplyTilePreviewStatus"/>.
+    /// A blank path is resolved synchronously through
+    /// <see cref="DebouncedProbe{T}.Resolve"/>'s fast path — FolderMonitor.Status
+    /// answers that case with no I/O of its own (FolderMonitor.cs:41-42), so
+    /// there's no reason to pay a probe round trip to learn it here.</summary>
+    private void RecomputeTilePreview(bool immediate = false)
     {
         var w = SelectedWatch;
         TilePreviewVisible = w is not null;
-        if (w is null) return;
+        TilePreviewLabel = w?.Label ?? "";
+        if (w is null)
+        {
+            _tilePreviewProbe.Cancel();   // nothing selected: drop whatever was in flight for the row that WAS selected
+            return;
+        }
 
-        var status = FolderMonitor.Status(w.ToWatchFolder(), AlertTerms.ToList());
+        var wf = w.ToWatchFolder();
+        var alertTerms = AlertTerms.ToList();
+        FolderMonitor.FolderStatus? fastPath = string.IsNullOrWhiteSpace(wf.Path)
+            ? new FolderMonitor.FolderStatus(wf.Label, wf.Path, wf.Color, 0,
+                "no path configured", Array.Empty<string>(), wf.Section)
+            : null;
+
+        _tilePreviewProbe.Resolve(fastPath, PendingTileStatus,
+            () => _folderStatus(wf, alertTerms), immediate);
+    }
+
+    /// <summary>Applies a resolved (or neutral) FolderStatus to the
+    /// status-derived preview properties. Reads SelectedWatch/the palette
+    /// fresh rather than from a captured closure: DebouncedProbe's
+    /// generation guard already guarantees this only ever runs for the
+    /// LATEST RecomputeTilePreview call, so by the time it runs, a fresh
+    /// read of the row's current Color is the same value that was true when
+    /// this probe was triggered (any change in between would itself have
+    /// called RecomputeTilePreview and superseded this generation).</summary>
+    private void ApplyTilePreviewStatus(FolderMonitor.FolderStatus status)
+    {
+        if (SelectedWatch is not { } w) return;
         var p = _palette();
         var baseBack = ThemePalette.ParseColor(w.Color) ?? p.TileDefaultBg;
+
+        if (ReferenceEquals(status, PendingTileStatus))
+        {
+            // no data yet — assume non-alerting rather than flash "0",
+            // which is FolderMonitor's real answer for a genuinely empty
+            // folder and would be indistinguishable from "not checked yet"
+            TilePreviewBack = baseBack;
+            TilePreviewFore = ThemePalette.IdealForeground(baseBack);
+            TilePreviewCount = "";
+            TilePreviewNote = "";
+            TilePreviewHint = "";
+            return;
+        }
+
         TilePreviewBack = status.Alerting ? p.Danger : baseBack;
         TilePreviewFore = status.Alerting ? p.DangerText : ThemePalette.IdealForeground(baseBack);
-        TilePreviewLabel = w.Label;
         TilePreviewCount = status.Error.Length > 0
             ? "⚠"
             : $"{status.Count}" + (status.Alerting ? " ⚠" : "");
@@ -1566,7 +1656,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 RemoveWatchCommand.RaiseCanExecuteChanged();
                 WatchUpCommand.RaiseCanExecuteChanged();
                 WatchDownCommand.RaiseCanExecuteChanged();
-                RecomputeTilePreview();
+                RecomputeTilePreview(immediate: true);   // a row was just selected — a discrete action, not a keystroke
                 Raise(nameof(SectionChoices));
                 Raise(nameof(SelectedWatchRow));
             }
@@ -1862,12 +1952,13 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         if (doc is not null) apply(doc);
     }
 
-    /// <summary>Disposes the 8 per-field note probes and every current
-    /// route/watch row's own Problem probe. Called by the window host
-    /// (MainWindow.OnSettings) once the Settings dialog closes — any probe
-    /// still armed at that point is a bounded, one-shot Timer that would
-    /// otherwise fire into a no-longer-observed view model (harmless, but
-    /// needless); disposing cancels it outright instead of waiting it out.</summary>
+    /// <summary>Disposes the 8 per-field note probes, the tile preview
+    /// probe, and every current route/watch row's own Problem probe. Called
+    /// by the window host (MainWindow.OnSettings) once the Settings dialog
+    /// closes — any probe still armed at that point is a bounded, one-shot
+    /// Timer that would otherwise fire into a no-longer-observed view model
+    /// (harmless, but needless); disposing cancels it outright instead of
+    /// waiting it out.</summary>
     public void Dispose()
     {
         _inboxProbe.Dispose();
@@ -1878,6 +1969,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         _monitoredFoldersFileProbe.Dispose();
         _alertsFileProbe.Dispose();
         _boxLabelsFileProbe.Dispose();
+        _tilePreviewProbe.Dispose();
         foreach (var r in Routes) r.Dispose();
         foreach (var w in WatchFolders) w.Dispose();
     }

@@ -629,15 +629,20 @@ public class SettingsViewModelTests : IDisposable
         }, _dialogs);
         vm.SelectedWatch = vm.WatchFolders[0];
 
+        // TilePreviewVisible/Label are cheap and update instantly (Task 1);
+        // Count/Back/Hint are status-derived and wait on the debounced,
+        // off-thread FolderMonitor.Status probe — poll for them instead of
+        // asserting immediately (see TilePreviewProbeTests for the dedicated
+        // promptness/selection-guard coverage of that fix).
         Assert.True(vm.TilePreviewVisible);
         Assert.Equal("Failed", vm.TilePreviewLabel);
-        Assert.Equal("2 ⚠", vm.TilePreviewCount);
+        WaitFor(() => vm.TilePreviewCount == "2 ⚠", "the tile preview should eventually count both files and flag the alert");
         Assert.Equal(OrdoSort.Wpf.Theme.ThemePalette.Light.Danger, vm.TilePreviewBack);
         Assert.Contains("alerting right now", vm.TilePreviewHint);
 
         // clearing the alert terms live drops the alert state and the color
         vm.AlertTerms.Clear();
-        Assert.Equal("2", vm.TilePreviewCount);
+        WaitFor(() => vm.TilePreviewCount == "2", "the tile preview should eventually drop the alert flag once the term is cleared");
         Assert.Equal(new OrdoSort.Wpf.Theme.Rgb(21, 101, 192), vm.TilePreviewBack);
         Assert.Equal("", vm.TilePreviewHint);
     }
@@ -651,11 +656,12 @@ public class SettingsViewModelTests : IDisposable
             WatchFolders = { new WatchFolder { Label = "W", Path = Path.Combine(_dir, "gone") } },
         }, _dialogs);
         vm.SelectedWatch = vm.WatchFolders[0];
-        Assert.Equal("⚠", vm.TilePreviewCount);
+        WaitFor(() => vm.TilePreviewCount == "⚠", "the tile preview should eventually flag the missing folder");
         Assert.Contains("not available", vm.TilePreviewHint);
 
         vm.SelectedWatch.Path = _dir;   // exists, empty of matching files? _dir has dirs only
-        Assert.Contains("only appears", vm.TilePreviewHint);
+        WaitFor(() => vm.TilePreviewHint.Contains("only appears"),
+            "the tile preview should eventually explain an existing-but-empty folder");
 
         vm.SelectedWatch = null;
         Assert.False(vm.TilePreviewVisible);
