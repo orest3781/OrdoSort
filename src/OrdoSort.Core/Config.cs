@@ -167,10 +167,31 @@ public sealed class Config
     };
 
     /// <summary>Load config, creating it with defaults on first run.</summary>
-    public static Config Load(string path)
+    public static Config Load(string path) => Load(path, createIfMissing: true);
+
+    /// <summary>Load config. When <paramref name="createIfMissing"/> is
+    /// false, a missing file throws <see cref="ConfigMissingException"/>
+    /// instead of silently creating AND SAVING a fresh all-defaults file —
+    /// for a caller that already holds a loaded Config in memory, where a
+    /// missing file at this exact moment is a transient share hiccup or a
+    /// peer's own atomic write caught mid-rename, never a genuine first run
+    /// (2026-08 audit follow-up, "Gap B": see
+    /// ShellViewModel.SaveSavedPasswordsNow's doc comment for the full
+    /// story — the default-<c>true</c> overload's own save here is exactly
+    /// what let a station opening Unlock while the shared config.json was
+    /// transiently missing wipe every peer's Theme/TileVisibility/etc. with
+    /// factory defaults). Final review (2026-08-06): this also closes the
+    /// gap between a caller's own <c>File.Exists</c> pre-check and its call
+    /// to <c>Load</c> — with this overload the check IS the load, so there
+    /// is no separate window for the file to vanish in between; a caller no
+    /// longer needs (or should keep) its own <c>File.Exists</c>
+    /// guard.</summary>
+    public static Config Load(string path, bool createIfMissing)
     {
         if (!File.Exists(path))
         {
+            if (!createIfMissing)
+                throw new ConfigMissingException($"Config file {path} does not exist.");
             var fresh = new Config();
             try
             {
@@ -660,6 +681,46 @@ public sealed class Config
         }
     }
 
+    /// <summary>Save ONLY the main config.json section — never the three
+    /// side files (destinations/monitored-folders/alerts) or the box-labels
+    /// bootstrap <see cref="TrySave"/> also writes. For a caller that is only
+    /// ever entitled to change a main-section field (today, ShellViewModel.
+    /// SaveSavedPasswordsNow's SavedPasswords overlay), routing through the
+    /// full <see cref="TrySave"/> was its own bug (final review, Important
+    /// 3, 2026-08-06): a station with a legitimately-Browsed ABSOLUTE side-
+    /// file path (a shipped Settings capability — see
+    /// <see cref="ResolveBesideForWrite"/>'s doc comment) has that path
+    /// refused on every write, so TrySave's side-file Attempt for it always
+    /// fails and the overall call returns false — even though SaveMain,
+    /// which TrySave runs first, already landed the password change on
+    /// disk. The caller would then report "not saved" about a write that
+    /// partly succeeded, and skip any success notice gated on the return
+    /// value. Writing only the main file removes that whole failure surface
+    /// for a caller with nothing to say about the side files: it cannot fail
+    /// on a side-file path it never touches, cannot lose to a peer's
+    /// in-flight side-file write, and cannot re-serialize a hand-edited side
+    /// file byte-for-byte-unchanged (which would otherwise trip a peer's
+    /// hash-based Settings-conflict prompt over a file this call never
+    /// meant to touch at all).</summary>
+    public static bool TrySaveMain(Config cfg, string path, out string error)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(Path.GetFullPath(path));
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            SaveMain(cfg, path);
+            error = "";
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                   or System.Security.SecurityException
+                                   or DirectoryNotFoundException or ConfigException)
+        {
+            error = $"Couldn't save settings to {path}: {ex.Message}";
+            return false;
+        }
+    }
+
     /// <summary>Readable error for one unusable destination, or "" if good.</summary>
     public static string ValidateRoute(Route route)
     {
@@ -691,7 +752,19 @@ public sealed class Config
     }
 }
 
-public sealed class ConfigException : Exception
+public class ConfigException : Exception
 {
     public ConfigException(string message) : base(message) { }
+}
+
+/// <summary>Thrown by <see cref="Config.Load(string,bool)"/> with
+/// <c>createIfMissing: false</c> when the file doesn't exist — a
+/// ConfigException, so any existing <c>catch (ConfigException)</c> still
+/// catches it, but callers that need to tell "missing" apart from "exists
+/// but is unreadable/corrupt" (see ShellViewModel.SaveSavedPasswordsNow, which
+/// warns and writes nothing for the former but falls back to a whole-config
+/// save for the latter) can catch this more specific type first.</summary>
+public sealed class ConfigMissingException : ConfigException
+{
+    public ConfigMissingException(string message) : base(message) { }
 }

@@ -3,6 +3,19 @@ using PdfSharp.Pdf.IO;
 
 namespace OrdoSort.Core.Tests;
 
+/// <summary>Final review, Important 2 (2026-08-06): four of the [Fact]s below
+/// mutate the process-wide, unsynchronized
+/// <see cref="Unlock.LargeFileThresholdBytes"/> to force the streaming path.
+/// This class shares <see cref="UnlockNeverOverwritesTests.Name"/> with
+/// <see cref="UnlockNeverOverwritesTests"/>, the only other class that
+/// touches that static, so xUnit never runs them concurrently — see
+/// UnlockNeverOverwritesTests's class doc for the failure this closes (a
+/// lucky interleaving could make BufferedUnlockNeverTruncatesAPeerCreatedFile
+/// there silently run the streaming path instead of the buffered path it
+/// exists to guard) and
+/// <see cref="UnlockThresholdTestCollectionMembershipTests"/> for the pinned
+/// proof.</summary>
+[Collection(UnlockNeverOverwritesTests.Name)]
 public class UnlockTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "unlocktest_" + Guid.NewGuid());

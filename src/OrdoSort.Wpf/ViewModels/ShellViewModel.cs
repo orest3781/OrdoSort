@@ -1196,9 +1196,34 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// construction. Does not reassign the live <c>_cfg</c> field — this
     /// station's in-memory copy of Theme/TileVisibility/etc. is left exactly
     /// as stale (or fresh) as it already was; only what reaches disk
-    /// changes. A broken/mid-write shared config.json falls back to the
-    /// ordinary whole-<c>_cfg</c> save (mirroring how a broken SIDE file is
-    /// already handled below) rather than losing the sweep's result.
+    /// changes. A broken/mid-write shared config.json falls back to saving
+    /// this station's own in-memory <c>_cfg</c> — main file only, same as
+    /// the ordinary path below — rather than losing the sweep's result.
+    ///
+    /// The write itself goes through <see cref="Config.TrySaveMain"/>, not
+    /// <see cref="Config.TrySave"/> (final review, Important 3, 2026-08-06):
+    /// this call is entitled to change SavedPasswords, a MAIN-section
+    /// field, and nothing else, but TrySave also rewrites all three side
+    /// files plus the box-labels bootstrap on every call — which broke this
+    /// method's own contract two ways. A station with a legitimately-
+    /// Browsed ABSOLUTE side-file path (a shipped Settings capability) has
+    /// that path refused on every WRITE (see
+    /// <see cref="Config.ResolveBesideForWrite"/>), so TrySave's side-file
+    /// attempt for it always failed and the overall call returned false —
+    /// even though the password change had already reached disk via
+    /// TrySave's main-file write, which runs first. UnlockViewModel's
+    /// constructor gates its "passwords protected" notice on this method's
+    /// return value, so that notice went silently missing on exactly the
+    /// stations where it mattered, right beside a "settings not saved"
+    /// warning about a save that had actually partly landed. Separately,
+    /// rewriting all three side files on every Unlock-window open — not
+    /// just on a deliberate Settings edit — re-serialized a hand-edited
+    /// side file byte-for-byte-unchanged, which trips a peer's hash-based
+    /// Settings-conflict prompt (<see cref="SnapshotSections"/>) over a
+    /// file this call was never entitled to touch. Writing only the main
+    /// file removes both failure surfaces, and makes "persist ONLY
+    /// SavedPasswords" (this method's own doc, above) true at the file
+    /// level too, not just the field level.
     ///
     /// An ABSENT config.json is deliberately NOT treated as first run and
     /// gets no fallback write at all (fix round 2, Gap B): this method only
@@ -1206,24 +1231,35 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// memory, which proves the file existed at least once already — a
     /// missing file AT THIS MOMENT means a transient share hiccup, an
     /// external delete, or a peer's own atomic write caught mid-rename, not
-    /// a genuine new install. <see cref="Config.Load"/> doesn't know that:
-    /// its first-run path treats ANY missing file as "create and save a
-    /// fresh all-defaults Config" — and it does that SAVE itself, silently,
-    /// before this method would even get to overlay <c>SavedPasswords</c>
-    /// onto the result. Calling it unchecked here would wipe every peer's
-    /// Theme/TileVisibility/MergeHeaders/Sounds/etc. with factory defaults
-    /// on nothing more than a momentarily-missing file — exactly the
-    /// peer-clobber class this method exists to prevent, arriving through
-    /// Config.Load's own write instead of this method's. So the existence
-    /// check below runs BEFORE calling Config.Load at all, and on a miss
-    /// this method writes nothing — not even the whole-<c>_cfg</c> fallback
-    /// the broken/unreadable case above uses, since there is no known-good
-    /// picture of whatever a peer's in-flight write might produce to
-    /// overlay onto.</summary>
+    /// a genuine new install. The default <see cref="Config.Load(string)"/>
+    /// doesn't know that: its first-run path treats ANY missing file as
+    /// "create and save a fresh all-defaults Config" — and it does that
+    /// SAVE itself, silently, before this method would even get to overlay
+    /// <c>SavedPasswords</c> onto the result. Calling it unchecked here
+    /// would wipe every peer's Theme/TileVisibility/MergeHeaders/Sounds/etc.
+    /// with factory defaults on nothing more than a momentarily-missing
+    /// file — exactly the peer-clobber class this method exists to
+    /// prevent, arriving through Config.Load's own write instead of this
+    /// method's.
+    ///
+    /// Final review (2026-08-06): this now calls
+    /// <see cref="Config.Load(string,bool)"/> with
+    /// <c>createIfMissing: false</c> instead of pairing a separate
+    /// <c>File.Exists</c> pre-check with the create-on-missing overload —
+    /// the previous shape narrowed the gap between "checked" and "loaded"
+    /// to milliseconds rather than closing it: a file that vanished in that
+    /// exact window still hit Load's first-run path and wrote fresh
+    /// defaults over a peer's config, the same bug one level down. With no
+    /// separate check, there is no window left to race.</summary>
     /// <returns>True if the write reached disk.</returns>
     internal bool SaveSavedPasswordsNow()
     {
-        if (!File.Exists(_cfgPath))
+        Config fresh;
+        try
+        {
+            fresh = Config.Load(_cfgPath, createIfMissing: false);
+        }
+        catch (ConfigMissingException)
         {
             _dialogs.Warn(
                 "Couldn't save the saved-password change — the shared config file is " +
@@ -1232,20 +1268,13 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 "OrdoSort — settings not saved");
             return false;
         }
-
-        Config fresh;
-        try
-        {
-            fresh = Config.Load(_cfgPath);
-        }
         catch (ConfigException)
         {
-            // A broken/mid-write shared config.json: fall back to the
-            // ordinary whole-_cfg save (mirrors how a broken SIDE file is
-            // already handled in RefreshSharedSectionsFromDisk) rather than
-            // losing the sweep's result entirely.
-            RefreshSharedSectionsFromDisk();
-            if (!Config.TrySave(_cfg, _cfgPath, out var fallbackError))
+            // Exists but is broken/mid-write: fall back to this station's
+            // own in-memory copy — main file only, same narrower write as
+            // the ordinary path below — rather than losing the sweep's
+            // result entirely.
+            if (!Config.TrySaveMain(_cfg, _cfgPath, out var fallbackError))
             {
                 _dialogs.Warn(fallbackError, "OrdoSort — settings not saved");
                 return false;
@@ -1254,7 +1283,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         }
 
         fresh.SavedPasswords = _cfg.SavedPasswords;
-        if (!Config.TrySave(fresh, _cfgPath, out var error))
+        if (!Config.TrySaveMain(fresh, _cfgPath, out var error))
         {
             _dialogs.Warn(error, "OrdoSort — settings not saved");
             return false;
@@ -1390,6 +1419,54 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             }
             finally { HistorySwapping = false; }
         }
+
+        // Final review, Important 1 (2026-08-06): cfg.SavedPasswords is
+        // whatever this station's Settings window loaded when it OPENED
+        // (FreshConfigForSettings) — Settings itself never edits that field
+        // (SettingsViewModel.TryBuildResult carries the JSON-cloned original
+        // through untouched; the Unlock window's "Manage saved…" dialog is
+        // the only editor, persisting straight to config.json through
+        // SaveSavedPasswordsNow). Between then and this OK, a peer's Unlock
+        // window can have swept legacy plaintext into DPAPI ciphertext and
+        // already persisted that (the load-time sweep this branch made
+        // passive — UnlockViewModel's constructor). Saving cfg verbatim
+        // would silently overwrite that protection: exactly the bug this
+        // guards against.
+        //
+        // The narrow fix — read the CURRENT on-disk value and keep that
+        // instead of the stale snapshot — was chosen over widening
+        // SnapshotSections/SectionFingerprint (the peer-edit conflict
+        // prompt above) to also fingerprint config.json. The broader
+        // fingerprint would only ever ASK — "another station changed the
+        // settings, save anyway?" — and a user who answers "save anyway"
+        // (the same choice every existing conflict prompt offers) would
+        // still resurrect the plaintext; it also touches conflict-detection
+        // code shared by SnapshotSections' three other callers and would
+        // need a new, necessarily vague section name (config.json's main
+        // section has no single field granularity the way the three side
+        // files do). This overlay makes the resurrection structurally
+        // impossible instead of merely asking about it, and is safe by
+        // construction: Settings has nothing of its own to lose here, since
+        // it never had an edit to this field in the first place. Mirrors
+        // SaveSavedPasswordsNow's identical overlay for the same field.
+        //
+        // A missing/unreadable config.json at this exact instant (a share
+        // hiccup, or a peer's own atomic replace caught mid-swap) leaves
+        // nothing fresher to read — cfg simply keeps what Settings opened
+        // with, and the ordinary TrySave below still carries the rest of
+        // this station's edits through; this overlay is best-effort, not
+        // the primary save operation. Config.Load(path, createIfMissing:
+        // false) — not the create-on-missing default overload — so a
+        // momentarily-missing file throws instead of silently creating and
+        // SAVING a fresh all-defaults config right here (the exact
+        // peer-clobber Gap B closed elsewhere; see
+        // SaveSavedPasswordsNow's doc comment). ConfigMissingException IS a
+        // ConfigException, so this one catch covers both "missing" and
+        // "exists but corrupt" identically — either way there is nothing
+        // fresher to overlay, and both are equally safe to just skip.
+        try { cfg.SavedPasswords = Config.Load(_cfgPath, createIfMissing: false).SavedPasswords; }
+        catch (ConfigException) { /* keep what Settings opened with */ }
+
         _cfg = cfg;
         if (!Config.TrySave(cfg, _cfgPath, out var error))
             _dialogs.Warn(error, "OrdoSort — settings not saved");

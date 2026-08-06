@@ -1,5 +1,6 @@
 namespace OrdoSort.Core.Tests;
 
+using System.Reflection;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 
@@ -22,9 +23,46 @@ using PdfSharp.Pdf.IO;
 /// the audit named) and the streamed path (which the brief says to verify
 /// rather than assume safe — File.Move's two-argument overload is already
 /// create-only) are covered, since PlaceAndSwap's cleanup gating is shared
-/// code between them.</summary>
+/// code between them.
+///
+/// Final review, Important 2 (2026-08-06): this class and
+/// <see cref="UnlockTests"/> are the complete set (grepped across tests/)
+/// that mutate the process-wide, unsynchronized
+/// <see cref="Unlock.LargeFileThresholdBytes"/> — this class only in
+/// <see cref="StreamedUnlockNeverOverwritesAPeerCreatedFile"/>, UnlockTests
+/// in four places. Neither declared an xUnit [Collection] before this fix,
+/// so each was its own implicit collection and xUnit ran them in parallel by
+/// default. If one of UnlockTests' threshold=1 tests were mid-flight while
+/// <see cref="BufferedUnlockNeverTruncatesAPeerCreatedFile"/> ran here — the
+/// one test that exists specifically to guard finding 1.2's fix, the
+/// FileMode.CreateNew gate that stops the buffered path truncating a peer's
+/// file — that test would silently run the STREAMING path instead
+/// (Unlock.UnlockPdf reads the shared static exactly once, at entry) while
+/// still passing every one of its own assertions: both paths return "error"
+/// with the source untouched and nothing archived. A regression of the
+/// buffered path's create-only fix could go green on a lucky schedule, on
+/// exactly the test meant to catch it. Same defect class, same fix, as
+/// Commit.RaceHookForTests (see UndoFailureTests's class doc): put every
+/// class that touches the shared static into one collection (<see
+/// cref="Name"/>) so xUnit's own "never run two classes in the same
+/// collection concurrently" rule serializes them — pinned by
+/// <see cref="UnlockThresholdTestCollectionMembershipTests"/> rather than a
+/// timing-based test, for the same reason UndoRaceTestCollectionMembershipTests
+/// gives: a scheduler interleaving on the order of microseconds can't be
+/// forced to reproduce on demand, so a test relying on it would either
+/// always pass or be flaky. Belt-and-braces on top of that structural fix:
+/// BufferedUnlockNeverTruncatesAPeerCreatedFile also asserts, from inside
+/// the race hook itself, that no streaming-path temp file
+/// ("ordosort_unlock_*.pdf" in Path.GetTempPath()) exists at that instant —
+/// UnlockStreaming always writes and verifies that file BEFORE PlaceAndSwap
+/// ever invokes the hook, so its absence is direct, positive proof that the
+/// buffered path — not the streamed one — is what actually ran, not just an
+/// inference from the collection attribute being present.</summary>
+[Collection(Name)]
 public class UnlockNeverOverwritesTests : IDisposable
 {
+    public const string Name = "Unlock large-file threshold collection";
+
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "unlockrace_" + Guid.NewGuid());
     public UnlockNeverOverwritesTests() => Directory.CreateDirectory(_dir);
 
@@ -68,6 +106,19 @@ public class UnlockNeverOverwritesTests : IDisposable
 
         Unlock.RaceHookForTests = t =>
         {
+            // Teeth for the shared-collection fix above (final review,
+            // Important 2): prove this run actually took the BUFFERED path
+            // under test, not the streamed one. UnlockStreaming writes and
+            // verifies its local temp file ("ordosort_unlock_*.pdf" in
+            // Path.GetTempPath()) BEFORE PlaceAndSwap ever reaches this
+            // hook, so if one existed here, LargeFileThresholdBytes was not
+            // what this test assumes — exactly what an unguarded, still-
+            // running UnlockTests could have caused. (Confirmed by
+            // temporarily setting Unlock.LargeFileThresholdBytes = 1 above
+            // this line: with that override in place, this assertion fails
+            // every time, because the streaming path's temp file is
+            // present when the hook fires.)
+            Assert.Empty(Directory.GetFiles(Path.GetTempPath(), "ordosort_unlock_*.pdf"));
             if (t == expectedTarget) File.WriteAllBytes(expectedTarget, peerContent);
         };
 
@@ -186,5 +237,56 @@ public class UnlockNeverOverwritesTests : IDisposable
         var wf = new WatchFolder { Label = "Inbox", Path = watchDir, Filetypes = "pdf" };
         var status = FolderMonitor.Status(wf, Array.Empty<string>());
         Assert.Equal(0, status.Count);
+    }
+}
+
+/// <summary>Declares the shared collection <see cref="UnlockNeverOverwritesTests.Name"/>
+/// names. No ICollectionFixture: each class already builds and tears down
+/// its own isolated temp root per test, and Unlock.LargeFileThresholdBytes
+/// is restored in a finally by every test that changes it — nothing needs
+/// to be built once and shared. Same reasoning as
+/// OrdoSort.Core.Tests.UndoRaceCollection.</summary>
+[CollectionDefinition(UnlockNeverOverwritesTests.Name)]
+public class UnlockThresholdCollection
+{
+}
+
+/// <summary>Mirrors OrdoSort.Core.Tests.UndoRaceTestCollectionMembershipTests:
+/// this fix is xUnit collection membership, not a code path, so a timing-
+/// based test would either always pass or be flaky, never a reliable "fails
+/// without the fix" (a scheduler interleaving on the order of microseconds
+/// can't be forced to reproduce on demand). This instead pins the mechanism
+/// the fix actually relies on: both classes that touch the static
+/// <see cref="Unlock.LargeFileThresholdBytes"/> —
+/// <see cref="UnlockNeverOverwritesTests"/> (sets it once) and
+/// <see cref="UnlockTests"/> (sets it four times) — must declare the SAME
+/// <c>[Collection(...)]</c> name, since that, not anything about either
+/// class's own behavior, is what stops xUnit from ever running them
+/// concurrently. A grep for <c>LargeFileThresholdBytes</c> across tests/
+/// confirms these two are the complete set. Pre-fix, neither class had a
+/// [Collection] attribute at all, so both names below were null and this
+/// failed; a future edit that drops either attribute, typos its name, or
+/// adds a third class that mutates the static without joining this
+/// collection needs to be caught here too.</summary>
+public class UnlockThresholdTestCollectionMembershipTests
+{
+    // Reads the [Collection("...")] name via CustomAttributeData's
+    // constructor argument rather than CollectionAttribute.Name — robust
+    // against exactly which xunit.core build resolves at compile time, and
+    // it's the constructor argument, not a settled property, that xUnit's
+    // own discovery reads to group classes into one collection.
+    private static string? CollectionNameOf(Type t) =>
+        t.GetCustomAttributesData()
+            .FirstOrDefault(a => a.AttributeType.FullName == "Xunit.CollectionAttribute")
+            ?.ConstructorArguments.FirstOrDefault().Value as string;
+
+    [Fact]
+    public void UnlockTestsSharesUnlockNeverOverwritesTestsCollection()
+    {
+        var neverOverwritesCollection = CollectionNameOf(typeof(UnlockNeverOverwritesTests));
+        var unlockTestsCollection = CollectionNameOf(typeof(UnlockTests));
+
+        Assert.NotNull(neverOverwritesCollection);
+        Assert.Equal(neverOverwritesCollection, unlockTestsCollection);
     }
 }

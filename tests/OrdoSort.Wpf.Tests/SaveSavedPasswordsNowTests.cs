@@ -18,7 +18,22 @@ namespace OrdoSort.Wpf.Tests;
 /// (untouched here — see <c>SaveSavedPasswordsNow</c>'s doc comment), but a
 /// save reachable by just opening a window needs its own, safer contract:
 /// these tests prove it re-reads everything else fresh from disk and only
-/// ever overwrites <c>SavedPasswords</c> with this station's copy.</summary>
+/// ever overwrites <c>SavedPasswords</c> with this station's copy.
+///
+/// Final review, Important 3 (2026-08-06): the write itself used to route
+/// through <c>Config.TrySave</c>, which also rewrites all three side files
+/// plus the box-labels bootstrap — not just SavedPasswords, the one field
+/// this method is entitled to change. The test below,
+/// <c>ALegitimatelyBrowsedAbsoluteSideFilePathDoesNotSuppressTheSave</c>,
+/// proves the failure mode that created: a station with a legitimately-
+/// Browsed absolute side-file path (Task 1's shipped Settings capability)
+/// has that path refused on every WRITE, so the old TrySave call always
+/// failed overall — even though the password change had already reached
+/// disk via TrySave's main-file write, which runs first — and
+/// UnlockViewModel's constructor gates its "passwords protected" notice on
+/// this method's return value. The fix (<c>Config.TrySaveMain</c>) writes
+/// only the main config.json file, so a side file this call never touches
+/// can no longer sink it.</summary>
 public class SaveSavedPasswordsNowTests
 {
     [Fact]
@@ -173,5 +188,53 @@ public class SaveSavedPasswordsNowTests
 
         var warn = Assert.Single(fx.Dialogs.Warnings);
         Assert.Contains("missing", warn.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ALegitimatelyBrowsedAbsoluteSideFilePathDoesNotSuppressTheSave()
+    {
+        // Final review, Important 3. destinations_file points OUTSIDE the
+        // config directory — a real, shipped shape: the Settings "Data
+        // files" Browse... buttons return an absolute path with no
+        // containment check of their own (task-1-brief.md), and reading an
+        // already-configured absolute path back stays supported
+        // (Config.ResolveBesideForRead). Writing to it does not: every
+        // Save/TrySave call refuses it (Config.ResolveBesideForWrite), so
+        // this station's destinations.json write fails on EVERY save,
+        // deliberately, regardless of what else that save is doing.
+        var outside = Path.Combine(Path.GetTempPath(), "ordoshell_outside_" + Guid.NewGuid(), "dest.json");
+        using var fx = new ShellFixture(cfg => cfg.DestinationsFile = outside);
+        fx.Shell.Initialize();
+        fx.Shell.SaveConfigNow();   // config.json now exists; the destinations write already failed here too
+
+        // Sanity: confirm the absolute path really is refused on write
+        // before this test's real assertion — otherwise a change to
+        // ResolveBesideForWrite's rules could make this test pass for the
+        // wrong reason (nothing to route around because nothing failed).
+        var sanity = Assert.Single(fx.Dialogs.Warnings);
+        Assert.Contains("destinations_file", sanity.Message, StringComparison.OrdinalIgnoreCase);
+        fx.Dialogs.Warnings.Clear();
+
+        fx.Shell.Cfg.SavedPasswords.Add(
+            new SavedPassword { Label = "X", Password = PasswordVault.Protect("secret") });
+        var ok = fx.Shell.SaveSavedPasswordsNow();
+
+        // The old TrySave-routed save reported false here (sunk by the
+        // destinations.json refusal) even though the password had already
+        // landed via the main-file write TrySave runs first — silently
+        // dropping UnlockViewModel's "passwords protected" notice beside a
+        // spurious "not saved" warning about a write that had actually
+        // succeeded where it mattered. TrySaveMain never attempts the side
+        // file, so this must now report true, with no warning at all.
+        Assert.True(ok);
+        Assert.Empty(fx.Dialogs.Warnings);
+        var onDisk = Config.Load(fx.CfgPath);
+        var saved = Assert.Single(onDisk.SavedPasswords);
+        Assert.Equal("X", saved.Label);
+        Assert.Equal("secret", PasswordVault.Reveal(saved.Password));
+
+        // And the refused side file was never created at all — this call
+        // had no business touching it either way.
+        Assert.False(File.Exists(outside));
     }
 }
