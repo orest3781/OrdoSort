@@ -777,19 +777,26 @@ public class BulkRenameViewModelTests : IDisposable
         WaitFor(() => calls == 1, "the initial add's compute should land");
 
         vm.SetOverride(src, "CUSTOM NAME.pdf");   // typed extension is stripped
-        WaitFor(() => calls == 2 && vm.Preview[0].NewName == "CUSTOM NAME.pdf",
+        WaitFor(() => calls == 2 && vm.Preview.Count == 1 && vm.Preview[0].NewName == "CUSTOM NAME.pdf",
             "the preview should eventually reflect the hand edit");
         Assert.True(vm.Preview[0].Manual);
 
         vm.Find = "scan";
         vm.Replace = "fax";
         // wait for THIS recompute specifically (not a stale value) to land
-        // before proceeding — this is the step the reviewer found skipped
-        WaitFor(() => calls == 3, "the Find/Replace-triggered recompute should land before proceeding");
+        // before proceeding — this is the step the reviewer found skipped.
+        // Preview.Count == 1 is conjoined too: calls increments at SCHEDULE
+        // time (inside DebouncedProbe.Fire, before Plan() even runs), not
+        // after ApplyPlans finishes rebuilding Preview, so calls == 3 alone
+        // can be observed true before Preview is repopulated — indexing
+        // Preview[0] right after would then be a transient
+        // ArgumentOutOfRangeException, not a value mismatch.
+        WaitFor(() => calls == 3 && vm.Preview.Count == 1,
+            "the Find/Replace-triggered recompute should land before proceeding");
         Assert.Equal("CUSTOM NAME.pdf", vm.Preview[0].NewName);   // the override still beat the op
 
         vm.SetOverride(src, "");   // clearing goes back to the op result
-        WaitFor(() => calls == 4 && vm.Preview[0].NewName == "fax_001.pdf",
+        WaitFor(() => calls == 4 && vm.Preview.Count == 1 && vm.Preview[0].NewName == "fax_001.pdf",
             "clearing the override should fall back to the op result");
     }
 
@@ -903,7 +910,7 @@ public class BulkRenameViewModelTests : IDisposable
             "the preview should eventually reflect DeleteSeg2");
 
         vm.DeleteSeg2 = false;
-        WaitFor(() => vm.Preview[0].NewName == "A-B-C.pdf",
+        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-B-C.pdf",
             "the preview should eventually revert once DeleteSeg2 is unchecked");
         Assert.False(vm.Preview[0].Changed);
     }
@@ -926,17 +933,20 @@ public class BulkRenameViewModelTests : IDisposable
         WaitFor(() => calls == 1, "the initial add's compute should land");
 
         vm.DeleteSeg2 = true;
-        WaitFor(() => calls == 2 && vm.Preview[0].NewName == "A-C.pdf",
+        WaitFor(() => calls == 2 && vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
             "the preview should eventually reflect DeleteSeg2");
 
         vm.SetOverride(src, "CUSTOM-NAME.pdf");
-        WaitFor(() => calls == 3 && vm.Preview[0].NewName == "CUSTOM-NAME.pdf",
+        WaitFor(() => calls == 3 && vm.Preview.Count == 1 && vm.Preview[0].NewName == "CUSTOM-NAME.pdf",
             "the preview should eventually reflect the hand edit");
         Assert.True(vm.Preview[0].Manual);
 
         vm.DeleteSeg2 = false;
-        // wait for THIS recompute specifically before asserting
-        WaitFor(() => calls == 4, "the DeleteSeg2=false-triggered recompute should land before asserting");
+        // wait for THIS recompute specifically before asserting — same
+        // calls-alone-doesn't-guard-Preview hazard as HandEditSurvivesAnOpChange,
+        // so Preview.Count == 1 is conjoined here too.
+        WaitFor(() => calls == 4 && vm.Preview.Count == 1,
+            "the DeleteSeg2=false-triggered recompute should land before asserting");
         Assert.Equal("CUSTOM-NAME.pdf", vm.Preview[0].NewName);   // the override still beat the op
     }
 

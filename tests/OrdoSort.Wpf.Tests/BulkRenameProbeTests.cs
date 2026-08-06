@@ -160,7 +160,7 @@ public class BulkRenameProbeTests : IDisposable
 
         vm.DeleteSeg2 = true;   // one of the five DeleteSeg* flags — a single click, not typed text
 
-        WaitFor(() => vm.Preview[0].NewName == "A-C.pdf",
+        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
             "a discrete toggle should resolve promptly, not after the full debounce window",
             timeoutMs: 1000);
     }
