@@ -26,6 +26,11 @@ public sealed class UnlockViewModel : ObservableObject
 
     private readonly Config _cfg;
     private readonly Action _saveCfg;
+    // Null in the handful of tests that don't care about the load-time
+    // notice (Step 4) — every call site is a null-conditional ?.Info, so a
+    // missing dialog service just means the notice is silently skipped,
+    // never a crash.
+    private readonly IDialogService? _dialogs;
 
     // Test seams, following the fixture pattern the shell uses: the real app
     // passes neither, tests inject a scripted unlocker to make cancellation
@@ -45,10 +50,12 @@ public sealed class UnlockViewModel : ObservableObject
 
     public UnlockViewModel(Config cfg, Action saveCfg,
         Func<string, string, Unlock.UnlockResult>? unlocker = null,
-        Func<string, long>? fileSize = null)
+        Func<string, long>? fileSize = null,
+        IDialogService? dialogs = null)
     {
         _cfg = cfg;
         _saveCfg = saveCfg;
+        _dialogs = dialogs;
         _unlock = unlocker ?? ((path, password) => Unlock.UnlockPdf(path, password));
         _fileSize = fileSize ?? (path =>
         {
@@ -72,6 +79,42 @@ public sealed class UnlockViewModel : ObservableObject
         {
             if (!_bulkAdding) UnlockCommand.RaiseCanExecuteChanged();
         };
+
+        // Load-time sweep (audit finding 4.3[A]): ReprotectLegacyPlaintext
+        // used to run ONLY on the three save paths above, so a hand-edited
+        // or legacy plaintext entry sat readable in config.json forever if
+        // nobody happened to touch the saved-password list. This surface
+        // owns that list, so its own construction — which runs every time
+        // the Unlock window opens, i.e. effectively "on load" — is where
+        // the sweep belongs.
+        //
+        // Gated on ReprotectLegacyPlaintext's own return value: a config
+        // with nothing to convert must not be re-saved. Saving is not a
+        // by-the-way action on a shared config.json — it is a real,
+        // conflict-prone write on an SMB share, and this constructor runs
+        // on every single open, not once. An unconditional save here would
+        // rewrite (and risk write-conflicting) that shared file every time
+        // anyone so much as opened the Unlock window, for zero content
+        // change (see UnlockViewModelTests.LoadDoesNotRewriteAnAlready-
+        // ProtectedConfig).
+        //
+        // Protecting converts an entry every station could read into one
+        // only THIS Windows account can (DPAPI CurrentUser scope) — the
+        // point of the fix, since plaintext-readable-by-everyone is the
+        // exposure, but it silently breaks a shared password for a
+        // colleague on another machine unless they're told. Hence the
+        // one-time notice, fired only when a conversion actually happened.
+        if (ReprotectLegacyPlaintext())
+        {
+            _saveCfg();
+            _dialogs?.Info(
+                "Some saved passwords in the Unlock tool were stored in plain text " +
+                "and have now been protected for this Windows account. If this saved-" +
+                "password list is shared with a colleague on another computer, their " +
+                "copy of the password will no longer work — they'll need to re-enter " +
+                "and re-save it on their own machine.",
+                "OrdoSort — saved passwords protected");
+        }
     }
 
     private bool _isUnlocking;
@@ -214,20 +257,33 @@ public sealed class UnlockViewModel : ObservableObject
 
     /// <summary>Opportunistic upgrade: any saved password not yet
     /// DPAPI-protected (typically a hand-edited plaintext value in
-    /// config.json) is protected in place, right before this surface
-    /// persists. Mirrors the self-healing Settings used to do on every save
-    /// — now anchored to the surface that actually owns the saved-passwords
-    /// list. Mutates the SAME <see cref="SavedPassword"/> instances that
-    /// <c>Saved</c> holds (Saved is seeded from <c>_cfg.SavedPasswords</c> by
-    /// reference, not by copy), so the in-memory list is automatically in
-    /// sync — no separate pass over <c>Saved</c> is needed.</summary>
-    private void ReprotectLegacyPlaintext()
+    /// config.json) is protected in place. Called both right before this
+    /// surface persists (the three save-path callers below) and once from
+    /// the constructor as a load-time sweep, so a plaintext entry cannot
+    /// outlive being noticed just because the saved-password list is never
+    /// otherwise touched. Mirrors the self-healing Settings used to do on
+    /// every save — now anchored to the surface that actually owns the
+    /// saved-passwords list. Mutates the SAME <see cref="SavedPassword"/>
+    /// instances that <c>Saved</c> holds (Saved is seeded from
+    /// <c>_cfg.SavedPasswords</c> by reference, not by copy), so the
+    /// in-memory list is automatically in sync — no separate pass over
+    /// <c>Saved</c> is needed.</summary>
+    /// <returns>True if at least one entry was converted — callers that
+    /// persist unconditionally (the three below) can ignore this; the
+    /// constructor's load-time sweep uses it to skip saving (and
+    /// notifying) a config that had nothing to convert.</returns>
+    private bool ReprotectLegacyPlaintext()
     {
+        var converted = false;
         foreach (var sp in _cfg.SavedPasswords)
         {
             if (!PasswordVault.IsProtected(sp.Password))
+            {
                 sp.Password = PasswordVault.Protect(sp.Password);
+                converted = true;
+            }
         }
+        return converted;
     }
 
     public AsyncRelayCommand UnlockCommand { get; }

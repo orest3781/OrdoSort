@@ -503,12 +503,19 @@ public class UnlockViewModelTests : IDisposable
         // even touched. That self-healing moved with the list to
         // UnlockViewModel — it must still happen, just triggered by this
         // surface's own persist paths instead.
+        //
+        // legacyPlain is added AFTER Vm() runs, not before — the
+        // constructor now runs its OWN load-time sweep (see the
+        // LoadSweeps.../LoadDoesNotRewrite... tests below), which would
+        // otherwise convert this entry (and persist) before AddSavedPassword
+        // ever got a chance to, muddying what this test is isolating: the
+        // SAVE-path sweep triggered by touching the list.
         var alreadyProtected = new SavedPassword
         { Label = "A", Password = PasswordVault.Protect("already-safe") };
-        var legacyPlain = new SavedPassword { Label = "B", Password = "hunter2" };
         _cfg.SavedPasswords.Add(alreadyProtected);
-        _cfg.SavedPasswords.Add(legacyPlain);
         var vm = Vm();
+        var legacyPlain = new SavedPassword { Label = "B", Password = "hunter2" };
+        _cfg.SavedPasswords.Add(legacyPlain);
 
         Assert.True(vm.AddSavedPassword("New", "x"));   // any persist path triggers the sweep
 
@@ -516,6 +523,112 @@ public class UnlockViewModelTests : IDisposable
         Assert.Equal("hunter2", PasswordVault.Reveal(legacyPlain.Password));
         Assert.Equal("already-safe", PasswordVault.Reveal(alreadyProtected.Password));
         Assert.Equal(1, _saves);   // the sweep itself doesn't persist — only the one Add did
+    }
+
+    // ---------------------------------------------------- load-time sweep
+    // Audit finding 4.3[A]: a hand-edited or legacy plaintext saved
+    // password sat readable in config.json forever if nobody happened to
+    // touch the saved-password list, because ReprotectLegacyPlaintext used
+    // to run only on the three save paths above. These tests go through
+    // real files on disk (not the in-memory _saves counter the rest of this
+    // class uses) because the whole point is that the sweep must actually
+    // reach config.json, not just this process's copy of Config — protecting
+    // in memory only would leave the plaintext on disk, which is the entire
+    // finding.
+
+    [Fact]
+    public void LoadSweepsAndPersistsALegacyPlaintextSavedPasswordToDisk()
+    {
+        var path = Path.Combine(_dir, "config.json");
+        var seed = new Config();
+        seed.SavedPasswords.Add(new SavedPassword { Label = "Legacy", Password = "hunter2" });
+        Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
+
+        var loaded = Config.Load(path);
+        // sanity: Config.Load doesn't itself protect anything — if it did,
+        // this test wouldn't be exercising the sweep at all
+        Assert.False(PasswordVault.IsProtected(Assert.Single(loaded.SavedPasswords).Password));
+
+        var saveCalls = 0;
+        var vm = new UnlockViewModel(loaded, () => { saveCalls++; Config.TrySave(loaded, path, out _); });
+
+        // in memory, immediately after construction
+        var swept = Assert.Single(loaded.SavedPasswords);
+        Assert.True(PasswordVault.IsProtected(swept.Password));
+        Assert.Equal("hunter2", PasswordVault.Reveal(swept.Password));
+        Assert.Equal(1, saveCalls);   // it persisted — this is the whole finding
+
+        // on disk, read back through a completely fresh Config instance —
+        // proves it reached the file, not just this process's copy
+        var rereadFromDisk = Config.Load(path);
+        var onDisk = Assert.Single(rereadFromDisk.SavedPasswords);
+        Assert.True(PasswordVault.IsProtected(onDisk.Password));
+        Assert.Equal("hunter2", PasswordVault.Reveal(onDisk.Password));
+
+        GC.KeepAlive(vm);
+    }
+
+    [Fact]
+    public void LoadDoesNotRewriteAnAlreadyProtectedConfig()
+    {
+        // No-churn requirement: re-protecting on every load would rewrite a
+        // shared config.json every time anyone opened the Unlock window —
+        // noisy, and a needless write-conflict source on an SMB share.
+        var path = Path.Combine(_dir, "config.json");
+        var seed = new Config();
+        seed.SavedPasswords.Add(new SavedPassword { Label = "A", Password = PasswordVault.Protect("safe") });
+        Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
+
+        var beforeBytes = File.ReadAllBytes(path);
+        var beforeWriteTime = File.GetLastWriteTimeUtc(path);
+
+        var loaded = Config.Load(path);
+        var saveCalls = 0;
+        var vm = new UnlockViewModel(loaded, () => { saveCalls++; Config.TrySave(loaded, path, out _); });
+
+        Assert.Equal(0, saveCalls);   // the save path was never even invoked
+        Assert.Equal(beforeBytes, File.ReadAllBytes(path));         // byte-identical
+        Assert.Equal(beforeWriteTime, File.GetLastWriteTimeUtc(path)); // never touched
+
+        GC.KeepAlive(vm);
+    }
+
+    [Fact]
+    public void LoadShowsAOneTimeNoticeWhenAPasswordWasActuallyConverted()
+    {
+        var path = Path.Combine(_dir, "config.json");
+        var seed = new Config();
+        seed.SavedPasswords.Add(new SavedPassword { Label = "Legacy", Password = "hunter2" });
+        Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
+
+        var loaded = Config.Load(path);
+        var dialogs = new FakeDialogs();
+        var vm = new UnlockViewModel(loaded, () => Config.TrySave(loaded, path, out _), dialogs: dialogs);
+
+        var notice = Assert.Single(dialogs.Infos);
+        Assert.Contains("protected", notice.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("re-enter", notice.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(dialogs.Warnings);
+
+        GC.KeepAlive(vm);
+    }
+
+    [Fact]
+    public void LoadShowsNoNoticeOnACleanLoad()
+    {
+        var path = Path.Combine(_dir, "config.json");
+        var seed = new Config();
+        seed.SavedPasswords.Add(new SavedPassword { Label = "A", Password = PasswordVault.Protect("safe") });
+        Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
+
+        var loaded = Config.Load(path);
+        var dialogs = new FakeDialogs();
+        var vm = new UnlockViewModel(loaded, () => Config.TrySave(loaded, path, out _), dialogs: dialogs);
+
+        Assert.Empty(dialogs.Infos);
+        Assert.Empty(dialogs.Warnings);
+
+        GC.KeepAlive(vm);
     }
 
     [Fact]
