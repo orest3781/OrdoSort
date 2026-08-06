@@ -59,6 +59,29 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     private readonly Dictionary<string, string> _overrides = new();   // source -> hand-edited stem
     private List<RenameOutcome> _lastOutcomes = new();
 
+    // Final-review finding 1 (2026-08-05 debounce pair): the plan Apply()
+    // executes must be the SAME plan Preview last rendered, never a fresh
+    // Plan(_files, CurrentOp(), _overrides) call. Once Refresh became
+    // debounced, CurrentOp() reads whatever Find/Replace/etc. say RIGHT NOW —
+    // which, inside the ~300ms-plus-compute window between a keystroke and
+    // ApplyPlans landing, is newer than what Preview is showing. Re-planning
+    // from CurrentOp() in Apply() therefore let a click execute an operation
+    // the user never saw previewed: on the SMB shares this app targets, that
+    // window is seconds, easily long enough for "type s toward scan, click
+    // the still-enabled Rename button" to rename files against Find="s"
+    // while the screen still reads the Find="scan" preview. Retaining the
+    // exact plan ApplyPlans rendered and executing THAT (instead of gating
+    // RenameCommand's CanExecute on "no armed/in-flight probe", the other
+    // shape the review named) keeps the button live with no typing-flicker
+    // and makes what-you-see-is-what-you-get structural rather than timing-
+    // dependent: there is no code path where Apply() can run a plan Preview
+    // didn't already show. Execute() re-checks File.Exists on each target
+    // immediately before its File.Move (BulkRename.cs:192), so a stale plan
+    // is still safe against anything that changed on disk since Preview was
+    // rendered — only the OPERATION is pinned to what was shown, not the
+    // filesystem state.
+    private List<PlannedRename> _lastRenderedPlans = new();
+
     // Off-thread, debounced: Plan's File.Exists check must never run per
     // keystroke of Find/Replace/Prefix/Suffix, and must never block the UI
     // thread — see DebouncedProbe. One shared probe for the whole preview
@@ -281,6 +304,10 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     /// ObservableCollection bound to the DataGrid) here is safe.</summary>
     private void ApplyPlans(List<PlannedRename> plans)
     {
+        // Retained verbatim so Apply() has exactly what Preview is about to
+        // show, not a re-plan from whatever the op fields say by the time the
+        // button is clicked — see the finding-1 note on _lastRenderedPlans.
+        _lastRenderedPlans = plans;
         Preview.Clear();
         _changed = 0;
         foreach (var pr in plans)
@@ -309,7 +336,12 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
 
     internal void Apply()
     {
-        var outcomes = Execute(Plan(_files, CurrentOp(), _overrides));
+        // Execute what Preview last rendered, not a fresh Plan() from
+        // CurrentOp() — see the finding-1 note on _lastRenderedPlans. This is
+        // the whole fix: it makes "the operation executed is the operation
+        // last rendered" true unconditionally, rather than true only when no
+        // debounce/compute is in flight at the moment of the click.
+        var outcomes = Execute(_lastRenderedPlans);
         _overrides.Clear();
         var renamed = outcomes.Where(o => o.Final != null).ToList();
         var failed = outcomes.Where(o => o.Final == null).ToList();

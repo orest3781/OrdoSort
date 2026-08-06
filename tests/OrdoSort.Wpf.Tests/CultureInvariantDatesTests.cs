@@ -88,7 +88,16 @@ public class CultureInvariantDatesTests : IDisposable
             vm.ReviewMode = true;
             vm.ReceivedDate = new DateTime(2026, 8, 2);
 
-            WaitFor(() => vm.Preview.Count == 1, "the preview should eventually compute");
+            // Value conjoined into the wait (not just Count == 1): the
+            // AddFiles-generation compute can still land after the
+            // ReviewMode/ReceivedDate ones supersede it, satisfying a
+            // count-only wait on the WRONG (pre-review-mode) preview and
+            // making the strict Assert.Equal below intermittently fail. Every
+            // other test in this suite already conjoins the value; finding 3
+            // (final review, 2026-08-05 debounce pair) brings these two in
+            // line.
+            WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "20260802-SMITH-JOHN.pdf",
+                "the preview should eventually compute the review-mode rebuild");
             var row = Assert.Single(vm.Preview);
             Assert.Equal("20260802-SMITH-JOHN.pdf", row.NewName);
         });
@@ -108,7 +117,12 @@ public class CultureInvariantDatesTests : IDisposable
             vm.ReviewMode = true;
             vm.ReceivedDate = new DateTime(2026, 8, 2);
 
-            WaitFor(() => vm.Preview.Count == 1, "the preview should eventually compute");
+            // Same value-conjoined wait as above, for the same reason: a
+            // count-only wait can be satisfied by the AddFiles-generation
+            // compute (EditSeed == the plain filename, NeedsName == false)
+            // before the ReviewMode/ReceivedDate recompute supersedes it.
+            WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].EditSeed == "20260802-",
+                "the preview should eventually compute the stray's date-prefixed edit seed");
             var row = Assert.Single(vm.Preview);
             Assert.True(row.NeedsName);
             Assert.Equal("20260802-", row.EditSeed);

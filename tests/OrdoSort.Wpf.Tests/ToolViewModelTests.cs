@@ -801,6 +801,14 @@ public class BulkRenameViewModelTests : IDisposable
         vm.AddFiles(new[] { src });
         vm.Find = "scan";
         vm.Replace = "fax";
+        // Post finding-1 fix, Apply() executes the plan Preview last
+        // rendered rather than re-planning from CurrentOp() — that's the
+        // whole point (see BulkRenameViewModel._lastRenderedPlans) — so this
+        // test has to let the debounced preview actually settle on
+        // fax_001.pdf before calling Apply(), or it would be pinning stale
+        // (pre-Find/Replace) plans instead of exercising a real rename.
+        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "fax_001.pdf",
+            "the preview should settle on the Find/Replace result before Apply");
         vm.Apply();
 
         Assert.True(File.Exists(Path.Combine(_dir, "fax_001.pdf")));
@@ -811,6 +819,53 @@ public class BulkRenameViewModelTests : IDisposable
         vm.UndoBatch();
         Assert.True(File.Exists(src));
         Assert.Equal("Original names restored.", vm.Status);
+    }
+
+    /// <summary>Final-review finding 1 (2026-08-05 debounce pair): before the
+    /// fix, Apply() re-planned from Execute(Plan(_files, CurrentOp(),
+    /// _overrides)) — reading Find/Replace/etc. as they stand at the moment
+    /// of the click, not as they stood the last time Preview actually
+    /// rendered. Find/Replace bind UpdateSourceTrigger=PropertyChanged and
+    /// debounce 300ms before the plan recomputes and Preview updates
+    /// (BulkRenameViewModel.Refresh/ApplyPlans), so there is a real window —
+    /// seconds on the SMB shares this app targets — where the property is
+    /// already the NEW value but Preview is still showing the OLD plan and
+    /// RenameCommand is still enabled from it.
+    ///
+    /// This drives that exact divergence rather than merely checking Apply()
+    /// still works (which would pass either way, pre- or post-fix): settle
+    /// the preview on Find="scan"/Replace="fax" -> fax_001.pdf, then change
+    /// Find again WITHOUT letting the new debounce elapse, and call Apply()
+    /// synchronously right after — deterministically inside the debounce
+    /// window, no sleep needed. Pre-fix, CurrentOp() would see Find="s" and
+    /// plan "scan_001".Replace("s","fax") = "faxcan_001.pdf" — an operation
+    /// Preview never showed. Post-fix, Apply() executes the retained
+    /// fax_001.pdf plan regardless of what Find says by then.</summary>
+    [Fact]
+    public void ApplyExecutesTheOperationLastRenderedNotAStillDebouncingEdit()
+    {
+        var vm = new BulkRenameViewModel();
+        var src = Touch("scan_001.pdf");
+        vm.AddFiles(new[] { src });
+        vm.Find = "scan";
+        vm.Replace = "fax";
+        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "fax_001.pdf",
+            "the preview should settle on fax_001.pdf before the test edits Find again");
+        Assert.Equal("Rename 1 file", vm.RenameButtonText);   // what the user actually sees at click time
+
+        // The user starts retyping toward something else (e.g. correcting
+        // "scan" to "s" + more) — this re-arms the 300ms debounce but the
+        // recompute has not landed, so Preview/RenameButtonText still show
+        // the fax_001.pdf plan above.
+        vm.Find = "s";
+        vm.Apply();   // clicked inside the debounce window, before the recompute lands
+
+        // What got renamed on disk must be what Preview showed, not a plan
+        // built from the newer, never-rendered Find="s".
+        Assert.True(File.Exists(Path.Combine(_dir, "fax_001.pdf")));
+        Assert.False(File.Exists(src));
+        Assert.False(File.Exists(Path.Combine(_dir, "faxcan_001.pdf")));   // what Find="s" would have produced
+        Assert.Contains("Renamed 1 file", vm.Status);
     }
 
     [Fact]
