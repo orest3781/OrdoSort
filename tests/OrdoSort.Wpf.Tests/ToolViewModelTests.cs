@@ -581,6 +581,28 @@ public class BulkRenameViewModelTests : IDisposable
         }
     }
 
+    /// <summary>Counts how many times the injected scheduler is actually asked
+    /// to run work — i.e. how many times a real Plan() compute landed — while
+    /// still doing the work for real via TaskWorkScheduler underneath.
+    ///
+    /// Needed because a value-only WaitFor (e.g. "NewName == X") can pass on
+    /// its very first poll against LEFTOVER state from an earlier compute,
+    /// without ever observing the compute the test claims to be waiting for
+    /// — especially when a debounced (300ms) trigger is immediately followed
+    /// by an "immediate" (0ms) one, which re-arms BulkRenameViewModel's one
+    /// shared timer and silently discards the still-pending debounced compute
+    /// before its window ever elapses. Waiting on a call COUNT instead of a
+    /// value forces the test to observe the specific compute it means to
+    /// pin.</summary>
+    private sealed class CountingWorkScheduler : IWorkScheduler
+    {
+        private readonly Action _onRun;
+        private readonly IWorkScheduler _inner = new TaskWorkScheduler();
+        public CountingWorkScheduler(Action onRun) => _onRun = onRun;
+        public Task<T> Run<T>(Func<T> work) { _onRun(); return _inner.Run(work); }
+        public Task Run(Action work) { _onRun(); return _inner.Run(work); }
+    }
+
     [Fact]
     public void CountsLineAndAddNoteTrackTheBatch()
     {
@@ -689,17 +711,23 @@ public class BulkRenameViewModelTests : IDisposable
     [Fact]
     public void NoStraysMeansNothingToJumpTo()
     {
-        var vm = new BulkRenameViewModel();
+        // NeedsNameCount/IndexOfNextNeedingName/CountsLine all read the same
+        // (0/-1/no-"need a name") whether or not Find/Replace has actually
+        // been applied to this plain filename, so a value-only WaitFor here
+        // would trivially match leftover state from the AddFiles-only
+        // compute without ever observing the Find/Replace recompute this
+        // test claims to exercise. Count computes instead, so the wait
+        // actually forces that recompute to land first.
+        var calls = 0;
+        var vm = new BulkRenameViewModel(scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
         vm.AddFiles(new[] { Touch("scan_001.pdf") });
+        WaitFor(() => calls == 1, "the initial add's compute should land");
+
         vm.Find = "scan";
         vm.Replace = "fax";
+        WaitFor(() => calls == 2, "the Find/Replace-triggered recompute should land before asserting");
 
-        // NeedsNameCount defaults to 0 before any compute ever runs, so gate
-        // on Preview actually being populated too — otherwise this would
-        // trivially "pass" against the untouched initial state and never
-        // prove the probe ran at all.
-        WaitFor(() => vm.Preview.Count == 1 && vm.NeedsNameCount == 0,
-            "NeedsNameCount should settle at zero once the preview computes");
+        Assert.Equal(0, vm.NeedsNameCount);
         Assert.Equal(-1, vm.IndexOfNextNeedingName(-1));
         Assert.DoesNotContain("need a name", vm.CountsLine);
     }
@@ -733,23 +761,35 @@ public class BulkRenameViewModelTests : IDisposable
     [Fact]
     public void HandEditSurvivesAnOpChange()
     {
-        var vm = new BulkRenameViewModel();
+        // The override's own value ("CUSTOM NAME.pdf") doesn't change across
+        // the Find/Replace step below, so a value-only WaitFor there would
+        // pass on its first poll against LEFTOVER state from the SetOverride
+        // compute — never actually observing the Find/Replace-triggered
+        // recompute. Worse: that recompute is debounced (300ms), and the
+        // immediate (0ms) SetOverride("") that follows re-arms the same
+        // shared timer and DISCARDS it outright if the test doesn't wait for
+        // it first. Count computes instead, so each step is proven to have
+        // actually landed before the next action fires.
+        var calls = 0;
+        var vm = new BulkRenameViewModel(scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
         var src = Touch("scan_001.pdf");
         vm.AddFiles(new[] { src });
+        WaitFor(() => calls == 1, "the initial add's compute should land");
+
         vm.SetOverride(src, "CUSTOM NAME.pdf");   // typed extension is stripped
-        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "CUSTOM NAME.pdf",
+        WaitFor(() => calls == 2 && vm.Preview[0].NewName == "CUSTOM NAME.pdf",
             "the preview should eventually reflect the hand edit");
         Assert.True(vm.Preview[0].Manual);
 
         vm.Find = "scan";
         vm.Replace = "fax";
-        // the override still beats the op — no visible change expected, but
-        // give the probe a chance to run and confirm it stays put
-        WaitFor(() => vm.Preview[0].NewName == "CUSTOM NAME.pdf",
-            "the hand edit should survive the op change");
+        // wait for THIS recompute specifically (not a stale value) to land
+        // before proceeding — this is the step the reviewer found skipped
+        WaitFor(() => calls == 3, "the Find/Replace-triggered recompute should land before proceeding");
+        Assert.Equal("CUSTOM NAME.pdf", vm.Preview[0].NewName);   // the override still beat the op
 
         vm.SetOverride(src, "");   // clearing goes back to the op result
-        WaitFor(() => vm.Preview[0].NewName == "fax_001.pdf",
+        WaitFor(() => calls == 4 && vm.Preview[0].NewName == "fax_001.pdf",
             "clearing the override should fall back to the op result");
     }
 
@@ -816,23 +856,33 @@ public class BulkRenameViewModelTests : IDisposable
     [Fact]
     public void HandEditedTargetStillOverridesDeleteSegments()
     {
-        var vm = new BulkRenameViewModel();
+        // Same shape as HandEditSurvivesAnOpChange's false-green (the
+        // override value doesn't change across the final step, so a
+        // value-only WaitFor could pass against leftover state without
+        // observing the DeleteSeg2=false recompute) — lower risk here since
+        // DeleteSeg2 is itself immediate (0ms), so nothing races ahead and
+        // discards its compute outright the way the debounced Find/Replace
+        // one could be discarded above. Fixed the same way regardless, so
+        // this test actually proves what its name claims.
+        var calls = 0;
+        var vm = new BulkRenameViewModel(scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
         var src = Touch("A-B-C.pdf");
         vm.AddFiles(new[] { src });
+        WaitFor(() => calls == 1, "the initial add's compute should land");
+
         vm.DeleteSeg2 = true;
-        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
+        WaitFor(() => calls == 2 && vm.Preview[0].NewName == "A-C.pdf",
             "the preview should eventually reflect DeleteSeg2");
 
         vm.SetOverride(src, "CUSTOM-NAME.pdf");
-        WaitFor(() => vm.Preview[0].NewName == "CUSTOM-NAME.pdf",
+        WaitFor(() => calls == 3 && vm.Preview[0].NewName == "CUSTOM-NAME.pdf",
             "the preview should eventually reflect the hand edit");
         Assert.True(vm.Preview[0].Manual);
 
         vm.DeleteSeg2 = false;
-        // the override still beats the op — no visible change expected, but
-        // give the probe a chance to run and confirm it stays put
-        WaitFor(() => vm.Preview[0].NewName == "CUSTOM-NAME.pdf",
-            "the hand edit should survive DeleteSeg2 being unchecked");
+        // wait for THIS recompute specifically before asserting
+        WaitFor(() => calls == 4, "the DeleteSeg2=false-triggered recompute should land before asserting");
+        Assert.Equal("CUSTOM-NAME.pdf", vm.Preview[0].NewName);   // the override still beat the op
     }
 
     [Fact]

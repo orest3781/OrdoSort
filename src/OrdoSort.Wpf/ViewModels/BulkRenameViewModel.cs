@@ -68,11 +68,25 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     // behavior, not a shortcut.
     private readonly DebouncedProbe<List<PlannedRename>> _plansProbe;
 
+    // Seam over BulkRename.Plan (the same shape as RouteEditVm's
+    // _validateRoute/WatchEditVm's _directoryExists) so a test can inject
+    // latency into the COMPUTE itself — not the scheduler that dispatches
+    // it. Latency injected at the scheduler only proves the scheduler is
+    // async; it doesn't prove a REGRESSION to a synchronous Plan() call in
+    // the setter would be caught, because a synchronous call bypasses the
+    // scheduler entirely. This is what actually stands in for the real
+    // File.Exists cost finding 5.2 is about.
+    private readonly Func<IEnumerable<string>, RenameOp,
+        IReadOnlyDictionary<string, string>?, List<PlannedRename>> _plan;
+
     public ObservableCollection<RenameRow> Preview { get; } = new();
 
-    public BulkRenameViewModel(IWorkScheduler? scheduler = null,
+    public BulkRenameViewModel(
+        Func<IEnumerable<string>, RenameOp, IReadOnlyDictionary<string, string>?, List<PlannedRename>>? plan = null,
+        IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null, int probeDelayMs = 300)
     {
+        _plan = plan ?? Plan;
         _plansProbe = new DebouncedProbe<List<PlannedRename>>(
             scheduler ?? new TaskWorkScheduler(), uiContext, ApplyPlans, probeDelayMs);
         RenameCommand = new RelayCommand(Apply, () => _changed > 0);
@@ -257,7 +271,7 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _plansProbe.Trigger(() => Plan(filesSnapshot, op, overridesSnapshot), immediate);
+        _plansProbe.Trigger(() => _plan(filesSnapshot, op, overridesSnapshot), immediate);
     }
 
     /// <summary>Everything from the old synchronous Refresh from

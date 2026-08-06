@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.ViewModels;
+using static OrdoSort.Core.BulkRename;
 
 namespace OrdoSort.Wpf.Tests;
 
@@ -50,20 +51,23 @@ public class BulkRenameProbeTests : IDisposable
         }
     }
 
-    /// <summary>A deliberately slow IWorkScheduler — same technique as
-    /// SettingsViewModelTests' Thread.Sleep-wrapped directoryExists/
-    /// validateRoute stand-ins and TilePreviewProbeTests' slow folderStatus
-    /// stand-in. BulkRenameViewModel's only I/O (File.Exists inside
-    /// BulkRename.Plan, a Core static function) has no separate injectable
-    /// seam of its own — the delay is added at the scheduler instead, which
-    /// exercises the exact mechanism a setter must not block on:
-    /// _scheduler.Run(compute) inside DebouncedProbe.Fire/RunAsync.</summary>
-    private sealed class SlowWorkScheduler : IWorkScheduler
+    /// <summary>A deliberately slow stand-in for BulkRenameViewModel's `plan`
+    /// seam — same Thread.Sleep-wrapped-dependency technique as
+    /// SettingsViewModelTests' directoryExists/validateRoute stand-ins and
+    /// TilePreviewProbeTests' slow folderStatus stand-in, but pointed at the
+    /// COMPUTE itself (BulkRename.Plan) rather than the scheduler that
+    /// dispatches it. This matters: injecting latency at the scheduler only
+    /// proves the scheduler is exercised asynchronously — it does NOT prove a
+    /// regression to a synchronous Plan() call in the setter would be caught,
+    /// because a synchronous call bypasses the scheduler (and any latency
+    /// hung on it) entirely. Sleeping inside the compute itself stands in for
+    /// the real File.Exists cost finding 5.2 is about, so a setter that
+    /// regresses to calling this synchronously WILL block for real.</summary>
+    private static List<PlannedRename> SlowPlan(int delayMs,
+        IEnumerable<string> paths, RenameOp op, IReadOnlyDictionary<string, string>? overrides)
     {
-        private readonly int _delayMs;
-        public SlowWorkScheduler(int delayMs) => _delayMs = delayMs;
-        public async Task<T> Run<T>(Func<T> work) { await Task.Delay(_delayMs); return work(); }
-        public async Task Run(Action work) { await Task.Delay(_delayMs); work(); }
+        Thread.Sleep(delayMs);
+        return Plan(paths, op, overrides);
     }
 
     /// <summary>Counts how many times the scheduler is actually asked to run
@@ -79,13 +83,13 @@ public class BulkRenameProbeTests : IDisposable
         public Task Run(Action work) { _onRun(); return _inner.Run(work); }
     }
 
-    // ---- 1. the UI thread does not block on the plan probe ----------------
+    // ---- 1. the UI thread does not block on the plan itself ---------------
 
     [Fact]
-    public void SettingFindReturnsPromptlyEvenWhileThePlanProbeIsSlow()
+    public void SettingFindReturnsPromptlyEvenWhilePlanItselfIsSlow()
     {
         var a = Touch("scan_001.pdf");
-        var vm = new BulkRenameViewModel(scheduler: new SlowWorkScheduler(300));
+        var vm = new BulkRenameViewModel(plan: (paths, op, overrides) => SlowPlan(300, paths, op, overrides));
         vm.AddFiles(new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle before the timing measurement");
 
@@ -100,10 +104,10 @@ public class BulkRenameProbeTests : IDisposable
     // ---- 2. the preview still becomes correct — this is not "never compute"
 
     [Fact]
-    public void ThePreviewEventuallyReflectsTheSlowProbesResult()
+    public void ThePreviewEventuallyReflectsTheSlowPlansResult()
     {
         var a = Touch("scan_001.pdf");
-        var vm = new BulkRenameViewModel(scheduler: new SlowWorkScheduler(300));
+        var vm = new BulkRenameViewModel(plan: (paths, op, overrides) => SlowPlan(300, paths, op, overrides));
         vm.AddFiles(new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle first");
 
@@ -111,7 +115,7 @@ public class BulkRenameProbeTests : IDisposable
         vm.Replace = "fax";
 
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "fax_001.pdf",
-            "the preview should eventually reflect Find/Replace once the slow probe completes");
+            "the preview should eventually reflect Find/Replace once the slow plan completes");
     }
 
     // ---- 3. a burst of keystrokes runs Plan once, not once per character --
