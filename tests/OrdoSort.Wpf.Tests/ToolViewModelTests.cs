@@ -731,6 +731,41 @@ public class UnlockViewModelTests : IDisposable
     }
 
     [Fact]
+    public void ANonCryptographicFailureDuringTheSweepAlsoDoesNotPreventConstruction()
+    {
+        // Fix round 2, Gap A: the original catch was scoped to
+        // CryptographicException — ProtectedData.Protect's documented
+        // Windows failure mode — but Finding 1's promise is "NO failure
+        // here may cost the user the tool," not "the documented failure
+        // mode is handled." Any OTHER exception type from _protect must be
+        // just as harmless to construction as a CryptographicException is.
+        var path = Path.Combine(_dir, "config.json");
+        var seed = new Config();
+        seed.SavedPasswords.Add(new SavedPassword { Label = "A", Password = "boom" });
+        Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
+
+        var loaded = Config.Load(path);
+        var dialogs = new FakeDialogs();
+        var saveCalls = 0;
+
+        // Construction must complete normally — if it throws, this Fact
+        // fails with that exception, exactly the "window never opens"
+        // outcome Gap A is about.
+        var vm = new UnlockViewModel(loaded, () => { saveCalls++; return true; },
+            dialogs: dialogs,
+            protect: _ => throw new InvalidOperationException("simulated non-DPAPI failure"));
+
+        Assert.Equal("boom", loaded.SavedPasswords[0].Password);          // rolled back, not lost
+        Assert.False(PasswordVault.IsProtected(loaded.SavedPasswords[0].Password));
+        Assert.Equal(0, saveCalls);                                       // nothing persisted
+        Assert.Empty(dialogs.Infos);
+        var warn = Assert.Single(dialogs.Warnings);
+        Assert.Contains("could not be protected", warn.Message, StringComparison.OrdinalIgnoreCase);
+
+        GC.KeepAlive(vm);
+    }
+
+    [Fact]
     public async Task EmptyListDisablesUnlockAndHints()
     {
         var vm = Vm();

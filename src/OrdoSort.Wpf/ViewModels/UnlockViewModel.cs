@@ -299,9 +299,15 @@ public sealed class UnlockViewModel : ObservableObject
     /// in-memory list is automatically in sync — no separate pass over
     /// <c>Saved</c> is needed.
     ///
-    /// DPAPI's <see cref="PasswordVault.Protect"/> can itself fail
-    /// (<see cref="CryptographicException"/> — rare, but real: profile-load
-    /// edge cases and similar). Before the constructor called this, that
+    /// DPAPI's <see cref="PasswordVault.Protect"/> can itself fail — its
+    /// documented Windows failure mode is <see cref="CryptographicException"/>
+    /// (rare, but real: profile-load edge cases and similar), but Finding
+    /// 1's promise is stronger than "the documented failure mode is
+    /// handled": NO failure here may cost the user the tool, so this
+    /// catches every exception type, not just the expected one (fix round
+    /// 2, Gap A) — a narrower catch would reproduce the exact "window
+    /// never opens again" defect for whatever exception type it didn't
+    /// happen to name. Before the constructor called this, a failure here
     /// could only ever happen inside a deliberate save action; now it can
     /// happen every time the Unlock window opens, and an unhandled throw
     /// here would escape the constructor and leave the window unable to
@@ -317,10 +323,10 @@ public sealed class UnlockViewModel : ObservableObject
     /// protected and none failed — callers that persist unconditionally
     /// (the three above) can ignore this; the constructor's load-time
     /// sweep uses it to skip saving (and notifying) a config that had
-    /// nothing to convert. <c>Failed</c> is true if DPAPI itself failed on
-    /// at least one entry, in which case <c>Converted</c> is always false
-    /// (a failure rolls back the whole attempt) — the constructor uses this
-    /// to warn instead of claiming success.</returns>
+    /// nothing to convert. <c>Failed</c> is true if protecting an entry
+    /// failed for ANY reason, in which case <c>Converted</c> is always
+    /// false (a failure rolls back the whole attempt) — the constructor
+    /// uses this to warn instead of claiming success.</returns>
     private (bool Converted, bool Failed) ReprotectLegacyPlaintext()
     {
         var touched = new List<(SavedPassword Entry, string Original)>();
@@ -337,7 +343,7 @@ public sealed class UnlockViewModel : ObservableObject
             }
             return (touched.Count > 0, false);
         }
-        catch (CryptographicException)
+        catch (Exception)
         {
             foreach (var (entry, original) in touched)
                 entry.Password = original;

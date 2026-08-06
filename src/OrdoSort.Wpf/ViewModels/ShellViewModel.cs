@@ -1198,10 +1198,41 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// as stale (or fresh) as it already was; only what reaches disk
     /// changes. A broken/mid-write shared config.json falls back to the
     /// ordinary whole-<c>_cfg</c> save (mirroring how a broken SIDE file is
-    /// already handled below) rather than losing the sweep's result.</summary>
+    /// already handled below) rather than losing the sweep's result.
+    ///
+    /// An ABSENT config.json is deliberately NOT treated as first run and
+    /// gets no fallback write at all (fix round 2, Gap B): this method only
+    /// ever runs on a station that already holds a loaded <c>_cfg</c> in
+    /// memory, which proves the file existed at least once already — a
+    /// missing file AT THIS MOMENT means a transient share hiccup, an
+    /// external delete, or a peer's own atomic write caught mid-rename, not
+    /// a genuine new install. <see cref="Config.Load"/> doesn't know that:
+    /// its first-run path treats ANY missing file as "create and save a
+    /// fresh all-defaults Config" — and it does that SAVE itself, silently,
+    /// before this method would even get to overlay <c>SavedPasswords</c>
+    /// onto the result. Calling it unchecked here would wipe every peer's
+    /// Theme/TileVisibility/MergeHeaders/Sounds/etc. with factory defaults
+    /// on nothing more than a momentarily-missing file — exactly the
+    /// peer-clobber class this method exists to prevent, arriving through
+    /// Config.Load's own write instead of this method's. So the existence
+    /// check below runs BEFORE calling Config.Load at all, and on a miss
+    /// this method writes nothing — not even the whole-<c>_cfg</c> fallback
+    /// the broken/unreadable case above uses, since there is no known-good
+    /// picture of whatever a peer's in-flight write might produce to
+    /// overlay onto.</summary>
     /// <returns>True if the write reached disk.</returns>
     internal bool SaveSavedPasswordsNow()
     {
+        if (!File.Exists(_cfgPath))
+        {
+            _dialogs.Warn(
+                "Couldn't save the saved-password change — the shared config file is " +
+                "missing right now (a share hiccup, or a peer saving at this exact " +
+                "moment). Nothing was overwritten; try again in a moment.",
+                "OrdoSort — settings not saved");
+            return false;
+        }
+
         Config fresh;
         try
         {

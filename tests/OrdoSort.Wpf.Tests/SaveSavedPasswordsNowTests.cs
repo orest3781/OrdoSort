@@ -134,4 +134,44 @@ public class SaveSavedPasswordsNowTests
         var onDisk = Config.Load(fx.CfgPath);
         Assert.Single(onDisk.SavedPasswords);
     }
+
+    [Fact]
+    public void AnAbsentConfigAtSaveTimeWritesNothingAndDefaultsNoPeerField()
+    {
+        // Fix round 2, Gap B: Config.Load's first-run path treats ANY
+        // missing file as "create and save a fresh all-defaults Config" —
+        // and it does that save itself, silently, before this method would
+        // even get to overlay SavedPasswords onto the result. A station
+        // that already holds a loaded Config in memory (proven by the fact
+        // this method is even reachable) hitting a momentarily-missing
+        // file is a share hiccup or a peer's in-flight write, never a
+        // genuine first run — so this must write NOTHING, not even a
+        // fresh-defaults file, rather than silently wipe every peer's
+        // Theme/TileVisibility/MergeHeaders/Sounds/etc.
+        using var fx = new ShellFixture();
+        fx.Shell.Initialize();
+        fx.Shell.SaveConfigNow();   // config.json exists; a peer-visible baseline
+
+        var peerCopy = Config.Load(fx.CfgPath);
+        peerCopy.Theme = "dark";
+        Assert.True(Config.TrySave(peerCopy, fx.CfgPath, out var seedError), seedError);
+
+        // The transient-missing window itself: an external delete, a share
+        // hiccup, or a peer caught mid-rename on its own atomic write.
+        File.Delete(fx.CfgPath);
+        Assert.False(File.Exists(fx.CfgPath));
+
+        fx.Shell.Cfg.SavedPasswords.Add(
+            new SavedPassword { Label = "X", Password = PasswordVault.Protect("secret") });
+        var ok = fx.Shell.SaveSavedPasswordsNow();
+
+        Assert.False(ok);
+        // The strongest possible proof of "nothing was written": the file
+        // doesn't exist at all afterward, so no field — peer-visible or
+        // otherwise — could have been defaulted onto disk.
+        Assert.False(File.Exists(fx.CfgPath));
+
+        var warn = Assert.Single(fx.Dialogs.Warnings);
+        Assert.Contains("missing", warn.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }
