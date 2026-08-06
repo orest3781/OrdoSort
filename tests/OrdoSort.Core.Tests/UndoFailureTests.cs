@@ -1,3 +1,4 @@
+using System.Reflection;
 using OrdoSort.Core;
 
 namespace OrdoSort.Core.Tests;
@@ -11,9 +12,31 @@ namespace OrdoSort.Core.Tests;
 /// returns without throwing, a failed undo must leave every one of those
 /// exactly as it found them — most importantly, the history row must NOT be
 /// marked reverted while the document is still filed. That surviving-state
-/// property, not just "it throws", is what these tests pin.</summary>
+/// property, not just "it throws", is what these tests pin.
+///
+/// Final-review M (2026-08-05): RaceAtTheFinalMomentIsReportedAsTheSameActionable
+/// CommitError below sets the static, unsynchronized <see cref="Commit.RaceHookForTests"/>
+/// seam. PipelineTests.SessionUndoRoundTrip also drives Commit.UndoAction (the
+/// method the hook lives inside), from a different, undeclared xUnit collection
+/// — which by default runs concurrently with this one. This is the exact same
+/// defect class as OrdoSort.Wpf.App._crashDir (see
+/// OrdoSort.Wpf.Tests.CultureInvariantDatesTests's class doc), fixed the same
+/// way: put both classes in one shared collection (<see cref="Name"/>) so
+/// xUnit's own "never run two classes in the same collection concurrently"
+/// rule serializes them. No lock was added around the seam in Commit.cs itself
+/// — a lock would still leave two collections free to interleave their
+/// set/invoke/clear sequences arbitrarily, just without a data race on the
+/// field; only serializing the two collections closes the window outright, and
+/// it costs nothing outside these two classes (unlike disabling parallelization
+/// suite-wide). No ICollectionFixture is declared: unlike the WPF STA
+/// Application fixture, nothing here needs to be built once and shared — each
+/// class already builds and tears down its own isolated temp root per
+/// test.</summary>
+[Collection(Name)]
 public class UndoFailureTests : IDisposable
 {
+    public const string Name = "Commit undo-race collection";
+
     private readonly string _root = Path.Combine(Path.GetTempPath(), "ordoundo_" + Guid.NewGuid());
     private readonly string _inbox, _dest, _deferred;
 
@@ -216,5 +239,50 @@ public class UndoFailureTests : IDisposable
         Assert.Contains(Path.GetFileName(src), ex.Message);
         Assert.Contains("already exists again", ex.Message);
         Assert.True(File.Exists(filedPath));   // the filed copy never moved
+    }
+}
+
+/// <summary>Declares the shared collection <see cref="UndoFailureTests.Name"/>
+/// names. Deliberately holds no <c>ICollectionFixture</c> — see UndoFailureTests's
+/// class doc for why nothing here needs one.</summary>
+[CollectionDefinition(UndoFailureTests.Name)]
+public class UndoRaceCollection
+{
+}
+
+/// <summary>Mirrors OrdoSort.Wpf.Tests.CrashDirTestCollectionMembershipTests:
+/// this fix is xUnit collection membership, not a code path, so a
+/// timing-based test would either always pass or be flaky, never a reliable
+/// "fails without the fix" (a scheduler interleaving on the order of
+/// microseconds can't be forced to reproduce on demand). This instead pins
+/// the mechanism the fix actually relies on: both classes that touch the
+/// static <see cref="Commit.RaceHookForTests"/> seam —
+/// <see cref="UndoFailureTests"/> (sets it) and <see cref="PipelineTests"/>
+/// (drives <see cref="Commit.UndoAction"/> from SessionUndoRoundTrip) — must
+/// declare the SAME <c>[Collection(...)]</c> name, since that, not anything
+/// about either class's own behavior, is what stops xUnit from ever running
+/// them concurrently. Pre-fix, neither class had a [Collection] attribute at
+/// all, so both names below were null and this failed; a future edit that
+/// drops either attribute or typos the name fails it again.</summary>
+public class UndoRaceTestCollectionMembershipTests
+{
+    // Reads the [Collection("...")] name via CustomAttributeData's
+    // constructor argument rather than CollectionAttribute.Name — robust
+    // against exactly which xunit.core build resolves at compile time, and
+    // it's the constructor argument, not a settled property, that xUnit's
+    // own discovery reads to group classes into one collection.
+    private static string? CollectionNameOf(Type t) =>
+        t.GetCustomAttributesData()
+            .FirstOrDefault(a => a.AttributeType.FullName == "Xunit.CollectionAttribute")
+            ?.ConstructorArguments.FirstOrDefault().Value as string;
+
+    [Fact]
+    public void UndoFailureTestsSharesPipelineTestsCollection()
+    {
+        var undoCollection = CollectionNameOf(typeof(UndoFailureTests));
+        var pipelineCollection = CollectionNameOf(typeof(PipelineTests));
+
+        Assert.NotNull(undoCollection);
+        Assert.Equal(pipelineCollection, undoCollection);
     }
 }
