@@ -5,7 +5,21 @@ namespace OrdoSort.Core.Tests;
 /// <summary>The document moves first, the audit row is written second. If the
 /// write fails the move has ALREADY happened — the session must advance and say
 /// so, never leave the queue pointing at a file that is no longer there (the
-/// next commit would log it as &lt;vanished&gt;, which would be a lie).</summary>
+/// next commit would log it as &lt;vanished&gt;, which would be a lie).
+///
+/// Final-review re-check (2026-08-05): UndoStillWorksAfterAnUnrecordedCommit
+/// below calls session.UndoLast(), which reaches
+/// <see cref="Commit.UndoAction"/> — the same method
+/// <see cref="UndoFailureTests"/> deliberately races via the static
+/// <see cref="Commit.RaceHookForTests"/> seam, and the same method
+/// PipelineTests.SessionUndoRoundTrip drives too. A grep for
+/// <c>UndoLast(</c>/<c>Commit.UndoAction(</c>/<c>RaceHookForTests</c> across
+/// tests/ turned up exactly these three classes; the first fix pass only
+/// joined two of them, leaving this class free to run concurrently with
+/// UndoFailureTests in its own default (class-named) collection. Joining
+/// <see cref="UndoFailureTests.Name"/> closes that remaining gap the same
+/// way the other two classes already do.</summary>
+[Collection(UndoFailureTests.Name)]
 public class AuditFailureTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "ordoaudit_" + Guid.NewGuid());

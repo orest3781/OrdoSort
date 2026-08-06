@@ -16,22 +16,26 @@ namespace OrdoSort.Core.Tests;
 ///
 /// Final-review M (2026-08-05): RaceAtTheFinalMomentIsReportedAsTheSameActionable
 /// CommitError below sets the static, unsynchronized <see cref="Commit.RaceHookForTests"/>
-/// seam. PipelineTests.SessionUndoRoundTrip also drives Commit.UndoAction (the
-/// method the hook lives inside), from a different, undeclared xUnit collection
-/// — which by default runs concurrently with this one. This is the exact same
-/// defect class as OrdoSort.Wpf.App._crashDir (see
-/// OrdoSort.Wpf.Tests.CultureInvariantDatesTests's class doc), fixed the same
-/// way: put both classes in one shared collection (<see cref="Name"/>) so
-/// xUnit's own "never run two classes in the same collection concurrently"
+/// seam. PipelineTests.SessionUndoRoundTrip and AuditFailureTests.
+/// UndoStillWorksAfterAnUnrecordedCommit also drive Commit.UndoAction (the
+/// method the hook lives inside), each from its own different, undeclared
+/// xUnit collection — which by default runs concurrently with this one. A
+/// grep for <c>UndoLast(</c>/<c>Commit.UndoAction(</c>/<c>RaceHookForTests</c>
+/// across tests/ confirms those three classes — PipelineTests,
+/// AuditFailureTests, and this one — are the complete set that touches this
+/// seam. This is the exact same defect class as OrdoSort.Wpf.App._crashDir
+/// (see OrdoSort.Wpf.Tests.CultureInvariantDatesTests's class doc), fixed the
+/// same way: put all three classes in one shared collection (<see cref="Name"/>)
+/// so xUnit's own "never run two classes in the same collection concurrently"
 /// rule serializes them. No lock was added around the seam in Commit.cs itself
-/// — a lock would still leave two collections free to interleave their
+/// — a lock would still leave separate collections free to interleave their
 /// set/invoke/clear sequences arbitrarily, just without a data race on the
-/// field; only serializing the two collections closes the window outright, and
-/// it costs nothing outside these two classes (unlike disabling parallelization
-/// suite-wide). No ICollectionFixture is declared: unlike the WPF STA
-/// Application fixture, nothing here needs to be built once and shared — each
-/// class already builds and tears down its own isolated temp root per
-/// test.</summary>
+/// field; only serializing the collections closes the window outright, and it
+/// costs nothing outside these three classes (unlike disabling
+/// parallelization suite-wide). No ICollectionFixture is declared: unlike the
+/// WPF STA Application fixture, nothing here needs to be built once and
+/// shared — each class already builds and tears down its own isolated temp
+/// root per test.</summary>
 [Collection(Name)]
 public class UndoFailureTests : IDisposable
 {
@@ -255,15 +259,20 @@ public class UndoRaceCollection
 /// timing-based test would either always pass or be flaky, never a reliable
 /// "fails without the fix" (a scheduler interleaving on the order of
 /// microseconds can't be forced to reproduce on demand). This instead pins
-/// the mechanism the fix actually relies on: both classes that touch the
+/// the mechanism the fix actually relies on: every class that touches the
 /// static <see cref="Commit.RaceHookForTests"/> seam —
-/// <see cref="UndoFailureTests"/> (sets it) and <see cref="PipelineTests"/>
-/// (drives <see cref="Commit.UndoAction"/> from SessionUndoRoundTrip) — must
-/// declare the SAME <c>[Collection(...)]</c> name, since that, not anything
-/// about either class's own behavior, is what stops xUnit from ever running
-/// them concurrently. Pre-fix, neither class had a [Collection] attribute at
-/// all, so both names below were null and this failed; a future edit that
-/// drops either attribute or typos the name fails it again.</summary>
+/// <see cref="UndoFailureTests"/> (sets it), <see cref="PipelineTests"/>
+/// (drives <see cref="Commit.UndoAction"/> from SessionUndoRoundTrip), and
+/// <see cref="AuditFailureTests"/> (drives it from
+/// UndoStillWorksAfterAnUnrecordedCommit) — must declare the SAME
+/// <c>[Collection(...)]</c> name, since that, not anything about any one
+/// class's own behavior, is what stops xUnit from ever running them
+/// concurrently. Checked pairwise (not just "all equal one fixed string") so
+/// that dropping the attribute from ANY one of the three — including
+/// AuditFailureTests, the one the first fix pass missed — fails this test.
+/// Pre-fix, none of the three classes had a [Collection] attribute at all, so
+/// every name below was null and this failed; a future edit that drops any
+/// one attribute or typos its name fails it again.</summary>
 public class UndoRaceTestCollectionMembershipTests
 {
     // Reads the [Collection("...")] name via CustomAttributeData's
@@ -284,5 +293,25 @@ public class UndoRaceTestCollectionMembershipTests
 
         Assert.NotNull(undoCollection);
         Assert.Equal(pipelineCollection, undoCollection);
+    }
+
+    [Fact]
+    public void AuditFailureTestsSharesUndoFailureTestsCollection()
+    {
+        var undoCollection = CollectionNameOf(typeof(UndoFailureTests));
+        var auditCollection = CollectionNameOf(typeof(AuditFailureTests));
+
+        Assert.NotNull(undoCollection);
+        Assert.Equal(undoCollection, auditCollection);
+    }
+
+    [Fact]
+    public void AuditFailureTestsSharesPipelineTestsCollection()
+    {
+        var pipelineCollection = CollectionNameOf(typeof(PipelineTests));
+        var auditCollection = CollectionNameOf(typeof(AuditFailureTests));
+
+        Assert.NotNull(pipelineCollection);
+        Assert.Equal(pipelineCollection, auditCollection);
     }
 }

@@ -4,13 +4,15 @@ namespace OrdoSort.Core.Tests;
 
 /// <summary>Config, Scanner, Commit, and Session — the filing-loop logic.
 ///
-/// Final-review M (2026-08-05): SessionUndoRoundTrip below drives
-/// Commit.UndoAction, the same method UndoFailureTests.
+/// Final-review M (2026-08-05, extended 2026-08-05): SessionUndoRoundTrip
+/// below drives Commit.UndoAction, the same method UndoFailureTests.
 /// RaceAtTheFinalMomentIsReportedAsTheSameActionableCommitError sets the
-/// static Commit.RaceHookForTests seam inside. See UndoFailureTests's class
-/// doc for the full reasoning; this class joins
-/// <see cref="UndoFailureTests.Name"/> so xUnit never schedules the two
-/// concurrently, the same fix already used for OrdoSort.Wpf.App._crashDir
+/// static Commit.RaceHookForTests seam inside — and the same method
+/// AuditFailureTests.UndoStillWorksAfterAnUnrecordedCommit also drives. See
+/// UndoFailureTests's class doc for the full reasoning; this class joins
+/// <see cref="UndoFailureTests.Name"/>, the collection now shared by all
+/// three, so xUnit never schedules any two of them concurrently — the same
+/// fix already used for OrdoSort.Wpf.App._crashDir
 /// (OrdoSort.Wpf.Tests.CultureInvariantDatesTests).</summary>
 [Collection(UndoFailureTests.Name)]
 public class PipelineTests : IDisposable
