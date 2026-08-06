@@ -1,0 +1,140 @@
+namespace OrdoSort.Core.Tests;
+
+using PdfSharp.Pdf;
+using PdfSharp.Pdf.IO;
+
+/// <summary>2026-08-06 audit finding 1.2[V]: across all of OrdoSort.Core there
+/// are exactly three places that can delete or overwrite — a self-created
+/// write probe (benign), backup pruning, and Unlock. Unlock's two gaps:
+///
+/// - the buffered path's `place` used to be `File.WriteAllBytes(target, ...)`.
+///   `target` came from CollisionFree, so it was free AT CHECK TIME — but
+///   WriteAllBytes truncates whatever is there NOW, and on the shared folders
+///   this app targets another station can create that exact name in the gap.
+/// - PlaceAndSwap's failure paths called RemoveQuietly(target) unconditionally,
+///   deleting `target` even when this call never created it.
+///
+/// These tests force that gap deterministically via Unlock.RaceHookForTests
+/// (same shape as Commit.RaceHookForTests / Config.BeforeCreateOnlyMove): it
+/// fires with the exact CollisionFree-picked path right before `place` tries
+/// its exclusive create, so a peer file can be planted in the precise window
+/// instead of relying on real thread timing. Both the buffered path (the one
+/// the audit named) and the streamed path (which the brief says to verify
+/// rather than assume safe — File.Move's two-argument overload is already
+/// create-only) are covered, since PlaceAndSwap's cleanup gating is shared
+/// code between them.</summary>
+public class UnlockNeverOverwritesTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "unlockrace_" + Guid.NewGuid());
+    public UnlockNeverOverwritesTests() => Directory.CreateDirectory(_dir);
+
+    public void Dispose()
+    {
+        Unlock.RaceHookForTests = null;
+        Directory.Delete(_dir, recursive: true);
+    }
+
+    private string MakeEncrypted(string name, string userPw = "secret")
+    {
+        var path = Path.Combine(_dir, name);
+        using var doc = new PdfDocument();
+        doc.AddPage();
+        doc.SecuritySettings.UserPassword = userPw;
+        doc.SecuritySettings.OwnerPassword = "owner-" + userPw;
+        doc.Save(path);
+        return path;
+    }
+
+    private static bool NeedsPassword(string path)
+    {
+        try { using var _ = PdfReader.Open(path, PdfDocumentOpenMode.Import); return false; }
+        catch { return true; }
+    }
+
+    /// <summary>(a) With a file already present at the name CollisionFree
+    /// would pick, the buffered unlock must NOT truncate it — the pre-existing
+    /// content must survive byte-for-byte. Empty suffix + same-folder dest is
+    /// the swapInPlace case, so the picked name is deterministic:
+    /// "&lt;stem&gt;.unlocking.pdf" beside the source — the race hook plants a
+    /// marker there right before the exclusive create is attempted, simulating
+    /// a peer station claiming that exact temp name in the window CollisionFree
+    /// cannot close.</summary>
+    [Fact]
+    public void BufferedUnlockNeverTruncatesAPeerCreatedFile()
+    {
+        var src = MakeEncrypted("dup.pdf");
+        var expectedTarget = Path.Combine(_dir, "dup.unlocking.pdf");
+        var peerContent = new byte[] { 9, 9, 9, 9, 9 };
+
+        Unlock.RaceHookForTests = t =>
+        {
+            if (t == expectedTarget) File.WriteAllBytes(expectedTarget, peerContent);
+        };
+
+        var r = Unlock.UnlockPdf(src, "secret", suffix: "");
+
+        Assert.Equal("error", r.Status);
+        Assert.True(File.Exists(expectedTarget));
+        Assert.Equal(peerContent, File.ReadAllBytes(expectedTarget));   // NOT truncated
+        Assert.True(NeedsPassword(src));                                // original untouched
+        Assert.False(Directory.Exists(Path.Combine(_dir,
+            "locked_archive_" + DateTime.Now.ToString("yyyyMMdd"))));   // nothing archived
+    }
+
+    /// <summary>Verifies the streamed path too: item 2 of the brief says the
+    /// large-file path already builds in a local temp and moves into place
+    /// with File.Move, which does not overwrite — but says to verify that
+    /// rather than assume it. This proves it: forced onto the streaming path
+    /// via LargeFileThresholdBytes, a peer file planted at the picked target
+    /// survives the attempted File.Move untouched.</summary>
+    [Fact]
+    public void StreamedUnlockNeverOverwritesAPeerCreatedFile()
+    {
+        var was = Unlock.LargeFileThresholdBytes;
+        Unlock.LargeFileThresholdBytes = 1;   // every file takes the streaming path
+        try
+        {
+            var src = MakeEncrypted("dup2.pdf");
+            var expectedTarget = Path.Combine(_dir, "dup2.unlocking.pdf");
+            var peerContent = new byte[] { 4, 5, 6, 7 };
+
+            Unlock.RaceHookForTests = t =>
+            {
+                if (t == expectedTarget) File.WriteAllBytes(expectedTarget, peerContent);
+            };
+
+            var r = Unlock.UnlockPdf(src, "secret", suffix: "");
+
+            Assert.Equal("error", r.Status);
+            Assert.True(File.Exists(expectedTarget));
+            Assert.Equal(peerContent, File.ReadAllBytes(expectedTarget));
+            Assert.True(NeedsPassword(src));
+        }
+        finally { Unlock.LargeFileThresholdBytes = was; }
+    }
+
+    /// <summary>(b) When `place` fails and `target` was NOT created by this
+    /// call, the pre-existing file must still be there afterwards — restated
+    /// as an explicit "nothing else in the folder changed" check (a stronger
+    /// form of (a) that also rules out any other file appearing or
+    /// disappearing, e.g. an archive folder getting created despite the
+    /// failure).</summary>
+    [Fact]
+    public void FailedPlaceLeavesTheFolderExactlyAsThePeerLeftIt()
+    {
+        var src = MakeEncrypted("dup3.pdf");
+        var expectedTarget = Path.Combine(_dir, "dup3.unlocking.pdf");
+        var peerContent = new byte[] { 1, 2, 3 };
+
+        Unlock.RaceHookForTests = t =>
+        {
+            if (t == expectedTarget) File.WriteAllBytes(expectedTarget, peerContent);
+        };
+
+        Unlock.UnlockPdf(src, "secret", suffix: "");
+
+        var listing = Directory.GetFiles(_dir).Select(Path.GetFileName).OrderBy(x => x).ToArray();
+        Assert.Equal(new[] { "dup3.pdf", "dup3.unlocking.pdf" }, listing);
+        Assert.Equal(peerContent, File.ReadAllBytes(expectedTarget));
+    }
+}

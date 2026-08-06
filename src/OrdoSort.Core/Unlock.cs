@@ -142,8 +142,22 @@ public static class Unlock
                     Message: $"This PDF looks damaged — it couldn't be unlocked cleanly ({problem}).");
         }
 
-        return PlaceAndSwap(src, dest, suffix,
-            target => File.WriteAllBytes(target, unlockedBytes));
+        return PlaceAndSwap(src, dest, suffix, (target, markCreated) =>
+        {
+            // Exclusive create: fails atomically if the name is taken rather
+            // than truncating whatever is there. CollisionFree only proved
+            // `target` was free AT CHECK TIME — on the shared folders this
+            // app targets, another station can claim that exact name before
+            // this runs, and File.WriteAllBytes used to silently destroy
+            // whatever that station had just written (2026-08 audit finding
+            // 1.2). markCreated fires the instant the file exists on disk,
+            // before the write — so if the write itself then fails, that
+            // still counts as "this call created it" and PlaceAndSwap cleans
+            // up the partial file instead of orphaning it.
+            using var fs = new FileStream(target, FileMode.CreateNew, FileAccess.Write);
+            markCreated();
+            fs.Write(unlockedBytes, 0, unlockedBytes.Length);
+        });
     }
 
     /// <summary>The big-file path: nothing is buffered whole. The source is
@@ -216,9 +230,15 @@ public static class Unlock
             }
 
             // File.Move copies across volumes, so this works when the
-            // destination is a share and the temp is on the local disk
-            return PlaceAndSwap(src, dest, suffix,
-                target => File.Move(localTemp, target));
+            // destination is a share and the temp is on the local disk. The
+            // two-argument overload is already create-only — it does not
+            // overwrite an existing destination — so this only needs to
+            // report the creation once it has actually happened.
+            return PlaceAndSwap(src, dest, suffix, (target, markCreated) =>
+            {
+                File.Move(localTemp, target);
+                markCreated();
+            });
         }
         finally
         {
@@ -226,12 +246,35 @@ public static class Unlock
         }
     }
 
+    /// <summary>Test seam: invoked with the destination path immediately
+    /// before <c>place</c> attempts its exclusive create, so a test can
+    /// deterministically plant a colliding file in the gap between
+    /// <see cref="CollisionFree"/>'s free-at-check-time answer and the write
+    /// landing — the exact race a shared folder makes possible (another
+    /// station claims that name in that gap). Same "settable only by tests,
+    /// inert in production" shape as <see cref="Commit.RaceHookForTests"/>,
+    /// parameterized by path like <see cref="Config.BeforeCreateOnlyMove"/>
+    /// so a test can filter to its own target — this hook is process-wide
+    /// and xUnit runs other test classes' Unlock calls concurrently, so no
+    /// [Collection] coordination is needed, only a path check.</summary>
+    internal static Action<string>? RaceHookForTests;
+
     /// <summary>The shared tail of both paths: pick a collision-free target,
     /// let the caller put the verified content there, then do the
-    /// archive-and-swap. <paramref name="place"/> runs exactly once and is the
-    /// only step that differs between buffered and streamed content.</summary>
+    /// archive-and-swap. <paramref name="place"/> runs exactly once and is
+    /// the only step that differs between buffered and streamed content. It
+    /// must create <paramref name="target"/>-only — never overwrite whatever
+    /// is already there — and call the <c>markCreated</c> callback it is
+    /// given the instant the file actually comes into existence on disk
+    /// (including on a later failure, so a partial write still counts as
+    /// "created"). Every RemoveQuietly(target) below is gated on that flag:
+    /// CollisionFree only proves the name was free AT CHECK TIME, and on the
+    /// shared folders this app targets another station can claim that exact
+    /// name before place() runs. When that happens this call must not delete
+    /// the file that beat it there — only content THIS call put on disk is
+    /// ever removed (2026-08 audit finding 1.2).</summary>
     private static UnlockResult PlaceAndSwap(
-        string src, string dest, string suffix, Action<string> place)
+        string src, string dest, string suffix, Action<string, Action> place)
     {
         var stem = Path.GetFileNameWithoutExtension(src);
         var swapInPlace = string.IsNullOrEmpty(suffix)
@@ -241,13 +284,17 @@ public static class Unlock
             ? CollisionFree(Path.Combine(dest, stem + ".unlocking.pdf"))
             : CollisionFree(Path.Combine(dest, stem + suffix + ".pdf"));
 
+        var createdTarget = false;
+        void MarkCreated() => createdTarget = true;
+
+        RaceHookForTests?.Invoke(target);
         try
         {
-            place(target);
+            place(target, MarkCreated);
         }
         catch (Exception ex)
         {
-            RemoveQuietly(target);
+            if (createdTarget) RemoveQuietly(target);
             return new("error", src, Message: $"Couldn't save the unlocked copy: {ex.Message}");
         }
 
@@ -268,13 +315,13 @@ public static class Unlock
             }
             catch (IOException ex) when (IsInUse(ex))
             {
-                RemoveQuietly(target);
+                if (createdTarget) RemoveQuietly(target);
                 return new("error", src, Message:
                     "It's open in another program — close it there and unlock it again.");
             }
             catch (Exception ex)
             {
-                RemoveQuietly(target);
+                if (createdTarget) RemoveQuietly(target);
                 return new("error", src,
                     Message: $"Couldn't move the locked original aside: {ex.Message}");
             }
@@ -288,7 +335,7 @@ public static class Unlock
                 // The replacement never landed. Put the original back so the
                 // folder looks untouched; if even that fails, say where both
                 // halves are rather than leaving someone to search for them.
-                try { File.Move(archived, src); RemoveQuietly(target); }
+                try { File.Move(archived, src); if (createdTarget) RemoveQuietly(target); }
                 catch
                 {
                     return new("error", src, Message:
