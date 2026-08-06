@@ -15,33 +15,74 @@ namespace OrdoSort.Core.Tests;
 /// never produces those and a malicious shared config could otherwise use
 /// them to make a victim station read an arbitrary local file.
 ///
-/// Every "escaping" fixture below stays inside a disposable temp directory
-/// this process fully owns — never a real system path like
-/// C:\Windows\Temp — so a test proving a write is REFUSED can never
-/// accidentally leave (or fail to clean up) a stray file somewhere on the
-/// real machine if confinement regresses.</summary>
+/// Every "escaping" fixture below is built to resolve inside a disposable
+/// root this process fully owns — NEVER a real, pre-existing user-machine
+/// path — even when the guard being tested is disabled. That is not just a
+/// tidiness goal: an earlier version of this file used real-looking
+/// literals (`..\..\evil.json`, `\evil.json`) that, under a manual
+/// guard-disabled teeth-proof run, actually landed at `S:\evil.json` and
+/// `C:\Users\<user>\AppData\Local\evil.json` — confirmed on disk. See the
+/// drive-root comment below for why a rooted-without-drive escape in
+/// particular forces this design, not just a nested %TEMP% subfolder.</summary>
 public class SideFilePathConfinementTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("ordoconfine_").FullName;
-    public void Dispose() { try { Directory.Delete(_dir, true); } catch { } }
+    // A Windows rooted-without-drive path (`\name\...`) is resolved by
+    // Path.GetFullPath against the CURRENT DRIVE'S ROOT, never against any
+    // nested directory — so there is no literal of that FORM that can be
+    // made to land inside an ordinary %TEMP%-nested folder. The only way to
+    // keep such a literal fully inside space this test owns is to make the
+    // owned root itself a direct child of the drive root, and spell the
+    // literal as "\<that child's own folder name>\evil.json" — which
+    // Path.GetFullPath resolves right back to DriveRoot\<name>\evil.json,
+    // i.e. squarely inside the owned root. A `..` traversal is pointed at
+    // the SAME root, one level above the config directory, so both
+    // escaping forms land in one place this test both owns and disposes.
+    private static readonly string DriveRoot = Path.GetPathRoot(Directory.GetCurrentDirectory())!;
+
+    private readonly string _testRoot =
+        Path.Combine(DriveRoot, "ordoconfine_root_" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir;
+
+    public SideFilePathConfinementTests() =>
+        _dir = Directory.CreateDirectory(Path.Combine(_testRoot, "configdir")).FullName;
+
+    public void Dispose() { try { Directory.Delete(_testRoot, true); } catch { } }
 
     private string ConfigPath => Path.Combine(_dir, "config.json");
 
-    // A `..` traversal and a Windows rooted-without-drive path both resolve
-    // relative to this process's own current drive/profile (never a
-    // protected system folder), so they're safe to use as literals.
-    public static IEnumerable<object[]> RelativeEscapes()
+    // A separate subfolder of _testRoot for the "existing absolute path"
+    // tests below — outside _dir (the config directory) but still inside
+    // the one root this instance disposes.
+    private string OutsideDir => Directory.CreateDirectory(Path.Combine(_testRoot, "outside")).FullName;
+
+    // _dir == _testRoot\configdir\, so one level up is _testRoot itself:
+    // outside the config directory, still inside the owned root.
+    private const string TraversalEscape = @"..\evil.json";
+
+    // Resolves (Path.GetFullPath, against the current drive's root) to
+    // DriveRoot\<_testRoot's folder name>\evil.json == _testRoot\evil.json.
+    private string RootedWithoutDriveEscape => $@"\{Path.GetFileName(_testRoot)}\evil.json";
+
+    public static IEnumerable<object[]> EscapeKinds()
     {
-        yield return new object[] { @"..\..\evil.json" };
-        yield return new object[] { @"\evil.json" };
+        yield return new object[] { "traversal" };
+        yield return new object[] { "rooted-without-drive" };
     }
+
+    private string Escape(string kind) => kind switch
+    {
+        "traversal" => TraversalEscape,
+        "rooted-without-drive" => RootedWithoutDriveEscape,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
 
     // ================= WRITE: Save =================
 
     [Theory]
-    [MemberData(nameof(RelativeEscapes))]
-    public void SaveRefusesAnEscapingDestinationsFile(string escaping)
+    [MemberData(nameof(EscapeKinds))]
+    public void SaveRefusesAnEscapingDestinationsFile(string kind)
     {
+        var escaping = Escape(kind);
         var cfg = new Config { DestinationsFile = escaping };
         var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
         Assert.Contains("destinations_file", ex.Message);
@@ -49,9 +90,10 @@ public class SideFilePathConfinementTests : IDisposable
     }
 
     [Theory]
-    [MemberData(nameof(RelativeEscapes))]
-    public void SaveRefusesAnEscapingMonitoredFoldersFile(string escaping)
+    [MemberData(nameof(EscapeKinds))]
+    public void SaveRefusesAnEscapingMonitoredFoldersFile(string kind)
     {
+        var escaping = Escape(kind);
         var cfg = new Config { MonitoredFoldersFile = escaping };
         var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
         Assert.Contains("monitored_folders_file", ex.Message);
@@ -59,9 +101,10 @@ public class SideFilePathConfinementTests : IDisposable
     }
 
     [Theory]
-    [MemberData(nameof(RelativeEscapes))]
-    public void SaveRefusesAnEscapingAlertsFile(string escaping)
+    [MemberData(nameof(EscapeKinds))]
+    public void SaveRefusesAnEscapingAlertsFile(string kind)
     {
+        var escaping = Escape(kind);
         var cfg = new Config { AlertsFile = escaping };
         var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
         Assert.Contains("alerts_file", ex.Message);
@@ -69,9 +112,10 @@ public class SideFilePathConfinementTests : IDisposable
     }
 
     [Theory]
-    [MemberData(nameof(RelativeEscapes))]
-    public void SaveRefusesAnEscapingBoxLabelsFile(string escaping)
+    [MemberData(nameof(EscapeKinds))]
+    public void SaveRefusesAnEscapingBoxLabelsFile(string kind)
     {
+        var escaping = Escape(kind);
         var cfg = new Config { BoxLabelsFile = escaping };
         var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
         Assert.Contains("box_labels_file", ex.Message);
@@ -79,9 +123,10 @@ public class SideFilePathConfinementTests : IDisposable
     }
 
     [Theory]
-    [MemberData(nameof(RelativeEscapes))]
-    public void TrySaveReportsAnEscapingDestinationsFileInsteadOfThrowing(string escaping)
+    [MemberData(nameof(EscapeKinds))]
+    public void TrySaveReportsAnEscapingDestinationsFileInsteadOfThrowing(string kind)
     {
+        var escaping = Escape(kind);
         var cfg = new Config { DestinationsFile = escaping };
         var ok = Config.TrySave(cfg, ConfigPath, out var error);
         Assert.False(ok);
@@ -93,21 +138,15 @@ public class SideFilePathConfinementTests : IDisposable
     {
         // The brief's own example (an absolute path like C:\Windows\Temp\
         // evil.json) is illustrative — this test proves the same escape
-        // using a directory the test process fully owns (a sibling of the
-        // real config dir, not a shared system path) so the assertion that
-        // nothing landed there is airtight and needs no cleanup of a real
-        // machine location.
-        var outsideDir = Directory.CreateTempSubdirectory("ordoconfine_abs_").FullName;
-        try
-        {
-            var outsideFile = Path.Combine(outsideDir, "evil.json");
-            var cfg = new Config { DestinationsFile = outsideFile };
-            var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
-            Assert.Contains("destinations_file", ex.Message);
-            Assert.Contains(outsideFile, ex.Message);
-            Assert.False(File.Exists(outsideFile));
-        }
-        finally { try { Directory.Delete(outsideDir, true); } catch { } }
+        // using a directory the test process fully owns, so the assertion
+        // that nothing landed there is airtight and needs no cleanup of a
+        // real machine location.
+        var outsideFile = Path.Combine(OutsideDir, "evil.json");
+        var cfg = new Config { DestinationsFile = outsideFile };
+        var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
+        Assert.Contains("destinations_file", ex.Message);
+        Assert.Contains(outsideFile, ex.Message);
+        Assert.False(File.Exists(outsideFile));
     }
 
     [Fact]
@@ -117,20 +156,36 @@ public class SideFilePathConfinementTests : IDisposable
         // contract) — a bad destinations_file must not block alerts.json,
         // monitored-folders.json, or the main config from saving, and must
         // not actually write anything at the escaping location.
-        var outsideDir = Directory.CreateTempSubdirectory("ordoconfine_abs_").FullName;
-        try
-        {
-            var outsideFile = Path.Combine(outsideDir, "evil.json");
-            var cfg = new Config { DestinationsFile = outsideFile };
-            var ok = Config.TrySave(cfg, ConfigPath, out var error);
-            Assert.False(ok);
-            Assert.Contains("destinations_file", error);
-            Assert.True(File.Exists(ConfigPath));
-            Assert.True(File.Exists(Path.Combine(_dir, "alerts.json")));
-            Assert.True(File.Exists(Path.Combine(_dir, "monitored-folders.json")));
-            Assert.False(File.Exists(outsideFile));
-        }
-        finally { try { Directory.Delete(outsideDir, true); } catch { } }
+        var outsideFile = Path.Combine(OutsideDir, "evil.json");
+        var cfg = new Config { DestinationsFile = outsideFile };
+        var ok = Config.TrySave(cfg, ConfigPath, out var error);
+        Assert.False(ok);
+        Assert.Contains("destinations_file", error);
+        Assert.True(File.Exists(ConfigPath));
+        Assert.True(File.Exists(Path.Combine(_dir, "alerts.json")));
+        Assert.True(File.Exists(Path.Combine(_dir, "monitored-folders.json")));
+        Assert.False(File.Exists(outsideFile));
+    }
+
+    [Fact]
+    public void SaveRefusesAnEscapingBoxLabelsFileEvenWhenSomethingAlreadyExistsThere()
+    {
+        // Regression for the existence-oracle bug: the box-labels bootstrap
+        // guard ("only write if missing") used to probe File.Exists via the
+        // UNCONFINED path, and only confine the write once the probe said
+        // "missing". That let an attacker-controlled box_labels_file
+        // silently no-op (success) when the target already existed and
+        // throw when it didn't — an oracle for "does this path exist on
+        // the victim's disk". Both branches must now refuse identically:
+        // this test targets a file that DOES already exist outside the
+        // config dir, so a still-oracling probe would silently succeed
+        // instead of throwing.
+        var outsideFile = Path.Combine(OutsideDir, "already-here.json");
+        File.WriteAllText(outsideFile, """{"label_clients":[]}""");
+
+        var cfg = new Config { BoxLabelsFile = outsideFile };
+        var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
+        Assert.Contains("box_labels_file", ex.Message);
     }
 
     // ---- confinement is not over-tight: legitimate relative paths still work ----
@@ -170,25 +225,20 @@ public class SideFilePathConfinementTests : IDisposable
         // must keep reading a file that's already sitting there — genuinely
         // OUTSIDE the config directory, not merely a nested subfolder — or
         // an existing station's data silently vanishes out from under it.
-        var otherDir = Directory.CreateTempSubdirectory("ordoconfine_abs_").FullName;
-        try
-        {
-            var absoluteDests = Path.Combine(otherDir, "abs-destinations.json");
-            File.WriteAllText(absoluteDests, """{"routes":[{"label":"OUTSIDE","path":"C:/x"}]}""");
+        var absoluteDests = Path.Combine(OutsideDir, "abs-destinations.json");
+        File.WriteAllText(absoluteDests, """{"routes":[{"label":"OUTSIDE","path":"C:/x"}]}""");
 
-            var configJson = JsonSerializer.Serialize(new { inbox = "C:/in", destinations_file = absoluteDests });
-            File.WriteAllText(ConfigPath, configJson);
+        var configJson = JsonSerializer.Serialize(new { inbox = "C:/in", destinations_file = absoluteDests });
+        File.WriteAllText(ConfigPath, configJson);
 
-            var cfg = Config.Load(ConfigPath);
-            Assert.Equal("OUTSIDE", Assert.Single(cfg.Routes).Label);
-        }
-        finally { try { Directory.Delete(otherDir, true); } catch { } }
+        var cfg = Config.Load(ConfigPath);
+        Assert.Equal("OUTSIDE", Assert.Single(cfg.Routes).Label);
     }
 
     [Fact]
     public void LoadRefusesATraversalDestinationsFile()
     {
-        var configJson = JsonSerializer.Serialize(new { inbox = "C:/in", destinations_file = @"..\..\evil.json" });
+        var configJson = JsonSerializer.Serialize(new { inbox = "C:/in", destinations_file = TraversalEscape });
         File.WriteAllText(ConfigPath, configJson);
         var ex = Assert.Throws<ConfigException>(() => Config.Load(ConfigPath));
         Assert.Contains("destinations_file", ex.Message);
@@ -197,7 +247,7 @@ public class SideFilePathConfinementTests : IDisposable
     [Fact]
     public void LoadRefusesARootedWithoutDriveDestinationsFile()
     {
-        var configJson = JsonSerializer.Serialize(new { inbox = "C:/in", destinations_file = @"\evil.json" });
+        var configJson = JsonSerializer.Serialize(new { inbox = "C:/in", destinations_file = RootedWithoutDriveEscape });
         File.WriteAllText(ConfigPath, configJson);
         var ex = Assert.Throws<ConfigException>(() => Config.Load(ConfigPath));
         Assert.Contains("destinations_file", ex.Message);
@@ -225,21 +275,17 @@ public class SideFilePathConfinementTests : IDisposable
     [Fact]
     public void ASiblingDirectoryThatSharesTheConfigDirsNameAsAPrefixDoesNotCount()
     {
-        // C:\...\ordoconfine_XXXX-evil\x.json starts with the STRING
-        // C:\...\ordoconfine_XXXX (the real config dir) but is not inside
-        // it — a naive StartsWith on the raw path string would wrongly
-        // accept this. Build that sibling next to the real config dir and
+        // ...\configdir-evil\x.json starts with the STRING ...\configdir
+        // (the real config dir) but is not inside it — a naive StartsWith
+        // on the raw path string would wrongly accept this. Build that
+        // sibling next to the real config dir (still inside _testRoot) and
         // point a side-file key at a file inside it.
         var evilSibling = _dir + "-evil";
         Directory.CreateDirectory(evilSibling);
-        try
-        {
-            var evilFile = Path.Combine(evilSibling, "x.json");
-            var cfg = new Config { DestinationsFile = evilFile };
-            var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
-            Assert.Contains("destinations_file", ex.Message);
-            Assert.False(File.Exists(evilFile));
-        }
-        finally { try { Directory.Delete(evilSibling, true); } catch { } }
+        var evilFile = Path.Combine(evilSibling, "x.json");
+        var cfg = new Config { DestinationsFile = evilFile };
+        var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
+        Assert.Contains("destinations_file", ex.Message);
+        Assert.False(File.Exists(evilFile));
     }
 }

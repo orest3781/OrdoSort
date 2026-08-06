@@ -85,6 +85,49 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             else _uiContext.Post(_ => HideToast(), null);
         });
 
+        // history_db is resolved with the SAME unconfined rule as the four
+        // Config side files (ResolvePath === Config.ResolveBeside) — an
+        // absolute history_db is NOT refused the way an absolute
+        // destinations_file/monitored_folders_file/alerts_file/box_labels_file
+        // now is (2026-08 audit 4.2[A]). This is deliberate, not an
+        // oversight: unlike those four, which are "designed to sit beside
+        // the config" (task-1-brief.md), History.cs's own class doc says
+        // this database is DESIGNED to live on its own SMB share, shared
+        // across stations independently of where config.json lives —
+        // confining it to the config directory would break that supported
+        // deployment.
+        //
+        // The residual exposure from leaving it unconfined is real but much
+        // narrower than the JSON side-file case, and was verified rather
+        // than assumed:
+        //   - History's constructor never writes attacker-chosen CONTENT —
+        //     it only ever runs its own fixed schema (CREATE TABLE IF NOT
+        //     EXISTS ...). A malicious shared config.json can point
+        //     history_db at a path with no file there yet and get an
+        //     empty, app-schema'd SQLite file (plus whatever parent
+        //     directories don't exist — Directory.CreateDirectory) planted
+        //     on the victim's disk; it cannot inject chosen bytes into it.
+        //   - Pointing history_db at an EXISTING non-SQLite file does NOT
+        //     overwrite it: SQLite validates the file header before
+        //     touching page content and raises SQLITE_NOTADB ("file is not
+        //     a database") instead, leaving every byte untouched — verified
+        //     empirically (ScratchSqliteProbe, since removed): opening a
+        //     57-byte non-DB file threw SqliteException "SQLite Error 26:
+        //     'file is not a database'" with the file byte-for-byte
+        //     identical afterward.
+        //   - A failed open here does not corrupt this call path either:
+        //     ApplySettingsAsync (below) already treats "the new History
+        //     failed to construct" as non-fatal — it keeps the OLD, still-
+        //     open database live for the rest of the session and warns the
+        //     user, rather than propagating the failure destructively.
+        //
+        // Known gap this does NOT close, recorded rather than chased: a
+        // symlink/junction inside the config directory would pass the four
+        // keys' new containment check too (Path.GetFullPath is lexical and
+        // never resolves reparse points) — exploiting that needs local
+        // write access to the config directory already, which is a much
+        // higher bar than editing a shared config.json, so it's out of
+        // scope here.
         var dbPath = ResolvePath(cfg.HistoryDb, cfgPath);
         // Daily point-in-time backup, taken while the file is at rest — BEFORE
         // we open the connection. The audit DB is the only link between a
@@ -1207,6 +1250,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             }
         }
 
+        // history_db stays deliberately unconfined here too — see the
+        // constructor's comment on its own ResolvePath(cfg.HistoryDb, ...)
+        // call above for why, and for the verified residual exposure.
         var oldDbSetting = _cfg.HistoryDb;
         var oldDb = ResolvePath(oldDbSetting, _cfgPath);
         var newDb = ResolvePath(cfg.HistoryDb, _cfgPath);

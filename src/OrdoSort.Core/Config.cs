@@ -456,12 +456,19 @@ public sealed class Config
             new MonitoredFoldersDoc { WatchFolders = cfg.WatchFolders, Extras = cfg.MonitoredFoldersFileExtras });
         WriteDoc(path, cfg.AlertsFile, "alerts_file",
             new AlertsDoc { AlertTexts = cfg.AlertTexts, Extras = cfg.AlertsFileExtras });
-        // The Exists probe reads at whatever path is currently configured
-        // (even an already-existing absolute one — see ResolveBesideForRead);
-        // only the actual bootstrap WRITE is confined, via ResolveBesideForWrite.
-        var labels = ResolveBeside(path, cfg.BoxLabelsFile);
+        // The Exists probe MUST run on the same confined path as the write,
+        // not the unconfined ResolveBeside: probing an unconfined path
+        // first (and only confining the write once the probe says
+        // "missing") is an oracle — an attacker-controlled box_labels_file
+        // pointed at an arbitrary absolute path would silently no-op when
+        // that path exists and throw when it doesn't, letting a hostile
+        // shared config.json learn whether a given file exists anywhere on
+        // the victim's disk. Resolving once, confined, closes that: an
+        // escaping box_labels_file is refused unconditionally, the same as
+        // the other three keys, before any filesystem probe happens at all.
+        var labels = ResolveBesideForWrite(path, cfg.BoxLabelsFile, "box_labels_file");
         if (!File.Exists(labels))
-            WriteJsonNew(ResolveBesideForWrite(path, cfg.BoxLabelsFile, "box_labels_file"),
+            WriteJsonNew(labels,
                 new BoxLabelsDoc { LabelClients = cfg.LabelClients, Extras = cfg.BoxLabelsFileExtras });
     }
 
@@ -629,11 +636,12 @@ public sealed class Config
             ResolveBeside(path, cfg.AlertsFile));
         Attempt(() =>
         {
-            // As in Save: the Exists probe reads at whatever path is
-            // currently configured; only the bootstrap WRITE is confined.
-            var labels = ResolveBeside(path, cfg.BoxLabelsFile);
+            // As in Save: the Exists probe runs on the SAME confined path
+            // as the write — see Save's comment for why an unconfined probe
+            // followed by a confined write is an existence oracle.
+            var labels = ResolveBesideForWrite(path, cfg.BoxLabelsFile, "box_labels_file");
             if (!File.Exists(labels))
-                WriteJsonNew(ResolveBesideForWrite(path, cfg.BoxLabelsFile, "box_labels_file"),
+                WriteJsonNew(labels,
                     new BoxLabelsDoc { LabelClients = cfg.LabelClients, Extras = cfg.BoxLabelsFileExtras });
         }, ResolveBeside(path, cfg.BoxLabelsFile));
 
