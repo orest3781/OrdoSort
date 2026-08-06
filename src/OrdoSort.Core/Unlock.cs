@@ -272,7 +272,24 @@ public static class Unlock
     /// shared folders this app targets another station can claim that exact
     /// name before place() runs. When that happens this call must not delete
     /// the file that beat it there — only content THIS call put on disk is
-    /// ever removed (2026-08 audit finding 1.2).</summary>
+    /// ever removed (2026-08 audit finding 1.2).
+    ///
+    /// A crash or power loss between the two moves below leaves the document
+    /// in one of three places: still under the temp name here, moved aside
+    /// to the archive with the temp name still present, or (the success
+    /// case) restored to its original name with the archive holding the
+    /// locked original. That window cannot be closed — two File.Move calls
+    /// cannot be made atomic — but its temp name CAN be kept out of the
+    /// user's queue: Scanner.Eligible matches any name ending ".pdf" outside
+    /// insert mode, and FolderMonitor.ParseFiletypes/TypeMatches match on
+    /// Path.GetExtension, which for a name like "X.unlocking.pdf" is still
+    /// ".pdf". A ".pdf"-suffixed temp name is therefore something both an
+    /// inbox scan and a watch-folder tile would count as a document, turning
+    /// an interrupted unlock into a spurious entry in the filing queue
+    /// (2026-08 audit finding 1.3). ".tmp" — the same convention
+    /// Config.WriteAtomicNew uses — is not matched by either, so an
+    /// interrupted swap can strand the temp file on disk but can never make
+    /// it reappear as something to file.</summary>
     private static UnlockResult PlaceAndSwap(
         string src, string dest, string suffix, Action<string, Action> place)
     {
@@ -281,7 +298,7 @@ public static class Unlock
             && string.Equals(Path.GetFullPath(dest),
                 Path.GetFullPath(Path.GetDirectoryName(src)!), StringComparison.OrdinalIgnoreCase);
         var target = swapInPlace
-            ? CollisionFree(Path.Combine(dest, stem + ".unlocking.pdf"))
+            ? CollisionFree(Path.Combine(dest, stem + ".unlocking.tmp"))
             : CollisionFree(Path.Combine(dest, stem + suffix + ".pdf"));
 
         var createdTarget = false;

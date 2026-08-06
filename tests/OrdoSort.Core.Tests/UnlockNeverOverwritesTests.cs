@@ -55,7 +55,7 @@ public class UnlockNeverOverwritesTests : IDisposable
     /// would pick, the buffered unlock must NOT truncate it — the pre-existing
     /// content must survive byte-for-byte. Empty suffix + same-folder dest is
     /// the swapInPlace case, so the picked name is deterministic:
-    /// "&lt;stem&gt;.unlocking.pdf" beside the source — the race hook plants a
+    /// "&lt;stem&gt;.unlocking.tmp" beside the source — the race hook plants a
     /// marker there right before the exclusive create is attempted, simulating
     /// a peer station claiming that exact temp name in the window CollisionFree
     /// cannot close.</summary>
@@ -63,7 +63,7 @@ public class UnlockNeverOverwritesTests : IDisposable
     public void BufferedUnlockNeverTruncatesAPeerCreatedFile()
     {
         var src = MakeEncrypted("dup.pdf");
-        var expectedTarget = Path.Combine(_dir, "dup.unlocking.pdf");
+        var expectedTarget = Path.Combine(_dir, "dup.unlocking.tmp");
         var peerContent = new byte[] { 9, 9, 9, 9, 9 };
 
         Unlock.RaceHookForTests = t =>
@@ -95,7 +95,7 @@ public class UnlockNeverOverwritesTests : IDisposable
         try
         {
             var src = MakeEncrypted("dup2.pdf");
-            var expectedTarget = Path.Combine(_dir, "dup2.unlocking.pdf");
+            var expectedTarget = Path.Combine(_dir, "dup2.unlocking.tmp");
             var peerContent = new byte[] { 4, 5, 6, 7 };
 
             Unlock.RaceHookForTests = t =>
@@ -123,7 +123,7 @@ public class UnlockNeverOverwritesTests : IDisposable
     public void FailedPlaceLeavesTheFolderExactlyAsThePeerLeftIt()
     {
         var src = MakeEncrypted("dup3.pdf");
-        var expectedTarget = Path.Combine(_dir, "dup3.unlocking.pdf");
+        var expectedTarget = Path.Combine(_dir, "dup3.unlocking.tmp");
         var peerContent = new byte[] { 1, 2, 3 };
 
         Unlock.RaceHookForTests = t =>
@@ -134,7 +134,57 @@ public class UnlockNeverOverwritesTests : IDisposable
         Unlock.UnlockPdf(src, "secret", suffix: "");
 
         var listing = Directory.GetFiles(_dir).Select(Path.GetFileName).OrderBy(x => x).ToArray();
-        Assert.Equal(new[] { "dup3.pdf", "dup3.unlocking.pdf" }, listing);
+        Assert.Equal(new[] { "dup3.pdf", "dup3.unlocking.tmp" }, listing);
         Assert.Equal(peerContent, File.ReadAllBytes(expectedTarget));
+    }
+
+    /// <summary>2026-08-06 audit finding 1.3[A]: a crash between the two
+    /// in-place moves leaves the intermediate file on disk under whatever
+    /// name PlaceAndSwap picked. Before this fix that name was
+    /// "&lt;stem&gt;.unlocking.pdf" — which both Scanner.Eligible (any
+    /// non-insert mode matches ANY name ending ".pdf") and
+    /// FolderMonitor.ParseFiletypes/TypeMatches (matches on
+    /// Path.GetExtension, which returns ".pdf" for that name too) would
+    /// treat as a real document. RaceHookForTests fires with the exact
+    /// CollisionFree-picked path immediately before the exclusive create —
+    /// this test lets the call proceed normally (no injected failure) and
+    /// just captures that real name, so the assertion is tied to what
+    /// production code actually picks rather than a name re-typed in the
+    /// test.</summary>
+    [Fact]
+    public void TheInPlaceSwapIntermediateNameCannotReenterTheQueue()
+    {
+        var src = MakeEncrypted("escapee.pdf");
+        string? captured = null;
+        Unlock.RaceHookForTests = t => captured = t;
+        try
+        {
+            var r = Unlock.UnlockPdf(src, "secret", suffix: "");
+            Assert.True(r.Ok);   // the rename must not change the outcome
+            Assert.True(r.InPlace);
+            Assert.Equal(src, r.NewPath);
+            Assert.True(File.Exists(r.ArchivedTo));   // locked original archived
+        }
+        finally { Unlock.RaceHookForTests = null; }
+
+        Assert.NotNull(captured);
+        var intermediateName = Path.GetFileName(captured!);
+
+        // No scan mode treats the intermediate as something to file: every
+        // non-insert mode matches ANY "*.pdf", and insert mode additionally
+        // requires the name to end in ".pdf" (GeneratedRegex(@"^.+--.+\.pdf$"))
+        // — this name doesn't, regardless of what the stem contains.
+        foreach (var mode in Naming.Modes)
+            Assert.False(Scanner.Eligible(intermediateName, mode),
+                $"Scanner.Eligible(\"{intermediateName}\", \"{mode}\") should be false");
+
+        // A watch-folder tile filtered to "pdf" — the ordinary inbox filter —
+        // must not count a leftover intermediate file either.
+        var watchDir = Path.Combine(_dir, "watch");
+        Directory.CreateDirectory(watchDir);
+        File.WriteAllText(Path.Combine(watchDir, intermediateName), "leftover");
+        var wf = new WatchFolder { Label = "Inbox", Path = watchDir, Filetypes = "pdf" };
+        var status = FolderMonitor.Status(wf, Array.Empty<string>());
+        Assert.Equal(0, status.Count);
     }
 }

@@ -14,7 +14,17 @@ public static class Commit
         bool Vanished, string? NewPath, string CollisionSuffix);
 
     /// <summary>File.Move with a last-instant collision guard. Windows won't
-    /// overwrite on move, but check explicitly and treat 'exists' as a race.</summary>
+    /// overwrite on move, but check explicitly and treat 'exists' as a race.
+    ///
+    /// Unproven window (2026-08 audit finding 1.4, [U]): across volumes
+    /// File.Move is copy-then-delete. Interrupted mid-copy — kill, power
+    /// loss, disk full — it can leave a partial file sitting at `target`.
+    /// On retry, Build()'s collision counter sees that name as taken and
+    /// gives the real document the " (2)" suffix instead, leaving the
+    /// partial holding the canonical name with nothing downstream aware
+    /// it's incomplete. Whether Win32 MoveFileEx cleans up its own partial
+    /// on a non-crash failure (e.g. disk full) is unverified here — proving
+    /// it needs a disk-full or kill test across two volumes. Not fixed.</summary>
     private static void MoveNeverOverwrite(string src, string target)
     {
         if (File.Exists(target))
