@@ -139,7 +139,7 @@ public class UnlockEnterKeyTests
         ThemeManager.Apply(_fx.App, dark: false);
 
         var invoked = new List<(string Path, string Password)>();
-        var vm = new UnlockViewModel(new Config(), () => { },
+        var vm = new UnlockViewModel(new Config(), () => true,
             unlocker: (path, password) =>
             {
                 invoked.Add((path, password));
@@ -194,7 +194,7 @@ public class UnlockEnterKeyTests
         ThemeManager.Apply(_fx.App, dark: false);
 
         var invoked = 0;
-        var vm = new UnlockViewModel(new Config(), () => { },
+        var vm = new UnlockViewModel(new Config(), () => true,
             unlocker: (path, password) =>
             {
                 invoked++;
@@ -256,7 +256,7 @@ public class UnlockEnterKeyTests
         var cfg = new Config();
         var configSaves = 0;
         var invoked = new List<(string Path, string Password)>();
-        var vm = new UnlockViewModel(cfg, () => configSaves++,
+        var vm = new UnlockViewModel(cfg, () => { configSaves++; return true; },
             unlocker: (path, password) =>
             {
                 invoked.Add((path, password));
@@ -314,7 +314,7 @@ public class UnlockEnterKeyTests
 
         var cfg = new Config();
         var invoked = new List<(string Path, string Password)>();
-        var vm = new UnlockViewModel(cfg, () => { },
+        var vm = new UnlockViewModel(cfg, () => true,
             unlocker: (path, password) =>
             {
                 invoked.Add((path, password));
@@ -375,7 +375,7 @@ public class UnlockEnterKeyTests
 
         var cfg = new Config();
         var invoked = new List<(string Path, string Password)>();
-        var vm = new UnlockViewModel(cfg, () => { },
+        var vm = new UnlockViewModel(cfg, () => true,
             unlocker: (path, password) =>
             {
                 invoked.Add((path, password));
@@ -438,7 +438,7 @@ public class UnlockEnterKeyTests
 
         var cfg = new Config();
         var invoked = new List<(string Path, string Password)>();
-        var vm = new UnlockViewModel(cfg, () => { },
+        var vm = new UnlockViewModel(cfg, () => true,
             unlocker: (path, password) =>
             {
                 invoked.Add((path, password));
@@ -491,7 +491,7 @@ public class UnlockEnterKeyTests
 
         var cfg = new Config();
         var invoked = new List<(string Path, string Password)>();
-        var vm = new UnlockViewModel(cfg, () => { },
+        var vm = new UnlockViewModel(cfg, () => true,
             unlocker: (path, password) =>
             {
                 invoked.Add((path, password));
@@ -545,7 +545,7 @@ public class UnlockEnterKeyTests
         ThemeManager.Apply(_fx.App, dark: false);
 
         var invoked = new List<(string Path, string Password)>();
-        var vm = new UnlockViewModel(new Config(), () => { },
+        var vm = new UnlockViewModel(new Config(), () => true,
             unlocker: (path, password) =>
             {
                 invoked.Add((path, password));

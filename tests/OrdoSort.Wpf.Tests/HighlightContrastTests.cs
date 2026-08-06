@@ -452,7 +452,7 @@ public class HighlightContrastTests
         var p = dark ? ThemePalette.Dark : ThemePalette.Light;
         ThemeManager.Apply(_fx.App, dark);
 
-        var vm = new UnlockViewModel(new Config(), () => { });
+        var vm = new UnlockViewModel(new Config(), () => true);
         vm.Files.Add(@"C:\inbox\20240101--1111111111.pdf");
         var window = new UnlockWindow(vm)
         {
@@ -569,7 +569,7 @@ public class HighlightContrastTests
         var p = dark ? ThemePalette.Dark : ThemePalette.Light;
         ThemeManager.Apply(_fx.App, dark);
 
-        var vm = new UnlockViewModel(new Config(), () => { });
+        var vm = new UnlockViewModel(new Config(), () => true);
         vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
         var window = new ManageSavedWindow(vm)
         {
@@ -785,7 +785,7 @@ public class HighlightContrastTests
         var p = dark ? ThemePalette.Dark : ThemePalette.Light;
         ThemeManager.Apply(_fx.App, dark);
 
-        var vm = new UnlockViewModel(new Config(), () => { });
+        var vm = new UnlockViewModel(new Config(), () => true);
         vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
         var window = new ManageSavedWindow(vm)
         {

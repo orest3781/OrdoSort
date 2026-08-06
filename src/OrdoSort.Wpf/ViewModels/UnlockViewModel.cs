@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Security.Cryptography;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Mvvm;
 using OrdoSort.Wpf.Services;
@@ -25,7 +26,10 @@ public sealed class UnlockViewModel : ObservableObject
     internal const int MaxConcurrentUnlocks = 4;
 
     private readonly Config _cfg;
-    private readonly Action _saveCfg;
+    // True return means the write reached disk — the constructor's
+    // load-time notice (below) and the minor finding in fix round 1 both
+    // depend on knowing that, not just that a save was attempted.
+    private readonly Func<bool> _trySaveCfg;
     // Null in the handful of tests that don't care about the load-time
     // notice (Step 4) — every call site is a null-conditional ?.Info, so a
     // missing dialog service just means the notice is silently skipped,
@@ -37,6 +41,12 @@ public sealed class UnlockViewModel : ObservableObject
     // and the runs-alone bound deterministic instead of timing-hopeful.
     private readonly Func<string, string, Unlock.UnlockResult> _unlock;
     private readonly Func<string, long> _fileSize;
+    // Same pattern: the real app never passes this (defaults to the real
+    // DPAPI call), but real DPAPI essentially never fails, so a test proving
+    // ReprotectLegacyPlaintext's failure handling (fix round 1, Important 1)
+    // needs a way to force that failure deterministically instead of hoping
+    // to provoke a real CryptographicException.
+    private readonly Func<string, string> _protect;
 
     /// <summary>Set while a batch is being added, so the command re-queries
     /// once for the batch instead of once per file.</summary>
@@ -48,13 +58,14 @@ public sealed class UnlockViewModel : ObservableObject
     public ObservableCollection<SavedPassword> Saved { get; }
     public ObservableCollection<UnlockResultLine> ResultLines { get; } = new();
 
-    public UnlockViewModel(Config cfg, Action saveCfg,
+    public UnlockViewModel(Config cfg, Func<bool> trySaveCfg,
         Func<string, string, Unlock.UnlockResult>? unlocker = null,
         Func<string, long>? fileSize = null,
-        IDialogService? dialogs = null)
+        IDialogService? dialogs = null,
+        Func<string, string>? protect = null)
     {
         _cfg = cfg;
-        _saveCfg = saveCfg;
+        _trySaveCfg = trySaveCfg;
         _dialogs = dialogs;
         _unlock = unlocker ?? ((path, password) => Unlock.UnlockPdf(path, password));
         _fileSize = fileSize ?? (path =>
@@ -63,6 +74,7 @@ public sealed class UnlockViewModel : ObservableObject
             // reports the real problem readably
             try { return new FileInfo(path).Length; } catch { return 0L; }
         });
+        _protect = protect ?? PasswordVault.Protect;
         Saved = new ObservableCollection<SavedPassword>(cfg.SavedPasswords);
         UnlockCommand = new AsyncRelayCommand(UnlockAsync, () => Files.Count > 0);
         CancelCommand = new RelayCommand(CancelUnlock, () => IsUnlocking);
@@ -88,32 +100,50 @@ public sealed class UnlockViewModel : ObservableObject
         // the Unlock window opens, i.e. effectively "on load" — is where
         // the sweep belongs.
         //
-        // Gated on ReprotectLegacyPlaintext's own return value: a config
-        // with nothing to convert must not be re-saved. Saving is not a
-        // by-the-way action on a shared config.json — it is a real,
-        // conflict-prone write on an SMB share, and this constructor runs
-        // on every single open, not once. An unconditional save here would
-        // rewrite (and risk write-conflicting) that shared file every time
-        // anyone so much as opened the Unlock window, for zero content
-        // change (see UnlockViewModelTests.LoadDoesNotRewriteAnAlready-
-        // ProtectedConfig).
+        // Gated on the sweep's own Converted flag: a config with nothing to
+        // convert must not be re-saved. Saving is not a by-the-way action
+        // on a shared config.json — it is a real, conflict-prone write on
+        // an SMB share, and this constructor runs on every single open, not
+        // once. An unconditional save here would rewrite (and risk
+        // write-conflicting) that shared file every time anyone so much as
+        // opened the Unlock window, for zero content change (see
+        // UnlockViewModelTests.LoadDoesNotRewriteAnAlreadyProtectedConfig).
         //
         // Protecting converts an entry every station could read into one
         // only THIS Windows account can (DPAPI CurrentUser scope) — the
         // point of the fix, since plaintext-readable-by-everyone is the
         // exposure, but it silently breaks a shared password for a
         // colleague on another machine unless they're told. Hence the
-        // one-time notice, fired only when a conversion actually happened.
-        if (ReprotectLegacyPlaintext())
+        // one-time notice, fired only when a conversion actually reached
+        // disk (fix round 1: _trySaveCfg's own failure path already warns
+        // the user "not saved" — piling an unconditional "now protected" on
+        // top of that would be actively misleading).
+        //
+        // ReprotectLegacyPlaintext itself never throws (fix round 1,
+        // Important 1) — see its doc comment — so nothing here needs its
+        // own try/catch to keep the window openable.
+        var sweep = ReprotectLegacyPlaintext();
+        if (sweep.Converted)
         {
-            _saveCfg();
-            _dialogs?.Info(
-                "Some saved passwords in the Unlock tool were stored in plain text " +
-                "and have now been protected for this Windows account. If this saved-" +
-                "password list is shared with a colleague on another computer, their " +
-                "copy of the password will no longer work — they'll need to re-enter " +
-                "and re-save it on their own machine.",
-                "OrdoSort — saved passwords protected");
+            if (_trySaveCfg())
+            {
+                _dialogs?.Info(
+                    "Some saved passwords in the Unlock tool were stored in plain text " +
+                    "and have now been protected for this Windows account. If this saved-" +
+                    "password list is shared with a colleague on another computer, their " +
+                    "copy of the password will no longer work — they'll need to re-enter " +
+                    "and re-save it on their own machine.",
+                    "OrdoSort — saved passwords protected");
+            }
+        }
+        else if (sweep.Failed)
+        {
+            _dialogs?.Warn(
+                "One or more saved passwords could not be protected just now — a " +
+                "Windows security error, not a problem with the passwords themselves. " +
+                "They were left exactly as they were and will still work; this will " +
+                "be retried the next time the Unlock window opens.",
+                "OrdoSort — some saved passwords could not be protected");
         }
     }
 
@@ -211,7 +241,7 @@ public sealed class UnlockViewModel : ObservableObject
         _cfg.SavedPasswords.Add(entry);
         Saved.Add(entry);
         ReprotectLegacyPlaintext();
-        _saveCfg();
+        _trySaveCfg();
         SaveBannerVisible = false;
         SaveBannerName = "";
         _bannerPassword = "";
@@ -237,7 +267,7 @@ public sealed class UnlockViewModel : ObservableObject
             _cfg.SavedPasswords.Remove(p);
             Saved.Remove(p);
             ReprotectLegacyPlaintext();
-            _saveCfg();
+            _trySaveCfg();
         }
         SelectedSavedEntry = Saved.FirstOrDefault();
     }
@@ -251,7 +281,7 @@ public sealed class UnlockViewModel : ObservableObject
         _cfg.SavedPasswords.Add(entry);
         Saved.Add(entry);
         ReprotectLegacyPlaintext();
-        _saveCfg();
+        _trySaveCfg();
         return true;
     }
 
@@ -267,23 +297,52 @@ public sealed class UnlockViewModel : ObservableObject
     /// instances that <c>Saved</c> holds (Saved is seeded from
     /// <c>_cfg.SavedPasswords</c> by reference, not by copy), so the
     /// in-memory list is automatically in sync — no separate pass over
-    /// <c>Saved</c> is needed.</summary>
-    /// <returns>True if at least one entry was converted — callers that
-    /// persist unconditionally (the three below) can ignore this; the
-    /// constructor's load-time sweep uses it to skip saving (and
-    /// notifying) a config that had nothing to convert.</returns>
-    private bool ReprotectLegacyPlaintext()
+    /// <c>Saved</c> is needed.
+    ///
+    /// DPAPI's <see cref="PasswordVault.Protect"/> can itself fail
+    /// (<see cref="CryptographicException"/> — rare, but real: profile-load
+    /// edge cases and similar). Before the constructor called this, that
+    /// could only ever happen inside a deliberate save action; now it can
+    /// happen every time the Unlock window opens, and an unhandled throw
+    /// here would escape the constructor and leave the window unable to
+    /// open, deterministically, forever (fix round 1, Important 1). So this
+    /// never lets an exception escape: on a failure, it rolls back every
+    /// entry THIS call touched, restoring their original plaintext, rather
+    /// than leave a half-swept <c>_cfg</c> sitting in memory, unpersisted —
+    /// a secret that becomes unrecoverable is far worse than one that stays
+    /// plaintext, and a half-converted <c>_cfg</c> is exactly what would
+    /// silently reach disk the next time ANYTHING else saves this
+    /// config.</summary>
+    /// <returns><c>Converted</c> is true if at least one entry was
+    /// protected and none failed — callers that persist unconditionally
+    /// (the three above) can ignore this; the constructor's load-time
+    /// sweep uses it to skip saving (and notifying) a config that had
+    /// nothing to convert. <c>Failed</c> is true if DPAPI itself failed on
+    /// at least one entry, in which case <c>Converted</c> is always false
+    /// (a failure rolls back the whole attempt) — the constructor uses this
+    /// to warn instead of claiming success.</returns>
+    private (bool Converted, bool Failed) ReprotectLegacyPlaintext()
     {
-        var converted = false;
-        foreach (var sp in _cfg.SavedPasswords)
+        var touched = new List<(SavedPassword Entry, string Original)>();
+        try
         {
-            if (!PasswordVault.IsProtected(sp.Password))
+            foreach (var sp in _cfg.SavedPasswords)
             {
-                sp.Password = PasswordVault.Protect(sp.Password);
-                converted = true;
+                if (!PasswordVault.IsProtected(sp.Password))
+                {
+                    var original = sp.Password;
+                    sp.Password = _protect(sp.Password);
+                    touched.Add((sp, original));
+                }
             }
+            return (touched.Count > 0, false);
         }
-        return converted;
+        catch (CryptographicException)
+        {
+            foreach (var (entry, original) in touched)
+                entry.Password = original;
+            return (false, true);
+        }
     }
 
     public AsyncRelayCommand UnlockCommand { get; }

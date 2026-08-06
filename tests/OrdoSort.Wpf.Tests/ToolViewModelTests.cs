@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.ViewModels;
@@ -19,7 +20,7 @@ public class UnlockViewModelTests : IDisposable
         try { Directory.Delete(_dir, true); } catch { /* best effort */ }
     }
 
-    private UnlockViewModel Vm() => new(_cfg, () => _saves++);
+    private UnlockViewModel Vm() => new(_cfg, () => { _saves++; return true; });
 
     private string MakeEncrypted(string name, string userPw = "secret")
     {
@@ -148,7 +149,7 @@ public class UnlockViewModelTests : IDisposable
         // batch, so the banner must still say 1, not 2.
         _cfg.SavedPasswords.Add(new SavedPassword
         { Label = "Saved", Password = PasswordVault.Protect("saved-pw") });
-        var vm = new UnlockViewModel(_cfg, () => _saves++, unlocker: (p, pw) =>
+        var vm = new UnlockViewModel(_cfg, () => { _saves++; return true; }, unlocker: (p, pw) =>
         {
             var winner = p.Contains("fileA") ? "typed-pw" : "saved-pw";
             return pw == winner
@@ -288,7 +289,7 @@ public class UnlockViewModelTests : IDisposable
         // the user asked them not to.
         var started = 0;
         var block = new ManualResetEventSlim(false);
-        var vm = new UnlockViewModel(_cfg, () => _saves++, unlocker: (p, _) =>
+        var vm = new UnlockViewModel(_cfg, () => { _saves++; return true; }, unlocker: (p, _) =>
         {
             Interlocked.Increment(ref started);
             block.Wait();
@@ -322,7 +323,7 @@ public class UnlockViewModelTests : IDisposable
         // saturates the share — either way a large file taking the whole gate
         // is the bound that keeps four of them from multiplying
         var current = 0; var peak = 0;
-        var vm = new UnlockViewModel(_cfg, () => _saves++,
+        var vm = new UnlockViewModel(_cfg, () => { _saves++; return true; },
             unlocker: (p, _) =>
             {
                 var c = Interlocked.Increment(ref current);
@@ -347,7 +348,7 @@ public class UnlockViewModelTests : IDisposable
     {
         // larges run after smalls, so finish order differs from add order —
         // the report must not
-        var vm = new UnlockViewModel(_cfg, () => _saves++,
+        var vm = new UnlockViewModel(_cfg, () => { _saves++; return true; },
             unlocker: (p, _) => new OrdoSort.Core.Unlock.UnlockResult("ok", p, p, InPlace: true),
             fileSize: p => p.Contains("big") ? long.MaxValue : 0L);
         var names = new[] { "big1.pdf", "tiny.pdf", "big2.pdf" };
@@ -370,7 +371,7 @@ public class UnlockViewModelTests : IDisposable
         // collection at construction, same as the real window does at open.
         _cfg.SavedPasswords.Add(new SavedPassword
         { Label = "S1", Password = PasswordVault.Protect("saved-wrong") });
-        var vm = new UnlockViewModel(_cfg, () => _saves++, unlocker: (p, pw) =>
+        var vm = new UnlockViewModel(_cfg, () => { _saves++; return true; }, unlocker: (p, pw) =>
         {
             tried.Add(pw);
             return pw == "typed"
@@ -394,7 +395,7 @@ public class UnlockViewModelTests : IDisposable
         { Label = "A", Password = PasswordVault.Protect("also-wrong") });
         _cfg.SavedPasswords.Add(new SavedPassword
         { Label = "B", Password = PasswordVault.Protect("the-real-one") });
-        var vm = new UnlockViewModel(_cfg, () => _saves++, unlocker: (p, pw) =>
+        var vm = new UnlockViewModel(_cfg, () => { _saves++; return true; }, unlocker: (p, pw) =>
         {
             tried.Add(pw);
             return pw == "the-real-one"
@@ -418,7 +419,7 @@ public class UnlockViewModelTests : IDisposable
         { Label = "A", Password = PasswordVault.Protect("secret1") });
         _cfg.SavedPasswords.Add(new SavedPassword
         { Label = "B", Password = PasswordVault.Protect("secret2") });
-        var vm = new UnlockViewModel(_cfg, () => _saves++, unlocker: (p, pw) =>
+        var vm = new UnlockViewModel(_cfg, () => { _saves++; return true; }, unlocker: (p, pw) =>
         {
             tried.Add(pw);
             return pw == "secret2"
@@ -442,7 +443,7 @@ public class UnlockViewModelTests : IDisposable
         { Label = "Dup", Password = PasswordVault.Protect("same") });
         _cfg.SavedPasswords.Add(new SavedPassword
         { Label = "Other", Password = PasswordVault.Protect("other") });
-        var vm = new UnlockViewModel(_cfg, () => _saves++, unlocker: (p, pw) =>
+        var vm = new UnlockViewModel(_cfg, () => { _saves++; return true; }, unlocker: (p, pw) =>
         {
             tried.Add(pw);
             return new OrdoSort.Core.Unlock.UnlockResult("wrong_password", p, Message: "nope");
@@ -550,7 +551,11 @@ public class UnlockViewModelTests : IDisposable
         Assert.False(PasswordVault.IsProtected(Assert.Single(loaded.SavedPasswords).Password));
 
         var saveCalls = 0;
-        var vm = new UnlockViewModel(loaded, () => { saveCalls++; Config.TrySave(loaded, path, out _); });
+        var vm = new UnlockViewModel(loaded, () =>
+        {
+            saveCalls++;
+            return Config.TrySave(loaded, path, out _);
+        });
 
         // in memory, immediately after construction
         var swept = Assert.Single(loaded.SavedPasswords);
@@ -584,7 +589,11 @@ public class UnlockViewModelTests : IDisposable
 
         var loaded = Config.Load(path);
         var saveCalls = 0;
-        var vm = new UnlockViewModel(loaded, () => { saveCalls++; Config.TrySave(loaded, path, out _); });
+        var vm = new UnlockViewModel(loaded, () =>
+        {
+            saveCalls++;
+            return Config.TrySave(loaded, path, out _);
+        });
 
         Assert.Equal(0, saveCalls);   // the save path was never even invoked
         Assert.Equal(beforeBytes, File.ReadAllBytes(path));         // byte-identical
@@ -627,6 +636,96 @@ public class UnlockViewModelTests : IDisposable
 
         Assert.Empty(dialogs.Infos);
         Assert.Empty(dialogs.Warnings);
+
+        GC.KeepAlive(vm);
+    }
+
+    // ------------------------------------------- fix round 1, Important 1
+    // A DPAPI failure on ANY single legacy entry must never escape the
+    // constructor: MainWindow.OnUnlock calls it synchronously, so an
+    // unhandled throw here would mean the Unlock window can never open
+    // again, deterministically, forever — trading a plaintext-at-rest
+    // problem for a bricked core feature. These use the constructor's
+    // `protect` seam (defaults to the real PasswordVault.Protect) to force
+    // a CryptographicException deterministically — real DPAPI essentially
+    // never fails, so there is no reliable way to provoke this for real.
+
+    [Fact]
+    public void ADpapiFailureDuringTheSweepDoesNotPreventConstructionOrLeaveAnyEntryUnrecoverable()
+    {
+        var path = Path.Combine(_dir, "config.json");
+        var seed = new Config();
+        // TWO plaintext entries: "ok-first" would succeed if tried alone;
+        // "boom-second" is rigged to fail. Order matters — "ok-first" is
+        // processed (and converted in memory) BEFORE the failure hits, so
+        // this also proves the rollback undoes an entry that had ALREADY
+        // been converted earlier in the same sweep, not just the one that
+        // actually threw.
+        seed.SavedPasswords.Add(new SavedPassword { Label = "A", Password = "ok-first" });
+        seed.SavedPasswords.Add(new SavedPassword { Label = "B", Password = "boom-second" });
+        Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
+
+        var loaded = Config.Load(path);
+        var dialogs = new FakeDialogs();
+        var saveCalls = 0;
+
+        // Construction must complete normally — no exception, no crash —
+        // which is itself half the proof: if it throws, this Fact fails
+        // with that exception, exactly the outcome that used to brick the
+        // Unlock window.
+        var vm = new UnlockViewModel(loaded, () => { saveCalls++; return true; },
+            dialogs: dialogs,
+            protect: plain => plain == "boom-second"
+                ? throw new CryptographicException("simulated DPAPI failure")
+                : PasswordVault.Protect(plain));
+
+        // A secret that becomes unrecoverable is worse than one that stays
+        // plaintext: BOTH entries — including the one that succeeded before
+        // the failure — must be rolled back to exactly what they were, not
+        // left half-converted in memory.
+        Assert.Equal("ok-first", loaded.SavedPasswords[0].Password);
+        Assert.Equal("boom-second", loaded.SavedPasswords[1].Password);
+        Assert.False(PasswordVault.IsProtected(loaded.SavedPasswords[0].Password));
+        Assert.False(PasswordVault.IsProtected(loaded.SavedPasswords[1].Password));
+
+        // Nothing reached disk — a half-swept _cfg that never saves would
+        // be a trap for whatever saves next; here there is nothing to save
+        // AT ALL, because nothing was actually changed.
+        Assert.Equal(0, saveCalls);
+        var onDisk = Config.Load(path);
+        Assert.Equal("ok-first", onDisk.SavedPasswords[0].Password);
+        Assert.Equal("boom-second", onDisk.SavedPasswords[1].Password);
+
+        // The user is told, plainly, and NOT told "protected" (that would
+        // be a lie) — a Warn, not an Info.
+        Assert.Empty(dialogs.Infos);
+        var warn = Assert.Single(dialogs.Warnings);
+        Assert.Contains("could not be protected", warn.Message, StringComparison.OrdinalIgnoreCase);
+
+        GC.KeepAlive(vm);
+    }
+
+    [Fact]
+    public void ADpapiFailureLeavesAlreadyProtectedEntriesAloneAndDoesNotOfferToUndoThem()
+    {
+        // An entry that was ALREADY protected before this sweep started is
+        // never touched by ReprotectLegacyPlaintext at all (IsProtected
+        // short-circuits it), so a failure elsewhere in the same pass must
+        // not disturb it either — only entries THIS attempt converted are
+        // ever rolled back.
+        var path = Path.Combine(_dir, "config.json");
+        var seed = new Config();
+        var alreadyProtected = PasswordVault.Protect("already-safe");
+        seed.SavedPasswords.Add(new SavedPassword { Label = "Safe", Password = alreadyProtected });
+        seed.SavedPasswords.Add(new SavedPassword { Label = "Boom", Password = "boom" });
+        Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
+
+        var loaded = Config.Load(path);
+        var vm = new UnlockViewModel(loaded, () => true,
+            protect: _ => throw new CryptographicException("simulated"));
+
+        Assert.Equal(alreadyProtected, loaded.SavedPasswords[0].Password);   // byte-identical, untouched
+        Assert.Equal("boom", loaded.SavedPasswords[1].Password);             // rolled back, not lost
 
         GC.KeepAlive(vm);
     }

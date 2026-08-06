@@ -307,7 +307,7 @@ public partial class MainWindow : Window
     }
 
     private void OnUnlock(object sender, RoutedEventArgs e) =>
-        new Windows.UnlockWindow(new UnlockViewModel(Shell.Cfg, Shell.SaveConfigNow, dialogs: Dialogs))
+        new Windows.UnlockWindow(new UnlockViewModel(Shell.Cfg, Shell.SaveSavedPasswordsNow, dialogs: Dialogs))
         { Owner = this }.ShowDialog();
 
     private void OnBulkRename(object sender, RoutedEventArgs e)

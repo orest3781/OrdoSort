@@ -28,8 +28,8 @@ public static class DialogCheck
             catch (Exception ex) { errors.Add($"{name}: {ex.Message}"); }
         }
 
-        Check("Unlock", () => new UnlockWindow(new UnlockViewModel(new Config(), () => { })));
-        Check("ManageSaved", () => new ManageSavedWindow(new UnlockViewModel(new Config(), () => { })));
+        Check("Unlock", () => new UnlockWindow(new UnlockViewModel(new Config(), () => true)));
+        Check("ManageSaved", () => new ManageSavedWindow(new UnlockViewModel(new Config(), () => true)));
         Check("BulkRename", () => new BulkRenameWindow(new BulkRenameViewModel()));
         Check("MatchMerge", () => new MatchMergeWindow(
             new MatchMergeViewModel(new Config(), _ => { }, dialogs)));

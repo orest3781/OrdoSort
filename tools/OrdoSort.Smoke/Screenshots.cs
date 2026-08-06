@@ -104,9 +104,9 @@ public static class Screenshots
             ThemeManager.Apply(app, dark);
 
             Capture(notes, outdir, theme, "Unlock", () =>
-                new UnlockWindow(new UnlockViewModel(Config.Load(cfgPath), () => { })));
+                new UnlockWindow(new UnlockViewModel(Config.Load(cfgPath), () => true)));
             Capture(notes, outdir, theme, "ManageSaved", () =>
-                new ManageSavedWindow(new UnlockViewModel(Config.Load(cfgPath), () => { })));
+                new ManageSavedWindow(new UnlockViewModel(Config.Load(cfgPath), () => true)));
             Capture(notes, outdir, theme, "BulkRename", () =>
                 new BulkRenameWindow(new BulkRenameViewModel()));
             Capture(notes, outdir, theme, "MatchMerge", () =>

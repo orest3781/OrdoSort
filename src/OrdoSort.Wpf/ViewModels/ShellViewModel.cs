@@ -1168,6 +1168,69 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             _dialogs.Warn(error, "OrdoSort — settings not saved");
     }
 
+    /// <summary>Persist ONLY <c>SavedPasswords</c> — what every Unlock-tool
+    /// persist path actually changes, including the load-time sweep (2026-08
+    /// audit 4.3[A]) that now runs every time the Unlock window opens, not
+    /// just on a deliberate password edit.
+    ///
+    /// <see cref="SaveConfigNow"/> writes the WHOLE live <c>_cfg</c>, and
+    /// <see cref="RefreshSharedSectionsFromDisk"/> only refreshes the four
+    /// side files first — Theme, TileVisibility, MergeHeaders, LabelClients,
+    /// Sounds and the rest of the main config.json section still come from
+    /// this station's own in-memory copy, which can be stale. That gap in
+    /// SaveConfigNow is pre-existing and shared infrastructure other tools
+    /// (Match &amp; merge, box labels) also rely on — deliberately NOT widened
+    /// here, since it used to take a deliberate edit in one of those tools to
+    /// reach it and still does. Opening Unlock now reaches a save
+    /// PASSIVELY, so this save gets its own, narrower contract: read the
+    /// entire config fresh from disk right before writing, overlay just
+    /// this station's <c>SavedPasswords</c> (the one field this call is
+    /// entitled to change) onto that fresh copy, and write THAT — so a
+    /// peer station's concurrent edit to any other field survives a
+    /// station that merely opened the Unlock window.
+    ///
+    /// A full <see cref="Config.Load"/> rather than hand-copying each
+    /// scalar Config owns is deliberate: enumerating fields invites missing
+    /// one the next time Config grows a field, where re-reading everything
+    /// and overlaying the one field this call owns is correct by
+    /// construction. Does not reassign the live <c>_cfg</c> field — this
+    /// station's in-memory copy of Theme/TileVisibility/etc. is left exactly
+    /// as stale (or fresh) as it already was; only what reaches disk
+    /// changes. A broken/mid-write shared config.json falls back to the
+    /// ordinary whole-<c>_cfg</c> save (mirroring how a broken SIDE file is
+    /// already handled below) rather than losing the sweep's result.</summary>
+    /// <returns>True if the write reached disk.</returns>
+    internal bool SaveSavedPasswordsNow()
+    {
+        Config fresh;
+        try
+        {
+            fresh = Config.Load(_cfgPath);
+        }
+        catch (ConfigException)
+        {
+            // A broken/mid-write shared config.json: fall back to the
+            // ordinary whole-_cfg save (mirrors how a broken SIDE file is
+            // already handled in RefreshSharedSectionsFromDisk) rather than
+            // losing the sweep's result entirely.
+            RefreshSharedSectionsFromDisk();
+            if (!Config.TrySave(_cfg, _cfgPath, out var fallbackError))
+            {
+                _dialogs.Warn(fallbackError, "OrdoSort — settings not saved");
+                return false;
+            }
+            return true;
+        }
+
+        fresh.SavedPasswords = _cfg.SavedPasswords;
+        if (!Config.TrySave(fresh, _cfgPath, out var error))
+        {
+            _dialogs.Warn(error, "OrdoSort — settings not saved");
+            return false;
+        }
+        return true;
+    }
+
     /// <summary>Before a tool-state save (tile-visibility toggle, merge
     /// headers, remembered passwords) rewrites all three Settings-owned side
     /// files, pull each one fresh from disk first. _cfg is whatever this run
