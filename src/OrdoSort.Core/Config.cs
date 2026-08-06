@@ -227,22 +227,22 @@ public sealed class Config
                 $"got {cfg.PollSeconds}");
 
         // ---- split sections: a side file wins; inline (legacy) is the fallback
-        if (ReadDoc<DestinationsDoc>(path, cfg.DestinationsFile) is { } dd)
+        if (ReadDoc<DestinationsDoc>(path, cfg.DestinationsFile, "destinations_file") is { } dd)
         {
             cfg.Routes = Clean(dd.Routes);
             cfg.DestinationsFileExtras = dd.Extras ?? new();
         }
-        if (ReadDoc<MonitoredFoldersDoc>(path, cfg.MonitoredFoldersFile) is { } md)
+        if (ReadDoc<MonitoredFoldersDoc>(path, cfg.MonitoredFoldersFile, "monitored_folders_file") is { } md)
         {
             cfg.WatchFolders = Clean(md.WatchFolders);
             cfg.MonitoredFoldersFileExtras = md.Extras ?? new();
         }
-        if (ReadDoc<AlertsDoc>(path, cfg.AlertsFile) is { } ad)
+        if (ReadDoc<AlertsDoc>(path, cfg.AlertsFile, "alerts_file") is { } ad)
         {
             cfg.AlertTexts = Clean(ad.AlertTexts);
             cfg.AlertsFileExtras = ad.Extras ?? new();
         }
-        if (ReadDoc<BoxLabelsDoc>(path, cfg.BoxLabelsFile) is { } bd)
+        if (ReadDoc<BoxLabelsDoc>(path, cfg.BoxLabelsFile, "box_labels_file") is { } bd)
         {
             cfg.LabelClients = Clean(bd.LabelClients);
             cfg.BoxLabelsFileExtras = bd.Extras ?? new();
@@ -252,15 +252,93 @@ public sealed class Config
     }
 
     /// <summary>Resolve a section-file path: absolute stays; relative lands
-    /// beside config.json (the names_file / history_db rule).</summary>
+    /// beside config.json (the names_file / history_db rule). Unconfined —
+    /// see <see cref="ResolveBesideForRead"/> / <see cref="ResolveBesideForWrite"/>
+    /// for the confinement-checked callers that guard the four side-file
+    /// keys. Kept public because it still answers a narrower question
+    /// ("where would this spelling point?") used by the Settings UI to
+    /// detect whether a re-typed path is the same physical file.</summary>
     public static string ResolveBeside(string configPath, string sectionPath) =>
         Path.IsPathRooted(sectionPath)
             ? sectionPath
             : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(configPath))!, sectionPath);
 
-    public static T? ReadDoc<T>(string configPath, string sectionPath) where T : class
+    /// <summary>Resolve <paramref name="sectionPath"/> and confirm the
+    /// result is inside the config's own directory, throwing a
+    /// ConfigException naming <paramref name="keyName"/> and the offending
+    /// value otherwise. This is the confinement check both
+    /// <see cref="ResolveBesideForWrite"/> and <see cref="ResolveBesideForRead"/>
+    /// share; the two differ only in whether a fully-qualified absolute
+    /// path is allowed to bypass it (see their doc comments).
+    ///
+    /// Containment is checked on the canonical, fully-resolved path
+    /// (Path.GetFullPath on both the candidate and the config directory) —
+    /// never a string prefix on the raw input — so a `..` traversal and a
+    /// Windows rooted-without-drive path like `\evil.json` (Path.IsPathRooted
+    /// reports that true, and Path.GetFullPath resolves it against the
+    /// current drive) both normalize before comparison. The config
+    /// directory side of the comparison gets a trailing separator before
+    /// the StartsWith test, so a same-prefixed SIBLING directory can't slip
+    /// through: `C:\configdir-evil\x.json` starts with the string
+    /// `C:\configdir` but does not start with `C:\configdir\`, so it is
+    /// correctly rejected as outside.</summary>
+    private static string ResolveConfined(string configPath, string sectionPath, string keyName)
     {
-        var full = ResolveBeside(configPath, sectionPath);
+        var configDir = Path.GetFullPath(Path.GetDirectoryName(Path.GetFullPath(configPath))!);
+        var full = Path.GetFullPath(ResolveBeside(configPath, sectionPath));
+        var configDirWithSep = configDir.EndsWith(Path.DirectorySeparatorChar)
+            ? configDir
+            : configDir + Path.DirectorySeparatorChar;
+        if (!full.StartsWith(configDirWithSep, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ConfigException(
+                $"{keyName} must stay beside the config file, but \"{sectionPath}\" resolves to " +
+                $"{full}, which is outside {configDir}. Use a plain filename, or a path nested " +
+                "in a subfolder of the config's own directory.");
+        }
+        return full;
+    }
+
+    /// <summary>Resolve a side-file path for WRITING, refusing anything
+    /// that resolves outside the config's own directory — an absolute
+    /// path, a `..` traversal, or a rooted-without-drive path alike. This
+    /// is the fix for the share-write to local-arbitrary-write escalation
+    /// (2026-08 audit finding 4.2[A]): on the shared-config deployment this
+    /// app supports, anyone who can edit config.json on the share could
+    /// otherwise point one of the four side-file keys at any file on every
+    /// other station's disk and have it overwritten at that station's next
+    /// Save. There is no backward-compatibility carve-out on write — even
+    /// though the Settings "Data files" Browse... buttons can produce an
+    /// absolute path (they use Microsoft.Win32.OpenFileDialog with no
+    /// containment check of their own), an absolute destination is exactly
+    /// the capability being withdrawn here. See <see cref="ResolveBesideForRead"/>
+    /// for the read-side half of the split that keeps an already-configured
+    /// absolute path loadable.</summary>
+    public static string ResolveBesideForWrite(string configPath, string sectionPath, string keyName) =>
+        ResolveConfined(configPath, sectionPath, keyName);
+
+    /// <summary>Resolve a side-file path for READING. A fully-qualified
+    /// absolute path (one with a drive or UNC root — Path.IsPathFullyQualified,
+    /// which is what Microsoft.Win32.OpenFileDialog's Browse... buttons
+    /// always hand back for these four keys) is preserved as-is, even
+    /// outside the config directory: that is a shipped, UI-reachable
+    /// capability, and refusing to read a station's already-working
+    /// absolute-pathed side file would silently relocate its data out from
+    /// under it. Anything else that resolves outside the config directory —
+    /// a `..` traversal, or a Windows rooted-without-drive path like
+    /// `\evil.json` — was never something the UI could produce and is
+    /// refused exactly like a write, because a malicious shared config.json
+    /// could otherwise point a victim station's read at an arbitrary local
+    /// file just as easily as a write. See <see cref="ResolveBesideForWrite"/>
+    /// for the write-side half of the split.</summary>
+    public static string ResolveBesideForRead(string configPath, string sectionPath, string keyName) =>
+        Path.IsPathFullyQualified(sectionPath)
+            ? ResolveBeside(configPath, sectionPath)
+            : ResolveConfined(configPath, sectionPath, keyName);
+
+    public static T? ReadDoc<T>(string configPath, string sectionPath, string keyName = "section file") where T : class
+    {
+        var full = ResolveBesideForRead(configPath, sectionPath, keyName);
         if (!File.Exists(full)) return null;
         try
         {
@@ -372,15 +450,18 @@ public sealed class Config
         var dir = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
         SaveMain(cfg, path);
-        WriteDoc(path, cfg.DestinationsFile,
+        WriteDoc(path, cfg.DestinationsFile, "destinations_file",
             new DestinationsDoc { Routes = cfg.Routes, Extras = cfg.DestinationsFileExtras });
-        WriteDoc(path, cfg.MonitoredFoldersFile,
+        WriteDoc(path, cfg.MonitoredFoldersFile, "monitored_folders_file",
             new MonitoredFoldersDoc { WatchFolders = cfg.WatchFolders, Extras = cfg.MonitoredFoldersFileExtras });
-        WriteDoc(path, cfg.AlertsFile,
+        WriteDoc(path, cfg.AlertsFile, "alerts_file",
             new AlertsDoc { AlertTexts = cfg.AlertTexts, Extras = cfg.AlertsFileExtras });
+        // The Exists probe reads at whatever path is currently configured
+        // (even an already-existing absolute one — see ResolveBesideForRead);
+        // only the actual bootstrap WRITE is confined, via ResolveBesideForWrite.
         var labels = ResolveBeside(path, cfg.BoxLabelsFile);
         if (!File.Exists(labels))
-            WriteJsonNew(labels,
+            WriteJsonNew(ResolveBesideForWrite(path, cfg.BoxLabelsFile, "box_labels_file"),
                 new BoxLabelsDoc { LabelClients = cfg.LabelClients, Extras = cfg.BoxLabelsFileExtras });
     }
 
@@ -511,8 +592,8 @@ public sealed class Config
         WriteAtomic(path, node.ToJsonString(Opts) + "\n");
     }
 
-    private static void WriteDoc<T>(string configPath, string sectionPath, T doc) =>
-        WriteJson(ResolveBeside(configPath, sectionPath), doc);
+    private static void WriteDoc<T>(string configPath, string sectionPath, string keyName, T doc) =>
+        WriteJson(ResolveBesideForWrite(configPath, sectionPath, keyName), doc);
 
     internal static void WriteJson<T>(string fullPath, T doc) =>
         WriteAtomic(fullPath, JsonSerializer.Serialize(doc, Opts) + "\n");
@@ -537,20 +618,23 @@ public sealed class Config
         }
 
         Attempt(() => SaveMain(cfg, path), path);
-        Attempt(() => WriteDoc(path, cfg.DestinationsFile,
+        Attempt(() => WriteDoc(path, cfg.DestinationsFile, "destinations_file",
             new DestinationsDoc { Routes = cfg.Routes, Extras = cfg.DestinationsFileExtras }),
             ResolveBeside(path, cfg.DestinationsFile));
-        Attempt(() => WriteDoc(path, cfg.MonitoredFoldersFile,
+        Attempt(() => WriteDoc(path, cfg.MonitoredFoldersFile, "monitored_folders_file",
             new MonitoredFoldersDoc { WatchFolders = cfg.WatchFolders, Extras = cfg.MonitoredFoldersFileExtras }),
             ResolveBeside(path, cfg.MonitoredFoldersFile));
-        Attempt(() => WriteDoc(path, cfg.AlertsFile,
+        Attempt(() => WriteDoc(path, cfg.AlertsFile, "alerts_file",
             new AlertsDoc { AlertTexts = cfg.AlertTexts, Extras = cfg.AlertsFileExtras }),
             ResolveBeside(path, cfg.AlertsFile));
         Attempt(() =>
         {
+            // As in Save: the Exists probe reads at whatever path is
+            // currently configured; only the bootstrap WRITE is confined.
             var labels = ResolveBeside(path, cfg.BoxLabelsFile);
             if (!File.Exists(labels))
-                WriteJsonNew(labels, new BoxLabelsDoc { LabelClients = cfg.LabelClients, Extras = cfg.BoxLabelsFileExtras });
+                WriteJsonNew(ResolveBesideForWrite(path, cfg.BoxLabelsFile, "box_labels_file"),
+                    new BoxLabelsDoc { LabelClients = cfg.LabelClients, Extras = cfg.BoxLabelsFileExtras });
         }, ResolveBeside(path, cfg.BoxLabelsFile));
 
         error = string.Join("; ", errors);
@@ -561,7 +645,7 @@ public sealed class Config
             try { write(); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                                        or System.Security.SecurityException
-                                       or DirectoryNotFoundException)
+                                       or DirectoryNotFoundException or ConfigException)
             {
                 errors.Add($"Couldn't save settings to {file}: {ex.Message}");
             }
