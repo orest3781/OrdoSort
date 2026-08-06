@@ -63,9 +63,15 @@ The race window itself is **[U]** — proving it needs two processes. The *capab
 
 `Commit.cs:24,44-47`. `File.Move` across volumes is copy-then-delete. Interrupted, it can leave a partial file at the destination; on retry the collision counter hands the *real* document the `" (2)"` suffix while the partial keeps the canonical name — and nothing detects it afterwards. The crash case is verified by construction **[A]**; whether Win32 `MoveFileEx` cleans up its own partial on a non-crash failure is **[U]**.
 
-**1.5 — Undo's three failure branches are entirely untested. [V] Important**
+**1.5 — Undo's three failure branches are entirely untested. [V] Important — FIXED `902adbb`**
 
 `Commit.cs:92` (filed file gone), `:94` (original name reused), `:97` (inbox folder vanished). Zero `.cs` test files reference `UndoAction` — the only matches are compiled DLLs. Undo is the safety net for a mis-filed document, and its failure handling is the least-exercised code in the product.
+
+> Fixed: Seven new tests now pin the three failure branches individually and the state-preservation property that matters: after a failed undo, the undo stack entry survives, `Filed`/`Skipped` are unchanged, `Pos` is unchanged, and the history row is **not** marked reverted. All three guards already behaved as documented — no correctness issue there.
+>
+> **Real defect found and fixed:** `MoveNeverOverwrite` throws a private `FileExistsRace` on a collision; `CommitFile` retries it but `UndoAction` let it escape unhandled. A last-instant race in guard 2's own window produced a generic "didn't finish" dialog instead of the actionable "already exists again" message guard 1 gives two lines earlier. Fixed: `UndoAction` now catches `FileExistsRace` and rethrows the byte-identical `CommitError` message its `:94` guard produces. The race is forced deterministically via an internal test-only seam (`Commit.RaceHookForTests`) rather than a timing-dependent test.
+>
+> **Guard 2 survives:** After removing guard 2 (`Commit.cs:94`), all seven tests still pass. The `FileExistsRace` path via `MoveNeverOverwrite`'s own `File.Exists` check provides a byte-identical fallback. Guard 2 was kept anyway — it is the fast, non-exception path for what is actually the routine failure, whereas the `FileExistsRace` mechanism elsewhere in this file is reserved for the rare last-instant race. The safety property remains covered even when the guard is deleted.
 
 ---
 
@@ -250,7 +256,7 @@ Ranked by (harm × likelihood) ÷ effort, not by severity label.
 5. ~~**Harden the WebView2 viewer** (4.1) — ~20 lines in one `InitAsync`, no workflow change.~~ **DONE — `f821dfe`.** Landed close to the original scope, plus one empirical correction: the plan's own worry that script might have to stay on for rendering to survive turned out false — `IsScriptEnabled = false` was measured, not assumed, and kept. See 4.1's note.
 6. ~~**Make `Mutate` and `Read` agree about a 0-byte file** (2.2) — falls out of 1, but assert it directly too.~~ **DONE — `fe8b110`.** Landed as its own fix, not as a byproduct of item 1: item 1's temp-file pattern doesn't apply to `Mutate` (see 2.2's note).
 7. ~~**Index the history table** (5.1) — `name_entered`, `reverted`, `ts_utc`.~~ **DONE — `79b9289`.** Shipped as a single partial covering index rather than a plain one on the same columns — see 5.1's note for why the plain version measured 6× worse than no index at all.
-8. **Test `UndoAction`'s three failure branches** (1.5) — the safety net deserves a test.
+8. ~~**Test `UndoAction`'s three failure branches** (1.5) — the safety net deserves a test.~~ **DONE — `902adbb`.** Added as a real defect fix: `FileExistsRace` was escaping the assembly unhandled. The three guards already worked correctly; the gap was a race in one guard's own window that produced the wrong error message. See 1.5's note.
 9. **Debounce Bulk Rename and the Settings tile preview** (5.2, 5.4) — the pattern is already proven in this codebase.
 10. **Release hygiene before `v1.0.0`** (3.2–3.5) — sign, stamp a version, add an About box, add LICENSE + third-party notices, document the WebView2 prerequisite.
 
