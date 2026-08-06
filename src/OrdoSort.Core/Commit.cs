@@ -84,6 +84,14 @@ public static class Commit
             result.CollisionSuffix);
     }
 
+    /// <summary>Test-only seam: when set, invoked immediately before the final
+    /// move in <see cref="UndoAction"/> — right after all three guards have
+    /// passed. Lets a test deterministically reproduce the collision race
+    /// MoveNeverOverwrite guards against (the original name reappearing in the
+    /// instant between the guard and the move) instead of relying on real
+    /// thread timing. Production code never sets this.</summary>
+    internal static Action? RaceHookForTests;
+
     /// <summary>Reverse one commit/skip: move the file back to its original
     /// name. Raises CommitError if the undo can't be done — the filed copy
     /// stays put.</summary>
@@ -97,7 +105,19 @@ public static class Commit
         if (parent is null || !Directory.Exists(parent))
             throw new CommitError($"Can't undo: inbox folder is gone: {parent}");
 
-        MoveNeverOverwrite(filedPath, originalPath);
+        RaceHookForTests?.Invoke();
+        try
+        {
+            MoveNeverOverwrite(filedPath, originalPath);
+        }
+        catch (FileExistsRace)
+        {
+            // Same situation the guard two lines up detects — the original
+            // name is occupied — just caught a few microseconds later. Give
+            // the user the identical actionable message instead of letting
+            // this private type escape the assembly as an unhandled error.
+            throw new CommitError($"Can't undo: {Path.GetFileName(originalPath)} already exists again");
+        }
     }
 
     private sealed class FileExistsRace : Exception
