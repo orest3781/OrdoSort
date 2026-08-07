@@ -55,6 +55,12 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private readonly ISoundService _sounds;
     private readonly System.Threading.Timer _flash;
 
+    // Side-file keys ("destinations_file", etc.) already named in a "not
+    // saved" warning this run — see WarnSaveFailure's doc comment for why a
+    // confinement-refused key is only ever worth saying once per session,
+    // never once per save.
+    private readonly HashSet<string> _warnedRefusedSideFileKeys = new(StringComparer.Ordinal);
+
     public ShellViewModel(Config cfg, string cfgPath, IPdfViewer viewer,
         IDialogService dialogs, FolderWatchService watch,
         SynchronizationContext? uiContext = null, Func<ThemePalette>? palette = null,
@@ -1164,7 +1170,37 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     internal void SaveConfigNow()
     {
         RefreshSharedSectionsFromDisk();
-        if (!Config.TrySave(_cfg, _cfgPath, out var error))
+        if (!Config.TrySave(_cfg, _cfgPath, out var error, out var refusedKeys))
+            WarnSaveFailure(error, refusedKeys);
+    }
+
+    /// <summary>Surface a <see cref="Config.TrySave"/> failure — but only
+    /// once per running session for a failure that is ENTIRELY side-file
+    /// confinement refusals (<paramref name="refusedKeys"/> non-empty; see
+    /// the 4-arg <see cref="Config.TrySave"/> overload's doc comment for
+    /// exactly when that is). Such a failure is a structural property of
+    /// the CONFIGURED PATH — it recurs unchanged on every future save until
+    /// someone edits the offending key in Settings — so a caller of this
+    /// method that saves nothing but an unrelated main-section field (the
+    /// tile-visibility dropdown, merge headers) would otherwise show
+    /// "settings not saved" forever, with no new information and no
+    /// actionable next step, on every single one of those unrelated saves:
+    /// exactly the bricking bug this method exists to stop (2026-08-07
+    /// audit, Task 1b). Any OTHER failure — a real, potentially transient
+    /// I/O problem (locked file, full disk, permissions) — is never
+    /// suppressed: <paramref name="refusedKeys"/> is empty whenever one of
+    /// those is mixed into the same failure, by the 4-arg overload's own
+    /// contract, so the "warn every time" branch below still fires for it
+    /// even alongside an already-known refusal.</summary>
+    private void WarnSaveFailure(string error, IReadOnlyList<string> refusedKeys)
+    {
+        if (refusedKeys.Count == 0)
+        {
+            _dialogs.Warn(error, "OrdoSort — settings not saved");
+            return;
+        }
+        var newlyRefused = refusedKeys.Where(k => _warnedRefusedSideFileKeys.Add(k)).ToList();
+        if (newlyRefused.Count > 0)
             _dialogs.Warn(error, "OrdoSort — settings not saved");
     }
 
@@ -1224,6 +1260,36 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// file removes both failure surfaces, and makes "persist ONLY
     /// SavedPasswords" (this method's own doc, above) true at the file
     /// level too, not just the field level.
+    ///
+    /// This TrySaveMain swap is only correct HERE, precisely because this
+    /// method's own contract (above) is "persist ONLY SavedPasswords" — it
+    /// has nothing of its own to say about Routes/WatchFolders/AlertTexts,
+    /// so skipping the three side files entirely costs it nothing.
+    /// <see cref="SaveConfigNow"/> and <see cref="ApplySettingsAsync"/> sit
+    /// on the exact same absolute-side-file-path hazard described above
+    /// (2026-08-07 audit, Task 1b: this was originally fixed for this
+    /// method ONLY, leaving those two still calling <c>TrySave</c>
+    /// unguarded — a comment here claiming the hazard handled would have
+    /// been actively misleading about them) but CANNOT take this same
+    /// fix: SaveConfigNow persists tile-visibility/merge-header edits
+    /// alongside whichever Routes/WatchFolders/AlertTexts edits a peer's
+    /// concurrent Settings save landed since this station last read them,
+    /// and ApplySettingsAsync's entire job is persisting a Settings
+    /// session's edits to exactly those three side files — TrySaveMain
+    /// would silently stop saving a user's destination and monitored-
+    /// folder edits at both call sites, a materially worse bug than the
+    /// one being fixed. They keep <c>TrySave</c> and instead: (1) the
+    /// Settings "Data files" Browse... buttons now refuse to hand back an
+    /// absolute path outside the config directory in the first place
+    /// (SettingsViewModel's four <c>Browse*FileCommand</c>s), so the
+    /// hazard can no longer be freshly introduced through the UI; and (2)
+    /// for a config that already carries such a path from before this fix
+    /// (or from a hand edit), <see cref="WarnSaveFailure"/> still lands
+    /// every save that CAN succeed — the main config and any side file
+    /// whose own path is fine — and warns about a purely-confinement
+    /// failure once per running session instead of on every unrelated
+    /// save, rather than bricking the station's whole Settings experience
+    /// the way this method's own bug once did.
     ///
     /// An ABSENT config.json is deliberately NOT treated as first run and
     /// gets no fallback write at all (fix round 2, Gap B): this method only
@@ -1468,8 +1534,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         catch (ConfigException) { /* keep what Settings opened with */ }
 
         _cfg = cfg;
-        if (!Config.TrySave(cfg, _cfgPath, out var error))
-            _dialogs.Warn(error, "OrdoSort — settings not saved");
+        if (!Config.TrySave(cfg, _cfgPath, out var error, out var refusedKeys))
+            WarnSaveFailure(error, refusedKeys);
         _session = new Session(cfg, _history);
         await _scheduler.Run(() => _watch.SetFolders(cfg.Inbox, cfg.Deferred));
         _watch.SetPollInterval(cfg.PollSeconds * 1000);   // adopt a changed cadence live

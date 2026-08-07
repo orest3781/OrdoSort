@@ -168,6 +168,51 @@ public class SideFilePathConfinementTests : IDisposable
     }
 
     [Fact]
+    public void TrySaveReportsThePureConfinementFailureAsARefusedKey()
+    {
+        // The 4-arg overload's extra out param (2026-08-07 audit, Task 1b) —
+        // ShellViewModel uses it to tell "this side-file key's configured
+        // path is structurally unwritable, and will be again on every
+        // future save until someone edits it" apart from a real, possibly
+        // transient I/O failure. When EVERY failure this call produced is a
+        // confinement refusal, the key must come back in refusedSideFileKeys.
+        var outsideFile = Path.Combine(OutsideDir, "evil.json");
+        var cfg = new Config { DestinationsFile = outsideFile };
+        var ok = Config.TrySave(cfg, ConfigPath, out var error, out var refusedKeys);
+        Assert.False(ok);
+        Assert.Contains("destinations_file", error);
+        Assert.Equal(new[] { "destinations_file" }, refusedKeys);
+    }
+
+    [Fact]
+    public void TrySaveReportsNoRefusedKeysWhenNothingIsWrong()
+    {
+        var cfg = new Config();
+        var ok = Config.TrySave(cfg, ConfigPath, out var error, out var refusedKeys);
+        Assert.True(ok, error);
+        Assert.Empty(refusedKeys);
+    }
+
+    [Fact]
+    public void TrySaveReportsNoRefusedKeysWhenAConfinementRefusalIsMixedWithARealFailure()
+    {
+        // box_labels_file (left at its relative default) points at a path
+        // that already exists AS A DIRECTORY, not a file — a genuine,
+        // non-confinement I/O failure, arising independently of
+        // destinations_file's confinement refusal in the very same call.
+        // refusedSideFileKeys must come back EMPTY here: a caller must
+        // never suppress-on-sight a refusal that arrived bundled with
+        // something genuinely new and different.
+        var outsideFile = Path.Combine(OutsideDir, "evil.json");
+        Directory.CreateDirectory(Path.Combine(_dir, "box-labels.json"));
+        var cfg = new Config { DestinationsFile = outsideFile };
+        var ok = Config.TrySave(cfg, ConfigPath, out var error, out var refusedKeys);
+        Assert.False(ok);
+        Assert.Contains("destinations_file", error);
+        Assert.Empty(refusedKeys);
+    }
+
+    [Fact]
     public void SaveRefusesAnEscapingBoxLabelsFileEvenWhenSomethingAlreadyExistsThere()
     {
         // Regression for the existence-oracle bug: the box-labels bootstrap

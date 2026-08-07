@@ -698,13 +698,13 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             HistoryDb = _dialogs.AskFilePath("SQLite database (*.sqlite)|*.sqlite|All files (*.*)|*.*",
                 System.IO.Path.GetFileName(HistoryDb)) ?? HistoryDb);
         BrowseDestinationsFileCommand = new RelayCommand(() =>
-            DestinationsFile = _dialogs.AskOpenFile("JSON files (*.json)|*.json|All files (*.*)|*.*") ?? DestinationsFile);
+            DestinationsFile = PickSideFile(DestinationsFile, "destinations_file"));
         BrowseMonitoredFoldersFileCommand = new RelayCommand(() =>
-            MonitoredFoldersFile = _dialogs.AskOpenFile("JSON files (*.json)|*.json|All files (*.*)|*.*") ?? MonitoredFoldersFile);
+            MonitoredFoldersFile = PickSideFile(MonitoredFoldersFile, "monitored_folders_file"));
         BrowseAlertsFileCommand = new RelayCommand(() =>
-            AlertsFile = _dialogs.AskOpenFile("JSON files (*.json)|*.json|All files (*.*)|*.*") ?? AlertsFile);
+            AlertsFile = PickSideFile(AlertsFile, "alerts_file"));
         BrowseBoxLabelsFileCommand = new RelayCommand(() =>
-            BoxLabelsFile = _dialogs.AskOpenFile("JSON files (*.json)|*.json|All files (*.*)|*.*") ?? BoxLabelsFile);
+            BoxLabelsFile = PickSideFile(BoxLabelsFile, "box_labels_file"));
         BrowseRoutePathCommand = new RelayCommand(() =>
         {
             if (SelectedRoute is { } r) r.Path = _dialogs.BrowseFolder(r.Path) ?? r.Path;
@@ -1065,6 +1065,51 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         RecomputeDataFileNote(BoxLabelsFile,
             sp => (Config.ReadDoc<BoxLabelsDoc>(_cfgPath!, sp) ?? new BoxLabelsDoc()).LabelClients.Count,
             _boxLabelsFileProbe, immediate);
+
+    /// <summary>Browse... for one of the four side-file keys (destinations/
+    /// monitored-folders/alerts/box-labels), then refuse the result up
+    /// front if it can never actually be saved to. Microsoft.Win32.
+    /// OpenFileDialog (behind <see cref="IDialogService.AskOpenFile"/>)
+    /// always hands back a fully-qualified absolute path, and a side-file
+    /// WRITE refuses anything that resolves outside the config's own
+    /// directory (<see cref="Config.ResolveBesideForWrite"/>, the 2026-08
+    /// audit's share-write-to-local-arbitrary-write fix) — so, before this
+    /// method existed, Browse... was the app's own UI handing the user a
+    /// value guaranteed to fail every future save at that key, with no
+    /// warning until the NEXT save's generic "settings not saved" dialog
+    /// (2026-08-07 audit, Task 1b: ShellViewModel.SaveConfigNow and
+    /// .ApplySettingsAsync's non-fatal, once-per-session handling of an
+    /// already-broken path covers a config that arrives with one some
+    /// other way — a hand edit, or a config saved before this fix — but a
+    /// user actively clicking Browse... deserves to be told AT THAT
+    /// MOMENT, not set up to fail silently later).
+    ///
+    /// Reuses <see cref="Config.ResolveBesideForWrite"/> itself rather than
+    /// a parallel containment check, so this can never drift from what an
+    /// actual save will refuse. A cancelled dialog (null) or a config with
+    /// no known path yet (<see cref="_cfgPath"/> null — Settings opened
+    /// with no file on disk to resolve beside) both fall through to keep
+    /// the field's current value unchanged, same as every other Browse...
+    /// command in this file.</summary>
+    private string PickSideFile(string current, string keyName)
+    {
+        var picked = _dialogs.AskOpenFile("JSON files (*.json)|*.json|All files (*.*)|*.*");
+        if (picked is null) return current;
+        if (_cfgPath is not { } cfgPath) return picked;
+        try
+        {
+            Config.ResolveBesideForWrite(cfgPath, picked, keyName);
+        }
+        catch (ConfigException ex)
+        {
+            _dialogs.Warn(
+                $"{ex.Message}\n\nPick a location inside the config folder instead — a plain " +
+                "filename, or a path nested in one of its subfolders.",
+                "OrdoSort — can't use that location");
+            return current;
+        }
+        return picked;
+    }
 
     /// <summary>Shared live-note logic for the four section-file path boxes:
     /// blank means the section default: not resolvable (no config path to

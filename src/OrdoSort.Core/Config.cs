@@ -634,27 +634,64 @@ public sealed class Config
 
     /// <summary>Save that reports failure instead of crashing — each file is
     /// attempted independently and every failure is named.</summary>
-    public static bool TrySave(Config cfg, string path, out string error)
+    public static bool TrySave(Config cfg, string path, out string error) =>
+        TrySave(cfg, path, out error, out _);
+
+    /// <summary>Save that reports failure instead of crashing — each file is
+    /// attempted independently and every failure is named in
+    /// <paramref name="error"/>, exactly like the 3-arg overload (kept for
+    /// source compatibility — every existing caller and test that only asks
+    /// for <c>error</c> sees byte-identical text and the same return value).
+    ///
+    /// <paramref name="refusedSideFileKeys"/> is the extra signal a caller
+    /// needs to answer one question the 3-arg overload cannot: was THIS
+    /// failure entirely a side-file confinement refusal (a key whose
+    /// configured path resolves outside the config's own directory — see
+    /// <see cref="ResolveBesideForWrite"/>), as opposed to a real I/O
+    /// problem? That distinction matters because a confinement refusal is a
+    /// structural property of the CONFIGURED PATH, not of this particular
+    /// save attempt: it recurs, byte-for-byte identical, on every future
+    /// call until someone edits the path — unlike a locked file or a full
+    /// disk, retrying accomplishes nothing. A caller that shows a fresh
+    /// "not saved" dialog for it on every unrelated save (ShellViewModel.
+    /// SaveConfigNow's tile-visibility toggle or merge-header save,
+    /// ApplySettingsAsync's Settings OK) turns ONE bad side-file path into
+    /// an every-save failure notice with no actionable next step short of
+    /// hand-editing config.json — arguably worse than not warning at all
+    /// (2026-08-07 audit, Task 1b).
+    ///
+    /// Populated ONLY when the confinement refusals fully account for every
+    /// failure this call produced (i.e. nothing else went wrong) — empty in
+    /// every other case, including "some keys were refused AND something
+    /// else also failed": a mixed failure must never let a caller's
+    /// once-per-session suppression swallow a brand-new, unrelated problem
+    /// just because a stale confinement refusal happened to ride along in
+    /// the same call. A caller that ignores this out param (the 3-arg
+    /// overload's callers) is unaffected either way.</summary>
+    public static bool TrySave(Config cfg, string path, out string error,
+        out IReadOnlyList<string> refusedSideFileKeys)
     {
         var errors = new List<string>();
+        var refused = new List<string>();
         var dir = Path.GetDirectoryName(Path.GetFullPath(path));
         Attempt(() => { if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir); }, path);
         if (errors.Count > 0)
         {
             error = string.Join("; ", errors);
+            refusedSideFileKeys = Array.Empty<string>();
             return false;
         }
 
         Attempt(() => SaveMain(cfg, path), path);
         Attempt(() => WriteDoc(path, cfg.DestinationsFile, "destinations_file",
             new DestinationsDoc { Routes = cfg.Routes, Extras = cfg.DestinationsFileExtras }),
-            ResolveBeside(path, cfg.DestinationsFile));
+            ResolveBeside(path, cfg.DestinationsFile), "destinations_file");
         Attempt(() => WriteDoc(path, cfg.MonitoredFoldersFile, "monitored_folders_file",
             new MonitoredFoldersDoc { WatchFolders = cfg.WatchFolders, Extras = cfg.MonitoredFoldersFileExtras }),
-            ResolveBeside(path, cfg.MonitoredFoldersFile));
+            ResolveBeside(path, cfg.MonitoredFoldersFile), "monitored_folders_file");
         Attempt(() => WriteDoc(path, cfg.AlertsFile, "alerts_file",
             new AlertsDoc { AlertTexts = cfg.AlertTexts, Extras = cfg.AlertsFileExtras }),
-            ResolveBeside(path, cfg.AlertsFile));
+            ResolveBeside(path, cfg.AlertsFile), "alerts_file");
         Attempt(() =>
         {
             // As in Save: the Exists probe runs on the SAME confined path
@@ -664,17 +701,25 @@ public sealed class Config
             if (!File.Exists(labels))
                 WriteJsonNew(labels,
                     new BoxLabelsDoc { LabelClients = cfg.LabelClients, Extras = cfg.BoxLabelsFileExtras });
-        }, ResolveBeside(path, cfg.BoxLabelsFile));
+        }, ResolveBeside(path, cfg.BoxLabelsFile), "box_labels_file");
 
         error = string.Join("; ", errors);
+        refusedSideFileKeys = errors.Count == refused.Count && refused.Count > 0
+            ? refused
+            : Array.Empty<string>();
         return errors.Count == 0;
 
-        void Attempt(Action write, string file)
+        void Attempt(Action write, string file, string? keyName = null)
         {
             try { write(); }
+            catch (ConfigException ex)
+            {
+                errors.Add($"Couldn't save settings to {file}: {ex.Message}");
+                if (keyName is not null) refused.Add(keyName);
+            }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                                        or System.Security.SecurityException
-                                       or DirectoryNotFoundException or ConfigException)
+                                       or DirectoryNotFoundException)
             {
                 errors.Add($"Couldn't save settings to {file}: {ex.Message}");
             }
