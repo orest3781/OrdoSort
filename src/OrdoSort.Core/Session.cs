@@ -42,7 +42,24 @@ public sealed class Session
         SessionMode = _cfg.NamingMode;
     }
 
-    public string? Current => Pos < Queue.Count ? Queue[Pos] : null;
+    // Audit 2.6b: this used to read Pos TWICE — `Pos < Queue.Count ?
+    // Queue[Pos] : null` — and Pos++ happens on the commit thread (via
+    // ShellViewModel's IWorkScheduler) while Current is read from the UI
+    // thread (progress line, preview, autocomplete). If Pos++ landed
+    // between the two reads, the bounds check above saw the OLD (in-range)
+    // Pos while the indexer below saw the NEW (out-of-range) one, throwing
+    // out of the UI thread at the last document in the queue. Reading Pos
+    // once into a local makes both uses see the same value no matter what
+    // another thread does to the property in between.
+    public string? Current
+    {
+        get
+        {
+            var pos = Pos;
+            return pos < Queue.Count ? Queue[pos] : null;
+        }
+    }
+
     public bool Done => Current is null;
     public int Total => Queue.Count;
     public bool CanUndo => _undo.Count > 0;

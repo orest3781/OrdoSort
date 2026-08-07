@@ -47,6 +47,22 @@ public sealed class History : IDisposable
     public string Path { get; }
     private readonly SqliteConnection _conn;
 
+    // Audit 2.6a: this is ONE SqliteConnection. LogCommit runs on a
+    // thread-pool thread during a commit while ExportHistoryAsync and the
+    // History window read concurrently from their own background tasks —
+    // Microsoft.Data.Sqlite connections are not safe for concurrent use, and
+    // HistorySwapping only gates those two entry points during a database
+    // *swap*, not during ordinary commits. Every method that touches _conn
+    // takes this lock for exactly as long as it is talking to SQLite —
+    // never across file I/O or other non-database work. See ExportCsv for
+    // the one method where that distinction matters: the lock covers only
+    // the SELECT that reads the table into memory, not the CSV file write
+    // that follows, so a slow export (or a slow network-share write) cannot
+    // hold up a commit running on another thread. Dispose takes the same
+    // lock, so it cannot run while a command on another thread is in flight
+    // — it will simply wait its turn like any other caller.
+    private readonly object _gate = new();
+
     public History(string dbPath)
     {
         Path = dbPath;
@@ -127,9 +143,12 @@ public sealed class History : IDisposable
 
     private void Exec(string sql)
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = sql;
-        cmd.ExecuteNonQuery();
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.ExecuteNonQuery();
+        }
     }
 
     public long LogCommit(
@@ -137,51 +156,63 @@ public sealed class History : IDisposable
         string nameEntered, string namingMode, string suffixApplied,
         string routeLabel, string routePath, bool tagged, string collisionSuffix)
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = """
-            INSERT INTO history (ts_utc, original_path, original_name, new_name,
-              name_entered, naming_mode, suffix_applied, route_label, route_path,
-              tagged, collision_suffix, reverted)
-            VALUES ($ts, $op, $on, $nn, $ne, $nm, $sa, $rl, $rp, $tg, $cs, 0);
-            SELECT last_insert_rowid();
-            """;
-        cmd.Parameters.AddWithValue("$ts", UtcNow());
-        cmd.Parameters.AddWithValue("$op", originalPath);
-        cmd.Parameters.AddWithValue("$on", originalName);
-        cmd.Parameters.AddWithValue("$nn", newName);
-        cmd.Parameters.AddWithValue("$ne", nameEntered);
-        cmd.Parameters.AddWithValue("$nm", namingMode);
-        cmd.Parameters.AddWithValue("$sa", suffixApplied);
-        cmd.Parameters.AddWithValue("$rl", routeLabel);
-        cmd.Parameters.AddWithValue("$rp", routePath);
-        cmd.Parameters.AddWithValue("$tg", tagged ? 1 : 0);
-        cmd.Parameters.AddWithValue("$cs", collisionSuffix);
-        return (long)cmd.ExecuteScalar()!;
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO history (ts_utc, original_path, original_name, new_name,
+                  name_entered, naming_mode, suffix_applied, route_label, route_path,
+                  tagged, collision_suffix, reverted)
+                VALUES ($ts, $op, $on, $nn, $ne, $nm, $sa, $rl, $rp, $tg, $cs, 0);
+                SELECT last_insert_rowid();
+                """;
+            cmd.Parameters.AddWithValue("$ts", UtcNow());
+            cmd.Parameters.AddWithValue("$op", originalPath);
+            cmd.Parameters.AddWithValue("$on", originalName);
+            cmd.Parameters.AddWithValue("$nn", newName);
+            cmd.Parameters.AddWithValue("$ne", nameEntered);
+            cmd.Parameters.AddWithValue("$nm", namingMode);
+            cmd.Parameters.AddWithValue("$sa", suffixApplied);
+            cmd.Parameters.AddWithValue("$rl", routeLabel);
+            cmd.Parameters.AddWithValue("$rp", routePath);
+            cmd.Parameters.AddWithValue("$tg", tagged ? 1 : 0);
+            cmd.Parameters.AddWithValue("$cs", collisionSuffix);
+            return (long)cmd.ExecuteScalar()!;
+        }
     }
 
     public void MarkReverted(long rowId)
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText =
-            "UPDATE history SET reverted = 1, reverted_ts = $ts WHERE id = $id";
-        cmd.Parameters.AddWithValue("$ts", UtcNow());
-        cmd.Parameters.AddWithValue("$id", rowId);
-        cmd.ExecuteNonQuery();
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText =
+                "UPDATE history SET reverted = 1, reverted_ts = $ts WHERE id = $id";
+            cmd.Parameters.AddWithValue("$ts", UtcNow());
+            cmd.Parameters.AddWithValue("$id", rowId);
+            cmd.ExecuteNonQuery();
+        }
     }
 
     public int Count()
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM history";
-        return Convert.ToInt32(cmd.ExecuteScalar());
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM history";
+            return Convert.ToInt32(cmd.ExecuteScalar());
+        }
     }
 
     public List<IReadOnlyDictionary<string, object>> Rows(int? limit = null)
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT * FROM history ORDER BY id DESC" +
-                          (limit is { } n ? $" LIMIT {n}" : "");
-        return Read(cmd);
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT * FROM history ORDER BY id DESC" +
+                              (limit is { } n ? $" LIMIT {n}" : "");
+            return Read(cmd);   // fully materialized before the lock is released
+        }
     }
 
     private const string RankedNamesSql =
@@ -191,15 +222,20 @@ public sealed class History : IDisposable
         " ORDER BY MAX(ts_utc) DESC, COUNT(*) DESC, MAX(id) DESC";
 
     /// <summary>Distinct committed names, most recently used first, then by how
-    /// often — the autocomplete order. Blank and reverted rows don't count.</summary>
+    /// often — the autocomplete order. Blank and reverted rows don't count.
+    /// Runs after every commit — the lock here is held only for this query
+    /// (index-only scan, no file I/O), never for longer.</summary>
     public List<string> RankedNames()
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = RankedNamesSql;
-        var names = new List<string>();
-        using var r = cmd.ExecuteReader();
-        while (r.Read()) names.Add(r.GetString(0));
-        return names;
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = RankedNamesSql;
+            var names = new List<string>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) names.Add(r.GetString(0));
+            return names;
+        }
     }
 
     /// <summary>EXPLAIN QUERY PLAN for RankedNames()'s exact SQL — shares the
@@ -207,13 +243,16 @@ public sealed class History : IDisposable
     /// silently drift from the query actually run. Test-only.</summary>
     internal string ExplainRankedNames()
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "EXPLAIN QUERY PLAN " + RankedNamesSql;
-        using var r = cmd.ExecuteReader();
-        var detailCol = r.GetOrdinal("detail");
-        var lines = new List<string>();
-        while (r.Read()) lines.Add(r.GetString(detailCol));
-        return string.Join("\n", lines);
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "EXPLAIN QUERY PLAN " + RankedNamesSql;
+            using var r = cmd.ExecuteReader();
+            var detailCol = r.GetOrdinal("detail");
+            var lines = new List<string>();
+            while (r.Read()) lines.Add(r.GetString(detailCol));
+            return string.Join("\n", lines);
+        }
     }
 
     /// <summary>Runs arbitrary SQL against the shared connection. Test-only —
@@ -234,21 +273,34 @@ public sealed class History : IDisposable
     /// make a test built on it silently stop asserting anything.</summary>
     internal string? IndexSql(string indexName)
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = $name";
-        cmd.Parameters.AddWithValue("$name", indexName);
-        return cmd.ExecuteScalar() as string;
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = $name";
+            cmd.Parameters.AddWithValue("$name", indexName);
+            return cmd.ExecuteScalar() as string;
+        }
     }
 
     /// <summary>Write the whole table to CSV (Excel-friendly BOM), chronological.
     /// Returns the row count. Cells that a spreadsheet would read as a formula
     /// (=, +, -, @, tab, CR) get a leading apostrophe so opening the file can't
-    /// execute anything.</summary>
+    /// execute anything.
+    ///
+    /// ExportCsv can be slow — the file it writes to may itself be on a
+    /// network share — so the lock below covers ONLY the SELECT that reads
+    /// the table into memory, not the write loop that follows. A commit
+    /// running on another thread waits, at worst, for one table scan to
+    /// finish; it never waits for the CSV file to hit disk.</summary>
     public int ExportCsv(string dest)
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT * FROM history ORDER BY id";
-        var rows = Read(cmd);
+        List<IReadOnlyDictionary<string, object>> rows;
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT * FROM history ORDER BY id";
+            rows = Read(cmd);
+        }
         using var writer = new StreamWriter(dest, false, new System.Text.UTF8Encoding(true));
         writer.WriteLine(string.Join(",", Columns.Select(CsvField)));
         foreach (var row in rows)
@@ -285,10 +337,20 @@ public sealed class History : IDisposable
     /// on a network share, never "wal". Exposed for the network-safety test.</summary>
     public string JournalMode()
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "PRAGMA journal_mode";
-        return (string)cmd.ExecuteScalar()!;
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "PRAGMA journal_mode";
+            return (string)cmd.ExecuteScalar()!;
+        }
     }
 
-    public void Dispose() => _conn.Dispose();
+    /// <summary>Takes the same lock every command does, so this cannot run
+    /// while a LogCommit, RankedNames, ExportCsv query, etc. is in flight on
+    /// another thread — it simply waits its turn, then closes the
+    /// connection once nothing else is using it.</summary>
+    public void Dispose()
+    {
+        lock (_gate) { _conn.Dispose(); }
+    }
 }
