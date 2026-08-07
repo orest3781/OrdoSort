@@ -1095,7 +1095,15 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     {
         var picked = _dialogs.AskOpenFile("JSON files (*.json)|*.json|All files (*.*)|*.*");
         if (picked is null) return current;
-        if (_cfgPath is not { } cfgPath) return picked;
+        // No config path to resolve beside means no way to run the same
+        // confinement check a save would — NOT license to skip it and hand
+        // back the raw, unvalidated absolute path (that was this method's
+        // own bug: the code returned `picked` here while this doc comment
+        // already claimed it fell through to `current`, same as a
+        // cancelled dialog). Unreachable from the shipped app (MainWindow
+        // always constructs SettingsViewModel with a real cfgPath) but
+        // exercised by tools/OrdoSort.Smoke/DialogCheck.cs, which does not.
+        if (_cfgPath is not { } cfgPath) return current;
         try
         {
             Config.ResolveBesideForWrite(cfgPath, picked, keyName);

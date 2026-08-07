@@ -367,6 +367,73 @@ public class SettingsViewModelTests : IDisposable
         Assert.Equal(Path.Combine(_dir, "audit.sqlite"), vm.HistoryDb);
     }
 
+    // -------------------------------------- PickSideFile (Browse... for
+    // destinations/monitored-folders/alerts/box-labels) — 2026-08-07 audit,
+    // Task 1b round 1: this method's own branching, not the shared
+    // Config.ResolveBesideForWrite confinement check it calls, is what these
+    // tests are proving. Only DestinationsFile is exercised — the other
+    // three Browse*FileCommands share the exact same PickSideFile body.
+
+    [Fact]
+    public void BrowsingToAPathInsideTheConfigDirectoryIsAccepted()
+    {
+        var cfgPath = Path.Combine(_dir, "config.json");
+        Config.Save(new Config(), cfgPath);
+        var cfg = Config.Load(cfgPath);
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
+
+        var insidePath = Path.Combine(_dir, "picked-destinations.json");
+        _dialogs.NextOpenFile = insidePath;
+        vm.BrowseDestinationsFileCommand.Execute(null);
+
+        Assert.Equal(insidePath, vm.DestinationsFile);
+        Assert.Empty(_dialogs.Warnings);
+    }
+
+    [Fact]
+    public void BrowsingToAnAbsolutePathOutsideTheConfigDirectoryIsRejectedAndKeepsTheCurrentValue()
+    {
+        var cfgPath = Path.Combine(_dir, "config.json");
+        Config.Save(new Config(), cfgPath);
+        var cfg = Config.Load(cfgPath);
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
+        var before = vm.DestinationsFile;   // the default, "destinations.json"
+
+        var outsideDir = Directory.CreateDirectory(
+            Path.Combine(Path.GetTempPath(), "ordoset_outside_" + Guid.NewGuid())).FullName;
+        try
+        {
+            _dialogs.NextOpenFile = Path.Combine(outsideDir, "evil-destinations.json");
+            vm.BrowseDestinationsFileCommand.Execute(null);
+
+            Assert.Equal(before, vm.DestinationsFile);   // refused: field left unchanged
+            var warning = Assert.Single(_dialogs.Warnings);
+            Assert.Contains("destinations_file", warning.Message);
+        }
+        finally
+        {
+            try { Directory.Delete(outsideDir, true); } catch { /* best effort */ }
+        }
+    }
+
+    [Fact]
+    public void BrowsingWithNoConfigPathYetKeepsTheCurrentValueInsteadOfAcceptingTheRawPick()
+    {
+        // No cfgPath means PickSideFile has nothing to resolve beside, so it
+        // can't run the confinement check a real save would — that is NOT
+        // license to hand back the picker's raw, unvalidated absolute path.
+        // Round 1 fix: this branch used to return the unvalidated `picked`
+        // path while the doc comment right above it already claimed the
+        // field's current value was kept, same as a cancelled dialog.
+        var vm = new SettingsViewModel(new Config(), _dialogs);   // cfgPath left null
+        var before = vm.DestinationsFile;
+
+        _dialogs.NextOpenFile = @"C:\anywhere\destinations.json";
+        vm.BrowseDestinationsFileCommand.Execute(null);
+
+        Assert.Equal(before, vm.DestinationsFile);
+    }
+
     [Fact]
     public void PathNotesSurfaceProblemsLive()
     {
