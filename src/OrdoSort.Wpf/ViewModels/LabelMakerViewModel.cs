@@ -94,6 +94,20 @@ public sealed class LabelMakerViewModel : ObservableObject
     // win — this is what lets it.
     private readonly HashSet<LabelClientVm> _numberEdited = new();
 
+    // The id each row is CURRENTLY on disk under (or "" for a row this
+    // session added and never persisted). Set once, at Hook time, from
+    // whatever the row's id was at that moment — NOT updated on every
+    // rename, so it always points at the true on-disk identity no matter how
+    // many times the row gets renamed again before the next Persist. This is
+    // what lets a renamed row's counter follow it: the old-id row Persist is
+    // about to delete (see _removedIds) may hold a peer's concurrent
+    // advance, and that's the value that has to survive under the new id,
+    // not whatever stale number the VM loaded at window-open time. Reset to
+    // the (now current) id for every row after each successful Persist, so
+    // the next round of renames is measured against the state that was just
+    // written.
+    private readonly Dictionary<LabelClientVm, string> _originId = new();
+
     // Set while ClaimNumbers pushes its post-claim number onto the VM: that
     // update is display-only (the store already holds the advanced number),
     // so it must NOT be mistaken for a user edit and dirty the client.
@@ -160,8 +174,25 @@ public sealed class LabelMakerViewModel : ObservableObject
             // it is the one destructive act in this window, so it confirms
             // (a just-added blank row goes quietly)
             var pristine = s.Id.Length == 0 && s.NextNumberText.Trim() is "" or "1";
+            // Show what's actually about to be destroyed, not the VM's
+            // possibly-stale in-memory number — a peer may have advanced
+            // this client's counter since the window opened, and the one
+            // dialog whose whole job is "here is what you're losing" should
+            // not lie about it. Best-effort: a busy/corrupt file falls back
+            // to the VM's own number rather than blocking removal on a read.
+            var shownNumber = s.NextNumberText;
+            if (!pristine)
+            {
+                try
+                {
+                    var onDisk = BoxLabelStore.Read(_boxLabelsPath).LabelClients
+                        .FirstOrDefault(c => c.Id == s.Id);
+                    if (onDisk is not null) shownNumber = onDisk.NextNumber.ToString();
+                }
+                catch (ConfigException) { /* fall back to the VM's number above */ }
+            }
             if (!pristine && !_dialogs.Confirm(
-                    $"Remove \"{s.Id}\"?\n\nIts running label number ({s.NextNumberText}) "
+                    $"Remove \"{s.Id}\"?\n\nIts running label number ({shownNumber}) "
                     + "will be lost — re-adding the client starts back at 1.",
                     "OrdoSort — label maker"))
                 return;
@@ -194,6 +225,7 @@ public sealed class LabelMakerViewModel : ObservableObject
     private LabelClientVm Hook(LabelClientVm vm)
     {
         var lastId = vm.Id;
+        _originId[vm] = lastId;   // the id (if any) this row is on disk under right now
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(LabelClientVm.Id) && vm.Id != lastId)
@@ -503,7 +535,19 @@ public sealed class LabelMakerViewModel : ObservableObject
     /// retention days) must not roll a peer's counter advance back to
     /// whatever was on screen when this window opened — that would reissue
     /// numbers already printed on physical boxes. A deliberate edit of the
-    /// number itself still lands; this only guards the untouched case.</summary>
+    /// number itself still lands; this only guards the untouched case.
+    ///
+    /// A rename is the same hazard wearing a different hat: the row's OLD id
+    /// is about to be deleted from disk by the <c>_removedIds</c> sweep
+    /// below, and without help the row lands under its NEW id carrying
+    /// whatever stale NextNumber the VM loaded at window-open time — same
+    /// silent rollback, just reached by renaming an unrelated field (the id)
+    /// instead of editing one. So before that sweep runs, every dirty row
+    /// whose id no longer matches <see cref="_originId"/> has its ORIGINAL
+    /// on-disk row's fresh NextNumber captured, and that carried value (not
+    /// the VM's stale one) is what a rename writes under the new id — again
+    /// unless <see cref="_numberEdited"/> says the user deliberately typed a
+    /// number of their own, which still wins.</summary>
     internal void Persist()
     {
         if (_dirty.Count == 0 && _removedIds.Count == 0) return;   // zero-edit close writes nothing
@@ -523,12 +567,35 @@ public sealed class LabelMakerViewModel : ObservableObject
         {
             BoxLabelStore.Mutate(_boxLabelsPath, doc =>
             {
+                // Snapshot each renamed row's ORIGINAL on-disk NextNumber
+                // before the sweep below deletes that row — it's the only
+                // place a peer's concurrent advance under the old id could
+                // be sitting.
+                var carried = new Dictionary<LabelClientVm, long>();
+                foreach (var vm in Clients)
+                {
+                    if (!_dirty.Contains(vm)) continue;
+                    if (!_originId.TryGetValue(vm, out var origin)) continue;
+                    if (origin.Length == 0 || origin == vm.Id) continue;   // never on disk, or not renamed
+                    var originRow = doc.LabelClients.FirstOrDefault(c => c.Id == origin);
+                    if (originRow is not null) carried[vm] = originRow.NextNumber;
+                }
+
                 doc.LabelClients.RemoveAll(c => _removedIds.Contains(c.Id));
                 foreach (var vm in Clients)
                 {
                     if (!_dirty.Contains(vm)) continue;        // untouched: disk wins
                     var fresh = doc.LabelClients.FirstOrDefault(c => c.Id == vm.Id);
-                    if (fresh is null) doc.LabelClients.Add(vm.ToClient());
+                    if (fresh is null)
+                    {
+                        var added = vm.ToClient();
+                        // a rename landing on a fresh id: the counter
+                        // follows the client here too, unless the user also
+                        // deliberately typed a number of their own
+                        if (!_numberEdited.Contains(vm) && carried.TryGetValue(vm, out var carriedNumber))
+                            added.NextNumber = carriedNumber;
+                        doc.LabelClients.Add(added);
+                    }
                     else
                     {
                         var edited = vm.ToClient();
@@ -543,6 +610,10 @@ public sealed class LabelMakerViewModel : ObservableObject
                 return 0;
             });
             _dirty.Clear(); _removedIds.Clear(); _numberEdited.Clear();
+            // every surviving row is now on disk under its current id —
+            // resync _originId so the next round of renames (before the
+            // next Persist) is measured from here, not from before this write
+            foreach (var vm in Clients) _originId[vm] = vm.Id;
         }
         catch (ConfigException ex) { _dialogs.Warn(ex.Message, "OrdoSort — label maker"); }
     }

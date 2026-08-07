@@ -272,6 +272,60 @@ public class LabelMakerViewModelTests : IDisposable
     }
 
     [Fact]
+    public void RemovalConfirmationShowsTheFreshOnDiskNumberNotTheStaleVmValue()
+    {
+        // The confirm dialog's whole job is "here is what you're about to
+        // lose" — showing the VM's stale in-memory number (loaded when the
+        // window opened) instead of what a peer has since advanced it to is
+        // a lie about the one thing this prompt exists to state accurately.
+        var path = PathWith(new LabelClient { Id = "MEDR", NextNumber = 100 });
+        var vm = Vm(path);
+
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "MEDR").NextNumber = 140; return 0; });
+
+        _dialogs.ConfirmAnswer = false;   // decline — only checking what was shown
+        vm.RemoveClientCommand.Execute(null);
+
+        var shown = Assert.Single(_dialogs.Confirms).Message;
+        Assert.Contains("140", shown);
+        Assert.DoesNotContain("(100)", shown);
+    }
+
+    [Fact]
+    public void RemovingThenReAddingTheSameIdInOneSessionStartsAtOneAsThePromptSays()
+    {
+        // Audit: does remove-then-re-add-the-same-id in one session reopen
+        // the counter-rollback hole? No — Remove is the one destructive,
+        // explicitly-confirmed act in this window, and the confirmation text
+        // itself promises "re-adding the client starts back at 1." A freshly
+        // Added row's NextNumberText defaults to "1" and was never flagged
+        // in _numberEdited, so it always takes that fresh-add path — not the
+        // merge-into-existing-disk-row path — regardless of what a peer did
+        // to the old row in between. This test locks that promise in; it is
+        // not a regression test for a bug (nothing here changed to fix it).
+        var path = PathWith(new LabelClient { Id = "OLDX", DestroyDays = 30, NextNumber = 42 });
+        var vm = Vm(path);
+
+        // a peer even advances the counter in between, just to prove it
+        // makes no difference to the documented "starts back at 1" outcome
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "OLDX").NextNumber = 140; return 0; });
+
+        _dialogs.ConfirmAnswer = true;
+        vm.RemoveClientCommand.Execute(null);
+
+        vm.AddClientCommand.Execute(null);
+        vm.Selected!.Id = "OLDX";     // same id, brand-new row, never touched NextNumberText
+
+        vm.Persist();
+
+        var only = Assert.Single(BoxLabelStore.Read(path).LabelClients);
+        Assert.Equal("OLDX", only.Id);
+        Assert.Equal(1, only.NextNumber);   // exactly what the remove prompt promised
+    }
+
+    [Fact]
     public void AddRequestsFocusOnTheIdBox()
     {
         var vm = Vm(PathWith());
@@ -379,6 +433,75 @@ public class LabelMakerViewModelTests : IDisposable
         Assert.Equal("NEWX", only.Id);
         Assert.Equal(42, only.NextNumber);       // untouched field carries over
         Assert.Equal(30, only.DestroyDays);
+    }
+
+    [Fact]
+    public void RenamingAClientCarriesAPeersConcurrentCounterAdvanceForwardToTheNewId()
+    {
+        // Same hazard as EditingAnUnrelatedFieldCannotRollBackAPeersCounterAdvance,
+        // reached through a different unrelated-field edit: renaming touches
+        // only Id, never NextNumberText, so without help the row's stale
+        // in-memory number lands under the new id while the peer's advance
+        // (sitting on the now-deleted old-id row) is silently destroyed.
+        var path = PathWith(new LabelClient { Id = "XXXX", DestroyDays = 30, NextNumber = 100 });
+        var vm = Vm(path);
+
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "XXXX").NextNumber = 140; return 0; });
+
+        vm.Clients.Single().Id = "yyyy";   // rename only — NextNumberText untouched
+
+        vm.Persist();
+
+        var only = Assert.Single(BoxLabelStore.Read(path).LabelClients);
+        Assert.Equal("YYYY", only.Id);
+        Assert.Equal(140, only.NextNumber);   // the peer's advance followed the rename — NOT rolled back to 100
+    }
+
+    [Fact]
+    public void DeliberatelyEditingTheNumberDuringARenameStillWins()
+    {
+        // The rename fix above must not make the counter read-only either:
+        // if the user renames AND deliberately retypes NextNumberText in the
+        // same session, their typed value lands — not the carried-forward
+        // disk value.
+        var path = PathWith(new LabelClient { Id = "XXXX", DestroyDays = 30, NextNumber = 100 });
+        var vm = Vm(path);
+
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "XXXX").NextNumber = 140; return 0; });
+
+        var c = vm.Clients.Single();
+        c.Id = "yyyy";
+        c.NextNumberText = "999";   // deliberate correction, on top of the rename
+
+        vm.Persist();
+
+        Assert.Equal(999, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+    }
+
+    [Fact]
+    public void RenamingTwiceInOneSessionStillCarriesTheOriginalCounterForward()
+    {
+        // Multi-hop rename (a typo fixed twice before ever saving): only the
+        // FIRST id was ever actually on disk, so that's the row a peer's
+        // advance could be sitting on — _originId must track back to it, not
+        // just to the immediately-previous in-memory id.
+        var path = PathWith(new LabelClient { Id = "XXXX", DestroyDays = 30, NextNumber = 100 });
+        var vm = Vm(path);
+
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "XXXX").NextNumber = 140; return 0; });
+
+        var c = vm.Clients.Single();
+        c.Id = "yyyy";
+        c.Id = "zzzz";
+
+        vm.Persist();
+
+        var only = Assert.Single(BoxLabelStore.Read(path).LabelClients);
+        Assert.Equal("ZZZZ", only.Id);
+        Assert.Equal(140, only.NextNumber);
     }
 
     [Fact]
