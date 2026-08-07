@@ -81,6 +81,19 @@ public sealed class LabelMakerViewModel : ObservableObject
     private readonly HashSet<LabelClientVm> _dirty = new();
     private readonly HashSet<string> _removedIds = new();
 
+    // _dirty is row-granularity ("something on this client changed"), which
+    // is too coarse for NextNumber specifically: editing e.g. retention days
+    // dirties the whole row, and the row's NextNumberText is whatever was on
+    // screen when the window opened — not necessarily what's on disk now (a
+    // peer may have advanced it via Print/SavePdf since). Writing that stale
+    // value back would reissue box numbers already on physical boxes. This
+    // second, finer set records only "the user actually edited
+    // NextNumberText on this row" so Persist can special-case that one field:
+    // disk wins UNLESS this set says otherwise, even when the row is
+    // otherwise dirty for an unrelated reason. A deliberate edit must still
+    // win — this is what lets it.
+    private readonly HashSet<LabelClientVm> _numberEdited = new();
+
     // Set while ClaimNumbers pushes its post-claim number onto the VM: that
     // update is display-only (the store already holds the advanced number),
     // so it must NOT be mistaken for a user edit and dirty the client.
@@ -191,7 +204,15 @@ public sealed class LabelMakerViewModel : ObservableObject
                 if (lastId.Length > 0) _removedIds.Add(lastId);
                 lastId = vm.Id;
             }
-            if (!_suppressDirty && vm.Id.Length > 0) _dirty.Add(vm);
+            if (!_suppressDirty && vm.Id.Length > 0)
+            {
+                _dirty.Add(vm);
+                // only a direct edit of the number box counts — Summary's own
+                // change notification (raised alongside it, see
+                // LabelClientVm.NextNumberText) must not trip this
+                if (e.PropertyName == nameof(LabelClientVm.NextNumberText))
+                    _numberEdited.Add(vm);
+            }
             RefreshPreview();
         };
         return vm;
@@ -473,7 +494,16 @@ public sealed class LabelMakerViewModel : ObservableObject
     /// concurrent counter advance under that id) would be discarded with no
     /// warning. Nothing here blocks a duplicate id from existing transiently
     /// (Problems() only ever gates the currently-Selected row), so this is
-    /// the one place that must catch it before it reaches disk.</summary>
+    /// the one place that must catch it before it reaches disk.
+    ///
+    /// Within a dirty row, NextNumber gets one further guard beyond "disk
+    /// wins for untouched clients": it also loses to the disk for a client
+    /// that IS otherwise dirty, unless <see cref="_numberEdited"/> says the
+    /// user actually edited NextNumberText. Editing an unrelated field (e.g.
+    /// retention days) must not roll a peer's counter advance back to
+    /// whatever was on screen when this window opened — that would reissue
+    /// numbers already printed on physical boxes. A deliberate edit of the
+    /// number itself still lands; this only guards the untouched case.</summary>
     internal void Persist()
     {
         if (_dirty.Count == 0 && _removedIds.Count == 0) return;   // zero-edit close writes nothing
@@ -503,13 +533,16 @@ public sealed class LabelMakerViewModel : ObservableObject
                     {
                         var edited = vm.ToClient();
                         fresh.DestroyDays = edited.DestroyDays;
-                        fresh.NextNumber = edited.NextNumber;
+                        // NextNumber: disk wins unless the user actually
+                        // edited the number box on this row — see the
+                        // Persist doc comment and _numberEdited above.
+                        if (_numberEdited.Contains(vm)) fresh.NextNumber = edited.NextNumber;
                         fresh.Extras = edited.Extras;
                     }
                 }
                 return 0;
             });
-            _dirty.Clear(); _removedIds.Clear();
+            _dirty.Clear(); _removedIds.Clear(); _numberEdited.Clear();
         }
         catch (ConfigException ex) { _dialogs.Warn(ex.Message, "OrdoSort — label maker"); }
     }

@@ -411,6 +411,47 @@ public class LabelMakerViewModelTests : IDisposable
     }
 
     [Fact]
+    public void EditingAnUnrelatedFieldCannotRollBackAPeersCounterAdvance()
+    {
+        // Station A opens with client X at 100. Station B (a different
+        // window/station, simulated here by a raw Mutate call) advances X to
+        // 140 while A's window is still open. A never touches NextNumberText
+        // — only an unrelated field — so A's stale in-memory 100 must not
+        // overwrite B's 140 when A closes.
+        var path = PathWith(new LabelClient { Id = "XXXX", DestroyDays = 30, NextNumber = 100 });
+        var vm = Vm(path);
+
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "XXXX").NextNumber = 140; return 0; });
+
+        vm.Clients.Single().DestroyDaysText = "60";   // unrelated edit — retention only
+        vm.Persist();
+
+        var stored = BoxLabelStore.Read(path).LabelClients.Single();
+        Assert.Equal(60, stored.DestroyDays);    // our edit landed
+        Assert.Equal(140, stored.NextNumber);    // the peer's advance survives — NOT rolled back to 100
+    }
+
+    [Fact]
+    public void DeliberatelyEditingTheNextNumberFieldStillWinsOverTheDisk()
+    {
+        // The fix above must not make the counter read-only: a user who
+        // actually types a new NextNumberText is making a deliberate
+        // correction, and that value must land even though the disk holds a
+        // peer's own concurrent advance at Persist time.
+        var path = PathWith(new LabelClient { Id = "XXXX", DestroyDays = 30, NextNumber = 100 });
+        var vm = Vm(path);
+
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "XXXX").NextNumber = 140; return 0; });
+
+        vm.Clients.Single().NextNumberText = "500";   // deliberate correction
+        vm.Persist();
+
+        Assert.Equal(500, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+    }
+
+    [Fact]
     public void ClaimNumbersDoesNotDirtyItsClientSoAClaimAloneClosesWithoutWriting()
     {
         // ClaimNumbers already wrote the advance straight to the store — the
