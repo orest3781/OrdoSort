@@ -30,12 +30,23 @@ public static class HistoryBackup
             if (!File.Exists(dest))
                 File.Copy(dbPath, dest);   // once per day; File.Copy won't overwrite
 
-            // prune: keep the newest `keep` (names sort chronologically)
+            // prune: keep the newest `keep` (names sort chronologically).
+            // A stale backup can be read-only (or otherwise access-denied)
+            // as well as merely locked — File.Delete throws
+            // UnauthorizedAccessException for that, not IOException, and
+            // must be swallowed the same "best effort" way: today's copy
+            // (dest, above) has already landed by the time this loop runs,
+            // so letting either exception escape past this method's outer
+            // catch would return null and light a false "backup failed"
+            // banner over a copy that actually succeeded (Minor 2, final
+            // review 2026-08-07).
             var backups = Directory.GetFiles(backupDir, "history-*.sqlite")
                 .OrderByDescending(f => f).ToList();
             foreach (var old in backups.Skip(keep))
             {
-                try { File.Delete(old); } catch (IOException) { /* best effort */ }
+                try { File.Delete(old); }
+                catch (IOException) { /* best effort */ }
+                catch (UnauthorizedAccessException) { /* best effort */ }
             }
             return dest;
         }

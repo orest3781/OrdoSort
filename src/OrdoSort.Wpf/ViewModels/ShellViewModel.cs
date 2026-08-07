@@ -57,8 +57,10 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     // Side-file keys ("destinations_file", etc.) already named in a "not
     // saved" warning this run — see WarnSaveFailure's doc comment for why a
-    // confinement-refused key is only ever worth saying once per session,
-    // never once per save.
+    // confinement-refused key is only ever worth saying once per session for
+    // an UNRELATED background save (SaveConfigNow), never once per save —
+    // and for why ApplySettingsAsync's own save bypasses that suppression
+    // instead of consulting this set.
     private readonly HashSet<string> _warnedRefusedSideFileKeys = new(StringComparer.Ordinal);
 
     public ShellViewModel(Config cfg, string cfgPath, IPdfViewer viewer,
@@ -1241,8 +1243,29 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// suppressed: <paramref name="refusedKeys"/> is empty whenever one of
     /// those is mixed into the same failure, by the 4-arg overload's own
     /// contract, so the "warn every time" branch below still fires for it
-    /// even alongside an already-known refusal.</summary>
-    private void WarnSaveFailure(string error, IReadOnlyList<string> refusedKeys)
+    /// even alongside an already-known refusal.
+    ///
+    /// <paramref name="alwaysWarn"/> (final review, Important 1, 2026-08-07)
+    /// bypasses the once-per-session suppression entirely. It exists for
+    /// exactly one caller — <see cref="ApplySettingsAsync"/> — whose whole
+    /// job on the path that reaches this method is persisting the Settings
+    /// window's own edits to Routes/WatchFolders/AlertTexts. The
+    /// suppression above is correct for <see cref="SaveConfigNow"/>: a
+    /// background save of an unrelated field (tile-visibility, merge
+    /// headers) shouldn't re-nag about a side-file path the user already
+    /// heard about. It is wrong for an explicit Settings OK: if a save had
+    /// already warned once earlier in the session (a background save, or an
+    /// earlier Settings attempt), the suppression would silently eat the
+    /// dialog for THIS save too — and this save is the one whose entire
+    /// purpose was writing the user's just-made edits to those side files.
+    /// Without <paramref name="alwaysWarn"/>, those edits would live only in
+    /// <c>_cfg</c>, vanish on restart, and never reach a peer station, with
+    /// no dialog telling the user any of that happened. The refused keys are
+    /// still added to <c>_warnedRefusedSideFileKeys</c> either way, so a
+    /// later background save at this same station still gets the
+    /// once-per-session treatment rather than re-nagging on every unrelated
+    /// field edit.</summary>
+    private void WarnSaveFailure(string error, IReadOnlyList<string> refusedKeys, bool alwaysWarn = false)
     {
         if (refusedKeys.Count == 0)
         {
@@ -1250,7 +1273,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             return;
         }
         var newlyRefused = refusedKeys.Where(k => _warnedRefusedSideFileKeys.Add(k)).ToList();
-        if (newlyRefused.Count > 0)
+        if (alwaysWarn || newlyRefused.Count > 0)
             _dialogs.Warn(error, "OrdoSort — settings not saved");
     }
 
@@ -1592,8 +1615,14 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         catch (ConfigException) { /* keep what Settings opened with */ }
 
         _cfg = cfg;
+        // alwaysWarn: true — final review, Important 1. This save IS the
+        // Settings window's persist step; a suppression meant for
+        // background saves of unrelated fields must never eat the one
+        // dialog that would tell the user their just-made Routes/
+        // WatchFolders/AlertTexts edits didn't reach disk. See
+        // WarnSaveFailure's doc comment.
         if (!Config.TrySave(cfg, _cfgPath, out var error, out var refusedKeys))
-            WarnSaveFailure(error, refusedKeys);
+            WarnSaveFailure(error, refusedKeys, alwaysWarn: true);
         _session = new Session(cfg, _history);
         await _scheduler.Run(() => _watch.SetFolders(cfg.Inbox, cfg.Deferred));
         _watch.SetPollInterval(cfg.PollSeconds * 1000);   // adopt a changed cadence live

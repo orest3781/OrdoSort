@@ -73,13 +73,20 @@ public class SessionTests : IDisposable
         var toOne = new object[] { 1 };
         var toZero = new object[] { 0 };
 
-        var stop = false;
+        // Round-2 review, Minor 3: the stop signal used to be a captured
+        // plain `bool`, with nothing stopping the JIT from hoisting the
+        // flipper/reader loops' reads of it and spinning forever past the
+        // 500ms budget — a suite-hang mode with no xUnit timeout to catch
+        // it. CancellationTokenSource gives the same handshake proper
+        // cross-thread visibility (IsCancellationRequested/Cancel are
+        // documented thread-safe) at no cost to what's under test.
+        using var cts = new CancellationTokenSource();
         Exception? caught = null;
         long iterations = 0;
 
         var flipper = Task.Run(() =>
         {
-            while (!stop)
+            while (!cts.IsCancellationRequested)
             {
                 posSetter.Invoke(session, toOne);
                 posSetter.Invoke(session, toZero);
@@ -87,7 +94,7 @@ public class SessionTests : IDisposable
         });
         var reader = Task.Run(() =>
         {
-            while (!stop && caught is null)
+            while (!cts.IsCancellationRequested && caught is null)
             {
                 try { _ = session.Current; }
                 catch (Exception ex) { caught = ex; break; }
@@ -96,7 +103,7 @@ public class SessionTests : IDisposable
         });
 
         await Task.Delay(500);
-        stop = true;
+        cts.Cancel();
         await Task.WhenAll(flipper, reader);
 
         // Check the real defect first: a fast failure (a handful of reads
@@ -142,13 +149,16 @@ public class SessionTests : IDisposable
         var bigEnough = new object[] { new List<string> { "a.pdf", "b.pdf" } };   // Pos=1 in range
         var tooSmall = new object[] { new List<string> { "a.pdf" } };             // Pos=1 out of range
 
-        var stop = false;
+        // Round-2 review, Minor 3 — same fix as the Pos test above: a
+        // CancellationTokenSource instead of a captured plain `bool` so the
+        // stop signal can't be hoisted out of the flipper/reader loops.
+        using var cts = new CancellationTokenSource();
         Exception? caught = null;
         long iterations = 0;
 
         var flipper = Task.Run(() =>
         {
-            while (!stop)
+            while (!cts.IsCancellationRequested)
             {
                 queueSetter.Invoke(session, bigEnough);
                 queueSetter.Invoke(session, tooSmall);
@@ -156,7 +166,7 @@ public class SessionTests : IDisposable
         });
         var reader = Task.Run(() =>
         {
-            while (!stop && caught is null)
+            while (!cts.IsCancellationRequested && caught is null)
             {
                 try { _ = session.Current; }
                 catch (Exception ex) { caught = ex; break; }
@@ -165,7 +175,7 @@ public class SessionTests : IDisposable
         });
 
         await Task.Delay(500);
-        stop = true;
+        cts.Cancel();
         await Task.WhenAll(flipper, reader);
 
         Assert.Null(caught);

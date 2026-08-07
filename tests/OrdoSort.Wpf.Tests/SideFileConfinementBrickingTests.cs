@@ -106,4 +106,54 @@ public class SideFileConfinementBrickingTests
         var alerts = File.ReadAllText(Path.Combine(fx.Dir, "alerts.json"));
         Assert.Contains("URGENT", alerts);
     }
+
+    /// <summary>Final review, Important 1 (2026-08-07): the once-per-session
+    /// suppression this class otherwise proves correct for <c>SaveConfigNow</c>
+    /// is WRONG for <c>ApplySettingsAsync</c> — whose entire job is
+    /// persisting Routes/WatchFolders/AlertTexts to these same three side
+    /// files. Before the fix, a station that had already been warned once
+    /// this session (a background save, exactly like the first half of
+    /// <see cref="SideFileConfinementDoesNotBrickRepeatedOrdinarySaves"/>
+    /// above) would then open Settings, add a route, click OK — and the
+    /// write would fail on the very same confinement refusal with NO dialog
+    /// at all: the edit lives only in memory, is lost on restart, and no
+    /// peer ever sees it. This fails against the pre-fix ShellViewModel
+    /// (reverted): <c>fx.Dialogs.Warnings</c> has only the one entry from
+    /// the earlier background save; the explicit Settings OK adds nothing,
+    /// and <c>Assert.Equal(2, ...)</c> below sees 1.</summary>
+    [Fact]
+    public void ApplySettingsAlwaysWarnsEvenAfterTheSameRefusalWasAlreadyWarnedOnce()
+    {
+        var outsideDir = Directory.CreateDirectory(
+            Path.Combine(Path.GetTempPath(), "ordo_outside_" + Guid.NewGuid())).FullName;
+        try
+        {
+            var outsideDestinations = Path.Combine(outsideDir, "destinations.json");
+            using var fx = new ShellFixture(cfg => cfg.DestinationsFile = outsideDestinations);
+            fx.Shell.Initialize();
+
+            // Warm the once-per-session suppression exactly the way a real
+            // station would: an unrelated background save.
+            fx.Shell.TileVisibilityIndex = 1;   // "all"
+            Assert.Single(fx.Dialogs.Warnings);
+            Assert.Contains("destinations_file", fx.Dialogs.Warnings[0].Message);
+
+            // Now drive an explicit Settings OK: the user opens Settings and
+            // adds a route. This save is refused for the exact same
+            // still-broken destinations_file — it must be reported, not
+            // silently eaten by the suppression above.
+            var fresh = fx.Shell.FreshConfigForSettings();
+            var mine = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(fresh))!;
+            mine.Routes.Add(new Route { Label = "NewRoute", Path = fx.RouteDir, Color = "#123456" });
+
+            fx.Shell.ApplySettings(mine);
+
+            Assert.Equal(2, fx.Dialogs.Warnings.Count);   // the explicit save reported its own failure too
+            Assert.Contains("destinations_file", fx.Dialogs.Warnings[1].Message);
+        }
+        finally
+        {
+            try { Directory.Delete(outsideDir, true); } catch { /* best effort */ }
+        }
+    }
 }
