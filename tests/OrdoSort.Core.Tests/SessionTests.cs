@@ -105,4 +105,70 @@ public class SessionTests : IDisposable
         Assert.Null(caught);
         Assert.True(iterations > 1000, $"only {iterations} reads happened — budget too short to mean anything");
     }
+
+    /// <summary>Round-1 review finding: <c>Current</c> reads <c>Queue</c>
+    /// TWICE too — once for <c>.Count</c>, once for the indexer — the
+    /// identical hazard class as Pos, in the identical expression.
+    /// <c>Queue</c> is reassigned wholesale only by <c>Start()</c>; today
+    /// every UI path that could call <c>Start()</c> while a commit is live
+    /// is gated by ShellViewModel._busy, so there is no reachable crash
+    /// path in the shipped app. That is an unenforced ViewModel-level
+    /// convention, not a guarantee <c>Session</c> makes about itself.
+    ///
+    /// This uses the same technique as the Pos test above, and IS
+    /// deterministic in the same sense: reflection on Session's own private
+    /// Queue setter — the identical setter Start() calls — flips Queue
+    /// between a 2-element list (where the fixed Pos=1 below is in range)
+    /// and a 1-element list (where it is not), while Pos itself is held
+    /// fixed via the same private-setter technique so only the Queue swap
+    /// is under test. A foreground thread calls Current in a tight loop for
+    /// a 500ms budget. This does not drive the race through a real
+    /// Start()-during-a-commit interleaving (no such path exists today); it
+    /// isolates the same field-level access Current's getter performs,
+    /// exactly as the Pos test does for Pos.</summary>
+    [Fact]
+    public async Task CurrentDoesNotThrowWhenQueueIsMutatedBetweenItsTwoReads()
+    {
+        using var h = new History(Path.Combine(_dir, "h2.sqlite"));
+        var session = new Session(new Config(), h);
+        session.Start(new[] { "a.pdf", "b.pdf" });
+
+        var posSetter = typeof(Session).GetProperty(nameof(Session.Pos))!
+            .GetSetMethod(nonPublic: true)!;
+        posSetter.Invoke(session, new object[] { 1 });   // fixed for the whole test
+
+        var queueSetter = typeof(Session).GetProperty(nameof(Session.Queue))!
+            .GetSetMethod(nonPublic: true)!;
+        var bigEnough = new object[] { new List<string> { "a.pdf", "b.pdf" } };   // Pos=1 in range
+        var tooSmall = new object[] { new List<string> { "a.pdf" } };             // Pos=1 out of range
+
+        var stop = false;
+        Exception? caught = null;
+        long iterations = 0;
+
+        var flipper = Task.Run(() =>
+        {
+            while (!stop)
+            {
+                queueSetter.Invoke(session, bigEnough);
+                queueSetter.Invoke(session, tooSmall);
+            }
+        });
+        var reader = Task.Run(() =>
+        {
+            while (!stop && caught is null)
+            {
+                try { _ = session.Current; }
+                catch (Exception ex) { caught = ex; break; }
+                iterations++;
+            }
+        });
+
+        await Task.Delay(500);
+        stop = true;
+        await Task.WhenAll(flipper, reader);
+
+        Assert.Null(caught);
+        Assert.True(iterations > 1000, $"only {iterations} reads happened — budget too short to mean anything");
+    }
 }

@@ -94,8 +94,9 @@ public sealed class History : IDisposable
     private void Migrate()
     {
         var cols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        using (var cmd = _conn.CreateCommand())
+        lock (_gate)
         {
+            using var cmd = _conn.CreateCommand();
             cmd.CommandText = "PRAGMA table_info(history)";
             using var r = cmd.ExecuteReader();
             while (r.Read()) cols.Add(r.GetString(1));

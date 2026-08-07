@@ -48,15 +48,24 @@ public sealed class Session
     // thread (progress line, preview, autocomplete). If Pos++ landed
     // between the two reads, the bounds check above saw the OLD (in-range)
     // Pos while the indexer below saw the NEW (out-of-range) one, throwing
-    // out of the UI thread at the last document in the queue. Reading Pos
-    // once into a local makes both uses see the same value no matter what
-    // another thread does to the property in between.
+    // out of the UI thread at the last document in the queue.
+    //
+    // Queue itself is the identical hazard: it too was read twice (once for
+    // .Count, once for the indexer), and Start() reassigns it wholesale.
+    // There is no live path today where Start() races a read of Current —
+    // every UI entry point that could reach Start() while a commit is live
+    // is gated by ShellViewModel._busy — but that is a ViewModel-level
+    // convention, not a guarantee Session makes about itself, and the fix
+    // costs nothing. Reading both Pos and Queue once into locals makes
+    // every use inside this getter see the same values no matter what
+    // another thread does to either property in between.
     public string? Current
     {
         get
         {
             var pos = Pos;
-            return pos < Queue.Count ? Queue[pos] : null;
+            var queue = Queue;
+            return pos < queue.Count ? queue[pos] : null;
         }
     }
 
