@@ -543,11 +543,15 @@ public sealed class LabelMakerViewModel : ObservableObject
     /// whatever stale NextNumber the VM loaded at window-open time — same
     /// silent rollback, just reached by renaming an unrelated field (the id)
     /// instead of editing one. So before that sweep runs, every dirty row
-    /// whose id no longer matches <see cref="_originId"/> has its ORIGINAL
-    /// on-disk row's fresh NextNumber captured, and that carried value (not
-    /// the VM's stale one) is what a rename writes under the new id — again
-    /// unless <see cref="_numberEdited"/> says the user deliberately typed a
-    /// number of their own, which still wins.</summary>
+    /// whose <see cref="_originId"/> is actually present in
+    /// <see cref="_removedIds"/> (i.e. really is about to be swept — NOT
+    /// merely "current id differs from origin," which a round-trip rename
+    /// like X→Y→X defeats: the final id matches the origin again, but the
+    /// origin is still queued for deletion from the X→Y hop) has its
+    /// ORIGINAL on-disk row's fresh NextNumber captured, and that carried
+    /// value (not the VM's stale one) is what the rename writes under its
+    /// final id — again unless <see cref="_numberEdited"/> says the user
+    /// deliberately typed a number of their own, which still wins.</summary>
     internal void Persist()
     {
         if (_dirty.Count == 0 && _removedIds.Count == 0) return;   // zero-edit close writes nothing
@@ -570,13 +574,25 @@ public sealed class LabelMakerViewModel : ObservableObject
                 // Snapshot each renamed row's ORIGINAL on-disk NextNumber
                 // before the sweep below deletes that row — it's the only
                 // place a peer's concurrent advance under the old id could
-                // be sitting.
+                // be sitting. The test for "was this row renamed" is
+                // whether its origin id is actually about to be swept —
+                // i.e. present in _removedIds — NOT whether the origin id
+                // differs from the CURRENT id. A round-trip rename (X→Y→X,
+                // or any number of hops that end back where they started)
+                // leaves the final id equal to the origin again, but
+                // _removedIds still holds X from the very first hop, and
+                // RemoveAll below deletes it regardless of where the row
+                // ended up. Comparing against _removedIds — the actual
+                // source of truth for what's about to be deleted — instead
+                // of inferring from id equality is what makes the carry
+                // correct for every hop count, not just a simple one-hop
+                // rename.
                 var carried = new Dictionary<LabelClientVm, long>();
                 foreach (var vm in Clients)
                 {
                     if (!_dirty.Contains(vm)) continue;
                     if (!_originId.TryGetValue(vm, out var origin)) continue;
-                    if (origin.Length == 0 || origin == vm.Id) continue;   // never on disk, or not renamed
+                    if (origin.Length == 0 || !_removedIds.Contains(origin)) continue;
                     var originRow = doc.LabelClients.FirstOrDefault(c => c.Id == origin);
                     if (originRow is not null) carried[vm] = originRow.NextNumber;
                 }

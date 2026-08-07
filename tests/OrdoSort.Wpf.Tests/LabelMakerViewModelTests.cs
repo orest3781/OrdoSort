@@ -505,6 +505,59 @@ public class LabelMakerViewModelTests : IDisposable
     }
 
     [Fact]
+    public void RenamingBackToTheOriginalIdStillCarriesThePeersCounterAdvanceForward()
+    {
+        // Round-trip: X -> Y -> X, all before ever persisting. The FINAL id
+        // equals the origin id again, so a guard that reads "current id
+        // differs from origin" as "nothing to carry" wrongly skips the
+        // snapshot — but the X->Y hop already queued the ORIGINAL "X" row
+        // for deletion in _removedIds, and RemoveAll doesn't care that the
+        // row's current id happens to match again. Without carrying X's
+        // fresh on-disk value across that round trip, the sweep deletes it
+        // and the re-add falls back to the VM's stale number.
+        var path = PathWith(new LabelClient { Id = "XXXX", DestroyDays = 30, NextNumber = 100 });
+        var vm = Vm(path);
+
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "XXXX").NextNumber = 140; return 0; });
+
+        var c = vm.Clients.Single();
+        c.Id = "yyyy";
+        c.Id = "xxxx";   // back to the original id
+
+        vm.Persist();
+
+        var only = Assert.Single(BoxLabelStore.Read(path).LabelClients);
+        Assert.Equal("XXXX", only.Id);
+        Assert.Equal(140, only.NextNumber);   // the peer's advance survives the round trip
+    }
+
+    [Fact]
+    public void ThreeHopRenameThatReturnsToTheOriginalIdAlsoCarriesTheCounterForward()
+    {
+        // Same class of gap, one hop deeper: X -> Y -> Z -> X. Every
+        // intermediate id (X and Y — not Z, since Z is the id it left FROM
+        // on the final hop, never revisited) ends up in _removedIds; the
+        // fix must hold regardless of how many hops it took to get back.
+        var path = PathWith(new LabelClient { Id = "XXXX", DestroyDays = 30, NextNumber = 100 });
+        var vm = Vm(path);
+
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "XXXX").NextNumber = 140; return 0; });
+
+        var c = vm.Clients.Single();
+        c.Id = "yyyy";
+        c.Id = "zzzz";
+        c.Id = "xxxx";   // back to the original id, three hops later
+
+        vm.Persist();
+
+        var only = Assert.Single(BoxLabelStore.Read(path).LabelClients);
+        Assert.Equal("XXXX", only.Id);
+        Assert.Equal(140, only.NextNumber);
+    }
+
+    [Fact]
     public void PersistRefusesUnderDuplicateIdsAndPreservesTheDisk()
     {
         // renaming AAAA onto BBBB's id is the sharpest way to get two rows
