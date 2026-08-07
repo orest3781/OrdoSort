@@ -626,6 +626,12 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         WatchFolders = new ObservableCollection<WatchEditVm>(
             current.WatchFolders.Select(w => WatchEditVm.From(w, _directoryExists, _scheduler, _uiContext, _probeDelayMs)));
 
+        // Session-sticky seed: every section PRESENT WHEN SETTINGS OPENED
+        // (see the _stickySections field for the full rule). AddSection()
+        // adds to this set too, for sections explicitly created during the
+        // session — deliberately NOT anything typed: see _stickySections.
+        foreach (var w in current.WatchFolders) TrackSticky(w.Section);
+
         AddRouteCommand = new RelayCommand(() =>
         {
             var vm = new RouteEditVm(_validateRoute, _scheduler, _uiContext, _probeDelayMs) { Label = "New destination" };
@@ -1445,18 +1451,35 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     }
 
     // ------------------------------------------------------ session-sticky sections
-    // Named sections seen this session, case-insensitive, first-seen casing
-    // wins (the same rule RebuildWatchRows already applies to its own
-    // section keys) — append-only, NEVER pruned as folders move away or get
-    // removed. Seeded for free: the ctor's first RebuildWatchRows call
-    // walks the folders Settings opened with, so "present when Settings
-    // opened" and "created or typed since" are the SAME mechanism — every
-    // pass just unions in whatever every folder's CURRENT Section is.
-    // RebuildWatchRows/SectionChoices below are what turn this into visible
-    // "an emptied section stays for the rest of the session" behaviour; the
-    // list itself is never written anywhere — TryBuildResult's WatchFolders
-    // still comes only from real WatchEditVm rows, so a name that stays
-    // empty when OK is clicked simply isn't in that list.
+    // Named sections that stay in the list — and in the drop-down — even
+    // once they have NO current member. Deliberately narrow: a section is
+    // sticky ONLY if it was PRESENT WHEN SETTINGS OPENED (seeded once in the
+    // ctor, from the folders Settings opened with — see the ctor, right
+    // after WatchFolders is built) or EXPLICITLY CREATED via AddSection()
+    // (which calls TrackSticky itself). Those are the ONLY two call sites.
+    //
+    // Earlier revision of this fix unioned in every value RebuildWatchRows
+    // ever saw a folder's Section hold — which, because the Section combo
+    // binds UpdateSourceTrigger=PropertyChanged (SettingsWindow.xaml:851),
+    // meant typing "Archive" one keystroke at a time made "A", "Ar", "Arc"…
+    // each their own permanent, empty, sticky header: a drop-down listing
+    // SEVEN pieces of junk for one typed word — a worse defect than the one
+    // being fixed. A section that only ever existed because someone was
+    // MID-TYPING it is never "present when Settings opened" and was never
+    // "created via AddSection", so under this rule it never sticks: it
+    // shows normally while it's the live value of some folder's Section
+    // (via RebuildWatchRows' ordinary live-header path, same as always) and
+    // simply stops showing the instant it stops being anyone's live value —
+    // no special-casing needed, that behaviour just falls out of the
+    // definition below.
+    //
+    // Case-insensitive, first-seen casing wins (the same rule
+    // RebuildWatchRows already applies to its own section keys) —
+    // append-only once seeded, NEVER pruned as folders move away or get
+    // removed (that permanence is the whole point). Never written anywhere:
+    // TryBuildResult's WatchFolders still comes only from real WatchEditVm
+    // rows, so a sticky name that's still empty when OK is clicked simply
+    // isn't in that list.
     private readonly List<string> _stickySections = new();
 
     private void TrackSticky(string name)
@@ -1507,7 +1530,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         foreach (var w in WatchFolders)
         {
             var key = w.Section.Trim();
-            if (key.Length > 0) TrackSticky(key);
             WatchSectionVm h;
             if (key.Length == 0)
             {
@@ -1688,6 +1710,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         var name = "New section";
         for (var n = 2; SectionKeyExists(name); n++)
             name = $"New section {n}";
+        TrackSticky(name);   // EXPLICITLY created — the other of the two things that makes a section sticky
         var vm = new WatchEditVm(_directoryExists, _scheduler, _uiContext, _probeDelayMs) { Label = "New folder", Section = name };
         WatchFolders.Add(vm);
         SelectedWatch = vm;
@@ -1845,20 +1868,29 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Every section that exists THIS SESSION — the pick-or-type
+    /// <summary>Every section CURRENTLY shown as a header — the pick-or-type
     /// dropdown for a folder's Section box. Deliberately includes the
     /// SELECTED folder's own current section (excluding it, via
     /// `!ReferenceEquals(w, SelectedWatch)`, was the reported bug: with one
     /// folder per section, the selected folder is the only thing keeping
     /// its own section alive, so filtering it out emptied that folder's own
-    /// drop-down) and every session-sticky name that's currently empty (so
-    /// a folder can always be moved back into a section it just left,
-    /// without retyping the name). Backed directly by <see
-    /// cref="_stickySections"/>, which RebuildWatchRows keeps in sync —
-    /// same case-insensitive, first-seen-casing-wins list, so a name never
-    /// shows up here with one casing and as a WatchRows header with
-    /// another.</summary>
-    public IEnumerable<string> SectionChoices => _stickySections.ToList();
+    /// drop-down).
+    ///
+    /// Deliberately reads WatchRows rather than <see cref="_stickySections"/>
+    /// directly: WatchRows, once RebuildWatchRows has run, already IS the
+    /// union of "every section some folder currently holds" (via the normal
+    /// live-header path — this is how a section born from typing, never
+    /// sticky, still gets offered while it has a member) and "every
+    /// session-sticky name with none" (via InsertOrphanedStickyHeaders).
+    /// Reading _stickySections here directly would UNDER-offer: a section
+    /// that's live right now but was never present at open and was never
+    /// created via AddSection() (e.g. one just typed into existence) isn't
+    /// IN _stickySections at all, yet obviously belongs in this list while
+    /// it has a folder in it. Same case-insensitive, first-seen-casing-wins
+    /// list either way, so a name never shows up here with one casing and
+    /// as a WatchRows header with another.</summary>
+    public IEnumerable<string> SectionChoices =>
+        WatchRows.OfType<WatchSectionVm>().Where(h => !h.IsDefault).Select(h => h.Header).ToList();
 
     private bool CanMoveWatch(int delta)
     {

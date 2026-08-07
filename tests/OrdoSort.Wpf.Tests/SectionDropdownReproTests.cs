@@ -545,6 +545,95 @@ public class SectionDropdownReproTests
         finally { window.Close(); vm.Dispose(); }
     });
 
+    // ============================================================
+    // Fix round 1 (coordinator review): the sticky rule above was, at
+    // first, "union every Section value RebuildWatchRows ever observed" —
+    // which, because the Section combo binds
+    // UpdateSourceTrigger=PropertyChanged, made every keystroke of a
+    // freshly-typed name its own permanent, empty, sticky header. Narrowed
+    // to "present when Settings opened, or created via AddSection()" —
+    // see _stickySections' doc comment for the full reasoning. The two
+    // tests below pin that down.
+    // ============================================================
+
+    /// <summary>The coordinator's required case: type a multi-character NEW
+    /// section name one keystroke at a time (real PART_EditableTextBox,
+    /// exactly as WPF delivers it), then require the drop-down hold the
+    /// FINAL name and NONE of the prefixes it passed through on the way.
+    /// Must fail against the "union everything ever observed" sticky rule —
+    /// captured below via a temporary revert, see the class-level note.</summary>
+    [Fact]
+    public void TypingANewSectionNameLeavesNoPrefixesStickyInTheDropdown() => _fx.Invoke(() =>
+    {
+        var (vm, window, combo) = OpenDashboardOnFolderB();
+        try
+        {
+            var box = EditableTextBoxOf(combo);
+            const string typed = "Archive";
+            var soFar = "";
+            foreach (var ch in typed)
+            {
+                soFar += ch;
+                box.Text = soFar;
+                box.CaretIndex = box.Text.Length;
+                PumpRender();
+            }
+            // commit, the way Tab/click-away would
+            var other = FindDescendant<TabControl>(window)!;
+            System.Windows.Input.Keyboard.Focus(other);
+            PumpRender();
+            window.UpdateLayout();
+
+            var choices = vm.SectionChoices.ToList();
+            Assert.Contains(typed, choices);
+            for (var n = 1; n < typed.Length; n++)
+            {
+                var prefix = typed[..n];
+                Assert.DoesNotContain(prefix, choices);
+                Assert.DoesNotContain(vm.WatchRows.OfType<WatchSectionVm>(), h => h.Header == prefix);
+            }
+
+            var comboItems = combo.ItemsSource!.Cast<string>().ToList();
+            Assert.Contains(typed, comboItems);
+            for (var n = 1; n < typed.Length; n++)
+                Assert.DoesNotContain(typed[..n], comboItems);
+        }
+        finally { window.Close(); vm.Dispose(); }
+    });
+
+    /// <summary>The other half of the coordinator's ask: a section that was
+    /// born from typing — never present when Settings opened, never
+    /// created via AddSection() — must behave NORMALLY: shown while it has
+    /// a member, and simply gone once it doesn't, because it was never
+    /// sticky. Guards against "fixing" this back into stickiness later.</summary>
+    [Fact]
+    public void ATypedSectionThatWasNeverStickyDisappearsWhenEmptied() => _fx.Invoke(() =>
+    {
+        var (vm, window, combo) = OpenDashboardOnFolderB();
+        try
+        {
+            var beta = vm.WatchFolders.First(w => w.Label == FolderB);
+            const string typed = "Archive";
+            beta.Section = typed;   // FolderB started blank — this section was never present at open
+            PumpRender();
+            window.UpdateLayout();
+
+            // while it has a member, it's a normal live header/choice
+            Assert.Contains(typed, vm.SectionChoices);
+            Assert.Contains(vm.WatchRows.OfType<WatchSectionVm>(), h => h.Header == typed);
+
+            // emptied — moved back to the default group — and it's simply gone
+            beta.Section = "";
+            PumpRender();
+            window.UpdateLayout();
+
+            Assert.DoesNotContain(typed, vm.SectionChoices);
+            Assert.DoesNotContain(vm.WatchRows.OfType<WatchSectionVm>(), h => h.Header == typed);
+            Assert.DoesNotContain(typed, combo.ItemsSource!.Cast<string>());
+        }
+        finally { window.Close(); vm.Dispose(); }
+    });
+
     private static void PumpRender() =>
         Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
 
