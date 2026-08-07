@@ -127,6 +127,39 @@
             </Button.Template>
         </Button>
 
+        <!-- history-backup banner: same full-width pattern as the set-aside
+             bar above, for the same reason — a daily backup that keeps
+             failing (permissions, a full disk, a disconnected share) used to
+             fail silently forever (2026-08-07 QC sweep R1). Stays up for the
+             rest of the session rather than a modal, which would either
+             block startup or reappear on every single launch for as long as
+             the underlying problem lasts. Clicking opens the backups folder
+             so the user can see what's there (or isn't). -->
+        <Button DockPanel.Dock="Bottom"
+                Command="{Binding OpenHistoryBackupFolderCommand}"
+                Visibility="{Binding HasHistoryBackupWarning, Converter={StaticResource BoolToVis}}"
+                Cursor="Hand" FontWeight="SemiBold" FontSize="15"
+                AutomationProperties.Name="{Binding HistoryBackupWarning}">
+            <Button.Template>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bar" Background="{DynamicResource Theme.Warning}"
+                            Padding="14,11" SnapsToDevicePixels="True">
+                        <TextBlock Text="{Binding HistoryBackupWarning}"
+                                   Foreground="{DynamicResource Theme.WarningText}"
+                                   HorizontalAlignment="Center" TextWrapping="Wrap" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bar" Property="Opacity" Value="0.9" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bar" Property="Opacity" Value="0.8" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Button.Template>
+        </Button>
+
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="ViewerCol" Width="*" MinWidth="320" />

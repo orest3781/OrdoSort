@@ -138,9 +138,28 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // Daily point-in-time backup, taken while the file is at rest — BEFORE
         // we open the connection. The audit DB is the only link between a
         // filed document and its original id, so it must have redundancy.
-        HistoryBackup.BackupDaily(dbPath,
-            Path.Combine(Path.GetDirectoryName(Path.GetFullPath(dbPath))!, "backups"),
-            DateTime.Now);
+        //
+        // This — plus the SQLite open + migration on the next line — runs
+        // synchronously here, before MainWindow's constructor returns and
+        // before Show() (2026-08-07 audit 5.3). Measured rather than assumed:
+        // a 100k-row history db (raw-SQL-seeded, one transaction — LogCommit
+        // per row is thousands of fsyncs and would measure the disk, not the
+        // code), backups pruned to the daily-skip case cleared first so the
+        // copy actually runs. Five local-SSD runs: BackupDaily's File.Copy
+        // 6.5-8.1ms, new History(dbPath) open+migrate (schema already
+        // current — the common case) 0.9-1.0ms, the whole constructor
+        // 7.6-9.8ms. Tens of milliseconds, not a perceptible hang — moving
+        // this off the UI thread would trade a real (if small) local cost
+        // for the complexity of a visible "starting" state and, if the
+        // backup moved past the connection open, a torn live-file copy
+        // (finding 1.3) — the wrong direction. Decision: measure and record,
+        // change nothing. The one gap this measurement does NOT cover: the
+        // documented deployment is an SMB share, where a whole-file copy of
+        // a database that just grew ~39% (the history index, 5.1) is not
+        // the same proposition as a local SSD — re-measure there before
+        // assuming this conclusion travels.
+        var backupOk = RunHistoryBackup(dbPath, out _historyBackupDir);
+        HistoryBackupWarning = backupOk ? "" : BackupFailureMessage;
         _history = new History(dbPath);
         _session = new Session(cfg, _history);
 
@@ -149,6 +168,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         OpenDeferredCommand = new RelayCommand(() => OpenFolder(_cfg.Deferred));
         OpenInboxCommand = new RelayCommand(() => OpenFolder(_cfg.Inbox));
         OpenToastCommand = new RelayCommand(() => { OpenFolder(_toastFolder); HideToast(); });
+        OpenHistoryBackupFolderCommand = new RelayCommand(() => OpenFolder(_historyBackupDir));
         RouteCommand = new AsyncRelayCommand<int>(OnRouteAsync);
         SkipCommand = new AsyncRelayCommand(OnSkipAsync);
         UndoCommand = new AsyncRelayCommand(OnUndoAsync, () => _session.CanUndo);
@@ -359,11 +379,41 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     public string DeferredAlert { get => _deferredAlert; private set { if (Set(ref _deferredAlert, value)) Raise(nameof(HasDeferred)); } }
     public bool HasDeferred => DeferredAlert.Length > 0;
 
+    /// <summary>Non-empty when the most recent daily history backup — at
+    /// startup or at a Settings history-db swap — ran against a database
+    /// that existed and still came back without a copy (2026-08-07 QC sweep
+    /// R1: both call sites used to discard <see
+    /// cref="HistoryBackup.BackupDaily"/>'s return, so a backup failing every
+    /// day — permissions, a full disk, a disconnected share — failed silently
+    /// forever). A modal here would either block startup (before Show()) or
+    /// nag on every single launch for as long as the underlying problem
+    /// persists — both worse than the silence being fixed. This instead
+    /// stays visible on every screen for the rest of the session, the same
+    /// way <see cref="DeferredAlert"/> already does, and clears the moment a
+    /// backup succeeds again.</summary>
+    private string _historyBackupWarning = "";
+    public string HistoryBackupWarning
+    {
+        get => _historyBackupWarning;
+        private set { if (Set(ref _historyBackupWarning, value)) Raise(nameof(HasHistoryBackupWarning)); }
+    }
+    public bool HasHistoryBackupWarning => HistoryBackupWarning.Length > 0;
+
+    private const string BackupFailureMessage =
+        "⚠ Today's history backup didn't complete — the audit log has no fresh " +
+        "safety copy today. Click to check the backups folder; ask about disk " +
+        "space or permissions if this keeps happening.";
+
+    // Set by RunHistoryBackup, so OpenHistoryBackupFolderCommand always
+    // points at the backups folder for the database currently in use.
+    private string _historyBackupDir = "";
+
     public RelayCommand StartCommand { get; }
     public RelayCommand RescanCommand { get; }
     public RelayCommand OpenDeferredCommand { get; }
     public RelayCommand OpenInboxCommand { get; }
     public RelayCommand OpenToastCommand { get; }
+    public RelayCommand OpenHistoryBackupFolderCommand { get; }
 
     /// <summary>Called once by the window after the viewer init attempt:
     /// start watching and take the first scan.</summary>
@@ -1458,17 +1508,25 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             // CSV export and the History window must not go dark for the
             // rest of the session just because the new path didn't pan out.
             HistorySwapping = true;
+            // Set inside the background lambda (before the History that can
+            // throw), read back here only once the swap actually succeeds —
+            // an abandoned newDb attempt must not overwrite the warning that
+            // describes the database still actually in use. See
+            // RunHistoryBackup for why BackupDaily's own null return can't
+            // tell "nothing to back up" from "genuine failure" by itself.
+            var backupOk = true;
+            var backupDir = _historyBackupDir;
             try
             {
                 var fresh = await _scheduler.Run(() =>
                 {
-                    HistoryBackup.BackupDaily(newDb,
-                        Path.Combine(Path.GetDirectoryName(Path.GetFullPath(newDb))!, "backups"),
-                        DateTime.Now);
+                    backupOk = RunHistoryBackup(newDb, out backupDir);
                     return new History(newDb);
                 });
                 _history.Dispose();
                 _history = fresh;
+                _historyBackupDir = backupDir;
+                HistoryBackupWarning = backupOk ? "" : BackupFailureMessage;
             }
             catch (Exception ex)
             {
@@ -1753,6 +1811,22 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(folder)
             { UseShellExecute = true });
+    }
+
+    /// <summary>Run the daily history-DB backup and report whether it
+    /// actually succeeded. <see cref="HistoryBackup.BackupDaily"/> returns
+    /// null for two different reasons — nothing to back up yet (no DB file,
+    /// e.g. first run) and a genuine failure (permissions, a full disk, a
+    /// disconnected share) — and never throws either way, so the null alone
+    /// can't tell them apart (2026-08-07 QC sweep R1). This resolves that
+    /// ambiguity the same way BackupDaily itself does internally — checking
+    /// File.Exists(dbPath) — so only a DB that existed and still came back
+    /// null counts as a failure worth telling the user about.</summary>
+    private static bool RunHistoryBackup(string dbPath, out string backupDir)
+    {
+        backupDir = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(dbPath))!, "backups");
+        var dbExisted = File.Exists(dbPath);
+        return !dbExisted || HistoryBackup.BackupDaily(dbPath, backupDir, DateTime.Now) is not null;
     }
 
     public void Dispose()
