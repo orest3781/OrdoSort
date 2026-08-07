@@ -1126,8 +1126,18 @@ public class SettingsViewModelTests : IDisposable
 
         Assert.Equal("", vm.WatchFolders.Single(w => w.Label == "A").Section);
 
+        // FIX 2026-08-07 (section-dropdown Task 1, session-sticky sections):
+        // this used to assert `night is null` ("Night emptied out, so its
+        // header is gone") — that WAS the reported bug's other half (moving
+        // the last folder out of a section erased it with no way back). An
+        // emptied section now stays for the rest of the Settings session,
+        // offered again so a folder can be moved back into it without
+        // retyping the name.
         var night = vm.WatchRows.OfType<WatchSectionVm>().SingleOrDefault(x => !x.IsDefault);
-        Assert.Null(night);   // Night emptied out, so its header is gone
+        Assert.NotNull(night);
+        Assert.Equal("Night", night!.Header);
+        Assert.DoesNotContain(vm.WatchFolders, w => w.Section == "Night");
+        Assert.Contains("Night", vm.SectionChoices);
     }
 
     [Fact]

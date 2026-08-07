@@ -1444,6 +1444,55 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                     : "";
     }
 
+    // ------------------------------------------------------ session-sticky sections
+    // Named sections seen this session, case-insensitive, first-seen casing
+    // wins (the same rule RebuildWatchRows already applies to its own
+    // section keys) — append-only, NEVER pruned as folders move away or get
+    // removed. Seeded for free: the ctor's first RebuildWatchRows call
+    // walks the folders Settings opened with, so "present when Settings
+    // opened" and "created or typed since" are the SAME mechanism — every
+    // pass just unions in whatever every folder's CURRENT Section is.
+    // RebuildWatchRows/SectionChoices below are what turn this into visible
+    // "an emptied section stays for the rest of the session" behaviour; the
+    // list itself is never written anywhere — TryBuildResult's WatchFolders
+    // still comes only from real WatchEditVm rows, so a name that stays
+    // empty when OK is clicked simply isn't in that list.
+    private readonly List<string> _stickySections = new();
+
+    private void TrackSticky(string name)
+    {
+        var t = name.Trim();
+        if (t.Length == 0) return;
+        if (!_stickySections.Any(s => string.Equals(s, t, StringComparison.CurrentCultureIgnoreCase)))
+            _stickySections.Add(t);
+    }
+
+    /// <summary>Renames a session-sticky entry in place — keeping its
+    /// remembered slot in <see cref="InsertOrphanedStickyHeaders"/>'s
+    /// ordering — unless the new name is blank (nothing left to be sticky
+    /// about) or already belongs to ANOTHER sticky entry (merges into it
+    /// instead of leaving a duplicate stranded), in which case the old
+    /// entry is simply retired.</summary>
+    private void RenameSticky(string oldName, string newName)
+    {
+        var oldIdx = _stickySections.FindIndex(s =>
+            string.Equals(s, oldName, StringComparison.CurrentCultureIgnoreCase));
+        if (oldIdx < 0) return;
+        var t = newName.Trim();
+        if (t.Length == 0 || _stickySections.Any(s =>
+                string.Equals(s, t, StringComparison.CurrentCultureIgnoreCase)))
+            _stickySections.RemoveAt(oldIdx);
+        else
+            _stickySections[oldIdx] = t;
+    }
+
+    // The full header-key sequence ("" = default group) from the END of the
+    // PREVIOUS RebuildWatchRows call — lets a section that just emptied
+    // reclaim its old slot below instead of jumping to the far end.
+    private List<string> _lastHeaderOrder = new();
+
+    private static string HeaderKey(WatchSectionVm h) => h.IsDefault ? "" : h.Header;
+
     private void RebuildWatchRows()
     {
         if (WatchFolders is null) return;   // ctor assigns MonitorTitle before the list exists
@@ -1458,6 +1507,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         foreach (var w in WatchFolders)
         {
             var key = w.Section.Trim();
+            if (key.Length > 0) TrackSticky(key);
             WatchSectionVm h;
             if (key.Length == 0)
             {
@@ -1485,12 +1535,21 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             members[def] = new List<WatchEditVm>();
         }
 
+        // Session-sticky named sections with no live member this pass: give
+        // each a zero-member header, spliced back in at the slot it held
+        // last time (anchored against whichever of its old neighbours still
+        // has a header this pass) rather than appended at the end. The
+        // default group is never part of this — its own "pinned first when
+        // empty" placement above is untouched.
+        InsertOrphanedStickyHeaders(order, members, byKey);
+
         WatchRows.Clear();
         foreach (var h in order)
         {
             WatchRows.Add(h);
             foreach (var w in members[h]) WatchRows.Add(w);
         }
+        _lastHeaderOrder = order.Select(HeaderKey).ToList();
 
         // a header mid-rename survives the rebuild its own edits trigger
         if (editing is not null)
@@ -1507,6 +1566,46 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         }
 
         Raise(nameof(SelectedWatchRow));   // re-point the ListBox at the kept selection
+    }
+
+    /// <summary>Splices a zero-member header into <paramref name="order"/>
+    /// for every sticky section absent from <paramref name="byKey"/> this
+    /// pass, positioned right after whichever of its neighbours in
+    /// <see cref="_lastHeaderOrder"/> (walking backward) still has a header
+    /// THIS pass — so an emptied section keeps its old relative slot. Falls
+    /// back to the front/back only when there is no such anchor (nothing
+    /// preceded it last time, or this is its very first appearance).</summary>
+    private void InsertOrphanedStickyHeaders(List<WatchSectionVm> order,
+        Dictionary<WatchSectionVm, List<WatchEditVm>> members,
+        Dictionary<string, WatchSectionVm> byKey)
+    {
+        var orphaned = _stickySections
+            .Where(s => !byKey.ContainsKey(s))
+            .OrderBy(s =>
+            {
+                var i = _lastHeaderOrder.FindIndex(k => string.Equals(k, s, StringComparison.CurrentCultureIgnoreCase));
+                return i < 0 ? int.MaxValue : i;
+            })
+            .ToList();
+
+        foreach (var key in orphaned)
+        {
+            var oldIdx = _lastHeaderOrder.FindIndex(k => string.Equals(k, key, StringComparison.CurrentCultureIgnoreCase));
+            var insertAt = order.Count;
+            if (oldIdx >= 0)
+            {
+                insertAt = 0;
+                for (var i = oldIdx - 1; i >= 0; i--)
+                {
+                    var anchor = order.FindIndex(h =>
+                        string.Equals(HeaderKey(h), _lastHeaderOrder[i], StringComparison.CurrentCultureIgnoreCase));
+                    if (anchor >= 0) { insertAt = anchor + 1; break; }
+                }
+            }
+            var h = new WatchSectionVm { Header = key };
+            members[h] = new List<WatchEditVm>();
+            order.Insert(Math.Min(insertAt, order.Count), h);
+        }
     }
 
     private string DefaultSectionHeader =>
@@ -1535,6 +1634,20 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         foreach (var w in WatchFolders)
             if (string.Equals(w.Section.Trim(), h.Header, StringComparison.CurrentCultureIgnoreCase))
                 w.Section = t;
+
+        // Retitles the STICKY entry too, unconditionally — not just when the
+        // header had no live members. A header rename always means "this
+        // GROUP is now called X": for a header with members, the loop above
+        // already re-tracks the new name via each folder's Section-changed
+        // path, so without this the OLD name would be left behind as its
+        // own stranded, empty sticky header right next to the renamed one.
+        // For a header with NO members (renaming an already-emptied,
+        // sticky-only section) the loop touches no folder at all, so
+        // nothing else would ever retitle it — it would just snap back to
+        // its old name on the next rebuild.
+        RenameSticky(h.Header, t);
+        RebuildWatchRows();
+        Raise(nameof(SectionChoices));
     }
 
     public void CancelSectionRename(WatchSectionVm h) => h.IsEditing = false;
@@ -1558,9 +1671,18 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>"Add section": a uniquely named section born with one folder
-    /// inside (sections only exist through folders), its header opened
-    /// straight into rename mode so the next keystrokes name it. Returns the
-    /// header so the window can focus its edit box.</summary>
+    /// inside, its header opened straight into rename mode so the next
+    /// keystrokes name it. Returns the header so the window can focus its
+    /// edit box.
+    ///
+    /// The placeholder folder stays deliberate even now that a section CAN
+    /// exist with zero members for the rest of the session (2026-08-07 fix,
+    /// session-sticky sections): dropping it would turn one click into two
+    /// (create the group, then separately click its ＋ to give it a first
+    /// folder) for the common case this button exists for, and
+    /// SectionKeyExists already guards the OTHER direction — the generated
+    /// name can never collide with an existing sticky-but-empty section
+    /// either, so this never silently revives one.</summary>
     public WatchSectionVm? AddSection()
     {
         var name = "New section";
@@ -1575,8 +1697,15 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         return header;
     }
 
+    /// <summary>True if <paramref name="name"/> is already spoken for — by a
+    /// LIVE folder's Section, or by a session-sticky section that's
+    /// currently empty. The sticky half matters now that an emptied section
+    /// can exist with zero members: without it, "Add section" could
+    /// silently reuse — and so REVIVE — an already-emptied section's exact
+    /// name instead of generating a genuinely new, disjoint one.</summary>
     private bool SectionKeyExists(string name) =>
-        WatchFolders.Any(w => string.Equals(w.Section.Trim(), name, StringComparison.CurrentCultureIgnoreCase));
+        WatchFolders.Any(w => string.Equals(w.Section.Trim(), name, StringComparison.CurrentCultureIgnoreCase))
+        || _stickySections.Any(s => string.Equals(s, name, StringComparison.CurrentCultureIgnoreCase));
 
     /// <summary>Drop semantics for the grouped list: the drop position
     /// implies both the new section and the new flat position.</summary>
@@ -1716,14 +1845,20 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Sections already in use by the OTHER monitored folders —
-    /// the pick-or-type dropdown for the selected folder's Section box.</summary>
-    public IEnumerable<string> SectionChoices =>
-        WatchFolders.Where(w => !ReferenceEquals(w, SelectedWatch))
-               .Select(w => w.Section.Trim())
-               .Where(s => s.Length > 0)
-               .Distinct(StringComparer.CurrentCultureIgnoreCase)
-               .ToList();
+    /// <summary>Every section that exists THIS SESSION — the pick-or-type
+    /// dropdown for a folder's Section box. Deliberately includes the
+    /// SELECTED folder's own current section (excluding it, via
+    /// `!ReferenceEquals(w, SelectedWatch)`, was the reported bug: with one
+    /// folder per section, the selected folder is the only thing keeping
+    /// its own section alive, so filtering it out emptied that folder's own
+    /// drop-down) and every session-sticky name that's currently empty (so
+    /// a folder can always be moved back into a section it just left,
+    /// without retyping the name). Backed directly by <see
+    /// cref="_stickySections"/>, which RebuildWatchRows keeps in sync —
+    /// same case-insensitive, first-seen-casing-wins list, so a name never
+    /// shows up here with one casing and as a WatchRows header with
+    /// another.</summary>
+    public IEnumerable<string> SectionChoices => _stickySections.ToList();
 
     private bool CanMoveWatch(int delta)
     {
