@@ -31,15 +31,27 @@ public sealed record ThemePalette(
     Rgb StatusRed,     // the red status line, readable on Surface/WindowBg. NOT the
                         // same job as Danger/DangerText below (a background, paired
                         // with its own on-Danger text) -- Danger used AS FOREGROUND
-                        // TEXT (already shipped: MainWindow.xaml:231,
-                        // ProcessingView.xaml:55, ReadyView.xaml:113) measures 2.69:1
-                        // vs Dark.Surface / 3.14:1 vs Dark.WindowBg, found while
-                        // building the Unlock file list's Unreadable note (Task 1
-                        // Step 3) -- the exact Success-shaped problem Step 1 already
-                        // fixed once, just discovered a step late and on a different
-                        // token. Existing Danger-as-background usage is unaffected and
-                        // OUT OF SCOPE here; the other three foreground usages are a
-                        // Task 3 Step 2 sweep finding, not fixed by this token.
+                        // TEXT measures 2.69:1 vs Dark.Surface / 3.14:1 vs
+                        // Dark.WindowBg, found while building the Unlock file list's
+                        // Unreadable note (Task 1 Step 3) -- the exact Success-shaped
+                        // problem Step 1 already fixed once, just discovered a step
+                        // late and on a different token. Existing Danger-as-background
+                        // usage is unaffected and OUT OF SCOPE here. The other three
+                        // foreground usages Task 1 found (MainWindow.xaml:231,
+                        // ProcessingView.xaml:55, ReadyView.xaml:113) were switched to
+                        // StatusRed by Task 3 Part B: ProcessingView/ReadyView sit on
+                        // WindowBg and now clear 4.5:1 in both palettes (the pairing
+                        // already covered by ThemeTests.TextPairs' {StatusRed,
+                        // WindowBg} entry). MainWindow.xaml:231 is the one exception --
+                        // its real background is Theme.SurfaceRaised, not
+                        // Surface/WindowBg, and StatusRed was never tuned against that
+                        // (one step lighter than Surface in dark mode). Measured there:
+                        // 4.11:1 dark / 5.44:1 light -- an improvement over Danger's
+                        // 2.26:1 but still short of this app's 4.5 floor in dark,
+                        // though it clears WCAG's 3:1 non-text/icon floor. Left as a
+                        // known, open gap (see MainWindow.xaml's own comment at that
+                        // site and HighlightContrastTests' MainWindowToastIconContrast)
+                        // rather than adding a token tuned for one call site.
     Rgb TileDefaultBg, // dashboard tile with no configured color
     Rgb BorderStrong,  // emphasized borders (focus rings, active dividers)
     Rgb AccentBronze)  // warm secondary accent (badges, highlights on graphite)

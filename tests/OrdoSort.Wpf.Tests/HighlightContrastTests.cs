@@ -10,6 +10,7 @@ using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.Theme;
 using OrdoSort.Wpf.ViewModels;
+using OrdoSort.Wpf.Views;
 using OrdoSort.Wpf.Windows;
 
 namespace OrdoSort.Wpf.Tests;
@@ -1329,6 +1330,169 @@ public class HighlightContrastTests
         }
         return (bestFg, bg);
     }
+
+    // ------------------------------------------- ReadyView / ProcessingView
+
+    /// <summary>Minimal duck-typed stand-in for the ShellViewModel bindings
+    /// ReadyView actually reads (status-colour-vocabulary plan, 2026-08-08,
+    /// Task 3 Part B). WPF's Binding engine resolves a source property by
+    /// reflection on whatever object DataContext holds, not by a declared
+    /// interface/base type — this test needs only the ONE render pass a
+    /// fresh DataContext gets on attach, not live updates, so no
+    /// INotifyPropertyChanged and no dependency on ShellViewModel's real
+    /// constructor (Config/IPdfViewer/IDialogService/FolderWatchService/
+    /// History — none of which this test needs just to read a resolved
+    /// brush). Bindings ReadyView has that this stub does not supply
+    /// (DashboardVisible, TileGroups, AllQuiet, CountCaption, DetailLine,
+    /// StartCommand, OpenInboxCommand) fail to resolve harmlessly — WPF logs
+    /// a binding error and leaves the target property at its default; it
+    /// does not throw.</summary>
+    private sealed class ReadyViewStub
+    {
+        public string BigCount { get; init; } = "";
+        public bool CountAlertOn { get; init; }
+    }
+
+    /// <summary>Status-colour-vocabulary plan, 2026-08-08, Task 3 Part B: the
+    /// alert-red inbox count switched from Theme.Danger to Theme.StatusRed.
+    /// Danger as foreground measured only 3.14:1 against this element's real
+    /// background — Theme.WindowBg, what MainWindow.xaml's ScrollViewer
+    /// paints behind ReadyView/ProcessingView/DoneView — in dark mode, a
+    /// WCAG AA failure shipping today (found while building Task 1).
+    /// Rendered STANDALONE (no Window, no Show()) the same way
+    /// CopyAndTerminologyTests.TheReadyScreensPrimaryButtonIsSentenceCase
+    /// already proves is enough to resolve DynamicResource brushes — see
+    /// Realize's own doc comment below for why.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void ReadyViewCountAlertIsStatusRed(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var view = new ReadyView { DataContext = new ReadyViewStub { BigCount = "42", CountAlertOn = true } };
+        Realize(view);
+
+        var bigCount = FindAllDescendants<TextBlock>(view).FirstOrDefault(t => t.Text == "42")
+            ?? throw new InvalidOperationException("no TextBlock showing BigCount=42 under ReadyView");
+        var fg = ToRgb(ForegroundOf(bigCount));
+        Assert.Equal(p.StatusRed, fg);
+        var ratio = ThemePalette.ContrastRatio(fg, p.WindowBg);
+        Assert.True(ratio >= 4.5,
+            $"ReadyView BigCount alert ({(dark ? "dark" : "light")}): {fg} on {p.WindowBg} = {ratio:F2}");
+    });
+
+    /// <summary>Same purpose as <see cref="ReadyViewStub"/> above, for
+    /// ProcessingView's illegal-name Preview warning.</summary>
+    private sealed class ProcessingViewStub
+    {
+        public string Preview { get; init; } = "";
+        public bool PreviewIsWarning { get; init; }
+    }
+
+    /// <summary>Status-colour-vocabulary plan, 2026-08-08, Task 3 Part B: the
+    /// illegal-filename Preview warning switched from Theme.Danger to
+    /// Theme.StatusRed — same defect, same fix, same real background
+    /// (Theme.WindowBg) as ReadyViewCountAlertIsStatusRed above.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void ProcessingViewWarningPreviewIsStatusRed(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var view = new ProcessingView
+        {
+            DataContext = new ProcessingViewStub { Preview = "⚠ bad name", PreviewIsWarning = true },
+        };
+        Realize(view);
+
+        var preview = FindAllDescendants<TextBlock>(view).FirstOrDefault(t => t.Text == "⚠ bad name")
+            ?? throw new InvalidOperationException("no TextBlock showing the warning Preview under ProcessingView");
+        var fg = ToRgb(ForegroundOf(preview));
+        Assert.Equal(p.StatusRed, fg);
+        var ratio = ThemePalette.ContrastRatio(fg, p.WindowBg);
+        Assert.True(ratio >= 4.5,
+            $"ProcessingView warning preview ({(dark ? "dark" : "light")}): {fg} on {p.WindowBg} = {ratio:F2}");
+    });
+
+    // -------------------------------------------------------- MainWindow toast
+
+    /// <summary>MainWindow's alert-toast icon lives inline in MainWindow.xaml
+    /// (never extracted to a keyed Styles.xaml resource, unlike
+    /// KvpValueTemplate/FontChoiceTemplate), so proving its REAL, rendered
+    /// brush means constructing the REAL MainWindow — but never Show()n, the
+    /// same technique ShutdownDuringCommitTests already established as safe
+    /// here: Loaded (which starts a real WebView2/Edge process via
+    /// _pdf.InitAsync) only fires once a Window is connected to a live
+    /// PresentationSource, which Show() creates and a bare constructor does
+    /// not. Realize() below is called on the TOAST BUTTON alone — found by
+    /// x:Name straight off the Window's own NameScope, registered at
+    /// InitializeComponent time independent of layout — never on the Window
+    /// itself, and never touching the WebView2 sibling elsewhere in the
+    /// tree, so this stays exactly as hermetic as the rest of this
+    /// fixture's off-screen rendering. cfg.HistoryDb points at a fresh temp
+    /// path (dir pre-created, matching ShutdownDuringCommitTests) because
+    /// ShellViewModel's constructor opens a History connection synchronously
+    /// — Inbox/Deferred are left at Config's own "" default since nothing
+    /// here ever calls Shell.Initialize() (that's Loaded-gated too).
+    ///
+    /// Status-colour-vocabulary plan, 2026-08-08, Task 3 Part B: the icon
+    /// glyph switched from Theme.Danger to Theme.StatusRed. Unlike the other
+    /// two Part B sites above (both on Theme.WindowBg), this one sits on
+    /// Theme.SurfaceRaised — one step LIGHTER than Surface in dark mode —
+    /// which StatusRed was never tuned against. Measured: light clears 4.5
+    /// (5.44:1); dark does not (4.11:1, though it clears WCAG's 3:1 non-text
+    /// /icon floor and is a large improvement over Danger's own 2.26:1).
+    /// This test pins BOTH realities instead of asserting a floor that
+    /// isn't true — see MainWindow.xaml's own comment at this site and
+    /// ThemePalette.cs's StatusRed field comment for the full account.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void MainWindowToastIconContrast(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var dir = Path.Combine(Path.GetTempPath(), "ordo_test_toast_" + Guid.NewGuid());
+        Directory.CreateDirectory(dir);
+        var cfg = new Config { HistoryDb = Path.Combine(dir, "history.sqlite") };
+        var cfgPath = Path.Combine(dir, "config.json");
+
+        var window = new MainWindow(cfg, cfgPath)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            var button = window.FindName("ToastButton") as Button
+                ?? throw new InvalidOperationException("no Button named ToastButton in MainWindow");
+            Realize(button);
+
+            var card = FindDescendant<Border>(button)
+                ?? throw new InvalidOperationException("no Border ('Card') descendant under the toast Button");
+            var icon = FindTextElement(button)
+                ?? throw new InvalidOperationException("no TextBlock/AccessText descendant under the toast Button");
+
+            var fg = ToRgb(ForegroundOf(icon));
+            var bg = ToRgb(card.Background);
+            Assert.Equal(p.StatusRed, fg);
+            var ratio = ThemePalette.ContrastRatio(fg, bg);
+            if (dark)
+                // KNOWN, OPEN gap, not a placeholder -- see the class doc
+                // above. If this ever climbs to >=4.5 (a future
+                // SurfaceRaised-tuned token, say), TIGHTEN this assertion
+                // and delete the surrounding comments; don't just widen the
+                // range further.
+                Assert.True(ratio is >= 3.0 and < 4.5,
+                    $"MainWindow toast icon (dark): {fg} on {bg} = {ratio:F2}");
+            else
+                Assert.True(ratio >= 4.5,
+                    $"MainWindow toast icon (light): {fg} on {bg} = {ratio:F2}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
 
     // -------------------------------------------------------------- plumbing
 

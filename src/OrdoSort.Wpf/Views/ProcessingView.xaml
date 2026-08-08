@@ -51,8 +51,16 @@
                 <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                     <Setter Property="FontWeight" Value="SemiBold" />
                     <Style.Triggers>
+                        <!-- Theme.StatusRed, NOT Theme.Danger (status-colour-
+                             vocabulary plan, 2026-08-08, Task 3 Part B): this
+                             is real foreground TEXT, and Danger as foreground
+                             measured only 3.14:1 against this element's real
+                             background (Theme.WindowBg, dark) — a WCAG AA
+                             failure shipping today. StatusRed measures
+                             5.72:1 here (dark) / 5.11:1 (light), both >=4.5.
+                             See ThemePalette.cs's StatusRed field comment. -->
                         <DataTrigger Binding="{Binding PreviewIsWarning}" Value="True">
-                            <Setter Property="Foreground" Value="{DynamicResource Theme.Danger}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Theme.StatusRed}" />
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>

@@ -211,7 +211,7 @@
              set-aside banner; click opens the alerting folder. Reaches you
              even when the alerting tile is scrolled off or the window is
              unfocused (paired with the taskbar flash + chime). -->
-        <Button VerticalAlignment="Bottom" HorizontalAlignment="Right"
+        <Button x:Name="ToastButton" VerticalAlignment="Bottom" HorizontalAlignment="Right"
                 Margin="0,0,16,16" MaxWidth="340" Cursor="Hand"
                 Command="{Binding OpenToastCommand}"
                 Visibility="{Binding ToastVisible, Converter={StaticResource BoolToVis}}"
@@ -226,9 +226,39 @@
                             <TranslateTransform x:Name="Slide" />
                         </Border.RenderTransform>
                         <StackPanel Orientation="Horizontal">
+                            <!-- Theme.StatusRed, NOT Theme.Danger (status-
+                                 colour-vocabulary plan, 2026-08-08, Task 3
+                                 Part B): this glyph is real foreground text
+                                 (a Segoe icon), and Danger as foreground
+                                 measured only 2.26:1 against this Border's
+                                 REAL background here, Theme.SurfaceRaised —
+                                 NOT Theme.Surface/WindowBg, where StatusRed's
+                                 own 4.89:1/5.72:1 dark numbers were measured
+                                 (see ThemePalette.cs's StatusRed field
+                                 comment). SurfaceRaised is one step LIGHTER
+                                 than Surface in dark mode (a floating card
+                                 needs to read as raised without a shadow,
+                                 per ThemeManager.cs's own SurfaceRaised
+                                 comment), which narrows the gap to any
+                                 foreground red built for Surface. Measured
+                                 after this swap: 4.11:1 dark / 5.44:1 light —
+                                 light clears the app's usual 4.5 floor, dark
+                                 does NOT (a KNOWN, OPEN gap, not an
+                                 oversight: it clears WCAG's 3:1 non-text/icon
+                                 floor with margin, more than doubles
+                                 Danger's own 2.26:1, and this glyph sits
+                                 directly beside the real ToastText/
+                                 ToastDetail prose that carries the actual
+                                 message rather than standing alone — but it
+                                 is short of this app's own stricter 4.5
+                                 text-floor convention and is flagged here,
+                                 not silently swept under a lowered
+                                 assertion; see HighlightContrastTests'
+                                 MainWindowToastIconContrast for the pinned
+                                 measurement). -->
                             <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="20"
                                        VerticalAlignment="Top" Margin="0,1,11,0"
-                                       Foreground="{DynamicResource Theme.Danger}" />
+                                       Foreground="{DynamicResource Theme.StatusRed}" />
                             <StackPanel>
                                 <TextBlock Text="{Binding ToastText}" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding ToastDetail}" TextWrapping="Wrap"
