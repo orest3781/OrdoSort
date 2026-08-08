@@ -1518,6 +1518,434 @@ public class HighlightContrastTests
         }
     });
 
+    // --------------------------------------------- Hover/pressed tint strength
+
+    /// <summary>Hover-tint strength review (2026-08-08): the review's own
+    /// brief noted that nothing measures the "surround-delta" — the contrast
+    /// between a highlight background and the plain surface it sits on —
+    /// confirmed directly: "SurfaceHover"/"SurfacePressed" had zero hits
+    /// anywhere under tests/ before this. Renders a REAL ListBoxItem (the
+    /// control every plain hover tint in this app either IS, or is styled
+    /// identically to — MenuItem/TabItem/CalendarDayButton/CalendarButton
+    /// all wire the SAME Theme.SurfaceHover DynamicResource to their own
+    /// "Bd"/"Chrome" Border on IsMouseOver in Styles.xaml) with IsMouseOver
+    /// forced via <see cref="ForceMouseOver"/> — the identical
+    /// Realize-then-force-then-Realize shape
+    /// <see cref="SelectedListBoxItemUsesTheAccentPalette"/> already uses for
+    /// IsSelected, and <see cref="ForceHighlighted"/>'s own doc comment
+    /// establishes as equivalent to real input for a read-only DP. Reads the
+    /// container's ACTUAL rendered "Bd" Border.Background — never the
+    /// ThemeManager resource value directly — so a future edit that stops
+    /// wiring IsMouseOver to Theme.SurfaceHover fails this test even if the
+    /// resource itself still computed a strong number (the "verify it
+    /// reaches the pixel" caution this review was given, after one XAML
+    /// highlight was found declared but dead earlier the same day).
+    ///
+    /// The floor (1.22 light / 1.30 dark) sits strictly between the OLD
+    /// 0.08 mix (measured directly against the pre-change constants: 1.181:1
+    /// light, 1.240:1 dark) and the NEW 0.10 mix (1.228:1 light, 1.318:1
+    /// dark) — see ThemeManager.cs's own comment at the Mix(...) call for
+    /// the full candidate table this floor was picked from — so reverting
+    /// the mix amount fails THIS assertion specifically ("delta too small"),
+    /// never a missing-render error (Step 5's teeth proof).</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void HoverSurroundDeltaClearsTheStrengthenedFloor(bool dark) => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark);
+
+        var item = new ListBoxItem { Content = "Invoices" };
+        Realize(item);
+        ForceMouseOver(item, true);
+        Realize(item);
+
+        var bd = FindDescendant<Border>(item)
+            ?? throw new InvalidOperationException("no Border descendant under ListBoxItem");
+        var hoverRgb = ToRgb(bd.Background);
+        var surfaceRgb = ToRgb((Brush)_fx.App.Resources["Theme.Surface"]);
+        var delta = ThemePalette.ContrastRatio(hoverRgb, surfaceRgb);
+
+        var floor = dark ? 1.30 : 1.22;
+        Assert.True(delta >= floor,
+            $"Hover surround-delta ({(dark ? "dark" : "light")}): {hoverRgb} vs surface {surfaceRgb} = {delta:F3}:1, want >= {floor}");
+    });
+
+    /// <summary>Same purpose as the Hover test above, for
+    /// Theme.SurfacePressed — rendered through its one real production call
+    /// site (MenuTopLevelHeader's IsSubmenuOpen trigger, Styles.xaml), a
+    /// real, genuinely-opened submenu in a live PresentationSource (the same
+    /// technique <see cref="HighlightedMenuSubmenuHeaderTextMeetsWcagAa"/>
+    /// above already establishes works for this exact control template).
+    /// IsSubmenuOpen is a plain public read/write property (unlike
+    /// IsHighlighted), so no reflection trick is needed here.
+    ///
+    /// The floor (1.45 light / 1.65 dark) sits strictly between the OLD 0.16
+    /// mix (1.400:1 light, 1.587:1 dark) and the NEW 0.20 mix (1.529:1
+    /// light, 1.780:1 dark).</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void PressedSurroundDeltaClearsTheStrengthenedFloor(bool dark) => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark);
+
+        var menu = new Menu();
+        var topLevel = new MenuItem { Header = "_Tools" };
+        topLevel.Items.Add(new MenuItem { Header = "_Unlock PDFs…" });
+        menu.Items.Add(topLevel);
+        var window = new Window
+        {
+            Content = menu, Width = 300, Height = 200,
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            topLevel.IsSubmenuOpen = true;
+            PumpRender();
+            window.UpdateLayout();
+
+            // Sanity: really the TopLevelHeader template (the one that owns
+            // the IsSubmenuOpen -> Theme.SurfacePressed trigger), not some
+            // other role.
+            Assert.Same(_fx.App.Resources["MenuTopLevelHeader"], topLevel.Template);
+
+            var bd = FindDescendant<Border>(topLevel)
+                ?? throw new InvalidOperationException("no Border ('Bd') descendant under the top-level MenuItem");
+            var pressedRgb = ToRgb(bd.Background);
+            var surfaceRgb = ToRgb((Brush)_fx.App.Resources["Theme.Surface"]);
+            var delta = ThemePalette.ContrastRatio(pressedRgb, surfaceRgb);
+
+            var floor = dark ? 1.65 : 1.45;
+            Assert.True(delta >= floor,
+                $"Pressed surround-delta ({(dark ? "dark" : "light")}): {pressedRgb} vs surface {surfaceRgb} = {delta:F3}:1, want >= {floor}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>Step 2's own instruction: "keep pressed visibly stronger than
+    /// hover" — a structural invariant on the two REAL rendered brushes the
+    /// tests above already resolve independently, re-derived here rather
+    /// than hardcoding two numbers that could drift apart from each other
+    /// without either individual floor test failing.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void PressedSurroundDeltaExceedsHoverSurroundDelta(bool dark) => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark);
+        var surfaceRgb = ToRgb((Brush)_fx.App.Resources["Theme.Surface"]);
+
+        var item = new ListBoxItem { Content = "Invoices" };
+        Realize(item);
+        ForceMouseOver(item, true);
+        Realize(item);
+        var hoverRgb = ToRgb((FindDescendant<Border>(item)
+            ?? throw new InvalidOperationException("no Border descendant under ListBoxItem")).Background);
+        var hoverDelta = ThemePalette.ContrastRatio(hoverRgb, surfaceRgb);
+
+        var menu = new Menu();
+        var topLevel = new MenuItem { Header = "_Tools" };
+        topLevel.Items.Add(new MenuItem { Header = "_Unlock PDFs…" });
+        menu.Items.Add(topLevel);
+        var window = new Window
+        {
+            Content = menu, Width = 300, Height = 200,
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            topLevel.IsSubmenuOpen = true;
+            PumpRender();
+            window.UpdateLayout();
+            var pressedRgb = ToRgb((FindDescendant<Border>(topLevel)
+                ?? throw new InvalidOperationException("no Border ('Bd') descendant under the top-level MenuItem")).Background);
+            var pressedDelta = ThemePalette.ContrastRatio(pressedRgb, surfaceRgb);
+
+            Assert.True(pressedDelta > hoverDelta,
+                $"Pressed ({pressedDelta:F3}:1) should read stronger than Hover ({hoverDelta:F3}:1) in {(dark ? "dark" : "light")}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>The live "SubtleText and StatusAmber on Hover" pairing this
+    /// review's own brief named directly: BulkRenameWindow.xaml's
+    /// DataGridRow RowStyle paints a NeedsName row's Background with this
+    /// SAME Theme.SurfaceHover (a persistent state highlight, not literal
+    /// mouse hover, but the identical resource and the identical legibility
+    /// question), and BulkRenameViewModel.ApplyPlans makes NeedsName=true
+    /// ALWAYS imply NoteIsProblem=true (needsName is defined as
+    /// `!pr.Changed && pr.Note.Length > 0`, and noteIsProblem is `pr.Note.Length
+    /// > 0` — the first condition is strictly narrower) — so a NeedsName
+    /// row's Note column is ALWAYS StatusAmber (Manual/Changed's SubtleText
+    /// triggers are declared before it and always lose), and its
+    /// Changed=false always holds too, so "New name" is ALWAYS SubtleText.
+    /// DataGridNoteColourTests' own BulkRename coverage checks these same
+    /// colours against Theme.Surface (the DataGrid's OWN Background,
+    /// correct for a Transparent-background row) — not what a NeedsName
+    /// row's REAL background is. This test reads the ROW's actual rendered
+    /// Background instead, closing exactly that gap, and — the "reaches the
+    /// pixel" check — asserts it against the SAME resolved Theme.SurfaceHover
+    /// resource rather than a hardcoded RGB triple, so it stays correct
+    /// however the mix amount is tuned in the future.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void BulkRenameNeedsNameRowStaysLegibleOnItsOwnHoverTint(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var vm = new BulkRenameViewModel();
+        vm.Preview.Add(new RenameRow(@"C:\inbox\c.pdf", "c.pdf", "c.pdf",
+            "doesn't match the review-file layout — skipped",
+            changed: false, manual: false, needsName: true, editSeed: "c.pdf", noteIsProblem: true));
+        var window = new BulkRenameWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+
+            var grid = FindDescendant<DataGrid>(window)
+                ?? throw new InvalidOperationException("no DataGrid descendant under BulkRenameWindow");
+            var row = grid.ItemContainerGenerator.ContainerFromIndex(0) as DataGridRow
+                ?? throw new InvalidOperationException("row 0 never realized a container");
+            row.ApplyTemplate();
+            row.UpdateLayout();
+
+            var rowBg = ToRgb(row.Background);
+            Assert.Equal(ToRgb((Brush)_fx.App.Resources["Theme.SurfaceHover"]), rowBg);
+
+            var newNameColumn = grid.Columns.FirstOrDefault(c => (c.Header as string)?.StartsWith("New name") == true)
+                ?? throw new InvalidOperationException("no 'New name' column found");
+            var noteColumn = grid.Columns.FirstOrDefault(c => (c.Header as string) == "Note")
+                ?? throw new InvalidOperationException("no 'Note' column found");
+            var cells = FindAllDescendants<DataGridCell>(row);
+            var newNameCell = cells.FirstOrDefault(c => c.Column == newNameColumn)
+                ?? throw new InvalidOperationException("'New name' cell never realized");
+            var noteCell = cells.FirstOrDefault(c => c.Column == noteColumn)
+                ?? throw new InvalidOperationException("'Note' cell never realized");
+            newNameCell.ApplyTemplate(); newNameCell.UpdateLayout();
+            noteCell.ApplyTemplate(); noteCell.UpdateLayout();
+            var newNameText = FindDescendant<TextBlock>(newNameCell)
+                ?? throw new InvalidOperationException("'New name' cell TextBlock never realized");
+            var noteText = FindDescendant<TextBlock>(noteCell)
+                ?? throw new InvalidOperationException("'Note' cell TextBlock never realized");
+
+            var newNameFg = ToRgb(newNameText.Foreground);
+            var noteFg = ToRgb(noteText.Foreground);
+            Assert.Equal(p.SubtleText, newNameFg);
+            Assert.Equal(p.StatusAmber, noteFg);
+
+            var newNameRatio = ThemePalette.ContrastRatio(newNameFg, rowBg);
+            var noteRatio = ThemePalette.ContrastRatio(noteFg, rowBg);
+            Assert.True(newNameRatio >= 4.5,
+                $"BulkRename NeedsName row 'New name' (SubtleText) on its own Hover tint ({(dark ? "dark" : "light")}): {newNameFg} on {rowBg} = {newNameRatio:F3}");
+            Assert.True(noteRatio >= 4.5,
+                $"BulkRename NeedsName row 'Note' (StatusAmber) on its own Hover tint ({(dark ? "dark" : "light")}): {noteFg} on {rowBg} = {noteRatio:F3}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>The other live "SubtleText on Hover" pairing — the one Step
+    /// 3's own brief predicted as "the most likely casualty": RouteList's
+    /// GestureText caption (Theme.SubtleText, via its CaptionText-based
+    /// inline Style) on an unselected, hovered ListBoxItem row. Same shape
+    /// LabelMakerWindow's NextNumberText and ManageSavedWindow's
+    /// password-status annotation share — all three are declared FIRST in
+    /// their DockPanel/StackPanel and stay Theme.SubtleText until IsSelected
+    /// (see SettingsRouteListGestureTextStaysSubtleUnlessSelected above,
+    /// which covers selected/unselected-but-not-hovered; this test is the
+    /// hovered-but-unselected state that was never previously exercised).
+    /// IsMouseOver forced the same way HoverSurroundDeltaClearsTheStrengthenedFloor
+    /// does above.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void RouteListGestureTextStaysLegibleWhenHoveredButUnselected(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var cfg = new Config();
+        cfg.Routes.Add(new Route { Label = "Invoices", Path = @"C:\dest", Hotkey = "Ctrl+1" });
+        var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
+        var vm = new SettingsViewModel(cfg, new NoDialogs(),
+            () => dark ? ThemePalette.Dark : ThemePalette.Light, cfgPath,
+            uiContext: System.Threading.SynchronizationContext.Current);
+        var window = new SettingsWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+
+            var tabControl = FindDescendant<TabControl>(window)
+                ?? throw new InvalidOperationException("no TabControl descendant under SettingsWindow");
+            var destinationsTab = tabControl.Items.Cast<TabItem>()
+                    .FirstOrDefault(ti => ti.Header?.ToString() == "_Destinations")
+                ?? throw new InvalidOperationException("no \"Destinations\" TabItem found");
+            tabControl.SelectedItem = destinationsTab;
+            window.UpdateLayout();
+            PumpRender();
+            window.UpdateLayout();
+
+            var listBox = FindDescendant<ListBox>(window)
+                ?? throw new InvalidOperationException("no ListBox descendant under SettingsWindow");
+            // SettingsViewModel's constructor auto-selects the first route
+            // (SelectedRoute = Routes.FirstOrDefault()) — deliberately
+            // deselect it here so this exercises IsMouseOver ALONE, the
+            // exact state this review's Step 2/3 tension is about, not
+            // "selected AND hovered" (which Styles.xaml's ListBoxItem style
+            // already resolves to Theme.Accent regardless, since IsSelected
+            // is declared after IsMouseOver in that Style's triggers).
+            listBox.SelectedIndex = -1;
+            window.UpdateLayout();
+            PumpRender();
+            var container = listBox.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem
+                ?? throw new InvalidOperationException("RouteList row 0 never realized a container");
+            ForceMouseOver(container, true);
+            container.UpdateLayout();
+
+            var bd = FindDescendant<Border>(container)
+                ?? throw new InvalidOperationException("no Border descendant under the RouteList row");
+            var rowBg = ToRgb(bd.Background);
+            Assert.Equal(ToRgb((Brush)_fx.App.Resources["Theme.SurfaceHover"]), rowBg);
+
+            // GestureText is declared FIRST in the DockPanel (Dock="Right",
+            // after the non-Text Rectangle swatch) — same element
+            // SettingsRouteListGestureTextStaysSubtleUnlessSelected already
+            // resolves via FindTextElement.
+            var gestureFg = ToRgb(FindAllDescendants<TextBlock>(container)[0].Foreground);
+            Assert.Equal(p.SubtleText, gestureFg);
+            var ratio = ThemePalette.ContrastRatio(gestureFg, rowBg);
+            Assert.True(ratio >= 4.5,
+                $"RouteList GestureText (SubtleText) hovered-unselected ({(dark ? "dark" : "light")}): {gestureFg} on {rowBg} = {ratio:F3}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>UnlockWindow's FileList Note column, hovered but NOT
+    /// selected — the pairing that surfaced the review's most important
+    /// finding: two of these four status colours were ALREADY below 4.5:1
+    /// here at the OLD 0.08 mix, before this review touched anything
+    /// (StatusGreen light 4.343:1, StatusRed dark 3.945:1 — measured against
+    /// the pre-change constants), because Styles.xaml's ListBoxItem
+    /// IsMouseOver trigger paints the SAME Theme.SurfaceHover behind
+    /// whichever status coloured the Note, and neither existing test here
+    /// (which only ever checks "selected" or plain "Theme.Surface")
+    /// exercised "hovered, unselected" at all. StatusRed in light was
+    /// passing but paper-thin pre-existing (4.606:1, a 0.106 margin) and
+    /// does cross below 4.5 at the strengthened mix — a small, deliberate,
+    /// measured regression on an already-marginal pairing, not something
+    /// achievable to avoid while still strengthening Hover at all (see
+    /// ThemeManager.cs's own comment at the Mix(...) call for the full
+    /// candidate table). Pinned with the real, current numbers — the same
+    /// "assert the honest range, don't assert a floor that isn't true"
+    /// convention <see cref="MainWindowToastIconContrast"/> already
+    /// establishes for this codebase — rather than silently left uncovered
+    /// or asserted against a floor guaranteed to fail. If any of the
+    /// "known gap" cases below ever climbs to >=4.5 (a future per-state
+    /// hover background, say), TIGHTEN that case's assertion to `>= 4.5` and
+    /// update this comment; don't just widen the range further.</summary>
+    [Theory]
+    [InlineData(false, "Ready")]         // StatusGreen, light: KNOWN GAP (pre-existing)
+    [InlineData(true, "Ready")]          // StatusGreen, dark: clears
+    [InlineData(false, "NeedsPassword")] // StatusAmber, light: clears
+    [InlineData(true, "NeedsPassword")]  // StatusAmber, dark: clears
+    [InlineData(false, "Unreadable")]    // StatusRed, light: KNOWN GAP (newly crossed by this change)
+    [InlineData(true, "Unreadable")]     // StatusRed, dark: KNOWN GAP (pre-existing)
+    public void UnlockFileListHoverUnselectedNoteContrast(bool dark, string statusName) => _fx.Invoke(() =>
+    {
+        var status = statusName switch
+        {
+            "Ready" => ReadinessStatus.Ready,
+            "NeedsPassword" => ReadinessStatus.NeedsPassword,
+            "Unreadable" => ReadinessStatus.Unreadable,
+            _ => throw new ArgumentOutOfRangeException(nameof(statusName)),
+        };
+        Func<ThemePalette, Rgb> expectedColor = statusName switch
+        {
+            "Ready" => p => p.StatusGreen,
+            "NeedsPassword" => p => p.StatusAmber,
+            "Unreadable" => p => p.StatusRed,
+            _ => throw new ArgumentOutOfRangeException(nameof(statusName)),
+        };
+        var message = statusName switch
+        {
+            "Ready" => "A saved password opens this.",
+            "NeedsPassword" => "This PDF needs a password none of the saved ones supply.",
+            "Unreadable" => "Couldn't read it: The file is not a valid PDF document.",
+            _ => throw new ArgumentOutOfRangeException(nameof(statusName)),
+        };
+
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var vm = new UnlockViewModel(new Config(), () => true);
+        var row = new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf");
+        row.SetProbeResult(status, message);
+        vm.Files.Add(row);
+        var window = new UnlockWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+
+            var listBox = FindDescendant<ListBox>(window)
+                ?? throw new InvalidOperationException("no ListBox descendant under UnlockWindow");
+            var container = listBox.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem
+                ?? throw new InvalidOperationException("FileList row 0 never realized a container");
+            ForceMouseOver(container, true);
+            container.UpdateLayout();
+
+            var bd = FindDescendant<Border>(container)
+                ?? throw new InvalidOperationException("no Border descendant under FileList's ListBoxItem");
+            var rowBg = ToRgb(bd.Background);
+            Assert.Equal(ToRgb((Brush)_fx.App.Resources["Theme.SurfaceHover"]), rowBg);
+
+            var textBlocks = FindAllDescendants<TextBlock>(container);
+            Assert.True(textBlocks.Count >= 2,
+                $"expected FileName + Note TextBlocks, found {textBlocks.Count}");
+            var noteFg = ToRgb(textBlocks[1].Foreground);
+            Assert.Equal(expectedColor(p), noteFg);
+            var ratio = ThemePalette.ContrastRatio(noteFg, rowBg);
+
+            var knownGap = (dark, statusName) is (false, "Ready") or (false, "Unreadable") or (true, "Unreadable");
+            if (knownGap)
+                Assert.True(ratio is >= 3.0 and < 4.5,
+                    $"UnlockWindow FileList hovered-unselected {statusName} ({(dark ? "dark" : "light")}): {noteFg} on {rowBg} = {ratio:F3} — expected a KNOWN, still-open gap, not a pass or a total collapse");
+            else
+                Assert.True(ratio >= 4.5,
+                    $"UnlockWindow FileList hovered-unselected {statusName} ({(dark ? "dark" : "light")}): {noteFg} on {rowBg} = {ratio:F3}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
     // -------------------------------------------------------------- plumbing
 
     /// <summary>Force full template/content generation on a "loose" element —
@@ -1551,6 +1979,23 @@ public class HighlightContrastTests
                 $"{item.GetType()} has no private static IsHighlightedPropertyKey field");
         var key = (DependencyPropertyKey)field.GetValue(null)!;
         item.SetValue(key, true);
+    }
+
+    /// <summary>Same trick as <see cref="ForceHighlighted"/> above, for
+    /// <c>UIElement.IsMouseOver</c> — also read-only, via the private static
+    /// <c>IsMouseOverPropertyKey</c> field declared on <see cref="UIElement"/>
+    /// itself (not on the concrete control type, unlike IsHighlighted/
+    /// IsSelected above). Used by the hover-tint strength review's own new
+    /// coverage below to reach a real ControlTemplate's IsMouseOver trigger
+    /// deterministically, without real mouse input.</summary>
+    private static void ForceMouseOver(UIElement el, bool value)
+    {
+        var field = typeof(UIElement).GetField("IsMouseOverPropertyKey",
+                BindingFlags.Static | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "UIElement has no private static IsMouseOverPropertyKey field");
+        var key = (DependencyPropertyKey)field.GetValue(null)!;
+        el.SetValue(key, value);
     }
 
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
