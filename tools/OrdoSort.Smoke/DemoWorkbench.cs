@@ -525,9 +525,10 @@ public static class DemoWorkbench
                 ["last"] = "Last Name",
                 ["control"] = "Control ID",
             },
-            // plaintext here on purpose: the app re-protects these with DPAPI
-            // the next time saved passwords change in Unlock's Manage saved…
-            // dialog or save banner, which is itself worth watching
+            // plaintext here on purpose: saved passwords are stored plain
+            // text in the shared config.json by design (2026-08-08
+            // portable-saved-passwords plan), so this is simply what a real
+            // one looks like on disk
             SavedPasswords = passwords.Select(p => new OrdoSort.Core.SavedPassword
             {
                 Label = p.Label,

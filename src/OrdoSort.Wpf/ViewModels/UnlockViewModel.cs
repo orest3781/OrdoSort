@@ -100,13 +100,16 @@ public sealed class UnlockViewModel : ObservableObject
     internal const int MaxConcurrentUnlocks = 4;
 
     private readonly Config _cfg;
-    // True return means the write reached disk — the constructor's
-    // load-time notice (below) and the minor finding in fix round 1 both
-    // depend on knowing that, not just that a save was attempted.
+    // The constructor's load-time migration (below) gates the SAVE itself on
+    // this, but no longer gates any dialog on its return value: a clean
+    // conversion is silent either way now (portable-saved-passwords plan,
+    // Task 1), unlike the old plaintext -> protected direction, whose
+    // success notice specifically needed to know the write had reached
+    // disk before claiming "protected."
     private readonly Func<bool> _trySaveCfg;
     // Null in the handful of tests that don't care about the load-time
-    // notice (Step 4) — every call site is a null-conditional ?.Info, so a
-    // missing dialog service just means the notice is silently skipped,
+    // notice (Step 4) — every call site is a null-conditional ?.Info/Warn, so
+    // a missing dialog service just means the notice is silently skipped,
     // never a crash.
     private readonly IDialogService? _dialogs;
 
@@ -115,12 +118,18 @@ public sealed class UnlockViewModel : ObservableObject
     // and the runs-alone bound deterministic instead of timing-hopeful.
     private readonly Func<string, string, Unlock.UnlockResult> _unlock;
     private readonly Func<string, long> _fileSize;
-    // Same pattern: the real app never passes this (defaults to the real
-    // DPAPI call), but real DPAPI essentially never fails, so a test proving
-    // ReprotectLegacyPlaintext's failure handling (fix round 1, Important 1)
+    // Same pattern: the real app never passes this (defaults to
+    // PasswordVault.TryReveal), but real DPAPI essentially never fails in
+    // the "unexpected exception, not just an undecryptable entry" sense, so
+    // a test proving MigrateProtectedToPlaintext's failure handling (fix
+    // round 1, Important 1 — carried over from the sweep this replaced)
     // needs a way to force that failure deterministically instead of hoping
-    // to provoke a real CryptographicException.
-    private readonly Func<string, string> _protect;
+    // to provoke a real one. Returns null for "could not decrypt this
+    // entry" (the normal case for a password protected on a different
+    // machine/account) rather than throwing — throwing is reserved for the
+    // "something unexpected went wrong" case the outer catch in
+    // MigrateProtectedToPlaintext exists for.
+    private readonly Func<string, string?> _tryReveal;
 
     // Test seam for the readiness probe, same shape as _unlock/_fileSize
     // above: the real app never passes this (defaults to the real, read-only
@@ -171,7 +180,7 @@ public sealed class UnlockViewModel : ObservableObject
         Func<string, string, Unlock.UnlockResult>? unlocker = null,
         Func<string, long>? fileSize = null,
         IDialogService? dialogs = null,
-        Func<string, string>? protect = null,
+        Func<string, string?>? tryReveal = null,
         Func<string, IReadOnlyList<string>, Unlock.ProbeResult>? probe = null)
     {
         _cfg = cfg;
@@ -184,7 +193,7 @@ public sealed class UnlockViewModel : ObservableObject
             // reports the real problem readably
             try { return new FileInfo(path).Length; } catch { return 0L; }
         });
-        _protect = protect ?? PasswordVault.Protect;
+        _tryReveal = tryReveal ?? (stored => PasswordVault.TryReveal(stored, out var plain) ? plain : null);
         _probe = probe ?? Unlock.ProbeReadiness;
         Saved = new ObservableCollection<SavedPassword>(cfg.SavedPasswords);
         UnlockCommand = new AsyncRelayCommand(UnlockAsync, () => Files.Count > 0);
@@ -211,58 +220,71 @@ public sealed class UnlockViewModel : ObservableObject
             if (!_bulkAdding) UnlockCommand.RaiseCanExecuteChanged();
         };
 
-        // Load-time sweep (audit finding 4.3[A]): ReprotectLegacyPlaintext
-        // used to run ONLY on the three save paths above, so a hand-edited
-        // or legacy plaintext entry sat readable in config.json forever if
-        // nobody happened to touch the saved-password list. This surface
-        // owns that list, so its own construction — which runs every time
-        // the Unlock window opens, i.e. effectively "on load" — is where
-        // the sweep belongs.
+        // Load-time migration (2026-08-08 portable-saved-passwords plan):
+        // saved passwords are plaintext now, by the owner's deliberate
+        // choice — a shared config.json on an SMB share, read by several
+        // stations, is what DPAPI CurrentUser (bound to one account) and
+        // LocalMachine (bound to one PC, and readable by every account on
+        // it) both fail to serve. MigrateProtectedToPlaintext converts any
+        // DPAPI-protected leftover from BEFORE that decision into plaintext
+        // in place. It used to run the opposite direction (plaintext ->
+        // protected, audit finding 4.3[A] — see that finding's update in
+        // the same plan) on the three save paths only; this surface owns
+        // the saved-password list, so its own construction — which runs
+        // every time the Unlock window opens, i.e. effectively "on load" —
+        // is where the migration belongs too, same as the sweep it
+        // replaces.
         //
-        // Gated on the sweep's own Converted flag: a config with nothing to
-        // convert must not be re-saved. Saving is not a by-the-way action
-        // on a shared config.json — it is a real, conflict-prone write on
-        // an SMB share, and this constructor runs on every single open, not
-        // once. An unconditional save here would rewrite (and risk
-        // write-conflicting) that shared file every time anyone so much as
-        // opened the Unlock window, for zero content change (see
-        // UnlockViewModelTests.LoadDoesNotRewriteAnAlreadyProtectedConfig).
+        // Gated on the migration's own Converted flag: a config with
+        // nothing to convert must not be re-saved. Saving is not a
+        // by-the-way action on a shared config.json — it is a real,
+        // conflict-prone write on an SMB share, and this constructor runs
+        // on every single open, not once. An unconditional save here would
+        // rewrite (and risk write-conflicting) that shared file every time
+        // anyone so much as opened the Unlock window, for zero content
+        // change (see
+        // UnlockViewModelTests.LoadDoesNotRewriteAnAlreadyPortableConfig).
         //
-        // Protecting converts an entry every station could read into one
-        // only THIS Windows account can (DPAPI CurrentUser scope) — the
-        // point of the fix, since plaintext-readable-by-everyone is the
-        // exposure, but it silently breaks a shared password for a
-        // colleague on another machine unless they're told. Hence the
-        // one-time notice, fired only when a conversion actually reached
-        // disk (fix round 1: _trySaveCfg's own failure path already warns
-        // the user "not saved" — piling an unconditional "now protected" on
-        // top of that would be actively misleading).
+        // A clean, successful conversion is SILENT — no dialog. That used
+        // to be backwards: the old direction (plaintext -> protected) fired
+        // an Info every time, because protecting silently broke a shared
+        // password for a colleague on another machine. This direction only
+        // ever makes a saved password MORE usable (portable instead of
+        // pinned to one machine+account), so a successful conversion needs
+        // no notice at all — piling one on top of an ordinary, working open
+        // would be exactly the unwanted dialog the owner reported in the
+        // first place. The one case that DOES need telling, once: an entry
+        // protected on a DIFFERENT machine or account can't be decrypted
+        // here at all (PasswordVault.TryReveal reports that distinctly, see
+        // its own doc comment) — it's left completely untouched rather than
+        // silently blanked, but the user has to know it needs re-entering.
         //
-        // ReprotectLegacyPlaintext itself never throws (fix round 1,
-        // Important 1) — see its doc comment — so nothing here needs its
-        // own try/catch to keep the window openable.
-        var sweep = ReprotectLegacyPlaintext();
-        if (sweep.Converted)
-        {
-            if (_trySaveCfg())
-            {
-                _dialogs?.Info(
-                    "Some saved passwords in the Unlock tool were stored in plain text " +
-                    "and have now been protected for this Windows account. If this saved-" +
-                    "password list is shared with a colleague on another computer, their " +
-                    "copy of the password will no longer work — they'll need to re-enter " +
-                    "and re-save it on their own machine.",
-                    "OrdoSort — saved passwords protected");
-            }
-        }
-        else if (sweep.Failed)
+        // MigrateProtectedToPlaintext itself never lets an UNEXPECTED
+        // exception escape (fix round 1, Important 1, carried over from the
+        // sweep this replaces) — see its own doc comment — so nothing here
+        // needs its own try/catch to keep the window openable.
+        var sweep = MigrateProtectedToPlaintext();
+        if (sweep.Failed)
         {
             _dialogs?.Warn(
-                "One or more saved passwords could not be protected just now — a " +
+                "One or more saved passwords could not be converted just now — a " +
                 "Windows security error, not a problem with the passwords themselves. " +
-                "They were left exactly as they were and will still work; this will " +
-                "be retried the next time the Unlock window opens.",
-                "OrdoSort — some saved passwords could not be protected");
+                "They were left exactly as they were and will still work here; this " +
+                "will be retried the next time the Unlock window opens.",
+                "OrdoSort — some saved passwords could not be converted");
+        }
+        else
+        {
+            if (sweep.Converted) _trySaveCfg();
+            if (sweep.Undecryptable)
+            {
+                _dialogs?.Info(
+                    "One or more saved passwords were protected on a different computer " +
+                    "or account and couldn't be read here, so they were left exactly as " +
+                    "they were — nothing was lost, but they'll need to be re-entered and " +
+                    "saved again on this station to work here too.",
+                    "OrdoSort — some saved passwords need re-entering");
+            }
         }
     }
 
@@ -350,16 +372,19 @@ public sealed class UnlockViewModel : ObservableObject
     /// <summary>Saves the password that WON THE RUN (the <see
     /// cref="_bannerPassword"/> snapshot), never whatever happens to be
     /// sitting in the live <see cref="Password"/> box — the same
-    /// protect-and-persist flow the old "remember this password" row used,
+    /// save-and-persist flow the old "remember this password" row used,
     /// just triggered by the banner instead of a standing field.</summary>
     private void SaveBannerPassword()
     {
         var label = SaveBannerName.Trim();
         if (label.Length == 0) return;
-        var entry = new SavedPassword { Label = label, Password = PasswordVault.Protect(_bannerPassword) };
+        // Plaintext, deliberately — saved passwords are stored plaintext in
+        // the shared config.json now (Task 1: no more Protect-on-save); see
+        // PasswordVault's own doc comment for why.
+        var entry = new SavedPassword { Label = label, Password = _bannerPassword };
         _cfg.SavedPasswords.Add(entry);
         Saved.Add(entry);
-        ReprotectLegacyPlaintext();
+        MigrateProtectedToPlaintext();
         _trySaveCfg();
         SaveBannerVisible = false;
         SaveBannerName = "";
@@ -388,7 +413,7 @@ public sealed class UnlockViewModel : ObservableObject
         {
             _cfg.SavedPasswords.Remove(p);
             Saved.Remove(p);
-            ReprotectLegacyPlaintext();
+            MigrateProtectedToPlaintext();
             _trySaveCfg();
             // A removed saved password can turn a ready row back into
             // needs-a-password (risk 4/staleness) — see
@@ -403,79 +428,93 @@ public sealed class UnlockViewModel : ObservableObject
     public bool AddSavedPassword(string label, string plain)
     {
         if (label.Trim().Length == 0 || plain.Length == 0) return false;
-        var entry = new SavedPassword { Label = label.Trim(), Password = PasswordVault.Protect(plain) };
+        // Plaintext, deliberately — see SaveBannerPassword's comment above.
+        var entry = new SavedPassword { Label = label.Trim(), Password = plain };
         _cfg.SavedPasswords.Add(entry);
         Saved.Add(entry);
-        ReprotectLegacyPlaintext();
+        MigrateProtectedToPlaintext();
         _trySaveCfg();
         // See RequeueAllFilesForProbing's doc comment (risk 4/staleness).
         RequeueAllFilesForProbing();
         return true;
     }
 
-    /// <summary>Opportunistic upgrade: any saved password not yet
-    /// DPAPI-protected (typically a hand-edited plaintext value in
-    /// config.json) is protected in place. Called both right before this
-    /// surface persists (the three save-path callers below) and once from
-    /// the constructor as a load-time sweep, so a plaintext entry cannot
-    /// outlive being noticed just because the saved-password list is never
-    /// otherwise touched. Mirrors the self-healing Settings used to do on
-    /// every save — now anchored to the surface that actually owns the
-    /// saved-passwords list. Mutates the SAME <see cref="SavedPassword"/>
-    /// instances that <c>Saved</c> holds (Saved is seeded from
-    /// <c>_cfg.SavedPasswords</c> by reference, not by copy), so the
-    /// in-memory list is automatically in sync — no separate pass over
-    /// <c>Saved</c> is needed.
+    /// <summary>Opportunistic migration: any saved password still
+    /// DPAPI-protected (from before saved passwords became portable, or a
+    /// hand-rolled <c>dpapi:</c> value) is converted to plaintext in place —
+    /// plaintext IS the stored form now, by the owner's deliberate choice
+    /// (see PasswordVault's own doc comment). Called both right before this
+    /// surface persists (the three save-path callers above) and once from
+    /// the constructor as a load-time migration, so a protected entry
+    /// cannot outlive being noticed just because the saved-password list is
+    /// never otherwise touched — the same opportunistic-upgrade-on-touch
+    /// shape the sweep this replaces used, just reversed. Mutates the SAME
+    /// <see cref="SavedPassword"/> instances that <c>Saved</c> holds (Saved
+    /// is seeded from <c>_cfg.SavedPasswords</c> by reference, not by
+    /// copy), so the in-memory list is automatically in sync — no separate
+    /// pass over <c>Saved</c> is needed.
     ///
-    /// DPAPI's <see cref="PasswordVault.Protect"/> can itself fail — its
-    /// documented Windows failure mode is <see cref="CryptographicException"/>
-    /// (rare, but real: profile-load edge cases and similar), but Finding
-    /// 1's promise is stronger than "the documented failure mode is
-    /// handled": NO failure here may cost the user the tool, so this
-    /// catches every exception type, not just the expected one (fix round
-    /// 2, Gap A) — a narrower catch would reproduce the exact "window
-    /// never opens again" defect for whatever exception type it didn't
-    /// happen to name. Before the constructor called this, a failure here
-    /// could only ever happen inside a deliberate save action; now it can
-    /// happen every time the Unlock window opens, and an unhandled throw
-    /// here would escape the constructor and leave the window unable to
-    /// open, deterministically, forever (fix round 1, Important 1). So this
-    /// never lets an exception escape: on a failure, it rolls back every
-    /// entry THIS call touched, restoring their original plaintext, rather
-    /// than leave a half-swept <c>_cfg</c> sitting in memory, unpersisted —
-    /// a secret that becomes unrecoverable is far worse than one that stays
-    /// plaintext, and a half-converted <c>_cfg</c> is exactly what would
-    /// silently reach disk the next time ANYTHING else saves this
-    /// config.</summary>
-    /// <returns><c>Converted</c> is true if at least one entry was
-    /// protected and none failed — callers that persist unconditionally
-    /// (the three above) can ignore this; the constructor's load-time
-    /// sweep uses it to skip saving (and notifying) a config that had
-    /// nothing to convert. <c>Failed</c> is true if protecting an entry
-    /// failed for ANY reason, in which case <c>Converted</c> is always
-    /// false (a failure rolls back the whole attempt) — the constructor
-    /// uses this to warn instead of claiming success.</returns>
-    private (bool Converted, bool Failed) ReprotectLegacyPlaintext()
+    /// An entry protected on a DIFFERENT machine or account cannot be
+    /// decrypted here at all — that is normal and expected now that
+    /// passwords are meant to travel, not a bug, and it is the one case
+    /// this method must get exactly right: <see cref="PasswordVault.Reveal"/>
+    /// collapses that failure into "", which would silently turn an
+    /// irreplaceable password into an empty one if written back. This uses
+    /// <see cref="_tryReveal"/> (defaults to
+    /// <see cref="PasswordVault.TryReveal"/>) instead, which reports the
+    /// failure distinctly; an entry it can't decrypt is left completely
+    /// untouched — not added to <c>touched</c>, never mutated — and merely
+    /// counted, so the constructor can tell the user once (fix round 1
+    /// Important 1 didn't have this case at all, since the old direction
+    /// — plaintext -&gt; protected — could never fail to read its own input).
+    ///
+    /// A TRULY unexpected failure — any exception <see cref="_tryReveal"/>
+    /// throws rather than reports via its return value — must still never
+    /// escape this method and brick the Unlock window: before the
+    /// constructor called this, a failure here could only ever happen
+    /// inside a deliberate save action; now it can happen every time the
+    /// window opens, and an unhandled throw would leave it unable to open,
+    /// deterministically, forever (fix round 1, Important 1; fix round 2,
+    /// Gap A — catches every exception type, not just the documented one,
+    /// carried over unchanged from the sweep this replaces). On that
+    /// failure this rolls back every entry THIS call touched, restoring
+    /// their original protected value — cheap and exactly right, since
+    /// nothing needs re-encrypting: the original <c>dpapi:</c> string was
+    /// saved before any mutation, so "roll back" is just restoring
+    /// it.</summary>
+    /// <returns><c>Converted</c> is true if at least one entry was migrated
+    /// to plaintext and nothing failed unexpectedly — callers that persist
+    /// unconditionally (the three above) can ignore this; the constructor's
+    /// load-time migration uses it to skip saving a config that had nothing
+    /// to convert. <c>Undecryptable</c> is true if at least one protected
+    /// entry could not be decrypted at all (left untouched) — the
+    /// constructor tells the user once, since those passwords need
+    /// re-entering here. <c>Failed</c> is true only for the unexpected-
+    /// exception case, in which case <c>Converted</c> is always false (a
+    /// failure rolls back the whole attempt) — the constructor warns
+    /// instead of claiming success.</returns>
+    private (bool Converted, bool Undecryptable, bool Failed) MigrateProtectedToPlaintext()
     {
         var touched = new List<(SavedPassword Entry, string Original)>();
+        var undecryptable = false;
         try
         {
             foreach (var sp in _cfg.SavedPasswords)
             {
-                if (!PasswordVault.IsProtected(sp.Password))
-                {
-                    var original = sp.Password;
-                    sp.Password = _protect(sp.Password);
-                    touched.Add((sp, original));
-                }
+                if (!PasswordVault.IsProtected(sp.Password)) continue;
+                var plain = _tryReveal(sp.Password);
+                if (plain is null) { undecryptable = true; continue; }
+                var original = sp.Password;
+                sp.Password = plain;
+                touched.Add((sp, original));
             }
-            return (touched.Count > 0, false);
+            return (touched.Count > 0, undecryptable, false);
         }
         catch (Exception)
         {
             foreach (var (entry, original) in touched)
                 entry.Password = original;
-            return (false, true);
+            return (false, false, true);
         }
     }
 
@@ -646,10 +685,11 @@ public sealed class UnlockViewModel : ObservableObject
     /// exactly three places — AddSavedPassword, RemoveSelectedSaved, and the
     /// save banner (SaveBannerPassword) — found by walking every mutator of
     /// Saved/_cfg.SavedPasswords, not by trusting a list of call sites.
-    /// ReprotectLegacyPlaintext is deliberately NOT one of them: it changes
-    /// how a password is STORED (DPAPI-wraps a legacy plaintext value), never
-    /// what it REVEALS to, so a probe run before and after protecting the
-    /// same entry gets the identical candidate string either way.
+    /// MigrateProtectedToPlaintext is deliberately NOT one of them: it
+    /// changes how a password is STORED (unwraps a legacy DPAPI value to
+    /// plaintext), never what it REVEALS to, so a probe run before and
+    /// after migrating the same entry gets the identical candidate string
+    /// either way.
     ///
     /// CHOICE: re-probe, not just clear-and-wait. A cleared verdict with no
     /// replacement would leave the user staring at blank rows until they did

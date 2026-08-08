@@ -58,9 +58,17 @@ public sealed class SoundSettings
     [JsonExtensionData] public Dictionary<string, System.Text.Json.JsonElement> Extras { get; set; } = new();
 }
 
-/// <summary>A saved Unlock-tool password. The password value is either
-/// DPAPI-protected ("dpapi:&lt;base64&gt;", written by the app) or legacy
-/// plaintext (hand-edited).</summary>
+/// <summary>A saved Unlock-tool password. The password value is plaintext —
+/// the app's own storage form since saved passwords became portable across
+/// stations sharing one config.json (2026-08-08 portable-saved-passwords
+/// plan; the share's own permissions are the security boundary, not
+/// encryption, by the owner's deliberate choice). A value can also still be
+/// DPAPI-protected ("dpapi:&lt;base64&gt;") — a leftover from before that
+/// change, or hand-rolled — which only decrypts on the machine and account
+/// that produced it; OrdoSort.Wpf.ViewModels.UnlockViewModel converts one of
+/// those to plaintext automatically the next time the saved-password list
+/// is touched (see PasswordVault's own doc comment for the full
+/// story).</summary>
 public sealed class SavedPassword
 {
     [JsonPropertyName("label")] public string Label { get; set; } = "";

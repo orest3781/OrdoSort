@@ -184,8 +184,11 @@ public class UnlockViewModelTests : IDisposable
         Assert.Equal("", vm.SaveBannerName);
         var saved = Assert.Single(_cfg.SavedPasswords);
         Assert.Equal("Payer A", saved.Label);
-        Assert.True(PasswordVault.IsProtected(saved.Password));
-        Assert.Equal("secret", PasswordVault.Reveal(saved.Password));
+        // Portable-saved-passwords (Task 1): saved passwords are stored
+        // PLAINTEXT now, by design — this used to assert IsProtected(...)
+        // true, which is exactly the behaviour this change reverses.
+        Assert.False(PasswordVault.IsProtected(saved.Password));
+        Assert.Equal("secret", saved.Password);
         Assert.Same(saved, Assert.Single(vm.Saved));
         Assert.Equal(1, _saves);
     }
@@ -457,17 +460,48 @@ public class UnlockViewModelTests : IDisposable
     }
 
     [Fact]
-    public void AddSavedPasswordStoresProtectedAndPersistsImmediately()
+    public void AddSavedPasswordStoresPlaintextAndPersistsImmediately()
     {
+        // Renamed from AddSavedPasswordStoresProtectedAndPersistsImmediately
+        // (portable-saved-passwords, Task 1): AddSavedPassword no longer
+        // protects what it stores — the whole point of the change — so both
+        // the name and the assertion below are reversed from what this test
+        // used to check.
         var vm = Vm();
         Assert.True(vm.AddSavedPassword("Payer B", "s3cret"));
 
         var saved = Assert.Single(vm.Saved);
         Assert.Equal("Payer B", saved.Label);
-        Assert.True(PasswordVault.IsProtected(saved.Password));
-        Assert.Equal("s3cret", PasswordVault.Reveal(saved.Password));
+        Assert.False(PasswordVault.IsProtected(saved.Password));
+        Assert.Equal("s3cret", saved.Password);
         Assert.Same(saved, Assert.Single(_cfg.SavedPasswords));
         Assert.Equal(1, _saves);
+    }
+
+    [Fact]
+    public void ANewlySavedPasswordAppearsAsPlaintextOnDisk()
+    {
+        // Task 1, Step 5's first required assertion, taken literally: not
+        // "Vm()'s in-memory _cfg holds a plaintext string" (the test above)
+        // but the actual bytes a DIFFERENT station's text editor — or this
+        // same file, read back cold through a fresh Config — would see.
+        var path = Path.Combine(_dir, "config.json");
+        var seed = new Config();
+        Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
+
+        var loaded = Config.Load(path);
+        var vm = new UnlockViewModel(loaded, () => Config.TrySave(loaded, path, out _));
+
+        Assert.True(vm.AddSavedPassword("Payer B", "s3cret"));
+
+        var rawJson = File.ReadAllText(path);
+        Assert.Contains("\"s3cret\"", rawJson);
+        Assert.DoesNotContain("dpapi:", rawJson);
+
+        var onDisk = Config.Load(path);
+        var saved = Assert.Single(onDisk.SavedPasswords);
+        Assert.Equal("Payer B", saved.Label);
+        Assert.Equal("s3cret", saved.Password);
     }
 
     [Fact]
@@ -483,8 +517,17 @@ public class UnlockViewModelTests : IDisposable
     [Fact]
     public void RemoveSavedCommandRemovesTheSelectedEntryAndPersists()
     {
-        _cfg.SavedPasswords.Add(new SavedPassword
-        { Label = "X", Password = PasswordVault.Protect("pw123") });
+        // Plaintext, not PasswordVault.Protect(...) — a protected entry
+        // seeded BEFORE the constructor runs is exactly what the
+        // constructor's own load-time migration converts (and persists) on
+        // the spot now (portable-saved-passwords, Task 1), which would add
+        // a second, extraneous _trySaveCfg() call this test isn't about and
+        // doesn't expect. The entry's protectedness was never what this
+        // test means to exercise — only that Remove persists exactly once —
+        // so plaintext keeps that isolated (same reasoning as
+        // PersistingSavedPasswordsMigratesLegacyProtectedEntriesToPlaintext's
+        // own comment about seeding after constructon).
+        _cfg.SavedPasswords.Add(new SavedPassword { Label = "X", Password = "pw123" });
         var vm = Vm();
         vm.SelectedSavedEntry = vm.Saved[0];
         Assert.True(vm.RemoveSavedCommand.CanExecute(null));
@@ -497,58 +540,66 @@ public class UnlockViewModelTests : IDisposable
     }
 
     [Fact]
-    public void PersistingSavedPasswordsReProtectsLegacyPlaintextEntries()
+    public void PersistingSavedPasswordsMigratesLegacyProtectedEntriesToPlaintext()
     {
-        // Settings used to sweep every saved password and protect any
-        // plaintext one on EVERY save, regardless of whether passwords were
-        // even touched. That self-healing moved with the list to
-        // UnlockViewModel — it must still happen, just triggered by this
-        // surface's own persist paths instead.
+        // Renamed from PersistingSavedPasswordsReProtectsLegacyPlaintextEntries
+        // (portable-saved-passwords, Task 1): the save-path sweep now runs
+        // the OPPOSITE direction — any DPAPI-protected entry left over from
+        // before this change is converted to plaintext, not the other way
+        // round. The self-healing shape (any persist path touches the whole
+        // list, not just the one entry being added) is unchanged; only which
+        // way it converts is reversed.
         //
-        // legacyPlain is added AFTER Vm() runs, not before — the
-        // constructor now runs its OWN load-time sweep (see the
-        // LoadSweeps.../LoadDoesNotRewrite... tests below), which would
+        // legacyProtected is added AFTER Vm() runs, not before — the
+        // constructor now runs its OWN load-time migration (see the
+        // LoadMigrates.../LoadDoesNotRewrite... tests below), which would
         // otherwise convert this entry (and persist) before AddSavedPassword
         // ever got a chance to, muddying what this test is isolating: the
-        // SAVE-path sweep triggered by touching the list.
-        var alreadyProtected = new SavedPassword
-        { Label = "A", Password = PasswordVault.Protect("already-safe") };
-        _cfg.SavedPasswords.Add(alreadyProtected);
+        // SAVE-path migration triggered by touching the list.
+        var alreadyPlain = new SavedPassword { Label = "A", Password = "already-plain" };
+        _cfg.SavedPasswords.Add(alreadyPlain);
         var vm = Vm();
-        var legacyPlain = new SavedPassword { Label = "B", Password = "hunter2" };
-        _cfg.SavedPasswords.Add(legacyPlain);
+        var legacyProtected = new SavedPassword
+        { Label = "B", Password = PasswordVault.Protect("hunter2") };
+        _cfg.SavedPasswords.Add(legacyProtected);
 
-        Assert.True(vm.AddSavedPassword("New", "x"));   // any persist path triggers the sweep
+        Assert.True(vm.AddSavedPassword("New", "x"));   // any persist path triggers the migration
 
-        Assert.All(_cfg.SavedPasswords, p => Assert.True(PasswordVault.IsProtected(p.Password)));
-        Assert.Equal("hunter2", PasswordVault.Reveal(legacyPlain.Password));
-        Assert.Equal("already-safe", PasswordVault.Reveal(alreadyProtected.Password));
-        Assert.Equal(1, _saves);   // the sweep itself doesn't persist — only the one Add did
+        Assert.All(_cfg.SavedPasswords, p => Assert.False(PasswordVault.IsProtected(p.Password)));
+        Assert.Equal("hunter2", legacyProtected.Password);
+        Assert.Equal("already-plain", alreadyPlain.Password);
+        Assert.Equal(1, _saves);   // the migration itself doesn't persist — only the one Add did
     }
 
-    // ---------------------------------------------------- load-time sweep
-    // Audit finding 4.3[A]: a hand-edited or legacy plaintext saved
-    // password sat readable in config.json forever if nobody happened to
-    // touch the saved-password list, because ReprotectLegacyPlaintext used
-    // to run only on the three save paths above. These tests go through
-    // real files on disk (not the in-memory _saves counter the rest of this
-    // class uses) because the whole point is that the sweep must actually
-    // reach config.json, not just this process's copy of Config — protecting
-    // in memory only would leave the plaintext on disk, which is the entire
-    // finding.
+    // ------------------------------------------------- load-time migration
+    // Portable-saved-passwords (2026-08-08), reversing audit finding 4.3[A]:
+    // it used to be a hand-edited/legacy PLAINTEXT saved password that sat
+    // readable in config.json forever unless something touched the list.
+    // Now it's the opposite — a DPAPI-PROTECTED entry (from before this
+    // change, or hand-rolled) that only works on one machine+account is what
+    // gets converted, to plaintext, so the shared config.json works from
+    // every station. These tests go through real files on disk (not the
+    // in-memory _saves counter the rest of this class uses), and — per the
+    // plan's own warning that this repo has twelve recorded instances of a
+    // test passing for the wrong reason — assert the RAW ON-DISK JSON where
+    // it matters most (LoadMigrates...ToDisk below reads the file as text),
+    // not just a value that round-trips back through Reveal.
 
     [Fact]
-    public void LoadSweepsAndPersistsALegacyPlaintextSavedPasswordToDisk()
+    public void LoadMigratesAProtectedSavedPasswordToPlaintextOnDisk()
     {
+        // Renamed from LoadSweepsAndPersistsALegacyPlaintextSavedPasswordToDisk,
+        // reversed: the seeded entry is now PROTECTED, and the assertions
+        // below check for PLAINTEXT afterward, including on the raw bytes.
         var path = Path.Combine(_dir, "config.json");
         var seed = new Config();
-        seed.SavedPasswords.Add(new SavedPassword { Label = "Legacy", Password = "hunter2" });
+        seed.SavedPasswords.Add(new SavedPassword { Label = "Legacy", Password = PasswordVault.Protect("hunter2") });
         Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
 
         var loaded = Config.Load(path);
-        // sanity: Config.Load doesn't itself protect anything — if it did,
-        // this test wouldn't be exercising the sweep at all
-        Assert.False(PasswordVault.IsProtected(Assert.Single(loaded.SavedPasswords).Password));
+        // sanity: Config.Load doesn't itself convert anything — if it did,
+        // this test wouldn't be exercising the migration at all
+        Assert.True(PasswordVault.IsProtected(Assert.Single(loaded.SavedPasswords).Password));
 
         var saveCalls = 0;
         var vm = new UnlockViewModel(loaded, () =>
@@ -558,30 +609,43 @@ public class UnlockViewModelTests : IDisposable
         });
 
         // in memory, immediately after construction
-        var swept = Assert.Single(loaded.SavedPasswords);
-        Assert.True(PasswordVault.IsProtected(swept.Password));
-        Assert.Equal("hunter2", PasswordVault.Reveal(swept.Password));
-        Assert.Equal(1, saveCalls);   // it persisted — this is the whole finding
+        var migrated = Assert.Single(loaded.SavedPasswords);
+        Assert.False(PasswordVault.IsProtected(migrated.Password));
+        Assert.Equal("hunter2", migrated.Password);
+        Assert.Equal(1, saveCalls);   // it persisted — this is the whole point
 
-        // on disk, read back through a completely fresh Config instance —
-        // proves it reached the file, not just this process's copy
+        // On the raw bytes on disk, not just a re-parsed Config: a value
+        // that merely round-trips through Reveal proves nothing about what
+        // a DIFFERENT station's text editor — or this file, read cold —
+        // would actually show. This is the assertion that would catch a
+        // migration that "converts" in memory but forgets what landed on
+        // disk is still a dpapi: blob.
+        var rawJson = File.ReadAllText(path);
+        Assert.Contains("\"hunter2\"", rawJson);
+        Assert.DoesNotContain("dpapi:", rawJson);
+
+        // and read back through a completely fresh Config instance — proves
+        // it reached the file, not just this process's copy
         var rereadFromDisk = Config.Load(path);
         var onDisk = Assert.Single(rereadFromDisk.SavedPasswords);
-        Assert.True(PasswordVault.IsProtected(onDisk.Password));
-        Assert.Equal("hunter2", PasswordVault.Reveal(onDisk.Password));
+        Assert.False(PasswordVault.IsProtected(onDisk.Password));
+        Assert.Equal("hunter2", onDisk.Password);
 
         GC.KeepAlive(vm);
     }
 
     [Fact]
-    public void LoadDoesNotRewriteAnAlreadyProtectedConfig()
+    public void LoadDoesNotRewriteAnAlreadyPortableConfig()
     {
-        // No-churn requirement: re-protecting on every load would rewrite a
-        // shared config.json every time anyone opened the Unlock window —
-        // noisy, and a needless write-conflict source on an SMB share.
+        // Renamed from LoadDoesNotRewriteAnAlreadyProtectedConfig, reversed:
+        // "nothing to convert" now means the config is ALREADY plaintext,
+        // not already protected. The no-churn guarantee itself (Global
+        // Constraints: never rewrite a shared config.json on an SMB share
+        // for zero content change) is exactly the same guard, just applied
+        // to the opposite starting state.
         var path = Path.Combine(_dir, "config.json");
         var seed = new Config();
-        seed.SavedPasswords.Add(new SavedPassword { Label = "A", Password = PasswordVault.Protect("safe") });
+        seed.SavedPasswords.Add(new SavedPassword { Label = "A", Password = "already-plain" });
         Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
 
         var beforeBytes = File.ReadAllBytes(path);
@@ -603,21 +667,28 @@ public class UnlockViewModelTests : IDisposable
     }
 
     [Fact]
-    public void LoadShowsAOneTimeNoticeWhenAPasswordWasActuallyConverted()
+    public void LoadConvertsAProtectedPasswordSilentlyWithNoNotice()
     {
+        // Renamed/repurposed from LoadShowsAOneTimeNoticeWhenAPasswordWasActuallyConverted
+        // (Task 1, Step 4 — "Delete the dialog"): the one-time "protected
+        // for this Windows account" notice WAS the owner's actual
+        // complaint. This test used to prove a notice appeared on a
+        // successful conversion; it now proves the opposite on purpose — a
+        // clean conversion is silent.
         var path = Path.Combine(_dir, "config.json");
         var seed = new Config();
-        seed.SavedPasswords.Add(new SavedPassword { Label = "Legacy", Password = "hunter2" });
+        seed.SavedPasswords.Add(new SavedPassword { Label = "Legacy", Password = PasswordVault.Protect("hunter2") });
         Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
 
         var loaded = Config.Load(path);
         var dialogs = new FakeDialogs();
         var vm = new UnlockViewModel(loaded, () => Config.TrySave(loaded, path, out _), dialogs: dialogs);
 
-        var notice = Assert.Single(dialogs.Infos);
-        Assert.Contains("protected", notice.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("re-enter", notice.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(dialogs.Infos);
         Assert.Empty(dialogs.Warnings);
+        // silent does NOT mean skipped — it still converted and persisted
+        Assert.Equal("hunter2", Assert.Single(loaded.SavedPasswords).Password);
+        Assert.Equal("hunter2", Config.Load(path).SavedPasswords.Single().Password);
 
         GC.KeepAlive(vm);
     }
@@ -625,9 +696,12 @@ public class UnlockViewModelTests : IDisposable
     [Fact]
     public void LoadShowsNoNoticeOnACleanLoad()
     {
+        // A config that's already fully plaintext — nothing at all to
+        // migrate — must be exactly as quiet as one that DID have something
+        // to convert (previous test): no dialog either way.
         var path = Path.Combine(_dir, "config.json");
         var seed = new Config();
-        seed.SavedPasswords.Add(new SavedPassword { Label = "A", Password = PasswordVault.Protect("safe") });
+        seed.SavedPasswords.Add(new SavedPassword { Label = "A", Password = "already-plain" });
         Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
 
         var loaded = Config.Load(path);
@@ -640,29 +714,83 @@ public class UnlockViewModelTests : IDisposable
         GC.KeepAlive(vm);
     }
 
+    [Fact]
+    public void LoadLeavesAnUndecryptableEntryUntouchedAndNoticesOnce()
+    {
+        // The single most important behaviour in the whole plan (Task 1,
+        // Step 3, "the one unacceptable outcome"): PasswordVault.Reveal
+        // alone collapses "couldn't decrypt" into "" — if the migration
+        // wrote THAT back, an irreplaceable password would simply be gone.
+        // An entry protected on a different machine or account (simulated
+        // exactly the way PasswordVaultTests.CorruptProtectedValueRevealsEmptyNotCrash
+        // proves is deterministic: a dpapi: value that cannot decrypt on
+        // ANY machine, not just a foreign one) must survive on disk
+        // byte-for-byte, and the user must be told once, since it needs
+        // re-entering.
+        var path = Path.Combine(_dir, "config.json");
+        const string undecryptable = "dpapi:AAAA";
+        var seed = new Config();
+        seed.SavedPasswords.Add(new SavedPassword { Label = "Foreign", Password = undecryptable });
+        // A second, genuinely decryptable entry alongside it — proves the
+        // undecryptable one doesn't block, or get conflated with, an
+        // ordinary conversion happening in the SAME pass.
+        seed.SavedPasswords.Add(new SavedPassword { Label = "Local", Password = PasswordVault.Protect("hunter2") });
+        Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
+
+        var loaded = Config.Load(path);
+        var dialogs = new FakeDialogs();
+        var vm = new UnlockViewModel(loaded, () => Config.TrySave(loaded, path, out _), dialogs: dialogs);
+
+        // The undecryptable entry: byte-for-byte untouched, never "".
+        Assert.Equal(undecryptable, loaded.SavedPasswords[0].Password);
+        // The decryptable one alongside it still converted normally.
+        Assert.Equal("hunter2", loaded.SavedPasswords[1].Password);
+
+        // On disk too — the whole point (Global Constraints: assert the
+        // on-disk bytes, not just the in-memory value).
+        var onDisk = Config.Load(path);
+        Assert.Equal(undecryptable, onDisk.SavedPasswords[0].Password);
+        Assert.Equal("hunter2", onDisk.SavedPasswords[1].Password);
+
+        // Told once, and NOT told "protected" — it wasn't; it needs
+        // re-entering instead.
+        var notice = Assert.Single(dialogs.Infos);
+        Assert.Contains("re-enter", notice.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(dialogs.Warnings);
+
+        GC.KeepAlive(vm);
+    }
+
     // ------------------------------------------- fix round 1, Important 1
-    // A DPAPI failure on ANY single legacy entry must never escape the
-    // constructor: MainWindow.OnUnlock calls it synchronously, so an
-    // unhandled throw here would mean the Unlock window can never open
-    // again, deterministically, forever — trading a plaintext-at-rest
-    // problem for a bricked core feature. These use the constructor's
-    // `protect` seam (defaults to the real PasswordVault.Protect) to force
-    // a CryptographicException deterministically — real DPAPI essentially
-    // never fails, so there is no reliable way to provoke this for real.
+    // An UNEXPECTED failure — anything other than the "can't decrypt this
+    // one entry" case TryReveal already reports cleanly via its return
+    // value — must never escape the constructor: MainWindow.OnUnlock calls
+    // it synchronously, so an unhandled throw here would mean the Unlock
+    // window can never open again, deterministically, forever. These use
+    // the constructor's `tryReveal` seam (defaults to the real
+    // PasswordVault.TryReveal) to force that deterministically — real DPAPI
+    // essentially never fails this way, so there is no reliable way to
+    // provoke it for real.
 
     [Fact]
-    public void ADpapiFailureDuringTheSweepDoesNotPreventConstructionOrLeaveAnyEntryUnrecoverable()
+    public void AnUnexpectedFailureDuringTheMigrationDoesNotPreventConstructionOrLeaveAnyEntryUnrecoverable()
     {
+        // Renamed from ADpapiFailureDuringTheSweepDoesNotPreventConstructionOrLeaveAnyEntryUnrecoverable,
+        // reversed: BOTH seeded entries are now PROTECTED (the migration
+        // only ever touches protected entries), and the rollback restores
+        // each to its ORIGINAL PROTECTED value, not to plaintext.
         var path = Path.Combine(_dir, "config.json");
         var seed = new Config();
-        // TWO plaintext entries: "ok-first" would succeed if tried alone;
-        // "boom-second" is rigged to fail. Order matters — "ok-first" is
-        // processed (and converted in memory) BEFORE the failure hits, so
-        // this also proves the rollback undoes an entry that had ALREADY
-        // been converted earlier in the same sweep, not just the one that
+        // TWO protected entries: "ok-first" would decrypt fine if tried
+        // alone; "boom-second" is rigged to fail. Order matters — "ok-first"
+        // is processed (and converted in memory) BEFORE the failure hits,
+        // so this also proves the rollback undoes an entry that had ALREADY
+        // been converted earlier in the same pass, not just the one that
         // actually threw.
-        seed.SavedPasswords.Add(new SavedPassword { Label = "A", Password = "ok-first" });
-        seed.SavedPasswords.Add(new SavedPassword { Label = "B", Password = "boom-second" });
+        var okFirstProtected = PasswordVault.Protect("ok-first");
+        var boomSecondProtected = PasswordVault.Protect("boom-second");
+        seed.SavedPasswords.Add(new SavedPassword { Label = "A", Password = okFirstProtected });
+        seed.SavedPasswords.Add(new SavedPassword { Label = "B", Password = boomSecondProtected });
         Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
 
         var loaded = Config.Load(path);
@@ -672,76 +800,87 @@ public class UnlockViewModelTests : IDisposable
         // Construction must complete normally — no exception, no crash —
         // which is itself half the proof: if it throws, this Fact fails
         // with that exception, exactly the outcome that used to brick the
-        // Unlock window.
+        // Unlock window. The seam decrypts for real first (both entries DO
+        // legitimately belong to this machine/account in this test) and
+        // only THEN decides whether to throw, based on the real plaintext —
+        // the same "identify by decrypted content" trick the old test used
+        // via its `protect` seam's plaintext input.
         var vm = new UnlockViewModel(loaded, () => { saveCalls++; return true; },
             dialogs: dialogs,
-            protect: plain => plain == "boom-second"
-                ? throw new CryptographicException("simulated DPAPI failure")
-                : PasswordVault.Protect(plain));
+            tryReveal: stored =>
+            {
+                var real = PasswordVault.Reveal(stored);
+                return real == "boom-second"
+                    ? throw new CryptographicException("simulated unexpected failure")
+                    : real;
+            });
 
-        // A secret that becomes unrecoverable is worse than one that stays
-        // plaintext: BOTH entries — including the one that succeeded before
+        // An entry that becomes unrecoverable is worse than one that stays
+        // protected: BOTH entries — including the one that succeeded before
         // the failure — must be rolled back to exactly what they were, not
         // left half-converted in memory.
-        Assert.Equal("ok-first", loaded.SavedPasswords[0].Password);
-        Assert.Equal("boom-second", loaded.SavedPasswords[1].Password);
-        Assert.False(PasswordVault.IsProtected(loaded.SavedPasswords[0].Password));
-        Assert.False(PasswordVault.IsProtected(loaded.SavedPasswords[1].Password));
+        Assert.Equal(okFirstProtected, loaded.SavedPasswords[0].Password);
+        Assert.Equal(boomSecondProtected, loaded.SavedPasswords[1].Password);
+        Assert.True(PasswordVault.IsProtected(loaded.SavedPasswords[0].Password));
+        Assert.True(PasswordVault.IsProtected(loaded.SavedPasswords[1].Password));
 
-        // Nothing reached disk — a half-swept _cfg that never saves would
-        // be a trap for whatever saves next; here there is nothing to save
-        // AT ALL, because nothing was actually changed.
+        // Nothing reached disk — a half-migrated _cfg that never saves
+        // would be a trap for whatever saves next; here there is nothing to
+        // save AT ALL, because nothing was actually changed.
         Assert.Equal(0, saveCalls);
         var onDisk = Config.Load(path);
-        Assert.Equal("ok-first", onDisk.SavedPasswords[0].Password);
-        Assert.Equal("boom-second", onDisk.SavedPasswords[1].Password);
+        Assert.Equal(okFirstProtected, onDisk.SavedPasswords[0].Password);
+        Assert.Equal(boomSecondProtected, onDisk.SavedPasswords[1].Password);
 
-        // The user is told, plainly, and NOT told "protected" (that would
-        // be a lie) — a Warn, not an Info.
+        // The user is told, plainly, and NOT told anything implying success.
         Assert.Empty(dialogs.Infos);
         var warn = Assert.Single(dialogs.Warnings);
-        Assert.Contains("could not be protected", warn.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("could not be converted", warn.Message, StringComparison.OrdinalIgnoreCase);
 
         GC.KeepAlive(vm);
     }
 
     [Fact]
-    public void ADpapiFailureLeavesAlreadyProtectedEntriesAloneAndDoesNotOfferToUndoThem()
+    public void AnUnexpectedFailureLeavesAlreadyPlaintextEntriesAloneAndDoesNotOfferToUndoThem()
     {
-        // An entry that was ALREADY protected before this sweep started is
-        // never touched by ReprotectLegacyPlaintext at all (IsProtected
-        // short-circuits it), so a failure elsewhere in the same pass must
-        // not disturb it either — only entries THIS attempt converted are
-        // ever rolled back.
+        // Renamed from ADpapiFailureLeavesAlreadyProtectedEntriesAloneAndDoesNotOfferToUndoThem,
+        // reversed: an entry that's ALREADY PLAINTEXT before this migration
+        // starts is never touched by MigrateProtectedToPlaintext at all
+        // (IsProtected short-circuits it — the same guard as before; only
+        // which state it treats as "nothing to do" flipped), so a failure
+        // elsewhere in the same pass must not disturb it either.
         var path = Path.Combine(_dir, "config.json");
         var seed = new Config();
-        var alreadyProtected = PasswordVault.Protect("already-safe");
-        seed.SavedPasswords.Add(new SavedPassword { Label = "Safe", Password = alreadyProtected });
-        seed.SavedPasswords.Add(new SavedPassword { Label = "Boom", Password = "boom" });
+        var boomProtected = PasswordVault.Protect("boom");
+        seed.SavedPasswords.Add(new SavedPassword { Label = "AlreadyPlain", Password = "already-plain" });
+        seed.SavedPasswords.Add(new SavedPassword { Label = "Boom", Password = boomProtected });
         Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
 
         var loaded = Config.Load(path);
         var vm = new UnlockViewModel(loaded, () => true,
-            protect: _ => throw new CryptographicException("simulated"));
+            tryReveal: _ => throw new CryptographicException("simulated"));
 
-        Assert.Equal(alreadyProtected, loaded.SavedPasswords[0].Password);   // byte-identical, untouched
-        Assert.Equal("boom", loaded.SavedPasswords[1].Password);             // rolled back, not lost
+        Assert.Equal("already-plain", loaded.SavedPasswords[0].Password);   // untouched throughout
+        Assert.Equal(boomProtected, loaded.SavedPasswords[1].Password);     // rolled back, not lost
 
         GC.KeepAlive(vm);
     }
 
     [Fact]
-    public void ANonCryptographicFailureDuringTheSweepAlsoDoesNotPreventConstruction()
+    public void ANonCryptographicFailureDuringTheMigrationAlsoDoesNotPreventConstruction()
     {
-        // Fix round 2, Gap A: the original catch was scoped to
-        // CryptographicException — ProtectedData.Protect's documented
-        // Windows failure mode — but Finding 1's promise is "NO failure
-        // here may cost the user the tool," not "the documented failure
-        // mode is handled." Any OTHER exception type from _protect must be
-        // just as harmless to construction as a CryptographicException is.
+        // Renamed from ANonCryptographicFailureDuringTheSweepAlsoDoesNotPreventConstruction.
+        // Fix round 2, Gap A: the documented failure mode
+        // (CryptographicException/FormatException) is already handled
+        // cleanly INSIDE PasswordVault.TryReveal (it reports failure via its
+        // return value, no exception at all) — but Finding 1's promise is
+        // "NO failure here may cost the user the tool," not "the documented
+        // failure mode is handled." Any OTHER exception type from
+        // _tryReveal must be just as harmless to construction.
         var path = Path.Combine(_dir, "config.json");
         var seed = new Config();
-        seed.SavedPasswords.Add(new SavedPassword { Label = "A", Password = "boom" });
+        var boomProtected = PasswordVault.Protect("boom");
+        seed.SavedPasswords.Add(new SavedPassword { Label = "A", Password = boomProtected });
         Assert.True(Config.TrySave(seed, path, out var seedError), seedError);
 
         var loaded = Config.Load(path);
@@ -753,14 +892,14 @@ public class UnlockViewModelTests : IDisposable
         // outcome Gap A is about.
         var vm = new UnlockViewModel(loaded, () => { saveCalls++; return true; },
             dialogs: dialogs,
-            protect: _ => throw new InvalidOperationException("simulated non-DPAPI failure"));
+            tryReveal: _ => throw new InvalidOperationException("simulated non-crypto failure"));
 
-        Assert.Equal("boom", loaded.SavedPasswords[0].Password);          // rolled back, not lost
-        Assert.False(PasswordVault.IsProtected(loaded.SavedPasswords[0].Password));
+        Assert.Equal(boomProtected, loaded.SavedPasswords[0].Password);   // rolled back, not lost
+        Assert.True(PasswordVault.IsProtected(loaded.SavedPasswords[0].Password));
         Assert.Equal(0, saveCalls);                                       // nothing persisted
         Assert.Empty(dialogs.Infos);
         var warn = Assert.Single(dialogs.Warnings);
-        Assert.Contains("could not be protected", warn.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("could not be converted", warn.Message, StringComparison.OrdinalIgnoreCase);
 
         GC.KeepAlive(vm);
     }
