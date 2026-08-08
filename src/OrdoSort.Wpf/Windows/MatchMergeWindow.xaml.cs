@@ -1,11 +1,17 @@
 using System.Windows;
 using Microsoft.Win32;
 using OrdoSort.Wpf.ViewModels;
+using OrdoSort.Wpf.Views;
 
 namespace OrdoSort.Wpf.Windows;
 
 public partial class MatchMergeWindow : Window
 {
+    /// <summary>Share of this window's own declared Width that File/Note may
+    /// grow to before ellipsizing — see DataGridColumnCap's class doc for why
+    /// this lives in code rather than XAML.</summary>
+    private const double ContentColumnShare = 0.35;
+
     private readonly MatchMergeViewModel _vm;
 
     public MatchMergeWindow(MatchMergeViewModel vm)
@@ -13,6 +19,7 @@ public partial class MatchMergeWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
+        DataGridColumnCap.Apply(Width, ContentColumnShare, FileColumn, NoteColumn);
         Loaded += async (_, _) => await _vm.AutoLoadRosterAsync();
     }
 

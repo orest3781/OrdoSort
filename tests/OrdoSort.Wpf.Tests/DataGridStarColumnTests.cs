@@ -22,6 +22,17 @@ namespace OrdoSort.Wpf.Tests;
 /// genuine, OS-driven resize supplies that no in-process property change
 /// reproduces here.
 ///
+/// UPDATED 2026-08-07 (autofit-columns, Task 1): that task gave every grid
+/// in the app "content-sized (Auto), capped, exactly one filler (star,
+/// MinWidth)" — so BulkRenameWindow's Current-name column is no longer star
+/// at all (it's a capped Auto column now; only New name is), and
+/// MatchMergeWindow gained its own single star filler (Becomes) where it had
+/// none before. The headless collapse-to-MinWidth quirk this class documents
+/// is unrelated to any of that — it's WPF's own star-column layout, not
+/// anything this app's XAML controls — so it still applies to whatever star
+/// columns exist post-fix; MatchMerge was added below as a third case
+/// exercising the identical quirk on its own new filler.
+///
 /// IMPORTANT CONTEXT this task's on-screen investigation established: a REAL
 /// interactively-shown window does NOT reproduce the 20px collapse at all —
 /// confirmed by screenshotting the live app against demo-full, both with 0
@@ -91,9 +102,23 @@ public class DataGridStarColumnTests
     private readonly HighlightContrastFixture _fx;
     public DataGridStarColumnTests(HighlightContrastFixture fx) => _fx = fx;
 
+    /// <summary>Expected COUNT of star (filler) columns per window,
+    /// post-2026-08-07 autofit-columns: exactly one everywhere now, never
+    /// two. Asserted explicitly (not just "&gt; 0") so this test fails for
+    /// the right reason if a future change accidentally makes a second,
+    /// supposedly-capped column star again — proving the new shape, not just
+    /// that A star column happens to still exist.</summary>
+    private static readonly Dictionary<string, int> ExpectedStarColumnCount = new()
+    {
+        ["History"] = 2,       // Original, Filed as — the measured exception; see HistoryWindow.xaml
+        ["BulkRename"] = 1,    // New name only (Current name is capped-Auto now)
+        ["MatchMerge"] = 1,    // Becomes only (File is capped-Auto)
+    };
+
     [Theory]
     [InlineData("History")]
     [InlineData("BulkRename")]
+    [InlineData("MatchMerge")]
     public void StarColumnsNeverCollapseBelowTheirMinimum(string windowName) => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
@@ -129,9 +154,13 @@ public class DataGridStarColumnTests
                 var vm = new HistoryViewModel(history, new FakeDialogs(), new InlineWorkScheduler());
                 win = new HistoryWindow(vm);
             }
-            else
+            else if (windowName == "BulkRename")
             {
                 win = new BulkRenameWindow(new BulkRenameViewModel());
+            }
+            else
+            {
+                win = new MatchMergeWindow(new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs()));
             }
 
             // Exactly Screenshots.cs's ShowOffscreen: off the visible desktop,
@@ -147,8 +176,9 @@ public class DataGridStarColumnTests
             var grid = FindDescendant<DataGrid>(win)
                 ?? throw new InvalidOperationException($"{windowName}: no DataGrid descendant found");
             var starColumns = grid.Columns.Where(c => c.Width.IsStar).ToList();
-            Assert.True(starColumns.Count > 0,
-                $"{windowName}: no star (Width=\"*\") columns found — test setup doesn't match the XAML");
+            Assert.True(starColumns.Count == ExpectedStarColumnCount[windowName],
+                $"{windowName}: found {starColumns.Count} star (Width=\"*\") column(s), " +
+                $"expected exactly {ExpectedStarColumnCount[windowName]}");
 
             // Pinned to the exact expected floor, not a loose ">100": headless
             // Show()+UpdateLayout() never resolves genuine fair-share width

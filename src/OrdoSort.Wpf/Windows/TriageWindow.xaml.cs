@@ -13,6 +13,28 @@ namespace OrdoSort.Wpf.Windows;
 /// contract as the filing loop.</summary>
 public partial class TriageWindow : Window
 {
+    /// <summary>Share of the side panel's own declared width (not the whole
+    /// window — see SidePanelColumn's own comment in the XAML) that a capped
+    /// roster column may grow to before ellipsizing. Same fraction as
+    /// MatchMergeWindow/BulkRenameWindow's ContentColumnShare (0.35) applied
+    /// to this panel's own, much smaller, reference width (440px vs.
+    /// 820-840px) — kept deliberately conservative rather than the more
+    /// generous 0.5 first tried here, because a roster can have MORE than
+    /// one capped column (every header past the first — see the filler
+    /// choice below) sharing this same 440px panel: at 0.35, two capped
+    /// columns plus the filler's floor (2×154 + 90 = 398px) still clears the
+    /// panel's own ~416px content width (440px column, less this window's
+    /// 12px DockPanel margin on each side); at 0.5 they would not
+    /// (2×220 + 90 = 530px, well over).</summary>
+    private const double ContentColumnShare = 0.35;
+
+    /// <summary>Smaller than History/MatchMerge/BulkRename's 120px star-
+    /// column floor: this grid's whole side panel is only 380-440px wide
+    /// (MinWidth-Width), a fraction of those windows' own grid area, so the
+    /// same absolute floor would leave little to no room for whatever capped
+    /// columns sit next to the filler.</summary>
+    private const double FillerMinWidth = 90;
+
     private readonly List<MatchMerge.MatchResult> _items;
     private readonly IReadOnlyList<string> _headers;
     private readonly WebViewPdfViewer _pdf;
@@ -83,12 +105,48 @@ public partial class TriageWindow : Window
             // survived the window unless disposed here explicitly.
             Viewer.Dispose();
         };
-        foreach (var h in _headers)
-            Candidates.Columns.Add(new DataGridTextColumn
+        // Roster columns: content-sized (Width="Auto") and capped to a share
+        // of the side panel they live in (SidePanelColumn's own declared
+        // 440px — NOT the whole window; see DataGridColumnCap's class doc),
+        // ellipsizing past that with the full value in a tooltip. The FIRST
+        // header is the filler (Width="*", MinWidth) rather than the last:
+        // unlike MatchMerge/BulkRename's fixed schema, this app can't know
+        // in advance which arbitrary roster column a person picked to show
+        // here — but the roster's own default ("nothing ticked = the name
+        // and id columns") leads with a name-shaped field and follows with
+        // an id-shaped one, and a name is both more variable and the one
+        // worth reading in full, so the leading column gets the room and
+        // later ones are capped. The "Why" column below (suggested-match
+        // reasoning, inserted separately) is a deliberate exception to this
+        // shape: it already avoids horizontal growth by wrapping instead of
+        // ellipsizing, since a truncated reason is far less useful than a
+        // taller row.
+        var sidePanelWidth = SidePanelColumn.Width.Value;
+        var columnCap = sidePanelWidth * ContentColumnShare;
+        for (var i = 0; i < _headers.Count; i++)
+        {
+            var h = _headers[i];
+            var isFiller = i == 0;
+            var column = new DataGridTextColumn
             {
                 Header = h,
                 Binding = new Binding($"[{h}]"),
-            });
+                Width = isFiller
+                    ? new DataGridLength(1, DataGridLengthUnitType.Star)
+                    : DataGridLength.Auto,
+                ElementStyle = new Style(typeof(TextBlock))
+                {
+                    Setters =
+                    {
+                        new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis),
+                        new Setter(FrameworkElement.ToolTipProperty, new Binding($"[{h}]")),
+                    },
+                },
+            };
+            if (isFiller) column.MinWidth = FillerMinWidth;
+            else column.MaxWidth = columnCap;
+            Candidates.Columns.Add(column);
+        }
         Loaded += async (_, _) => await InitAndShowAsync(_pdf.InitAsync);
     }
 

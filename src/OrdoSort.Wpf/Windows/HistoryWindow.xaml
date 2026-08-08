@@ -39,39 +39,110 @@
                     </Style>
                 </DataGrid.RowStyle>
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="When" Binding="{Binding When}" Width="140" />
-                    <!-- MinWidth: a DataGridColumn's default MinWidth is 20px, and
-                         a Show() that's never subsequently resized (this app's own
-                         headless Screenshots.cs QA tool; any other headless/CI
-                         render) can leave Width="*" columns stuck at that bare
-                         20px forever — WPF only recomputes star-column widths
-                         from a genuine later SizeChanged, which a real on-screen
-                         window gets for free (WM_SIZE/WM_ACTIVATE) but a headless
+                    <!-- 2026-08-07 autofit-columns, Step 5: this window is the
+                         one deliberate exception to "content-sized (Auto),
+                         capped, one filler" that every other grid in the app
+                         now follows (MatchMergeWindow, BulkRenameWindow,
+                         TriageWindow). MEASURED before choosing, not assumed:
+                         a history seeded with 3000 rows (one, at index 1500,
+                         holding a ~185-character path) and Original's column
+                         temporarily switched to Width="Auto" in a throwaway
+                         test — same off-screen Show()+UpdateLayout() shape as
+                         every other headless test here. Two back-to-back
+                         layout passes over the same top-of-list realized rows
+                         held steady at 173px; scrolling the long-path row
+                         into view (forcing the virtualizer to realize it)
+                         jumped the SAME column to 410px; scrolling back to the
+                         top afterward did NOT shrink it back down — it stayed
+                         at 410px. So Auto here does exactly what the brief
+                         warned it would: it measures only realized rows, and
+                         a column can visibly grow (and stay grown) as a
+                         person scrolls past a longer path — the instability
+                         "cap, then ellipsis" exists to prevent, on the two
+                         columns holding this table's least bounded values.
+                         Original/Filed-as therefore KEEP their star+MinWidth
+                         shape below rather than switching to Auto, which
+                         already satisfies both of the owner's decisions on
+                         its own (a real user resizing this window still gets
+                         a 120px floor instead of collapsing, and the two
+                         columns absorb 100% of whatever width the four
+                         bounded ones to their right don't need — no dead
+                         space). What DOES change: TextTrimming/ToolTip, which
+                         these two star columns never actually had before
+                         despite the comment two blocks below claiming they
+                         didn't need it — a short window or a long enough path
+                         could clip either one with no way to recover the full
+                         value; fixed now, matching Name/Destination.
+                         When/Name/Destination switch to content-sized Auto
+                         (capped in code — HistoryWindow.xaml.cs,
+                         DataGridColumnCap) instead of their prior fixed
+                         pixel widths, since unlike Original/Filed-as their
+                         VALUES are bounded (a formatted timestamp, a person's
+                         name, a route label) — the same jump this comment
+                         just measured for a full file path has no realistic
+                         way to happen for them. -->
+                    <DataGridTextColumn x:Name="WhenColumn" Header="When" Binding="{Binding When}"
+                                        Width="Auto">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                <Setter Property="ToolTip" Value="{Binding When}" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <!-- MinWidth="120": a DataGridColumn's default MinWidth is
+                         20px, and a Show() that's never subsequently resized
+                         (this app's own headless Screenshots.cs QA tool; any
+                         other headless/CI render) can leave Width="*" columns
+                         stuck at that bare 20px forever — WPF only recomputes
+                         star-column widths from a genuine later SizeChanged,
+                         which a real on-screen window gets for free
+                         (WM_SIZE/WM_ACTIVATE) but a headless
                          Show()+UpdateLayout() never does. At this window's
-                         DEFAULT size (980px), a real, interactively-shown window
-                         is unaffected either way (confirmed: screenshotting the
-                         live app resolves these to their fair share, ~222px each,
-                         0 rows and 5 rows alike).
-                         This floor is NOT just a QA-harness accommodation, though:
-                         measured with a real on-screen resize (UI Automation
-                         TransformPattern) down to this window's own MinWidth
-                         (700px above) — pre-fix, a real user shrinking the window
-                         that far fair-shares these two columns down to 82px each;
-                         post-fix, the same real resize clamps them to this 120px
-                         floor instead (~46% wider), compressing the fixed-width
-                         columns (When/Name/Destination/Undone) to compensate — visible
-                         at this extreme as Undone's own header text truncating to
-                         "Undo". So this floor also protects a real user who
-                         shrinks the window, not only this project's screenshots.
-                         See .superpowers/sdd/2026-08-02-audit-remediation/task-1-report.md. -->
-                    <DataGridTextColumn Header="Original" Binding="{Binding Original}" Width="*" MinWidth="120" />
-                    <DataGridTextColumn Header="Filed as" Binding="{Binding FiledAs}" Width="*" MinWidth="120" />
-                    <!-- TextTrimming/ToolTip: Name and Destination are fixed-width and
-                         clip without ellipsis or any way to recover the full
-                         value today (2026-08-02 audit-remediation, Task 7
-                         Step 3). Original/Filed-as above don't need this: they're
-                         the star columns Task 1 already gave a MinWidth floor. -->
-                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="160">
+                         DEFAULT size (980px), a real, interactively-shown
+                         window is unaffected either way (confirmed:
+                         screenshotting the live app resolves these to their
+                         fair share, ~222px each, 0 rows and 5 rows alike).
+                         This floor is NOT just a QA-harness accommodation,
+                         though: measured (2026-08-02 audit-remediation, with
+                         the four columns to the right still fixed-pixel then)
+                         with a real on-screen resize down to this window's
+                         own MinWidth (700px above) — pre-fix, a real user
+                         shrinking the window that far fair-shares these two
+                         columns down to 82px each; post-fix, the same resize
+                         clamps them to this 120px floor instead. That
+                         specific on-screen number was NOT re-measured for
+                         2026-08-07's change (this session cannot drive a real
+                         on-screen resize — see task-1-report.md) but the
+                         underlying math only improves it: When/Name/
+                         Destination are now capped-Auto rather than always
+                         reserving their old full fixed width, so Original/
+                         Filed-as have at least as much room to fair-share at
+                         any window size as they did before, never less. -->
+                    <DataGridTextColumn Header="Original" Binding="{Binding Original}" Width="*" MinWidth="120">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                <Setter Property="ToolTip" Value="{Binding Original}" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="Filed as" Binding="{Binding FiledAs}" Width="*" MinWidth="120">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                <Setter Property="ToolTip" Value="{Binding FiledAs}" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <!-- TextTrimming/ToolTip: Name and Destination clip
+                         without ellipsis or any way to recover the full value
+                         if they didn't have this (2026-08-02 audit-
+                         remediation, Task 7 Step 3) — still true now that
+                         they're capped-Auto rather than fixed-width, so it
+                         stays. -->
+                    <DataGridTextColumn x:Name="NameColumn" Header="Name" Binding="{Binding Name}"
+                                        Width="Auto">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
@@ -89,7 +160,8 @@
                          columns. The CSV export writes those column names
                          verbatim (History.Columns) and is machine-read, so it
                          does NOT follow this rename. -->
-                    <DataGridTextColumn Header="Destination" Binding="{Binding Route}" Width="120">
+                    <DataGridTextColumn x:Name="DestinationColumn" Header="Destination" Binding="{Binding Route}"
+                                        Width="Auto">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
@@ -97,7 +169,10 @@
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    <DataGridCheckBoxColumn Header="Undone" Binding="{Binding Reverted}" Width="70" />
+                    <!-- Undone: a checkbox glyph plus a five-letter header —
+                         Width="Auto" sizes to that on its own with no
+                         realistic way to grow large, so it's left uncapped. -->
+                    <DataGridCheckBoxColumn Header="Undone" Binding="{Binding Reverted}" Width="Auto" />
                 </DataGrid.Columns>
             </DataGrid>
 

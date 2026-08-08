@@ -192,10 +192,21 @@ public class HistoryWindowXamlTests
     /// them differ: the column a user reads is headed "Destination" while the
     /// property behind it is still <c>HistoryRow.Route</c>. Collapsing them
     /// back into one argument would quietly re-couple the label to the
-    /// internal name.</summary>
+    /// internal name.
+    ///
+    /// EXTENDED 2026-08-07 (autofit-columns, Step 5) to also cover Original/
+    /// Filed-as: those two star columns never actually had TextTrimming/
+    /// ToolTip before this task despite Name/Destination's original comment
+    /// here claiming star columns "don't need this" (they were kept star
+    /// rather than switched to Auto — a 3000-row/long-path measurement found
+    /// Auto's width visibly jumps for these two specifically, see
+    /// HistoryWindow.xaml — but a star column's ASSIGNED width still clips a
+    /// value that doesn't fit it without this).</summary>
     [Theory]
     [InlineData("Name", "Name")]
     [InlineData("Destination", "Route")]
+    [InlineData("Original", "Original")]
+    [InlineData("Filed as", "FiledAs")]
     public void NameAndDestinationColumnsTrimWithEllipsisAndCarryATooltip(
         string header, string bindingPath) => _fx.Invoke(() =>
     {

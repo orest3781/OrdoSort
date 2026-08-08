@@ -144,9 +144,60 @@
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="File" Binding="{Binding File}" Width="*" />
-                        <DataGridTextColumn Header="Becomes" Binding="{Binding Becomes}" Width="*" />
-                        <DataGridTextColumn Header="Note" Binding="{Binding Note}" Width="240" />
+                        <!-- File: content-sized (Width="Auto"), capped in code
+                             (MatchMergeWindow.xaml.cs, DataGridColumnCap) to a
+                             share of this window's own declared Width rather
+                             than a fixed pixel MaxWidth — a DataGridColumn
+                             isn't part of the visual tree, so that cap can't
+                             be expressed as a XAML binding here; see
+                             DataGridColumnCap's own class doc. Capped rather
+                             than made the filler: this is the SOURCE
+                             filename — whatever a scanner or a person named
+                             it, the least predictable string in the row —
+                             while Becomes below is what the window exists to
+                             let someone verify, so it gets the room instead. -->
+                        <DataGridTextColumn x:Name="FileColumn" Header="File" Binding="{Binding File}"
+                                            Width="Auto">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding File}" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <!-- Becomes: the filler (Width="*", MinWidth="120" —
+                             the same floor BulkRename/History's own star
+                             columns use, so a narrow window clamps rather
+                             than collapses it). It's the roster-matched
+                             result a person reviews this window to confirm,
+                             so it gets whatever width File and Note don't
+                             need. -->
+                        <DataGridTextColumn Header="Becomes" Binding="{Binding Becomes}"
+                                            Width="*" MinWidth="120">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding Becomes}" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <!-- Note: content-sized and capped the same way as
+                             File above. Was a fixed 240px regardless of what
+                             it held; the status phrases it actually carries
+                             (MatchMergeViewModel.Refresh, e.g. "no roster
+                             match", "3 candidates — decide in Review
+                             matches") are well under that, so this mostly
+                             just stops reserving fixed space next to a short
+                             one. -->
+                        <DataGridTextColumn x:Name="NoteColumn" Header="Note" Binding="{Binding Note}"
+                                            Width="Auto">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding Note}" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
                     </DataGrid.Columns>
                 </DataGrid>
                 <TextBlock Style="{StaticResource SubtleText}" Margin="10,36,10,10"

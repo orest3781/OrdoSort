@@ -2,11 +2,17 @@ using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using OrdoSort.Wpf.ViewModels;
+using OrdoSort.Wpf.Views;
 
 namespace OrdoSort.Wpf.Windows;
 
 public partial class BulkRenameWindow : Window
 {
+    /// <summary>Share of this window's own declared Width that Current
+    /// name/Note may grow to before ellipsizing — see MatchMergeWindow's
+    /// identical constant and DataGridColumnCap's class doc.</summary>
+    private const double ContentColumnShare = 0.35;
+
     private readonly BulkRenameViewModel _vm;
 
     public BulkRenameWindow(BulkRenameViewModel vm)
@@ -14,6 +20,7 @@ public partial class BulkRenameWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
+        DataGridColumnCap.Apply(Width, ContentColumnShare, CurrentColumn, NoteColumn);
     }
 
     private void OnAddFiles(object sender, RoutedEventArgs e)

@@ -10,7 +10,12 @@
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" MinWidth="320" />
             <ColumnDefinition Width="5" />
-            <ColumnDefinition Width="440" MinWidth="380" />
+            <!-- x:Name: TriageWindow.xaml.cs reads this column's own declared
+                 Width to cap the Candidates grid's content columns as a share
+                 of the side panel it actually lives in (440px) — NOT the
+                 whole 1150px window, which is what capping against Width
+                 would otherwise measure. -->
+            <ColumnDefinition x:Name="SidePanelColumn" Width="440" MinWidth="380" />
         </Grid.ColumnDefinitions>
         <!-- same tab hygiene as the main window: Tab goes straight to the
              candidate grid and buttons, never into the browser -->

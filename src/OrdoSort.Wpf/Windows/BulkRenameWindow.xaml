@@ -150,26 +150,57 @@
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
-                        <!-- MinWidth: see HistoryWindow.xaml's identical comment
-                             on its Original/Filed-as columns — same DataGrid
-                             star-column-vs-headless-Show() issue, same fix.
-                             Unlike History, this floor is PURELY a headless/QA
-                             accommodation here: measured with the same real
-                             on-screen resize down to this window's own
-                             MinWidth (700px) — both star columns still fair-
-                             share to ~217px each, well above the 120px floor,
-                             so it never engages for a real user even at the
-                             narrowest window size (this window's fixed "Note"
-                             column, 220px, is much narrower relative to the
-                             window than History's four fixed columns
-                             combined, leaving more room for the two star
-                             columns regardless). -->
-                        <DataGridTextColumn Header="Current name" Binding="{Binding Current}"
-                                            IsReadOnly="True" Width="*" MinWidth="120" />
+                        <!-- Current name: content-sized (Width="Auto"), capped
+                             in code (BulkRenameWindow.xaml.cs,
+                             DataGridColumnCap) to a share of this window's
+                             own declared Width — same mechanism and reasoning
+                             as MatchMergeWindow's analogous "File" column:
+                             this is the file's EXISTING name, the least
+                             predictable string in the row, and not what a
+                             rename batch exists to verify, so it's capped
+                             rather than made the filler.
+
+                             2026-08-07 autofit-columns superseded the prior
+                             (2026-08-02 audit-remediation) shape here, which
+                             made BOTH this column and New name star with a
+                             shared MinWidth="120" floor specifically so
+                             neither collapsed to WPF's bare 20px default under
+                             a headless Show() (DataGridStarColumnTests still
+                             covers that collapse for the one star column
+                             remaining below). That reasoning about a
+                             120px floor and this window's on-screen MinWidth
+                             (700px) no longer applies to THIS column now that
+                             it isn't star at all — flagging that explicitly
+                             since a stale comment describing sizing the code
+                             no longer has is exactly the trap this repo keeps
+                             hitting. See New name's own comment below for
+                             where that floor reasoning now lives. -->
+                        <DataGridTextColumn x:Name="CurrentColumn" Header="Current name" Binding="{Binding Current}"
+                                            IsReadOnly="True" Width="Auto">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding Current}" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <!-- New name: the filler (Width="*", MinWidth="120" —
+                             the same floor HistoryWindow's own star columns
+                             use, so a headless Show() clamps rather than
+                             collapses it to WPF's bare 20px default; see
+                             DataGridStarColumnTests). This is the column the
+                             whole window exists to produce, and the one a
+                             person edits directly (click or F2), so it gets
+                             whatever width Current name and Note don't need —
+                             now ALL of the leftover, not half of it, since
+                             Current name moved to a capped Auto column above
+                             instead of also being star. -->
                         <DataGridTextColumn Header="New name  ·  click or press F2 to edit"
                                             Binding="{Binding NewName}" Width="*" MinWidth="120">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding NewName}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding Changed}" Value="False">
                                             <Setter Property="Foreground"
@@ -182,8 +213,18 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <DataGridTextColumn Header="Note" Binding="{Binding Note}" IsReadOnly="True"
-                                            Width="220" />
+                        <!-- Note: content-sized and capped the same way as
+                             Current name above. Was a fixed 220px regardless
+                             of what it held. -->
+                        <DataGridTextColumn x:Name="NoteColumn" Header="Note" Binding="{Binding Note}"
+                                            IsReadOnly="True" Width="Auto">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding Note}" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
                     </DataGrid.Columns>
                 </DataGrid>
                 <TextBlock Text="Drag files anywhere on this window, or press Add files…"
