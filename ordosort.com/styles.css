@@ -1,0 +1,90 @@
+/* ordosort.com — tokens are the app's ThemePalette.cs, verbatim */
+:root {
+  --bg: #F7F8F9; --surface: #FFFFFF; --text: #171A1F; --subtle: #545A63;
+  --border: #BAC0C8; --accent: #2D323A; --accent-text: #FFFFFF; --bronze: #8C6D3F;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1A1C1F; --surface: #26292D; --text: #E9EBEE; --subtle: #A8ADB4;
+    --border: #4C525A; --accent: #CDD2DA; --accent-text: #171A1F; --bronze: #C9A96A;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  background: var(--bg); color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.6;
+}
+.container { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+img { max-width: 100%; height: auto; display: block; }
+a { color: var(--bronze); }
+a:focus-visible, .btn:focus-visible {
+  outline: 2px solid var(--bronze); outline-offset: 2px; border-radius: 4px;
+}
+
+/* header */
+.site-header {
+  position: sticky; top: 0; z-index: 10;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.header-row { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
+.wordmark { font-weight: 700; font-size: 1.1rem; letter-spacing: .02em; }
+.m-steel { fill: var(--accent); } .m-bronze { fill: var(--bronze); }
+.site-nav { display: flex; gap: 22px; }
+.site-nav a { color: var(--subtle); text-decoration: none; font-size: .95rem; }
+.site-nav a:hover { color: var(--bronze); }
+
+/* buttons */
+.btn {
+  display: inline-block; padding: 10px 22px; border-radius: 4px;
+  font-weight: 600; text-decoration: none;
+}
+.btn-primary { background: var(--accent); color: var(--accent-text); }
+.btn-soon {
+  background: var(--surface); color: var(--subtle);
+  border: 1px dashed var(--border); cursor: default;
+}
+
+/* hero */
+.hero { padding: 72px 0 56px; text-align: center; }
+.hero h1 { font-size: clamp(2.2rem, 5vw, 3.4rem); line-height: 1.15; letter-spacing: -.01em; }
+.lede { max-width: 640px; margin: 20px auto 0; font-size: 1.12rem; color: var(--subtle); }
+.cta-row { display: flex; gap: 18px; justify-content: center; align-items: center; margin-top: 28px; flex-wrap: wrap; }
+.cta-secondary { color: var(--bronze); text-decoration: none; font-weight: 600; }
+.cta-secondary:hover { text-decoration: underline; }
+.hero-shot { display: block; margin-top: 48px; }
+.hero-shot img {
+  border: 1px solid var(--border); border-radius: 4px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / .18); margin: 0 auto;
+}
+
+/* sections */
+section { padding: 56px 0; }
+.section-title { font-size: 1.75rem; margin-bottom: 28px; text-align: center; }
+
+/* cards + steps */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 4px; padding: 22px;
+}
+.steps { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.steps h3 { margin: 8px 0 6px; font-size: 1.05rem; }
+.steps p { color: var(--subtle); font-size: .95rem; }
+.step-n {
+  display: inline-grid; place-items: center; width: 28px; height: 28px;
+  background: var(--bronze); color: var(--bg); font-weight: 700;
+  border-radius: 4px; font-size: .95rem;
+}
+@media (max-width: 720px) { .steps { grid-template-columns: 1fr; } }
+
+/* footer */
+.site-footer { border-top: 1px solid var(--border); padding: 28px 0; margin-top: 40px; }
+.footer-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--subtle); font-size: .95rem; }

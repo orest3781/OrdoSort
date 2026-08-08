@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OrdoSort — Every document, where it belongs</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="alternate icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="container header-row">
+    <a class="brand" href="#top" aria-label="OrdoSort — home">
+      <!-- BRAND MARK: swap this inline SVG (and assets/favicon.svg) when final logo art lands -->
+      <svg viewBox="0 0 64 64" width="26" height="26" aria-hidden="true" class="mark">
+        <path class="m-steel" opacity=".55" d="M32 38 8 50l24 12 24-12z"/>
+        <path class="m-bronze" d="M32 22 8 34l24 12 24-12z"/>
+        <path class="m-steel" d="M32 6 8 18l24 12 24-12z"/>
+      </svg>
+      <span class="wordmark">OrdoSort</span>
+    </a>
+    <nav class="site-nav" aria-label="Page">
+      <a href="#features">Features</a>
+      <a href="#screenshots">Screenshots</a>
+      <a href="#download">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section id="hero" class="hero">
+    <div class="container">
+      <h1>Every document,<br>where it belongs.</h1>
+      <p class="lede">OrdoSort watches your inbox folder. When a PDF arrives, you type
+      the name it should carry and press a destination key — it's renamed, moved, and
+      written to an audit log that always knows where things went.</p>
+      <div class="cta-row">
+        <!-- v1.0 FLIP (1 of 2): at release, replace the span below with
+             <a class="btn btn-primary" href="https://github.com/orest3781/OrdoSort/releases/latest">Download v1.0</a> -->
+        <span class="btn btn-soon">v1.0 coming soon</span>
+        <a class="cta-secondary" href="#screenshots">See it in action ↓</a>
+      </div>
+      <picture class="hero-shot">
+        <source srcset="assets/hero-dark.png" media="(prefers-color-scheme: dark)">
+        <img src="assets/hero-light.png"
+             alt="The OrdoSort main window: a live inbox count and monitored-folder tiles, ready to file"
+             width="470" height="612">
+      </picture>
+    </div>
+  </section>
+
+  <section id="how" class="how">
+    <div class="container">
+      <h2 class="section-title">How it works</h2>
+      <ol class="steps">
+        <li class="card">
+          <span class="step-n">1</span>
+          <h3>Arrives</h3>
+          <p>A PDF lands in your inbox folder — scanned, exported, dropped. OrdoSort is
+          watching, and new arrivals join the queue live.</p>
+        </li>
+        <li class="card">
+          <span class="step-n">2</span>
+          <h3>Name it</h3>
+          <p>Type the name it should carry — autocomplete ranks your history by recency
+          and frequency — and press one destination key.</p>
+        </li>
+        <li class="card">
+          <span class="step-n">3</span>
+          <h3>Accounted for</h3>
+          <p>Renamed, moved, and logged. The audit history answers <em>where did that
+          go, and when</em> — and it's backed up daily.</p>
+        </li>
+      </ol>
+    </div>
+  </section><!-- /how -->
+
+  <footer class="site-footer">
+    <div class="container footer-row">
+      <p>© 2026 OrdoSort · Office workflow automation</p>
+      <a href="https://github.com/orest3781/OrdoSort">GitHub</a>
+    </div>
+  </footer>
+</main>
+</body>
+</html>
