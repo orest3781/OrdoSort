@@ -2,32 +2,51 @@ using System.Windows.Controls;
 
 namespace OrdoSort.Wpf.Views;
 
-/// <summary>Caps a set of DataGridColumns' <c>MaxWidth</c> to a share of a
-/// reference width — a window's own declared <c>Width</c> for a grid that
-/// fills the window (MatchMergeWindow, BulkRenameWindow, HistoryWindow), or a
-/// fixed side panel's declared width for one that doesn't (TriageWindow's
-/// Candidates grid lives in a 440px column, not across the whole 1150px
-/// window). Owner's decision: cap content-sized columns then ellipsis,
-/// expressed as a share of the window rather than a magic pixel constant, so
-/// the cap scales with however wide a given window is designed to be instead
-/// of needing a hunted-down pixel number updated by hand if that ever
-/// changes.
+/// <summary>Keeps a set of DataGridColumns' <c>MaxWidth</c> at a share of the
+/// grid's own LIVE <c>ActualWidth</c> — not a value computed once from a
+/// declared <c>Window.Width</c> and then left alone. That was this class's
+/// first shape (2026-08-07 autofit-columns Task 1) and it undercounted a
+/// real, ordinary user action: dragging a window's edge toward its own
+/// declared <c>MinWidth</c> shrinks the grid without ever changing
+/// <c>Window.Width</c> (a design-time value, not a live one), so a cap baked
+/// in at construction stayed exactly as generous as it was at the window's
+/// starting size — measured (fix round 2) letting MatchMerge/BulkRename/
+/// History's column total overflow their own MinWidth by 32-71px, each with
+/// a horizontal scrollbar the owner's decision explicitly forbids.
 ///
 /// A <see cref="DataGridColumn"/> is not part of the visual or logical tree —
-/// it hangs off <c>DataGrid.Columns</c>, not <c>Window.Content</c> — so XAML
-/// cannot bind its <c>MaxWidth</c> with a RelativeSource or ElementName the
-/// way an ordinary FrameworkElement could; there is no NameScope path to
-/// reach it that way. This is the code-behind equivalent of that binding:
-/// called once per window, right after <c>InitializeComponent()</c>, using a
-/// width that's available synchronously and doesn't depend on layout —
-/// <c>Window.Width</c>/<c>ColumnDefinition.Width</c> are plain declared
-/// values the instant the constructor runs, unlike <c>ActualWidth</c>, which
-/// stays 0 until the first measure/arrange pass completes.</summary>
+/// it hangs off <c>DataGrid.Columns</c>, not the grid's own <c>Content</c> —
+/// so XAML cannot bind its <c>MaxWidth</c> to an ancestor's <c>ActualWidth</c>
+/// with a RelativeSource or ElementName the way an ordinary FrameworkElement
+/// could; there is no NameScope path to reach it that way. A
+/// <c>SizeChanged</c> handler on the grid itself is the practical
+/// alternative: it fires for every genuine layout-driven width change,
+/// including the very first one (an initial <c>Show()</c> at a Width already
+/// at/near MinWidth lays out exactly like a subsequent resize down to it —
+/// both are just "the grid's RenderSize changed"), and re-measuring off the
+/// grid's own resolved <c>ActualWidth</c> is inherently more accurate than
+/// approximating it from <c>Window.Width</c> minus guessed-at chrome/margins
+/// ever was.</summary>
 internal static class DataGridColumnCap
 {
-    public static void Apply(double referenceWidth, double share, params DataGridColumn[] columns)
+    /// <summary>Registers live tracking: recomputes every column's
+    /// <c>MaxWidth</c> as <c>share</c> of <paramref name="grid"/>'s current
+    /// <c>ActualWidth</c> immediately, and again on every subsequent
+    /// <c>SizeChanged</c> — covering both a window shown small from the
+    /// start and one dragged smaller afterward.</summary>
+    public static void Track(DataGrid grid, double share, params DataGridColumn[] columns)
     {
-        var cap = referenceWidth * share;
-        foreach (var column in columns) column.MaxWidth = cap;
+        void Recalculate()
+        {
+            // 0 before the grid's first layout pass — nothing to size
+            // against yet; the SizeChanged this method also subscribes to
+            // fires the moment that first real width is known.
+            if (grid.ActualWidth <= 0) return;
+            var cap = grid.ActualWidth * share;
+            foreach (var column in columns) column.MaxWidth = cap;
+        }
+
+        grid.SizeChanged += (_, _) => Recalculate();
+        Recalculate();
     }
 }

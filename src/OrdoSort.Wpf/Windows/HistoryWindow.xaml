@@ -24,7 +24,10 @@
         </DockPanel>
 
         <Grid>
-            <DataGrid ItemsSource="{Binding RowsView}" AutoGenerateColumns="False"
+            <!-- x:Name: HistoryWindow.xaml.cs tracks this grid's own live
+                 ActualWidth (DataGridColumnCap.Track) to keep When/Name/
+                 Destination's caps correct as the window is resized. -->
+            <DataGrid x:Name="HistoryGrid" ItemsSource="{Binding RowsView}" AutoGenerateColumns="False"
                       IsReadOnly="True" HeadersVisibility="Column"
                       SelectionMode="Single" CanUserAddRows="False">
                 <DataGrid.RowStyle>
