@@ -555,6 +555,83 @@ public class HighlightContrastTests
         }
     });
 
+    /// <summary>Shared body for the three NON-Ready readiness suffixes below
+    /// (2026-08-08 fix round): the gate that measured drop cost only ever
+    /// rendered the plain filename and the Ready suffix off-screen —
+    /// NeedsPassword, InUse and Unreadable were inferred from sharing the
+    /// same bound TextBlock and DisplayText's switch (UnlockViewModel.cs)
+    /// rather than observed directly. The inference is probably right, but
+    /// this repo has enough recorded cases of "probably right" turning out
+    /// wrong that rendering the other three costs little enough to just do
+    /// it. Same construction and assertions as
+    /// SelectedUnlockFileListRowWithAReadinessSuffixUsesTheAccentPalette
+    /// above, parameterized so the three callers below don't triple that
+    /// ~45-line body verbatim.</summary>
+    private void AssertSelectedUnlockFileListRowContrast(
+        bool dark, ReadinessStatus status, string message, string expectedSuffixFragment)
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var vm = new UnlockViewModel(new Config(), () => true);
+        var row = new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf");
+        row.SetProbeResult(status, message);
+        vm.Files.Add(row);
+        Assert.Contains(expectedSuffixFragment, row.DisplayText);   // sanity: real suffix text is in play
+        var window = new UnlockWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+
+            var listBox = FindDescendant<ListBox>(window)
+                ?? throw new InvalidOperationException("no ListBox descendant under UnlockWindow");
+            listBox.SelectedIndex = 0;
+            PumpRender();
+            window.UpdateLayout();
+
+            var container = listBox.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem
+                ?? throw new InvalidOperationException("FileList row 0 never realized a container");
+
+            var text = FindTextElement(container)
+                ?? throw new InvalidOperationException("no TextBlock/AccessText descendant under FileList's ListBoxItem");
+            var bd = FindDescendant<Border>(container)
+                ?? throw new InvalidOperationException("no Border descendant under FileList's ListBoxItem");
+
+            var fg = ToRgb(ForegroundOf(text));
+            var bg = ToRgb(bd.Background);
+            Assert.Equal(p.Accent, bg);
+            Assert.Equal(p.AccentText, fg);
+            var ratio = ThemePalette.ContrastRatio(fg, bg);
+            Assert.True(ratio >= 4.5,
+                $"UnlockWindow FileList selected row, {status} ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [Theory, MemberData(nameof(Palettes))]
+    public void SelectedUnlockFileListRowWithANeedsPasswordSuffixUsesTheAccentPalette(bool dark) =>
+        _fx.Invoke(() => AssertSelectedUnlockFileListRowContrast(dark, ReadinessStatus.NeedsPassword,
+            "This PDF needs a password none of the saved ones supply.", "needs a password"));
+
+    [Theory, MemberData(nameof(Palettes))]
+    public void SelectedUnlockFileListRowWithAnInUseSuffixUsesTheAccentPalette(bool dark) =>
+        _fx.Invoke(() => AssertSelectedUnlockFileListRowContrast(dark, ReadinessStatus.InUse,
+            "It's open in another program — close it there and try again.", "in use, couldn't check"));
+
+    [Theory, MemberData(nameof(Palettes))]
+    public void SelectedUnlockFileListRowWithAnUnreadableSuffixUsesTheAccentPalette(bool dark) =>
+        _fx.Invoke(() => AssertSelectedUnlockFileListRowContrast(dark, ReadinessStatus.Unreadable,
+            "Couldn't read it: The file is not a valid PDF document.", "couldn't be read"));
+
     /// <summary>Same gap-closing purpose as the UnlockWindow test above, for
     /// LabelMakerWindow's client list. Its ItemTemplate is a DockPanel with
     /// TWO TextBlocks (NextNumberText docked right, Id filling the rest);
