@@ -229,11 +229,14 @@ public sealed class UnlockViewModel : ObservableObject
         // DPAPI-protected leftover from BEFORE that decision into plaintext
         // in place. It used to run the opposite direction (plaintext ->
         // protected, audit finding 4.3[A] — see that finding's update in
-        // the same plan) on the three save paths only; this surface owns
-        // the saved-password list, so its own construction — which runs
-        // every time the Unlock window opens, i.e. effectively "on load" —
-        // is where the migration belongs too, same as the sweep it
-        // replaces.
+        // the same plan) on the three save paths as well as here; this
+        // direction runs from the constructor ONLY (fix round, 2026-08-08 —
+        // see MigrateProtectedToPlaintext's own doc comment for why calling
+        // it from the save paths too turned out redundant and actively
+        // masked a regression). Construction runs every time the Unlock
+        // window opens, i.e. effectively "on load," which is where this
+        // belongs: nothing else in the app can introduce a NEW protected
+        // entry between one open and the next.
         //
         // Gated on the migration's own Converted flag: a config with
         // nothing to convert must not be re-saved. Saving is not a
@@ -380,11 +383,12 @@ public sealed class UnlockViewModel : ObservableObject
         if (label.Length == 0) return;
         // Plaintext, deliberately — saved passwords are stored plaintext in
         // the shared config.json now (Task 1: no more Protect-on-save); see
-        // PasswordVault's own doc comment for why.
+        // PasswordVault's own doc comment for why. No MigrateProtectedToPlaintext
+        // call here — see AddSavedPassword's comment for why that call was
+        // removed from all three save paths, not just this one.
         var entry = new SavedPassword { Label = label, Password = _bannerPassword };
         _cfg.SavedPasswords.Add(entry);
         Saved.Add(entry);
-        MigrateProtectedToPlaintext();
         _trySaveCfg();
         SaveBannerVisible = false;
         SaveBannerName = "";
@@ -411,9 +415,10 @@ public sealed class UnlockViewModel : ObservableObject
     {
         if (SelectedSavedEntry is { } p)
         {
+            // No MigrateProtectedToPlaintext call here either — see
+            // AddSavedPassword's comment.
             _cfg.SavedPasswords.Remove(p);
             Saved.Remove(p);
-            MigrateProtectedToPlaintext();
             _trySaveCfg();
             // A removed saved password can turn a ready row back into
             // needs-a-password (risk 4/staleness) — see
@@ -424,31 +429,76 @@ public sealed class UnlockViewModel : ObservableObject
     }
 
     /// <summary>False when either field is blank — the dialog shows a nudge
-    /// instead of silently doing nothing.</summary>
+    /// instead of silently doing nothing.
+    ///
+    /// Fix round (2026-08-08, after the initial portable-saved-passwords
+    /// implementation): this used to call MigrateProtectedToPlaintext right
+    /// after adding the entry, same as SaveBannerPassword and
+    /// RemoveSelectedSaved did — mirroring the OLD forward sweep's
+    /// on-touch-every-save-path shape. That call was redundant here and
+    /// removed: the ONLY way a protected entry can be sitting in
+    /// _cfg.SavedPasswords when this runs is (a) the entry THIS call just
+    /// added, which is plaintext by construction and never needs
+    /// converting, or (b) something left over from construction — but the
+    /// constructor's own load-time migration (see there) already ran
+    /// unconditionally before this method could ever be called, and every
+    /// mutation of SavedPasswords goes through this class's own three
+    /// methods (see ApplySettingsSavedPasswordsTests' class doc — Settings
+    /// carries the field through untouched), so nothing outside this class
+    /// can introduce a NEW protected entry between construction and a call
+    /// here. A stale entry the load-time migration genuinely couldn't
+    /// convert (Undecryptable) would fail identically on a retry — same
+    /// machine, same account, same blob — so retrying it here bought
+    /// nothing either. Worse: because this ran AFTER the entry was already
+    /// added, it silently healed a reintroduced Protect() call on THIS
+    /// line, in the same method call, before any test could observe the
+    /// regression on disk — exactly the blind spot a fix-round review
+    /// caught (ToolViewModelTests: AddSavedPasswordStoresPlaintextAndPersistsImmediately,
+    /// ANewlySavedPasswordAppearsAsPlaintextOnDisk). Removing the call,
+    /// rather than adding a sixth test seam to see through it, closes that
+    /// gap directly and costs nothing real: see
+    /// MigrateProtectedToPlaintext's own doc comment for the fuller
+    /// picture.</summary>
     public bool AddSavedPassword(string label, string plain)
     {
         if (label.Trim().Length == 0 || plain.Length == 0) return false;
         // Plaintext, deliberately — see SaveBannerPassword's comment above.
+        // No MigrateProtectedToPlaintext call here — see this method's own
+        // doc comment for why that was removed (2026-08-08 fix round).
         var entry = new SavedPassword { Label = label.Trim(), Password = plain };
         _cfg.SavedPasswords.Add(entry);
         Saved.Add(entry);
-        MigrateProtectedToPlaintext();
         _trySaveCfg();
         // See RequeueAllFilesForProbing's doc comment (risk 4/staleness).
         RequeueAllFilesForProbing();
         return true;
     }
 
-    /// <summary>Opportunistic migration: any saved password still
-    /// DPAPI-protected (from before saved passwords became portable, or a
-    /// hand-rolled <c>dpapi:</c> value) is converted to plaintext in place —
-    /// plaintext IS the stored form now, by the owner's deliberate choice
-    /// (see PasswordVault's own doc comment). Called both right before this
-    /// surface persists (the three save-path callers above) and once from
-    /// the constructor as a load-time migration, so a protected entry
-    /// cannot outlive being noticed just because the saved-password list is
-    /// never otherwise touched — the same opportunistic-upgrade-on-touch
-    /// shape the sweep this replaces used, just reversed. Mutates the SAME
+    /// <summary>Migration: any saved password still DPAPI-protected (from
+    /// before saved passwords became portable, or a hand-rolled
+    /// <c>dpapi:</c> value) is converted to plaintext in place — plaintext
+    /// IS the stored form now, by the owner's deliberate choice (see
+    /// PasswordVault's own doc comment).
+    ///
+    /// Called ONLY from the constructor now, as a load-time migration — NOT
+    /// from the three save paths above (fix round, 2026-08-08). It used to
+    /// be called from those too, mirroring the OLD forward sweep's
+    /// on-touch-every-save-path shape, but that was redundant in the
+    /// reversed direction and actively harmful to test coverage: every
+    /// mutation of <c>_cfg.SavedPasswords</c> goes through this class (this
+    /// method's callers, or the constructor itself — see
+    /// ApplySettingsSavedPasswordsTests' class doc for confirmation nothing
+    /// else touches the field), so by the time any save path runs, the
+    /// constructor's load-time migration has ALREADY converted everything
+    /// it can; a freshly-added entry is plaintext by construction and needs
+    /// no converting; and an entry the load-time migration genuinely
+    /// couldn't decrypt (Undecryptable) fails identically on any later
+    /// retry — same machine, same account, same blob. Worse, calling this
+    /// again right after <c>AddSavedPassword</c> added an entry meant a
+    /// reintroduced <c>Protect()</c> bug on that very save path would be
+    /// silently healed in the SAME call, before any on-disk test could
+    /// observe it — see <see cref="AddSavedPassword"/>'s own doc comment
+    /// for the fix-round review finding that caught this. Mutates the SAME
     /// <see cref="SavedPassword"/> instances that <c>Saved</c> holds (Saved
     /// is seeded from <c>_cfg.SavedPasswords</c> by reference, not by
     /// copy), so the in-memory list is automatically in sync — no separate
@@ -483,10 +533,9 @@ public sealed class UnlockViewModel : ObservableObject
     /// saved before any mutation, so "roll back" is just restoring
     /// it.</summary>
     /// <returns><c>Converted</c> is true if at least one entry was migrated
-    /// to plaintext and nothing failed unexpectedly — callers that persist
-    /// unconditionally (the three above) can ignore this; the constructor's
-    /// load-time migration uses it to skip saving a config that had nothing
-    /// to convert. <c>Undecryptable</c> is true if at least one protected
+    /// to plaintext and nothing failed unexpectedly — the constructor uses
+    /// this to skip saving a config that had nothing to convert.
+    /// <c>Undecryptable</c> is true if at least one protected
     /// entry could not be decrypted at all (left untouched) — the
     /// constructor tells the user once, since those passwords need
     /// re-entering here. <c>Failed</c> is true only for the unexpected-

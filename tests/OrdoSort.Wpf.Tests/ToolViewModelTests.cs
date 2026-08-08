@@ -540,35 +540,46 @@ public class UnlockViewModelTests : IDisposable
     }
 
     [Fact]
-    public void PersistingSavedPasswordsMigratesLegacyProtectedEntriesToPlaintext()
+    public void AddSavedPasswordDoesNotSweepOtherEntriesOnlyTheLoadTimeMigrationDoes()
     {
-        // Renamed from PersistingSavedPasswordsReProtectsLegacyPlaintextEntries
-        // (portable-saved-passwords, Task 1): the save-path sweep now runs
-        // the OPPOSITE direction — any DPAPI-protected entry left over from
-        // before this change is converted to plaintext, not the other way
-        // round. The self-healing shape (any persist path touches the whole
-        // list, not just the one entry being added) is unchanged; only which
-        // way it converts is reversed.
+        // Replaces PersistingSavedPasswordsMigratesLegacyProtectedEntriesToPlaintext
+        // (itself a Task 1 rename of PersistingSavedPasswordsReProtectsLegacyPlaintextEntries),
+        // which proved AddSavedPassword swept OTHER legacy entries in the
+        // list, not just the one being added. Fix round (2026-08-08): that
+        // sweep-on-touch call was removed from all three save paths as
+        // redundant — every real mutation of _cfg.SavedPasswords goes
+        // through this class, so by the time any save path runs, the
+        // constructor's load-time migration has already converted
+        // everything it can, and a freshly-added entry is plaintext by
+        // construction and needs no converting. Worse, keeping the call
+        // meant a reintroduced Protect() bug on THIS save path healed
+        // itself in the same call, before any on-disk test could see it —
+        // see AddSavedPassword's own doc comment for the review finding
+        // that caught this, and ANewlySavedPasswordAppearsAsPlaintextOnDisk
+        // below for the on-disk teeth proof that now actually discriminates.
         //
-        // legacyProtected is added AFTER Vm() runs, not before — the
-        // constructor now runs its OWN load-time migration (see the
-        // LoadMigrates.../LoadDoesNotRewrite... tests below), which would
-        // otherwise convert this entry (and persist) before AddSavedPassword
-        // ever got a chance to, muddying what this test is isolating: the
-        // SAVE-path migration triggered by touching the list.
-        var alreadyPlain = new SavedPassword { Label = "A", Password = "already-plain" };
-        _cfg.SavedPasswords.Add(alreadyPlain);
+        // This test locks the removal in: a legacyProtected entry sitting
+        // in _cfg (a shape the app itself cannot produce post-construction —
+        // see the doc comment above — added directly here only to prove the
+        // absence of a sweep) is left COMPLETELY untouched by
+        // AddSavedPassword. Only a fresh Unlock-window open (the
+        // constructor) would ever convert it.
         var vm = Vm();
         var legacyProtected = new SavedPassword
         { Label = "B", Password = PasswordVault.Protect("hunter2") };
-        _cfg.SavedPasswords.Add(legacyProtected);
+        _cfg.SavedPasswords.Add(legacyProtected);   // bypasses the VM entirely, after construction
 
-        Assert.True(vm.AddSavedPassword("New", "x"));   // any persist path triggers the migration
+        Assert.True(vm.AddSavedPassword("New", "x"));
 
-        Assert.All(_cfg.SavedPasswords, p => Assert.False(PasswordVault.IsProtected(p.Password)));
-        Assert.Equal("hunter2", legacyProtected.Password);
-        Assert.Equal("already-plain", alreadyPlain.Password);
-        Assert.Equal(1, _saves);   // the migration itself doesn't persist — only the one Add did
+        var untouched = Assert.Single(_cfg.SavedPasswords, p => p.Label == "B");
+        Assert.True(PasswordVault.IsProtected(untouched.Password));
+        Assert.Equal(legacyProtected.Password, untouched.Password);   // byte-identical
+
+        var added = Assert.Single(_cfg.SavedPasswords, p => p.Label == "New");
+        Assert.False(PasswordVault.IsProtected(added.Password));
+        Assert.Equal("x", added.Password);
+
+        Assert.Equal(1, _saves);   // AddSavedPassword's own persist, nothing extra
     }
 
     // ------------------------------------------------- load-time migration
