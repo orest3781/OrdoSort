@@ -220,8 +220,29 @@
             <Border Grid.Row="7" Background="{DynamicResource Theme.Surface}"
                     BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
                     CornerRadius="4">
+                <!-- Ok -> Theme.StatusGreen added (status-colour-vocabulary
+                     plan, 2026-08-08, Task 3 Step 1): the vocabulary's
+                     "good/ready/done" row. Fail stays Theme.StatusAmber
+                     (needs-attention — CopyAndTerminologyTests.cs:183-484
+                     locks that meaning for Settings' notes, and this list
+                     must not contradict it) and Skip stays
+                     Theme.SubtleText (informational).
+
+                     No "let selection win" trigger here, unlike the FileList
+                     ListBox above: this is a plain ItemsControl, not a
+                     Selector, so its generated containers are bare
+                     ContentPresenters with no IsSelected concept at all —
+                     verified by reading ItemsControl's own type (Selector,
+                     which ListBox/ListBoxItem derive from and which is what
+                     actually carries IsSelected, is a DIFFERENT, more
+                     derived class ItemsControl does not implement) and by
+                     the complete absence of any SelectionMode/IsSelected
+                     property on the ItemsControl or DataTemplate above —
+                     not assumed from "it looks read-only". A fixed status
+                     colour here has no accent background to ever collide
+                     with. -->
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="8,6">
-                    <ItemsControl ItemsSource="{Binding ResultLines}"
+                    <ItemsControl x:Name="ResultList" ItemsSource="{Binding ResultLines}"
                                   AutomationProperties.Name="Results">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -229,6 +250,11 @@
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                             <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Kind}"
+                                                             Value="{x:Static vm:UnlockResultKind.Ok}">
+                                                    <Setter Property="Foreground"
+                                                            Value="{DynamicResource Theme.StatusGreen}" />
+                                                </DataTrigger>
                                                 <DataTrigger Binding="{Binding Kind}"
                                                              Value="{x:Static vm:UnlockResultKind.Fail}">
                                                     <Setter Property="Foreground"

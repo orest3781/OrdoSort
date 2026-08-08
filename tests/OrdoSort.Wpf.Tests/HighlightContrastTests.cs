@@ -614,6 +614,75 @@ public class HighlightContrastTests
         _fx.Invoke(() => AssertUnlockFileListNoteContrast(dark, selected, ReadinessStatus.Unreadable,
             "Couldn't read it: The file is not a valid PDF document.", "couldn't be read", p => p.StatusRed));
 
+    // -------------------------------------------------------- Result lines
+
+    /// <summary>Task 3 Step 3 (status-colour-vocabulary plan, 2026-08-08):
+    /// the Unlock window's results list (<see cref="UnlockResultLine"/>/
+    /// <see cref="UnlockResultKind"/>) is a plain ItemsControl, not a
+    /// Selector — no selection concept exists for it at all (see the
+    /// comment on ResultList's enclosing Border in UnlockWindow.xaml, and
+    /// x:Name="ResultList" added there so this test can resolve the REAL
+    /// ItemsControl by name instead of the first-match
+    /// <see cref="FindDescendant{T}"/> walk, which would find the FileList
+    /// ListBox first — ListBox derives from ItemsControl too). Asserts the
+    /// RESOLVED brush of the generated row's TextBlock against the
+    /// ItemsControl's real background (Theme.Surface, painted by the
+    /// enclosing Border) — the same resolved-not-XAML standard the FileList
+    /// tests above already hold to.</summary>
+    private void AssertUnlockResultLineContrast(bool dark, UnlockResultKind kind, string text,
+        Func<ThemePalette, Rgb> expectedColor)
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var vm = new UnlockViewModel(new Config(), () => true);
+        vm.ResultLines.Add(new UnlockResultLine(text, kind));
+        var window = new UnlockWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+
+            var itemsControl = window.FindName("ResultList") as ItemsControl
+                ?? throw new InvalidOperationException("no ItemsControl named ResultList in UnlockWindow");
+            var container = itemsControl.ItemContainerGenerator.ContainerFromIndex(0)
+                ?? throw new InvalidOperationException("ResultList row 0 never realized a container");
+
+            var textEl = FindTextElement(container)
+                ?? throw new InvalidOperationException(
+                    "no TextBlock/AccessText descendant under the result line's container");
+            var fg = ToRgb(ForegroundOf(textEl));
+            Assert.Equal(expectedColor(p), fg);
+            var ratio = ThemePalette.ContrastRatio(fg, p.Surface);
+            Assert.True(ratio >= 4.5,
+                $"UnlockWindow ResultList {kind} ({(dark ? "dark" : "light")}): {fg} on {p.Surface} = {ratio:F2}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [Theory, MemberData(nameof(Palettes))]
+    public void UnlockResultLineOkIsGreen(bool dark) =>
+        _fx.Invoke(() => AssertUnlockResultLineContrast(dark, UnlockResultKind.Ok,
+            "✓  a.pdf  →  b.pdf", p => p.StatusGreen));
+
+    [Theory, MemberData(nameof(Palettes))]
+    public void UnlockResultLineFailIsAmber(bool dark) =>
+        _fx.Invoke(() => AssertUnlockResultLineContrast(dark, UnlockResultKind.Fail,
+            "✗  a.pdf — wrong password", p => p.StatusAmber));
+
+    [Theory, MemberData(nameof(Palettes))]
+    public void UnlockResultLineSkipIsSubtle(bool dark) =>
+        _fx.Invoke(() => AssertUnlockResultLineContrast(dark, UnlockResultKind.Skip,
+            "•  a.pdf — already unlocked", p => p.SubtleText));
+
     /// <summary>Same gap-closing purpose as the UnlockWindow test above, for
     /// LabelMakerWindow's client list. Its ItemTemplate is a DockPanel with
     /// TWO TextBlocks (NextNumberText docked right, Id filling the rest);
