@@ -25,6 +25,15 @@ namespace OrdoSort.Core;
 /// Decryption uses PdfSharp Import mode (open with the user password, copy the
 /// pages into a fresh unencrypted document) — Modify mode would demand the
 /// OWNER password, which the person filing a document doesn't have.
+///
+/// <see cref="ProbeReadiness"/> is a separate, read-only entry point: given a
+/// path and an ordered list of candidate passwords, it reports whether one of
+/// them already opens the file, without unlocking anything. It never writes,
+/// moves or deletes — see its own doc comment for why its verdicts can be
+/// trusted to agree with what a real <see cref="UnlockPdf"/> call would do.
+/// (Lowercase "probe" elsewhere in this file, e.g. two paragraphs up, refers
+/// to the unrelated no-password encryption check inside UnlockBuffered /
+/// UnlockStreaming, not to this method.)
 /// </summary>
 public static class Unlock
 {
@@ -72,6 +81,126 @@ public static class Unlock
         return length >= LargeFileThresholdBytes
             ? UnlockStreaming(src, password, dest, suffix)
             : UnlockBuffered(src, password, dest, suffix);
+    }
+
+    public sealed record ProbeResult(
+        string Status, string Source, int? MatchedIndex = null, string Message = "")
+    {
+        // not_encrypted | ready | needs_password | in_use | unreadable
+        /// <summary>True when a real <see cref="UnlockPdf"/> call needs no
+        /// candidate at all (not_encrypted) or is expected to succeed with
+        /// <see cref="MatchedIndex"/> (ready). False for needs_password,
+        /// in_use and unreadable — none of those mean "go ahead."</summary>
+        public bool ReadyToUnlock => Status is "not_encrypted" or "ready";
+    }
+
+    /// <summary>Read-only readiness check: does a SAVED password already open
+    /// this PDF, before the user types anything or clicks Unlock? Reports one
+    /// of five states — not_encrypted, ready (with the winning
+    /// <see cref="ProbeResult.MatchedIndex"/> into <paramref name="candidates"/>),
+    /// needs_password (encrypted, but none of <paramref name="candidates"/>
+    /// opened it), in_use, unreadable — and never writes, moves or deletes
+    /// anything, anywhere: after the one read below it only ever opens a
+    /// MemoryStream over bytes already in memory.
+    ///
+    /// A verdict here is only useful if it is not contradicted by what
+    /// <see cref="UnlockPdf"/> actually does with the same source and the
+    /// same candidates — that agreement is asserted in
+    /// OrdoSort.Core.Tests.UnlockProbeAgreementTests, not just assumed here.
+    /// This method is allowed to diverge from UnlockPdf in exactly one,
+    /// harmless direction — it must never claim readiness UnlockPdf wouldn't
+    /// back up — which is why its open calls use the same mode and the same
+    /// exception discipline as UnlockPdf, not a lighter approximation of them.
+    ///
+    /// Cost (risk 1): the source is read from disk exactly ONCE regardless of
+    /// how many candidates are tried — same discipline as
+    /// <see cref="UnlockBuffered"/>, whose own doc comment explains why: three
+    /// separate opens over a share meant three full transfers. A 50-file drop
+    /// against 5 saved passwords is therefore 50 network reads, not 250.
+    /// PdfDocumentOpenMode.InformationOnly was measured (2026-08-08) against
+    /// Import for both the encryption check and the password check, on a
+    /// 40-page / 54KB encrypted fixture, 25 iterations each, single-shot
+    /// managed-memory snapshots with the opened document kept alive: wrong
+    /// password threw the identical PdfReaderException under both modes
+    /// (~0.44ms Import vs ~0.47ms InformationOnly); the right password opened
+    /// under both, retaining ~628KB (Import) vs ~627KB (InformationOnly) with
+    /// no timing advantage (~2.2ms vs ~1.7ms). PdfSharp 6.1.1 marks
+    /// InformationOnly <c>[Obsolete("InformationOnly is not implemented, use
+    /// Import instead.")]</c> — the measurement confirms that isn't just a
+    /// stale label: it behaves exactly like Import, not a cheaper path. Import
+    /// is used here for that reason, and because it keeps this probe's open
+    /// calls identical to UnlockPdf's, which is what makes the agreement test
+    /// meaningful rather than coincidental.
+    ///
+    /// Exception discipline (risk 3), mirrors UnlockBuffered exactly
+    /// (Unlock.cs:127-134): <see cref="PdfReaderException"/> is a wrong
+    /// password for that one candidate — try the next; an
+    /// <see cref="IOException"/> where <see cref="IsInUse"/> is true (only
+    /// possible at the single disk read below, never from the in-memory
+    /// reopens that follow) means in_use and stops; anything else means
+    /// unreadable and stops. Collapsing these would report a damaged or
+    /// otherwise unreadable file as merely needing a password.</summary>
+    public static ProbeResult ProbeReadiness(string src, IReadOnlyList<string> candidates)
+    {
+        if (!File.Exists(src))
+            return new("unreadable", src, Message: "File not found.");
+
+        byte[] sourceBytes;
+        try
+        {
+            sourceBytes = File.ReadAllBytes(src);
+        }
+        catch (IOException ex) when (IsInUse(ex))
+        {
+            return new("in_use", src, Message:
+                "It's open in another program — close it there and try again.");
+        }
+        catch (Exception ex)
+        {
+            return new("unreadable", src, Message: $"Couldn't read it: {ex.Message}");
+        }
+
+        // encryption state, checked without a password — identical in shape
+        // and reasoning to UnlockBuffered's own check (Unlock.cs:104-114):
+        // opening WITH a password cannot answer this question, because a
+        // correctly decrypted document reports itself unencrypted just like
+        // one that was never encrypted at all.
+        try
+        {
+            using var probeStream = new MemoryStream(sourceBytes, writable: false);
+            using var probe = PdfReader.Open(probeStream, PdfDocumentOpenMode.Import);
+            if (!probe.SecuritySettings.IsEncrypted)
+                return new("not_encrypted", src, Message: "This PDF isn't password-protected.");
+        }
+        catch
+        {
+            // couldn't open without a password -> it's encrypted (or damaged
+            // in a way that looks the same from here, e.g. no StartXRef);
+            // fall through and let the candidate loop's own exception
+            // discipline below decide which — same fallback UnlockBuffered
+            // takes at Unlock.cs:111-114.
+        }
+
+        for (var i = 0; i < candidates.Count; i++)
+        {
+            try
+            {
+                using var ms = new MemoryStream(sourceBytes, writable: false);
+                using var _ = PdfReader.Open(ms, candidates[i], PdfDocumentOpenMode.Import);
+                return new("ready", src, MatchedIndex: i, Message: "A saved password opens this.");
+            }
+            catch (PdfReaderException)
+            {
+                // wrong password for this one candidate; try the next
+            }
+            catch (Exception ex)
+            {
+                return new("unreadable", src, Message: $"Couldn't read it: {ex.Message}");
+            }
+        }
+
+        return new("needs_password", src,
+            Message: "This PDF needs a password none of the saved ones supply.");
     }
 
     /// <summary>The fast path: ONE read of the source, and the probe, decrypt
