@@ -43,7 +43,19 @@ namespace OrdoSort.Wpf.Tests;
 /// the moment a real window resolves it) — combined with #3 above (the grid
 /// doesn't overflow even with the filler pinned to its worst-case, smallest
 /// floor width), a real window can only do better, never worse: the filler
-/// gets AT LEAST its floor and never more demand than fits.</summary>
+/// gets AT LEAST its floor and never more demand than fits.
+///
+/// FIX ROUND 1 (2026-08-07): every Triage fact originally set
+/// Candidates.ItemsSource directly, which never runs ShowCurrentAsync and
+/// therefore never inserts the "Why" column — a real, fixed-260px column
+/// the real app DOES show alongside roster columns for any suggested-status
+/// item, a normal queue per MatchMerge.cs, not a rare one. That gap let a
+/// real default-state overflow (Why + First name + Control ID totaling
+/// 422.5px against a 416px panel) ship past a fully green suite. Every
+/// Triage fact below now drives the real ShowCurrentAsync — see
+/// BuildTriageWindow/ShowOffscreenAndDriveCurrent — and two facts assert
+/// ComputedHorizontalScrollBarVisibility directly with Why present, at both
+/// the app's default 2 roster columns and at 3.</summary>
 [Collection(HighlightContrastTests.Name)]
 public class AutoFitColumnTests
 {
@@ -200,19 +212,48 @@ public class AutoFitColumnTests
     }
 
     // ------------------------------------------------------------ Triage
+    //
+    // Fix round 1 finding: the first version of these tests set
+    // Candidates.ItemsSource directly, bypassing ShowCurrentAsync entirely —
+    // which meant the "Why" column (ShowCurrentAsync inserts it, fixed
+    // 260px, whenever the current item's Status is "suggested" — a normal,
+    // common queue per MatchMerge.cs, not a rare one) was NEVER present in
+    // any of these tests, even though the real app can and does show it
+    // alongside roster columns in the SAME 440px side panel. That's how a
+    // real default-state overflow (Why=251.5 + First name=90 + Control
+    // ID=81 = 422.5px against a 416px panel, scrollbar VISIBLE) shipped past
+    // a green suite. Every Triage test below now drives the real
+    // ShowCurrentAsync — see BuildTriageWindow/ShowOffscreenAndDriveCurrent.
+
+    /// <summary>Reproduces TriageWindow's own internal budget formula (see
+    /// its constructor) so these tests double as a live check that the
+    /// production constants (WhyColumnWidth/PanelHorizontalMargins/
+    /// SafetyMargin/FillerMinWidth, duplicated here — same pattern as
+    /// MatchMerge/BulkRename's tests inlining their 0.35 share) and this
+    /// test's own expectation can't silently drift apart.</summary>
+    private static double ExpectedTriageColumnCap(int headerCount, bool couldShowWhy)
+    {
+        const double whyColumnWidth = 260;
+        const double panelHorizontalMargins = 24;
+        const double safetyMargin = 20;
+        const double fillerMinWidth = 60;
+        var rosterBudget = Math.Max(fillerMinWidth, 440 - panelHorizontalMargins
+            - safetyMargin - (couldShowWhy ? whyColumnWidth : 0));
+        var cappedColumnCount = Math.Max(1, headerCount - 1);
+        return Math.Max(20, (rosterBudget - fillerMinWidth) / cappedColumnCount);
+    }
 
     [Fact]
     public void Triage_ShortRosterValueMeasuresNarrow() => _fx.Invoke(() =>
     {
-        var win = BuildTriageWindow(secondColumnValue: ShortValue);
+        var win = BuildTriageWindow(new[] { "First name", "Control ID" }, suggested: false, ShortValue);
         try
         {
-            ShowOffscreen(win);
+            ShowOffscreenAndDriveCurrent(win);
             var column = win.Candidates.Columns.First(c => (string)c.Header == "Control ID");
-            // Cap is 0.35*440=154px; "a.pdf" needs a small fraction of that —
-            // the header text ("Control ID") is what actually dominates an
-            // Auto column's minimum here, same reasoning as BulkRename's
-            // analogous check above.
+            // No "Why" in this batch (ambiguous only) — the wide, no-Why cap
+            // (336px, see ExpectedTriageColumnCap) applies; "a.pdf" needs a
+            // small fraction of it regardless.
             Assert.True(column.ActualWidth < 110,
                 $"Triage Control ID column with short content is {column.ActualWidth}px, expected < 110px");
         }
@@ -222,12 +263,12 @@ public class AutoFitColumnTests
     [Fact]
     public void Triage_LongRosterValueStopsAtTheCapWithEllipsisAndTooltip() => _fx.Invoke(() =>
     {
-        var win = BuildTriageWindow(secondColumnValue: VeryLongValue);
+        var win = BuildTriageWindow(new[] { "First name", "Control ID" }, suggested: false, VeryLongValue);
         try
         {
-            ShowOffscreen(win);
+            ShowOffscreenAndDriveCurrent(win);
             var column = win.Candidates.Columns.First(c => (string)c.Header == "Control ID");
-            var expectedCap = 440 * 0.35;
+            var expectedCap = ExpectedTriageColumnCap(headerCount: 2, couldShowWhy: false);
             Assert.True(column.ActualWidth == expectedCap,
                 $"Triage Control ID column with long content is {column.ActualWidth}px, " +
                 $"expected exactly its cap {expectedCap}px");
@@ -237,53 +278,110 @@ public class AutoFitColumnTests
     });
 
     [Fact]
-    public void Triage_AllCappedColumnsAtWorstCaseStillFitWithNoHorizontalScrollbar() => _fx.Invoke(() =>
-    {
-        var win = BuildTriageWindow(secondColumnValue: VeryLongValue);
-        try
-        {
-            ShowOffscreen(win);
-            AssertNoHorizontalScrollbar(win, "Triage");
-        }
-        finally { win.Close(); }
-    });
-
-    [Fact]
     public void Triage_FirstRosterColumnIsTheStarFillerColumn() => _fx.Invoke(() =>
     {
-        var win = BuildTriageWindow(secondColumnValue: ShortValue);
+        var win = BuildTriageWindow(new[] { "First name", "Control ID" }, suggested: false, ShortValue);
         try
         {
-            ShowOffscreen(win);
+            ShowOffscreenAndDriveCurrent(win);
             var star = Assert.Single(win.Candidates.Columns.Where(c => c.Width.IsStar));
             Assert.Equal("First name", star.Header);
         }
         finally { win.Close(); }
     });
 
-    /// <summary>Constructs a real TriageWindow and feeds Candidates a
-    /// fabricated ItemsSource directly — bypassing ShowCurrentAsync/the real
-    /// WebView2 entirely (never calling Loaded's async init path in any
-    /// observable way before this measures). Dialogs is swapped to
-    /// FakeDialogs and the window is always Close()d in the caller's
-    /// finally, matching TriageWindowInitRaceTests' own proof that a pending
-    /// real InitAndShowAsync continuation checks IsClosed before touching
-    /// anything once Close() has already run — so even though Show() here
-    /// does fire the real Loaded handler (and therefore does start a real,
-    /// genuinely-async WebView2 init in the background), nothing from it can
-    /// reach Candidates.ItemsSource or a real dialog before this method's own
-    /// synchronous Show()+UpdateLayout()+measurement completes.</summary>
-    private static TriageWindow BuildTriageWindow(string secondColumnValue)
+    /// <summary>The Critical from fix round 1, made concrete: the app's own
+    /// default roster picks ("nothing ticked = the name and id columns" —
+    /// two headers) reviewing a SUGGESTED item — the common queue, not an
+    /// edge case — with every capped column and Why itself all fed enough
+    /// content to reach their respective caps. This is the exact
+    /// configuration the reviewer measured overflowing (422.5px against
+    /// 416px) against the pre-fix budget.</summary>
+    [Fact]
+    public void Triage_DefaultTwoRosterColumnsWithWhyPresentStillFitWithNoHorizontalScrollbar() => _fx.Invoke(() =>
     {
-        var win = new TriageWindow(new List<MatchMerge.MatchResult>(), new[] { "First name", "Control ID" })
+        var win = BuildTriageWindow(new[] { "First name", "Control ID" }, suggested: true, VeryLongValue);
+        try
+        {
+            ShowOffscreenAndDriveCurrent(win);
+            // Why is actually present — otherwise this test would silently
+            // stop meaning anything, the same way the pre-fix version did.
+            Assert.Contains(win.Candidates.Columns, c => (string)c.Header == "Why");
+            AssertNoHorizontalScrollbar(win, "Triage (2 roster columns, Why present)");
+        }
+        finally { win.Close(); }
+    });
+
+    /// <summary>The "as roster columns are added" half of the fix: a third
+    /// header (someone ticked an extra optional roster column in "Show in
+    /// Review matches") sharing the same panel with Why, both capped roster
+    /// columns fed enough content to reach their now-smaller caps.</summary>
+    [Fact]
+    public void Triage_ThreeRosterColumnsWithWhyPresentStillFitWithNoHorizontalScrollbar() => _fx.Invoke(() =>
+    {
+        var win = BuildTriageWindow(new[] { "First name", "Control ID", "Extra field" }, suggested: true,
+            VeryLongValue, VeryLongValue);
+        try
+        {
+            ShowOffscreenAndDriveCurrent(win);
+            Assert.Contains(win.Candidates.Columns, c => (string)c.Header == "Why");
+            AssertNoHorizontalScrollbar(win, "Triage (3 roster columns, Why present)");
+        }
+        finally { win.Close(); }
+    });
+
+    /// <summary>Builds a real TriageWindow with one real MatchMerge.MatchResult
+    /// (status "suggested" or "ambiguous", matching whether the caller wants
+    /// Why present) and a real candidate row — headers[0] always gets a
+    /// short, fixed value ("Pat", the filler column), and each subsequent
+    /// header gets the corresponding entry from <paramref name="columnValues"/>.
+    /// Dialogs is swapped to FakeDialogs defensively; the window is always
+    /// Close()d in the caller's finally.</summary>
+    private static TriageWindow BuildTriageWindow(string[] headers, bool suggested, params string[] columnValues)
+    {
+        var row = new Dictionary<string, string> { [headers[0]] = "Pat" };
+        for (var i = 1; i < headers.Length; i++) row[headers[i]] = columnValues[i - 1];
+        var candidate = new MatchMerge.Candidate("1", row);
+
+        var item = suggested
+            ? new MatchMerge.MatchResult("doc.pdf", "suggested",
+                Suggestions: new List<MatchMerge.Suggestion> { new(candidate, "token match") })
+            : new MatchMerge.MatchResult("doc.pdf", "ambiguous",
+                Candidates: new List<MatchMerge.Candidate> { candidate });
+
+        return new TriageWindow(new List<MatchMerge.MatchResult> { item }, headers)
         {
             Dialogs = new FakeDialogs(),
         };
-        win.Candidates.ItemsSource = new List<Dictionary<string, string>>
-        {
-            new() { ["First name"] = "Pat", ["Control ID"] = secondColumnValue },
-        };
-        return win;
+    }
+
+    /// <summary>Show()s off-screen (firing the real Loaded handler, and
+    /// therefore starting a real, genuinely-async WebView2 init in the
+    /// background — proven safe across repeated runs during fix round 1),
+    /// then drives the SAME ShowCurrentAsync the app's own Loaded flow
+    /// eventually calls, directly and deterministically, rather than waiting
+    /// on that real init to resolve. ShowCurrentAsync awaits
+    /// _pdf.ShowAsync(...), which no-ops synchronously (returns
+    /// Task.CompletedTask) as long as the WebView2 was never actually
+    /// initialized — true here, since that's the genuinely-async part still
+    /// pending in the background — so GetAwaiter().GetResult() is
+    /// synchronous-safe, not a deadlock risk: same reasoning
+    /// TriageWindowDisposalTests' class doc already established for the
+    /// identical pattern.</summary>
+    private static void ShowOffscreenAndDriveCurrent(TriageWindow win)
+    {
+        win.WindowStartupLocation = WindowStartupLocation.Manual;
+        win.Left = -20000;
+        win.Top = 0;
+        win.ShowActivated = false;
+        win.Show();
+#pragma warning disable xUnit1031
+        win.ShowCurrentAsync().GetAwaiter().GetResult();
+#pragma warning restore xUnit1031
+        win.UpdateLayout();
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+            () => { }, System.Windows.Threading.DispatcherPriority.Render);
+        win.UpdateLayout();
     }
 
     // ---------------------------------------------------------- plumbing
