@@ -12,8 +12,14 @@
 
         <StackPanel>
             <TextBlock Text="Saved passwords" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
-            <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap" Margin="0,0,0,8"
-                       Text="Tried automatically on Unlock. Encrypted for this Windows account — a hand-edited plaintext value is encrypted the next time saved passwords change here (add or remove)." />
+            <!-- x:Name'd so ManageSavedWindowCopyTests can measure it
+                 directly off-screen and prove it actually wraps instead of
+                 clipping — this window's own vertical StackPanel gives it
+                 constrained width, unlike the horizontal-StackPanel trap
+                 UnlockWindow.xaml has a documented history of (see that
+                 test's own doc comment). -->
+            <TextBlock x:Name="StorageNote" Style="{StaticResource SubtleText}" TextWrapping="Wrap" Margin="0,0,0,8"
+                       Text="Tried automatically on Unlock. Stored as plain text in the shared config.json — anyone who can open that file can read them." />
             <ListBox ItemsSource="{Binding Saved}" SelectedItem="{Binding SelectedSavedEntry}"
                      Height="150">
                 <!-- Label gets a LOCAL Foreground bound back to the generated

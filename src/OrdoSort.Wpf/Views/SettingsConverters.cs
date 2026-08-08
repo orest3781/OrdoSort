@@ -66,18 +66,22 @@ public sealed class FontSizeTextConverter : IValueConverter
         throw new NotSupportedException();
 }
 
-/// <summary>A saved password's stored value ("dpapi:…" or legacy plaintext) →
+/// <summary>A saved password's stored value ("dpapi:…" or plaintext) →
 /// status text for the Manage saved… dialog, which binds straight to the
-/// Core SavedPassword records rather than a wrapping edit view model. A
-/// plaintext entry is upgraded the next time ANY saved-password change
-/// persists (add or remove — see UnlockViewModel.ReprotectLegacyPlaintext),
-/// not specifically "on next save" — the wording here must keep matching
-/// that, and the ManageSavedWindow note above the list.</summary>
+/// Core SavedPassword records rather than a wrapping edit view model.
+/// Plaintext is the normal, intended state now (portable-saved-passwords,
+/// 2026-08-08) — a "dpapi:" value is a leftover from before that change,
+/// and is converted to plaintext the next time ANY saved-password change
+/// persists (add or remove — see
+/// UnlockViewModel.MigrateProtectedToPlaintext), not specifically "on next
+/// save" — the wording here must keep matching that, and the
+/// ManageSavedWindow note above the list.</summary>
 public sealed class PasswordStatusConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         value is string s && PasswordVault.IsProtected(s)
-            ? "encrypted" : "plain text — encrypted the next time saved passwords change";
+            ? "protected to this computer — becomes plain text automatically"
+            : "plain text";
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();

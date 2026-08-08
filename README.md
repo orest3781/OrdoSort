@@ -86,7 +86,9 @@ workflow tests, builds, zips, and publishes.
   happens as you type. Unknown hand-edited config keys always survive.
 - **Tools** — *Unlock PDFs* (the unlocked file keeps its name and place, the
   locked original moves to a dated `locked_archive` folder beside it; saved
-  passwords DPAPI-encrypted per Windows account), *Bulk rename*
+  passwords are stored as plain text in the shared config.json, so they work
+  from every station — the folder's own permissions are the security
+  boundary), *Bulk rename*
   (find/replace, affixes, case, hand-editable preview, batch undo),
   *Match & merge* (pair PDFs against a roster (CSV or Excel) by name and
   merge each person's ID into the filename, with a side-by-side Review
