@@ -1,24 +1,19 @@
 @echo off
-rem Launch OrdoSort. With no argument it prefers the full workbench in
-rem demo-full\ and falls back to the small demo\ sketch; pass a path to run
-rem against your own:   run.bat C:\OrdoSort\config.json
+rem Launch OrdoSort. With no argument it uses the full workbench in
+rem demo-full\; pass a path to run against your own:
+rem   run.bat C:\OrdoSort\config.json
 rem
 cd /d "%~dp0"
 
 set "CONFIG=%~1"
 if "%CONFIG%"=="" (
-    if exist "%~dp0demo-full\config.json" (
-        set "CONFIG=%~dp0demo-full\config.json"
-    ) else (
-        set "CONFIG=%~dp0demo\config.json"
-    )
+    set "CONFIG=%~dp0demo-full\config.json"
 )
 
 if not exist "%CONFIG%" (
     echo Config not found: %CONFIG%
     echo.
     echo Run  demo-full.bat  for the full workbench ^(ten routes, 300 documents^),
-    echo or   reset.bat      for the five-document sketch,
     echo or pass your own config path.
     pause
     exit /b 1

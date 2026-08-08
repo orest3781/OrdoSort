@@ -125,17 +125,16 @@ dotnet test
 
 ## Run the demo
 
-Run `reset.bat` once to generate a demo workspace (sample PDFs, two routes,
-a monitored folder), then launch with `run.bat`, or:
+Run `demo-full.bat` once to generate the workbench (300 inbox documents,
+ten routes, three monitored folders), then launch with `run.bat`, or:
 
 ```
-dotnet run --project src/OrdoSort.Wpf -- --config demo\config.json
+dotnet run --project src/OrdoSort.Wpf -- --config demo-full\config.json
 ```
 
 ## The workbench
 
-`reset.bat` is a five-document sketch. `demo-full.bat` builds the thing you
-actually test against, under `demo-full\`:
+`demo-full.bat` builds the thing you actually test against, under `demo-full\`:
 
 ```
 demo-full.bat            300 inbox documents
