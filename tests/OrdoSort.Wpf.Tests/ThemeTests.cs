@@ -18,6 +18,20 @@ public class ThemeTests
             yield return new object[] { p.WarningText, p.Warning };
             yield return new object[] { p.DangerText, p.Danger };
             yield return new object[] { p.StatusAmber, p.WindowBg };
+            // StatusGreen exists specifically because Success (reused for
+            // this pairing before it existed) fails 4.5:1 in dark against
+            // both — see ThemePalette.cs's own StatusGreen field comment
+            // and HighlightContrastTests' Unlock file-list note tests
+            // (status-colour-vocabulary plan, 2026-08-08, Task 1 Step 1).
+            yield return new object[] { p.StatusGreen, p.WindowBg };
+            yield return new object[] { p.StatusGreen, p.Surface };
+            // StatusRed exists for the identical reason, found one step
+            // later: Danger AS FOREGROUND TEXT (its shipped job elsewhere is
+            // a BACKGROUND, paired with DangerText, unaffected and untested
+            // here) fails 4.5:1 in dark against both -- see ThemePalette.cs's
+            // StatusRed field comment.
+            yield return new object[] { p.StatusRed, p.WindowBg };
+            yield return new object[] { p.StatusRed, p.Surface };
             yield return new object[] { p.AccentBronze, p.WindowBg };
             yield return new object[] { p.AccentBronze, p.Surface };
             yield return new object[] { p.Text, p.TileDefaultBg };

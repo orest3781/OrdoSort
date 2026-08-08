@@ -82,6 +82,8 @@ public static class ThemeManager
         r["Theme.DangerText"] = Brush(p.DangerText);
         r["Theme.Success"] = Brush(p.Success);
         r["Theme.StatusAmber"] = Brush(p.StatusAmber);
+        r["Theme.StatusGreen"] = Brush(p.StatusGreen);
+        r["Theme.StatusRed"] = Brush(p.StatusRed);
         r["Theme.TileDefaultBg"] = Brush(p.TileDefaultBg);
         // hover/pressed shades derived once so Styles.xaml stays declarative
         r["Theme.SurfaceHover"] = Brush(Mix(p.Surface, p.Text, 0.08));

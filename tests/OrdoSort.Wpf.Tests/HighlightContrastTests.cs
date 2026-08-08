@@ -493,82 +493,38 @@ public class HighlightContrastTests
         }
     });
 
-    /// <summary>The readiness-probe plan (2026-08-08, Task 2) repurposed
-    /// FileList's single TextBlock to show DisplayText — filename plus a
-    /// readiness suffix — instead of the bare filename the test above still
-    /// covers. No new element was added to the template (the fix stays a
-    /// single TextBlock specifically to avoid a second Foreground-binding
-    /// trap instance), so the SAME local-Foreground-binding fix applies to
-    /// this longer text too — but "same fix, different content" is still
-    /// worth proving directly rather than assumed, per the plan's own
-    /// instruction to verify selected-row contrast in both palettes
-    /// off-screen. Uses SetProbeResult (internal; this project has
-    /// InternalsVisibleTo) to put the row in the Ready state without a real
-    /// probe, so this stays a pure rendering/contrast check.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void SelectedUnlockFileListRowWithAReadinessSuffixUsesTheAccentPalette(bool dark) => _fx.Invoke(() =>
-    {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
-
-        var vm = new UnlockViewModel(new Config(), () => true);
-        var row = new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf");
-        row.SetProbeResult(ReadinessStatus.Ready, "A saved password opens this.");
-        vm.Files.Add(row);
-        Assert.Contains("a saved password opens this", row.DisplayText);   // sanity: real suffix text is in play
-        var window = new UnlockWindow(vm)
-        {
-            Left = -20000, Top = 0, ShowActivated = false,
-            WindowStartupLocation = WindowStartupLocation.Manual,
-        };
-        try
-        {
-            window.Show();
-            window.UpdateLayout();
-            PumpRender();
-
-            var listBox = FindDescendant<ListBox>(window)
-                ?? throw new InvalidOperationException("no ListBox descendant under UnlockWindow");
-            listBox.SelectedIndex = 0;
-            PumpRender();
-            window.UpdateLayout();
-
-            var container = listBox.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem
-                ?? throw new InvalidOperationException("FileList row 0 never realized a container");
-
-            var text = FindTextElement(container)
-                ?? throw new InvalidOperationException("no TextBlock/AccessText descendant under FileList's ListBoxItem");
-            var bd = FindDescendant<Border>(container)
-                ?? throw new InvalidOperationException("no Border descendant under FileList's ListBoxItem");
-
-            var fg = ToRgb(ForegroundOf(text));
-            var bg = ToRgb(bd.Background);
-            Assert.Equal(p.Accent, bg);
-            Assert.Equal(p.AccentText, fg);
-            var ratio = ThemePalette.ContrastRatio(fg, bg);
-            Assert.True(ratio >= 4.5,
-                $"UnlockWindow FileList selected row with readiness suffix ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    });
-
-    /// <summary>Shared body for the three NON-Ready readiness suffixes below
-    /// (2026-08-08 fix round): the gate that measured drop cost only ever
-    /// rendered the plain filename and the Ready suffix off-screen —
-    /// NeedsPassword, InUse and Unreadable were inferred from sharing the
-    /// same bound TextBlock and DisplayText's switch (UnlockViewModel.cs)
-    /// rather than observed directly. The inference is probably right, but
-    /// this repo has enough recorded cases of "probably right" turning out
-    /// wrong that rendering the other three costs little enough to just do
-    /// it. Same construction and assertions as
-    /// SelectedUnlockFileListRowWithAReadinessSuffixUsesTheAccentPalette
-    /// above, parameterized so the three callers below don't triple that
-    /// ~45-line body verbatim.</summary>
-    private void AssertSelectedUnlockFileListRowContrast(
-        bool dark, ReadinessStatus status, string message, string expectedSuffixFragment)
+    /// <summary>Shared body for all four non-Pending/NotEncrypted readiness
+    /// suffixes (status-colour-vocabulary plan, 2026-08-08, Task 1 Step 4).
+    /// Updated, not replaced: this used to be
+    /// AssertSelectedUnlockFileListRowContrast, reading a SINGLE bound
+    /// TextBlock (DisplayText) via FindTextElement. Task 1 Step 3 split
+    /// FileList's ItemTemplate into two TextBlocks — FileName (unchanged
+    /// ancestor Foreground binding) and Note (the vocabulary colour, unless
+    /// selected) — so this now reads BOTH via FindAllDescendants&lt;TextBlock&gt;
+    /// (the same technique ManageSavedPasswordStatusStaysSubtleUnlessSelected
+    /// below already uses to tell two same-typed elements apart) and takes a
+    /// `selected` parameter the four original tests never had.
+    ///
+    /// Selected re-asserts exactly what the four ORIGINAL tests already
+    /// asserted (both elements clear 4.5:1 against the Accent background) —
+    /// proving the split didn't regress the selected-row contract the
+    /// ancestor binding exists for. Only a RATIO check is made for the
+    /// note here, deliberately no colour-equality check: Step 5's teeth
+    /// proof breaks the "let selection win" trigger and the failure needs to
+    /// read as a dropped ratio (1.28-3.58:1 measured), not a value mismatch,
+    /// per the plan's own instruction not to let a teeth proof fail for the
+    /// wrong reason.
+    ///
+    /// Unselected is new: the note must render the exact vocabulary colour
+    /// for its status (StatusGreen/StatusAmber/Danger, palette-resolved) at
+    /// >=4.5:1 against the ListBox's REAL background — Theme.Surface, which
+    /// is what Styles.xaml's ListBox style actually paints behind an
+    /// unselected, transparent-background ListBoxItem — while the filename
+    /// stays untouched. This is the assertion the pre-split tests had no way
+    /// to make at all: DisplayText was one string, so a fixed colour on it
+    /// would have painted the filename too.</summary>
+    private void AssertUnlockFileListNoteContrast(bool dark, bool selected, ReadinessStatus status,
+        string message, string expectedNoteFragment, Func<ThemePalette, Rgb> expectedNoteColorWhenUnselected)
     {
         var p = dark ? ThemePalette.Dark : ThemePalette.Light;
         ThemeManager.Apply(_fx.App, dark);
@@ -577,7 +533,7 @@ public class HighlightContrastTests
         var row = new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf");
         row.SetProbeResult(status, message);
         vm.Files.Add(row);
-        Assert.Contains(expectedSuffixFragment, row.DisplayText);   // sanity: real suffix text is in play
+        Assert.Contains(expectedNoteFragment, row.Note);   // sanity: real suffix text is in play (was row.DisplayText pre-split)
         var window = new UnlockWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
@@ -591,25 +547,43 @@ public class HighlightContrastTests
 
             var listBox = FindDescendant<ListBox>(window)
                 ?? throw new InvalidOperationException("no ListBox descendant under UnlockWindow");
-            listBox.SelectedIndex = 0;
+            listBox.SelectedIndex = selected ? 0 : -1;
             PumpRender();
             window.UpdateLayout();
 
             var container = listBox.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem
                 ?? throw new InvalidOperationException("FileList row 0 never realized a container");
 
-            var text = FindTextElement(container)
-                ?? throw new InvalidOperationException("no TextBlock/AccessText descendant under FileList's ListBoxItem");
-            var bd = FindDescendant<Border>(container)
-                ?? throw new InvalidOperationException("no Border descendant under FileList's ListBoxItem");
+            var textBlocks = FindAllDescendants<TextBlock>(container);
+            Assert.True(textBlocks.Count >= 2,
+                $"expected FileName + Note TextBlocks, found {textBlocks.Count}");
+            var fileNameFg = ToRgb(textBlocks[0].Foreground);
+            var noteFg = ToRgb(textBlocks[1].Foreground);
 
-            var fg = ToRgb(ForegroundOf(text));
-            var bg = ToRgb(bd.Background);
-            Assert.Equal(p.Accent, bg);
-            Assert.Equal(p.AccentText, fg);
-            var ratio = ThemePalette.ContrastRatio(fg, bg);
-            Assert.True(ratio >= 4.5,
-                $"UnlockWindow FileList selected row, {status} ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+            if (selected)
+            {
+                var bd = FindDescendant<Border>(container)
+                    ?? throw new InvalidOperationException("no Border descendant under FileList's ListBoxItem");
+                var bg = ToRgb(bd.Background);
+                Assert.Equal(p.Accent, bg);
+                Assert.Equal(p.AccentText, fileNameFg);
+                var fileNameRatio = ThemePalette.ContrastRatio(fileNameFg, bg);
+                Assert.True(fileNameRatio >= 4.5,
+                    $"UnlockWindow FileList selected filename, {status} ({(dark ? "dark" : "light")}): {fileNameFg} on {bg} = {fileNameRatio:F2}");
+                // Ratio only, deliberately (see class doc above): this is the
+                // assertion Step 5's teeth proof breaks.
+                var noteRatio = ThemePalette.ContrastRatio(noteFg, bg);
+                Assert.True(noteRatio >= 4.5,
+                    $"UnlockWindow FileList selected note, {status} ({(dark ? "dark" : "light")}): {noteFg} on {bg} = {noteRatio:F2}");
+            }
+            else
+            {
+                var expectedNote = expectedNoteColorWhenUnselected(p);
+                Assert.Equal(expectedNote, noteFg);
+                var noteRatio = ThemePalette.ContrastRatio(noteFg, p.Surface);
+                Assert.True(noteRatio >= 4.5,
+                    $"UnlockWindow FileList unselected note, {status} ({(dark ? "dark" : "light")}): {noteFg} on {p.Surface} = {noteRatio:F2}");
+            }
         }
         finally
         {
@@ -617,20 +591,28 @@ public class HighlightContrastTests
         }
     }
 
-    [Theory, MemberData(nameof(Palettes))]
-    public void SelectedUnlockFileListRowWithANeedsPasswordSuffixUsesTheAccentPalette(bool dark) =>
-        _fx.Invoke(() => AssertSelectedUnlockFileListRowContrast(dark, ReadinessStatus.NeedsPassword,
-            "This PDF needs a password none of the saved ones supply.", "needs a password"));
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void UnlockFileListReadyNoteIsGreenUnlessSelected(bool dark, bool selected) =>
+        _fx.Invoke(() => AssertUnlockFileListNoteContrast(dark, selected, ReadinessStatus.Ready,
+            "A saved password opens this.", "a saved password opens this", p => p.StatusGreen));
 
-    [Theory, MemberData(nameof(Palettes))]
-    public void SelectedUnlockFileListRowWithAnInUseSuffixUsesTheAccentPalette(bool dark) =>
-        _fx.Invoke(() => AssertSelectedUnlockFileListRowContrast(dark, ReadinessStatus.InUse,
-            "It's open in another program — close it there and try again.", "in use, couldn't check"));
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void UnlockFileListNeedsPasswordNoteIsAmberUnlessSelected(bool dark, bool selected) =>
+        _fx.Invoke(() => AssertUnlockFileListNoteContrast(dark, selected, ReadinessStatus.NeedsPassword,
+            "This PDF needs a password none of the saved ones supply.", "needs a password", p => p.StatusAmber));
 
-    [Theory, MemberData(nameof(Palettes))]
-    public void SelectedUnlockFileListRowWithAnUnreadableSuffixUsesTheAccentPalette(bool dark) =>
-        _fx.Invoke(() => AssertSelectedUnlockFileListRowContrast(dark, ReadinessStatus.Unreadable,
-            "Couldn't read it: The file is not a valid PDF document.", "couldn't be read"));
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void UnlockFileListInUseNoteIsAmberUnlessSelected(bool dark, bool selected) =>
+        _fx.Invoke(() => AssertUnlockFileListNoteContrast(dark, selected, ReadinessStatus.InUse,
+            "It's open in another program — close it there and try again.", "in use, couldn't check", p => p.StatusAmber));
+
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void UnlockFileListUnreadableNoteIsDangerUnlessSelected(bool dark, bool selected) =>
+        // p.StatusRed, NOT p.Danger: Danger AS FOREGROUND TEXT fails 4.5:1
+        // against Dark.Surface (2.69:1, measured while writing this test) --
+        // see ThemePalette.cs's StatusRed field comment and the Task 1 report.
+        _fx.Invoke(() => AssertUnlockFileListNoteContrast(dark, selected, ReadinessStatus.Unreadable,
+            "Couldn't read it: The file is not a valid PDF document.", "couldn't be read", p => p.StatusRed));
 
     /// <summary>Same gap-closing purpose as the UnlockWindow test above, for
     /// LabelMakerWindow's client list. Its ItemTemplate is a DockPanel with

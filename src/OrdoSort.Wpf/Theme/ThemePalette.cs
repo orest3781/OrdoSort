@@ -21,6 +21,25 @@ public sealed record ThemePalette(
     Rgb DangerText,    // text on Danger
     Rgb Success,       // positive accents (Done summary)
     Rgb StatusAmber,   // the amber status line, readable on WindowBg
+    Rgb StatusGreen,   // the green status line, readable on Surface/WindowBg. Success
+                        // (46,125,50) is IDENTICAL in both palettes and measures below
+                        // the 4.5:1 floor in dark (2.85:1 vs Surface, 3.33:1 vs WindowBg
+                        // -- ThemePalette.ContrastRatio, measured directly, not assumed)
+                        // -- so this is its own per-palette pair, the same way StatusAmber
+                        // already is, rather than a reuse of Success (status-colour-
+                        // vocabulary plan, 2026-08-08, Task 1 Step 1).
+    Rgb StatusRed,     // the red status line, readable on Surface/WindowBg. NOT the
+                        // same job as Danger/DangerText below (a background, paired
+                        // with its own on-Danger text) -- Danger used AS FOREGROUND
+                        // TEXT (already shipped: MainWindow.xaml:231,
+                        // ProcessingView.xaml:55, ReadyView.xaml:113) measures 2.69:1
+                        // vs Dark.Surface / 3.14:1 vs Dark.WindowBg, found while
+                        // building the Unlock file list's Unreadable note (Task 1
+                        // Step 3) -- the exact Success-shaped problem Step 1 already
+                        // fixed once, just discovered a step late and on a different
+                        // token. Existing Danger-as-background usage is unaffected and
+                        // OUT OF SCOPE here; the other three foreground usages are a
+                        // Task 3 Step 2 sweep finding, not fixed by this token.
     Rgb TileDefaultBg, // dashboard tile with no configured color
     Rgb BorderStrong,  // emphasized borders (focus rings, active dividers)
     Rgb AccentBronze)  // warm secondary accent (badges, highlights on graphite)
@@ -39,6 +58,14 @@ public sealed record ThemePalette(
         DangerText: new(255, 255, 255),
         Success: new(46, 125, 50),
         StatusAmber: new(146, 90, 4),
+        // Success itself already clears 4.5:1 in light (5.13:1 Surface,
+        // 4.82:1 WindowBg) -- reused verbatim rather than inventing a
+        // second light green nobody needs.
+        StatusGreen: new(46, 125, 50),
+        // Danger itself already clears 4.5:1 in light as foreground text
+        // (5.44:1 Surface, 5.11:1 WindowBg) -- reused verbatim, same
+        // reasoning as StatusGreen's light value above.
+        StatusRed: new(192, 57, 43),
         TileDefaultBg: new(228, 230, 233),
         BorderStrong: new(120, 128, 138),
         AccentBronze: new(140, 109, 63));
@@ -57,6 +84,17 @@ public sealed record ThemePalette(
         DangerText: new(255, 255, 255),
         Success: new(46, 125, 50),
         StatusAmber: new(240, 173, 78),
+        // A lighter green than Success (which fails 4.5:1 here): 7.26:1
+        // vs Surface, 8.49:1 vs WindowBg -- comparable margin to
+        // StatusAmber's own dark-mode pair (7.51:1 / 8.78:1).
+        StatusGreen: new(129, 199, 132),
+        // A lighter red than Danger (which fails 4.5:1 here as foreground
+        // text): 4.89:1 vs Surface, 5.72:1 vs WindowBg. Red's WCAG-relative
+        // luminance ceiling is lower than green's/amber's at any hue that
+        // still reads as "red" rather than pink -- this is the brightest
+        // red-toned value found that stays clearly red while clearing the
+        // floor with real margin, not a token chosen to just barely pass.
+        StatusRed: new(229, 115, 115),
         TileDefaultBg: new(54, 58, 63),
         BorderStrong: new(110, 118, 128),
         AccentBronze: new(201, 169, 106));

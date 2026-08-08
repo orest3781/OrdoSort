@@ -50,6 +50,7 @@ public sealed class UnlockFileRow : ObservableObject
         Message = message;
         Raise(nameof(Status));
         Raise(nameof(Message));
+        Raise(nameof(Note));
         Raise(nameof(DisplayText));
         Raise(nameof(ToolTipText));
     }
@@ -61,26 +62,48 @@ public sealed class UnlockFileRow : ObservableObject
     /// shown for even the length of that re-probe.</summary>
     internal void ResetToPending() => SetProbeResult(ReadinessStatus.Pending, "");
 
-    /// <summary>Filename plus a short, deliberately narrow claim about what
-    /// the probe actually tested — never "this will unlock": the probe runs
-    /// with no typed password, but the real unlock tries the typed password
-    /// FIRST (UnlockAsync below), so the only honest claim is that a SAVED
-    /// password already opens the file (risk 2). System.IO.Path is
-    /// qualified because this type's own Path property would otherwise
-    /// shadow it.</summary>
-    public string DisplayText => System.IO.Path.GetFileName(Path) + (Status switch
+    /// <summary>Just the filename — split out of the old combined
+    /// DisplayText (status-colour-vocabulary plan, 2026-08-08, Task 1
+    /// Step 2) so UnlockWindow.xaml's ItemTemplate can bind the filename and
+    /// the readiness note to two SEPARATE TextBlocks: colouring the note by
+    /// status would have coloured the filename too as long as they stayed
+    /// one string. System.IO.Path is qualified because this type's own Path
+    /// property would otherwise shadow it. Never changes after construction
+    /// (Path doesn't), so unlike Note/DisplayText this needs no Raise call
+    /// in SetProbeResult.</summary>
+    public string FileName => System.IO.Path.GetFileName(Path);
+
+    /// <summary>A short, deliberately narrow claim about what the probe
+    /// actually tested — never "this will unlock": the probe runs with no
+    /// typed password, but the real unlock tries the typed password FIRST
+    /// (UnlockAsync below), so the only honest claim is that a SAVED
+    /// password already opens the file (risk 2). "" for Pending and
+    /// NotEncrypted, which stay deliberately quiet. Every non-empty case
+    /// keeps the same leading "  —  " it always had so that DisplayText
+    /// below — a plain concatenation, not a second copy of this switch —
+    /// reproduces exactly what it built inline before this split.</summary>
+    public string Note => Status switch
     {
         ReadinessStatus.Ready => "  —  a saved password opens this",
         ReadinessStatus.NeedsPassword => "  —  needs a password",
         ReadinessStatus.InUse => "  —  in use, couldn't check",
         ReadinessStatus.Unreadable => "  —  couldn't be read",
         _ => "",
-    });
+    };
+
+    /// <summary>FileName + Note. Kept only because HighlightContrastTests
+    /// and UnlockReadinessProbeTests still assert this exact combined
+    /// string (checked before this split, per the plan's own instruction) —
+    /// UnlockWindow.xaml itself no longer binds it: Task 1 Step 3 splits
+    /// FileName and Note into two separately-coloured TextBlocks in its
+    /// ItemTemplate, which a single concatenated string can't support.</summary>
+    public string DisplayText => FileName + Note;
 
     /// <summary>Full path always; the probe's own message appended when
     /// there is one worth showing (hover detail for the four non-quiet
-    /// states — the DisplayText suffix is deliberately short, this is where
-    /// the fuller wording lives).</summary>
+    /// states — Note is deliberately short, this is where the fuller
+    /// wording lives). Unaffected by the FileName/Note split above: this
+    /// never depended on DisplayText, only Path and Message.</summary>
     public string ToolTipText => Message.Length == 0 ? Path : $"{Path}\n{Message}";
 }
 
