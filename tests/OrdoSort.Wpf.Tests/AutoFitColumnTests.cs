@@ -79,7 +79,39 @@ namespace OrdoSort.Wpf.Tests;
 /// genuine post-Show() live-resize fact was also tried; see the comment
 /// where it would have gone (MatchMerge section) for why it was dropped —
 /// a separate, pre-existing DataGrid star-column quirk specific to
-/// simulating a resize off-screen, not a defect in this fix.</summary>
+/// simulating a resize off-screen, not a defect in this fix.
+///
+/// FIX ROUND 3 (2026-08-07): round 2's fix (and this suite's own
+/// AtMinWidth/AtMidWidth facts) capped against the grid's raw outer
+/// ActualWidth — which includes whatever a VERTICAL scrollbar claims once
+/// there are enough rows to need one. Every fact in this suite until this
+/// round used exactly ONE row, so no vertical scrollbar ever appeared and
+/// the gap never showed up: reproduced directly, a 60-row HistoryWindow at
+/// its own MinWidth (700) showed a visible horizontal scrollbar even
+/// post-round-2-fix. DataGridColumnCap now reserves
+/// SystemParameters.VerticalScrollBarWidth unconditionally (see its own
+/// class doc for why unconditionally, not just when a scrollbar happens to
+/// be visible right now). ManyRowCount (60 — reviewer-bracketed clean at
+/// 20, failing at 60, one ordinary commit's worth of filing) replaces the
+/// single row every AtMinWidth/AtMidWidth fact below carries, for all
+/// three grids — MatchMerge/BulkRename weren't independently reproduced
+/// failing, but the reviewer's own margin analysis found them one
+/// column-share tweak away from the identical failure, so their facts
+/// needed the same many-row coverage to actually prove it, not just assume
+/// it from a passing single-row fact.
+///
+/// This round also restored the dropped live-resize fact
+/// (MatchMerge_ResizingLiveDownToMinWidthStillHasNoHorizontalScrollbar):
+/// round 2's "pre-existing DataGrid star-column quirk, headless-simulation-
+/// specific" conclusion was directionally right but the mechanism was
+/// guessed at, not found. It's real and specific: WPF's DataGrid defers
+/// star-column reconciliation to DispatcherPriority.Background, which
+/// neither UpdateLayout() nor this suite's Render-priority pump ever
+/// drains. A single added Background-priority pump
+/// (ShowOffscreenThenResizeTo) clears it. What that does and doesn't prove
+/// about a real user's mouse-driven drag is spelled out on the restored
+/// fact's own doc comment — this session still can't drive a real mouse to
+/// confirm it directly.</summary>
 [Collection(HighlightContrastTests.Name)]
 public class AutoFitColumnTests
 {
@@ -94,6 +126,14 @@ public class AutoFitColumnTests
         "A-Very-Long-Roster-Derived-Name-That-Keeps-Going-Well-Past-Any-Sensible-Column-Width-000000000000000000.pdf";
 
     private const string ShortValue = "a.pdf";
+
+    /// <summary>Fix round 3: enough rows to force a vertical scrollbar in
+    /// every one of these windows — reviewer-bracketed clean at 20, failing
+    /// (pre-fix) at 60; used at the low end of that bracket so these facts
+    /// stay a genuine reproduction, not an arbitrarily larger number chosen
+    /// to be safe. One ordinary commit's worth of filing, not a corner
+    /// case.</summary>
+    private const int ManyRowCount = 60;
 
     // --------------------------------------------------------- MatchMerge
 
@@ -122,11 +162,12 @@ public class AutoFitColumnTests
         {
             ShowOffscreen(win);
             var column = FindColumnByHeader(win, "File");
-            // Against the GRID's own ActualWidth, not Window.Width: the two
-            // differ by the window's chrome/margins, and since fix round 2
-            // the cap tracks the grid live (DataGridColumnCap.Track), not a
-            // value baked in from the declared Window.Width.
-            var expectedCap = FindDescendant<DataGrid>(win)!.ActualWidth * 0.35;
+            // Against the GRID's own live viewport, not Window.Width or the
+            // grid's raw outer ActualWidth: since fix round 2 the cap tracks
+            // the grid live (DataGridColumnCap.Track), and since fix round 3
+            // it also reserves room for a vertical scrollbar — see
+            // ExpectedColumnCap.
+            var expectedCap = ExpectedColumnCap(win, 0.35);
             Assert.True(column.ActualWidth == expectedCap,
                 $"MatchMerge File column with long content is {column.ActualWidth}px, " +
                 $"expected exactly its cap {expectedCap}px");
@@ -165,15 +206,22 @@ public class AutoFitColumnTests
     /// (both capped columns fed enough content to reach their old, static
     /// cap) measured 708px of columns against a 676px grid at this window's
     /// own declared MinWidth (720). Every capped column is fed VeryLongValue
-    /// so it's straining for room, the real worst case for this invariant.</summary>
+    /// so it's straining for room, the real worst case for this invariant.
+    ///
+    /// Fix round 3: carries ManyRowCount rows, not one — a single-row grid
+    /// never grows a vertical scrollbar, so it can't exercise the
+    /// round-3 fix (capping against the space columns can ACTUALLY occupy,
+    /// which shrinks the moment a vertical scrollbar claims some of the
+    /// grid's outer ActualWidth). See History's identical note below for
+    /// the measurement that found this gap.</summary>
     [Fact]
     public void MatchMerge_AtMinWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
     {
-        var win = BuildMatchMergeWindow(fileValue: VeryLongValue, noteValue: VeryLongValue);
+        var win = BuildMatchMergeWindow(fileValue: VeryLongValue, noteValue: VeryLongValue, ManyRowCount);
         try
         {
             ShowOffscreenAtWidth(win, win.MinWidth);
-            AssertNoHorizontalScrollbar(win, $"MatchMerge (at MinWidth {win.MinWidth})");
+            AssertNoHorizontalScrollbar(win, $"MatchMerge (at MinWidth {win.MinWidth}, {ManyRowCount} rows)");
         }
         finally { win.Close(); }
     });
@@ -181,46 +229,56 @@ public class AutoFitColumnTests
     [Fact]
     public void MatchMerge_AtMidWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
     {
-        var win = BuildMatchMergeWindow(fileValue: VeryLongValue, noteValue: VeryLongValue);
+        var win = BuildMatchMergeWindow(fileValue: VeryLongValue, noteValue: VeryLongValue, ManyRowCount);
         try
         {
             var midWidth = (win.MinWidth + win.Width) / 2;
             ShowOffscreenAtWidth(win, midWidth);
-            AssertNoHorizontalScrollbar(win, $"MatchMerge (at mid width {midWidth})");
+            AssertNoHorizontalScrollbar(win, $"MatchMerge (at mid width {midWidth}, {ManyRowCount} rows)");
         }
         finally { win.Close(); }
     });
 
-    // A genuine "shown at default, then resized smaller afterward" fact was
-    // tried here and deliberately dropped, not silently — worth recording
-    // why. Diagnosing it directly (dumping File/Note/Becomes' widths before
-    // and after) showed DataGridColumnCap.Track itself working exactly as
-    // designed: File/Note's MaxWidth recomputed correctly from the grid's
-    // new ActualWidth (236.6px = 676 × 0.35, precisely). But Becomes (the
-    // star filler) then resolved to a WIDER value after the resize (320.8px,
-    // up from 236.8px) than before it, even though the grid got smaller —
-    // its own internal fair-share recompute appears to reuse a stale "total
-    // column width demand" baseline from the FIRST layout rather than the
-    // new, smaller ActualWidth, keeping the three columns' sum IDENTICAL
-    // (794px) before and after despite the available space shrinking by
-    // 120px. That is a DataGrid-internal star-column quirk on a live resize,
-    // not a defect in this round's fix (which only ever touches the CAPPED
-    // columns' MaxWidth) — and, going by this project's own prior on-screen
-    // UI-Automation measurement (2026-08-02 audit-remediation, cited in
-    // HistoryWindow.xaml: a real user shrinking a real window fair-shared
-    // History's two star columns down to a genuinely smaller 82px each, not
-    // a stale larger one), it looks specific to simulating a resize
-    // off-screen/headless rather than something a real user hitting Show()
-    // via Win32's normal WM_SIZE path would reproduce. Not chasing it
-    // further here since it's outside what this round asked for; the
-    // AtMinWidth/AtMidWidth facts above and below (constructed at the target
-    // size, not resized into it after the fact) cover the literal ask and
-    // pass cleanly.
+    /// <summary>Fix round 3: restores the genuine "shown at default, then
+    /// resized smaller afterward" fact fix round 2 dropped — the actual
+    /// gesture a person dragging a window's edge produces, not a proxy for
+    /// it. It WAS diagnosable, just not with the tools this suite reached
+    /// for at the time: WPF's DataGrid defers star-column reconciliation to
+    /// DispatcherPriority.Background, and neither UpdateLayout() nor a
+    /// Render-priority pump (this suite's usual ShowOffscreen shape) ever
+    /// drains that queue — so the star filler (Becomes) kept whatever width
+    /// it resolved on the FIRST layout instead of recomputing for the
+    /// smaller one, independent of anything this fix touches (it only ever
+    /// caps the AUTO columns). A single additional
+    /// Dispatcher.Invoke(_, DispatcherPriority.Background) pump after the
+    /// resize clears it. That fixes the SYMPTOM this suite could observe
+    /// (Becomes' stale width); it doesn't by itself prove a real user's
+    /// mouse-driven drag recovers the same way — this session can't drive a
+    /// real mouse to check. What IS established: the mechanism (a
+    /// Background-priority dispatcher operation), and that a real
+    /// application's message loop drains Background as soon as it goes
+    /// idle, same as it drains every other priority — so a real drag almost
+    /// certainly recovers on its own, without any test-only pump, the
+    /// moment the user's drag pauses. That's an inference from the
+    /// mechanism, not an on-screen observation, and it's reported as
+    /// exactly that.</summary>
+    [Fact]
+    public void MatchMerge_ResizingLiveDownToMinWidthStillHasNoHorizontalScrollbar() => _fx.Invoke(() =>
+    {
+        var win = BuildMatchMergeWindow(fileValue: VeryLongValue, noteValue: VeryLongValue, ManyRowCount);
+        try
+        {
+            ShowOffscreenThenResizeTo(win, win.MinWidth);
+            AssertNoHorizontalScrollbar(win, $"MatchMerge (live-resized to MinWidth {win.MinWidth})");
+        }
+        finally { win.Close(); }
+    });
 
-    private static MatchMergeWindow BuildMatchMergeWindow(string fileValue, string noteValue)
+    private static MatchMergeWindow BuildMatchMergeWindow(string fileValue, string noteValue, int rowCount = 1)
     {
         var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
-        vm.Rows.Add(new MatchRow("src.pdf", fileValue, "SOMETHING-SHORT.pdf", noteValue, "merge"));
+        for (var i = 0; i < rowCount; i++)
+            vm.Rows.Add(new MatchRow($"src{i}.pdf", fileValue, "SOMETHING-SHORT.pdf", noteValue, "merge"));
         return new MatchMergeWindow(vm);
     }
 
@@ -252,9 +310,9 @@ public class AutoFitColumnTests
         {
             ShowOffscreen(win);
             var column = FindColumnByHeader(win, "Current name");
-            // Against the GRID's own ActualWidth — see MatchMerge's identical
-            // comment above.
-            var expectedCap = FindDescendant<DataGrid>(win)!.ActualWidth * 0.35;
+            // Against the GRID's own live viewport — see MatchMerge's
+            // identical comment above.
+            var expectedCap = ExpectedColumnCap(win, 0.35);
             Assert.True(column.ActualWidth == expectedCap,
                 $"BulkRename Current name column with long content is {column.ActualWidth}px, " +
                 $"expected exactly its cap {expectedCap}px");
@@ -290,15 +348,21 @@ public class AutoFitColumnTests
     });
 
     /// <summary>Fix round 2: pre-fix, this measured 694px of columns against
-    /// a 656px grid at this window's own declared MinWidth (700).</summary>
+    /// a 656px grid at this window's own declared MinWidth (700).
+    ///
+    /// Fix round 3: carries ManyRowCount rows — see MatchMerge's identical
+    /// note above. The reviewer's own margin analysis flagged this window as
+    /// "one column-share tweak from the same failure" as History's; this
+    /// many-row version is what actually proves it doesn't fail today, not
+    /// just that it fails less obviously than History did.</summary>
     [Fact]
     public void BulkRename_AtMinWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
     {
-        var win = BuildBulkRenameWindow(currentValue: VeryLongValue, noteValue: VeryLongValue);
+        var win = BuildBulkRenameWindow(currentValue: VeryLongValue, noteValue: VeryLongValue, ManyRowCount);
         try
         {
             ShowOffscreenAtWidth(win, win.MinWidth);
-            AssertNoHorizontalScrollbar(win, $"BulkRename (at MinWidth {win.MinWidth})");
+            AssertNoHorizontalScrollbar(win, $"BulkRename (at MinWidth {win.MinWidth}, {ManyRowCount} rows)");
         }
         finally { win.Close(); }
     });
@@ -306,21 +370,22 @@ public class AutoFitColumnTests
     [Fact]
     public void BulkRename_AtMidWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
     {
-        var win = BuildBulkRenameWindow(currentValue: VeryLongValue, noteValue: VeryLongValue);
+        var win = BuildBulkRenameWindow(currentValue: VeryLongValue, noteValue: VeryLongValue, ManyRowCount);
         try
         {
             var midWidth = (win.MinWidth + win.Width) / 2;
             ShowOffscreenAtWidth(win, midWidth);
-            AssertNoHorizontalScrollbar(win, $"BulkRename (at mid width {midWidth})");
+            AssertNoHorizontalScrollbar(win, $"BulkRename (at mid width {midWidth}, {ManyRowCount} rows)");
         }
         finally { win.Close(); }
     });
 
-    private static BulkRenameWindow BuildBulkRenameWindow(string currentValue, string noteValue)
+    private static BulkRenameWindow BuildBulkRenameWindow(string currentValue, string noteValue, int rowCount = 1)
     {
         var vm = new BulkRenameViewModel();
-        vm.Preview.Add(new RenameRow("src.pdf", currentValue, "SOMETHING-SHORT.pdf", noteValue,
-            changed: true, manual: false, needsName: false, editSeed: "SOMETHING-SHORT.pdf"));
+        for (var i = 0; i < rowCount; i++)
+            vm.Preview.Add(new RenameRow($"src{i}.pdf", currentValue, "SOMETHING-SHORT.pdf", noteValue,
+                changed: true, manual: false, needsName: false, editSeed: "SOMETHING-SHORT.pdf"));
         return new BulkRenameWindow(vm);
     }
 
@@ -341,15 +406,30 @@ public class AutoFitColumnTests
     /// formatted timestamp History.LogCommit generates internally, not
     /// something a caller can inject an arbitrary length into — but it's
     /// naturally short (16 chars) regardless, matching the class-doc's
-    /// reasoning for why it's capped at all.</summary>
+    /// reasoning for why it's capped at all.
+    ///
+    /// Fix round 3 — the Critical: fix round 2's version of this fact
+    /// carried exactly ONE row, which can never grow a vertical scrollbar —
+    /// so it never exercised the actual defect. Reproduced directly (before
+    /// this round's DataGridColumnCap fix): a 60-row History at this same
+    /// MinWidth (60 rows — one ordinary commit's worth of filing, not a
+    /// corner case; bracketed clean at 20, failing at 60) showed
+    /// ComputedHorizontalScrollBarVisibility=Visible, because the vertical
+    /// scrollbar those 60 rows need claims SystemParameters.
+    /// VerticalScrollBarWidth of the SAME outer ActualWidth the cap was
+    /// computed against, and the columns didn't shrink to compensate.
+    /// ManyRowCount (60) is used here, not 1, specifically so this fact
+    /// keeps proving that fix rather than silently regressing to only
+    /// covering fix round 2's (real, but narrower) defect.</summary>
     [Fact]
     public void History_AtMinWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
     {
-        var (win, history, dbPath) = BuildHistoryWindow(nameValue: VeryLongValue, routeLabelValue: VeryLongValue);
+        var (win, history, dbPath) = BuildHistoryWindow(
+            nameValue: VeryLongValue, routeLabelValue: VeryLongValue, ManyRowCount);
         try
         {
             ShowOffscreenAtWidth(win, win.MinWidth);
-            AssertNoHorizontalScrollbar(win, $"History (at MinWidth {win.MinWidth})");
+            AssertNoHorizontalScrollbar(win, $"History (at MinWidth {win.MinWidth}, {ManyRowCount} rows)");
         }
         finally { CleanupHistory(win, history, dbPath); }
     });
@@ -357,27 +437,33 @@ public class AutoFitColumnTests
     [Fact]
     public void History_AtMidWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
     {
-        var (win, history, dbPath) = BuildHistoryWindow(nameValue: VeryLongValue, routeLabelValue: VeryLongValue);
+        var (win, history, dbPath) = BuildHistoryWindow(
+            nameValue: VeryLongValue, routeLabelValue: VeryLongValue, ManyRowCount);
         try
         {
             var midWidth = (win.MinWidth + win.Width) / 2;
             ShowOffscreenAtWidth(win, midWidth);
-            AssertNoHorizontalScrollbar(win, $"History (at mid width {midWidth})");
+            AssertNoHorizontalScrollbar(win, $"History (at mid width {midWidth}, {ManyRowCount} rows)");
         }
         finally { CleanupHistory(win, history, dbPath); }
     });
 
     private static (HistoryWindow win, History history, string dbPath) BuildHistoryWindow(
-        string nameValue, string routeLabelValue)
+        string nameValue, string routeLabelValue, int rowCount = 1)
     {
         var dbPath = Path.Combine(Path.GetTempPath(), "ordo_test_history_" + Guid.NewGuid() + ".sqlite");
         var history = new History(dbPath);
-        history.LogCommit(
-            originalPath: @"C:\inbox\a.pdf", originalName: "a.pdf",
-            newName: "b.pdf", nameEntered: nameValue,
-            namingMode: "replace", suffixApplied: "",
-            routeLabel: routeLabelValue, routePath: @"C:\dest",
-            tagged: false, collisionSuffix: "");
+        for (var i = 0; i < rowCount; i++)
+            history.LogCommit(
+                originalPath: $@"C:\inbox\a{i}.pdf", originalName: $"a{i}.pdf",
+                newName: $"b{i}.pdf", nameEntered: nameValue,
+                namingMode: "replace", suffixApplied: "",
+                routeLabel: routeLabelValue, routePath: @"C:\dest",
+                tagged: false, collisionSuffix: "");
+        // InlineWorkScheduler: HistoryViewModel's constructor kicks off an
+        // async LoadAsync(all: false) (default page size 500, comfortably
+        // above ManyRowCount) — inline makes it finish synchronously, so
+        // Rows/RowsView are fully populated the moment this returns.
         var vm = new HistoryViewModel(history, new FakeDialogs(), new InlineWorkScheduler());
         var win = new HistoryWindow(vm);
         return (win, history, dbPath);
@@ -582,13 +668,36 @@ public class AutoFitColumnTests
     /// <summary>Fix round 2: sets Width BEFORE Show() — the window is
     /// already at <paramref name="width"/> for its very first layout pass.
     /// Covers "opened already this small" (a remembered small window size, a
-    /// small display) — see the comment above the (deliberately omitted)
-    /// genuine post-Show() live-resize fact for why that scenario isn't
-    /// covered here too.</summary>
+    /// small display) — see ShowOffscreenThenResizeTo for the complementary
+    /// live-resize case.</summary>
     private static void ShowOffscreenAtWidth(Window win, double width)
     {
         win.Width = width;
         ShowOffscreen(win);
+    }
+
+    /// <summary>Fix round 2, restored in fix round 3 with the missing pump:
+    /// shows at the window's DEFAULT declared Width first, THEN resizes
+    /// down — the scenario a person actually produces by dragging an edge.
+    /// The extra Dispatcher.Invoke(_, DispatcherPriority.Background) pump
+    /// (beyond ShowOffscreen's own Render-priority one) is load-bearing, not
+    /// decorative: WPF's DataGrid defers star-column width reconciliation to
+    /// Background priority, and fix round 2 found — by diagnosing actual
+    /// column widths before/after a resize, not by assumption — that without
+    /// draining that specific priority, the star filler column keeps
+    /// whatever width it resolved on the FIRST layout instead of
+    /// recomputing for the new, smaller one. See
+    /// MatchMerge_ResizingLiveDownToMinWidthStillHasNoHorizontalScrollbar's
+    /// own doc comment for what this does and doesn't establish about a
+    /// real user's mouse-driven drag.</summary>
+    private static void ShowOffscreenThenResizeTo(Window win, double newWidth)
+    {
+        ShowOffscreen(win);
+        win.Width = newWidth;
+        win.UpdateLayout();
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+            () => { }, System.Windows.Threading.DispatcherPriority.Background);
+        win.UpdateLayout();
     }
 
     private static DataGridColumn FindColumnByHeader(Window win, string header)
@@ -597,6 +706,18 @@ public class AutoFitColumnTests
             ?? throw new InvalidOperationException("no DataGrid descendant found");
         return grid.Columns.FirstOrDefault(c => (string)c.Header == header)
             ?? throw new InvalidOperationException($"no '{header}' column found");
+    }
+
+    /// <summary>Reproduces DataGridColumnCap.Track's own cap formula (fix
+    /// round 3: viewport-aware, not the grid's raw outer ActualWidth) so
+    /// these tests double as a live check that the production formula and
+    /// this test's expectation can't silently drift apart — same pattern as
+    /// ExpectedTriageColumnCap below for Triage's own budget.</summary>
+    private static double ExpectedColumnCap(Window win, double share)
+    {
+        var grid = FindDescendant<DataGrid>(win)!;
+        var viewportWidth = Math.Max(0, grid.ActualWidth - SystemParameters.VerticalScrollBarWidth);
+        return viewportWidth * share;
     }
 
     private static void AssertTrimmingAndTooltip(DataGridBoundColumn column, string bindingPathContains)
