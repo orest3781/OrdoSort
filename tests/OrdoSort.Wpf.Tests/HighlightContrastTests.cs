@@ -512,9 +512,33 @@ public class HighlightContrastTests
     /// ancestor binding exists for. Only a RATIO check is made for the
     /// note here, deliberately no colour-equality check: Step 5's teeth
     /// proof breaks the "let selection win" trigger and the failure needs to
-    /// read as a dropped ratio (1.28-3.58:1 measured), not a value mismatch,
-    /// per the plan's own instruction not to let a teeth proof fail for the
-    /// wrong reason.
+    /// read as a dropped ratio (1.28-2.51:1 measured across all four
+    /// statuses, both palettes — matches UnlockWindow.xaml:90's own record
+    /// of the same proof), not a value mismatch, per the plan's own
+    /// instruction not to let a teeth proof fail for the wrong reason.
+    /// This range used to be printed here as "1.28-3.58:1", disagreeing
+    /// with UnlockWindow.xaml:90 (status-colour-vocabulary plan, 2026-08-08,
+    /// Task 3 Part C investigated the mismatch rather than just picking one
+    /// number): 3.58 was real, not a typo — independent WCAG math against
+    /// this file's own RGBs reproduces it exactly as Theme.Danger
+    /// ((192,57,43), identical in both palettes) against Dark
+    /// Theme.Accent ((205,210,218)) = 3.581:1. That pairing was live for
+    /// this exact teeth proof for one intermediate stretch of Task 1: the
+    /// Unreadable note's trigger was first written pointing at Theme.Danger
+    /// (the obvious first choice for "couldn't be read"), and ONLY THEN,
+    /// separately, was Theme.Danger found to fail 4.5:1 as foreground text
+    /// against Theme.Surface too (2.69:1 — see ThemePalette.cs's StatusRed
+    /// comment and UnlockWindow.xaml's own "found while building this note"
+    /// remark), which is what StatusRed was added to fix. Once Unreadable's
+    /// trigger was switched to Theme.StatusRed, re-running this SAME proof
+    /// against the now-current code drops the dark-mode Unreadable value
+    /// from 3.58 (Danger vs Accent) to 1.97 (StatusRed vs Accent), so the
+    /// four-status/two-palette range's true maximum is light-mode
+    /// StatusGreen vs Accent at 2.51 — the number this comment now carries.
+    /// 3.58 does not describe anything shipping today; it is corrected here,
+    /// not just harmonised with the other comment, because the two
+    /// disagreeing numbers were each accurate for a different snapshot of
+    /// the same trigger and only one of those snapshots survived.
     ///
     /// Unselected is new: the note must render the exact vocabulary colour
     /// for its status (StatusGreen/StatusAmber/Danger, palette-resolved) at
