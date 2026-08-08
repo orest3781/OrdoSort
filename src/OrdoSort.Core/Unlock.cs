@@ -335,7 +335,10 @@ public static class Unlock
             return new("error", src, Message: $"Couldn't unlock it: {ex.Message}");
         }
 
-        // verified before a single byte is written anywhere
+        // checked before a single byte is written anywhere — "checked", not
+        // "verified": VerifyReadable's own doc comment says exactly what
+        // this catches (still-encrypted, zero pages, a broken structure)
+        // and what it doesn't (content-stream or resource corruption).
         using (var verifyStream = new MemoryStream(unlockedBytes, writable: false))
         {
             var problem = VerifyReadable(verifyStream);
@@ -416,7 +419,9 @@ public static class Unlock
                 return new("error", src, Message: $"Couldn't unlock it: {ex.Message}");
             }
 
-            // verified before anything at the destination is touched
+            // checked before anything at the destination is touched — see
+            // VerifyReadable's doc comment for exactly what that check does
+            // and does not catch.
             try
             {
                 using var verifyStream = File.OpenRead(localTemp);
@@ -595,11 +600,25 @@ public static class Unlock
     private static bool IsInUse(IOException ex) =>
         (ex.HResult & 0xFFFF) is 32 or 33;
 
-    /// <summary>Reopen the saved copy and force every page to load. "" if it's
-    /// a clean, open PDF, else a short problem — catches a decryption that
-    /// produced garbage. Import mode (not InformationOnly, which PdfSharp
-    /// documents as unimplemented) is what actually parses the page objects,
-    /// so touching each page below is a real check rather than a no-op.</summary>
+    /// <summary>Reopen the saved copy and touch every page. "" if it's a
+    /// clean, unencrypted PDF with at least one page and no exception
+    /// surfaced while touching every one of them; else a short problem.
+    ///
+    /// What this actually catches, honestly (2026-08-08, per the six-fixture
+    /// investigation recorded on <see cref="ProbeReadiness"/>'s doc comment,
+    /// which exercises this exact technique against the exact same PdfSharp
+    /// version to find out): still-encrypted output, zero pages, and
+    /// whatever <c>PdfReader.Open</c> itself throws — which is most of what
+    /// a genuinely malformed document trips, because Open eagerly tokenizes
+    /// every page object's own dictionary syntax to compute PageCount. What
+    /// it does NOT catch: content-stream corruption or a broken
+    /// resource/content reference — touching <c>Pages[i]</c> never decodes a
+    /// content stream or resolves what a reference points at, so a
+    /// decryption that garbled PAGE CONTENT (as opposed to garbling the
+    /// document's structure) can still pass this check. Import mode (not
+    /// InformationOnly, which PdfSharp documents as unimplemented) is
+    /// required for even that much — a real check, just not a
+    /// content-integrity one.</summary>
     private static string VerifyReadable(Stream stream)
     {
         try
