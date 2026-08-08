@@ -77,12 +77,92 @@
     </div>
   </section><!-- /how -->
 
-  <footer class="site-footer">
-    <div class="container footer-row">
-      <p>© 2026 OrdoSort · Office workflow automation</p>
-      <a href="https://github.com/orest3781/OrdoSort">GitHub</a>
+  <section id="features" class="features">
+    <div class="container">
+      <h2 class="section-title">Built for the daily pile</h2>
+      <div class="feature-grid">
+        <div class="card">
+          <h3>Dashboard &amp; alerts</h3>
+          <p>A compact dashboard parked in the corner: inbox count, monitored-folder
+          tiles, and alert terms that flash red. Toasts, chimes, and taskbar badges
+          reach you when something needs eyes.</p>
+        </div>
+        <div class="card">
+          <h3>Naming that keeps up</h3>
+          <p>Insert, replace, prefix, or append modes; per-route overrides and hotkeys;
+          a live "will be filed as" preview that flags illegal names before you commit.</p>
+        </div>
+        <div class="card">
+          <h3>An audit log you can trust</h3>
+          <p>Every move lands in a network-safe SQLite history with daily backups, an
+          in-app viewer, and CSV export. Several workstations can file into one shared log.</p>
+        </div>
+        <div class="card">
+          <h3>Never loses a file</h3>
+          <p>Files are only ever moved — never deleted, never overwritten. A taken name
+          gets a (2) counter, and illegal characters are rejected up front.</p>
+        </div>
+        <div class="card">
+          <h3>Tools for the awkward jobs</h3>
+          <p>Unlock password-protected PDFs, bulk-rename with a hand-editable preview,
+          match &amp; merge against a roster, and print barcode box labels at exact scale.</p>
+        </div>
+        <div class="card">
+          <h3>Easy on the eyes</h3>
+          <p>Follows Windows light or dark mode live. Every text color pairing is held
+          to WCAG AA contrast — enforced by a unit test.</p>
+        </div>
+      </div>
     </div>
-  </footer>
+  </section>
+
+  <section id="screenshots" class="gallery">
+    <div class="container">
+      <h2 class="section-title">See it in action</h2>
+      <div class="gallery-grid">
+        <figure>
+          <picture>
+            <source srcset="assets/shot-settings-dark.png" media="(prefers-color-scheme: dark)">
+            <img class="shot" src="assets/shot-settings-light.png" loading="lazy"
+                 alt="The Settings window: sectioned pages with live previews of routes and naming"
+                 width="880" height="820">
+          </picture>
+          <figcaption>Settings, with live previews everywhere</figcaption>
+        </figure>
+        <figure>
+          <picture>
+            <source srcset="assets/shot-labels-dark.png" media="(prefers-color-scheme: dark)">
+            <img class="shot" src="assets/shot-labels-light.png" loading="lazy"
+                 alt="The Box labels tool: a live label preview with barcode and print layout"
+                 width="680" height="560">
+          </picture>
+          <figcaption>Box labels with barcodes, printed at exact scale</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="download" class="download">
+    <div class="container">
+      <div class="card download-card">
+        <h2>Free while in development.</h2>
+        <p>v1.0 is on its way — portable, small, and made for Windows 10/11.</p>
+        <!-- v1.0 FLIP (2 of 2): at release, replace the span below with
+             <a class="btn btn-primary" href="https://github.com/orest3781/OrdoSort/releases/latest">Download v1.0</a> -->
+        <span class="btn btn-soon">v1.0 coming soon</span>
+        <p class="req">Portable build (~3 MB) needs the .NET 8 Desktop Runtime — modern
+        Windows offers it automatically if it's missing. The self-contained build
+        (~70 MB) carries everything.</p>
+      </div>
+    </div>
+  </section>
 </main>
+
+<footer class="site-footer">
+  <div class="container footer-row">
+    <p>© 2026 OrdoSort · Office workflow automation</p>
+    <a href="https://github.com/orest3781/OrdoSort">GitHub</a>
+  </div>
+</footer>
 </body>
 </html>

@@ -92,3 +92,21 @@ section { padding: 56px 0; }
 /* footer */
 .site-footer { border-top: 1px solid var(--border); padding: 28px 0; margin-top: 40px; }
 .footer-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--subtle); font-size: .95rem; }
+
+/* features */
+.feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.feature-grid h3 { font-size: 1.05rem; margin-bottom: 6px; }
+.feature-grid p { color: var(--subtle); font-size: .95rem; }
+
+/* gallery */
+.gallery-grid { display: grid; gap: 28px; }
+.gallery-grid figure { margin: 0; }
+.shot { border: 1px solid var(--border); border-radius: 4px; margin: 0 auto; }
+.gallery-grid figcaption { text-align: center; color: var(--subtle); font-size: .9rem; margin-top: 10px; }
+@media (min-width: 900px) { .gallery-grid { grid-template-columns: 1fr 1fr; align-items: start; } }
+
+/* download */
+.download-card { text-align: center; padding: 40px 24px; }
+.download-card h2 { font-size: 1.6rem; }
+.download-card > p { color: var(--subtle); margin: 10px 0 22px; }
+.req { max-width: 520px; margin: 22px auto 0; font-size: .88rem; color: var(--subtle); }
