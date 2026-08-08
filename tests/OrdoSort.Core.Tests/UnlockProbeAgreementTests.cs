@@ -12,7 +12,27 @@ namespace OrdoSort.Core.Tests;
 /// the original aside, archives it), so the real call always runs against a
 /// disposable COPY of the fixture, never the file the probe itself examined
 /// -- ProbeReadiness's own promise to write nothing is a separate class,
-/// UnlockProbeWritesNothingTests.</summary>
+/// UnlockProbeWritesNothingTests.
+///
+/// [Collection(UnlockNeverOverwritesTests.Name)] (2026-08-08 fix round,
+/// found by chance flakiness, reproduced 1-in-3 runs): the "ready" tests
+/// below call the REAL Unlock.UnlockPdf, which reaches PlaceAndSwap, which
+/// invokes the process-wide Unlock.RaceHookForTests unconditionally whenever
+/// it is non-null -- regardless of which test class set it or what suffix
+/// this call used. UnlockNeverOverwritesTests.TheInPlaceSwapIntermediateNameCannotReenterTheQueue
+/// sets that hook to unconditionally capture whatever path it's invoked
+/// with (by design: discovering PlaceAndSwap's real intermediate name is the
+/// test's whole point, so it cannot pre-filter by an expected path the way
+/// this class's sibling race tests do). Without shared collection membership,
+/// xUnit is free to run that test concurrently with this one, and a
+/// PlaceAndSwap call from THIS class can land in the middle of THAT test's
+/// capture window, overwriting `captured` with this class's path instead --
+/// observed directly: "Scanner.Eligible(\"locked_x.pdf\", ...)" instead of
+/// the expected ".unlocking.tmp" name. Same defect shape, same fix, as the
+/// LargeFileThresholdBytes coordination UnlockThresholdTestCollectionMembershipTests
+/// pins -- a different static, but the same "process-wide, xUnit's own
+/// same-collection rule is what actually serializes it" mechanism.</summary>
+[Collection(UnlockNeverOverwritesTests.Name)]
 public class UnlockProbeAgreementTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "unlockprobeagree_" + Guid.NewGuid());

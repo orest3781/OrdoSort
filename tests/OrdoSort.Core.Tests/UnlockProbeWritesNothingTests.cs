@@ -76,11 +76,24 @@ public class UnlockProbeWritesNothingTests : IDisposable
         var missing = Path.Combine(_dir, "missing.pdf");   // deliberately never created
 
         var beforeFixtures = Snapshot(_dir);
-        // top-level only: other tests' own isolated subdirectories elsewhere
-        // under Path.GetTempPath() are irrelevant, and this test only cares
-        // about NEW files appearing, not pre-existing clutter or files
-        // unrelated processes happen to remove during the window.
-        var tempBefore = Directory.GetFiles(Path.GetTempPath())
+        // top-level only, and narrowed to this repo's own "ordosort_" temp
+        // naming convention (same as UnlockNeverOverwritesTests' teeth-test,
+        // which checks specifically for "ordosort_unlock_*.pdf"). 2026-08-08
+        // fix round: an EARLIER, unscoped "any new file anywhere in
+        // Path.GetTempPath()" version of this check was genuinely flaky --
+        // `dotnet test OrdoSort.sln` runs Wpf.Tests as a SEPARATE concurrent
+        // process sharing the same %TEMP%, and several pre-existing,
+        // unrelated Wpf.Tests classes (HistoryWindowXamlTests,
+        // AutoFitColumnTests, DataGridStarColumnTests) create a SQLite file
+        // directly at the top level of Path.GetTempPath() named
+        // "ordo_test_history_<guid>.sqlite" -- caught mid-flight by the
+        // wide check, reproduced for real. That name does not start with
+        // "ordosort_" (different prefix: "ordo_test_"), so narrowing to
+        // this repo's actual internal convention excludes that noise while
+        // still catching anything OrdoSort's own code would plausibly write
+        // if this probe leaked something — proven by the teeth-proof below,
+        // whose forced breakage used the name "ordosort_probe_teeth_*".
+        var tempBefore = Directory.GetFiles(Path.GetTempPath(), "ordosort_*")
             .Select(f => Path.GetFileName(f)!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -97,7 +110,7 @@ public class UnlockProbeWritesNothingTests : IDisposable
         var afterFixtures = Snapshot(_dir);
         Assert.Equal(beforeFixtures, afterFixtures);
 
-        var tempAfter = Directory.GetFiles(Path.GetTempPath())
+        var tempAfter = Directory.GetFiles(Path.GetTempPath(), "ordosort_*")
             .Select(f => Path.GetFileName(f)!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var newTempFiles = tempAfter.Except(tempBefore).ToArray();

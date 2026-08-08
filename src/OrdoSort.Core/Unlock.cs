@@ -109,37 +109,87 @@ public static class Unlock
     /// OrdoSort.Core.Tests.UnlockProbeAgreementTests, not just assumed here.
     /// This method is allowed to diverge from UnlockPdf in exactly one,
     /// harmless direction — it must never claim readiness UnlockPdf wouldn't
-    /// back up — which is why its open calls use the same mode and the same
-    /// exception discipline as UnlockPdf, not a lighter approximation of them.
+    /// back up. It is, honestly, still a LIGHTER approximation of the real
+    /// unlock: its open calls use the same mode and the same
+    /// password-exception discipline as UnlockPdf (risk 3, below), but it
+    /// never calls AddPage, never calls Save, and never runs VerifyReadable
+    /// against a re-saved copy — it cannot, without violating "this probe
+    /// writes nothing" (Task 1, step 6). A 2026-08 review flagged exactly
+    /// this gap: a correct password on a document whose PAGE data is broken
+    /// could read "ready" here and "error" from the real unlock, because the
+    /// real unlock's own VerifyReadable step (below) does something this
+    /// probe used to skip entirely — open a candidate, then discard it
+    /// without ever touching a page.
     ///
-    /// Cost (risk 1): the source is read from disk exactly ONCE regardless of
-    /// how many candidates are tried — same discipline as
-    /// <see cref="UnlockBuffered"/>, whose own doc comment explains why: three
-    /// separate opens over a share meant three full transfers. A 50-file drop
-    /// against 5 saved passwords is therefore 50 network reads, not 250.
-    /// PdfDocumentOpenMode.InformationOnly was measured (2026-08-08) against
-    /// Import for both the encryption check and the password check, on a
-    /// 40-page / 54KB encrypted fixture, 25 iterations each, single-shot
-    /// managed-memory snapshots with the opened document kept alive: wrong
-    /// password threw the identical PdfReaderException under both modes
-    /// (~0.44ms Import vs ~0.47ms InformationOnly); the right password opened
-    /// under both, retaining ~628KB (Import) vs ~627KB (InformationOnly) with
-    /// no timing advantage (~2.2ms vs ~1.7ms). PdfSharp 6.1.1 marks
-    /// InformationOnly <c>[Obsolete("InformationOnly is not implemented, use
-    /// Import instead.")]</c> — the measurement confirms that isn't just a
-    /// stale label: it behaves exactly like Import, not a cheaper path. Import
-    /// is used here for that reason, and because it keeps this probe's open
-    /// calls identical to UnlockPdf's, which is what makes the agreement test
-    /// meaningful rather than coincidental.
+    /// What closes it, and what doesn't: this method now runs VerifyReadable's
+    /// own technique — <c>for (page in PageCount) touch Pages[page]</c> — on
+    /// the winning candidate before declaring ready (see the loop below).
+    /// That is exact parity with what the real unlock's own safety net does,
+    /// not a proven fix for a reproduced bug: a six-fixture investigation
+    /// (2026-08-08) tried to construct a document that opens fine but fails
+    /// this touch — corrupted content-stream bytes (Flate-compressed, so
+    /// genuinely broken by the corruption), corrupted page-dictionary syntax,
+    /// a /Contents reference pointed at the wrong object type, a corrupted
+    /// /MediaBox array, a corrupted /ProcSet array, and a GENUINELY dangling
+    /// reference built via PdfSharp's own PdfInternals.RemoveObject (not
+    /// hand-edited bytes) — and found that PdfReader.Open in this PdfSharp
+    /// version (6.1.1) eagerly tokenizes every page object's own dictionary
+    /// syntax as part of establishing PageCount, so dictionary-level
+    /// corruption breaks Open itself, identically for probe and real unlock;
+    /// and that touching a page never decodes or validates content-stream
+    /// bytes or resolves resource/content references at all, so those three
+    /// corruption kinds were invisible not just to this probe but to
+    /// VerifyReadable's identical mechanism when run directly against the
+    /// same bytes. No test in this file claims to reproduce the divergence,
+    /// because none of the six fixtures did. What remains unclosed, and
+    /// cannot be closed by a read-only method: a defect that AddPage or Save
+    /// itself introduces into output that did not exist in the source — a
+    /// probe that never saves anything cannot detect a flaw in a save it
+    /// never performs. The UI label already only claims what was tested ("a
+    /// saved password opens this," never "this will unlock cleanly"), which
+    /// is the honest boundary for that residual gap.
     ///
-    /// Exception discipline (risk 3), mirrors UnlockBuffered exactly
-    /// (Unlock.cs:127-134): <see cref="PdfReaderException"/> is a wrong
-    /// password for that one candidate — try the next; an
-    /// <see cref="IOException"/> where <see cref="IsInUse"/> is true (only
-    /// possible at the single disk read below, never from the in-memory
-    /// reopens that follow) means in_use and stops; anything else means
-    /// unreadable and stops. Collapsing these would report a damaged or
-    /// otherwise unreadable file as merely needing a password.</summary>
+    /// Cost of the touch: measured (2026-08-08) on 40-page/53KB and
+    /// 300-page/214KB encrypted fixtures, 15 iterations, open-only vs.
+    /// open-plus-touch: no measurable timing difference (40 pages ~1.9ms
+    /// either way; 300 pages ~12ms either way — touch was within noise, not
+    /// consistently slower), and a small, roughly constant-per-page managed
+    /// memory increase (40 pages: 619KB -> 650KB, +31KB; 300 pages: 3802KB ->
+    /// 3978KB, +176KB — under 5% both times). Extrapolated to risk 1's
+    /// worst case (50 files against 5 saved passwords, up to 250 opens): the
+    /// touch adds low single-digit percent to a cost already dominated by
+    /// the opens themselves, not by what happens after each one succeeds.
+    ///
+    /// Cost of the open mode itself (risk 1): the source is read from disk
+    /// exactly ONCE regardless of how many candidates are tried — same
+    /// discipline as <see cref="UnlockBuffered"/>, whose own doc comment
+    /// explains why: three separate opens over a share meant three full
+    /// transfers. A 50-file drop against 5 saved passwords is therefore 50
+    /// network reads, not 250. PdfDocumentOpenMode.InformationOnly was
+    /// measured (2026-08-08) against Import for both the encryption check
+    /// and the password check, on a 40-page / 54KB encrypted fixture, 25
+    /// iterations each, single-shot managed-memory snapshots with the opened
+    /// document kept alive: wrong password threw the identical
+    /// PdfReaderException under both modes (~0.44ms Import vs ~0.47ms
+    /// InformationOnly); the right password opened under both, retaining
+    /// ~628KB (Import) vs ~627KB (InformationOnly) with no timing advantage
+    /// (~2.2ms vs ~1.7ms). PdfSharp 6.1.1 marks InformationOnly
+    /// <c>[Obsolete("InformationOnly is not implemented, use Import
+    /// instead.")]</c> — the measurement confirms that isn't just a stale
+    /// label: it behaves exactly like Import, not a cheaper path. Import is
+    /// used here for that reason, and because it keeps this probe's open
+    /// calls identical to UnlockPdf's, which is what makes the agreement
+    /// test meaningful rather than coincidental.
+    ///
+    /// Exception discipline (risk 3), mirrors UnlockBuffered exactly:
+    /// <see cref="PdfReaderException"/> is a wrong password for that one
+    /// candidate — try the next; an <see cref="IOException"/> where
+    /// <see cref="IsInUse"/> is true (only possible at the single disk read
+    /// below, never from the in-memory reopens that follow) means in_use and
+    /// stops; anything else — including a failure during the page touch
+    /// above — means unreadable and stops. Collapsing these would report a
+    /// damaged or otherwise unreadable file as merely needing a
+    /// password.</summary>
     public static ProbeResult ProbeReadiness(string src, IReadOnlyList<string> candidates)
     {
         if (!File.Exists(src))
@@ -160,33 +210,35 @@ public static class Unlock
             return new("unreadable", src, Message: $"Couldn't read it: {ex.Message}");
         }
 
-        // encryption state, checked without a password — identical in shape
-        // and reasoning to UnlockBuffered's own check (Unlock.cs:104-114):
-        // opening WITH a password cannot answer this question, because a
-        // correctly decrypted document reports itself unencrypted just like
-        // one that was never encrypted at all.
-        try
+        // encryption state, checked without a password — shared helper, see
+        // IsProvablyNotEncrypted's own doc comment for why opening WITH a
+        // password cannot answer this question.
+        using (var probeStream = new MemoryStream(sourceBytes, writable: false))
         {
-            using var probeStream = new MemoryStream(sourceBytes, writable: false);
-            using var probe = PdfReader.Open(probeStream, PdfDocumentOpenMode.Import);
-            if (!probe.SecuritySettings.IsEncrypted)
+            if (IsProvablyNotEncrypted(probeStream))
                 return new("not_encrypted", src, Message: "This PDF isn't password-protected.");
         }
-        catch
-        {
-            // couldn't open without a password -> it's encrypted (or damaged
-            // in a way that looks the same from here, e.g. no StartXRef);
-            // fall through and let the candidate loop's own exception
-            // discipline below decide which — same fallback UnlockBuffered
-            // takes at Unlock.cs:111-114.
-        }
+        // couldn't prove it unencrypted -> it's encrypted (or damaged in a
+        // way that looks the same from here, e.g. no StartXRef); fall
+        // through and let the candidate loop's own exception discipline
+        // below decide which.
 
         for (var i = 0; i < candidates.Count; i++)
         {
             try
             {
                 using var ms = new MemoryStream(sourceBytes, writable: false);
-                using var _ = PdfReader.Open(ms, candidates[i], PdfDocumentOpenMode.Import);
+                using var doc = PdfReader.Open(ms, candidates[i], PdfDocumentOpenMode.Import);
+                // VerifyReadable's own technique (Unlock.cs, below), applied
+                // here to the winning candidate before declaring ready:
+                // closes the gap a 2026-08 review found — this loop used to
+                // open a candidate and immediately discard it, never
+                // touching a single page, while the real UnlockPdf goes on
+                // to copy every page, save, and run this exact touch over
+                // the result. See this method's doc comment for what
+                // touching a page does and does not catch, and what a
+                // six-fixture investigation into the gap found.
+                for (var p = 0; p < doc.PageCount; p++) { var _ = doc.Pages[p]; }
                 return new("ready", src, MatchedIndex: i, Message: "A saved password opens this.");
             }
             catch (PdfReaderException)
@@ -201,6 +253,33 @@ public static class Unlock
 
         return new("needs_password", src,
             Message: "This PDF needs a password none of the saved ones supply.");
+    }
+
+    /// <summary>Shared by <see cref="ProbeReadiness"/> and
+    /// <see cref="UnlockBuffered"/> — both need the identical no-password
+    /// encryption check and, before the 2026-08 fix round, each carried its
+    /// own copy. Opening WITH a password cannot answer "is this encrypted",
+    /// because a correctly decrypted document reports itself unencrypted
+    /// just like one that never was. Returns true only when opening without
+    /// a password succeeded AND proved the document unencrypted; false means
+    /// "couldn't prove that" — encrypted, or damaged in a way that looks the
+    /// same from here — and the caller falls through to its own
+    /// password-based path either way. <paramref name="stream"/> must be
+    /// freshly positioned at 0 (a fresh MemoryStream view in both current
+    /// callers); this does not rewind it back for the caller to reuse, so
+    /// callers pass a stream they are about to discard, same as before this
+    /// was extracted.</summary>
+    private static bool IsProvablyNotEncrypted(Stream stream)
+    {
+        try
+        {
+            using var probe = PdfReader.Open(stream, PdfDocumentOpenMode.Import);
+            return !probe.SecuritySettings.IsEncrypted;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>The fast path: ONE read of the source, and the probe, decrypt
@@ -226,21 +305,15 @@ public static class Unlock
             return new("error", src, Message: $"Couldn't read it: {ex.Message}");
         }
 
-        // encryption state, checked without a password. Still a real probe —
-        // opening WITH the password cannot answer this, because a correctly
-        // decrypted document reports itself unencrypted just like one that
-        // never was.
-        try
+        // encryption state, checked without a password — shared with
+        // ProbeReadiness via IsProvablyNotEncrypted; see its doc comment for
+        // why opening WITH the password cannot answer this.
+        using (var probeStream = new MemoryStream(sourceBytes, writable: false))
         {
-            using var probeStream = new MemoryStream(sourceBytes, writable: false);
-            using var probe = PdfReader.Open(probeStream, PdfDocumentOpenMode.Import);
-            if (!probe.SecuritySettings.IsEncrypted)
+            if (IsProvablyNotEncrypted(probeStream))
                 return new("not_encrypted", src, Message: "This PDF isn't password-protected.");
         }
-        catch
-        {
-            // couldn't open without a password -> it's encrypted; fall through
-        }
+        // couldn't prove it unencrypted -> it's encrypted; fall through
 
         byte[] unlockedBytes;
         try

@@ -37,6 +37,17 @@ public class UnlockProbeTests : IDisposable
         return path;
     }
 
+    private string MakeEncryptedMultiPage(string name, string userPw, int pageCount)
+    {
+        var path = Path.Combine(_dir, name);
+        using var doc = new PdfDocument();
+        for (var i = 0; i < pageCount; i++) doc.AddPage();
+        doc.SecuritySettings.UserPassword = userPw;
+        doc.SecuritySettings.OwnerPassword = "owner-" + userPw;
+        doc.Save(path);
+        return path;
+    }
+
     /// <summary>Random bytes under a .pdf name: PdfSharp can't even find the
     /// "%PDF" magic prefix, so it throws a plain InvalidOperationException --
     /// never PdfReaderException -- both with and without a password (measured
@@ -147,6 +158,25 @@ public class UnlockProbeTests : IDisposable
             Assert.Null(r.MatchedIndex);
             Assert.False(r.ReadyToUnlock);
         }
+    }
+
+    /// <summary>2026-08-08 fix round: ProbeReadiness now touches every page
+    /// of the winning candidate (mirroring VerifyReadable) before declaring
+    /// ready. All of this file's other "ready" fixtures are single-page, so
+    /// this is the only test that runs that loop across more than one page.
+    /// Honest scope: this guards against a bug in the loop itself (wrong
+    /// bounds, an exception on healthy content) -- it does NOT prove the
+    /// loop catches damaged content, because no fixture in this investigation
+    /// could make a real one diverge (see Unlock.ProbeReadiness's doc
+    /// comment); deleting the loop entirely would not make this test fail.</summary>
+    [Fact]
+    public void ReadyStillWorksAcrossManyHealthyPages()
+    {
+        var src = MakeEncryptedMultiPage("multi.pdf", "the-password", pageCount: 25);
+        var r = Unlock.ProbeReadiness(src, new[] { "wrong-one", "the-password" });
+        Assert.Equal("ready", r.Status);
+        Assert.Equal(1, r.MatchedIndex);
+        Assert.True(r.ReadyToUnlock);
     }
 
     /// <summary>MatchedIndex must be null for every status except "ready" --
