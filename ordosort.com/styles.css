@@ -42,7 +42,7 @@ a:focus-visible, .btn:focus-visible {
 .site-nav a { color: var(--subtle); text-decoration: none; font-size: .95rem; }
 .site-nav a:hover { color: var(--bronze); }
 @media (max-width: 520px) {
-  .header-row { flex-wrap: wrap; height: auto; padding: 8px 0; row-gap: 2px; }
+  .header-row { flex-wrap: wrap; height: auto; padding: 8px 20px; row-gap: 2px; }
   .site-nav { gap: 16px; }
 }
 
