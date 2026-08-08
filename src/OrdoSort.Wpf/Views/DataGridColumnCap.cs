@@ -36,14 +36,30 @@ namespace OrdoSort.Wpf.Views;
 /// SystemParameters.VerticalScrollBarWidth</c> UNCONDITIONALLY, whether or
 /// not a vertical scrollbar happens to be visible right now: a grid that's
 /// scrollbar-free today can gain rows later (MatchMerge/BulkRename via "Add
-/// files…"; History as more gets filed) without this class re-running, so
-/// reserving the scrollbar's width up front is what keeps the invariant
-/// (never a horizontal scrollbar) true regardless of row count, not just at
-/// whatever row count happened to be on screen when a column last resized.
-/// The cost is a small, constant amount of unused width when no vertical
-/// scrollbar is actually showing — negligible against hundreds of pixels of
-/// budget, and a explicit trade for robustness across row counts this class
-/// has no visibility into.
+/// files…"; History as more gets filed) without this class re-running, and
+/// the space columns can actually occupy genuinely IS <c>ActualWidth -
+/// scrollbar</c> the moment one appears — reserving it up front is the more
+/// correct basis to cap against, independent of whether it's currently the
+/// thing keeping any particular grid under its viewport.
+///
+/// HONESTY CHECK (fix round 4, prompted by review — this repo has hit
+/// comment/code mismatch four times this week, each one hiding a real
+/// defect): this reservation is currently DEFENSIVE, not load-bearing.
+/// Verified directly — reverting ONLY this subtraction (leaving every
+/// window's share constant exactly as fix round 3 left them) still passes
+/// the FULL suite, including the many-row scrollbar facts. What actually
+/// supplies History's margin today is <c>HistoryWindow</c>'s own
+/// <c>ContentColumnShare</c>, cut from 0.18 to 0.15 in that same round;
+/// reverting THIS subtraction TOGETHER WITH that share change is what
+/// reproduces the original overflow (see HistoryWindow.xaml.cs's own
+/// comment on that constant). So: kept because it's the structurally
+/// correct thing to cap against and the cost is small — not because a test
+/// currently depends on it alone. Don't read its presence as proof it's
+/// preventing anything by itself right now, and don't assume a future
+/// column-share change stays safe just because this line exists — if one
+/// ever needs this reservation to actually hold the line, that dependency
+/// should be re-verified the same way this finding was: revert it alone
+/// and confirm a test breaks, not assumed from this comment.
 ///
 /// A <see cref="DataGridColumn"/> is not part of the visual or logical tree —
 /// it hangs off <c>DataGrid.Columns</c>, not the grid's own <c>Content</c> —
@@ -72,6 +88,10 @@ internal static class DataGridColumnCap
             // against yet; the SizeChanged this method also subscribes to
             // fires the moment that first real width is known.
             if (grid.ActualWidth <= 0) return;
+            // Defensive, not (currently) load-bearing — see this class's own
+            // "HONESTY CHECK" doc paragraph above before touching this line
+            // or assuming it's what keeps any particular grid's columns
+            // under its viewport.
             var columnViewportWidth = Math.Max(0,
                 grid.ActualWidth - SystemParameters.VerticalScrollBarWidth);
             var cap = columnViewportWidth * share;

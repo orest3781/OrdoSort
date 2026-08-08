@@ -157,6 +157,15 @@ public partial class TriageWindow : Window
         // started needing a horizontal scrollbar the moment it did would be
         // exactly the bug this task exists to prevent, just deferred to
         // whenever the batch happens to reach a suggested item.
+        // MARGIN NOTE (fix round 4 gate measurement): the tightest of any
+        // grid in this app. Worst case measured — Why present, default 2
+        // roster columns, both capped columns and Why itself at their
+        // longest, PLUS the vertical scrollbar a long candidate list
+        // forces — totals 397px inside this 416px panel: 19px of margin.
+        // It passes today, but whoever next adds a roster column here (or
+        // widens WhyColumnWidth, or shrinks SidePanelColumn) is spending
+        // out of that same 19px, not a comfortable cushion — re-measure
+        // before assuming it still holds.
         var couldShowWhy = items.Any(i => i.Status == "suggested");
         var sidePanelWidth = SidePanelColumn.Width.Value;
         var rosterBudget = Math.Max(FillerMinWidth, sidePanelWidth - PanelHorizontalMargins
