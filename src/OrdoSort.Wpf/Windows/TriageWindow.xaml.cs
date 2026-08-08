@@ -247,7 +247,44 @@ public partial class TriageWindow : Window
                 Width = new DataGridLength(WhyColumnWidth),
                 ElementStyle = new Style(typeof(TextBlock))
                 {
-                    Setters = { new Setter(TextBlock.TextWrappingProperty, TextWrapping.Wrap) },
+                    Setters =
+                    {
+                        new Setter(TextBlock.TextWrappingProperty, TextWrapping.Wrap),
+                        // status-colour-vocabulary plan (2026-08-08), Task 2 Step 2:
+                        // every row here is the same kind of message — a token-pass
+                        // suggestion's reason, purely informational (nothing to fix,
+                        // nothing blocking) — so one flat subtle Setter, not a
+                        // DataTrigger keyed on a status this column has no such
+                        // binding for. Fixed width (WhyColumnWidth above), so this
+                        // adds no pixels to the 397px/416px budget the class doc
+                        // measures.
+                        new Setter(TextBlock.ForegroundProperty,
+                            new DynamicResourceExtension("Theme.SubtleText")),
+                    },
+                    Triggers =
+                    {
+                        // Let selection win — same measured trap and fix as
+                        // MatchMergeWindow.xaml's/BulkRenameWindow.xaml's Note
+                        // columns: Theme.SubtleText against Theme.Accent (the
+                        // selected cell's background) fails 4.5:1 (measured
+                        // ~1.85:1 light), so a selected Why cell must revert to
+                        // Theme.AccentText, the same value the cell's own
+                        // IsSelected trigger already paints its background for.
+                        new DataTrigger
+                        {
+                            Binding = new Binding("IsSelected")
+                            {
+                                RelativeSource = new RelativeSource(
+                                    RelativeSourceMode.FindAncestor, typeof(DataGridCell), 1),
+                            },
+                            Value = true,
+                            Setters =
+                            {
+                                new Setter(TextBlock.ForegroundProperty,
+                                    new DynamicResourceExtension("Theme.AccentText")),
+                            },
+                        },
+                    },
                 },
             });
             else Candidates.Columns.RemoveAt(0);

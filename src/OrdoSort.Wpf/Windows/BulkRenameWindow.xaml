@@ -222,6 +222,42 @@
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding Note}" />
+                                    <Style.Triggers>
+                                        <!-- status-colour-vocabulary plan, Task 2 Step 2. Order
+                                             matters: the two subtle triggers are declared first so
+                                             NoteIsProblem (declared last) can override BOTH of them
+                                             back to amber for the rare row where Plan() reported a
+                                             problem AND the ViewModel's own "edited by hand"/
+                                             "(no change)" annotation also applies (e.g. a manual
+                                             override that collides with another target and gets a
+                                             counter appended) — see NoteIsProblem's own doc comment
+                                             in BulkRenameViewModel.cs for why Manual/Changed alone
+                                             can't tell that case apart from a problem-free one. -->
+                                        <DataTrigger Binding="{Binding Manual}" Value="True">
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.SubtleText}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Changed}" Value="False">
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.SubtleText}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding NoteIsProblem}" Value="True">
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.StatusAmber}" />
+                                        </DataTrigger>
+                                        <!-- Let selection win — same measured trap and same fix as
+                                             MatchMergeWindow.xaml's Note column; see its comment for
+                                             the contrast numbers. Declared last so it overrides
+                                             every trigger above once selected. -->
+                                        <DataTrigger Value="True">
+                                            <DataTrigger.Binding>
+                                                <Binding Path="IsSelected"
+                                                         RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                                            </DataTrigger.Binding>
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.AccentText}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>

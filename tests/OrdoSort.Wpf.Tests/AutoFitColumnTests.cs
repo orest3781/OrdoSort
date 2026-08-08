@@ -385,7 +385,8 @@ public class AutoFitColumnTests
         var vm = new BulkRenameViewModel();
         for (var i = 0; i < rowCount; i++)
             vm.Preview.Add(new RenameRow($"src{i}.pdf", currentValue, "SOMETHING-SHORT.pdf", noteValue,
-                changed: true, manual: false, needsName: false, editSeed: "SOMETHING-SHORT.pdf"));
+                changed: true, manual: false, needsName: false, editSeed: "SOMETHING-SHORT.pdf",
+                noteIsProblem: false));
         return new BulkRenameWindow(vm);
     }
 
