@@ -453,7 +453,7 @@ public class HighlightContrastTests
         ThemeManager.Apply(_fx.App, dark);
 
         var vm = new UnlockViewModel(new Config(), () => true);
-        vm.Files.Add(@"C:\inbox\20240101--1111111111.pdf");
+        vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
         var window = new UnlockWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
@@ -486,6 +486,68 @@ public class HighlightContrastTests
             var ratio = ThemePalette.ContrastRatio(fg, bg);
             Assert.True(ratio >= 4.5,
                 $"UnlockWindow FileList selected row ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>The readiness-probe plan (2026-08-08, Task 2) repurposed
+    /// FileList's single TextBlock to show DisplayText — filename plus a
+    /// readiness suffix — instead of the bare filename the test above still
+    /// covers. No new element was added to the template (the fix stays a
+    /// single TextBlock specifically to avoid a second Foreground-binding
+    /// trap instance), so the SAME local-Foreground-binding fix applies to
+    /// this longer text too — but "same fix, different content" is still
+    /// worth proving directly rather than assumed, per the plan's own
+    /// instruction to verify selected-row contrast in both palettes
+    /// off-screen. Uses SetProbeResult (internal; this project has
+    /// InternalsVisibleTo) to put the row in the Ready state without a real
+    /// probe, so this stays a pure rendering/contrast check.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void SelectedUnlockFileListRowWithAReadinessSuffixUsesTheAccentPalette(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var vm = new UnlockViewModel(new Config(), () => true);
+        var row = new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf");
+        row.SetProbeResult(ReadinessStatus.Ready, "A saved password opens this.");
+        vm.Files.Add(row);
+        Assert.Contains("a saved password opens this", row.DisplayText);   // sanity: real suffix text is in play
+        var window = new UnlockWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            PumpRender();
+
+            var listBox = FindDescendant<ListBox>(window)
+                ?? throw new InvalidOperationException("no ListBox descendant under UnlockWindow");
+            listBox.SelectedIndex = 0;
+            PumpRender();
+            window.UpdateLayout();
+
+            var container = listBox.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem
+                ?? throw new InvalidOperationException("FileList row 0 never realized a container");
+
+            var text = FindTextElement(container)
+                ?? throw new InvalidOperationException("no TextBlock/AccessText descendant under FileList's ListBoxItem");
+            var bd = FindDescendant<Border>(container)
+                ?? throw new InvalidOperationException("no Border descendant under FileList's ListBoxItem");
+
+            var fg = ToRgb(ForegroundOf(text));
+            var bg = ToRgb(bd.Background);
+            Assert.Equal(p.Accent, bg);
+            Assert.Equal(p.AccentText, fg);
+            var ratio = ThemePalette.ContrastRatio(fg, bg);
+            Assert.True(ratio >= 4.5,
+                $"UnlockWindow FileList selected row with readiness suffix ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
         }
         finally
         {

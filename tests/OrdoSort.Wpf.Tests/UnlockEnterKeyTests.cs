@@ -146,7 +146,7 @@ public class UnlockEnterKeyTests
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
             fileSize: _ => 0);
-        vm.Files.Add(@"C:\inbox\20240101--1111111111.pdf");
+        vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = new UnlockWindow(vm)
         {
@@ -263,7 +263,7 @@ public class UnlockEnterKeyTests
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
             fileSize: _ => 0);
-        vm.Files.Add(@"C:\inbox\20240101--1111111111.pdf");
+        vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
         try
@@ -321,7 +321,7 @@ public class UnlockEnterKeyTests
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
             fileSize: _ => 0);
-        vm.Files.Add(@"C:\inbox\20240101--1111111111.pdf");
+        vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
         try
@@ -382,7 +382,7 @@ public class UnlockEnterKeyTests
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
             fileSize: _ => 0);
-        vm.Files.Add(@"C:\inbox\20240101--1111111111.pdf");
+        vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
         try
@@ -445,7 +445,7 @@ public class UnlockEnterKeyTests
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
             fileSize: _ => 0);
-        vm.Files.Add(@"C:\inbox\20240101--1111111111.pdf");
+        vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
         try
@@ -498,7 +498,7 @@ public class UnlockEnterKeyTests
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
             fileSize: _ => 0);
-        vm.Files.Add(@"C:\inbox\20240101--1111111111.pdf");
+        vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
         try
@@ -552,7 +552,7 @@ public class UnlockEnterKeyTests
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
             fileSize: _ => 0);
-        vm.Files.Add(@"C:\inbox\20240101--1111111111.pdf");
+        vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
         try

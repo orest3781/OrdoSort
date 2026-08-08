@@ -43,7 +43,15 @@
                          AutomationProperties.Name="PDFs to unlock">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <!-- the filename is the news; the path is hover detail.
+                            <!-- The row is now an UnlockFileRow (path + readiness-
+                                 probe state), not a plain path string — DisplayText
+                                 is the filename plus a short, deliberately narrow
+                                 readiness suffix (e.g. "— a saved password opens
+                                 this"), never a claim the probe didn't actually
+                                 test (see UnlockFileRow.DisplayText's own comment).
+                                 ToolTipText is the full path, plus the probe's own
+                                 message on a second line for the four states worth
+                                 mentioning.
                                  LOCAL Foreground bound back to the generated
                                  ListBoxItem: an ItemTemplate assigns to the
                                  container's ContentTemplate as a LOCAL value,
@@ -55,9 +63,13 @@
                                  Foreground=Theme.Text) as an auto-wrapped one;
                                  without this binding the row stayed Theme.Text
                                  even when selected (see Styles.xaml's
-                                 ListBoxItem comment). -->
-                            <TextBlock Text="{Binding Converter={StaticResource FileName}}"
-                                       ToolTip="{Binding}"
+                                 ListBoxItem comment). Any element added to this
+                                 template hits the same trap — this one still
+                                 uses a single TextBlock specifically to avoid
+                                 introducing a second one that would need its
+                                 own copy of this binding. -->
+                            <TextBlock Text="{Binding DisplayText}"
+                                       ToolTip="{Binding ToolTipText}"
                                        Foreground="{Binding Foreground,
                                            RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
                         </DataTemplate>

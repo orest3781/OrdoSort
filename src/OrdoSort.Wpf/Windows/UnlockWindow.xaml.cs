@@ -110,6 +110,7 @@ public partial class UnlockWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _vm.CancelUnlock();
+        _vm.CancelProbes();
         _vm.ResetBanner();
         base.OnClosed(e);
     }
@@ -127,7 +128,7 @@ public partial class UnlockWindow : Window
     }
 
     private void OnRemoveSelected(object sender, RoutedEventArgs e) =>
-        _vm.RemoveFiles(FileList.SelectedItems.Cast<string>().ToList());
+        _vm.RemoveFiles(FileList.SelectedItems.Cast<UnlockFileRow>().Select(r => r.Path).ToList());
 
     private void OnDragOver(object sender, DragEventArgs e)
     {

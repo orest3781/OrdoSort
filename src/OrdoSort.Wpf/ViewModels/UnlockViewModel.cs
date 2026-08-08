@@ -10,6 +10,80 @@ public enum UnlockResultKind { Ok, Skip, Fail }
 
 public sealed record UnlockResultLine(string Text, UnlockResultKind Kind);
 
+/// <summary>What Unlock.ProbeReadiness found for one row, mirrored 1:1 onto
+/// its Status strings (not_encrypted/ready/needs_password/in_use/unreadable)
+/// plus Pending for "hasn't been probed yet" — a state Core has no need for
+/// since it never sits idle mid-answer the way a row in this list does.</summary>
+public enum ReadinessStatus { Pending, NotEncrypted, Ready, NeedsPassword, InUse, Unreadable }
+
+/// <summary>One row in the Unlock file list: a dropped/added path plus
+/// whatever the readiness probe has found out about it so far. Files used to
+/// be a plain ObservableCollection&lt;string&gt; — there was nowhere to hang
+/// per-file probe state, and every consumer (UnlockAsync's indexing,
+/// ClearCommand, the dedupe set in AddFilesAsync, UnlockCommand's
+/// Files.Count guard, RemoveFiles, and every test that touched Files) had to
+/// be walked and updated for this row type to replace it (2026-08-08
+/// readiness-probe plan, Task 2 Step 1).</summary>
+public sealed class UnlockFileRow : ObservableObject
+{
+    public string Path { get; }
+
+    public UnlockFileRow(string path) => Path = path;
+
+    public ReadinessStatus Status { get; private set; } = ReadinessStatus.Pending;
+
+    /// <summary>The exact wording from ProbeResult.Message for the four
+    /// states worth telling the user about — "" for Pending and
+    /// NotEncrypted, which stay deliberately quiet (Task 2 Step 3: neither
+    /// is a problem and neither should read like one).</summary>
+    public string Message { get; private set; } = "";
+
+    /// <summary>Bumped every time a probe is (re-)requested for this row.
+    /// See UnlockViewModel.ProbeRowsAsync's doc comment: this is what lets
+    /// the most recently REQUESTED probe win over one that merely finishes
+    /// later, without needing to cancel the loser outright.</summary>
+    internal long ProbeGeneration;
+
+    internal void SetProbeResult(ReadinessStatus status, string message)
+    {
+        Status = status;
+        Message = message;
+        Raise(nameof(Status));
+        Raise(nameof(Message));
+        Raise(nameof(DisplayText));
+        Raise(nameof(ToolTipText));
+    }
+
+    /// <summary>Back to the same quiet default a never-yet-probed row has.
+    /// Used when a saved-password change means the CURRENT verdict no
+    /// longer reflects reality (risk 4) — cleared synchronously, before the
+    /// re-probe that will replace it even starts, so a stale claim is never
+    /// shown for even the length of that re-probe.</summary>
+    internal void ResetToPending() => SetProbeResult(ReadinessStatus.Pending, "");
+
+    /// <summary>Filename plus a short, deliberately narrow claim about what
+    /// the probe actually tested — never "this will unlock": the probe runs
+    /// with no typed password, but the real unlock tries the typed password
+    /// FIRST (UnlockAsync below), so the only honest claim is that a SAVED
+    /// password already opens the file (risk 2). System.IO.Path is
+    /// qualified because this type's own Path property would otherwise
+    /// shadow it.</summary>
+    public string DisplayText => System.IO.Path.GetFileName(Path) + (Status switch
+    {
+        ReadinessStatus.Ready => "  —  a saved password opens this",
+        ReadinessStatus.NeedsPassword => "  —  needs a password",
+        ReadinessStatus.InUse => "  —  in use, couldn't check",
+        ReadinessStatus.Unreadable => "  —  couldn't be read",
+        _ => "",
+    });
+
+    /// <summary>Full path always; the probe's own message appended when
+    /// there is one worth showing (hover detail for the four non-quiet
+    /// states — the DisplayText suffix is deliberately short, this is where
+    /// the fuller wording lives).</summary>
+    public string ToolTipText => Message.Length == 0 ? Path : $"{Path}\n{Message}";
+}
+
 /// <summary>Unlock PDFs: add password-protected files, type a password,
 /// unlock. There is no picker — every saved password is tried automatically,
 /// so the box is only for a password that isn't saved yet. The unlocked file
@@ -48,13 +122,48 @@ public sealed class UnlockViewModel : ObservableObject
     // to provoke a real CryptographicException.
     private readonly Func<string, string> _protect;
 
+    // Test seam for the readiness probe, same shape as _unlock/_fileSize
+    // above: the real app never passes this (defaults to the real, read-only
+    // Unlock.ProbeReadiness), but tests need deterministic control over what
+    // a probe reports without touching real PDF fixtures for every case, and
+    // Step 8's teeth test needs a way to prove the wiring between a probe
+    // result and a row's Status is real.
+    private readonly Func<string, IReadOnlyList<string>, Unlock.ProbeResult> _probe;
+
+    /// <summary>Bounds how many readiness probes run at once, shared across
+    /// every call to ProbeRowsAsync (on-add AND the saved-password-change
+    /// re-probe) — the same MaxConcurrentUnlocks figure and the same reason
+    /// UnlockAsync bounds itself: PdfSharp's Import mode materialises the
+    /// whole document, and a probe is a real disk/share read (risk 1: a
+    /// 50-file drop against 5 saved passwords is already up to 250 opens).
+    /// One shared instance rather than UnlockAsync's per-run local gate,
+    /// because unlike UnlockAsync (reentrancy-guarded by AsyncRelayCommand),
+    /// AddFilesAsync has no such guard and a fast run of drops can genuinely
+    /// call ProbeRowsAsync concurrently.</summary>
+    private readonly SemaphoreSlim _probeGate = new(MaxConcurrentUnlocks);
+
+    /// <summary>Cancelled (and replaced with a fresh one) whenever the list
+    /// is cleared, and cancelled for good when the window closes
+    /// (CancelProbes) — a probe must never keep running for rows nobody can
+    /// see anymore, the same reasoning CancelUnlock's own doc comment gives
+    /// for the unlock batch itself.</summary>
+    private CancellationTokenSource _probeCts = new();
+
+    /// <summary>The most recently kicked-off probe run — exposed only so
+    /// tests can await deterministic completion instead of polling; nothing
+    /// in production needs this (both call sites, AddFilesAsync and the
+    /// saved-password-change re-probe, are legitimately fire-and-forget from
+    /// the UI's point of view, same as AddFilesAsync's own production call
+    /// site in UnlockWindow.xaml.cs).</summary>
+    internal Task ProbeCompletion { get; private set; } = Task.CompletedTask;
+
     /// <summary>Set while a batch is being added, so the command re-queries
     /// once for the batch instead of once per file.</summary>
     private bool _bulkAdding;
 
     private CancellationTokenSource? _cts;
 
-    public ObservableCollection<string> Files { get; } = new();
+    public ObservableCollection<UnlockFileRow> Files { get; } = new();
     public ObservableCollection<SavedPassword> Saved { get; }
     public ObservableCollection<UnlockResultLine> ResultLines { get; } = new();
 
@@ -62,7 +171,8 @@ public sealed class UnlockViewModel : ObservableObject
         Func<string, string, Unlock.UnlockResult>? unlocker = null,
         Func<string, long>? fileSize = null,
         IDialogService? dialogs = null,
-        Func<string, string>? protect = null)
+        Func<string, string>? protect = null,
+        Func<string, IReadOnlyList<string>, Unlock.ProbeResult>? probe = null)
     {
         _cfg = cfg;
         _trySaveCfg = trySaveCfg;
@@ -75,6 +185,7 @@ public sealed class UnlockViewModel : ObservableObject
             try { return new FileInfo(path).Length; } catch { return 0L; }
         });
         _protect = protect ?? PasswordVault.Protect;
+        _probe = probe ?? Unlock.ProbeReadiness;
         Saved = new ObservableCollection<SavedPassword>(cfg.SavedPasswords);
         UnlockCommand = new AsyncRelayCommand(UnlockAsync, () => Files.Count > 0);
         CancelCommand = new RelayCommand(CancelUnlock, () => IsUnlocking);
@@ -84,6 +195,14 @@ public sealed class UnlockViewModel : ObservableObject
             ResultLines.Clear();
             Summary = "";
             AddNote = "";
+            // A probe still in flight for the rows just cleared must not go
+            // on to update a row nobody can see anymore (Task 2 Step 2) —
+            // cancel it, then hand out a FRESH token so the next drop still
+            // gets probed normally rather than staying cancelled forever.
+            var oldProbeCts = _probeCts;
+            _probeCts = new CancellationTokenSource();
+            oldProbeCts.Cancel();
+            oldProbeCts.Dispose();
         });
         SaveBannerCommand = new RelayCommand(SaveBannerPassword, () => SaveBannerName.Trim().Length > 0);
         RemoveSavedCommand = new RelayCommand(RemoveSelectedSaved, () => SelectedSavedEntry is not null);
@@ -245,6 +364,9 @@ public sealed class UnlockViewModel : ObservableObject
         SaveBannerVisible = false;
         SaveBannerName = "";
         _bannerPassword = "";
+        // A new saved password can turn a needs-a-password row into ready —
+        // see RequeueAllFilesForProbing's doc comment (risk 4/staleness).
+        RequeueAllFilesForProbing();
     }
 
     // ------------------------------------------------------- manage saved…
@@ -268,6 +390,10 @@ public sealed class UnlockViewModel : ObservableObject
             Saved.Remove(p);
             ReprotectLegacyPlaintext();
             _trySaveCfg();
+            // A removed saved password can turn a ready row back into
+            // needs-a-password (risk 4/staleness) — see
+            // RequeueAllFilesForProbing's doc comment.
+            RequeueAllFilesForProbing();
         }
         SelectedSavedEntry = Saved.FirstOrDefault();
     }
@@ -282,6 +408,8 @@ public sealed class UnlockViewModel : ObservableObject
         Saved.Add(entry);
         ReprotectLegacyPlaintext();
         _trySaveCfg();
+        // See RequeueAllFilesForProbing's doc comment (risk 4/staleness).
+        RequeueAllFilesForProbing();
         return true;
     }
 
@@ -362,7 +490,7 @@ public sealed class UnlockViewModel : ObservableObject
         // is what made dropping a folder's worth of documents feel stuck. The
         // existence checks go off-thread; only the list update comes back.
         var candidates = paths.ToList();
-        var already = new HashSet<string>(Files, StringComparer.OrdinalIgnoreCase);
+        var already = new HashSet<string>(Files.Select(f => f.Path), StringComparer.OrdinalIgnoreCase);
 
         var (keep, ignored) = await Task.Run(() =>
         {
@@ -387,14 +515,21 @@ public sealed class UnlockViewModel : ObservableObject
         // await: a second drop can have read the same list and be adding the
         // same file right now. Cheap — this is the handful that passed, not the
         // whole batch.
-        var live = new HashSet<string>(Files, StringComparer.OrdinalIgnoreCase);
+        var live = new HashSet<string>(Files.Select(f => f.Path), StringComparer.OrdinalIgnoreCase);
         var added = 0;
+        var newRows = new List<UnlockFileRow>();
         // one CanExecute re-query for the whole batch instead of one per file
         _bulkAdding = true;
         try
         {
             foreach (var p in keep)
-                if (live.Add(p)) { Files.Add(p); added++; }
+                if (live.Add(p))
+                {
+                    var row = new UnlockFileRow(p);
+                    Files.Add(row);
+                    newRows.Add(row);
+                    added++;
+                }
         }
         finally { _bulkAdding = false; }
         UnlockCommand.RaiseCanExecuteChanged();
@@ -406,13 +541,147 @@ public sealed class UnlockViewModel : ObservableObject
             : ignored > 0
                 ? $"{added} added · {ignored} ignored (not PDFs, or already listed)"
                 : "";
+
+        // Probe just the new arrivals — never the whole list on every drop
+        // (risk 1: see ProbeRowsAsync's own doc comment). Awaited here (not
+        // fire-and-forget) so AddFilesAsync's own Task represents "the add
+        // AND the probe are both done" — this app's real call sites
+        // (UnlockWindow.xaml.cs's drop/Add-files handlers) already
+        // fire-and-forget the whole method, so awaiting internally costs the
+        // UI thread nothing: it stays responsive, and every row's Status
+        // still updates live, one at a time, as its own probe lands.
+        ProbeCompletion = ProbeRowsAsync(newRows, _probeCts.Token);
+        await ProbeCompletion;
     }
 
     public void RemoveFiles(IEnumerable<string> paths)
     {
-        foreach (var p in paths.ToList()) Files.Remove(p);
+        foreach (var p in paths.ToList())
+        {
+            var row = Files.FirstOrDefault(r => r.Path == p);
+            if (row is not null) Files.Remove(row);
+        }
         AddNote = "";
     }
+
+    /// <summary>Runs the readiness probe (Unlock.ProbeReadiness, or the
+    /// injected test seam) for each given row, off the UI thread and bounded
+    /// by _probeGate — never more than MaxConcurrentUnlocks at once, for the
+    /// same reason UnlockAsync bounds its own concurrency (risk 1).
+    ///
+    /// Corruption guard (Task 2 Step 2 — "adding files while a probe is in
+    /// flight must not corrupt either result"): each row's ProbeGeneration is
+    /// bumped the instant a probe is REQUESTED for it — synchronously, before
+    /// any await, in the loop below (LINQ's Select over an async lambda runs
+    /// each lambda body up to its first await immediately when Task.WhenAll
+    /// enumerates it, so every row in "rows" gets its generation bumped
+    /// up-front, in order, before any of them actually starts waiting on the
+    /// gate). A result is only ever applied if its captured generation still
+    /// matches the row's CURRENT generation when it comes back. This matters
+    /// because a row can end up with two outstanding probe requests — its
+    /// original on-add probe, still in flight, and a saved-password-change
+    /// re-probe (RequeueAllFilesForProbing) for the same row — and without
+    /// this guard, whichever happened to FINISH last would win even if it
+    /// started first and is now answering a stale question. With it, the
+    /// most RECENTLY REQUESTED probe always wins regardless of finish order,
+    /// and the loser's result is silently discarded: cheaper than cancelling
+    /// the loser outright, and exactly as correct, since only the row's
+    /// eventual state matters here.
+    ///
+    /// Cancellation (closing the window / clearing the list, Task 2 Step 2):
+    /// a probe already running synchronously inside _probe cannot be
+    /// aborted mid-call (same as UnlockAsync's own files-in-flight), so
+    /// "must not leave a probe running" means what it means for CancelUnlock
+    /// too — nothing NEW starts, and a result that does come back for a
+    /// cancelled token is never applied.</summary>
+    private async Task ProbeRowsAsync(IReadOnlyList<UnlockFileRow> rows, CancellationToken token)
+    {
+        if (rows.Count == 0) return;
+
+        // Saved passwords ONLY — never the typed box: there is no typed
+        // password at add time, and even when one exists later, the real
+        // unlock tries it FIRST (TryCandidates below), so a probe that used
+        // it could label a file ready on a password that was never actually
+        // saved (risk 2). Snapshotted here, on the calling thread: Saved is
+        // an ObservableCollection and the probing below runs on pool threads
+        // via Task.Run, so reading it from there would race a concurrent
+        // AddSavedPassword / RemoveSelectedSaved / save-banner edit.
+        var probeCandidates = Saved.Select(sp => PasswordVault.Reveal(sp.Password)).ToList();
+
+        await Task.WhenAll(rows.Select(async row =>
+        {
+            var myGeneration = ++row.ProbeGeneration;
+            await _probeGate.WaitAsync();
+            try
+            {
+                if (token.IsCancellationRequested) return;
+                var result = await Task.Run(() => _probe(row.Path, probeCandidates));
+                if (!token.IsCancellationRequested && myGeneration == row.ProbeGeneration)
+                    ApplyProbeResult(row, result);
+            }
+            finally
+            {
+                _probeGate.Release();
+            }
+        }));
+    }
+
+    private static void ApplyProbeResult(UnlockFileRow row, Unlock.ProbeResult result)
+    {
+        var status = result.Status switch
+        {
+            "not_encrypted" => ReadinessStatus.NotEncrypted,
+            "ready" => ReadinessStatus.Ready,
+            "needs_password" => ReadinessStatus.NeedsPassword,
+            "in_use" => ReadinessStatus.InUse,
+            _ => ReadinessStatus.Unreadable,   // "unreadable", or anything unrecognized
+        };
+        // NotEncrypted stays quiet even in the tooltip (Task 2 Step 3) — the
+        // other four keep ProbeResult's own wording verbatim.
+        row.SetProbeResult(status, status == ReadinessStatus.NotEncrypted ? "" : result.Message);
+    }
+
+    /// <summary>Staleness (risk 4): a verdict must not outlive the saved-
+    /// password list it was computed against. Saved passwords change in
+    /// exactly three places — AddSavedPassword, RemoveSelectedSaved, and the
+    /// save banner (SaveBannerPassword) — found by walking every mutator of
+    /// Saved/_cfg.SavedPasswords, not by trusting a list of call sites.
+    /// ReprotectLegacyPlaintext is deliberately NOT one of them: it changes
+    /// how a password is STORED (DPAPI-wraps a legacy plaintext value), never
+    /// what it REVEALS to, so a probe run before and after protecting the
+    /// same entry gets the identical candidate string either way.
+    ///
+    /// CHOICE: re-probe, not just clear-and-wait. A cleared verdict with no
+    /// replacement would leave the user staring at blank rows until they did
+    /// something else to re-trigger a check — actively worse than the
+    /// feature not existing, since the whole point is showing readiness
+    /// continuously. Re-probing the ENTIRE list here (not just recently-
+    /// changed rows) is deliberately more expensive than the on-add probe
+    /// ever is, but risk 1 (a 50-file drop costing up to 250 opens) is about
+    /// FREQUENT, automatic events — a drop. A saved-password edit through
+    /// Manage saved… or the save banner is a rare, deliberate action, and its
+    /// cost is bounded by how many files happen to be queued right now, not
+    /// by drop size. Every row's Status is reset to Pending FIRST,
+    /// synchronously, so the stale claim is never shown for even the length
+    /// of the re-probe — Pending (no suffix) is the same quiet default an
+    /// unprobed row already has.</summary>
+    private void RequeueAllFilesForProbing()
+    {
+        if (Files.Count == 0)
+        {
+            ProbeCompletion = Task.CompletedTask;
+            return;
+        }
+        var rows = Files.ToList();
+        foreach (var row in rows) row.ResetToPending();
+        ProbeCompletion = ProbeRowsAsync(rows, _probeCts.Token);
+    }
+
+    /// <summary>Mirrors CancelUnlock for the readiness probe — called from
+    /// UnlockWindow.OnClosed alongside CancelUnlock/ResetBanner. A closed
+    /// window must not keep a probe running for rows nobody can see anymore
+    /// (same reasoning as CancelUnlock's own doc comment).</summary>
+    internal void CancelProbes() => _probeCts.Cancel();
 
     internal async Task UnlockAsync()
     {
@@ -426,9 +695,9 @@ public sealed class UnlockViewModel : ObservableObject
 
         ResultLines.Clear();
         var password = Password;
-        var paths = Files.ToList();
-        var results = new Unlock.UnlockResult[paths.Count];
-        var viaTyped = new bool[paths.Count];
+        var rows = Files.ToList();
+        var results = new Unlock.UnlockResult[rows.Count];
+        var viaTyped = new bool[rows.Count];
 
         // Per-file candidates: the typed password first (if non-blank), then
         // every saved password's revealed value — skipping one that's
@@ -465,8 +734,8 @@ public sealed class UnlockViewModel : ObservableObject
             // share crawls". Ordinary files still overlap their waiting.
             var small = new List<int>();
             var large = new List<int>();
-            for (var i = 0; i < paths.Count; i++)
-                (_fileSize(paths[i]) >= Unlock.LargeFileThresholdBytes ? large : small).Add(i);
+            for (var i = 0; i < rows.Count; i++)
+                (_fileSize(rows[i].Path) >= Unlock.LargeFileThresholdBytes ? large : small).Add(i);
 
             using var gate = new SemaphoreSlim(MaxConcurrentUnlocks);
             await Task.WhenAll(small.Select(async i =>
@@ -476,25 +745,25 @@ public sealed class UnlockViewModel : ObservableObject
                 {
                     // the check sits AFTER the gate: a cancelled batch drains
                     // its queue as "cancelled" instead of starting more work
-                    if (ct.IsCancellationRequested) { results[i] = Cancelled(paths[i]); return; }
+                    if (ct.IsCancellationRequested) { results[i] = Cancelled(rows[i].Path); return; }
                     // always in place, under the original name: the locked one
                     // is moved to a dated archive folder, never overwritten
                     (results[i], viaTyped[i]) =
-                        await Task.Run(() => TryCandidates(paths[i], candidates, typedCount));
+                        await Task.Run(() => TryCandidates(rows[i].Path, candidates, typedCount));
                 }
                 finally
                 {
                     gate.Release();
                 }
-                Summary = $"Unlocking {Interlocked.Increment(ref finished)} of {paths.Count}…";
+                Summary = $"Unlocking {Interlocked.Increment(ref finished)} of {rows.Count}…";
             }));
 
             foreach (var i in large)
             {
-                if (ct.IsCancellationRequested) { results[i] = Cancelled(paths[i]); continue; }
-                Summary = $"Unlocking {finished + 1} of {paths.Count} (large file — running alone)…";
+                if (ct.IsCancellationRequested) { results[i] = Cancelled(rows[i].Path); continue; }
+                Summary = $"Unlocking {finished + 1} of {rows.Count} (large file — running alone)…";
                 (results[i], viaTyped[i]) =
-                    await Task.Run(() => TryCandidates(paths[i], candidates, typedCount));
+                    await Task.Run(() => TryCandidates(rows[i].Path, candidates, typedCount));
                 finished++;
             }
         }
@@ -507,10 +776,10 @@ public sealed class UnlockViewModel : ObservableObject
         // reported in the order they were added, not the order they finished —
         // a list that reshuffles itself is harder to read than a slower one
         int ok = 0, skip = 0, fail = 0, cancelled = 0, okViaTyped = 0;
-        for (var i = 0; i < paths.Count; i++)
+        for (var i = 0; i < rows.Count; i++)
         {
             var r = results[i];
-            var name = Path.GetFileName(paths[i]);
+            var name = Path.GetFileName(rows[i].Path);
             if (r.Ok)
             {
                 ok++;
