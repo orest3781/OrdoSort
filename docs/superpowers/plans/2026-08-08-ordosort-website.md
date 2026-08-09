@@ -12,7 +12,7 @@
 
 Every task's requirements implicitly include all of these.
 
-- **Zero JavaScript.** No scripts, no frameworks, no build step.
+- **≤2KB hand-written vanilla JS (`site.js`), no frameworks, no external requests.** *(2026-08-09, owner-approved: relaxes the original "zero JavaScript" constraint below to allow a small hand-written script — the 7-scheme switcher and scroll reveals — with no build step and no third-party code.)*
 - **Zero external requests.** No CDN fonts, no analytics, no third-party anything. `font-family: system-ui, -apple-system, "Segoe UI", sans-serif`.
 - **Palette is verbatim** from the spec (app's `ThemePalette.cs`):
   | Token | Light | Dark |
