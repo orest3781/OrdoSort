@@ -105,6 +105,10 @@
                 <MenuItem Header="_List reformatter…" Click="OnListReformat">
                     <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE8AB;" /></MenuItem.Icon>
                 </MenuItem>
+                <Separator />
+                <MenuItem Header="Mer_ge PDFs from zip…" Click="OnZipMerge">
+                    <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE8F1;" /></MenuItem.Icon>
+                </MenuItem>
             </MenuItem>
             </Menu>
         </Grid>

@@ -340,6 +340,10 @@ public partial class MainWindow : Window
     private void OnListReformat(object sender, RoutedEventArgs e) =>
         new Windows.ListReformatWindow(new ListReformatViewModel()) { Owner = this }.ShowDialog();
 
+    private void OnZipMerge(object sender, RoutedEventArgs e) =>
+        new Windows.ZipMergeWindow(new ZipMergeViewModel(Dialogs, uiContext: SynchronizationContext.Current))
+        { Owner = this }.ShowDialog();
+
     private void OnSettings(object sender, RoutedEventArgs e)
     {
         if (!Shell.IsReady)
