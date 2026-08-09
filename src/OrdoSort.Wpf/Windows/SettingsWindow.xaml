@@ -41,9 +41,26 @@
              removed, CopyAndTerminologyTests' informational cases go red while
              its amber cases stay green, and with the trigger present the amber
              cases resolve Theme.StatusAmber — which this style has no other
-             source for. -->
+             source for.
+             Margin (spacing-rhythm audit B2, 2026-08-09): used to be
+             "130,-6,0,10" — a magic left-indent hard-coded to match the
+             General/Data files tabs' OLD fixed 130px label column, plus a
+             negative top pull-up faking the gap to the field above. Both
+             numbers broke the moment those tabs' label columns became
+             Auto-sized via SharedSizeGroup="LabelCol" (a 130px indent no
+             longer lines up with anything once the column it was copying
+             can be narrower or wider per tab). Every call site now places
+             this TextBlock itself at Grid.Column="1" in a row added below
+             its field's TextBox, inside the SAME FieldRow Grid — so
+             horizontal alignment comes from the grid column, same as the
+             TextBox above it, instead of a copied pixel count. "0,4,0,0"
+             replaces the old "-6" top / caller's "10" bottom: the FieldRow
+             style's own Margin="0,0,0,10" already runs OUTSIDE this whole
+             two-row Grid (same as before), so it still supplies the trailing
+             gap before the next field; 4 is the on-rhythm value that nets to
+             the same ~4px field-to-note gap the old -6/10 pairing produced. -->
         <Style x:Key="NoteText" TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
-            <Setter Property="Margin" Value="130,-6,0,10" />
+            <Setter Property="Margin" Value="0,4,0,0" />
             <Setter Property="TextWrapping" Value="Wrap" />
             <Style.Triggers>
                 <Trigger Property="Text" Value="">
@@ -216,66 +233,94 @@
                  ways in SettingsKeyboardAccessTests. -->
             <TabItem Header="_General" AutomationProperties.Name="General">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="16,8">
+                    <!-- IsSharedSizeScope: this tab's own FieldRow label
+                         columns (spacing-rhythm audit B2, mirrors
+                         LabelMakerWindow.xaml's SharedSizeGroup="LabelCol"
+                         pattern) — scoped per-tab, not shared with the other
+                         five tabs' own LabelCol groups, since each TabItem's
+                         content is swapped wholesale and there is no reason
+                         for e.g. "History database:" to force "App font:"
+                         wider on a different tab. -->
+                    <StackPanel Margin="16,8" Grid.IsSharedSizeScope="True">
                         <TextBlock Text="Folders" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <TextBlock Text="Inbox:" Style="{StaticResource FieldLabel}" />
                             <TextBox Grid.Column="1" Text="{Binding Inbox, UpdateSourceTrigger=PropertyChanged}" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseInboxCommand}" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding InboxNote}"
+                                       Tag="{Binding InboxNoteNeedsAttention}"
+                                       Style="{StaticResource NoteText}" />
                         </Grid>
-                        <TextBlock Text="{Binding InboxNote}" Tag="{Binding InboxNoteNeedsAttention}"
-                                   Style="{StaticResource NoteText}" />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <TextBlock Text="Set-aside folder:" Style="{StaticResource FieldLabel}" />
                             <TextBox Grid.Column="1" Text="{Binding Deferred, UpdateSourceTrigger=PropertyChanged}" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseDeferredCommand}" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DeferredNote}"
+                                       Tag="{Binding DeferredNoteNeedsAttention}"
+                                       Style="{StaticResource NoteText}" />
                         </Grid>
-                        <TextBlock Text="{Binding DeferredNote}" Tag="{Binding DeferredNoteNeedsAttention}"
-                                   Style="{StaticResource NoteText}" />
 
                         <TextBlock Text="Files" Style="{StaticResource SectionText}" Margin="0,10,0,10" />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <TextBlock Text="Names list:" Style="{StaticResource FieldLabel}" />
                             <TextBox Grid.Column="1" Text="{Binding NamesFile, UpdateSourceTrigger=PropertyChanged}" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseNamesFileCommand}" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding NamesFileNote}"
+                                       Tag="{Binding NamesFileNoteNeedsAttention}"
+                                       Style="{StaticResource NoteText}" />
                         </Grid>
-                        <TextBlock Text="{Binding NamesFileNote}" Tag="{Binding NamesFileNoteNeedsAttention}"
-                                   Style="{StaticResource NoteText}" />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <TextBlock Text="History database:" Style="{StaticResource FieldLabel}" />
                             <TextBox Grid.Column="1" Text="{Binding HistoryDb, UpdateSourceTrigger=PropertyChanged}" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseHistoryDbCommand}" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding HistoryDbNote}"
+                                       Tag="{Binding HistoryDbNoteNeedsAttention}"
+                                       Style="{StaticResource NoteText}" />
                         </Grid>
-                        <TextBlock Text="{Binding HistoryDbNote}" Tag="{Binding HistoryDbNoteNeedsAttention}"
-                                   Style="{StaticResource NoteText}" />
                         <DockPanel Margin="0,2,0,0">
                             <Button DockPanel.Dock="Right" Content="Open backups folder"
                                     Command="{Binding OpenBackupsCommand}" Margin="8,0,0,0"
@@ -290,7 +335,10 @@
             <!-- ============================================== Filing -->
             <TabItem Header="_Filing" AutomationProperties.Name="Filing">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="16,8">
+                    <!-- IsSharedSizeScope: see the General tab's identical
+                         comment above — same per-tab LabelCol pattern,
+                         scoped independently of the other five tabs. -->
+                    <StackPanel Margin="16,8" Grid.IsSharedSizeScope="True">
                         <TextBlock Text="Naming" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
                         <!-- before → after beats prose: name each mode by its
                              transformation, not by an abstract label -->
@@ -302,6 +350,12 @@
                                      Content='Prefix   ·   scan001.pdf  →  Smith John-scan001.pdf' />
                         <RadioButton GroupName="NamingMode" IsChecked="{Binding ModeAppend}"
                                      Content='Append   ·   scan001.pdf  →  scan001-Smith John.pdf' />
+                        <!-- Margin left at 22, off-rhythm: it aligns this
+                             caption under the RadioButtons' own text (native
+                             WPF RadioButton chrome, no code-level indent
+                             constant to confirm whether 20 or 24 would still
+                             match) — spacing-rhythm audit B1, left as-is
+                             rather than guess. -->
                         <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap"
                                    Margin="22,2,0,0"
                                    Text='Insert mode picks up only PDFs with "--" in the name; every other mode picks up every PDF. Anything else shows as "ignored" on the Ready screen.' />
@@ -315,7 +369,7 @@
 
                         <Grid Style="{StaticResource FieldRow}" Margin="0,14,0,10">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                 <ColumnDefinition Width="220" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Process order:" Style="{StaticResource FieldLabel}" />
@@ -339,7 +393,7 @@
                                      Margin="12,0,0,0" />
                         <Grid Style="{StaticResource FieldRow}" Margin="0,8,0,10">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                 <ColumnDefinition Width="80" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
@@ -356,7 +410,13 @@
 
             <!-- ============================================== Routes -->
             <TabItem Header="_Destinations" AutomationProperties.Name="Destinations">
-                <Grid Margin="16,8">
+                <!-- IsSharedSizeScope: see the General tab's identical
+                     comment above — same per-tab LabelCol pattern. Only the
+                     detail panel (column 1 below) has FieldRows, but the
+                     scope lives on this whole tab root, same as the model
+                     window (LabelMakerWindow.xaml also scopes above its
+                     client list, not just around the field grids). -->
+                <Grid Margin="16,8" Grid.IsSharedSizeScope="True">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="230" />
                         <ColumnDefinition Width="*" />
@@ -425,7 +485,7 @@
                                     <DataTemplate>
                                         <DockPanel>
                                             <Rectangle Width="12" Height="12" RadiusX="2" RadiusY="2"
-                                                       VerticalAlignment="Center" Margin="0,0,7,0"
+                                                       VerticalAlignment="Center" Margin="0,0,6,0"
                                                        Fill="{Binding Color, Converter={StaticResource ColorStringToBrush}}"
                                                        Stroke="{DynamicResource Theme.Border}" StrokeThickness="1" />
                                             <TextBlock DockPanel.Dock="Right" Text="{Binding GestureText}"
@@ -474,7 +534,7 @@
 
                             <Grid Style="{StaticResource FieldRow}">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Button label:" Style="{StaticResource FieldLabel}" />
@@ -483,7 +543,7 @@
 
                             <Grid Style="{StaticResource FieldRow}">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
@@ -527,7 +587,7 @@
 
                             <Grid Style="{StaticResource FieldRow}">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                     <ColumnDefinition Width="160" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
@@ -555,7 +615,7 @@
 
                             <Grid Style="{StaticResource FieldRow}">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                     <ColumnDefinition Width="160" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
@@ -568,7 +628,7 @@
 
                             <Grid Style="{StaticResource FieldRow}">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                     <ColumnDefinition Width="220" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Naming mode:" Style="{StaticResource FieldLabel}" />
@@ -582,7 +642,7 @@
 
                             <Grid Style="{StaticResource FieldRow}">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                     <ColumnDefinition Width="160" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Button color:" Style="{StaticResource FieldLabel}" />
@@ -657,7 +717,9 @@
                  code, DashboardTests). Tab header + first section header
                  matching is the pattern the Data files tab already uses. -->
             <TabItem Header="_Monitored folders" AutomationProperties.Name="Monitored folders">
-                <Grid Margin="16,8">
+                <!-- IsSharedSizeScope: see the General tab's identical
+                     comment above — same per-tab LabelCol pattern. -->
+                <Grid Margin="16,8" Grid.IsSharedSizeScope="True">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
@@ -790,7 +852,7 @@
                                         <DataTemplate DataType="{x:Type vm:WatchEditVm}">
                                             <StackPanel Orientation="Horizontal" Margin="12,0,0,0">
                                                 <Rectangle Width="12" Height="12" RadiusX="2" RadiusY="2"
-                                                           VerticalAlignment="Center" Margin="0,0,7,0"
+                                                           VerticalAlignment="Center" Margin="0,0,6,0"
                                                            Fill="{Binding Color, Converter={StaticResource ColorStringToBrush}}"
                                                            Stroke="{DynamicResource Theme.Border}" StrokeThickness="1" />
                                                 <!-- LOCAL Foreground bound back to the generated
@@ -829,7 +891,7 @@
                                 </StackPanel.Style>
                                 <Grid Style="{StaticResource FieldRow}">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="140" />
@@ -858,7 +920,7 @@
                                 </Grid>
                                 <Grid Style="{StaticResource FieldRow}">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
@@ -901,7 +963,7 @@
                                 </StackPanel>
                                 <Grid Style="{StaticResource FieldRow}">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="File types:" Style="{StaticResource FieldLabel}"
@@ -936,7 +998,7 @@
                                           ToolTip="Alerting files found in a subfolder show 'in ⟨subfolder⟩' on the tile" />
                                 <Grid Style="{StaticResource FieldRow}">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                         <ColumnDefinition Width="120" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
@@ -1096,7 +1158,16 @@
             <!-- ============================================== Appearance -->
             <TabItem Header="_Appearance" AutomationProperties.Name="Appearance">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel Margin="16,8">
+                <!-- IsSharedSizeScope: see the General tab's identical
+                     comment above — same per-tab LabelCol pattern. Not
+                     called out by name in the audit that seeded this task
+                     (it named General/Filing/Data files for the 130-family),
+                     but "App font:"/"Base text size:" below use the exact
+                     same hand-tuned Width="130" the other three tabs did, so
+                     it gets the same treatment for consistency — leaving it
+                     fixed while its siblings became Auto would just move the
+                     inconsistency instead of fixing it. -->
+                <StackPanel Margin="16,8" Grid.IsSharedSizeScope="True">
                     <TextBlock Text="Colors" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
                     <!-- WrapPanel, not the StackPanel this row used to be:
                          with 7 registry schemes (was 2) the row is wider than
@@ -1125,7 +1196,7 @@
                                 </Grid.ColumnDefinitions>
                                 <Border CornerRadius="8,0,0,8" Background="{DynamicResource Light.WindowBg}"
                                         BorderBrush="{DynamicResource Light.Border}" BorderThickness="1,1,0,1">
-                                    <StackPanel Margin="9,9,5,9">
+                                    <StackPanel Margin="10,10,4,10">
                                         <Border Height="16" CornerRadius="4" Background="{DynamicResource Light.Surface}"
                                                 BorderBrush="{DynamicResource Light.Border}" BorderThickness="1" />
                                         <Rectangle Height="4" RadiusX="2" RadiusY="2" Fill="{DynamicResource Light.SubtleText}"
@@ -1137,7 +1208,7 @@
                                 </Border>
                                 <Border Grid.Column="1" CornerRadius="0,8,8,0" Background="{DynamicResource Dark.WindowBg}"
                                         BorderBrush="{DynamicResource Dark.Border}" BorderThickness="0,1,1,1">
-                                    <StackPanel Margin="5,9,9,9">
+                                    <StackPanel Margin="4,10,10,10">
                                         <Border Height="16" CornerRadius="4" Background="{DynamicResource Dark.Surface}"
                                                 BorderBrush="{DynamicResource Dark.Border}" BorderThickness="1" />
                                         <Rectangle Height="4" RadiusX="2" RadiusY="2" Fill="{DynamicResource Dark.SubtleText}"
@@ -1198,7 +1269,7 @@
                     <TextBlock Text="Text" Style="{StaticResource SectionText}" Margin="0,16,0,10" />
                     <Grid Style="{StaticResource FieldRow}">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="130" />
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                             <ColumnDefinition Width="220" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="App font:" Style="{StaticResource FieldLabel}" />
@@ -1213,7 +1284,7 @@
                     </Grid>
                     <Grid Style="{StaticResource FieldRow}">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="130" />
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                             <ColumnDefinition Width="60" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -1323,66 +1394,88 @@
             <!-- ============================================== Data files -->
             <TabItem Header="Da_ta files" AutomationProperties.Name="Data files">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="16,8">
+                    <!-- IsSharedSizeScope: see the General tab's identical
+                         comment above — same per-tab LabelCol pattern. -->
+                    <StackPanel Margin="16,8" Grid.IsSharedSizeScope="True">
                         <TextBlock Text="Data files" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
                         <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap" Margin="0,0,0,8"
                                    Text="Changing a path re-points the app at that file — it does not move the current contents. A missing file is created on save from the current list." />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <TextBlock Text="Destinations:" Style="{StaticResource FieldLabel}" />
                             <TextBox Grid.Column="1" Text="{Binding DestinationsFile, UpdateSourceTrigger=PropertyChanged}" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseDestinationsFileCommand}" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DestinationsFileNote}"
+                                       Tag="{Binding DestinationsFileNoteNeedsAttention}"
+                                       Style="{StaticResource NoteText}" />
                         </Grid>
-                        <TextBlock Text="{Binding DestinationsFileNote}" Tag="{Binding DestinationsFileNoteNeedsAttention}"
-                                   Style="{StaticResource NoteText}" />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <TextBlock Text="Monitored folders:" Style="{StaticResource FieldLabel}" />
                             <TextBox Grid.Column="1" Text="{Binding MonitoredFoldersFile, UpdateSourceTrigger=PropertyChanged}" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseMonitoredFoldersFileCommand}" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding MonitoredFoldersFileNote}"
+                                       Tag="{Binding MonitoredFoldersFileNoteNeedsAttention}"
+                                       Style="{StaticResource NoteText}" />
                         </Grid>
-                        <TextBlock Text="{Binding MonitoredFoldersFileNote}" Tag="{Binding MonitoredFoldersFileNoteNeedsAttention}"
-                                   Style="{StaticResource NoteText}" />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <TextBlock Text="Alerts:" Style="{StaticResource FieldLabel}" />
                             <TextBox Grid.Column="1" Text="{Binding AlertsFile, UpdateSourceTrigger=PropertyChanged}" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseAlertsFileCommand}" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AlertsFileNote}"
+                                       Tag="{Binding AlertsFileNoteNeedsAttention}"
+                                       Style="{StaticResource NoteText}" />
                         </Grid>
-                        <TextBlock Text="{Binding AlertsFileNote}" Tag="{Binding AlertsFileNoteNeedsAttention}"
-                                   Style="{StaticResource NoteText}" />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <TextBlock Text="Box labels:" Style="{StaticResource FieldLabel}" />
                             <TextBox Grid.Column="1" Text="{Binding BoxLabelsFile, UpdateSourceTrigger=PropertyChanged}" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseBoxLabelsFileCommand}" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding BoxLabelsFileNote}"
+                                       Tag="{Binding BoxLabelsFileNoteNeedsAttention}"
+                                       Style="{StaticResource NoteText}" />
                         </Grid>
-                        <TextBlock Text="{Binding BoxLabelsFileNote}" Tag="{Binding BoxLabelsFileNoteNeedsAttention}"
-                                   Style="{StaticResource NoteText}" />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

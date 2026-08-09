@@ -97,7 +97,10 @@
                                  color, so one style covers every route color.
                                  Margin brings the rule flush to the button's
                                  inner border edge (Padding.Left=12 from
-                                 Styles.xaml) instead of floating ~13px in. -->
+                                 Styles.xaml) instead of floating ~13px in.
+                                 Negative margin, not a spacing-rhythm value —
+                                 Phase-3 layout work owns this; left as-is by
+                                 the spacing-rhythm audit (B1). -->
                             <Rectangle Width="2" HorizontalAlignment="Left"
                                        VerticalAlignment="Stretch" Margin="-12,0,0,0"
                                        RadiusX="1" RadiusY="1"

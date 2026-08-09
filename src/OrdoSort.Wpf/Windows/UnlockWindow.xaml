@@ -24,7 +24,13 @@
             <Button Content="Close" Width="96" IsCancel="True" />
         </StackPanel>
 
-        <Grid>
+        <!-- IsSharedSizeScope: only one FieldRow lives in this window today
+             (Password:, below), but it follows the LabelMakerWindow.xaml
+             SharedSizeGroup="LabelCol" pattern anyway (spacing-rhythm audit
+             B2) so the label sizes to its content instead of a fixed width,
+             and so any FieldRow added here later joins the same scope for
+             free. -->
+        <Grid Grid.IsSharedSizeScope="True">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -171,7 +177,7 @@
 
             <Grid Grid.Row="3" Style="{StaticResource FieldRow}" Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                     <ColumnDefinition Width="220" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />

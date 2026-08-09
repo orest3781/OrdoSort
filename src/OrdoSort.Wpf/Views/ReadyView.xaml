@@ -82,7 +82,7 @@
                 <!-- BodySmallText size — Icon style already sets FontFamily;
                      converting would drop it. -->
                 <TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" FontSize="12"
-                           Foreground="{DynamicResource Theme.Success}" Margin="0,0,7,0" />
+                           Foreground="{DynamicResource Theme.Success}" Margin="0,0,6,0" />
                 <TextBlock Text="All monitored folders are quiet"
                            Style="{StaticResource SubtleText}" />
             </StackPanel>
@@ -138,6 +138,10 @@
                         </Style>
                     </TextBlock.Style>
                 </TextBlock>
+                <!-- Negative margin, not a spacing-rhythm value — pulls this
+                     caption up under the big count's tight line-height.
+                     Phase-3 layout work owns this; left as-is by the
+                     spacing-rhythm audit (B1). -->
                 <TextBlock Text="{Binding CountCaption}" Style="{StaticResource SubtleText}"
                            HorizontalAlignment="Center" Margin="0,-6,0,0" />
             </StackPanel>
