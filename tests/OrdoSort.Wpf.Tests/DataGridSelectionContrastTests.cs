@@ -1,8 +1,11 @@
+using System.Diagnostics;
 using System.Reflection;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using OrdoSort.Core;
+using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.Theme;
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Windows;
@@ -108,6 +111,72 @@ public class DataGridSelectionContrastTests
         var grid = FindDescendant<DataGrid>(win)
             ?? throw new InvalidOperationException("no DataGrid descendant under HistoryWindow");
         return (win, grid, history, dbPath);
+    }
+
+    /// <summary>TurnaroundViewModel has no direct settable Rows/Preview
+    /// collection like MatchMergeViewModel/BulkRenameViewModel — its
+    /// Documents grid is populated only by actually loading a fixture file
+    /// through AddPaths (SweptTable.Load + TurnaroundTime.ComputeAll), the
+    /// same off-thread DebouncedProbe&lt;SweptTable.Table&gt; shape
+    /// TurnaroundViewModelTests exercises with InlineWorkScheduler/
+    /// probeDelayMs: 0/uiContext: null. That combination still runs the
+    /// probe's completion on a threadpool thread rather than synchronously
+    /// inline (see that class's own doc comment), so — unlike every other
+    /// builder in this file — this one has to poll for the row before
+    /// Show()ing the window, not just Add() it directly. threshold controls
+    /// whether the resulting single row is flagged IsOverThreshold: the
+    /// fixture's fixed TAT (61 days: report upload 2025-03-03, document date
+    /// 2025-01-01) is compared against cfg.TatThresholdDays (1000 = always
+    /// under; 0 = always over) rather than varying the dates, so both
+    /// callers share the exact same rows/columns/text lengths.</summary>
+    private static (TurnaroundWindow win, DataGrid grid, TurnaroundViewModel vm, string dir)
+        BuildTurnaroundWindow(bool overThreshold)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ordo_test_tat_" + Guid.NewGuid());
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "20250303-1144-PECF Report.csv"),
+            "SourceType,FileName\nDRG,20250101-a-long-enough-filename-to-matter.pdf\n");
+        var cfg = new Config { TatThresholdDays = overThreshold ? 0 : 1000 };
+        var vm = new TurnaroundViewModel(cfg, new FakeDialogs(), saveCfg: null,
+            new InlineWorkScheduler(), uiContext: null, probeDelayMs: 0);
+
+        vm.AddPaths(new[] { dir });
+        WaitForTurnaroundLoad(() => vm.Documents.Count == 1, "the TAT fixture row should load");
+
+        var win = new TurnaroundWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        win.Show();
+        win.UpdateLayout();
+        var grid = FindDescendant<DataGrid>(win)
+            ?? throw new InvalidOperationException("no DataGrid descendant under TurnaroundWindow");
+        return (win, grid, vm, dir);
+    }
+
+    /// <summary>Same shape as TurnaroundViewModelTests.WaitFor — the load
+    /// this builder drives is genuinely off-thread even with
+    /// InlineWorkScheduler/probeDelayMs: 0 (DebouncedProbe's own Timer still
+    /// fires on a threadpool thread), so the row has to be polled for rather
+    /// than asserted the instant AddPaths returns. Bounded, not indefinite:
+    /// a stuck load fails the test instead of hanging the run.</summary>
+    private static void WaitForTurnaroundLoad(Func<bool> condition, string because, int timeoutMs = 3000)
+    {
+        var sw = Stopwatch.StartNew();
+        while (!condition())
+        {
+            if (sw.ElapsedMilliseconds > timeoutMs)
+                Assert.Fail($"condition never became true within {timeoutMs}ms: {because}");
+            Thread.Sleep(5);
+        }
+    }
+
+    private static void CleanupTurnaround(Window win, TurnaroundViewModel vm, string dir)
+    {
+        try { win.Close(); } catch { /* best effort */ }
+        vm.Dispose();
+        try { Directory.Delete(dir, true); } catch { /* best effort */ }
     }
 
     /// <summary>Built with a "suggested" current item so the code-built "Why"
@@ -319,6 +388,129 @@ public class DataGridSelectionContrastTests
         finally { win.Close(); }
     });
 
+    /// <summary>The Documents grid — built via <see cref="BuildTurnaroundWindow"/>
+    /// with a row that is NOT over threshold, so the generic assertions'
+    /// background assumptions (Theme.Accent selected / Theme.Surface
+    /// unselected — see AssertEverySelectedColumnClearsContrast's and
+    /// AssertEveryUnselectedColumnClearsContrast's own doc comments) hold
+    /// exactly as they do for the other four windows. The IsOverThreshold
+    /// DataTrigger's OWN combination — Theme.Warning row background,
+    /// Theme.WarningText foreground, and what selection does to both — is a
+    /// different composite than "Surface" and gets its own dedicated tests
+    /// below (TurnaroundOverThresholdRow*), the same split MatchMerge's Note
+    /// and BulkRename's New name use between "every column, generically" and
+    /// "this column's own extra trigger, specifically".</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void TurnaroundAllColumnsSelectedClearContrast(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+        var (win, grid, vm, dir) = BuildTurnaroundWindow(overThreshold: false);
+        try { AssertEverySelectedColumnClearsContrast(grid, p, "TurnaroundWindow"); }
+        finally { CleanupTurnaround(win, vm, dir); }
+    });
+
+    [Theory, MemberData(nameof(Palettes))]
+    public void TurnaroundAllColumnsUnselectedClearContrast(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+        var (win, grid, vm, dir) = BuildTurnaroundWindow(overThreshold: false);
+        try { AssertEveryUnselectedColumnClearsContrast(grid, p, "TurnaroundWindow"); }
+        finally { CleanupTurnaround(win, vm, dir); }
+    });
+
+    // --------------------------------------- Turnaround's own extra trigger
+
+    /// <summary>IsOverThreshold's own composite, unselected: the ROW's
+    /// Background goes to Theme.Warning (DataGrid.RowStyle) and the File
+    /// name column's own DataTrigger flips its TextBlock's Foreground to
+    /// Theme.WarningText alongside it — TurnaroundWindow.xaml's own comment
+    /// on why every text column needs this pairing, not just Theme.Text on
+    /// Theme.Warning (which was never validated to clear 4.5:1). Then
+    /// selecting the row proves the "let selection win" trailing DataTrigger
+    /// still overrides it, the same contract every other status-bearing
+    /// column in the app holds to (BulkRenameNewNameUnchangedRowIsSubtleUnlessSelected
+    /// is the closest sibling: one unselected assertion, one selected
+    /// assertion, same test).</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void TurnaroundOverThresholdRowIsWarningColoredUnlessSelected(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+        var (win, grid, vm, dir) = BuildTurnaroundWindow(overThreshold: true);
+        try
+        {
+            // sanity: the fixture really did land an over-threshold row, or
+            // the rest of this test would silently pass against a row that
+            // never exercised the trigger at all
+            Assert.True(vm.Documents[0].IsOverThreshold);
+
+            var row = grid.ItemContainerGenerator.ContainerFromIndex(0) as DataGridRow
+                ?? throw new InvalidOperationException("row 0 never realized a container");
+            row.ApplyTemplate();
+            row.UpdateLayout();
+
+            var rowBg = ToRgb((SolidColorBrush)row.Background);
+            Assert.Equal(p.Warning, rowBg);
+
+            var (text, _) = ResolveCellOn(row, grid, "File name");
+            Assert.Equal(p.WarningText, ToRgb(text.Foreground));
+            var unselectedRatio = ThemePalette.ContrastRatio(ToRgb(text.Foreground), rowBg);
+            Assert.True(unselectedRatio >= 4.5,
+                $"Turnaround File name over-threshold, unselected ({(dark ? "dark" : "light")}): {ToRgb(text.Foreground)} on {rowBg} = {unselectedRatio:F2}");
+
+            grid.SelectedIndex = 0;
+            grid.UpdateLayout();
+            Assert.Equal(p.AccentText, ToRgb(text.Foreground));
+            var selectedRatio = ThemePalette.ContrastRatio(ToRgb(text.Foreground), p.Accent);
+            Assert.True(selectedRatio >= 4.5,
+                $"Turnaround File name over-threshold, selected ({(dark ? "dark" : "light")}): {ToRgb(text.Foreground)} on {p.Accent} = {selectedRatio:F2}");
+        }
+        finally { CleanupTurnaround(win, vm, dir); }
+    });
+
+    /// <summary>Same "selected cell background is opaque and wins over the
+    /// row's own tint" proof as MatchMergeSelectedNoteStaysAccentTextEvenWhileRowIsHovered
+    /// — here for Theme.Warning instead of Theme.RowHover, since a warning
+    /// row is exactly the case someone is most likely to have their mouse
+    /// over (it's the row the whole tab exists to call attention to) at the
+    /// moment they click to select it.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void TurnaroundOverThresholdRowStaysAccentTextEvenWhileHovered(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+        var (win, grid, vm, dir) = BuildTurnaroundWindow(overThreshold: true);
+        try
+        {
+            var row = grid.ItemContainerGenerator.ContainerFromIndex(0) as DataGridRow
+                ?? throw new InvalidOperationException("row 0 never realized a container");
+            row.ApplyTemplate();
+            row.UpdateLayout();
+            ForceMouseOver(row, true);
+            grid.SelectedIndex = 0;
+            row.UpdateLayout();
+            grid.UpdateLayout();
+
+            var (text, cell) = ResolveCellOn(row, grid, "File name");
+
+            // the selected CELL's own opaque background, not the hovered
+            // ROW's Warning tint underneath — this is the composite the
+            // text actually sits on (a DataGridCell is a visual child of
+            // its row, rendered after it)
+            var cellBg = ToRgb((SolidColorBrush)cell.Background);
+            Assert.Equal(p.Accent, cellBg);
+
+            var fg = ToRgb(text.Foreground);
+            Assert.Equal(p.AccentText, fg);
+            var ratio = ThemePalette.ContrastRatio(fg, cellBg);
+            Assert.True(ratio >= 4.5,
+                $"Turnaround File name over-threshold selected+hovered ({(dark ? "dark" : "light")}): {fg} on {cellBg} = {ratio:F2}");
+        }
+        finally { CleanupTurnaround(win, vm, dir); }
+    });
+
     // --------------------------------------------- hovered-and-selected too
 
     /// <summary>The task's own instruction: "hovered-and-selected must be
@@ -473,12 +665,23 @@ public class DataGridSelectionContrastTests
 
     private static (TextBlock text, DataGridCell cell) ResolveCell(DataGrid grid, string columnHeader)
     {
-        var column = grid.Columns.FirstOrDefault(c => (c.Header as string) == columnHeader)
-            ?? throw new InvalidOperationException($"no '{columnHeader}' column found");
         var row = grid.ItemContainerGenerator.ContainerFromIndex(0) as DataGridRow
             ?? throw new InvalidOperationException($"{columnHeader}: row 0 never realized a container");
         row.ApplyTemplate();
         row.UpdateLayout();
+        return ResolveCellOn(row, grid, columnHeader);
+    }
+
+    /// <summary>Same resolution as <see cref="ResolveCell"/>, but against an
+    /// ALREADY-realized row a caller needs to keep its own hold on — the
+    /// over-threshold hover tests force IsMouseOver on a specific
+    /// DataGridRow instance before selecting it, and re-deriving "row 0"
+    /// from the grid afterward risks resolving a different container than
+    /// the one that was actually hovered.</summary>
+    private static (TextBlock text, DataGridCell cell) ResolveCellOn(DataGridRow row, DataGrid grid, string columnHeader)
+    {
+        var column = grid.Columns.FirstOrDefault(c => (c.Header as string) == columnHeader)
+            ?? throw new InvalidOperationException($"no '{columnHeader}' column found");
         var cell = FindAllDescendants<DataGridCell>(row).FirstOrDefault(c => c.Column == column)
             ?? throw new InvalidOperationException($"{columnHeader}: cell never realized");
         cell.ApplyTemplate();
