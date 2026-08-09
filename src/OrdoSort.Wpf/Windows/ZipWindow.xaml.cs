@@ -46,4 +46,14 @@ public partial class ZipWindow : Window
     {
         if (e.Data.GetData(DataFormats.FileDrop) is string[] paths) _ = _vm.AddPaths(paths);
     }
+
+    // Deliberately no OnClosed/Cancel here, unlike ZipMergeWindow/UnzipWindow/
+    // PageCountsWindow: those tools run a per-row BATCH (one zip after
+    // another) with something genuinely left to stop between items, so their
+    // view models expose Cancel() for the window to call on close. ZipViewModel
+    // has no such loop — CreateAsync is a single one-shot zip-the-whole-list
+    // operation with nothing "still running invisibly" to cancel once it has
+    // started, and ZipViewModel exposes no Cancel() to call. A Status update
+    // landing after the window is already closed is harmless (nothing is
+    // listening), same as any other command whose window closed mid-flight.
 }

@@ -123,6 +123,16 @@ public class PageCountsViewModelTests : IDisposable
     }
 
     [Fact]
+    public void OutputTextIsEmptyWithNoRows()
+    {
+        // Not even a trailing "Total\t0" — the window's own empty guards
+        // (OnCopy's zero-length check, an empty Save) must actually fire
+        // on a fresh/cleared VM instead of acting on a junk blob.
+        var vm = MakeVm(new FakeDialogs());
+        Assert.Equal("", vm.OutputText);
+    }
+
+    [Fact]
     public async Task NonPdfDropAddsANoteNotARow()
     {
         var txt = Touch("notes.txt");

@@ -64,7 +64,6 @@ public sealed class ZipRow : ObservableObject
 /// their own batches.</summary>
 public sealed class ZipMergeViewModel : ObservableObject
 {
-    private readonly IDialogService _dialogs;
     private readonly IWorkScheduler _scheduler;
     private readonly SynchronizationContext? _uiContext;
     private readonly Func<string, ZipMerge.MergeResult> _merger;
@@ -81,7 +80,11 @@ public sealed class ZipMergeViewModel : ObservableObject
     public ZipMergeViewModel(IDialogService dialogs, IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null, Func<string, ZipMerge.MergeResult>? merger = null)
     {
-        _dialogs = dialogs;
+        // dialogs is accepted for ctor-shape consistency with sibling batch
+        // tools (PageCountsViewModel, ZipViewModel) and because a future
+        // "merge to…" dialog is plausible — but nothing needs it yet, so
+        // there is no field to keep it in.
+        _ = dialogs;
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _uiContext = uiContext;
         _merger = merger ?? ZipMerge.MergeZip;

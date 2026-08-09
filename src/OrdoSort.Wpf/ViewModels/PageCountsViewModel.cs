@@ -75,10 +75,6 @@ public sealed class PageCountsViewModel : ObservableObject
         _uiContext = uiContext;
         _counter = counter ?? PageCounts.Count;
 
-        BrowseFolderCommand = new RelayCommand(() =>
-        {
-            if (_dialogs.BrowseFolder(null) is { } folder) _ = AddFilesAsync(new[] { folder });
-        });
         SaveCommand = new RelayCommand(Save);
         ClearCommand = new RelayCommand(() =>
         {
@@ -127,11 +123,16 @@ public sealed class PageCountsViewModel : ObservableObject
 
     /// <summary>Pure — no backing field, like FilenameListViewModel.OutputText.
     /// Per row: "FileName\tPages", or "FileName\t&lt;note&gt;" for a row that
-    /// couldn't be counted; then a blank line; then "Total\t&lt;sum&gt;".</summary>
+    /// couldn't be counted; then a blank line; then "Total\t&lt;sum&gt;". Empty
+    /// with zero rows — not even the trailing "Total\t0" — so PageCountsWindow's
+    /// OnCopy zero-length guard actually fires instead of copying a junk
+    /// "Total\t0" blob, and Save writes an empty file rather than a
+    /// Total-only one.</summary>
     public string OutputText
     {
         get
         {
+            if (Rows.Count == 0) return "";
             var lines = new List<string>();
             var total = 0;
             foreach (var row in Rows)
@@ -152,7 +153,6 @@ public sealed class PageCountsViewModel : ObservableObject
         }
     }
 
-    public RelayCommand BrowseFolderCommand { get; }
     public RelayCommand SaveCommand { get; }
     public RelayCommand ClearCommand { get; }
 

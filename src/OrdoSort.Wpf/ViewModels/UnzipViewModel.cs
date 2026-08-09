@@ -53,7 +53,6 @@ public sealed class UnzipRow : ObservableObject
 /// once buys nothing but contention), same cancel-between-zips discipline.</summary>
 public sealed class UnzipViewModel : ObservableObject
 {
-    private readonly IDialogService _dialogs;
     private readonly IWorkScheduler _scheduler;
     private readonly SynchronizationContext? _uiContext;
     private readonly Func<string, Zipper.UnzipResult> _extractor;
@@ -67,7 +66,11 @@ public sealed class UnzipViewModel : ObservableObject
     public UnzipViewModel(IDialogService dialogs, IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null, Func<string, Zipper.UnzipResult>? extractor = null)
     {
-        _dialogs = dialogs;
+        // dialogs is accepted for ctor-shape consistency with sibling batch
+        // tools (PageCountsViewModel, ZipViewModel) and because a future
+        // "extract to…" dialog is plausible — but nothing needs it yet, so
+        // there is no field to keep it in.
+        _ = dialogs;
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _uiContext = uiContext;
         _extractor = extractor ?? Zipper.Extract;
