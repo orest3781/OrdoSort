@@ -11,7 +11,7 @@
             <Button DockPanel.Dock="Right" Command="{Binding SavePdfCommand}"
                     Width="110" Margin="0,0,8,0" AutomationProperties.Name="Save PDF">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Style="{StaticResource Icon}" Text="&#xE74E;" Margin="0,0,7,0" />
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE74E;" Margin="0,0,8,0" />
                     <TextBlock Text="Save PDF…" />
                 </StackPanel>
             </Button>
@@ -21,7 +21,7 @@
                     Style="{StaticResource PrimaryButton}" Width="110" Margin="0,0,8,0"
                     IsDefault="True" AutomationProperties.Name="Print">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Style="{StaticResource Icon}" Text="&#xE749;" Margin="0,0,7,0"
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE749;" Margin="0,0,8,0"
                                Foreground="{DynamicResource Theme.AccentText}" />
                     <TextBlock Text="Print…" Foreground="{DynamicResource Theme.AccentText}" />
                 </StackPanel>
@@ -107,9 +107,8 @@
                             <Binding Path="Clients.Count" Converter="{StaticResource ZeroToVis}" />
                         </Border.Visibility>
                         <StackPanel>
-                            <Image Height="76" Margin="0,0,0,8"
-                                   RenderOptions.BitmapScalingMode="HighQuality"
-                                   Source="pack://application:,,,/OrdoSort;component/Assets/labels-empty.png" />
+                            <ContentControl Template="{StaticResource Illustration.LabelsEmpty}"
+                                             Height="76" Margin="0,0,0,8" />
                             <TextBlock Text="No clients yet — press Add."
                                        Style="{StaticResource SubtleText}"
                                        HorizontalAlignment="Center" />

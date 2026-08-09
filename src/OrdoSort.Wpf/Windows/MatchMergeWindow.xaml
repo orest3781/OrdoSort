@@ -12,17 +12,39 @@
                 <Button Command="{Binding MergeCommand}"
                         Style="{StaticResource PrimaryButton}" MinWidth="120" Margin="0,0,8,0"
                         AutomationProperties.Name="{Binding MergeButtonText}">
-                    <TextBlock Text="{Binding MergeButtonText}" Style="{StaticResource PrimaryButtonLabel}" />
+                    <StackPanel Orientation="Horizontal">
+                        <!-- E8C8 (copy/merge), distinct from this tool's own
+                             Tools menu glyph (E721, "_Match and merge…") so
+                             the in-window action and the tool-opening menu
+                             entry don't share one glyph. -->
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE8C8;" Margin="0,0,8,0"
+                                   Foreground="{DynamicResource Theme.AccentText}" />
+                        <TextBlock Text="{Binding MergeButtonText}" Style="{StaticResource PrimaryButtonLabel}" />
+                    </StackPanel>
                 </Button>
-                <Button Content="{Binding ReviewButtonText}" Click="OnReview"
-                        IsEnabled="{Binding CanReview}" Margin="0,0,8,0" />
+                <Button Click="OnReview" IsEnabled="{Binding CanReview}" Margin="0,0,8,0"
+                        AutomationProperties.Name="{Binding ReviewButtonText}">
+                    <StackPanel Orientation="Horizontal">
+                        <!-- E8FD, not E721 — E721 is already this tool's own
+                             Tools menu glyph (opening the whole window); this
+                             is a different action inside it. -->
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE8FD;" Margin="0,0,8,0" />
+                        <TextBlock Text="{Binding ReviewButtonText}" />
+                    </StackPanel>
+                </Button>
                 <Button Content="Undo last merge" Command="{Binding UndoCommand}" Margin="0,0,10,0" />
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
                            Style="{StaticResource StatusText}" MaxWidth="300" />
             </StackPanel>
         </DockPanel>
 
-        <Grid>
+        <!-- IsSharedSizeScope: only one FieldRow lives in this window today
+             (Roster:, below), but it follows the LabelMakerWindow.xaml
+             SharedSizeGroup="LabelCol" pattern anyway (spacing-rhythm audit
+             B2) so the label sizes to its content instead of a fixed width,
+             and so any FieldRow added here later joins the same scope for
+             free. -->
+        <Grid Grid.IsSharedSizeScope="True">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -33,7 +55,7 @@
 
             <Grid Style="{StaticResource FieldRow}" Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
@@ -87,7 +109,7 @@
                                 BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
                                 CornerRadius="4" Padding="10">
                             <StackPanel>
-                                <TextBlock Text="Show in Review matches:" FontWeight="SemiBold"
+                                <TextBlock Text="Show in Review matches:" Style="{StaticResource SectionText}"
                                            Margin="0,0,0,6" />
                                 <ItemsControl ItemsSource="{Binding ColumnPicks}">
                                     <ItemsControl.ItemTemplate>
@@ -113,34 +135,34 @@
                 <DataGrid x:Name="MatchGrid" ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
                           IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
                           SelectionMode="Extended">
+                    <!-- Foreground DataTriggers used to live here, on DataGridRow,
+                         keyed on Status the same way BulkRenameWindow's
+                         NeedsName trigger colours a row's Background below.
+                         Measured empirically (status-colour-vocabulary plan,
+                         2026-08-08, Task 2 Step 1 — an off-screen render of
+                         this window with a row per Status, reading the Note
+                         cell's actual TextBlock.Foreground, not reasoned
+                         about): for every one of ambiguous/suggested/already/
+                         no_match/no_name the resolved brush was Theme.Text —
+                         never the amber/subtle this style set. Styles.xaml's
+                         DataGridCell style (its own Style.Triggers block)
+                         always sets the CELL's own Foreground, and a Style
+                         Setter always outranks a value the cell would
+                         otherwise INHERIT from its row — so this trigger set
+                         painted nothing, ever, since the day it shipped. It
+                         is fully removed below; the working replacement is
+                         each column's own ElementStyle (see NoteColumn),
+                         same technique as BulkRenameWindow.xaml's "New name"
+                         column and TriageWindow.xaml.cs's "Why" column. -->
+                    <!-- Local RowStyle, BasedOn the shared GridRow style
+                         (Theme/Styles.xaml) — GridRow carries the
+                         Background="Transparent" Setter and the IsMouseOver→
+                         Theme.RowHover trigger this window used to declare
+                         itself; only the genuinely local ToolTip=Source
+                         Setter is left here. -->
                     <DataGrid.RowStyle>
-                        <Style TargetType="DataGridRow">
-                            <Setter Property="Background" Value="Transparent" />
+                        <Style TargetType="DataGridRow" BasedOn="{StaticResource GridRow}">
                             <Setter Property="ToolTip" Value="{Binding Source}" />
-                            <Style.Triggers>
-                                <!-- ready rows read normal; ambiguous amber;
-                                     the rest recede -->
-                                <DataTrigger Binding="{Binding Status}" Value="ambiguous">
-                                    <Setter Property="Foreground"
-                                            Value="{DynamicResource Theme.StatusAmber}" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding Status}" Value="suggested">
-                                    <Setter Property="Foreground"
-                                            Value="{DynamicResource Theme.StatusAmber}" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding Status}" Value="already">
-                                    <Setter Property="Foreground"
-                                            Value="{DynamicResource Theme.SubtleText}" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding Status}" Value="no_match">
-                                    <Setter Property="Foreground"
-                                            Value="{DynamicResource Theme.SubtleText}" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding Status}" Value="no_name">
-                                    <Setter Property="Foreground"
-                                            Value="{DynamicResource Theme.SubtleText}" />
-                                </DataTrigger>
-                            </Style.Triggers>
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
@@ -158,8 +180,17 @@
                              let someone verify, so it gets the room instead. -->
                         <DataGridTextColumn x:Name="FileColumn" Header="File" Binding="{Binding File}"
                                             Width="Auto">
+                            <!-- BasedOn GridCellTextSelectionAware (Theme/
+                                 Styles.xaml), not plain GridCellText or the
+                                 bare {x:Type TextBlock} style: this column has
+                                 no status trigger of its own, so the shared
+                                 style's default Foreground + trailing "let
+                                 selection win" DataTrigger is the whole fix —
+                                 see GridCellTextSelectionAware's own doc
+                                 comment for the bug this closes (measured
+                                 1.10:1 dark before it). -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding File}" />
                                 </Style>
@@ -174,8 +205,9 @@
                              need. -->
                         <DataGridTextColumn Header="Becomes" Binding="{Binding Becomes}"
                                             Width="*" MinWidth="120">
+                            <!-- BasedOn GridCellTextSelectionAware — same reasoning as File above. -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding Becomes}" />
                                 </Style>
@@ -191,10 +223,78 @@
                              one. -->
                         <DataGridTextColumn x:Name="NoteColumn" Header="Note" Binding="{Binding Note}"
                                             Width="Auto">
+                            <!-- BasedOn plain GridCellText, NOT
+                                 GridCellTextSelectionAware, for the shared
+                                 Theme.Text default — this column's own status
+                                 triggers below need to win over selection LAST
+                                 (its own trailing DataTrigger below), and
+                                 GridCellTextSelectionAware's copy of that same
+                                 trigger would sit BELOW these status triggers
+                                 in the BasedOn chain and always lose to them,
+                                 see GridCellTextSelectionAware's own doc
+                                 comment in Theme/Styles.xaml. -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding Note}" />
+                                    <Style.Triggers>
+                                        <!-- status-colour-vocabulary plan, Task 2 Step 2:
+                                             the working replacement for the dead RowStyle
+                                             triggers above — an ElementStyle Setter on
+                                             THIS TextBlock is what the DataGridCell style
+                                             can't outrank, because there's no inheritance
+                                             gap left to win. ambiguous/suggested/no_roster
+                                             need a person's attention; already/no_match/
+                                             no_name are facts, not problems; merge has no
+                                             note today (Refresh's switch leaves it ""), so
+                                             it gets no trigger here either. -->
+                                        <DataTrigger Binding="{Binding Status}" Value="ambiguous">
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.StatusAmber}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Status}" Value="suggested">
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.StatusAmber}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Status}" Value="no_roster">
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.StatusAmber}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Status}" Value="already">
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.SubtleText}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Status}" Value="no_match">
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.SubtleText}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Status}" Value="no_name">
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.SubtleText}" />
+                                        </DataTrigger>
+                                        <!-- Let selection win (same trap as Task 1's Unlock file
+                                             list, same fix): measured directly (status-colour-
+                                             vocabulary plan Task 2, off-screen, selected ambiguous
+                                             row) — without this override the amber/subtle Setters
+                                             above stay in force even once the DataGridCell style
+                                             flips its OWN Foreground to Theme.AccentText for
+                                             IsSelected, because a Style trigger Setter on THIS
+                                             TextBlock always outranks whatever the cell would
+                                             otherwise hand it by inheritance (the very trap that
+                                             made the old RowStyle triggers dead, now working
+                                             correctly against us instead of for us). Measured:
+                                             Theme.StatusAmber light on Theme.Accent light = 2.26:1,
+                                             well under the 4.5:1 floor. Declared last so it
+                                             overrides every status trigger above once selected. -->
+                                        <DataTrigger Value="True">
+                                            <DataTrigger.Binding>
+                                                <Binding Path="IsSelected"
+                                                         RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                                            </DataTrigger.Binding>
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.AccentText}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>

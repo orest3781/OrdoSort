@@ -32,25 +32,23 @@ public class CaptionSizingTests
         return (block.FontSize, ((SolidColorBrush)block.Foreground).Color);
     }
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void CaptionTextIsSmallAndDeEmphasised(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void CaptionTextIsSmallAndDeEmphasised(string schemeKey) => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark);
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
         var (size, fore) = Resolve("CaptionText");
         Assert.Equal(11d, size);
         Assert.Equal(Color.FromRgb(p.SubtleText.R, p.SubtleText.G, p.SubtleText.B), fore);
     });
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void CaptionTextOnSurfaceIsSmallAtFullTextWeight(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void CaptionTextOnSurfaceIsSmallAtFullTextWeight(string schemeKey) => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark);
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
         var (size, fore) = Resolve("CaptionTextOnSurface");
         Assert.Equal(11d, size);
         // the whole point of the second style: NOT SubtleText

@@ -2,13 +2,50 @@
 :root {
   --bg: #F7F8F9; --surface: #FFFFFF; --text: #171A1F; --subtle: #545A63;
   --border: #BAC0C8; --accent: #2D323A; --accent-text: #FFFFFF; --bronze: #8C6D3F;
+  --tile: #E4E6E9;
+  --radius: 4px;
+  --ease: cubic-bezier(.2,.7,.3,1);
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #1A1C1F; --surface: #26292D; --text: #E9EBEE; --subtle: #A8ADB4;
     --border: #4C525A; --accent: #CDD2DA; --accent-text: #171A1F; --bronze: #C9A96A;
+    --tile: #363A3F;
   }
+}
+
+/* named color schemes — same 8 tokens + --tile, chosen via the switcher.
+   Plain attribute selectors (not `:root[data-theme]`) so the same rules also
+   scope the chip swatches below; placed after the dark media block above so
+   an explicit scheme always wins the cascade regardless of OS preference. */
+[data-theme="paper"] {
+  --bg: #F7F8F9; --surface: #FFFFFF; --text: #171A1F; --subtle: #545A63;
+  --border: #BAC0C8; --accent: #2D323A; --accent-text: #FFFFFF; --bronze: #8C6D3F; --tile: #E4E6E9;
+}
+[data-theme="graphite"] {
+  --bg: #1A1C1F; --surface: #26292D; --text: #E9EBEE; --subtle: #A8ADB4;
+  --border: #4C525A; --accent: #CDD2DA; --accent-text: #171A1F; --bronze: #C9A96A; --tile: #363A3F;
+}
+[data-theme="ledger"] {
+  --bg: #151A16; --surface: #1F2721; --text: #E7ECE6; --subtle: #A6AFA6;
+  --border: #4A544B; --accent: #CBD6C4; --accent-text: #151A16; --bronze: #D2B25E; --tile: #303A32;
+}
+[data-theme="microfilm"] {
+  --bg: #151922; --surface: #1E2430; --text: #E6EAF2; --subtle: #A3ABBA;
+  --border: #495163; --accent: #C4CEE0; --accent-text: #151922; --bronze: #6FAEC6; --tile: #2E3646;
+}
+[data-theme="manila"] {
+  --bg: #F4EEE1; --surface: #FBF7EC; --text: #2A2418; --subtle: #5E5644;
+  --border: #BFB6A0; --accent: #1F3A5F; --accent-text: #FFFFFF; --bronze: #7A5E30; --tile: #E9E0CC;
+}
+[data-theme="carbon"] {
+  --bg: #0F1013; --surface: #1A1B1F; --text: #F2F2F5; --subtle: #B0B1BA;
+  --border: #464852; --accent: #ADA0D6; --accent-text: #0F1013; --bronze: #8E82B8; --tile: #282930;
+}
+[data-theme="blueprint"] {
+  --bg: #E9EFF6; --surface: #F7FAFD; --text: #182740; --subtle: #49586E;
+  --border: #AAB8C8; --accent: #23538F; --accent-text: #FFFFFF; --bronze: #2D65A0; --tile: #DBE5F0;
 }
 
 * { box-sizing: border-box; margin: 0; }
@@ -23,9 +60,10 @@ body {
 .container { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
 img { max-width: 100%; height: auto; display: block; }
 a { color: var(--bronze); }
-a:focus-visible, .btn:focus-visible {
-  outline: 2px solid var(--bronze); outline-offset: 2px; border-radius: 4px;
+a:focus-visible, .btn:focus-visible, .chip:focus-visible {
+  outline: 2px solid var(--bronze); outline-offset: 2px; border-radius: var(--radius);
 }
+section[id] { scroll-margin-top: 72px; }
 
 /* header */
 .site-header {
@@ -39,7 +77,7 @@ a:focus-visible, .btn:focus-visible {
 .wordmark { font-weight: 700; font-size: 1.1rem; letter-spacing: .02em; }
 .m-steel { fill: var(--accent); } .m-bronze { fill: var(--bronze); }
 .site-nav { display: flex; gap: 22px; }
-.site-nav a { color: var(--subtle); text-decoration: none; font-size: .95rem; }
+.site-nav a { color: var(--subtle); text-decoration: none; font-size: .95rem; position: relative; }
 .site-nav a:hover { color: var(--bronze); }
 @media (max-width: 520px) {
   .header-row { flex-wrap: wrap; height: auto; padding: 8px 20px; row-gap: 2px; }
@@ -48,7 +86,7 @@ a:focus-visible, .btn:focus-visible {
 
 /* buttons */
 .btn {
-  display: inline-block; padding: 10px 22px; border-radius: 4px;
+  display: inline-block; padding: 10px 22px; border-radius: var(--radius);
   font-weight: 600; text-decoration: none;
 }
 .btn-primary { background: var(--accent); color: var(--accent-text); }
@@ -64,11 +102,75 @@ a:focus-visible, .btn:focus-visible {
 .cta-row { display: flex; gap: 18px; justify-content: center; align-items: center; margin-top: 28px; flex-wrap: wrap; }
 .cta-secondary { color: var(--bronze); text-decoration: none; font-weight: 600; }
 .cta-secondary:hover { text-decoration: underline; }
-.hero-shot { display: block; margin-top: 48px; }
-.hero-shot img {
-  border: 1px solid var(--border); border-radius: 4px;
-  box-shadow: 0 12px 40px rgb(0 0 0 / .18); margin: 0 auto;
+
+/* hero mockup — a hand-built, token-driven replica of the app's compact dashboard */
+.hero-mock {
+  width: min(470px, 100%); text-align: left;
+  margin: 48px auto 0;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgb(0 0 0 / .18);
+  overflow: hidden;
 }
+.mock-titlebar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+}
+.mock-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bronze); flex-shrink: 0; }
+.mock-title { font-weight: 600; font-size: .9rem; color: var(--subtle); }
+.mock-body { padding: 20px; }
+.mock-group-label {
+  font-size: .78rem; color: var(--subtle); text-transform: uppercase;
+  letter-spacing: .06em; margin-bottom: 10px;
+}
+.mock-tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.mock-tile {
+  display: flex; flex-direction: column; gap: 6px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px; background: var(--tile); color: var(--text);
+}
+.mock-tile-name { font-size: .82rem; opacity: .85; }
+.mock-tile-count { font-size: 1.35rem; font-weight: 700; }
+.mock-tile-invoices { background: #1565c0; color: #fff; border-color: #1565c0; }
+.mock-tile-invoices .mock-tile-name { opacity: .85; }
+.mock-tile-referrals { background: #2e7d32; color: #fff; border-color: #2e7d32; }
+.mock-tile-referrals .mock-tile-name { opacity: .85; }
+.mock-rule { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+.mock-count-block { text-align: center; }
+.mock-count {
+  display: block; font-size: clamp(56px, 10vw, 64px); font-weight: 800;
+  font-variant-numeric: tabular-nums; letter-spacing: -.02em; line-height: 1;
+}
+.mock-caption { display: block; margin-top: 6px; color: var(--subtle); font-size: .9rem; }
+.mock-cta {
+  display: block; margin-top: 20px; padding: 12px; text-align: center;
+  background: var(--accent); color: var(--accent-text);
+  border-radius: var(--radius); font-weight: 600;
+}
+
+/* scheme switcher */
+.scheme-switcher {
+  display: flex; flex-wrap: wrap; justify-content: center;
+  gap: 8px; margin-top: 22px;
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px 6px 6px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); color: var(--text);
+  font: inherit; font-size: .85rem; cursor: pointer;
+}
+.chip:hover { border-color: var(--bronze); }
+.chip[aria-pressed="true"] {
+  border-color: var(--bronze);
+  background: color-mix(in srgb, var(--bronze) 14%, var(--surface));
+}
+.chip-swatch {
+  display: inline-flex; width: 18px; height: 18px; flex-shrink: 0;
+  border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+}
+.chip-bg { flex: 2; background: var(--bg); }
+.chip-accent { flex: 1; background: var(--accent); }
 
 /* sections */
 section { padding: 56px 0; }
@@ -77,7 +179,7 @@ section { padding: 56px 0; }
 /* cards + steps */
 .card {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 4px; padding: 22px;
+  border-radius: var(--radius); padding: 22px;
 }
 .steps { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .steps h3 { margin: 8px 0 6px; font-size: 1.05rem; }
@@ -85,7 +187,7 @@ section { padding: 56px 0; }
 .step-n {
   display: inline-grid; place-items: center; width: 28px; height: 28px;
   background: var(--bronze); color: var(--bg); font-weight: 700;
-  border-radius: 4px; font-size: .95rem;
+  border-radius: var(--radius); font-size: .95rem;
 }
 @media (max-width: 720px) { .steps { grid-template-columns: 1fr; } }
 
@@ -101,12 +203,88 @@ section { padding: 56px 0; }
 /* gallery */
 .gallery-grid { display: grid; gap: 28px; }
 .gallery-grid figure { margin: 0; }
-.shot { border: 1px solid var(--border); border-radius: 4px; margin: 0 auto; }
+.shot { border: 1px solid var(--border); border-radius: var(--radius); margin: 0 auto; }
 .gallery-grid figcaption { text-align: center; color: var(--subtle); font-size: .9rem; margin-top: 10px; }
 @media (min-width: 900px) { .gallery-grid { grid-template-columns: 1fr 1fr; align-items: start; } }
+
+/* gallery theme-forced variants — paired <img>s next to the default <picture>.
+   Default (no force-* class on <html>) keeps the <picture>/media behavior,
+   which is also what a no-JS visitor gets since the class is only ever
+   added by site.js. */
+.shot-light, .shot-dark { display: none; }
+html.force-light .pic-default, html.force-dark .pic-default { display: none; }
+html.force-light .shot-light { display: block; }
+html.force-dark .shot-dark { display: block; }
 
 /* download */
 .download-card { text-align: center; padding: 40px 24px; }
 .download-card h2 { font-size: 1.6rem; }
 .download-card > p { color: var(--subtle); margin: 10px 0 22px; }
 .req { max-width: 520px; margin: 22px auto 0; font-size: .88rem; color: var(--subtle); }
+
+/* ---- motion: token transitions, scroll reveals, micro-interactions ----
+   Everything below is gated behind prefers-reduced-motion: no-preference.
+   Reveal/entrance start-states are additionally gated behind html.js so a
+   visitor with JS blocked (site.js never runs, html.js never gets added)
+   always sees full, un-hidden content. */
+@media (prefers-reduced-motion: no-preference) {
+  /* scheme-switch recolor transition on the major surfaces */
+  html, body, .site-header, .card, .hero-mock, .mock-titlebar, .mock-tile,
+  .mock-cta, .chip, .btn, .step-n, .shot {
+    transition: background-color .3s var(--ease), color .3s var(--ease), border-color .3s var(--ease);
+  }
+
+  /* card hover lift */
+  .card { transition: background-color .3s var(--ease), border-color .15s var(--ease), transform .15s var(--ease); }
+  .card:hover { transform: translateY(-2px); border-color: var(--bronze); }
+
+  /* nav link underline slide-in */
+  .site-nav a::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -4px; height: 2px;
+    background: var(--bronze); transform: scaleX(0); transform-origin: left;
+    transition: transform .15s var(--ease);
+  }
+  .site-nav a:hover::after { transform: scaleX(1); }
+
+  /* brand-mark diamonds: slight per-path stagger on header hover */
+  .mark path { transition: transform .15s var(--ease); transform-box: fill-box; }
+  .site-header:hover .mark path:nth-child(1) { transform: translateY(1px); }
+  .site-header:hover .mark path:nth-child(2) { transform: translateY(-1px); }
+  .site-header:hover .mark path:nth-child(3) { transform: translateY(1px); }
+
+  /* scroll reveals: three how-it-works steps + six feature cards */
+  html.js .steps .card, html.js .feature-grid .card {
+    opacity: 0; transform: translateY(14px);
+    transition: opacity .4s var(--ease), transform .4s var(--ease);
+    transition-delay: var(--d, 0s);
+  }
+  html.js .steps .card.in-view, html.js .feature-grid .card.in-view {
+    opacity: 1; transform: translateY(0);
+  }
+  html.js .steps .card .step-n { transition: transform .3s var(--ease); transition-delay: var(--d, 0s); transform: scale(.6); }
+  html.js .steps .card.in-view .step-n { transform: scale(1); }
+
+  html.js .steps .card:nth-child(1) { --d: 0s; }
+  html.js .steps .card:nth-child(2) { --d: .07s; }
+  html.js .steps .card:nth-child(3) { --d: .14s; }
+
+  html.js .feature-grid .card:nth-child(1) { --d: 0s; }
+  html.js .feature-grid .card:nth-child(2) { --d: .07s; }
+  html.js .feature-grid .card:nth-child(3) { --d: .14s; }
+  html.js .feature-grid .card:nth-child(4) { --d: .21s; }
+  html.js .feature-grid .card:nth-child(5) { --d: .28s; }
+  html.js .feature-grid .card:nth-child(6) { --d: .35s; }
+
+  /* one-time hero-mockup entrance: tiles stagger-fade, count fades last */
+  html.js .hero-mock .mock-tile {
+    opacity: 0; transform: translateY(8px);
+    animation: mockIn .4s var(--ease) forwards;
+  }
+  html.js .hero-mock .mock-tile:nth-child(1) { animation-delay: .1s; }
+  html.js .hero-mock .mock-tile:nth-child(2) { animation-delay: .18s; }
+  html.js .hero-mock .mock-tile:nth-child(3) { animation-delay: .26s; }
+  html.js .hero-mock .mock-tile:nth-child(4) { animation-delay: .34s; }
+  html.js .hero-mock .mock-count-block { opacity: 0; animation: mockIn .4s var(--ease) forwards; animation-delay: .5s; }
+
+  @keyframes mockIn { to { opacity: 1; transform: translateY(0); } }
+}

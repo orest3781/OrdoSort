@@ -290,10 +290,11 @@ public class ContentTemplateSetterTests
     /// a full theme audit walked past this three times.</summary>
     [Theory]
     [MemberData(nameof(ClosedFaceCases))]
-    public void ClosedComboBoxStillShowsTheSelectedItemLegibly(string shape, bool dark) => _fx.Invoke(() =>
+    public void ClosedComboBoxStillShowsTheSelectedItemLegibly(string shape, string schemeKey) => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark);
-        var palette = dark ? ThemePalette.Dark : ThemePalette.Light;
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var palette = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var (combo, expectedText, expectsSelectionBoxTemplate) = ClosedFaceProbe(shape);
         var window = OffScreenWindow(combo);
@@ -317,7 +318,7 @@ public class ContentTemplateSetterTests
             var ratio = ThemePalette.ContrastRatio(rgb, palette.Surface);
 
             Assert.True(ratio >= 4.5,
-                $"closed ComboBox face [{shape}, {(dark ? "dark" : "light")}]: " +
+                $"closed ComboBox face [{shape}, {schemeKey}]: " +
                 $"{rgb} on Theme.Surface {palette.Surface} = {ratio:F2}:1");
             // ...and it must be Theme.Text, not merely something legible. A
             // failed FindAncestor Foreground binding yields the DP default —
@@ -338,12 +339,12 @@ public class ContentTemplateSetterTests
         finally { window.Close(); }
     });
 
-    public static TheoryData<string, bool> ClosedFaceCases()
+    public static TheoryData<string, string> ClosedFaceCases()
     {
-        var data = new TheoryData<string, bool>();
+        var data = new TheoryData<string, string>();
         foreach (var shape in new[] { "itemssource-strings", "comboboxitem-children", "itemtemplate-kvp", "itemtemplate-font" })
-        foreach (var dark in new[] { false, true })
-            data.Add(shape, dark);
+        foreach (var s in ThemePalette.Schemes)
+            data.Add(shape, s.Key);
         return data;
     }
 

@@ -611,10 +611,11 @@
          PrintPreviewWindow.xaml.cs's DocumentViewer comment for the full
          account of what's reachable here and why this part isn't. -->
 
-    <Style TargetType="StatusBar">
-        <Setter Property="Background" Value="{DynamicResource Theme.WindowBg}" />
-        <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
-    </Style>
+    <!-- StatusBar implicit style removed here (radius/style-consolidation
+         pass, 2026-08-09): a fresh grep of the whole worktree, including
+         inside every ControlTemplate, found zero <StatusBar> elements — the
+         app has never used the control. (WebViewPdfViewer.cs's
+         IsStatusBarEnabled is a CoreWebView2Settings property, unrelated.) -->
 
     <Style TargetType="ToolTip">
         <Setter Property="Background" Value="{DynamicResource Theme.Surface}" />
@@ -722,9 +723,19 @@
                         <ContentPresenter />
                     </Border>
                     <ControlTemplate.Triggers>
+                        <!-- Theme.RowHover, NOT Theme.SurfaceHover (hover-tint
+                             strength review round 2, 2026-08-08): a ListBoxItem's
+                             content can be RouteList/LabelMaker/ManageSaved's
+                             SubtleText caption or UnlockWindow FileList's
+                             StatusAmber/StatusGreen/StatusRed Note — the exact
+                             vocabulary Theme.RowHover is tuned to protect, and
+                             the vocabulary that a stronger Text-only chrome tint
+                             would break (StatusGreen/StatusRed were already
+                             below 4.5:1 here even at the OLD, weaker mix —
+                             see ThemePalette.cs's RowHover comment). -->
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource Theme.SurfaceHover}" />
+                                    Value="{DynamicResource Theme.RowHover}" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Bd" Property="Background"
@@ -736,6 +747,53 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- DataGridRow: Styles.xaml had ZERO style for this before the hover-tint
+         strength review round 2 (2026-08-08) — confirmed by grep, no
+         IsMouseOver trigger existed on DataGridRow OR DataGridCell anywhere
+         in this app, so hovering a row in Match & Merge, Bulk rename,
+         History or Triage produced no visible feedback at all, the one
+         gap every other list-like control (ListBoxItem, MenuItem, TabItem,
+         Calendar) didn't have. Implicit (not keyed): BulkRenameWindow,
+         MatchMergeWindow and HistoryWindow each set their OWN local
+         DataGrid.RowStyle already (for NeedsName/Transparent/Reverted), and
+         a local RowStyle entirely replaces implicit-by-type lookup for that
+         DataGrid's rows — the same "local value outranks style" trap this
+         file's ListBoxItem/ComboBoxItem comments document repeatedly — so
+         this implicit style ONLY reaches TriageWindow's Candidates grid,
+         which sets no RowStyle of its own. The other three each got the
+         identical IsMouseOver trigger added to their own local RowStyle
+         directly (see each window's own XAML) so every one of the four
+         grids the owner actually uses ends up with the same hover, even
+         though only one of them resolves it through this shared Style.
+         Theme.RowHover (not SurfaceHover): a row's Note/status-vocabulary
+         columns can show StatusAmber/SubtleText, the exact colours that
+         tier protects — see ThemePalette.cs's RowHover comment. -->
+    <Style TargetType="DataGridRow">
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Theme.RowHover}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- GridRow: the one thing BulkRenameWindow's, HistoryWindow's and
+         MatchMergeWindow's local DataGrid.RowStyle Styles actually had in
+         common — a Background="Transparent" Setter, plus the IsMouseOver→
+         Theme.RowHover trigger, which arrives for free via BasedOn on the
+         implicit style directly above (so it is NOT redeclared here; a
+         redeclaration would just shadow the inherited one, and WPF applies
+         a derived style's own Setters/Triggers after the base style's,
+         so anything genuinely local — BulkRename's NeedsName tint,
+         MatchMerge's ToolTip=Source, History's Reverted italic — still
+         layers on top correctly, and still wins over this base's hover
+         trigger, exactly as each window's un-consolidated copy did before.
+         TriageWindow's Candidates grid sets no RowStyle at all and keeps
+         resolving the plain implicit style above, untouched by this key
+         (TriageGridRowHoverRendersViaTheImplicitStyle pins that). -->
+    <Style x:Key="GridRow" TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+        <Setter Property="Background" Value="Transparent" />
     </Style>
 
     <!-- ItemTemplate-based ComboBox item shapes: a bare TextBlock bound to
@@ -1166,9 +1224,15 @@
                                           VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                     </Border>
                     <ControlTemplate.Triggers>
+                        <!-- Theme.RowHover, NOT Theme.SurfaceHover: IsInactive
+                             (below) can pair SubtleText with this SAME hover —
+                             a real, reachable combo (hovering a leading/
+                             trailing-month day) the chrome tier isn't tuned
+                             to protect. See ThemePalette.cs's RowHover
+                             comment. -->
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Chrome" Property="Background"
-                                    Value="{DynamicResource Theme.SurfaceHover}" />
+                                    Value="{DynamicResource Theme.RowHover}" />
                         </Trigger>
                         <Trigger Property="IsToday" Value="True">
                             <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Theme.Accent}" />
@@ -1217,9 +1281,12 @@
                                           VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                     </Border>
                     <ControlTemplate.Triggers>
+                        <!-- Theme.RowHover, NOT Theme.SurfaceHover: same
+                             IsInactive/SubtleText combo as CalendarDayButton
+                             above. -->
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Chrome" Property="Background"
-                                    Value="{DynamicResource Theme.SurfaceHover}" />
+                                    Value="{DynamicResource Theme.RowHover}" />
                         </Trigger>
                         <Trigger Property="IsInactive" Value="True">
                             <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
@@ -1282,9 +1349,11 @@
                                                   Fill="{DynamicResource Theme.SubtleText}" />
                                         </Border>
                                         <ControlTemplate.Triggers>
+                                            <!-- Theme.RowHover: the glyph above is
+                                                 Theme.SubtleText, not Theme.Text. -->
                                             <Trigger Property="IsMouseOver" Value="True">
                                                 <Setter TargetName="Chrome" Property="Background"
-                                                        Value="{DynamicResource Theme.SurfaceHover}" />
+                                                        Value="{DynamicResource Theme.RowHover}" />
                                             </Trigger>
                                             <Trigger Property="IsEnabled" Value="False">
                                                 <Setter Property="Opacity" Value="0.4" />
@@ -1312,9 +1381,13 @@
                                                               VerticalAlignment="Center" />
                                         </Border>
                                         <ControlTemplate.Triggers>
+                                            <!-- Theme.RowHover for consistency with
+                                                 this popup's Previous/Next buttons
+                                                 either side of it, even though this
+                                                 one shows only Theme.Text. -->
                                             <Trigger Property="IsMouseOver" Value="True">
                                                 <Setter TargetName="Chrome" Property="Background"
-                                                        Value="{DynamicResource Theme.SurfaceHover}" />
+                                                        Value="{DynamicResource Theme.RowHover}" />
                                             </Trigger>
                                             <Trigger Property="IsEnabled" Value="False">
                                                 <Setter Property="Opacity" Value="0.4" />
@@ -1336,9 +1409,11 @@
                                                   Fill="{DynamicResource Theme.SubtleText}" />
                                         </Border>
                                         <ControlTemplate.Triggers>
+                                            <!-- Theme.RowHover: same glyph reasoning
+                                                 as PART_PreviousButton above. -->
                                             <Trigger Property="IsMouseOver" Value="True">
                                                 <Setter TargetName="Chrome" Property="Background"
-                                                        Value="{DynamicResource Theme.SurfaceHover}" />
+                                                        Value="{DynamicResource Theme.RowHover}" />
                                             </Trigger>
                                             <Trigger Property="IsEnabled" Value="False">
                                                 <Setter Property="Opacity" Value="0.4" />
@@ -1529,12 +1604,22 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
-                    <Border x:Name="Bd" Background="Transparent" BorderThickness="3,0,0,0"
-                            BorderBrush="Transparent" Padding="{TemplateBinding Padding}"
-                            SnapsToDevicePixels="True">
-                        <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
-                                          VerticalAlignment="Center" />
-                    </Border>
+                    <Grid SnapsToDevicePixels="True">
+                        <Border x:Name="Bd" Background="Transparent" BorderThickness="3,0,0,0"
+                                BorderBrush="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <!-- Selected-state underline, opt-in only (theme:TabItemOptions,
+                             this file's own Theme/TabItemOptions.cs) — Collapsed here so
+                             every plain TabItem in the app (this style's only Setters
+                             before this task) renders exactly as before. SettingsWindow.
+                             xaml's "SectionTab" style sets ShowSelectedUnderline="True"
+                             instead of duplicating this entire ControlTemplate just to
+                             add this one Border. -->
+                        <Border x:Name="Underline" Height="2" VerticalAlignment="Bottom"
+                                Background="Transparent" Visibility="Collapsed" />
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background"
@@ -1551,6 +1636,19 @@
                             <Setter Property="Foreground"
                                     Value="{DynamicResource Theme.SubtleText}" />
                         </Trigger>
+                        <!-- theme:TabItemOptions.ShowSelectedUnderline (only SectionTab
+                             sets it True): reveal the underline and colour it, but only
+                             once the tab is ALSO selected — a MultiTrigger, not two plain
+                             Triggers, since either condition alone must leave it hidden. -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsSelected" Value="True" />
+                                <Condition Property="theme:TabItemOptions.ShowSelectedUnderline" Value="True" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Underline" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="Underline" Property="Background"
+                                    Value="{DynamicResource Theme.AccentBronze}" />
+                        </MultiTrigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
@@ -1590,6 +1688,86 @@
         </Style.Triggers>
     </Style>
 
+    <!-- Shared base for every DataGridTextColumn.ElementStyle in the app
+         (MatchMergeWindow's File/Becomes/Note, BulkRenameWindow's Current
+         name/New name/Note, HistoryWindow's five columns, TriageWindow's
+         code-built roster columns and its "Why" column) — the fix for the
+         FOURTH instance of one specific bug found in this repo in one day
+         (status-colour-vocabulary plan, 2026-08-08): a cell's TextBlock
+         needs its OWN Style Setter for TextTrimming/ToolTip (autofit-
+         columns), and the moment a column's ElementStyle carries ANY
+         Foreground-touching Setter or Trigger of its own — even one merely
+         BasedOn="{StaticResource {x:Type TextBlock}}", which pulls in that
+         style's unconditional Foreground=Theme.Text Setter — it outranks
+         whatever this TextBlock would otherwise INHERIT from its ancestor
+         DataGridCell, including the Accent/AccentText pair the cell's own
+         IsSelected trigger (above) paints. Property-value inheritance is
+         lower precedence than ANY Style Setter on the element itself,
+         regardless of whether that Setter arrived via BasedOn or was
+         written directly on the column's own style — so a plain
+         BasedOn="{x:Type TextBlock}" column silently loses selection
+         contrast the instant it adds TextTrimming/ToolTip, with no warning
+         and no visual difference until someone actually selects that row.
+         Measured directly on MatchMergeWindow's File/Becomes columns (the
+         bug this style exists to fix): (233,235,238) Theme.Text on
+         (205,210,218) Theme.Accent (dark) = 1.10:1, nowhere near the 4.5:1
+         floor — a selected row's own filename unreadable against its own
+         highlight.
+
+         BasedOn the app-level implicit TextBlock style (same Theme.Text
+         default every other TextBlock in the app gets) — TextTrimming/
+         ToolTip plumbing only. NO selection-contrast trigger lives here;
+         see GridCellTextSelectionAware immediately below for that, and for
+         which columns use which key and why. -->
+    <Style x:Key="GridCellText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}" />
+
+    <!-- GridCellTextSelectionAware: GridCellText plus the ONE trailing
+         DataTrigger that reverts a cell's TextBlock to Theme.AccentText once
+         the ancestor DataGridCell reports IsSelected — the exact "let
+         selection win" trigger Note/Why/History's own per-column fixes
+         below still carry individually (status-colour-vocabulary plan,
+         2026-08-08 dedup pass). Columns with NO other Foreground trigger of
+         their own (MatchMergeWindow's File/Becomes, BulkRenameWindow's
+         Current name, the plain roster columns TriageWindow builds in code)
+         switch their ElementStyle's BasedOn from GridCellText to THIS key
+         wholesale and get correct selection contrast for free — nothing
+         else to remember, which is the whole point: this was the fourth
+         copy-pasted "add a trailing IsSelected DataTrigger" fix in one day,
+         and a FUTURE plain column should not need a fifth.
+
+         Columns that ALSO carry their own status-coloured triggers (Note,
+         New name, Why, History's Reverted columns) stay on plain
+         GridCellText and keep declaring their OWN trailing "let selection
+         win" DataTrigger, identical in shape to this one — they CANNOT use
+         this key instead: WPF applies a derived style's own Setters/Triggers
+         on top of whatever it inherits via BasedOn, so if a column's own
+         status trigger (e.g. Note's Status="ambiguous" -> StatusAmber) sat
+         BELOW this key in the BasedOn chain, the status trigger — being the
+         more derived one — would always beat selection, inverting the
+         precedence a selected row needs (selection must win over status
+         colour, not the reverse). Declaring the identical trigger a second
+         time, locally, in each of those columns' own style is the only
+         correct way to give it top precedence for them; it is harmless
+         duplication (both resolve to the identical value when both would
+         fire) and cheaper to read than a column-specific comment re-deriving
+         why it can't delegate to this key. Verified (not assumed) by
+         DataGridSelectionContrastTests, which enumerates every
+         DataGridTextColumn across all four grid windows and reads each
+         cell's ACTUAL resolved TextBlock.Foreground, in both palettes — a
+         test that finds the trigger present in XAML would have passed
+         throughout the day this bug shipped, exactly the trap that let it
+         ship in the first place. -->
+    <Style x:Key="GridCellTextSelectionAware" TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
+        <Style.Triggers>
+            <DataTrigger Value="True">
+                <DataTrigger.Binding>
+                    <Binding Path="IsSelected" RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                </DataTrigger.Binding>
+                <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
     <!-- Named styles -->
 
     <!-- Fluent glyphs from the system icon font — no image assets, always
@@ -1609,6 +1787,20 @@
         <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
     </Style>
 
+    <!-- The per-tile/per-preview count, one rung down from DisplayText's big
+         inbox number. FontSize + FontWeight only — deliberately NOT tabular
+         figures, unlike DisplayText above: the two consuming sites
+         (ReadyView's live tile and SettingsWindow's tile preview) disagree on
+         that one property — the live tile opts into
+         Typography.NumeralAlignment="Tabular" so the count doesn't wiggle as
+         files arrive, the settings preview never did. Baking Tabular in here
+         would change the settings preview's rendering, so each site keeps it
+         (or not) as a local value instead. -->
+    <Style x:Key="TileCountText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="27" />
+        <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+
     <Style x:Key="SectionText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
@@ -1624,6 +1816,19 @@
          path, a live preview note — and are small only to fit, not to recede. -->
     <Style x:Key="CaptionTextOnSurface" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="FontSize" Value="11" />
+    </Style>
+
+    <!-- One rung above Caption (11), one below body (the implicit 14 —
+         AppFontSize). Tile label rows and similar compact-but-legible text
+         that named an ad-hoc FontSize="12" at ~5 call sites before this. -->
+    <Style x:Key="BodySmallText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <!-- One rung above body, short of HeadlineCompactText (20) — warning
+         banners, the Start button's label. -->
+    <Style x:Key="EmphasisText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="15" />
     </Style>
 
     <!-- The app-level implicit TextBlock style (TargetType="TextBlock" above,
@@ -1741,6 +1946,14 @@
     <Style x:Key="HeadlineText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="FontSize" Value="26" />
         <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+
+    <!-- HeadlineText at TriageWindow's compact scale — same weight, smaller
+         size, so the review-matches header doesn't compete with the roster
+         grid for space. BasedOn HeadlineText: only FontSize differs here,
+         FontWeight="Bold" still comes from the base style. -->
+    <Style x:Key="HeadlineCompactText" TargetType="TextBlock" BasedOn="{StaticResource HeadlineText}">
+        <Setter Property="FontSize" Value="20" />
     </Style>
 
     <Style x:Key="StatusText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">

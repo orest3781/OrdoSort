@@ -13,7 +13,13 @@
                     Style="{StaticResource PrimaryButton}" Width="110" Margin="0,0,8,0"
                     IsDefault="True"
                     AutomationProperties.Name="Unlock">
-                <TextBlock Text="Unlock" Style="{StaticResource PrimaryButtonLabel}" />
+                <StackPanel Orientation="Horizontal">
+                    <!-- Same glyph as this tool's own Tools menu entry
+                         (MainWindow.xaml, "_Unlock PDFs…") — E785. -->
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE785;" Margin="0,0,8,0"
+                               Foreground="{DynamicResource Theme.AccentText}" />
+                    <TextBlock Text="Unlock" Style="{StaticResource PrimaryButtonLabel}" />
+                </StackPanel>
             </Button>
             <!-- the batch's brake: files already done stay done, the rest
                  report cancelled instead of running on unstoppably -->
@@ -24,7 +30,13 @@
             <Button Content="Close" Width="96" IsCancel="True" />
         </StackPanel>
 
-        <Grid>
+        <!-- IsSharedSizeScope: only one FieldRow lives in this window today
+             (Password:, below), but it follows the LabelMakerWindow.xaml
+             SharedSizeGroup="LabelCol" pattern anyway (spacing-rhythm audit
+             B2) so the label sizes to its content instead of a fixed width,
+             and so any FieldRow added here later joins the same scope for
+             free. -->
+        <Grid Grid.IsSharedSizeScope="True">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -36,42 +48,110 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <TextBlock Text="PDFs to unlock:" Margin="0,0,0,6" FontWeight="SemiBold" />
+            <TextBlock Text="PDFs to unlock:" Margin="0,0,0,6" Style="{StaticResource SectionText}" />
             <Grid Grid.Row="1">
                 <ListBox x:Name="FileList" ItemsSource="{Binding Files}"
                          SelectionMode="Extended" MinHeight="120"
                          AutomationProperties.Name="PDFs to unlock">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <!-- The row is now an UnlockFileRow (path + readiness-
-                                 probe state), not a plain path string — DisplayText
-                                 is the filename plus a short, deliberately narrow
-                                 readiness suffix (e.g. "— a saved password opens
-                                 this"), never a claim the probe didn't actually
-                                 test (see UnlockFileRow.DisplayText's own comment).
-                                 ToolTipText is the full path, plus the probe's own
-                                 message on a second line for the four states worth
-                                 mentioning.
-                                 LOCAL Foreground bound back to the generated
+                            <!-- The row is an UnlockFileRow (path + readiness-
+                                 probe state). FileName and Note used to be one
+                                 concatenated DisplayText string; split in two
+                                 (status-colour-vocabulary plan, 2026-08-08, Task 1
+                                 Step 2) specifically so the NOTE alone can carry a
+                                 status colour without tinting the filename next to
+                                 it — DisplayText still exists (UnlockViewModel.cs)
+                                 only because two test suites assert the combined
+                                 string; nothing here binds to it anymore.
+                                 ToolTipText is unchanged: the full path, plus the
+                                 probe's own message on a second line for the four
+                                 states worth mentioning.
+
+                                 BOTH TextBlocks below need their own LOCAL
+                                 Foreground binding back to the generated
                                  ListBoxItem: an ItemTemplate assigns to the
                                  container's ContentTemplate as a LOCAL value,
                                  which outranks even Styles.xaml's ListBoxItem
-                                 style's own ContentTemplate Setter — so this
-                                 hand-authored TextBlock is exactly as exposed
-                                 to the "Style Setter outranks inheritance" trap
+                                 style's own ContentTemplate Setter — so every
+                                 element in this template is exactly as exposed to
+                                 the "Style Setter outranks inheritance" trap
                                  (Styles.xaml's implicit TextBlock style pins
-                                 Foreground=Theme.Text) as an auto-wrapped one;
-                                 without this binding the row stayed Theme.Text
-                                 even when selected (see Styles.xaml's
-                                 ListBoxItem comment). Any element added to this
-                                 template hits the same trap — this one still
-                                 uses a single TextBlock specifically to avoid
-                                 introducing a second one that would need its
-                                 own copy of this binding. -->
-                            <TextBlock Text="{Binding DisplayText}"
-                                       ToolTip="{Binding ToolTipText}"
-                                       Foreground="{Binding Foreground,
-                                           RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                                 Foreground=Theme.Text) as the single TextBlock
+                                 this template used to be; adding a second element
+                                 without its own copy of this binding would have
+                                 left it stuck on Theme.Text even when selected
+                                 (see Styles.xaml's ListBoxItem comment).
+
+                                 The note's own Style carries no base Foreground
+                                 Setter (Note is only ever non-empty for the four
+                                 statuses a DataTrigger below covers — Pending and
+                                 NotEncrypted stay text-empty, so their fallback
+                                 colour is never actually seen) and sets the
+                                 vocabulary colour per-Status, with one more
+                                 DataTrigger declared LAST: IsSelected=True
+                                 re-sets Foreground to Theme.AccentText — the SAME
+                                 value Styles.xaml's own ListBoxItem style already
+                                 flips the container's Foreground to on selection.
+                                 WPF applies every matching trigger in declaration
+                                 order and the LAST one wins, so this is what
+                                 makes selection win over a fixed status colour
+                                 instead of the reverse (the "Two traps this plan
+                                 exists to navigate" #2: a status colour left in
+                                 place through selection sits on the Accent
+                                 background unreadably — measured 1.28-2.51:1
+                                 with this trigger removed, see the Task 1
+                                 report's teeth-proof). Do not go looking for a
+                                 colour that passes against BOTH Theme.Surface and
+                                 Theme.Accent instead — that is the exact hunt
+                                 this plan says not to make; let selection win.
+
+                                 Unreadable uses Theme.StatusRed, NOT
+                                 Theme.Danger: Danger AS FOREGROUND TEXT (its
+                                 shipped job elsewhere is a BACKGROUND, paired
+                                 with DangerText) measures only 2.69:1 against
+                                 Dark.Surface — found while building this note,
+                                 the exact Success-shaped problem Step 1 already
+                                 fixed once, on a different token. See
+                                 ThemePalette.cs's StatusRed field comment. -->
+                            <StackPanel Orientation="Horizontal"
+                                        ToolTip="{Binding ToolTipText}">
+                                <TextBlock Text="{Binding FileName}"
+                                           Foreground="{Binding Foreground,
+                                               RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                                <TextBlock Text="{Binding Note}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Status}"
+                                                             Value="{x:Static vm:ReadinessStatus.Ready}">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Theme.StatusGreen}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Status}"
+                                                             Value="{x:Static vm:ReadinessStatus.NeedsPassword}">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Theme.StatusAmber}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Status}"
+                                                             Value="{x:Static vm:ReadinessStatus.InUse}">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Theme.StatusAmber}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Status}"
+                                                             Value="{x:Static vm:ReadinessStatus.Unreadable}">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Theme.StatusRed}" />
+                                                </DataTrigger>
+                                                <!-- Declared LAST so it wins over whichever
+                                                     status trigger above also matches — see
+                                                     the template comment above for why. -->
+                                                <DataTrigger Binding="{Binding IsSelected,
+                                                                 RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                                             Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
@@ -83,9 +163,8 @@
                         <Binding Path="Files.Count" Converter="{StaticResource ZeroToVis}" />
                     </Border.Visibility>
                     <StackPanel>
-                        <Image Height="80" Margin="0,0,0,8"
-                               RenderOptions.BitmapScalingMode="HighQuality"
-                               Source="pack://application:,,,/OrdoSort;component/Assets/unlock.png" />
+                        <ContentControl Template="{StaticResource Illustration.Unlock}"
+                                         Height="80" Margin="0,0,0,8" />
                         <TextBlock Text="Drag PDFs anywhere on this window, or press Add files…"
                                    Style="{StaticResource SubtleText}" HorizontalAlignment="Center" />
                     </StackPanel>
@@ -103,7 +182,7 @@
 
             <Grid Grid.Row="3" Style="{StaticResource FieldRow}" Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                     <ColumnDefinition Width="220" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -152,8 +231,29 @@
             <Border Grid.Row="7" Background="{DynamicResource Theme.Surface}"
                     BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
                     CornerRadius="4">
+                <!-- Ok -> Theme.StatusGreen added (status-colour-vocabulary
+                     plan, 2026-08-08, Task 3 Step 1): the vocabulary's
+                     "good/ready/done" row. Fail stays Theme.StatusAmber
+                     (needs-attention — CopyAndTerminologyTests.cs:183-484
+                     locks that meaning for Settings' notes, and this list
+                     must not contradict it) and Skip stays
+                     Theme.SubtleText (informational).
+
+                     No "let selection win" trigger here, unlike the FileList
+                     ListBox above: this is a plain ItemsControl, not a
+                     Selector, so its generated containers are bare
+                     ContentPresenters with no IsSelected concept at all —
+                     verified by reading ItemsControl's own type (Selector,
+                     which ListBox/ListBoxItem derive from and which is what
+                     actually carries IsSelected, is a DIFFERENT, more
+                     derived class ItemsControl does not implement) and by
+                     the complete absence of any SelectionMode/IsSelected
+                     property on the ItemsControl or DataTemplate above —
+                     not assumed from "it looks read-only". A fixed status
+                     colour here has no accent background to ever collide
+                     with. -->
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="8,6">
-                    <ItemsControl ItemsSource="{Binding ResultLines}"
+                    <ItemsControl x:Name="ResultList" ItemsSource="{Binding ResultLines}"
                                   AutomationProperties.Name="Results">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -161,6 +261,11 @@
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                             <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Kind}"
+                                                             Value="{x:Static vm:UnlockResultKind.Ok}">
+                                                    <Setter Property="Foreground"
+                                                            Value="{DynamicResource Theme.StatusGreen}" />
+                                                </DataTrigger>
                                                 <DataTrigger Binding="{Binding Kind}"
                                                              Value="{x:Static vm:UnlockResultKind.Fail}">
                                                     <Setter Property="Foreground"

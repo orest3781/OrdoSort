@@ -574,18 +574,7 @@ public static class Unlock
         return new("ok", src, NewPath: target);
     }
 
-    private static string CollisionFree(string target)
-    {
-        if (!File.Exists(target)) return target;
-        var dir = Path.GetDirectoryName(target)!;
-        var stem = Path.GetFileNameWithoutExtension(target);
-        var ext = Path.GetExtension(target);
-        for (var n = 2; ; n++)
-        {
-            var candidate = Path.Combine(dir, $"{stem} ({n}){ext}");
-            if (!File.Exists(candidate)) return candidate;
-        }
-    }
+    private static string CollisionFree(string target) => Collision.FreeFile(target);
 
     private static void RemoveQuietly(string path)
     {

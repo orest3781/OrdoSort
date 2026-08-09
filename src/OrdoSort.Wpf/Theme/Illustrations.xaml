@@ -1,0 +1,110 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Theme-aware empty-state marks (Phase-2 restyle, D2), replacing the
+         four static PNGs under Assets/ (inbox-clear.png, done.png,
+         labels-empty.png, unlock.png) that never picked up a theme or
+         scheme change. A DrawingImage/GeometryDrawing can't reliably use
+         DynamicResource — GeometryDrawing.Brush is a Freezable property and
+         Freezables don't re-resolve a DynamicResource on a live theme
+         switch the way a FrameworkElement property does — so each mark here
+         is drawn instead as a Viewbox-wrapped Canvas of Path elements. Path
+         IS a FrameworkElement (a Shape), so Path.Stroke/Fill really do
+         re-resolve {DynamicResource Theme.*} on ThemeManager.Apply the same
+         way every other themed brush in this app does.
+
+         Each mark is a ControlTemplate (TargetType="ContentControl"), not a
+         DataTemplate or a UserControl: the four call sites (ReadyView,
+         DoneView, LabelMakerWindow, UnlockWindow) each swap a bare
+         <Image Source="...png" Height="N"/> for
+         <ContentControl Template="{StaticResource Illustration.X}" Height="N"/>
+         at the SAME rendered height the PNG had — no Content is set (the
+         template draws everything itself), so there is nothing for a
+         ContentPresenter to host and none is declared. The inner Viewbox is
+         centered so it reproduces Image's own default behaviour (Stretch=
+         Uniform, centered within whatever box layout hands it) rather than
+         stretching edge-to-edge when a parent gives the ContentControl more
+         width than its content needs (see each consumption site's
+         surrounding StackPanel/DockPanel — none of them constrain width,
+         same as the Image elements they replace).
+
+         Geometry is deliberately plain — 2 Path elements per mark, flat
+         strokes, no fills except the two positive checkmarks — these are
+         quiet empty-state glyphs meant to read at a glance at 76-104px, not
+         illustrations. Colour vocabulary: Theme.Border for the primary
+         outline (the same brush window Border chrome already uses), and
+         Theme.StatusGreen — "the green status line, readable on Surface/
+         WindowBg" per its own field comment in ThemePalette.cs, i.e. tuned
+         for exactly this small-mark-on-a-plain-background use — reserved
+         for the two checkmarks (inbox-clear, done) that are genuinely
+         positive/complete signals; unlock and labels-empty carry no green,
+         since neither is a positive/complete state. -->
+
+    <!-- inbox-clear: ReadyView's empty-inbox mark (104px). An open tray
+         (back rim + a U-shaped body, one Path, two subpaths) with a
+         checkmark resting inside it (a second Path) — "the tray, and it's
+         clear." -->
+    <ControlTemplate x:Key="Illustration.InboxClear" TargetType="ContentControl">
+        <Viewbox Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Canvas Width="100" Height="100">
+                <Path Data="M 15,40 L 30,25 L 70,25 L 85,40 M 15,40 L 15,78 L 85,78 L 85,40"
+                      Stroke="{DynamicResource Theme.Border}" StrokeThickness="3.5"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                <Path Data="M 38,52 L 47,61 L 66,38"
+                      Stroke="{DynamicResource Theme.StatusGreen}" StrokeThickness="5"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+            </Canvas>
+        </Viewbox>
+    </ControlTemplate>
+
+    <!-- done: DoneView's completion mark (96px). A page outline with its
+         corner folded (one Path, two subpaths — the outline and the fold
+         crease) plus a checkmark low on the page. -->
+    <ControlTemplate x:Key="Illustration.Done" TargetType="ContentControl">
+        <Viewbox Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Canvas Width="100" Height="100">
+                <Path Data="M 25,10 L 60,10 L 80,30 L 80,90 L 25,90 Z M 60,10 L 60,30 L 80,30"
+                      Stroke="{DynamicResource Theme.Border}" StrokeThickness="3.5"
+                      StrokeLineJoin="Round" />
+                <Path Data="M 38,58 L 48,68 L 68,44"
+                      Stroke="{DynamicResource Theme.StatusGreen}" StrokeThickness="5"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+            </Canvas>
+        </Viewbox>
+    </ControlTemplate>
+
+    <!-- labels-empty: LabelMakerWindow's no-clients-yet mark (76px). A
+         luggage-tag outline (one closed Path, pointed end) with its punch
+         hole (one Path, drawn as two half-arcs). No green — this is a
+         neutral "nothing here yet" state, not a completed one. -->
+    <ControlTemplate x:Key="Illustration.LabelsEmpty" TargetType="ContentControl">
+        <Viewbox Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Canvas Width="100" Height="100">
+                <Path Data="M 30,20 L 75,20 L 75,75 L 30,75 L 15,47.5 Z"
+                      Stroke="{DynamicResource Theme.Border}" StrokeThickness="3.5"
+                      StrokeLineJoin="Round" />
+                <Path Data="M 24,47.5 A 6,6 0 1 0 36,47.5 A 6,6 0 1 0 24,47.5"
+                      Stroke="{DynamicResource Theme.SubtleText}" StrokeThickness="2.5" />
+            </Canvas>
+        </Viewbox>
+    </ControlTemplate>
+
+    <!-- unlock: UnlockWindow's no-files-yet mark (80px). A padlock body
+         (one Path) with its shackle drawn open — lifted off the body on
+         the right, a visible gap rather than seated — rather than closed
+         (a second Path). No green — neutral, not a positive/complete
+         state. -->
+    <ControlTemplate x:Key="Illustration.Unlock" TargetType="ContentControl">
+        <Viewbox Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Canvas Width="100" Height="100">
+                <Path Data="M 25,50 L 75,50 L 75,85 L 25,85 Z"
+                      Stroke="{DynamicResource Theme.Border}" StrokeThickness="3.5"
+                      StrokeLineJoin="Round" />
+                <Path Data="M 35,55 L 35,25 A 15,15 0 1 1 65,25 L 65,40"
+                      Stroke="{DynamicResource Theme.SubtleText}" StrokeThickness="3.5"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+            </Canvas>
+        </Viewbox>
+    </ControlTemplate>
+
+</ResourceDictionary>

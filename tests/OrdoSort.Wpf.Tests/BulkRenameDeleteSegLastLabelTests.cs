@@ -60,12 +60,11 @@ public class BulkRenameDeleteSegLastLabelTests
     private readonly HighlightContrastFixture _fx;
     public BulkRenameDeleteSegLastLabelTests(HighlightContrastFixture fx) => _fx = fx;
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void DeleteSegLastCheckboxLabelPaintsAndMeetsWcagAa(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void DeleteSegLastCheckboxLabelPaintsAndMeetsWcagAa(string schemeKey) => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        ThemeManager.Apply(_fx.App, scheme);
         var win = new BulkRenameWindow(new BulkRenameViewModel())
         {
             WindowStartupLocation = WindowStartupLocation.Manual,
@@ -93,7 +92,7 @@ public class BulkRenameDeleteSegLastLabelTests
             var ratio = ThemePalette.ContrastRatio(fg, bg);
 
             Assert.True(ratio >= 4.5,
-                $"BulkRenameWindow DeleteSegLast checkbox label ({(dark ? "dark" : "light")}): " +
+                $"BulkRenameWindow DeleteSegLast checkbox label ({schemeKey}): " +
                 $"{fg} on {bg} = {ratio:F2}");
         }
         finally

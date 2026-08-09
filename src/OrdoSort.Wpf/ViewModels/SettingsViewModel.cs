@@ -452,6 +452,56 @@ public sealed class SoundChoiceVm : ObservableObject
     }
 }
 
+/// <summary>One card in the Appearance tab's scheme picker — mirrors a single
+/// <see cref="ThemePalette.Schemes"/> registry entry. IsSelected is two-way
+/// (the ThemeCard RadioButton's IsChecked binds to it); the preview colors
+/// are plain <see cref="Rgb"/> values, flowing through the house VM→converter
+/// pattern (RgbToBrushConverter) rather than new per-scheme resource keys, so
+/// ThemeManager's Light.*/Dark.* publication stays untouched.
+///
+/// Selecting an option calls back into the owning SettingsViewModel
+/// (<c>select</c>), which is the actual source of truth (ThemeMode) — see
+/// SyncSchemeSelection. That callback is safe against re-entrancy: ThemeMode's
+/// setter only fans back out when the value actually changes, so the
+/// "already-selected" round trip is a no-op.</summary>
+public sealed class SchemeOptionVm : ObservableObject
+{
+    public string Key { get; }
+    public string DisplayName { get; }
+    public bool IsDark { get; }
+    public Rgb PreviewWindowBg { get; }
+    public Rgb PreviewSurface { get; }
+    public Rgb PreviewBorder { get; }
+    public Rgb PreviewSubtleText { get; }
+    public Rgb PreviewAccent { get; }
+
+    private readonly Action<string> _select;
+
+    private bool _isSelected;
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (!Set(ref _isSelected, value)) return;
+            if (value) _select(Key);
+        }
+    }
+
+    public SchemeOptionVm(ThemeScheme scheme, Action<string> select)
+    {
+        Key = scheme.Key;
+        DisplayName = scheme.DisplayName;
+        IsDark = scheme.IsDark;
+        PreviewWindowBg = scheme.Palette.WindowBg;
+        PreviewSurface = scheme.Palette.Surface;
+        PreviewBorder = scheme.Palette.Border;
+        PreviewSubtleText = scheme.Palette.SubtleText;
+        PreviewAccent = scheme.Palette.Accent;
+        _select = select;
+    }
+}
+
 /// <summary>The Settings window's brain. Edits copies; OK validates (hard
 /// errors block, warnings ask "Save anyway?") and produces a NEW Config built
 /// by JSON-cloning the original — so every unedited field and every unknown
@@ -620,6 +670,9 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         UiFontFamily = current.UiFontFamily;
         UiFontSizeText = current.UiFontSize == 0 ? "" : current.UiFontSize.ToString();
         _themeMode = current.Theme;
+        SchemeOptions = new ObservableCollection<SchemeOptionVm>(
+            ThemePalette.Schemes.Select(s => new SchemeOptionVm(s, key => ThemeMode = key)));
+        SyncSchemeSelection();
 
         Routes = new ObservableCollection<RouteEditVm>(
             current.Routes.Select(r => RouteEditVm.From(r, _validateRoute, _scheduler, _uiContext, _probeDelayMs)));
@@ -1781,24 +1834,80 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     public string UiFontSizeText { get => _uiFontSizeText; set => Set(ref _uiFontSizeText, value); }
 
     // ------------------------------------------------------------- theme
+    //
+    // ThemeMode is the single source of truth — "auto" or any
+    // ThemePalette.Schemes key. SchemeOptions (one VM per registry entry,
+    // registry order) and AutoSelected are the bindable surface the
+    // Appearance tab's cards actually use; ThemeAuto/ThemeLight/ThemeDark
+    // below survive as thin BACKWARD-COMPATIBLE adapters purely because
+    // something still binds them (grepped: ThemeModeRoundTripsThroughTheRadiosIntoTheResult
+    // in SettingsViewModelTests.cs, and the Auto card's own
+    // IsChecked="{Binding ThemeAuto}" in SettingsWindow.xaml, left exactly as
+    // it was per the brief). They are no longer backed by their own field —
+    // "light"/"dark" resolve through NormalizeSchemeKey to their scheme
+    // ("paper"/"graphite"), so ThemeLight/ThemeDark read true for EITHER the
+    // legacy string or the scheme key, and setting either one now writes the
+    // scheme key, not the legacy string.
     private string _themeMode = "auto";
     public string ThemeMode
     {
         get => _themeMode;
         set
         {
-            if (Set(ref _themeMode, value))
-            {
-                Raise(nameof(ThemeAuto));
-                Raise(nameof(ThemeLight));
-                Raise(nameof(ThemeDark));
-            }
+            if (!Set(ref _themeMode, value)) return;
+            Raise(nameof(ThemeAuto));
+            Raise(nameof(ThemeLight));
+            Raise(nameof(ThemeDark));
+            Raise(nameof(AutoSelected));
+            SyncSchemeSelection();
         }
     }
 
-    public bool ThemeAuto { get => ThemeMode == "auto"; set { if (value) ThemeMode = "auto"; } }
-    public bool ThemeLight { get => ThemeMode == "light"; set { if (value) ThemeMode = "light"; } }
-    public bool ThemeDark { get => ThemeMode == "dark"; set { if (value) ThemeMode = "dark"; } }
+    /// <summary>"light"/"dark" (legacy) and "auto" normalize to their scheme
+    /// key ("paper"/"graphite") or "" (Auto); any registry key normalizes to
+    /// itself (registry casing); anything unrecognized also falls back to ""
+    /// (Auto) — the same defensive fallback ThemeManager.SetMode already
+    /// applies to a bad config value, so a garbage Theme string still leaves
+    /// exactly one card selected instead of none.</summary>
+    private static string NormalizeSchemeKey(string mode) => mode switch
+    {
+        "light" => "paper",
+        "dark" => "graphite",
+        _ => ThemePalette.FindScheme(mode)?.Key ?? "",
+    };
+
+    /// <summary>Keeps the "exactly one of {Auto, one scheme} selected"
+    /// invariant in sync with ThemeMode. Guarded for the brief window during
+    /// construction where ThemeMode has already been seeded (as a direct
+    /// field assignment, deliberately bypassing this setter — see the
+    /// constructor) but SchemeOptions doesn't exist yet; the constructor
+    /// calls this once itself right after building the collection.</summary>
+    private void SyncSchemeSelection()
+    {
+        if (SchemeOptions is null) return;
+        var selected = NormalizeSchemeKey(_themeMode);
+        foreach (var opt in SchemeOptions) opt.IsSelected = opt.Key == selected;
+    }
+
+    /// <summary>True whenever no scheme card matches — i.e. ThemeMode is
+    /// literally "auto", blank, or unrecognized. The Auto card's own
+    /// IsChecked stays bound to ThemeAuto (unchanged, per the brief); this is
+    /// the canonical bindable property new code should use.</summary>
+    public bool AutoSelected
+    {
+        get => NormalizeSchemeKey(_themeMode).Length == 0;
+        set { if (value) ThemeMode = "auto"; }
+    }
+
+    /// <summary>One option VM per <see cref="ThemePalette.Schemes"/> entry,
+    /// registry order — the Light/Dark theme-picker cards used to be
+    /// hand-built; now they're data-driven so a new registry scheme needs no
+    /// XAML edit.</summary>
+    public ObservableCollection<SchemeOptionVm> SchemeOptions { get; }
+
+    public bool ThemeAuto { get => AutoSelected; set => AutoSelected = value; }
+    public bool ThemeLight { get => NormalizeSchemeKey(_themeMode) == "paper"; set { if (value) ThemeMode = "paper"; } }
+    public bool ThemeDark { get => NormalizeSchemeKey(_themeMode) == "graphite"; set { if (value) ThemeMode = "graphite"; } }
 
     // ----------------------------------------------------------- collections
     public ObservableCollection<RouteEditVm> Routes { get; }
@@ -2105,7 +2214,11 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         cfg.Sounds.Error = ErrorSound.Spec;
         cfg.UiFontFamily = UiFontFamily;
         cfg.UiFontSize = UiFontSizeText.Trim().Length == 0 ? 0 : int.Parse(UiFontSizeText.Trim());
-        cfg.Theme = ThemeMode;
+        // Deliberate one-way normalization: a legacy "light"/"dark" seed (or
+        // any string that isn't literally "auto" or a live registry key)
+        // never round-trips verbatim — it writes back as the scheme key it
+        // resolved to (or "auto" if nothing matched). See NormalizeSchemeKey.
+        cfg.Theme = NormalizeSchemeKey(_themeMode) is { Length: > 0 } schemeKey ? schemeKey : "auto";
         cfg.Routes = Routes.Select(r => r.ToRoute()).ToList();
         cfg.WatchFolders = WatchFolders.Select(w => w.ToWatchFolder()).ToList();
         // SavedPasswords is no longer a Settings-owned field — the Unlock

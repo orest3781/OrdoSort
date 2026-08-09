@@ -12,7 +12,8 @@ namespace OrdoSort.Wpf.ViewModels;
 public sealed class RenameRow
 {
     public RenameRow(string source, string current, string newName,
-        string note, bool changed, bool manual, bool needsName, string editSeed)
+        string note, bool changed, bool manual, bool needsName, string editSeed,
+        bool noteIsProblem)
     {
         Source = source;
         Current = current;
@@ -22,6 +23,7 @@ public sealed class RenameRow
         Manual = manual;
         NeedsName = needsName;
         EditSeed = editSeed;
+        NoteIsProblem = noteIsProblem;
     }
 
     public string Source { get; }
@@ -34,6 +36,24 @@ public sealed class RenameRow
     /// <summary>The operation couldn't produce a name for this one, so it needs
     /// a human. These are the handful in a batch worth navigating between.</summary>
     public bool NeedsName { get; }
+
+    /// <summary>True when Plan() itself had something to say about this row —
+    /// its Note carries text ("doesn't match the review-file layout —
+    /// skipped", "name was taken — using a counter", an illegal-name
+    /// rejection, …) rather than only the ViewModel's own "edited by hand"/
+    /// "(no change)" annotations. NOT the same set as <see cref="NeedsName"/>:
+    /// that's narrower (only the sub-case where nothing was renamed at all),
+    /// while a taken-name collision still gets auto-resolved (Changed stays
+    /// true) yet is exactly as worth a glance — the rename didn't produce
+    /// what was configured. Used by BulkRenameWindow.xaml's Note column
+    /// ElementStyle (status-colour-vocabulary plan, Task 2 Step 2) to tell
+    /// "reporting a problem" (amber) apart from the two purely informational
+    /// phrases (subtle) the vocabulary names explicitly — a distinction the
+    /// three EXISTING booleans here can't make on their own, since Manual +
+    /// Changed alike hold whether the row's Note is empty ("edited by hand")
+    /// or a real problem plus that suffix ("name was taken … — edited by
+    /// hand").</summary>
+    public bool NoteIsProblem { get; }
 
     /// <summary>What the editor should open with. For a stray in review mode
     /// that's the batch's date prefix, so only the name has to be typed and it
@@ -323,7 +343,7 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
             var needsName = !pr.Changed && pr.Note.Length > 0;
             Preview.Add(new RenameRow(pr.Source, Path.GetFileName(pr.Source), newName,
                 string.Join(" — ", notes), pr.Changed, pr.Manual, needsName,
-                needsName ? SeedFor(newName) : newName));
+                needsName ? SeedFor(newName) : newName, noteIsProblem: pr.Note.Length > 0));
         }
         NeedsNameCount = Preview.Count(r => r.NeedsName);
         CountsLine = _files.Count == 0

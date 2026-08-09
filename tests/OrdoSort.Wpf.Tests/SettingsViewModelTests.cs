@@ -744,10 +744,88 @@ public class SettingsViewModelTests : IDisposable
         Assert.True(vm.ThemeDark);
         Assert.False(vm.ThemeAuto);
         Assert.True(vm.TryBuildResult());
-        Assert.Equal("dark", vm.Result!.Theme);
+        // Normalize-on-save (SettingsViewModel.NormalizeSchemeKey): the legacy
+        // ThemeDark adapter now writes the scheme key it maps to ("graphite"),
+        // not the literal legacy string "dark" — see
+        // ThemeSeedingSelectsExactlyOneCardForEveryLegacyAndSchemeValue below
+        // for the full seed/normalize matrix.
+        Assert.Equal("graphite", vm.Result!.Theme);
 
         var vm2 = new SettingsViewModel(vm.Result, _dialogs);
         Assert.True(vm2.ThemeDark);
+    }
+
+    [Theory]
+    [InlineData("auto", true, null)]
+    [InlineData("", true, null)]
+    [InlineData("bogus-not-a-scheme", true, null)]
+    [InlineData("light", false, "paper")]
+    [InlineData("dark", false, "graphite")]
+    [InlineData("paper", false, "paper")]
+    [InlineData("graphite", false, "graphite")]
+    [InlineData("ledger", false, "ledger")]
+    [InlineData("LEDGER", false, "ledger")]   // FindScheme is case-insensitive
+    [InlineData("blueprint", false, "blueprint")]
+    public void ThemeSeedingSelectsExactlyOneCardForEveryLegacyAndSchemeValue(
+        string seed, bool expectAuto, string? expectSchemeKey)
+    {
+        var vm = new SettingsViewModel(new Config { Inbox = _dir, Theme = seed }, _dialogs);
+
+        Assert.Equal(expectAuto, vm.AutoSelected);
+        var selected = vm.SchemeOptions.Where(o => o.IsSelected).ToList();
+        if (expectSchemeKey is null)
+        {
+            Assert.Empty(selected);   // Auto card owns the selection instead
+        }
+        else
+        {
+            var only = Assert.Single(selected);
+            Assert.Equal(expectSchemeKey, only.Key);
+        }
+    }
+
+    [Fact]
+    public void SchemeOptionsMatchesTheRegistryCountAndOrder()
+    {
+        var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs);
+
+        Assert.Equal(
+            OrdoSort.Wpf.Theme.ThemePalette.Schemes.Select(s => s.Key),
+            vm.SchemeOptions.Select(o => o.Key));
+        Assert.Equal(
+            OrdoSort.Wpf.Theme.ThemePalette.Schemes.Select(s => s.DisplayName),
+            vm.SchemeOptions.Select(o => o.DisplayName));
+        Assert.Equal(
+            OrdoSort.Wpf.Theme.ThemePalette.Schemes.Select(s => s.IsDark),
+            vm.SchemeOptions.Select(o => o.IsDark));
+    }
+
+    [Fact]
+    public void SelectingASchemeOptionDeselectsAutoAndEverySibling()
+    {
+        var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs);
+        Assert.True(vm.AutoSelected);
+
+        var ledger = vm.SchemeOptions.Single(o => o.Key == "ledger");
+        ledger.IsSelected = true;
+
+        Assert.True(ledger.IsSelected);
+        Assert.False(vm.AutoSelected);
+        Assert.All(vm.SchemeOptions.Where(o => !ReferenceEquals(o, ledger)), o => Assert.False(o.IsSelected));
+        Assert.True(vm.TryBuildResult());
+        Assert.Equal("ledger", vm.Result!.Theme);
+
+        var carbon = vm.SchemeOptions.Single(o => o.Key == "carbon");
+        carbon.IsSelected = true;
+        Assert.True(carbon.IsSelected);
+        Assert.False(ledger.IsSelected);
+        Assert.False(vm.AutoSelected);
+
+        vm.AutoSelected = true;
+        Assert.True(vm.AutoSelected);
+        Assert.All(vm.SchemeOptions, o => Assert.False(o.IsSelected));
+        Assert.True(vm.TryBuildResult());
+        Assert.Equal("auto", vm.Result!.Theme);
     }
 
     [Fact]
