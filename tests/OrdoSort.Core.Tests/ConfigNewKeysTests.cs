@@ -39,6 +39,13 @@ public class ConfigNewKeysTests : IDisposable
             SavedPasswords = { new SavedPassword { Label = "Payer A", Password = "dpapi:abc" } },
             MergeRoster = @"C:\rosters\august.xlsx",
             MergeColumns = { "Last", "First", "DOB" },
+            TatReportFolder = @"C:\tat\reports",
+            TatHeaders = { { "filename", "FileName" }, { "category", "Category" } },
+            TatThresholdDays = 7,
+            ProductionCsvFolder = @"C:\production",
+            ProductionGroupColumns = { "Region", "Product" },
+            ProductionSumColumns = { "Revenue", "Units" },
+            ProductionDatetimeColumn = "Date",
         };
         var path = Path.Combine(_dir, "t.json");
         Config.Save(cfg, path);
@@ -49,6 +56,13 @@ public class ConfigNewKeysTests : IDisposable
         Assert.Contains("\"saved_passwords\"", json);
         Assert.Contains("\"merge_roster\"", json);
         Assert.Contains("\"merge_columns\"", json);
+        Assert.Contains("\"tat_report_folder\"", json);
+        Assert.Contains("\"tat_headers\"", json);
+        Assert.Contains("\"tat_threshold_days\"", json);
+        Assert.Contains("\"production_csv_folder\"", json);
+        Assert.Contains("\"production_group_columns\"", json);
+        Assert.Contains("\"production_sum_columns\"", json);
+        Assert.Contains("\"production_datetime_column\"", json);
         // "unlock_suffix" was retired when the unlock tool stopped having a
         // setting; it must not come back as a key the app writes
         Assert.DoesNotContain("\"unlock_suffix\"", json);
@@ -62,6 +76,15 @@ public class ConfigNewKeysTests : IDisposable
         Assert.Equal("dpapi:abc", pw.Password);
         Assert.Equal(@"C:\rosters\august.xlsx", back.MergeRoster);
         Assert.Equal(new[] { "Last", "First", "DOB" }, back.MergeColumns);
+        Assert.Equal(@"C:\tat\reports", back.TatReportFolder);
+        Assert.Equal(2, back.TatHeaders.Count);
+        Assert.Equal("FileName", back.TatHeaders["filename"]);
+        Assert.Equal("Category", back.TatHeaders["category"]);
+        Assert.Equal(7, back.TatThresholdDays);
+        Assert.Equal(@"C:\production", back.ProductionCsvFolder);
+        Assert.Equal(new[] { "Region", "Product" }, back.ProductionGroupColumns);
+        Assert.Equal(new[] { "Revenue", "Units" }, back.ProductionSumColumns);
+        Assert.Equal("Date", back.ProductionDatetimeColumn);
     }
 
     [Fact]
@@ -74,6 +97,13 @@ public class ConfigNewKeysTests : IDisposable
         Assert.Empty(cfg.SavedPasswords);
         Assert.Equal("", cfg.MergeRoster);
         Assert.Empty(cfg.MergeColumns);
+        Assert.Equal("", cfg.TatReportFolder);
+        Assert.Empty(cfg.TatHeaders);
+        Assert.Equal(5, cfg.TatThresholdDays);
+        Assert.Equal("", cfg.ProductionCsvFolder);
+        Assert.Empty(cfg.ProductionGroupColumns);
+        Assert.Empty(cfg.ProductionSumColumns);
+        Assert.Equal("", cfg.ProductionDatetimeColumn);
     }
 
     [Fact]
@@ -157,5 +187,19 @@ public class ConfigNewKeysTests : IDisposable
         Assert.Equal("auto", RoundTrip(new Config()).Theme);
         var ex = Assert.Throws<ConfigException>(() => LoadJson("{ \"theme\": \"blue\" }"));
         Assert.Contains("theme", ex.Message);
+    }
+
+    [Fact]
+    public void TatThresholdDaysDefaultsTo5AndRoundTrips()
+    {
+        Assert.Equal(5, RoundTrip(new Config()).TatThresholdDays);
+        Assert.Equal(10, RoundTrip(new Config { TatThresholdDays = 10 }).TatThresholdDays);
+    }
+
+    [Fact]
+    public void NegativeTatThresholdDaysResetsToDefault()
+    {
+        Assert.Equal(5, LoadJson("{ \"tat_threshold_days\": -1 }").TatThresholdDays);
+        Assert.Equal(5, LoadJson("{ \"tat_threshold_days\": -100 }").TatThresholdDays);
     }
 }
