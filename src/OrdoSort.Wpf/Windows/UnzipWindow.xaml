@@ -1,0 +1,124 @@
+<Window x:Class="OrdoSort.Wpf.Windows.UnzipWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:OrdoSort.Wpf.ViewModels"
+        Title="OrdoSort — Unzip" Width="640" Height="500" MinWidth="500" MinHeight="380"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" AllowDrop="True"
+        DragOver="OnDragOver" Drop="OnDrop"
+        Style="{StaticResource {x:Type Window}}">
+    <DockPanel Margin="14">
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <Button DockPanel.Dock="Right" Content="Close" Width="96" IsCancel="True" />
+            <StackPanel Orientation="Horizontal">
+                <Button Command="{Binding ExtractCommand}"
+                        Style="{StaticResource PrimaryButton}" MinWidth="120" Margin="0,0,8,0"
+                        AutomationProperties.Name="{Binding ExtractButtonText}">
+                    <TextBlock Text="{Binding ExtractButtonText}" Style="{StaticResource PrimaryButtonLabel}" />
+                </Button>
+                <!-- The batch's own running verdict — "Extracting 2 of 5…"
+                     while under way, then "3 extracted · 1 failed" — gets
+                     StatusText, the same style ZipMergeWindow's own Summary
+                     line uses. -->
+                <TextBlock Text="{Binding Summary}" VerticalAlignment="Center"
+                           Style="{StaticResource StatusText}" MaxWidth="360" />
+            </StackPanel>
+        </DockPanel>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <DockPanel Margin="0,0,0,10">
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Add zips…" Click="OnAddFiles" Margin="0,0,6,0" />
+                    <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,0" />
+                    <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,0" />
+                    <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </DockPanel>
+
+            <Grid Grid.Row="1">
+                <DataGrid x:Name="ZipsGrid" ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
+                          IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
+                          SelectionMode="Extended">
+                    <!-- Local RowStyle, same shape as ZipMergeWindow's own —
+                         Theme.RowHover so the hover tint stays consistent
+                         app-wide; matters here because the Result column can
+                         show StatusAmber below. -->
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="ToolTip" Value="{Binding Path}" />
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background"
+                                            Value="{DynamicResource Theme.RowHover}" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.Columns>
+                        <!-- Zip: the filler (Width="*") — the source
+                             filename, same reasoning as ZipMergeWindow's own
+                             Zip column. -->
+                        <DataGridTextColumn Header="Zip" Binding="{Binding FileName}" Width="*">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding Path}" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <!-- Result: content-sized, amber whenever a zip's
+                             extract attempt ended in Error — the same
+                             GridCellText-plus-triggers recipe as
+                             ZipMergeWindow.xaml's own Result column (see that
+                             file's doc comment for the measured contrast
+                             numbers the trailing "let selection win"
+                             DataTrigger exists to fix), minus the NoPdfs
+                             trigger — UnzipRowStatus has no equivalent
+                             middle state, just Ok/Error. -->
+                        <DataGridTextColumn x:Name="ResultColumn" Header="Result" Binding="{Binding Note}"
+                                            Width="Auto">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding Note}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding StatusKind}"
+                                                     Value="{x:Static vm:UnzipRowStatus.Error}">
+                                            <Setter Property="Foreground" Value="{DynamicResource Theme.StatusAmber}" />
+                                        </DataTrigger>
+                                        <!-- Declared last so it overrides the
+                                             trigger above once selected —
+                                             same measured trap and same fix
+                                             as ZipMergeWindow's Result column. -->
+                                        <DataTrigger Value="True">
+                                            <DataTrigger.Binding>
+                                                <Binding Path="IsSelected"
+                                                         RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                                            </DataTrigger.Binding>
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.AccentText}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Text="Drag zips anywhere on this window, or press Add zips…"
+                           Style="{StaticResource SubtleText}" Margin="10,36,10,10"
+                           IsHitTestVisible="False">
+                    <TextBlock.Visibility>
+                        <Binding Path="Rows.Count" Converter="{StaticResource ZeroToVis}" />
+                    </TextBlock.Visibility>
+                </TextBlock>
+            </Grid>
+        </Grid>
+    </DockPanel>
+</Window>

@@ -277,6 +277,26 @@
                 <MenuItem Header="Bo_x labels…" Click="OnLabelMaker">
                     <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE8EC;" /></MenuItem.Icon>
                 </MenuItem>
+                <Separator />
+                <MenuItem Header="_Filename list…" Click="OnFilenameList">
+                    <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE8FD;" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="PDF page _counts…" Click="OnPageCounts">
+                    <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE7C3;" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_List reformatter…" Click="OnListReformat">
+                    <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE8AB;" /></MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="Mer_ge PDFs from zip…" Click="OnZipMerge">
+                    <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE8F1;" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Zip…" Click="OnZip">
+                    <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="U_nzip…" Click="OnUnzip">
+                    <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xED25;" /></MenuItem.Icon>
+                </MenuItem>
             </MenuItem>
             </Menu>
         </Grid>
