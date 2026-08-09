@@ -91,7 +91,7 @@ public class ThemeTests
     [Fact]
     public void SchemesRegistryHasExpectedKeysAndPalettes()
     {
-        Assert.Equal(6, ThemePalette.Schemes.Count);
+        Assert.Equal(7, ThemePalette.Schemes.Count);
 
         var paper = ThemePalette.Schemes[0];
         Assert.Equal("paper", paper.Key);
@@ -122,6 +122,11 @@ public class ThemeTests
         Assert.Equal("carbon", carbon.Key);
         Assert.Same(ThemePalette.Carbon, carbon.Palette);
         Assert.True(carbon.IsDark);
+
+        var blueprint = ThemePalette.Schemes[6];
+        Assert.Equal("blueprint", blueprint.Key);
+        Assert.Same(ThemePalette.Blueprint, blueprint.Palette);
+        Assert.False(blueprint.IsDark);
     }
 
     [Theory]

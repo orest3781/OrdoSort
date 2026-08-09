@@ -321,6 +321,31 @@ public sealed record ThemePalette(
         SurfacePressed: new(88, 89, 99),
         RowHover: new(38, 32, 54));
 
+    // The drafting blueprint — cool azure paper and cobalt ink. Light.
+    // Values validated against the full pairing wall before landing.
+    public static ThemePalette Blueprint { get; } = new(
+        WindowBg: new(233, 239, 246),
+        Surface: new(247, 250, 253),
+        Text: new(24, 39, 64),
+        SubtleText: new(73, 88, 110),
+        Border: new(170, 184, 200),
+        Accent: new(35, 83, 143),
+        AccentText: new(255, 255, 255),
+        Warning: new(255, 236, 179),
+        WarningText: new(102, 60, 0),
+        Danger: new(186, 54, 41),
+        DangerText: new(255, 255, 255),
+        Success: new(40, 110, 44),
+        StatusAmber: new(140, 86, 3),
+        StatusGreen: new(40, 110, 44),
+        StatusRed: new(178, 50, 38),
+        TileDefaultBg: new(219, 229, 240),
+        BorderStrong: new(110, 126, 146),
+        AccentBronze: new(45, 101, 160),
+        SurfaceHover: new(188, 202, 216),
+        SurfacePressed: new(152, 170, 190),
+        RowHover: new(214, 233, 255));
+
     // ------------------------------------------------------ scheme registry
 
     public static IReadOnlyList<ThemeScheme> Schemes { get; } = new[]
@@ -331,6 +356,7 @@ public sealed record ThemePalette(
         new ThemeScheme("microfilm", "Microfilm", Microfilm, IsDark: true),
         new ThemeScheme("manila",    "Manila",    Manila,    IsDark: false),
         new ThemeScheme("carbon",    "Carbon",    Carbon,    IsDark: true),
+        new ThemeScheme("blueprint", "Blueprint", Blueprint, IsDark: false),
     };
 
     /// <summary>Case-insensitive lookup by key. Null for null/blank/unknown —
