@@ -95,6 +95,10 @@
                 <MenuItem Header="Bo_x labels…" Click="OnLabelMaker">
                     <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE8EC;" /></MenuItem.Icon>
                 </MenuItem>
+                <Separator />
+                <MenuItem Header="_Filename list…" Click="OnFilenameList">
+                    <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE8FD;" /></MenuItem.Icon>
+                </MenuItem>
             </MenuItem>
             </Menu>
         </Grid>

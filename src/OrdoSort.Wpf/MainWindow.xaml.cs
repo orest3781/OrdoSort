@@ -326,6 +326,13 @@ public partial class MainWindow : Window
         new Windows.LabelMakerWindow(new LabelMakerViewModel(
             Shell.Cfg, Shell.BoxLabelsPath, Dialogs)) { Owner = this }.ShowDialog();
 
+    private void OnFilenameList(object sender, RoutedEventArgs e)
+    {
+        var vm = new FilenameListViewModel(Dialogs, uiContext: SynchronizationContext.Current);
+        new Windows.FilenameListWindow(vm) { Owner = this }.ShowDialog();
+        vm.Dispose();   // cancel any still-armed rebuild probe now the dialog is closing
+    }
+
     private void OnSettings(object sender, RoutedEventArgs e)
     {
         if (!Shell.IsReady)
