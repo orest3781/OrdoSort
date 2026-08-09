@@ -102,6 +102,9 @@
                 <MenuItem Header="PDF page _counts…" Click="OnPageCounts">
                     <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE7C3;" /></MenuItem.Icon>
                 </MenuItem>
+                <MenuItem Header="_List reformatter…" Click="OnListReformat">
+                    <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE8AB;" /></MenuItem.Icon>
+                </MenuItem>
             </MenuItem>
             </Menu>
         </Grid>
