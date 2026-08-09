@@ -167,6 +167,7 @@ public class ConfigNewKeysTests : IDisposable
     [Theory]
     [InlineData("paper")]
     [InlineData("graphite")]
+    [InlineData("ledger")]
     public void ThemeAcceptsSchemeKeys(string scheme) =>
         Assert.Equal(scheme, LoadJson($"{{ \"theme\": \"{scheme}\" }}").Theme);
 

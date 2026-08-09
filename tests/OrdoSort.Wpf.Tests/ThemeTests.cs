@@ -86,10 +86,12 @@ public class ThemeTests
     // Scheme registry scaffold: Schemes is the single enumeration every
     // scheme-aware test iterates going forward, so pin its exact shape here
     // (keys, palette identity, IsDark) plus FindScheme's lookup contract.
+    // Extended alongside each new scheme landing (ledger, microfilm, manila,
+    // carbon, blueprint) rather than left pinned at paper/graphite.
     [Fact]
-    public void SchemesRegistryHasExactlyPaperAndGraphite()
+    public void SchemesRegistryHasExpectedKeysAndPalettes()
     {
-        Assert.Equal(2, ThemePalette.Schemes.Count);
+        Assert.Equal(3, ThemePalette.Schemes.Count);
 
         var paper = ThemePalette.Schemes[0];
         Assert.Equal("paper", paper.Key);
@@ -100,6 +102,11 @@ public class ThemeTests
         Assert.Equal("graphite", graphite.Key);
         Assert.Same(ThemePalette.Dark, graphite.Palette);
         Assert.True(graphite.IsDark);
+
+        var ledger = ThemePalette.Schemes[2];
+        Assert.Equal("ledger", ledger.Key);
+        Assert.Same(ThemePalette.Ledger, ledger.Palette);
+        Assert.True(ledger.IsDark);
     }
 
     [Theory]

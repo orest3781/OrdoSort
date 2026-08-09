@@ -221,12 +221,38 @@ public sealed record ThemePalette(
         // same one round 1 broke at 3.71:1) with a real 0.40 margin.
         RowHover: new(52, 38, 24));
 
+    // Banker's-lamp ledger green with aged gold. Dark. Values validated
+    // against the full pairing wall before landing.
+    public static ThemePalette Ledger { get; } = new(
+        WindowBg: new(21, 26, 22),
+        Surface: new(31, 39, 33),
+        Text: new(231, 236, 230),
+        SubtleText: new(166, 175, 166),
+        Border: new(74, 84, 75),
+        Accent: new(203, 214, 196),
+        AccentText: new(21, 26, 22),
+        Warning: new(84, 62, 8),
+        WarningText: new(255, 224, 130),
+        Danger: new(192, 57, 43),
+        DangerText: new(255, 255, 255),
+        Success: new(46, 125, 50),
+        StatusAmber: new(240, 173, 78),
+        StatusGreen: new(129, 199, 132),
+        StatusRed: new(229, 115, 115),
+        TileDefaultBg: new(48, 58, 50),
+        BorderStrong: new(108, 120, 109),
+        AccentBronze: new(210, 178, 94),
+        SurfaceHover: new(70, 82, 72),
+        SurfacePressed: new(92, 104, 93),
+        RowHover: new(48, 45, 20));
+
     // ------------------------------------------------------ scheme registry
 
     public static IReadOnlyList<ThemeScheme> Schemes { get; } = new[]
     {
-        new ThemeScheme("paper",    "Paper",    Light, IsDark: false),
-        new ThemeScheme("graphite", "Graphite", Dark,  IsDark: true),
+        new ThemeScheme("paper",    "Paper",    Light,  IsDark: false),
+        new ThemeScheme("graphite", "Graphite", Dark,   IsDark: true),
+        new ThemeScheme("ledger",   "Ledger",   Ledger, IsDark: true),
     };
 
     /// <summary>Case-insensitive lookup by key. Null for null/blank/unknown —
