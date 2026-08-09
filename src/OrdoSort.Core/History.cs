@@ -310,15 +310,7 @@ public sealed class History : IDisposable
         return rows.Count;
     }
 
-    private static string CsvField(string value)
-    {
-        // formula-injection guard first
-        if (value.Length > 0 && "=+-@\t\r".IndexOf(value[0]) >= 0)
-            value = "'" + value;
-        if (value.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0)
-            value = "\"" + value.Replace("\"", "\"\"") + "\"";
-        return value;
-    }
+    private static string CsvField(string value) => Csv.EscapeField(value);
 
     private static List<IReadOnlyDictionary<string, object>> Read(SqliteCommand cmd)
     {

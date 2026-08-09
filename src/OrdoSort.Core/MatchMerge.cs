@@ -334,51 +334,13 @@ public static partial class MatchMerge
             throw new RosterException("That format isn't supported — save it as .xlsx or .csv.");
         try
         {
-            return path.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)
-                ? XlsxTable.Read(path)
-                : ParseCsv(File.ReadAllText(path, Encoding.UTF8));
+            return Csv.ReadTable(path);
         }
         catch (RosterException) { throw; }
         catch (Exception ex)
         {
             throw new RosterException($"Couldn't read the spreadsheet: {ex.Message}");
         }
-    }
-
-    /// <summary>Minimal RFC-4180-ish CSV: handles quoted fields with embedded
-    /// commas, quotes ("") and newlines. Good enough for Excel exports.</summary>
-    private static List<List<string>> ParseCsv(string text)
-    {
-        var rows = new List<List<string>>();
-        var row = new List<string>();
-        var field = new StringBuilder();
-        var inQuotes = false;
-        for (var i = 0; i < text.Length; i++)
-        {
-            var c = text[i];
-            if (inQuotes)
-            {
-                if (c == '"')
-                {
-                    if (i + 1 < text.Length && text[i + 1] == '"') { field.Append('"'); i++; }
-                    else inQuotes = false;
-                }
-                else field.Append(c);
-            }
-            else switch (c)
-            {
-                case '"': inQuotes = true; break;
-                case ',': row.Add(field.ToString()); field.Clear(); break;
-                case '\r': break;
-                case '\n':
-                    row.Add(field.ToString()); field.Clear();
-                    rows.Add(row); row = new();
-                    break;
-                default: field.Append(c); break;
-            }
-        }
-        if (field.Length > 0 || row.Count > 0) { row.Add(field.ToString()); rows.Add(row); }
-        return rows.Where(r => r.Count > 1 || (r.Count == 1 && r[0].Length > 0)).ToList();
     }
 }
 
