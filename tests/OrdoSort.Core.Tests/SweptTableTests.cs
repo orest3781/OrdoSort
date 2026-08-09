@@ -107,6 +107,27 @@ public class SweptTableTests : IDisposable
         Assert.Equal("y", table.Rows[0].Cells["Name (3)"]);
     }
 
+    /// <summary>Regression for a generated duplicate-suffix key colliding
+    /// with a distinct literal header in the same row: "X" at column 1 is
+    /// the first occurrence and stays plain; the second "X" at column 2 is
+    /// a duplicate and would naively become "X (2)" — but the third column
+    /// is *literally* named "X (2)", so that candidate is already taken.
+    /// Every column must still get its own key and keep its own value; none
+    /// of the three may silently overwrite another.</summary>
+    [Fact]
+    public void ADuplicateSuffixThatCollidesWithALiteralHeaderStillGetsAUniqueKey()
+    {
+        var path = Write("collide.csv", "X,X,X (2)\n1,2,3\n");
+
+        var table = SweptTable.Load(new[] { path });
+
+        Assert.Equal(3, table.Headers.Count);
+        Assert.Equal(table.Headers.Count, table.Headers.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal("1", table.Rows[0].Cells[table.Headers[0]]);
+        Assert.Equal("2", table.Rows[0].Cells[table.Headers[1]]);
+        Assert.Equal("3", table.Rows[0].Cells[table.Headers[2]]);
+    }
+
     [Fact]
     public void EmptyPathsListReturnsAnEmptyTableWithNoError()
     {

@@ -86,18 +86,29 @@ public static class SweptTable
     /// blank cell (after Trim) becomes "Column {i}" (1-based) before
     /// duplicates are even considered, then the first occurrence of any name
     /// keeps it plain and every later occurrence is suffixed "{name} ({i})"
-    /// with its own 1-based column index — a repeated header must never
-    /// silently overwrite an earlier column's data in the row dictionaries
-    /// built from these keys.</summary>
+    /// with its own 1-based column index. That suffix is only the first
+    /// guess, though: a raw header can itself read as the generated form
+    /// (a file with columns "X", "X", "X (2)" would otherwise hand out
+    /// "X (2)" twice), so every candidate key is checked against every key
+    /// already handed out — not just against raw header text — and bumped
+    /// with a further column-indexed suffix until it's unique. A repeated
+    /// or colliding header must never overwrite an earlier column's data in
+    /// the row dictionaries built from these keys.</summary>
     private static List<string> ColumnKeys(List<string> headerRow)
     {
         var keys = new List<string>(headerRow.Count);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var rawSeen = new HashSet<string>(StringComparer.Ordinal);
+        var used = new HashSet<string>(StringComparer.Ordinal);
         for (var i = 0; i < headerRow.Count; i++)
         {
             var name = headerRow[i].Trim();
             if (name.Length == 0) name = $"Column {i + 1}";
-            keys.Add(seen.Add(name) ? name : $"{name} ({i + 1})");
+
+            var key = rawSeen.Add(name) ? name : $"{name} ({i + 1})";
+            for (var n = i + 1; !used.Add(key); )
+                key = $"{name} ({++n})";
+
+            keys.Add(key);
         }
         return keys;
     }
