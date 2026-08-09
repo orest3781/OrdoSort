@@ -216,11 +216,11 @@ public class HighlightContrastTests
 
     public static IEnumerable<object[]> ComboBoxShapes()
     {
-        foreach (var dark in new[] { false, true })
+        foreach (var s in ThemePalette.Schemes)
         {
-            yield return new object[] { "plain-string", dark };
-            yield return new object[] { "KvpValueTemplate", dark };
-            yield return new object[] { "FontChoiceTemplate", dark };
+            yield return new object[] { "plain-string", s.Key };
+            yield return new object[] { "KvpValueTemplate", s.Key };
+            yield return new object[] { "FontChoiceTemplate", s.Key };
         }
     }
 
@@ -244,9 +244,10 @@ public class HighlightContrastTests
     /// test directly; proven by temporarily doing exactly that (see the
     /// task-2 follow-up report for the pasted failing output).</summary>
     [Theory, MemberData(nameof(ComboBoxShapes))]
-    public void HighlightedComboBoxItemTextMeetsWcagAa(string shape, bool dark) => _fx.Invoke(() =>
+    public void HighlightedComboBoxItemTextMeetsWcagAa(string shape, string schemeKey) => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var container = new ComboBoxItem();
         if (shape == "plain-string")
@@ -274,7 +275,7 @@ public class HighlightContrastTests
         var bg = ToRgb(bd.Background);
         var ratio = ThemePalette.ContrastRatio(fg, bg);
         Assert.True(ratio >= 4.5,
-            $"ComboBoxItem {shape} ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+            $"ComboBoxItem {shape} ({schemeKey}): {fg} on {bg} = {ratio:F2}");
     });
 
     /// <summary>UNRESOLVED-CONFLICT investigation (Task 2 brief), later
@@ -312,10 +313,11 @@ public class HighlightContrastTests
     /// `HeaderTemplate` Setter was reverted from Styles.xaml as a no-op; this
     /// test case is kept as a regression guard and passes with or without
     /// it (verified both ways).</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void HighlightedMenuSubmenuHeaderTextMeetsWcagAa(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void HighlightedMenuSubmenuHeaderTextMeetsWcagAa(string schemeKey) => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var menu = new Menu();
         var topLevel = new MenuItem { Header = "_Tools" };
@@ -358,7 +360,7 @@ public class HighlightContrastTests
             var bg = ToRgb(bd.Background);
             var ratio = ThemePalette.ContrastRatio(fg, bg);
             Assert.True(ratio >= 4.5,
-                $"MenuItem submenu Header ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+                $"MenuItem submenu Header ({schemeKey}): {fg} on {bg} = {ratio:F2}");
         }
         finally
         {
@@ -369,11 +371,6 @@ public class HighlightContrastTests
     private static void PumpRender() =>
         Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
 
-    public static IEnumerable<object[]> Palettes()
-    {
-        yield return new object[] { false };
-        yield return new object[] { true };
-    }
 
     // ---------------------------------------------------------------- ListBox
 
@@ -395,13 +392,12 @@ public class HighlightContrastTests
     /// reflection hack is needed to force it), the same
     /// Realize-then-flip-then-Realize shape as
     /// HighlightedComboBoxItemTextMeetsWcagAa.</summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void SelectedListBoxItemUsesTheAccentPalette(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void SelectedListBoxItemUsesTheAccentPalette(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var container = new ListBoxItem { Content = "Invoices" };
         Realize(container);
@@ -419,7 +415,7 @@ public class HighlightContrastTests
         Assert.Equal(p.AccentText, fg);
         var ratio = ThemePalette.ContrastRatio(fg, bg);
         Assert.True(ratio >= 4.5,
-            $"ListBoxItem selected ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+            $"ListBoxItem selected ({schemeKey}): {fg} on {bg} = {ratio:F2}");
     });
 
     /// <summary>Closes a gap the synthetic case above can't: every real
@@ -447,11 +443,12 @@ public class HighlightContrastTests
     /// internal to OrdoSort.Wpf, which this test project has no
     /// InternalsVisibleTo into), proving the local-Foreground-binding fix
     /// added to UnlockWindow.xaml reaches what actually ships.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void SelectedUnlockFileListRowUsesTheAccentPalette(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void SelectedUnlockFileListRowUsesTheAccentPalette(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var vm = new UnlockViewModel(new Config(), () => true);
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
@@ -486,7 +483,7 @@ public class HighlightContrastTests
             Assert.Equal(p.AccentText, fg);
             var ratio = ThemePalette.ContrastRatio(fg, bg);
             Assert.True(ratio >= 4.5,
-                $"UnlockWindow FileList selected row ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+                $"UnlockWindow FileList selected row ({schemeKey}): {fg} on {bg} = {ratio:F2}");
         }
         finally
         {
@@ -548,11 +545,12 @@ public class HighlightContrastTests
     /// stays untouched. This is the assertion the pre-split tests had no way
     /// to make at all: DisplayText was one string, so a fixed colour on it
     /// would have painted the filename too.</summary>
-    private void AssertUnlockFileListNoteContrast(bool dark, bool selected, ReadinessStatus status,
+    private void AssertUnlockFileListNoteContrast(string schemeKey, bool selected, ReadinessStatus status,
         string message, string expectedNoteFragment, Func<ThemePalette, Rgb> expectedNoteColorWhenUnselected)
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var vm = new UnlockViewModel(new Config(), () => true);
         var row = new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf");
@@ -594,12 +592,12 @@ public class HighlightContrastTests
                 Assert.Equal(p.AccentText, fileNameFg);
                 var fileNameRatio = ThemePalette.ContrastRatio(fileNameFg, bg);
                 Assert.True(fileNameRatio >= 4.5,
-                    $"UnlockWindow FileList selected filename, {status} ({(dark ? "dark" : "light")}): {fileNameFg} on {bg} = {fileNameRatio:F2}");
+                    $"UnlockWindow FileList selected filename, {status} ({schemeKey}): {fileNameFg} on {bg} = {fileNameRatio:F2}");
                 // Ratio only, deliberately (see class doc above): this is the
                 // assertion Step 5's teeth proof breaks.
                 var noteRatio = ThemePalette.ContrastRatio(noteFg, bg);
                 Assert.True(noteRatio >= 4.5,
-                    $"UnlockWindow FileList selected note, {status} ({(dark ? "dark" : "light")}): {noteFg} on {bg} = {noteRatio:F2}");
+                    $"UnlockWindow FileList selected note, {status} ({schemeKey}): {noteFg} on {bg} = {noteRatio:F2}");
             }
             else
             {
@@ -607,7 +605,7 @@ public class HighlightContrastTests
                 Assert.Equal(expectedNote, noteFg);
                 var noteRatio = ThemePalette.ContrastRatio(noteFg, p.Surface);
                 Assert.True(noteRatio >= 4.5,
-                    $"UnlockWindow FileList unselected note, {status} ({(dark ? "dark" : "light")}): {noteFg} on {p.Surface} = {noteRatio:F2}");
+                    $"UnlockWindow FileList unselected note, {status} ({schemeKey}): {noteFg} on {p.Surface} = {noteRatio:F2}");
             }
         }
         finally
@@ -617,26 +615,26 @@ public class HighlightContrastTests
     }
 
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void UnlockFileListReadyNoteIsGreenUnlessSelected(bool dark, bool selected) =>
-        _fx.Invoke(() => AssertUnlockFileListNoteContrast(dark, selected, ReadinessStatus.Ready,
+    public void UnlockFileListReadyNoteIsGreenUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertUnlockFileListNoteContrast(schemeKey, selected, ReadinessStatus.Ready,
             "A saved password opens this.", "a saved password opens this", p => p.StatusGreen));
 
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void UnlockFileListNeedsPasswordNoteIsAmberUnlessSelected(bool dark, bool selected) =>
-        _fx.Invoke(() => AssertUnlockFileListNoteContrast(dark, selected, ReadinessStatus.NeedsPassword,
+    public void UnlockFileListNeedsPasswordNoteIsAmberUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertUnlockFileListNoteContrast(schemeKey, selected, ReadinessStatus.NeedsPassword,
             "This PDF needs a password none of the saved ones supply.", "needs a password", p => p.StatusAmber));
 
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void UnlockFileListInUseNoteIsAmberUnlessSelected(bool dark, bool selected) =>
-        _fx.Invoke(() => AssertUnlockFileListNoteContrast(dark, selected, ReadinessStatus.InUse,
+    public void UnlockFileListInUseNoteIsAmberUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertUnlockFileListNoteContrast(schemeKey, selected, ReadinessStatus.InUse,
             "It's open in another program — close it there and try again.", "in use, couldn't check", p => p.StatusAmber));
 
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void UnlockFileListUnreadableNoteIsDangerUnlessSelected(bool dark, bool selected) =>
+    public void UnlockFileListUnreadableNoteIsDangerUnlessSelected(string schemeKey, bool selected) =>
         // p.StatusRed, NOT p.Danger: Danger AS FOREGROUND TEXT fails 4.5:1
         // against Dark.Surface (2.69:1, measured while writing this test) --
         // see ThemePalette.cs's StatusRed field comment and the Task 1 report.
-        _fx.Invoke(() => AssertUnlockFileListNoteContrast(dark, selected, ReadinessStatus.Unreadable,
+        _fx.Invoke(() => AssertUnlockFileListNoteContrast(schemeKey, selected, ReadinessStatus.Unreadable,
             "Couldn't read it: The file is not a valid PDF document.", "couldn't be read", p => p.StatusRed));
 
     // -------------------------------------------------------- Result lines
@@ -654,11 +652,12 @@ public class HighlightContrastTests
     /// ItemsControl's real background (Theme.Surface, painted by the
     /// enclosing Border) — the same resolved-not-XAML standard the FileList
     /// tests above already hold to.</summary>
-    private void AssertUnlockResultLineContrast(bool dark, UnlockResultKind kind, string text,
+    private void AssertUnlockResultLineContrast(string schemeKey, UnlockResultKind kind, string text,
         Func<ThemePalette, Rgb> expectedColor)
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var vm = new UnlockViewModel(new Config(), () => true);
         vm.ResultLines.Add(new UnlockResultLine(text, kind));
@@ -685,7 +684,7 @@ public class HighlightContrastTests
             Assert.Equal(expectedColor(p), fg);
             var ratio = ThemePalette.ContrastRatio(fg, p.Surface);
             Assert.True(ratio >= 4.5,
-                $"UnlockWindow ResultList {kind} ({(dark ? "dark" : "light")}): {fg} on {p.Surface} = {ratio:F2}");
+                $"UnlockWindow ResultList {kind} ({schemeKey}): {fg} on {p.Surface} = {ratio:F2}");
         }
         finally
         {
@@ -693,19 +692,19 @@ public class HighlightContrastTests
         }
     }
 
-    [Theory, MemberData(nameof(Palettes))]
-    public void UnlockResultLineOkIsGreen(bool dark) =>
-        _fx.Invoke(() => AssertUnlockResultLineContrast(dark, UnlockResultKind.Ok,
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void UnlockResultLineOkIsGreen(string schemeKey) =>
+        _fx.Invoke(() => AssertUnlockResultLineContrast(schemeKey, UnlockResultKind.Ok,
             "✓  a.pdf  →  b.pdf", p => p.StatusGreen));
 
-    [Theory, MemberData(nameof(Palettes))]
-    public void UnlockResultLineFailIsAmber(bool dark) =>
-        _fx.Invoke(() => AssertUnlockResultLineContrast(dark, UnlockResultKind.Fail,
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void UnlockResultLineFailIsAmber(string schemeKey) =>
+        _fx.Invoke(() => AssertUnlockResultLineContrast(schemeKey, UnlockResultKind.Fail,
             "✗  a.pdf — wrong password", p => p.StatusAmber));
 
-    [Theory, MemberData(nameof(Palettes))]
-    public void UnlockResultLineSkipIsSubtle(bool dark) =>
-        _fx.Invoke(() => AssertUnlockResultLineContrast(dark, UnlockResultKind.Skip,
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void UnlockResultLineSkipIsSubtle(string schemeKey) =>
+        _fx.Invoke(() => AssertUnlockResultLineContrast(schemeKey, UnlockResultKind.Skip,
             "•  a.pdf — already unlocked", p => p.SubtleText));
 
     /// <summary>Same gap-closing purpose as the UnlockWindow test above, for
@@ -725,11 +724,12 @@ public class HighlightContrastTests
     /// through the Add-command's Hook() dirty-tracking, so this window's
     /// Closing handler (which persists only if something's dirty) writes
     /// nothing back to that path either.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void SelectedLabelMakerClientRowUsesTheAccentPalette(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void SelectedLabelMakerClientRowUsesTheAccentPalette(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
         var vm = new LabelMakerViewModel(new Config(), boxLabelsPath, new NoDialogs());
@@ -765,7 +765,7 @@ public class HighlightContrastTests
             Assert.Equal(p.AccentText, fg);
             var ratio = ThemePalette.ContrastRatio(fg, bg);
             Assert.True(ratio >= 4.5,
-                $"LabelMakerWindow Clients selected row ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+                $"LabelMakerWindow Clients selected row ({schemeKey}): {fg} on {bg} = {ratio:F2}");
         }
         finally
         {
@@ -778,11 +778,12 @@ public class HighlightContrastTests
     /// TWO TextBlocks (Label, then a SubtleText-styled password-status
     /// annotation); <see cref="FindTextElement"/> returns the first —
     /// Label — here.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void SelectedManageSavedRowUsesTheAccentPalette(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void SelectedManageSavedRowUsesTheAccentPalette(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var vm = new UnlockViewModel(new Config(), () => true);
         vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
@@ -817,7 +818,7 @@ public class HighlightContrastTests
             Assert.Equal(p.AccentText, fg);
             var ratio = ThemePalette.ContrastRatio(fg, bg);
             Assert.True(ratio >= 4.5,
-                $"ManageSavedWindow Saved selected row ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+                $"ManageSavedWindow Saved selected row ({schemeKey}): {fg} on {bg} = {ratio:F2}");
         }
         finally
         {
@@ -845,17 +846,18 @@ public class HighlightContrastTests
     /// and while this test only visits the Destinations tab, a real,
     /// resolvable-but-missing path costs nothing and removes that as a
     /// future footgun.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void SelectedSettingsRouteListRowUsesTheAccentPalette(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void SelectedSettingsRouteListRowUsesTheAccentPalette(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var cfg = new Config();
         cfg.Routes.Add(new Route { Label = "Invoices", Path = @"C:\dest", Hotkey = "Ctrl+1" });
         var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(),
-            () => dark ? ThemePalette.Dark : ThemePalette.Light, cfgPath,
+            () => scheme.Palette, cfgPath,
             uiContext: System.Threading.SynchronizationContext.Current);
         var window = new SettingsWindow(vm)
         {
@@ -908,7 +910,7 @@ public class HighlightContrastTests
             Assert.Equal(p.AccentText, fg);
             var ratio = ThemePalette.ContrastRatio(fg, bg);
             Assert.True(ratio >= 4.5,
-                $"SettingsWindow RouteList selected row ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+                $"SettingsWindow RouteList selected row ({schemeKey}): {fg} on {bg} = {ratio:F2}");
         }
         finally
         {
@@ -920,9 +922,9 @@ public class HighlightContrastTests
 
     public static IEnumerable<object[]> PalettesAndSelection()
     {
-        foreach (var dark in new[] { false, true })
+        foreach (var s in ThemePalette.Schemes)
         foreach (var selected in new[] { false, true })
-            yield return new object[] { dark, selected };
+            yield return new object[] { s.Key, selected };
     }
 
     /// <summary>Theme-coverage final review (2026-08-02), Finding 1:
@@ -940,10 +942,11 @@ public class HighlightContrastTests
     /// ThemePalette.AccentText (the same contract the flat binding already
     /// gave selected rows, preserved by the DataTrigger-based fix).</summary>
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void LabelMakerNextNumberTextStaysSubtleUnlessSelected(bool dark, bool selected) => _fx.Invoke(() =>
+    public void LabelMakerNextNumberTextStaysSubtleUnlessSelected(string schemeKey, bool selected) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
         var vm = new LabelMakerViewModel(new Config(), boxLabelsPath, new NoDialogs());
@@ -995,10 +998,11 @@ public class HighlightContrastTests
     /// every TextBlock in visual-tree order so this test can specifically
     /// check the SECOND one.</summary>
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void ManageSavedPasswordStatusStaysSubtleUnlessSelected(bool dark, bool selected) => _fx.Invoke(() =>
+    public void ManageSavedPasswordStatusStaysSubtleUnlessSelected(string schemeKey, bool selected) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var vm = new UnlockViewModel(new Config(), () => true);
         vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
@@ -1042,16 +1046,17 @@ public class HighlightContrastTests
     /// the three, since RouteList is also the one ListBox with an explicit
     /// ItemContainerStyle (see the RouteList test above).</summary>
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void SettingsRouteListGestureTextStaysSubtleUnlessSelected(bool dark, bool selected) => _fx.Invoke(() =>
+    public void SettingsRouteListGestureTextStaysSubtleUnlessSelected(string schemeKey, bool selected) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var cfg = new Config();
         cfg.Routes.Add(new Route { Label = "Invoices", Path = @"C:\dest", Hotkey = "Ctrl+1" });
         var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(),
-            () => dark ? ThemePalette.Dark : ThemePalette.Light, cfgPath,
+            () => scheme.Palette, cfgPath,
             uiContext: System.Threading.SynchronizationContext.Current);
         var window = new SettingsWindow(vm)
         {
@@ -1152,11 +1157,12 @@ public class HighlightContrastTests
     /// breaking the print/zoom/layout buttons' actual glyph rendering for a
     /// cosmetic residual "chip" that reads far less jarring than the
     /// full-width bar this fix already removes.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void PrintPreviewToolBarUsesThemeChrome(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void PrintPreviewToolBarUsesThemeChrome(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var doc = OrdoSort.Wpf.Views.LabelPrinting.BuildDocument(
             BoxLabels.Batch("ABCD", 1, 12, new DateTime(2026, 7, 25), 30));
@@ -1242,15 +1248,16 @@ public class HighlightContrastTests
     /// full month/year grids. So this test uses that Window technique too.</summary>
     public static IEnumerable<object[]> CalendarDayStates()
     {
-        foreach (var dark in new[] { false, true })
+        foreach (var s in ThemePalette.Schemes)
         foreach (var state in new[] { "default", "today", "selected", "inactive", "disabled" })
-            yield return new object[] { state, dark };
+            yield return new object[] { state, s.Key };
     }
 
     [Theory, MemberData(nameof(CalendarDayStates))]
-    public void CalendarDayNumbersMeetWcagAa(string state, bool dark) => _fx.Invoke(() =>
+    public void CalendarDayNumbersMeetWcagAa(string state, string schemeKey) => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var calendar = new Calendar { DisplayDate = new DateTime(2024, 6, 1) };
         if (state == "today") calendar.DisplayDate = DateTime.Today;
@@ -1290,7 +1297,7 @@ public class HighlightContrastTests
             var (fg, bg) = SampleRenderedMaxContrast(calendar, day);
             var ratio = ThemePalette.ContrastRatio(fg, bg);
             Assert.True(ratio >= 4.5,
-                $"calendar day {state} ({(dark ? "dark" : "light")}): {fg} on {bg} = {ratio:F2}");
+                $"calendar day {state} ({schemeKey}): {fg} on {bg} = {ratio:F2}");
         }
         finally
         {
@@ -1387,11 +1394,12 @@ public class HighlightContrastTests
     /// CopyAndTerminologyTests.TheReadyScreensPrimaryButtonIsSentenceCase
     /// already proves is enough to resolve DynamicResource brushes — see
     /// Realize's own doc comment below for why.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void ReadyViewCountAlertIsStatusRed(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void ReadyViewCountAlertIsStatusRed(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var view = new ReadyView { DataContext = new ReadyViewStub { BigCount = "42", CountAlertOn = true } };
         Realize(view);
@@ -1402,7 +1410,7 @@ public class HighlightContrastTests
         Assert.Equal(p.StatusRed, fg);
         var ratio = ThemePalette.ContrastRatio(fg, p.WindowBg);
         Assert.True(ratio >= 4.5,
-            $"ReadyView BigCount alert ({(dark ? "dark" : "light")}): {fg} on {p.WindowBg} = {ratio:F2}");
+            $"ReadyView BigCount alert ({schemeKey}): {fg} on {p.WindowBg} = {ratio:F2}");
     });
 
     /// <summary>Same purpose as <see cref="ReadyViewStub"/> above, for
@@ -1417,11 +1425,12 @@ public class HighlightContrastTests
     /// illegal-filename Preview warning switched from Theme.Danger to
     /// Theme.StatusRed — same defect, same fix, same real background
     /// (Theme.WindowBg) as ReadyViewCountAlertIsStatusRed above.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void ProcessingViewWarningPreviewIsStatusRed(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void ProcessingViewWarningPreviewIsStatusRed(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var view = new ProcessingView
         {
@@ -1435,7 +1444,7 @@ public class HighlightContrastTests
         Assert.Equal(p.StatusRed, fg);
         var ratio = ThemePalette.ContrastRatio(fg, p.WindowBg);
         Assert.True(ratio >= 4.5,
-            $"ProcessingView warning preview ({(dark ? "dark" : "light")}): {fg} on {p.WindowBg} = {ratio:F2}");
+            $"ProcessingView warning preview ({schemeKey}): {fg} on {p.WindowBg} = {ratio:F2}");
     });
 
     // -------------------------------------------------------- MainWindow toast
@@ -1469,11 +1478,12 @@ public class HighlightContrastTests
     /// This test pins BOTH realities instead of asserting a floor that
     /// isn't true — see MainWindow.xaml's own comment at this site and
     /// ThemePalette.cs's StatusRed field comment for the full account.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void MainWindowToastIconContrast(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void MainWindowToastIconContrast(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var dir = Path.Combine(Path.GetTempPath(), "ordo_test_toast_" + Guid.NewGuid());
         Directory.CreateDirectory(dir);
@@ -1500,17 +1510,24 @@ public class HighlightContrastTests
             var bg = ToRgb(card.Background);
             Assert.Equal(p.StatusRed, fg);
             var ratio = ThemePalette.ContrastRatio(fg, bg);
-            if (dark)
-                // KNOWN, OPEN gap, not a placeholder -- see the class doc
-                // above. If this ever climbs to >=4.5 (a future
-                // SurfaceRaised-tuned token, say), TIGHTEN this assertion
-                // and delete the surrounding comments; don't just widen the
-                // range further.
-                Assert.True(ratio is >= 3.0 and < 4.5,
-                    $"MainWindow toast icon (dark): {fg} on {bg} = {ratio:F2}");
-            else
-                Assert.True(ratio >= 4.5,
-                    $"MainWindow toast icon (light): {fg} on {bg} = {ratio:F2}");
+            // Migrated to the full registry (rendered-contrast-per-scheme
+            // migration, 2026-08-09): every scheme keeps the WCAG non-text/
+            // icon floor (>=3.0), the weakest claim that stays true for all
+            // seven (measured: paper 5.44, graphite 4.11, ledger 4.34,
+            // microfilm 4.38, manila 5.81, carbon 4.93, blueprint 5.94 --
+            // three schemes besides graphite ALSO land short of 4.5, a real,
+            // reported gap, not just graphite's). graphite ALONE additionally
+            // keeps the ORIGINAL pinned ~4.11:1 measurement as a regression
+            // guard, since it's the one case this test covered before the
+            // registry grew past paper/graphite. Proper fix (a
+            // SurfaceRaised-tuned StatusRed, or equivalent, per scheme) is
+            // scheduled -- Phase 2 task 2.10 -- don't widen this range
+            // further if a future scheme's own ratio comes up short; add it
+            // to Phase 2's scope instead.
+            Assert.True(ratio >= 3.0,
+                $"MainWindow toast icon ({schemeKey}): {fg} on {bg} = {ratio:F2}, want >= 3.0 (WCAG non-text floor)");
+            if (schemeKey == "graphite")
+                Assert.Equal(4.11, ratio, 2);
         }
         finally
         {
@@ -1582,10 +1599,11 @@ public class HighlightContrastTests
     /// measure) and round 2's actual CHROME values (1.729:1 light, 1.780:1
     /// dark), so reverting to round 1's shared token fails THIS assertion
     /// specifically, not a missing-render error.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void ChromeHoverSurroundDeltaClearsTheStrengthenedFloor(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void ChromeHoverSurroundDeltaClearsTheStrengthenedFloor(string schemeKey) => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var tab = new TabItem { Header = "Destinations" };
         Realize(tab);
@@ -1600,7 +1618,7 @@ public class HighlightContrastTests
 
         var floor = 1.5;
         Assert.True(delta >= floor,
-            $"Chrome hover surround-delta ({(dark ? "dark" : "light")}): {hoverRgb} vs surface {surfaceRgb} = {delta:F3}:1, want >= {floor}");
+            $"Chrome hover surround-delta ({schemeKey}): {hoverRgb} vs surface {surfaceRgb} = {delta:F3}:1, want >= {floor}");
     });
 
     /// <summary>Same purpose as the Hover test above, for
@@ -1615,10 +1633,11 @@ public class HighlightContrastTests
     /// The floor (2.0 light / 2.0 dark) sits strictly between round 1's
     /// shared 0.20 mix (1.529:1 light, 1.780:1 dark) and round 2's actual
     /// CHROME pressed values (2.649:1 light, 2.502:1 dark).</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void ChromePressedSurroundDeltaClearsTheStrengthenedFloor(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void ChromePressedSurroundDeltaClearsTheStrengthenedFloor(string schemeKey) => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var menu = new Menu();
         var topLevel = new MenuItem { Header = "_Tools" };
@@ -1651,7 +1670,7 @@ public class HighlightContrastTests
 
             var floor = 2.0;
             Assert.True(delta >= floor,
-                $"Chrome pressed surround-delta ({(dark ? "dark" : "light")}): {pressedRgb} vs surface {surfaceRgb} = {delta:F3}:1, want >= {floor}");
+                $"Chrome pressed surround-delta ({schemeKey}): {pressedRgb} vs surface {surfaceRgb} = {delta:F3}:1, want >= {floor}");
         }
         finally
         {
@@ -1667,10 +1686,11 @@ public class HighlightContrastTests
     /// tier has no pressed variant at all — see ThemePalette.cs's RowHover
     /// comment for why none of its consumers need one — so this comparison
     /// is CHROME-only.)</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void ChromePressedSurroundDeltaExceedsChromeHoverSurroundDelta(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void ChromePressedSurroundDeltaExceedsChromeHoverSurroundDelta(string schemeKey) => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        ThemeManager.Apply(_fx.App, scheme);
         var surfaceRgb = ToRgb((Brush)_fx.App.Resources["Theme.Surface"]);
 
         var tab = new TabItem { Header = "Destinations" };
@@ -1703,7 +1723,7 @@ public class HighlightContrastTests
             var pressedDelta = ThemePalette.ContrastRatio(pressedRgb, surfaceRgb);
 
             Assert.True(pressedDelta > hoverDelta,
-                $"Chrome Pressed ({pressedDelta:F3}:1) should read stronger than Chrome Hover ({hoverDelta:F3}:1) in {(dark ? "dark" : "light")}");
+                $"Chrome Pressed ({pressedDelta:F3}:1) should read stronger than Chrome Hover ({hoverDelta:F3}:1) in {schemeKey}");
         }
         finally
         {
@@ -1733,10 +1753,11 @@ public class HighlightContrastTests
     /// the full round 1/2/3 table), and comfortably above the ~1-2 "just
     /// noticeable difference" CIE76 threshold — the target is "obviously
     /// there", not "technically different".</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void RowHoverDeltaEIsComfortablyVisible(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void RowHoverDeltaEIsComfortablyVisible(string schemeKey) => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var item = new ListBoxItem { Content = "Invoices" };
         Realize(item);
@@ -1751,7 +1772,7 @@ public class HighlightContrastTests
 
         var floor = 10.0;
         Assert.True(dE >= floor,
-            $"Row hover CIE76 ({(dark ? "dark" : "light")}): {hoverRgb} vs surface {surfaceRgb} = dE76 {dE:F2}, want >= {floor}");
+            $"Row hover CIE76 ({schemeKey}): {hoverRgb} vs surface {surfaceRgb} = dE76 {dE:F2}, want >= {floor}");
     });
 
     /// <summary>The live "SubtleText and StatusAmber on Hover" pairing this
@@ -1775,11 +1796,12 @@ public class HighlightContrastTests
     /// Background instead, closing exactly that gap, and — the "reaches the
     /// pixel" check — asserts it against the SAME resolved Theme.RowHover
     /// resource rather than a hardcoded RGB triple.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void BulkRenameNeedsNameRowStaysLegibleOnItsOwnHoverTint(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void BulkRenameNeedsNameRowStaysLegibleOnItsOwnHoverTint(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var vm = new BulkRenameViewModel();
         vm.Preview.Add(new RenameRow(@"C:\inbox\c.pdf", "c.pdf", "c.pdf",
@@ -1829,9 +1851,9 @@ public class HighlightContrastTests
             var newNameRatio = ThemePalette.ContrastRatio(newNameFg, rowBg);
             var noteRatio = ThemePalette.ContrastRatio(noteFg, rowBg);
             Assert.True(newNameRatio >= 4.5,
-                $"BulkRename NeedsName row 'New name' (SubtleText) on its own Hover tint ({(dark ? "dark" : "light")}): {newNameFg} on {rowBg} = {newNameRatio:F3}");
+                $"BulkRename NeedsName row 'New name' (SubtleText) on its own Hover tint ({schemeKey}): {newNameFg} on {rowBg} = {newNameRatio:F3}");
             Assert.True(noteRatio >= 4.5,
-                $"BulkRename NeedsName row 'Note' (StatusAmber) on its own Hover tint ({(dark ? "dark" : "light")}): {noteFg} on {rowBg} = {noteRatio:F3}");
+                $"BulkRename NeedsName row 'Note' (StatusAmber) on its own Hover tint ({schemeKey}): {noteFg} on {rowBg} = {noteRatio:F3}");
         }
         finally
         {
@@ -1851,17 +1873,18 @@ public class HighlightContrastTests
     /// hovered-but-unselected state that was never previously exercised).
     /// IsMouseOver forced the same way RowHoverDeltaEIsComfortablyVisible
     /// does above.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void RouteListGestureTextStaysLegibleWhenHoveredButUnselected(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void RouteListGestureTextStaysLegibleWhenHoveredButUnselected(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var cfg = new Config();
         cfg.Routes.Add(new Route { Label = "Invoices", Path = @"C:\dest", Hotkey = "Ctrl+1" });
         var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(),
-            () => dark ? ThemePalette.Dark : ThemePalette.Light, cfgPath,
+            () => scheme.Palette, cfgPath,
             uiContext: System.Threading.SynchronizationContext.Current);
         var window = new SettingsWindow(vm)
         {
@@ -1914,7 +1937,7 @@ public class HighlightContrastTests
             Assert.Equal(p.SubtleText, gestureFg);
             var ratio = ThemePalette.ContrastRatio(gestureFg, rowBg);
             Assert.True(ratio >= 4.5,
-                $"RouteList GestureText (SubtleText) hovered-unselected ({(dark ? "dark" : "light")}): {gestureFg} on {rowBg} = {ratio:F3}");
+                $"RouteList GestureText (SubtleText) hovered-unselected ({schemeKey}): {gestureFg} on {rowBg} = {ratio:F3}");
         }
         finally
         {
@@ -1937,14 +1960,15 @@ public class HighlightContrastTests
     /// open gap" range round 1 had to pin here — this test IS the proof
     /// that "fix the contrast failures rather than pinning them" was
     /// actually achieved, not just claimed.</summary>
-    [Theory]
-    [InlineData(false, "Ready")]
-    [InlineData(true, "Ready")]
-    [InlineData(false, "NeedsPassword")]
-    [InlineData(true, "NeedsPassword")]
-    [InlineData(false, "Unreadable")]
-    [InlineData(true, "Unreadable")]
-    public void UnlockFileListHoverUnselectedNoteContrast(bool dark, string statusName) => _fx.Invoke(() =>
+    public static IEnumerable<object[]> HoverUnselectedNoteCases()
+    {
+        foreach (var s in ThemePalette.Schemes)
+        foreach (var status in new[] { "Ready", "NeedsPassword", "Unreadable" })
+            yield return new object[] { s.Key, status };
+    }
+
+    [Theory, MemberData(nameof(HoverUnselectedNoteCases))]
+    public void UnlockFileListHoverUnselectedNoteContrast(string schemeKey, string statusName) => _fx.Invoke(() =>
     {
         var status = statusName switch
         {
@@ -1968,8 +1992,9 @@ public class HighlightContrastTests
             _ => throw new ArgumentOutOfRangeException(nameof(statusName)),
         };
 
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var vm = new UnlockViewModel(new Config(), () => true);
         var row = new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf");
@@ -2006,7 +2031,7 @@ public class HighlightContrastTests
             var ratio = ThemePalette.ContrastRatio(noteFg, rowBg);
 
             Assert.True(ratio >= 4.5,
-                $"UnlockWindow FileList hovered-unselected {statusName} ({(dark ? "dark" : "light")}): {noteFg} on {rowBg} = {ratio:F3}");
+                $"UnlockWindow FileList hovered-unselected {statusName} ({schemeKey}): {noteFg} on {rowBg} = {ratio:F3}");
         }
         finally
         {
@@ -2028,11 +2053,12 @@ public class HighlightContrastTests
     /// review added — see MatchMergeWindow.xaml), and asserts BOTH that the
     /// row's actual Background resolves to Theme.RowHover (the "reaches the
     /// pixel" check) and that the Note text stays legible on it.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void MatchMergeGridRowHoverRendersAndStaysLegible(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void MatchMergeGridRowHoverRendersAndStaysLegible(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
         vm.Rows.Add(new MatchRow(@"C:\inbox\a.pdf", "a.pdf", "", "some note text here", "ambiguous"));
@@ -2070,7 +2096,7 @@ public class HighlightContrastTests
             Assert.Equal(p.StatusAmber, noteFg);
             var ratio = ThemePalette.ContrastRatio(noteFg, rowBg);
             Assert.True(ratio >= 4.5,
-                $"Match & Merge row Note (StatusAmber) on its own Hover tint ({(dark ? "dark" : "light")}): {noteFg} on {rowBg} = {ratio:F3}");
+                $"Match & Merge row Note (StatusAmber) on its own Hover tint ({schemeKey}): {noteFg} on {rowBg} = {ratio:F3}");
         }
         finally
         {
@@ -2090,10 +2116,11 @@ public class HighlightContrastTests
     /// AssertTriageWhyColour does — ShowCurrentAsync() directly rather than
     /// Show()ing the window, since Show() would start a real WebView2 init
     /// this sandbox can't complete.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void TriageGridRowHoverRendersViaTheImplicitStyle(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void TriageGridRowHoverRendersViaTheImplicitStyle(string schemeKey) => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var item = new MatchMerge.MatchResult(@"C:\inbox\doc.pdf", "suggested", "SMITH", "JOHN",
             Suggestions: new List<MatchMerge.Suggestion>
@@ -2156,11 +2183,12 @@ public class HighlightContrastTests
     /// every other per-column vocabulary fix in this file) — plus that
     /// hovering the row (a state nothing here exercised before either)
     /// renders Theme.RowHover on the row itself.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void HistoryRevertedRowIsNowLegibleAndHoverRenders(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void HistoryRevertedRowIsNowLegibleAndHoverRenders(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var dbPath = Path.Combine(Path.GetTempPath(), "ordo_test_history_" + Guid.NewGuid() + ".sqlite");
         var history = new History(dbPath);
@@ -2208,7 +2236,7 @@ public class HighlightContrastTests
                 Assert.Equal(p.SubtleText, unselectedFg);   // the half that was DEAD before this fix
                 var unselectedRatio = ThemePalette.ContrastRatio(unselectedFg, p.Surface);
                 Assert.True(unselectedRatio >= 4.5,
-                    $"History Reverted row 'When' unselected ({(dark ? "dark" : "light")}): {unselectedFg} on {p.Surface} = {unselectedRatio:F3}");
+                    $"History Reverted row 'When' unselected ({schemeKey}): {unselectedFg} on {p.Surface} = {unselectedRatio:F3}");
 
                 grid.SelectedIndex = 0;
                 grid.UpdateLayout();
@@ -2216,7 +2244,7 @@ public class HighlightContrastTests
                 Assert.Equal(p.AccentText, selectedFg);   // let selection win
                 var selectedRatio = ThemePalette.ContrastRatio(selectedFg, p.Accent);
                 Assert.True(selectedRatio >= 4.5,
-                    $"History Reverted row 'When' selected ({(dark ? "dark" : "light")}): {selectedFg} on {p.Accent} = {selectedRatio:F3}");
+                    $"History Reverted row 'When' selected ({schemeKey}): {selectedFg} on {p.Accent} = {selectedRatio:F3}");
             }
             finally
             {

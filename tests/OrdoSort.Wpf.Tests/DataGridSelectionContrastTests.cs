@@ -46,12 +46,6 @@ public class DataGridSelectionContrastTests
     private readonly HighlightContrastFixture _fx;
     public DataGridSelectionContrastTests(HighlightContrastFixture fx) => _fx = fx;
 
-    public static IEnumerable<object[]> Palettes()
-    {
-        yield return new object[] { false };
-        yield return new object[] { true };
-    }
-
     // ------------------------------------------------------- window builders
 
     private static (MatchMergeWindow win, DataGrid grid) BuildMatchMergeWindow()
@@ -227,71 +221,78 @@ public class DataGridSelectionContrastTests
 
     // ---------------------------------------------------------------- Tests
 
-    [Theory, MemberData(nameof(Palettes))]
-    public void MatchMergeAllColumnsSelectedClearContrast(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void MatchMergeAllColumnsSelectedClearContrast(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
         var (win, grid) = BuildMatchMergeWindow();
         try { AssertEverySelectedColumnClearsContrast(grid, p, "MatchMergeWindow"); }
         finally { win.Close(); }
     });
 
-    [Theory, MemberData(nameof(Palettes))]
-    public void MatchMergeAllColumnsUnselectedClearContrast(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void MatchMergeAllColumnsUnselectedClearContrast(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
         var (win, grid) = BuildMatchMergeWindow();
         try { AssertEveryUnselectedColumnClearsContrast(grid, p, "MatchMergeWindow"); }
         finally { win.Close(); }
     });
 
-    [Theory, MemberData(nameof(Palettes))]
-    public void BulkRenameAllColumnsSelectedClearContrast(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void BulkRenameAllColumnsSelectedClearContrast(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
         var (win, grid) = BuildBulkRenameWindow();
         try { AssertEverySelectedColumnClearsContrast(grid, p, "BulkRenameWindow"); }
         finally { win.Close(); }
     });
 
-    [Theory, MemberData(nameof(Palettes))]
-    public void BulkRenameAllColumnsUnselectedClearContrast(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void BulkRenameAllColumnsUnselectedClearContrast(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
         var (win, grid) = BuildBulkRenameWindow();
         try { AssertEveryUnselectedColumnClearsContrast(grid, p, "BulkRenameWindow"); }
         finally { win.Close(); }
     });
 
-    [Theory, MemberData(nameof(Palettes))]
-    public void HistoryAllColumnsSelectedClearContrast(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void HistoryAllColumnsSelectedClearContrast(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
         var (win, grid, history, dbPath) = BuildHistoryWindow();
         try { AssertEverySelectedColumnClearsContrast(grid, p, "HistoryWindow"); }
         finally { CleanupHistory(win, history, dbPath); }
     });
 
-    [Theory, MemberData(nameof(Palettes))]
-    public void HistoryAllColumnsUnselectedClearContrast(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void HistoryAllColumnsUnselectedClearContrast(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
         var (win, grid, history, dbPath) = BuildHistoryWindow();
         try { AssertEveryUnselectedColumnClearsContrast(grid, p, "HistoryWindow"); }
         finally { CleanupHistory(win, history, dbPath); }
     });
 
-    [Theory, MemberData(nameof(Palettes))]
-    public void TriageAllColumnsSelectedClearContrast(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void TriageAllColumnsSelectedClearContrast(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
         var win = BuildTriageWindowWithWhy();
         try
         {
@@ -304,11 +305,12 @@ public class DataGridSelectionContrastTests
         finally { win.Close(); }
     });
 
-    [Theory, MemberData(nameof(Palettes))]
-    public void TriageAllColumnsUnselectedClearContrast(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void TriageAllColumnsUnselectedClearContrast(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
         var win = BuildTriageWindowWithWhy();
         try
         {
@@ -334,11 +336,12 @@ public class DataGridSelectionContrastTests
     /// Foreground (two status triggers plus the selection override), so it
     /// is the shape most likely to regress if trigger precedence ever
     /// shifts under a future edit.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void MatchMergeSelectedNoteStaysAccentTextEvenWhileRowIsHovered(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void MatchMergeSelectedNoteStaysAccentTextEvenWhileRowIsHovered(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
         var (win, grid) = BuildMatchMergeWindow();
         try
         {
@@ -369,7 +372,7 @@ public class DataGridSelectionContrastTests
             Assert.Equal(p.AccentText, fg);
             var ratio = ThemePalette.ContrastRatio(fg, cellBg);
             Assert.True(ratio >= 4.5,
-                $"MatchMerge Note selected+hovered ({(dark ? "dark" : "light")}): {fg} on {cellBg} = {ratio:F2}");
+                $"MatchMerge Note selected+hovered ({schemeKey}): {fg} on {cellBg} = {ratio:F2}");
         }
         finally { win.Close(); }
     });
@@ -388,11 +391,12 @@ public class DataGridSelectionContrastTests
     /// unconditionally (both selected and unselected) since the new trigger
     /// only touches Foreground — Bold surviving selection is exactly the
     /// "must survive" case the task named explicitly.</summary>
-    [Theory, MemberData(nameof(Palettes))]
-    public void BulkRenameNewNameUnchangedRowIsSubtleUnlessSelected(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void BulkRenameNewNameUnchangedRowIsSubtleUnlessSelected(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var vm = new BulkRenameViewModel();
         vm.Preview.Add(new RenameRow(@"C:\inbox\b.pdf", "b.pdf", "b.pdf", "(no change)",
@@ -413,23 +417,24 @@ public class DataGridSelectionContrastTests
             Assert.Equal(p.SubtleText, ToRgb(text.Foreground));
             var unselectedRatio = ThemePalette.ContrastRatio(ToRgb(text.Foreground), p.Surface);
             Assert.True(unselectedRatio >= 4.5,
-                $"BulkRename New name unchanged, unselected ({(dark ? "dark" : "light")}): {ToRgb(text.Foreground)} on {p.Surface} = {unselectedRatio:F2}");
+                $"BulkRename New name unchanged, unselected ({schemeKey}): {ToRgb(text.Foreground)} on {p.Surface} = {unselectedRatio:F2}");
 
             grid.SelectedIndex = 0;
             grid.UpdateLayout();
             Assert.Equal(p.AccentText, ToRgb(text.Foreground));
             var selectedRatio = ThemePalette.ContrastRatio(ToRgb(text.Foreground), p.Accent);
             Assert.True(selectedRatio >= 4.5,
-                $"BulkRename New name unchanged, selected ({(dark ? "dark" : "light")}): {ToRgb(text.Foreground)} on {p.Accent} = {selectedRatio:F2}");
+                $"BulkRename New name unchanged, selected ({schemeKey}): {ToRgb(text.Foreground)} on {p.Accent} = {selectedRatio:F2}");
         }
         finally { win.Close(); }
     });
 
-    [Theory, MemberData(nameof(Palettes))]
-    public void BulkRenameNewNameManualEditStaysBoldSelectedOrNot(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void BulkRenameNewNameManualEditStaysBoldSelectedOrNot(string schemeKey) => _fx.Invoke(() =>
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var vm = new BulkRenameViewModel();
         vm.Preview.Add(new RenameRow(@"C:\inbox\d.pdf", "d.pdf", "TYPED-BY-HAND.pdf", "edited by hand",
@@ -456,7 +461,7 @@ public class DataGridSelectionContrastTests
             Assert.Equal(p.AccentText, ToRgb(text.Foreground));
             var ratio = ThemePalette.ContrastRatio(ToRgb(text.Foreground), p.Accent);
             Assert.True(ratio >= 4.5,
-                $"BulkRename New name manual+bold, selected ({(dark ? "dark" : "light")}): {ToRgb(text.Foreground)} on {p.Accent} = {ratio:F2}");
+                $"BulkRename New name manual+bold, selected ({schemeKey}): {ToRgb(text.Foreground)} on {p.Accent} = {ratio:F2}");
         }
         finally { win.Close(); }
     });
