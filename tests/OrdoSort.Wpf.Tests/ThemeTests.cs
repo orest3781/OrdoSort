@@ -38,6 +38,15 @@ public class ThemeTests
             yield return new object[] { p.AccentBronze, p.WindowBg };
             yield return new object[] { p.AccentBronze, p.Surface };
             yield return new object[] { p.Text, p.TileDefaultBg };
+            // SurfaceRaised wall (status-colour-vocabulary plan, gap closed
+            // 2026-08-09): the toast card's real background is SurfaceRaised,
+            // not Surface/WindowBg -- StatusRedRaised exists specifically to
+            // clear this pairing (see ThemePalette.cs's StatusRedRaised field
+            // comment), and the toast's title/detail text sit on the same
+            // background, so Text/SubtleText are enforced against it too.
+            yield return new object[] { p.StatusRedRaised, p.SurfaceRaised };
+            yield return new object[] { p.Text, p.SurfaceRaised };
+            yield return new object[] { p.SubtleText, p.SurfaceRaised };
         }
     }
 

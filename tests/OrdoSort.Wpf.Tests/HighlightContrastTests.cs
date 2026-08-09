@@ -1469,15 +1469,18 @@ public class HighlightContrastTests
     /// here ever calls Shell.Initialize() (that's Loaded-gated too).
     ///
     /// Status-colour-vocabulary plan, 2026-08-08, Task 3 Part B: the icon
-    /// glyph switched from Theme.Danger to Theme.StatusRed. Unlike the other
-    /// two Part B sites above (both on Theme.WindowBg), this one sits on
+    /// glyph switched from Theme.Danger to Theme.StatusRed, which sits on
     /// Theme.SurfaceRaised — one step LIGHTER than Surface in dark mode —
-    /// which StatusRed was never tuned against. Measured: light clears 4.5
-    /// (5.44:1); dark does not (4.11:1, though it clears WCAG's 3:1 non-text
-    /// /icon floor and is a large improvement over Danger's own 2.26:1).
-    /// This test pins BOTH realities instead of asserting a floor that
-    /// isn't true — see MainWindow.xaml's own comment at this site and
-    /// ThemePalette.cs's StatusRed field comment for the full account.</summary>
+    /// a background StatusRed was never tuned against. That left three of
+    /// seven schemes (graphite 4.11:1, ledger 4.34:1, microfilm 4.38:1)
+    /// short of this app's 4.5 floor, a known, open gap this test used to
+    /// pin instead of assert away.
+    ///
+    /// GAP CLOSED 2026-08-09: the glyph now binds Theme.StatusRedRaised — a
+    /// per-scheme red tuned specifically against SurfaceRaised (see
+    /// ThemePalette.cs's StatusRedRaised field comment for the search and
+    /// the exact values/ratios). This test is now a clean >=4.5 assertion
+    /// for every scheme, no floor-lowering and no per-scheme pin.</summary>
     [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
     public void MainWindowToastIconContrast(string schemeKey) => _fx.Invoke(() =>
     {
@@ -1508,26 +1511,10 @@ public class HighlightContrastTests
 
             var fg = ToRgb(ForegroundOf(icon));
             var bg = ToRgb(card.Background);
-            Assert.Equal(p.StatusRed, fg);
+            Assert.Equal(p.StatusRedRaised, fg);
             var ratio = ThemePalette.ContrastRatio(fg, bg);
-            // Migrated to the full registry (rendered-contrast-per-scheme
-            // migration, 2026-08-09): every scheme keeps the WCAG non-text/
-            // icon floor (>=3.0), the weakest claim that stays true for all
-            // seven (measured: paper 5.44, graphite 4.11, ledger 4.34,
-            // microfilm 4.38, manila 5.81, carbon 4.93, blueprint 5.94 --
-            // three schemes besides graphite ALSO land short of 4.5, a real,
-            // reported gap, not just graphite's). graphite ALONE additionally
-            // keeps the ORIGINAL pinned ~4.11:1 measurement as a regression
-            // guard, since it's the one case this test covered before the
-            // registry grew past paper/graphite. Proper fix (a
-            // SurfaceRaised-tuned StatusRed, or equivalent, per scheme) is
-            // scheduled -- Phase 2 task 2.10 -- don't widen this range
-            // further if a future scheme's own ratio comes up short; add it
-            // to Phase 2's scope instead.
-            Assert.True(ratio >= 3.0,
-                $"MainWindow toast icon ({schemeKey}): {fg} on {bg} = {ratio:F2}, want >= 3.0 (WCAG non-text floor)");
-            if (schemeKey == "graphite")
-                Assert.Equal(4.11, ratio, 2);
+            Assert.True(ratio >= 4.5,
+                $"MainWindow toast icon ({schemeKey}): {fg} on {bg} = {ratio:F2}, want >= 4.5");
         }
         finally
         {

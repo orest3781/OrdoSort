@@ -57,7 +57,42 @@ public sealed record ThemePalette(
                         // known, open gap (see MainWindow.xaml's own comment at that
                         // site and HighlightContrastTests' MainWindowToastIconContrast)
                         // rather than adding a token tuned for one call site.
+                        //
+                        // GAP CLOSED 2026-08-09 via StatusRedRaised (below) + the newly
+                        // materialized SurfaceRaised field: the toast icon now binds
+                        // Theme.StatusRedRaised instead of Theme.StatusRed. See
+                        // StatusRedRaised's own comment for the replacement values.
+    Rgb StatusRedRaised, // the red status voice, readable on SurfaceRaised specifically
+                          // -- StatusRed above was tuned against Surface/WindowBg and
+                          // falls short of SurfaceRaised (one step lighter in dark mode)
+                          // for graphite/ledger/microfilm: 4.11:1/4.34:1/4.38:1, all
+                          // below this app's 4.5 floor (paper 5.44, manila 5.81, carbon
+                          // 4.93, blueprint 5.94 already cleared it). paper/manila/
+                          // carbon/blueprint reuse StatusRed verbatim below -- same
+                          // pattern as light StatusGreen reusing Success. graphite/
+                          // ledger/microfilm get a brighter red, (234,130,130) -- found
+                          // by stepping StatusRed's (229,115,115) up while keeping R
+                          // dominant (so it still reads red, not pink) until
+                          // ContrastRatio vs SurfaceRaised cleared 4.55 with real
+                          // margin: measured 4.689:1 (graphite), 4.947:1 (ledger),
+                          // 4.986:1 (microfilm) -- also clears Surface/WindowBg (bright
+                          // on dark only grows further: 5.575-7.973:1 across both).
+                          // One shared value for all three rather than three
+                          // independently-minimal ones: they share an identical
+                          // baseline StatusRed and land close enough in SurfaceRaised
+                          // luminance that a single voice reads as more deliberate than
+                          // three near-identical reds a pixel apart.
     Rgb TileDefaultBg, // dashboard tile with no configured color
+    Rgb SurfaceRaised, // floating surfaces (the alert toast's card, Processing's
+                        // running-file chip, Match & Merge's side panel) -- one
+                        // step LIGHTER than Surface in dark mode, unchanged from
+                        // Surface in light (light's Surface is already near-white;
+                        // the shadow does the lifting there instead). Materialized
+                        // 2026-08-09 (byte-identical to the Mix(Surface, white,
+                        // 0.06) derivation ThemeManager.cs used to compute this at
+                        // publish time) so a per-scheme StatusRedRaised, tuned
+                        // against the REAL background one call site actually
+                        // paints on, has something concrete to be tuned against.
     Rgb BorderStrong,  // emphasized borders (focus rings, active dividers)
     Rgb AccentBronze,  // warm secondary accent (badges, highlights on graphite)
     // ------------------------------------------------------- hover/pressed
@@ -138,7 +173,14 @@ public sealed record ThemePalette(
         // (5.44:1 Surface, 5.11:1 WindowBg) -- reused verbatim, same
         // reasoning as StatusGreen's light value above.
         StatusRed: new(192, 57, 43),
+        // SurfaceRaised == Surface here (5.44:1 unchanged) -- reused
+        // verbatim, same reasoning as StatusGreen/StatusRed's light values
+        // above.
+        StatusRedRaised: new(192, 57, 43),
         TileDefaultBg: new(228, 230, 233),
+        // Light's Surface is already near-white; SurfaceRaised == Surface
+        // unchanged (see the field's own comment on the record above).
+        SurfaceRaised: new(255, 255, 255),
         BorderStrong: new(120, 128, 138),
         AccentBronze: new(140, 109, 63),
         // Chrome tier, Text-only: darkest safe boundary against Text alone
@@ -192,7 +234,17 @@ public sealed record ThemePalette(
         // red-toned value found that stays clearly red while clearing the
         // floor with real margin, not a token chosen to just barely pass.
         StatusRed: new(229, 115, 115),
+        // StatusRed above falls short against SurfaceRaised specifically
+        // (4.11:1, this scheme's own MainWindowToastIconContrast pin before
+        // the fix) -- brighter red found by stepping up while staying
+        // clearly red: 4.689:1 vs this palette's SurfaceRaised (51,53,57),
+        // real margin over the 4.5 floor. See the field's own comment on
+        // the record above for the full search.
+        StatusRedRaised: new(234, 130, 130),
         TileDefaultBg: new(54, 58, 63),
+        // Mix(Surface, white, 0.06), materialized (byte-identical to the
+        // pre-2026-08-09 ThemeManager derivation).
+        SurfaceRaised: new(51, 53, 57),
         BorderStrong: new(110, 118, 128),
         AccentBronze: new(201, 169, 106),
         // Chrome tier, Text-only, LIGHTENING (not darkening -- dark mode's
@@ -239,7 +291,13 @@ public sealed record ThemePalette(
         StatusAmber: new(240, 173, 78),
         StatusGreen: new(129, 199, 132),
         StatusRed: new(229, 115, 115),
+        // Same brighter red as Dark/graphite (identical baseline StatusRed,
+        // see that palette's comment) -- 4.947:1 vs this palette's
+        // SurfaceRaised (44,51,46).
+        StatusRedRaised: new(234, 130, 130),
         TileDefaultBg: new(48, 58, 50),
+        // Mix(Surface, white, 0.06), materialized.
+        SurfaceRaised: new(44, 51, 46),
         BorderStrong: new(108, 120, 109),
         AccentBronze: new(210, 178, 94),
         SurfaceHover: new(70, 82, 72),
@@ -264,7 +322,13 @@ public sealed record ThemePalette(
         StatusAmber: new(240, 173, 78),
         StatusGreen: new(129, 199, 132),
         StatusRed: new(229, 115, 115),
+        // Same brighter red as Dark/graphite (identical baseline StatusRed,
+        // see that palette's comment) -- 4.986:1 vs this palette's
+        // SurfaceRaised (43,49,60).
+        StatusRedRaised: new(234, 130, 130),
         TileDefaultBg: new(46, 54, 70),
+        // Mix(Surface, white, 0.06), materialized.
+        SurfaceRaised: new(43, 49, 60),
         BorderStrong: new(106, 116, 136),
         AccentBronze: new(111, 174, 198),
         SurfaceHover: new(72, 80, 98),
@@ -289,7 +353,12 @@ public sealed record ThemePalette(
         StatusAmber: new(134, 82, 2),
         StatusGreen: new(40, 112, 45),
         StatusRed: new(178, 50, 38),
+        // SurfaceRaised == Surface here (light, unchanged) -- reused
+        // verbatim, same pattern as Light/paper above.
+        StatusRedRaised: new(178, 50, 38),
         TileDefaultBg: new(233, 224, 204),
+        // Light: SurfaceRaised == Surface unchanged.
+        SurfaceRaised: new(251, 247, 236),
         BorderStrong: new(128, 119, 98),
         AccentBronze: new(122, 94, 48),
         SurfaceHover: new(206, 196, 174),
@@ -314,7 +383,13 @@ public sealed record ThemePalette(
         StatusAmber: new(240, 173, 78),
         StatusGreen: new(129, 199, 132),
         StatusRed: new(229, 115, 115),
+        // Unlike graphite/ledger/microfilm, StatusRed already clears
+        // SurfaceRaised here (4.93:1 -- this palette's near-black Surface
+        // (26,27,31) keeps SurfaceRaised dark enough) -- reused verbatim.
+        StatusRedRaised: new(229, 115, 115),
         TileDefaultBg: new(40, 41, 48),
+        // Mix(Surface, white, 0.06), materialized.
+        SurfaceRaised: new(39, 40, 44),
         BorderStrong: new(106, 108, 120),
         AccentBronze: new(142, 130, 184),
         SurfaceHover: new(66, 67, 75),
@@ -339,7 +414,12 @@ public sealed record ThemePalette(
         StatusAmber: new(140, 86, 3),
         StatusGreen: new(40, 110, 44),
         StatusRed: new(178, 50, 38),
+        // SurfaceRaised == Surface here (light, unchanged) -- reused
+        // verbatim, same pattern as Light/paper above.
+        StatusRedRaised: new(178, 50, 38),
         TileDefaultBg: new(219, 229, 240),
+        // Light: SurfaceRaised == Surface unchanged.
+        SurfaceRaised: new(247, 250, 253),
         BorderStrong: new(110, 126, 146),
         AccentBronze: new(45, 101, 160),
         SurfaceHover: new(188, 202, 216),

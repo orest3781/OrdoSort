@@ -226,39 +226,29 @@
                             <TranslateTransform x:Name="Slide" />
                         </Border.RenderTransform>
                         <StackPanel Orientation="Horizontal">
-                            <!-- Theme.StatusRed, NOT Theme.Danger (status-
-                                 colour-vocabulary plan, 2026-08-08, Task 3
-                                 Part B): this glyph is real foreground text
-                                 (a Segoe icon), and Danger as foreground
-                                 measured only 2.26:1 against this Border's
-                                 REAL background here, Theme.SurfaceRaised —
-                                 NOT Theme.Surface/WindowBg, where StatusRed's
-                                 own 4.89:1/5.72:1 dark numbers were measured
-                                 (see ThemePalette.cs's StatusRed field
-                                 comment). SurfaceRaised is one step LIGHTER
-                                 than Surface in dark mode (a floating card
-                                 needs to read as raised without a shadow,
-                                 per ThemeManager.cs's own SurfaceRaised
-                                 comment), which narrows the gap to any
-                                 foreground red built for Surface. Measured
-                                 after this swap: 4.11:1 dark / 5.44:1 light —
-                                 light clears the app's usual 4.5 floor, dark
-                                 does NOT (a KNOWN, OPEN gap, not an
-                                 oversight: it clears WCAG's 3:1 non-text/icon
-                                 floor with margin, more than doubles
-                                 Danger's own 2.26:1, and this glyph sits
-                                 directly beside the real ToastText/
-                                 ToastDetail prose that carries the actual
-                                 message rather than standing alone — but it
-                                 is short of this app's own stricter 4.5
-                                 text-floor convention and is flagged here,
-                                 not silently swept under a lowered
-                                 assertion; see HighlightContrastTests'
-                                 MainWindowToastIconContrast for the pinned
-                                 measurement). -->
+                            <!-- Theme.StatusRedRaised, NOT Theme.StatusRed/Danger
+                                 (status-colour-vocabulary plan, 2026-08-08,
+                                 Task 3 Part B introduced StatusRed here; GAP
+                                 CLOSED 2026-08-09): this glyph is real
+                                 foreground text (a Segoe icon) on this
+                                 Border's REAL background, Theme.SurfaceRaised
+                                 — one step LIGHTER than Surface in dark mode
+                                 (a floating card needs to read as raised
+                                 without a shadow), NOT Theme.Surface/WindowBg
+                                 where StatusRed itself was tuned. StatusRed
+                                 measured only 4.11:1 there in graphite (short
+                                 of this app's 4.5 floor); StatusRedRaised is
+                                 a per-scheme value tuned specifically against
+                                 SurfaceRaised and clears 4.5:1 in all seven
+                                 schemes (see ThemePalette.cs's
+                                 StatusRedRaised field comment for the exact
+                                 numbers, and HighlightContrastTests'
+                                 MainWindowToastIconContrast for the clean
+                                 >=4.5 regression guard that replaced the old
+                                 >=3.0 + graphite-pin compromise). -->
                             <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="20"
                                        VerticalAlignment="Top" Margin="0,1,11,0"
-                                       Foreground="{DynamicResource Theme.StatusRed}" />
+                                       Foreground="{DynamicResource Theme.StatusRedRaised}" />
                             <StackPanel>
                                 <TextBlock Text="{Binding ToastText}" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding ToastDetail}" TextWrapping="Wrap"

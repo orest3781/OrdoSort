@@ -152,6 +152,10 @@ public static class ThemeManager
         r["Theme.StatusAmber"] = Brush(p.StatusAmber);
         r["Theme.StatusGreen"] = Brush(p.StatusGreen);
         r["Theme.StatusRed"] = Brush(p.StatusRed);
+        // The toast-icon gap (StatusRed short of 4.5:1 vs SurfaceRaised in
+        // graphite/ledger/microfilm) closed 2026-08-09 -- see
+        // ThemePalette.cs's StatusRedRaised field comment for the values.
+        r["Theme.StatusRedRaised"] = Brush(p.StatusRedRaised);
         r["Theme.TileDefaultBg"] = Brush(p.TileDefaultBg);
         // Hover/pressed/row tints -- three rounds of the same review
         // (2026-08-08), each correcting the last:
@@ -213,10 +217,13 @@ public static class ThemeManager
         // actually see; flagged here so a future reader doesn't assume its
         // value means anything today.
         r["Theme.AccentHover"] = Brush(Mix(p.Accent, new Rgb(255, 255, 255), 0.12));
-        // floating surfaces sit a step lighter in the dark (light mode's
-        // Surface is already near-white; the shadow does the lifting there)
-        r["Theme.SurfaceRaised"] = Brush(
-            dark ? Mix(p.Surface, new Rgb(255, 255, 255), 0.06) : p.Surface);
+        // Materialized as a ThemePalette field 2026-08-09 (was: computed here
+        // via dark ? Mix(p.Surface, white, 0.06) : p.Surface) -- moved onto
+        // the palette itself, byte-identical to what this derivation used to
+        // produce, so StatusRedRaised has a concrete per-scheme value to be
+        // tuned against instead of a value computed after the fact. See
+        // ThemePalette.cs's SurfaceRaised field comment.
+        r["Theme.SurfaceRaised"] = Brush(p.SurfaceRaised);
 
         // The Appearance tab's preview cards show BOTH palettes side by side,
         // so they cannot use Theme.* — those follow the active theme. These
