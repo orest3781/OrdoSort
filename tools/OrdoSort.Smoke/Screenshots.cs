@@ -129,7 +129,7 @@ public static class Screenshots
                 var w = new SettingsWindow(new SettingsViewModel(Config.Load(cfgPath), dialogs,
                     () => ThemeManager.Current, cfgPath, new SoundService()));
                 if (FindTabControl(w) is { } tabs)
-                    tabs.SelectedIndex = 4; // General/Filing/Destinations/Monitored/Appearance
+                    tabs.SelectedIndex = 5; // General/Filing/Destinations/Monitored/Alerts & polling/Appearance
                 return w;
             });
 

@@ -164,7 +164,7 @@
                     ItemContainerStyle="{StaticResource SectionTab}">
 
             <!-- ============================================== General -->
-            <!-- Task 8: access keys on all six tab headers below — the shared
+            <!-- Task 8: access keys on all seven tab headers below — the shared
                  TabItem control template (Theme/Styles.xaml; this window's
                  own SectionTab is BasedOn it, not a second copy) already
                  sets RecognizesAccessKey="True" on the header
@@ -173,8 +173,8 @@
                  collisions before assigning: General/Filing/Destinations/
                  Monitored folders/Appearance/Data files start with
                  G/F/D/M/A/D — one collision, on D — so Data files uses a
-                 non-initial letter instead ("T" from "Da_ta") to keep all six
-                 unique: G, F, D, M, A, T.
+                 non-initial letter instead ("T" from "Da_ta") to keep the
+                 original six unique: G, F, D, M, A, T.
 
                  Task 9 (2026-08-02 audit finding I5) renamed the fourth tab
                  from "Dashboard" to "Monitored folders", which retired the
@@ -189,6 +189,16 @@
                  live in a different Window entirely, so they cannot collide
                  with these regardless of AccessKeyManager scoping — verified
                  by inspection, not touched here.
+
+                 Phase 3 task 3.2 split the old "Monitored folders" tab: that
+                 tab keeps only the folder master/detail, and the Alerts +
+                 Polling regions it used to carry moved to a new seventh tab,
+                 inserted right after it. Its initial letter, A, is already
+                 Appearance's; the other candidate initial, P (Polling), is
+                 free, so the header is "Alerts &amp; _Polling" — the mnemonic
+                 reads on its second word, same shape as Data files reading on
+                 its second syllable. Checked against all seven live headers
+                 (G, F, D, M, A, T, P) — still zero collisions.
 
                  The AutomationProperties.Name beside each Header is the
                  screen-reader label, pinned explicitly so it can never
@@ -735,11 +745,15 @@
             <TabItem Header="_Monitored folders" AutomationProperties.Name="Monitored folders">
                 <!-- IsSharedSizeScope: see the General tab's identical
                      comment above — same per-tab LabelCol pattern. -->
+                <!-- Phase 3 task 3.2: this tab used to also carry the Alerts
+                     and Polling regions below a third (Auto) row; both moved
+                     to their own "Alerts & polling" tab, so the master/detail
+                     Grid below — already the tab's only "*" row — is now the
+                     only row left and gets the whole tab to itself. -->
                 <Grid Margin="16,8" Grid.IsSharedSizeScope="True">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <TextBlock Text="Monitored folders" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
@@ -941,6 +955,18 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
+                                    <!-- Phase 3 task 3.2 (mechanical value-column move, same
+                                         treatment the Destinations tab's equivalent Folder: Grid
+                                         already got): Row 1 below holds the Problem StackPanel,
+                                         which used to sit OUTSIDE this Grid with a magic
+                                         Margin="110,..." faking alignment under Folder's own
+                                         TextBox. ColumnSpan="3" (columns 1-3) so it can still
+                                         reach as far right as the Open button, same effective
+                                         width the old margin-only placement had. -->
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
                                     <TextBlock Text="Folder:" Style="{StaticResource FieldLabel}" />
                                     <TextBox Grid.Column="1" Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}" />
                                     <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
@@ -950,48 +976,48 @@
                                             ToolTip="Show this folder in Explorer"
                                             Command="{Binding DataContext.OpenWatchFolderCommand,
                                                       RelativeSource={RelativeSource AncestorType=Window}}" />
-                                </Grid>
-                                <!-- Destinations alignment fast-follow (spacing-rhythm
-                                     audit B2) intentionally SKIPS this tab: this
-                                     Problem StackPanel — and this tab's other
-                                     Margin="110,..." siblings below (e.g. the
-                                     "include subfolders" CheckBox) — still fake their
-                                     alignment with a magic left margin the same way
-                                     Destinations' equivalents did before that pass,
-                                     because Phase 3 redesigns Monitored folders
-                                     wholesale; moving these into their FieldRow
-                                     Grids now would just be rework once that lands. -->
-                                <StackPanel Orientation="Horizontal" Margin="110,0,0,10">
-                                    <StackPanel.Style>
-                                        <Style TargetType="StackPanel">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Problem}" Value="">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </StackPanel.Style>
-                                    <TextBlock Text="{Binding Problem}" Style="{StaticResource StatusText}"
-                                               VerticalAlignment="Center" />
-                                    <Button Content="Create it" Margin="8,0,0,0" Padding="8,3"
-                                            Command="{Binding DataContext.CreateWatchFolderCommand,
-                                                      RelativeSource={RelativeSource AncestorType=Window}}">
-                                        <Button.Style>
-                                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                    <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Orientation="Horizontal">
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding Problem}" Value="">
                                                         <Setter Property="Visibility" Value="Collapsed" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
-                                        </Button.Style>
-                                    </Button>
-                                </StackPanel>
+                                        </StackPanel.Style>
+                                        <TextBlock Text="{Binding Problem}" Style="{StaticResource StatusText}"
+                                                   VerticalAlignment="Center" />
+                                        <Button Content="Create it" Margin="8,0,0,0" Padding="8,3"
+                                                Command="{Binding DataContext.CreateWatchFolderCommand,
+                                                          RelativeSource={RelativeSource AncestorType=Window}}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Problem}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
                                 <Grid Style="{StaticResource FieldRow}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
+                                    <!-- Phase 3 task 3.2 (mechanical value-column move, same
+                                         treatment the Destinations tab's equivalents already
+                                         got): Row 1 below holds the "include subfolders"
+                                         CheckBox, which used to sit OUTSIDE this Grid with a
+                                         magic Margin="110,..." faking alignment under File
+                                         types' own checkboxes. -->
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
                                     <TextBlock Text="File types:" Style="{StaticResource FieldLabel}"
                                                VerticalAlignment="Top" Margin="0,4,10,0" />
                                     <StackPanel Grid.Column="1">
@@ -1018,10 +1044,10 @@
                                                        VerticalAlignment="Center" Margin="8,0,0,0" />
                                         </StackPanel>
                                     </StackPanel>
+                                    <CheckBox Grid.Row="1" Grid.Column="1" Content="include subfolders"
+                                              IsChecked="{Binding Recursive}"
+                                              ToolTip="Alerting files found in a subfolder show 'in ⟨subfolder⟩' on the tile" />
                                 </Grid>
-                                <CheckBox Content="include subfolders" Margin="110,0,0,10"
-                                          IsChecked="{Binding Recursive}"
-                                          ToolTip="Alerting files found in a subfolder show 'in ⟨subfolder⟩' on the tile" />
                                 <Grid Style="{StaticResource FieldRow}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
@@ -1097,88 +1123,98 @@
                             </Grid>
                             </ScrollViewer>
                         </Grid>
-
-                    <Grid Grid.Row="2" Margin="0,14,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="300" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="Alerts" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
-                            <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap"
-                                       Text="Filenames containing these terms flash the tile and the inbox count red (ignores case):" />
-                            <ScrollViewer MaxHeight="60" VerticalScrollBarVisibility="Auto"
-                                          HorizontalScrollBarVisibility="Disabled" Focusable="False"
-                                          Padding="0,0,6,0"
-                                          Margin="0,4,0,4">
-                                <ItemsControl ItemsSource="{Binding AlertTerms}" Focusable="False">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Background="{DynamicResource Theme.Surface}"
-                                                    BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
-                                                    CornerRadius="4" Padding="8,2" Margin="0,0,6,6">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="{Binding}" VerticalAlignment="Center" />
-                                                    <Button Content="✕" Margin="6,0,0,0" Padding="2,0"
-                                                            Background="Transparent" BorderThickness="0"
-                                                            AutomationProperties.Name="{Binding StringFormat=Remove alert term {0}}"
-                                                            Command="{Binding DataContext.RemoveAlertCommand,
-                                                                      RelativeSource={RelativeSource AncestorType=Window}}"
-                                                            CommandParameter="{Binding}" />
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </ScrollViewer>
-                            <DockPanel Margin="0,0,0,4">
-                                <Button DockPanel.Dock="Right" Content="Add" MinWidth="48" Margin="6,0,0,0"
-                                        Command="{Binding AddAlertCommand}" />
-                                <TextBox Text="{Binding NewAlertText, UpdateSourceTrigger=PropertyChanged}"
-                                         AutomationProperties.Name="New alert term">
-                                    <TextBox.InputBindings>
-                                        <KeyBinding Key="Return" Command="{Binding AddAlertCommand}" />
-                                    </TextBox.InputBindings>
-                                </TextBox>
-                            </DockPanel>
-                            <CheckBox Content="Flash alerts (uncheck for a steady highlight)"
-                                      IsChecked="{Binding FlashAlerts}" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Margin="16,0,0,0">
-                            <TextBlock Text="Polling" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Check folders every" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <TextBox Width="52"
-                                         Text="{Binding PollSecondsText, UpdateSourceTrigger=PropertyChanged}"
-                                         AutomationProperties.Name="Check folders every seconds" />
-                                <TextBlock Text="sec" VerticalAlignment="Center" Margin="6,0,0,0" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                <Button Tag="5" Click="OnPollPreset" MinWidth="34"
-                                        Style="{StaticResource ChipButton}" AutomationProperties.Name="5">
-                                    <TextBlock Text="5" Style="{StaticResource ChipButtonLabel}" />
-                                </Button>
-                                <Button Tag="15" Click="OnPollPreset" MinWidth="34"
-                                        Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="15">
-                                    <TextBlock Text="15" Style="{StaticResource ChipButtonLabel}" />
-                                </Button>
-                                <Button Tag="30" Click="OnPollPreset" MinWidth="34"
-                                        Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="30">
-                                    <TextBlock Text="30" Style="{StaticResource ChipButtonLabel}" />
-                                </Button>
-                                <Button Tag="60" Click="OnPollPreset" MinWidth="34"
-                                        Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="60">
-                                    <TextBlock Text="60" Style="{StaticResource ChipButtonLabel}" />
-                                </Button>
-                            </StackPanel>
-                            <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                       Text="Lower = alerts appear sooner; higher = gentler on a network share." />
-                        </StackPanel>
-                    </Grid>
                 </Grid>
+            </TabItem>
+
+            <!-- ================================== Alerts & polling -->
+            <!-- Phase 3 task 3.2: split out of "Monitored folders", which used
+                 to pack the folder master/detail together with these two
+                 unrelated regions below a magic Grid.Row="2". Same controls,
+                 same bindings, same copy as before — only the container
+                 changed, from a two-column Grid (Alerts on the left, Polling
+                 on the right, sharing one row) to a single-column StackPanel
+                 in a ScrollViewer, the same shape the General tab already
+                 uses for two stacked sections. Polling no longer has to share
+                 a row with Alerts, so both sections now get the tab's full
+                 width. Neither section uses a FieldRow/LabelCol grid (nothing
+                 here did before the split either), so unlike its neighbours
+                 this tab has no Grid.IsSharedSizeScope to set. -->
+            <TabItem Header="Alerts &amp; _Polling" AutomationProperties.Name="Alerts &amp; polling">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16,8">
+                        <TextBlock Text="Alerts" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
+                        <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap"
+                                   Text="Filenames containing these terms flash the tile and the inbox count red (ignores case):" />
+                        <ScrollViewer MaxHeight="60" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled" Focusable="False"
+                                      Padding="0,0,6,0"
+                                      Margin="0,4,0,4">
+                            <ItemsControl ItemsSource="{Binding AlertTerms}" Focusable="False">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{DynamicResource Theme.Surface}"
+                                                BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
+                                                CornerRadius="4" Padding="8,2" Margin="0,0,6,6">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding}" VerticalAlignment="Center" />
+                                                <Button Content="✕" Margin="6,0,0,0" Padding="2,0"
+                                                        Background="Transparent" BorderThickness="0"
+                                                        AutomationProperties.Name="{Binding StringFormat=Remove alert term {0}}"
+                                                        Command="{Binding DataContext.RemoveAlertCommand,
+                                                                  RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                        <DockPanel Margin="0,0,0,4">
+                            <Button DockPanel.Dock="Right" Content="Add" MinWidth="48" Margin="6,0,0,0"
+                                    Command="{Binding AddAlertCommand}" />
+                            <TextBox Text="{Binding NewAlertText, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="New alert term">
+                                <TextBox.InputBindings>
+                                    <KeyBinding Key="Return" Command="{Binding AddAlertCommand}" />
+                                </TextBox.InputBindings>
+                            </TextBox>
+                        </DockPanel>
+                        <CheckBox Content="Flash alerts (uncheck for a steady highlight)"
+                                  IsChecked="{Binding FlashAlerts}" />
+
+                        <TextBlock Text="Polling" Style="{StaticResource SectionText}" Margin="0,16,0,6" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Check folders every" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBox Width="52"
+                                     Text="{Binding PollSecondsText, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Check folders every seconds" />
+                            <TextBlock Text="sec" VerticalAlignment="Center" Margin="6,0,0,0" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <Button Tag="5" Click="OnPollPreset" MinWidth="34"
+                                    Style="{StaticResource ChipButton}" AutomationProperties.Name="5">
+                                <TextBlock Text="5" Style="{StaticResource ChipButtonLabel}" />
+                            </Button>
+                            <Button Tag="15" Click="OnPollPreset" MinWidth="34"
+                                    Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="15">
+                                <TextBlock Text="15" Style="{StaticResource ChipButtonLabel}" />
+                            </Button>
+                            <Button Tag="30" Click="OnPollPreset" MinWidth="34"
+                                    Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="30">
+                                <TextBlock Text="30" Style="{StaticResource ChipButtonLabel}" />
+                            </Button>
+                            <Button Tag="60" Click="OnPollPreset" MinWidth="34"
+                                    Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="60">
+                                <TextBlock Text="60" Style="{StaticResource ChipButtonLabel}" />
+                            </Button>
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                   Text="Lower = alerts appear sooner; higher = gentler on a network share." />
+                    </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
             <!-- ============================================== Appearance -->

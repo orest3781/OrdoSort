@@ -60,15 +60,23 @@ public class SettingsKeyboardAccessTests
     /// files label and Config.MonitorTitle's default already used. That
     /// retired the old "B" (from "Dash_board", which existed only because
     /// "Dashboard" made a third D) and freed the mnemonic back to an initial
-    /// letter. M was unclaimed, so the set is G/F/D/M/A/T; the distinctness
-    /// assertion below is what actually guards that, against live
-    /// registrations rather than these literals.</summary>
+    /// letter. M was unclaimed, so the set was G/F/D/M/A/T.
+    ///
+    /// Phase 3 task 3.2 split "Monitored folders" — the folder master/detail
+    /// stayed, and its Alerts + Polling regions moved to a new seventh tab
+    /// inserted right after it. "Alerts & polling" can't take A (Appearance's
+    /// already); P (from "Polling") was free, so the header reads on its
+    /// second word instead of its first — the same shape "Data files"
+    /// already uses on "T" from Da_ta. The set is now G/F/D/M/A/T/P; the
+    /// distinctness assertion below is what actually guards that, against
+    /// live registrations rather than these literals.</summary>
     public static IEnumerable<object[]> TabHeaders()
     {
         yield return new object[] { "_General", "G" };
         yield return new object[] { "_Filing", "F" };
         yield return new object[] { "_Destinations", "D" };
         yield return new object[] { "_Monitored folders", "M" };
+        yield return new object[] { "Alerts & _Polling", "P" };
         yield return new object[] { "_Appearance", "A" };
         yield return new object[] { "Da_ta files", "T" };
     }
@@ -207,6 +215,7 @@ public class SettingsKeyboardAccessTests
         yield return new object[] { "_Filing", "Filing" };
         yield return new object[] { "_Destinations", "Destinations" };
         yield return new object[] { "_Monitored folders", "Monitored folders" };
+        yield return new object[] { "Alerts & _Polling", "Alerts & polling" };
         yield return new object[] { "_Appearance", "Appearance" };
         yield return new object[] { "Da_ta files", "Data files" };
     }
@@ -269,13 +278,15 @@ public class SettingsKeyboardAccessTests
         }
     });
 
-    /// <summary>All six are distinct — the whole reason Data files uses a
-    /// non-initial letter. Asserted against the LIVE registrations rather
-    /// than the literals, so a future header edit that quietly reintroduces
-    /// a D collision (Destinations/Data files, and "Dashboard" before Task 9
-    /// renamed it) fails here rather than in a user's hands.</summary>
+    /// <summary>All seven are distinct — the whole reason Data files and
+    /// (since Phase 3 task 3.2) Alerts & polling use a non-initial letter.
+    /// Asserted against the LIVE registrations rather than the literals, so
+    /// a future header edit that quietly reintroduces a collision (D between
+    /// Destinations/Data files, and "Dashboard" before Task 9 renamed it; A
+    /// between Appearance/Alerts) fails here rather than in a user's
+    /// hands.</summary>
     [Fact]
-    public void TheSixSettingsTabAccessKeysAreAllDistinct() => _fx.Invoke(() =>
+    public void TheSevenSettingsTabAccessKeysAreAllDistinct() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
         var window = BuildSettingsWindow();
@@ -294,9 +305,9 @@ public class SettingsKeyboardAccessTests
                     .FirstOrDefault(k => k != '\0'))
                 .ToList();
 
-            Assert.Equal(6, keys.Count);
+            Assert.Equal(7, keys.Count);
             Assert.All(keys, k => Assert.NotEqual('\0', k));
-            Assert.Equal(6, keys.Select(char.ToUpperInvariant).Distinct().Count());
+            Assert.Equal(7, keys.Select(char.ToUpperInvariant).Distinct().Count());
         }
         finally
         {
@@ -307,7 +318,7 @@ public class SettingsKeyboardAccessTests
     /// <summary>Why MainWindow's own File/Tools menu mnemonics cannot collide
     /// with these, asserted rather than reasoned about: access keys are
     /// scoped per <see cref="PresentationSource"/>, i.e. per top-level
-    /// window. SettingsWindow's six are invisible from another window's
+    /// window. SettingsWindow's seven are invisible from another window's
     /// scope — MainWindow uses F (_File) and T (_Tools), which SettingsWindow
     /// also uses (_Filing, Da_ta files), and this is the property that keeps
     /// that harmless.</summary>
@@ -335,7 +346,7 @@ public class SettingsKeyboardAccessTests
             var otherScope = PresentationSource.FromVisual(other)!;
             Assert.NotSame(settingsScope, otherScope);
 
-            foreach (var key in new[] { "G", "F", "D", "M", "A", "T" })
+            foreach (var key in new[] { "G", "F", "D", "M", "A", "T", "P" })
             {
                 Assert.True(AccessKeyManager.IsKeyRegistered(settingsScope, key),
                     $"Alt+{key} missing from SettingsWindow's scope");
