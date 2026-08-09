@@ -9,8 +9,9 @@ public class ThemeTests
 {
     public static IEnumerable<object[]> TextPairs()
     {
-        foreach (var p in new[] { ThemePalette.Light, ThemePalette.Dark })
+        foreach (var s in ThemePalette.Schemes)
         {
+            var p = s.Palette;
             yield return new object[] { p.Text, p.WindowBg };
             yield return new object[] { p.Text, p.Surface };
             yield return new object[] { p.SubtleText, p.WindowBg };
