@@ -344,6 +344,14 @@ public partial class MainWindow : Window
         new Windows.ZipMergeWindow(new ZipMergeViewModel(Dialogs, uiContext: SynchronizationContext.Current))
         { Owner = this }.ShowDialog();
 
+    private void OnZip(object sender, RoutedEventArgs e) =>
+        new Windows.ZipWindow(new ZipViewModel(Dialogs, uiContext: SynchronizationContext.Current))
+        { Owner = this }.ShowDialog();
+
+    private void OnUnzip(object sender, RoutedEventArgs e) =>
+        new Windows.UnzipWindow(new UnzipViewModel(Dialogs, uiContext: SynchronizationContext.Current))
+        { Owner = this }.ShowDialog();
+
     private void OnSettings(object sender, RoutedEventArgs e)
     {
         if (!Shell.IsReady)

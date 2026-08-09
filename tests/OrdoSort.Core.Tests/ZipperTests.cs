@@ -1,0 +1,216 @@
+using System.IO.Compression;
+using System.Text;
+
+namespace OrdoSort.Core.Tests;
+
+/// <summary>Task 6 (zip and unzip tools). Fixtures build real zips with
+/// ZipFile.Open(path, ZipArchiveMode.Create) — the same idiom ZipMergeTests
+/// and XlsxTableTests already use — and plain text-file fixtures for the
+/// files/folders CreateZip reads from disk.</summary>
+public class ZipperTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordozipper_" + Guid.NewGuid());
+    public ZipperTests() => Directory.CreateDirectory(_dir);
+    public void Dispose() { try { Directory.Delete(_dir, recursive: true); } catch { /* best effort */ } }
+
+    private string MakeFile(string relativePath, string content)
+    {
+        var path = Path.Combine(_dir, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, content);
+        return path;
+    }
+
+    private string MakeFolder(string name)
+    {
+        var path = Path.Combine(_dir, name);
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+    private string MakeZip(string name, params (string EntryName, string Content)[] entries)
+    {
+        var path = Path.Combine(_dir, name);
+        using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
+        foreach (var (entryName, content) in entries)
+        {
+            using var s = zip.CreateEntry(entryName).Open();
+            var bytes = Encoding.UTF8.GetBytes(content);
+            s.Write(bytes, 0, bytes.Length);
+        }
+        return path;
+    }
+
+    // ---------------------------------------------------------- CreateZip
+
+    [Fact]
+    public void FilesAreZippedAndTheArchiveContainsExactlyThoseEntries()
+    {
+        var a = MakeFile("a.txt", "aaa");
+        var b = MakeFile("b.txt", "bbb");
+        var target = Path.Combine(_dir, "made.zip");
+
+        var r = Zipper.CreateZip(new[] { a, b }, target);
+
+        Assert.Equal("ok", r.Status);
+        Assert.Equal(target, r.Output);
+        using var zip = ZipFile.OpenRead(target);
+        var names = zip.Entries.Select(e => e.FullName).OrderBy(n => n).ToList();
+        Assert.Equal(new[] { "a.txt", "b.txt" }, names);
+    }
+
+    [Fact]
+    public void DuplicateLooseFileNamesGetACounterSuffixInTheArchive()
+    {
+        var a1 = MakeFile("a.txt", "one");
+        var a2 = MakeFile(Path.Combine("sub", "a.txt"), "two");
+        var target = Path.Combine(_dir, "dup.zip");
+
+        var r = Zipper.CreateZip(new[] { a1, a2 }, target);
+
+        Assert.Equal("ok", r.Status);
+        using var zip = ZipFile.OpenRead(target);
+        var names = zip.Entries.Select(e => e.FullName).OrderBy(n => n).ToList();
+        Assert.Equal(new[] { "a (2).txt", "a.txt" }, names);
+    }
+
+    [Fact]
+    public void FolderEntriesUseForwardSlashRelativePathsUnderTheFolderNamePrefix()
+    {
+        var folder = MakeFolder("docs");
+        MakeFile(Path.Combine("docs", "top.txt"), "top");
+        MakeFile(Path.Combine("docs", "inner", "nested.txt"), "nested");
+        var target = Path.Combine(_dir, "folder.zip");
+
+        var r = Zipper.CreateZip(new[] { folder }, target);
+
+        Assert.Equal("ok", r.Status);
+        using var zip = ZipFile.OpenRead(target);
+        var names = zip.Entries.Select(e => e.FullName).OrderBy(n => n).ToList();
+        Assert.Equal(new[] { "docs/inner/nested.txt", "docs/top.txt" }, names);
+    }
+
+    [Fact]
+    public void SingleFolderInputDefaultsToTheFoldersNameBesideIt()
+    {
+        var folder = MakeFolder("photos");
+        MakeFile(Path.Combine("photos", "a.jpg"), "x");
+
+        var r = Zipper.CreateZip(new[] { folder });
+
+        Assert.Equal("ok", r.Status);
+        Assert.Equal(Path.Combine(_dir, "photos.zip"), r.Output);
+        Assert.True(File.Exists(r.Output));
+    }
+
+    [Fact]
+    public void ADefaultNameCollisionGetsACollisionSuffix()
+    {
+        var folder = MakeFolder("photos");
+        MakeFile(Path.Combine("photos", "a.jpg"), "x");
+        File.WriteAllText(Path.Combine(_dir, "photos.zip"), "existing");
+
+        var r = Zipper.CreateZip(new[] { folder });
+
+        Assert.Equal("ok", r.Status);
+        Assert.Equal(Path.Combine(_dir, "photos (2).zip"), r.Output);
+        Assert.Equal("existing", File.ReadAllText(Path.Combine(_dir, "photos.zip")));
+    }
+
+    [Fact]
+    public void AnExplicitOutputPathOverwritesWhateverWasThere()
+    {
+        var a = MakeFile("a.txt", "aaa");
+        var target = Path.Combine(_dir, "existing.zip");
+        File.WriteAllText(target, "old content, not a real zip");
+
+        var r = Zipper.CreateZip(new[] { a }, target);
+
+        Assert.Equal("ok", r.Status);
+        Assert.Equal(target, r.Output);
+        using var zip = ZipFile.OpenRead(target);
+        Assert.Single(zip.Entries);
+    }
+
+    [Fact]
+    public void WhenNothingInTheInputStillExistsCreateZipErrorsWithoutWritingAnything()
+    {
+        var ghost = Path.Combine(_dir, "gone.txt");   // never created
+
+        var r = Zipper.CreateZip(new[] { ghost });
+
+        Assert.Equal("error", r.Status);
+        Assert.Equal("nothing to zip", r.Message);
+        Assert.Null(r.Output);
+        Assert.Empty(Directory.GetFileSystemEntries(_dir));
+    }
+
+    // ------------------------------------------------------------ Extract
+
+    [Fact]
+    public void ExtractCreatesASiblingFolderNamedAfterTheZipWithFullContents()
+    {
+        var zipPath = MakeZip("bundle.zip", ("a.txt", "aaa"), ("sub/b.txt", "bbb"));
+
+        var r = Zipper.Extract(zipPath);
+
+        Assert.Equal("ok", r.Status);
+        var outDir = Path.Combine(_dir, "bundle");
+        Assert.Equal(outDir, r.OutputFolder);
+        Assert.True(Directory.Exists(outDir));
+        Assert.Equal("aaa", File.ReadAllText(Path.Combine(outDir, "a.txt")));
+        Assert.Equal("bbb", File.ReadAllText(Path.Combine(outDir, "sub", "b.txt")));
+    }
+
+    [Fact]
+    public void ASecondExtractOfTheSameZipGetsACollisionSuffixedFolder()
+    {
+        var zipPath = MakeZip("bundle2.zip", ("a.txt", "aaa"));
+
+        var r1 = Zipper.Extract(zipPath);
+        var r2 = Zipper.Extract(zipPath);
+
+        Assert.Equal("ok", r1.Status);
+        Assert.Equal("ok", r2.Status);
+        Assert.Equal(Path.Combine(_dir, "bundle2"), r1.OutputFolder);
+        Assert.Equal(Path.Combine(_dir, "bundle2 (2)"), r2.OutputFolder);
+    }
+
+    /// <summary>Pins .NET 8's own ZipFile.ExtractToDirectory traversal
+    /// protection — see Zipper's class doc comment on why that framework
+    /// guarantee is load-bearing here. A crafted entry name that tries to
+    /// escape the destination folder must be refused, and must leave no
+    /// trace either outside the zip's own directory (evil.txt) or inside it
+    /// (the partial output folder this call created before extraction
+    /// failed).</summary>
+    [Fact]
+    public void ZipSlipEntryIsRejectedAndLeavesNoTraceOutsideOrInside()
+    {
+        var zipPath = Path.Combine(_dir, "slip.zip");
+        using (var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            using var s = zip.CreateEntry(@"..\evil.txt").Open();
+            var bytes = Encoding.UTF8.GetBytes("pwned");
+            s.Write(bytes, 0, bytes.Length);
+        }
+
+        var r = Zipper.Extract(zipPath);
+
+        Assert.Equal("error", r.Status);
+        Assert.False(File.Exists(Path.Combine(_dir, "evil.txt")));
+        Assert.False(Directory.Exists(Path.Combine(_dir, "slip")));
+    }
+
+    [Fact]
+    public void CorruptZipIsAReadableErrorAndLeavesNoOutputFolder()
+    {
+        var path = Path.Combine(_dir, "junk.zip");
+        File.WriteAllBytes(path, Encoding.UTF8.GetBytes("this is not a zip"));
+
+        var r = Zipper.Extract(path);   // must not throw
+
+        Assert.Equal("error", r.Status);
+        Assert.Contains("not a valid zip", r.Message);
+        Assert.False(Directory.Exists(Path.Combine(_dir, "junk")));
+    }
+}
