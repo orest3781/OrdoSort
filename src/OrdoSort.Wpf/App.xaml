@@ -7,6 +7,7 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Theme/Styles.xaml" />
+                <ResourceDictionary Source="Theme/Illustrations.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <BooleanToVisibilityConverter x:Key="BoolToVis" />
             <views:RgbToBrushConverter x:Key="RgbToBrush" />

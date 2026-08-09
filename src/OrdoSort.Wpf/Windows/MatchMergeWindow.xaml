@@ -12,10 +12,26 @@
                 <Button Command="{Binding MergeCommand}"
                         Style="{StaticResource PrimaryButton}" MinWidth="120" Margin="0,0,8,0"
                         AutomationProperties.Name="{Binding MergeButtonText}">
-                    <TextBlock Text="{Binding MergeButtonText}" Style="{StaticResource PrimaryButtonLabel}" />
+                    <StackPanel Orientation="Horizontal">
+                        <!-- E8C8 (copy/merge), distinct from this tool's own
+                             Tools menu glyph (E721, "_Match and merge…") so
+                             the in-window action and the tool-opening menu
+                             entry don't share one glyph. -->
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE8C8;" Margin="0,0,8,0"
+                                   Foreground="{DynamicResource Theme.AccentText}" />
+                        <TextBlock Text="{Binding MergeButtonText}" Style="{StaticResource PrimaryButtonLabel}" />
+                    </StackPanel>
                 </Button>
-                <Button Content="{Binding ReviewButtonText}" Click="OnReview"
-                        IsEnabled="{Binding CanReview}" Margin="0,0,8,0" />
+                <Button Click="OnReview" IsEnabled="{Binding CanReview}" Margin="0,0,8,0"
+                        AutomationProperties.Name="{Binding ReviewButtonText}">
+                    <StackPanel Orientation="Horizontal">
+                        <!-- E8FD, not E721 — E721 is already this tool's own
+                             Tools menu glyph (opening the whole window); this
+                             is a different action inside it. -->
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE8FD;" Margin="0,0,8,0" />
+                        <TextBlock Text="{Binding ReviewButtonText}" />
+                    </StackPanel>
+                </Button>
                 <Button Content="Undo last merge" Command="{Binding UndoCommand}" Margin="0,0,10,0" />
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
                            Style="{StaticResource StatusText}" MaxWidth="300" />

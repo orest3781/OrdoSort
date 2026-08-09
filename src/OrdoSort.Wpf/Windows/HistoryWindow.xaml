@@ -14,8 +14,17 @@
         <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
             <!-- IsCancel: Esc closes, like every other tool window -->
             <Button Content="Close" Width="96" IsCancel="True" DockPanel.Dock="Right" />
-            <Button Content="Export to spreadsheet…" Command="{Binding ExportCommand}"
-                    DockPanel.Dock="Right" Margin="0,0,8,0" />
+            <Button Command="{Binding ExportCommand}"
+                    DockPanel.Dock="Right" Margin="0,0,8,0"
+                    AutomationProperties.Name="Export to spreadsheet">
+                <StackPanel Orientation="Horizontal">
+                    <!-- Same glyph as the identical File menu command
+                         (MainWindow.xaml, "_Export history to
+                         spreadsheet…") — E74E. -->
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE74E;" Margin="0,0,8,0" />
+                    <TextBlock Text="Export to spreadsheet…" />
+                </StackPanel>
+            </Button>
             <Button Content="Show all" Command="{Binding ShowAllCommand}"
                     DockPanel.Dock="Right" Margin="0,0,8,0"
                     Visibility="{Binding CanShowAll, Converter={StaticResource BoolToVis}}" />

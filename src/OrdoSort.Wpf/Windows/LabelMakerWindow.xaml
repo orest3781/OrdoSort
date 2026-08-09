@@ -107,9 +107,8 @@
                             <Binding Path="Clients.Count" Converter="{StaticResource ZeroToVis}" />
                         </Border.Visibility>
                         <StackPanel>
-                            <Image Height="76" Margin="0,0,0,8"
-                                   RenderOptions.BitmapScalingMode="HighQuality"
-                                   Source="pack://application:,,,/OrdoSort;component/Assets/labels-empty.png" />
+                            <ContentControl Template="{StaticResource Illustration.LabelsEmpty}"
+                                             Height="76" Margin="0,0,0,8" />
                             <TextBlock Text="No clients yet — press Add."
                                        Style="{StaticResource SubtleText}"
                                        HorizontalAlignment="Center" />

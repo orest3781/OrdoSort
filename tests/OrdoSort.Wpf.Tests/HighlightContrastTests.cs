@@ -107,6 +107,20 @@ public sealed class HighlightContrastFixture : IDisposable
                     Source = new Uri("pack://application:,,,/OrdoSort;component/Theme/Styles.xaml"),
                 });
             }
+            // Same reasoning as the Styles.xaml merge above — App.xaml also
+            // merges Theme/Illustrations.xaml (Phase-2 restyle, D2), and this
+            // fixture deliberately never constructs the real App, so a real
+            // production Window that resolves an Illustration.* StaticResource
+            // (ReadyView, DoneView, LabelMakerWindow, UnlockWindow) throws
+            // "resource not found" unless it's merged here too.
+            if (!app.Resources.MergedDictionaries.Any(d =>
+                    d.Source is { } src && src.OriginalString.Contains("Theme/Illustrations.xaml")))
+            {
+                app.Resources.MergedDictionaries.Add(new ResourceDictionary
+                {
+                    Source = new Uri("pack://application:,,,/OrdoSort;component/Theme/Illustrations.xaml"),
+                });
+            }
             // App.xaml declares these converters (and a couple of plain
             // values) as loose Application.Resources entries — not a
             // separate merge-able ResourceDictionary — and this fixture

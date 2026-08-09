@@ -12,7 +12,13 @@
                 <Button Command="{Binding RenameCommand}"
                         Style="{StaticResource PrimaryButton}" MinWidth="130" Margin="0,0,8,0"
                         AutomationProperties.Name="{Binding RenameButtonText}">
-                    <TextBlock Text="{Binding RenameButtonText}" Style="{StaticResource PrimaryButtonLabel}" />
+                    <StackPanel Orientation="Horizontal">
+                        <!-- Same glyph as this tool's own Tools menu entry
+                             (MainWindow.xaml, "_Bulk rename…") — E8AC. -->
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE8AC;" Margin="0,0,8,0"
+                                   Foreground="{DynamicResource Theme.AccentText}" />
+                        <TextBlock Text="{Binding RenameButtonText}" Style="{StaticResource PrimaryButtonLabel}" />
+                    </StackPanel>
                 </Button>
                 <Button Content="Undo last rename" Command="{Binding UndoCommand}" Margin="0,0,10,0" />
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center"

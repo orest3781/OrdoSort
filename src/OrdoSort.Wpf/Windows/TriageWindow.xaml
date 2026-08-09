@@ -41,7 +41,11 @@
                 <Button x:Name="UseButton" Click="OnUseSelected"
                         Style="{StaticResource PrimaryButton}" Height="40" IsEnabled="False"
                         AutomationProperties.Name="Use selected id">
-                    <TextBlock Text="Use selected id" Style="{StaticResource PrimaryButtonLabel}" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" Margin="0,0,8,0"
+                                   Foreground="{DynamicResource Theme.AccentText}" />
+                        <TextBlock Text="Use selected id" Style="{StaticResource PrimaryButtonLabel}" />
+                    </StackPanel>
                 </Button>
                 <Button Content="Skip this file" Click="OnSkip" Height="34" Margin="0,6,0,0" />
                 <!-- IsCancel: click or Esc — merges already done stay done -->

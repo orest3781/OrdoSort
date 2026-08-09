@@ -1,6 +1,162 @@
 <UserControl x:Class="OrdoSort.Wpf.Views.ReadyView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- Tile entrance cascade (Phase-2 restyle, D3): a one-time,
+             ~30ms-per-tile stagger on the Ready dashboard's folder tiles,
+             replacing the single simultaneous 150ms fade every tile used to
+             share. This is a one-time entrance on the Ready dashboard, not
+             anything on the filing path itself, so it's in bounds under
+             this app's "state, never animation on the filing path" rule.
+
+             The app has no reduced-motion story to defer to: grepped for
+             SystemParameters.ClientAreaAnimation across src/OrdoSort.Wpf —
+             zero hits, so there's no existing setting this could read.
+             Rather than invent one, the stagger is kept deliberately small
+             (30ms/index, 150ms fade, 360ms worst case for the 8th tile —
+             under the 400ms/8-tiles ceiling) instead of adding new surface
+             area a Phase-2 icon/illustration pass has no mandate to grow.
+
+             Mechanism, entirely in XAML: the inner Tiles ItemsControl below
+             gets AlternationCount="8", which makes WPF stamp each tile's
+             generated container (a ContentPresenter — ItemsControl's own
+             default container when no ItemContainerStyle is set; the
+             Button below is the template's ROOT CONTENT, not the
+             container) with an AlternationIndex 0-7, cycling if a group
+             ever has more than 8 tiles. AlternationIndex isn't an inherited
+             property, so a plain property Trigger on this Style (which
+             only ever sees a value actually set ON THE BUTTON itself)
+             can't read it — each branch below is a DataTrigger instead,
+             bound via RelativeSource to the ContentPresenter ancestor that
+             actually carries it, the standard technique for reaching
+             AlternationIndex from inside an ItemTemplate.
+
+             Base Opacity="0": without it, a staggered tile (index>0) would
+             render at the Button's ordinary default (Opacity=1) for the
+             length of its own BeginTime delay, then SNAP to 0 the instant
+             its animation clock actually starts — a flash-then-fade, not a
+             cascade. A Clock only drives its target property once the
+             Clock's own BeginTime has elapsed; before that, the property
+             falls back to whatever this Style's own (non-animated) value
+             says, which is why that value has to already BE 0. -->
+        <Style x:Key="TileCascade" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Opacity" Value="0" />
+            <Style.Triggers>
+                <DataTrigger Value="0">
+                    <DataTrigger.Binding>
+                        <Binding Path="(ItemsControl.AlternationIndex)"
+                                 RelativeSource="{RelativeSource AncestorType=ContentPresenter}" />
+                    </DataTrigger.Binding>
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0" To="1" BeginTime="0:0:0.00" Duration="0:0:0.15" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                </DataTrigger>
+                <DataTrigger Value="1">
+                    <DataTrigger.Binding>
+                        <Binding Path="(ItemsControl.AlternationIndex)"
+                                 RelativeSource="{RelativeSource AncestorType=ContentPresenter}" />
+                    </DataTrigger.Binding>
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0" To="1" BeginTime="0:0:0.03" Duration="0:0:0.15" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                </DataTrigger>
+                <DataTrigger Value="2">
+                    <DataTrigger.Binding>
+                        <Binding Path="(ItemsControl.AlternationIndex)"
+                                 RelativeSource="{RelativeSource AncestorType=ContentPresenter}" />
+                    </DataTrigger.Binding>
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0" To="1" BeginTime="0:0:0.06" Duration="0:0:0.15" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                </DataTrigger>
+                <DataTrigger Value="3">
+                    <DataTrigger.Binding>
+                        <Binding Path="(ItemsControl.AlternationIndex)"
+                                 RelativeSource="{RelativeSource AncestorType=ContentPresenter}" />
+                    </DataTrigger.Binding>
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0" To="1" BeginTime="0:0:0.09" Duration="0:0:0.15" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                </DataTrigger>
+                <DataTrigger Value="4">
+                    <DataTrigger.Binding>
+                        <Binding Path="(ItemsControl.AlternationIndex)"
+                                 RelativeSource="{RelativeSource AncestorType=ContentPresenter}" />
+                    </DataTrigger.Binding>
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0" To="1" BeginTime="0:0:0.12" Duration="0:0:0.15" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                </DataTrigger>
+                <DataTrigger Value="5">
+                    <DataTrigger.Binding>
+                        <Binding Path="(ItemsControl.AlternationIndex)"
+                                 RelativeSource="{RelativeSource AncestorType=ContentPresenter}" />
+                    </DataTrigger.Binding>
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0" To="1" BeginTime="0:0:0.15" Duration="0:0:0.15" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                </DataTrigger>
+                <DataTrigger Value="6">
+                    <DataTrigger.Binding>
+                        <Binding Path="(ItemsControl.AlternationIndex)"
+                                 RelativeSource="{RelativeSource AncestorType=ContentPresenter}" />
+                    </DataTrigger.Binding>
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0" To="1" BeginTime="0:0:0.18" Duration="0:0:0.15" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                </DataTrigger>
+                <DataTrigger Value="7">
+                    <DataTrigger.Binding>
+                        <Binding Path="(ItemsControl.AlternationIndex)"
+                                 RelativeSource="{RelativeSource AncestorType=ContentPresenter}" />
+                    </DataTrigger.Binding>
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0" To="1" BeginTime="0:0:0.21" Duration="0:0:0.15" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
     <StackPanel>
         <!-- monitored folders: grid of cards at the top -->
         <StackPanel Visibility="{Binding DashboardVisible, Converter={StaticResource BoolToVis}}">
@@ -9,7 +165,8 @@
                     <DataTemplate>
                         <StackPanel>
                             <TextBlock Text="{Binding Title}" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
-                            <ItemsControl ItemsSource="{Binding Tiles}" Focusable="False">
+                            <ItemsControl ItemsSource="{Binding Tiles}" Focusable="False"
+                                          AlternationCount="8">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <UniformGrid Columns="2" />
@@ -19,7 +176,13 @@
                                     <DataTemplate>
                                         <!-- a grid card per folder; a real Button, so it's
                                              keyboard-focusable and screen-reader-named -->
+                                        <!-- Style="{StaticResource TileCascade}": tiles fade in as
+                                             folders light up, staggered ~30ms/tile — see
+                                             TileCascade's own doc comment (UserControl.Resources
+                                             above) for the mechanism and why the plain Loaded
+                                             EventTrigger this used to carry couldn't stagger. -->
                                         <Button Command="{Binding OpenCommand}"
+                                                Style="{StaticResource TileCascade}"
                                                 Background="{Binding Back, Converter={StaticResource RgbToBrush}}"
                                                 Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}"
                                                 AutomationProperties.Name="{Binding Display}"
@@ -28,17 +191,6 @@
                                                 HorizontalContentAlignment="Left"
                                                 VerticalContentAlignment="Top"
                                                 BorderThickness="0" Cursor="Hand">
-                                            <Button.Triggers>
-                                                <!-- tiles fade in as folders light up -->
-                                                <EventTrigger RoutedEvent="Loaded">
-                                                    <BeginStoryboard>
-                                                        <Storyboard>
-                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                             From="0" To="1" Duration="0:0:0.15" />
-                                                        </Storyboard>
-                                                    </BeginStoryboard>
-                                                </EventTrigger>
-                                            </Button.Triggers>
                                             <StackPanel>
                                                 <StackPanel Orientation="Horizontal">
                                                     <!-- EmphasisText/BodySmallText size — Icon style already sets
@@ -151,11 +303,10 @@
                    Margin="0,4,0,0" />
 
         <!-- a calm moment when the inbox is actually empty -->
-        <Image Height="104" Margin="0,12,0,0"
-               RenderOptions.BitmapScalingMode="HighQuality"
-               Source="pack://application:,,,/OrdoSort;component/Assets/inbox-clear.png">
-            <Image.Style>
-                <Style TargetType="Image">
+        <ContentControl Template="{StaticResource Illustration.InboxClear}"
+                         Height="104" Margin="0,12,0,0">
+            <ContentControl.Style>
+                <Style TargetType="ContentControl">
                     <Setter Property="Visibility" Value="Collapsed" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding BigCount}" Value="0">
@@ -163,8 +314,8 @@
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
-            </Image.Style>
-        </Image>
+            </ContentControl.Style>
+        </ContentControl>
 
         <!-- EmphasisText size — this FontSize is set on the Button (already
              carrying Style="{StaticResource PrimaryButton}") so it inherits
