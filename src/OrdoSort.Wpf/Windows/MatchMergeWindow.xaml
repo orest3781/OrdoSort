@@ -138,30 +138,15 @@
                          each column's own ElementStyle (see NoteColumn),
                          same technique as BulkRenameWindow.xaml's "New name"
                          column and TriageWindow.xaml.cs's "Why" column. -->
-                    <!-- Local RowStyle: replaces implicit-by-type lookup for
-                         this DataGrid's rows entirely, so Styles.xaml's own
-                         implicit DataGridRow style (added alongside this,
-                         hover-tint strength review round 2, 2026-08-08) never
-                         reaches here — the IsMouseOver trigger below is this
-                         window's own copy of that same behaviour, not
-                         inherited. This grid had NO hover feedback at all
-                         before: confirmed by grep, no IsMouseOver trigger
-                         existed on DataGridRow or DataGridCell anywhere in
-                         this app. -->
+                    <!-- Local RowStyle, BasedOn the shared GridRow style
+                         (Theme/Styles.xaml) — GridRow carries the
+                         Background="Transparent" Setter and the IsMouseOver→
+                         Theme.RowHover trigger this window used to declare
+                         itself; only the genuinely local ToolTip=Source
+                         Setter is left here. -->
                     <DataGrid.RowStyle>
-                        <Style TargetType="DataGridRow">
-                            <Setter Property="Background" Value="Transparent" />
+                        <Style TargetType="DataGridRow" BasedOn="{StaticResource GridRow}">
                             <Setter Property="ToolTip" Value="{Binding Source}" />
-                            <Style.Triggers>
-                                <!-- Theme.RowHover, NOT Theme.SurfaceHover: this
-                                     row's Note column can show StatusAmber/
-                                     SubtleText (below) — the vocabulary
-                                     Theme.RowHover is tuned to protect. -->
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background"
-                                            Value="{DynamicResource Theme.RowHover}" />
-                                </Trigger>
-                            </Style.Triggers>
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
@@ -179,15 +164,17 @@
                              let someone verify, so it gets the room instead. -->
                         <DataGridTextColumn x:Name="FileColumn" Header="File" Binding="{Binding File}"
                                             Width="Auto">
-                            <!-- BasedOn GridCellText (Theme/Styles.xaml), not the
-                                 bare {x:Type TextBlock} style: this column has no
-                                 status trigger of its own, so the shared style's
-                                 default Foreground + trailing "let selection win"
-                                 DataTrigger is the whole fix — see GridCellText's
-                                 own doc comment for the bug this closes (measured
+                            <!-- BasedOn GridCellTextSelectionAware (Theme/
+                                 Styles.xaml), not plain GridCellText or the
+                                 bare {x:Type TextBlock} style: this column has
+                                 no status trigger of its own, so the shared
+                                 style's default Foreground + trailing "let
+                                 selection win" DataTrigger is the whole fix —
+                                 see GridCellTextSelectionAware's own doc
+                                 comment for the bug this closes (measured
                                  1.10:1 dark before it). -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding File}" />
                                 </Style>
@@ -202,9 +189,9 @@
                              need. -->
                         <DataGridTextColumn Header="Becomes" Binding="{Binding Becomes}"
                                             Width="*" MinWidth="120">
-                            <!-- BasedOn GridCellText — same reasoning as File above. -->
+                            <!-- BasedOn GridCellTextSelectionAware — same reasoning as File above. -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding Becomes}" />
                                 </Style>
@@ -220,12 +207,16 @@
                              one. -->
                         <DataGridTextColumn x:Name="NoteColumn" Header="Note" Binding="{Binding Note}"
                                             Width="Auto">
-                            <!-- BasedOn GridCellText for the shared Theme.Text
-                                 default — but this column's own status triggers
-                                 below still need their own trailing "let
-                                 selection win" DataTrigger; the base style's
-                                 copy alone would lose to Status="ambiguous" et
-                                 al, see GridCellText's own doc comment. -->
+                            <!-- BasedOn plain GridCellText, NOT
+                                 GridCellTextSelectionAware, for the shared
+                                 Theme.Text default — this column's own status
+                                 triggers below need to win over selection LAST
+                                 (its own trailing DataTrigger below), and
+                                 GridCellTextSelectionAware's copy of that same
+                                 trigger would sit BELOW these status triggers
+                                 in the BasedOn chain and always lose to them,
+                                 see GridCellTextSelectionAware's own doc
+                                 comment in Theme/Styles.xaml. -->
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />

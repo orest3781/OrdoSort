@@ -30,12 +30,12 @@
             <DataGrid x:Name="HistoryGrid" ItemsSource="{Binding RowsView}" AutoGenerateColumns="False"
                       IsReadOnly="True" HeadersVisibility="Column"
                       SelectionMode="Single" CanUserAddRows="False">
-                <!-- Local RowStyle: replaces implicit-by-type lookup for this
-                     DataGrid's rows entirely, so Styles.xaml's own implicit
-                     DataGridRow style (added alongside this, hover-tint
-                     strength review round 2, 2026-08-08) never reaches here —
-                     the IsMouseOver trigger below is this window's own copy
-                     of that same behaviour, not inherited.
+                <!-- Local RowStyle, BasedOn the shared GridRow style
+                     (Theme/Styles.xaml) — GridRow carries the
+                     Background="Transparent" Setter and the IsMouseOver→
+                     Theme.RowHover trigger this window used to declare
+                     itself; only the genuinely local Reverted trigger is
+                     left here.
 
                      The Reverted DataTrigger's Foreground Setter below was
                      DEAD from the day it shipped, the same trap Match & Merge
@@ -56,34 +56,27 @@
                      covered now (HistoryWindow tests, hover-tint strength
                      review round 2). -->
                 <DataGrid.RowStyle>
-                    <Style TargetType="DataGridRow">
-                        <Setter Property="Background" Value="Transparent" />
+                    <Style TargetType="DataGridRow" BasedOn="{StaticResource GridRow}">
                         <Style.Triggers>
-                            <!-- Theme.RowHover, NOT Theme.SurfaceHover: this
-                                 row's text columns can show SubtleText (see
-                                 the Reverted fix below) — the vocabulary
-                                 Theme.RowHover is tuned to protect. -->
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background"
-                                        Value="{DynamicResource Theme.RowHover}" />
-                            </Trigger>
                             <DataTrigger Binding="{Binding Reverted}" Value="True">
                                 <Setter Property="FontStyle" Value="Italic" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
                 </DataGrid.RowStyle>
-                <!-- Every text column's ElementStyle below is BasedOn
-                     GridCellText (Theme/Styles.xaml), not the bare
+                <!-- Every text column's ElementStyle below is BasedOn plain
+                     GridCellText (Theme/Styles.xaml), NOT
+                     GridCellTextSelectionAware and not the bare
                      {x:Type TextBlock} style — same shared base
-                     MatchMergeWindow/BulkRenameWindow now use. These five
-                     columns already carried their own trailing "let
-                     selection win" DataTrigger (below, after Reverted) and
-                     were already correct before this change; the swap is
-                     purely for consistency with the shared style everywhere
-                     else, not a behaviour fix — see GridCellText's own doc
-                     comment on why the Reverted trigger still needs its own
-                     copy regardless. -->
+                     MatchMergeWindow/BulkRenameWindow's status-coloured
+                     columns use. All five of these columns carry their own
+                     Reverted DataTrigger (below), so none of them qualify as
+                     "no other Foreground trigger" — each keeps its own
+                     trailing "let selection win" DataTrigger too, declared
+                     last so it wins over Reverted once selected — see
+                     GridCellTextSelectionAware's own doc comment in
+                     Theme/Styles.xaml on why that trigger can't just live in
+                     the shared base for columns like these. -->
                 <DataGrid.Columns>
                     <!-- 2026-08-07 autofit-columns, Step 5: this window is the
                          one deliberate exception to "content-sized (Auto),

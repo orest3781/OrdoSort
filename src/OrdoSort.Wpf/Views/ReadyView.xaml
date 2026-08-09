@@ -98,7 +98,7 @@
             <Button.Template>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Bg" Background="Transparent"
-                            CornerRadius="6" Padding="18,0,18,4">
+                            CornerRadius="4" Padding="18,0,18,4">
                         <ContentPresenter />
                     </Border>
                     <ControlTemplate.Triggers>

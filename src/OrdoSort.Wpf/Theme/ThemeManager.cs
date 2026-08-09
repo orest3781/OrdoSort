@@ -209,14 +209,16 @@ public static class ThemeManager
         r["Theme.SurfaceHover"] = Brush(p.SurfaceHover);
         r["Theme.SurfacePressed"] = Brush(p.SurfacePressed);
         r["Theme.RowHover"] = Brush(p.RowHover);
-        // Unchanged: computed but never consumed by any Theme.AccentHover
-        // DynamicResource lookup anywhere in src/OrdoSort.Wpf/**/*.xaml or
-        // *.cs (confirmed by search, 2026-08-08) -- dead since it was added,
-        // so raising it would not move a single rendered pixel. Left as-is
-        // rather than "fixed" as part of a task about pixels the owner can
-        // actually see; flagged here so a future reader doesn't assume its
-        // value means anything today.
-        r["Theme.AccentHover"] = Brush(Mix(p.Accent, new Rgb(255, 255, 255), 0.12));
+        // Theme.AccentHover published here until the restyle's radius/style-
+        // consolidation pass (2026-08-09): re-confirmed by a fresh grep of
+        // the whole worktree that it had zero DynamicResource consumers
+        // outside this file (dead since it was added, so no rendered pixel
+        // ever depended on it) and removed. Mix(), below, went with it --
+        // this was Mix()'s only remaining call site once SurfaceRaised was
+        // materialized onto ThemePalette directly (see that field's own
+        // comment). If a future hover-family brush needs the same "blend
+        // toward another colour" shape, that's Mix()'s reason to come back,
+        // not a reason it should have stayed dead in the meantime.
         // Materialized as a ThemePalette field 2026-08-09 (was: computed here
         // via dark ? Mix(p.Surface, white, 0.06) : p.Surface) -- moved onto
         // the palette itself, byte-identical to what this derivation used to
@@ -288,13 +290,6 @@ public static class ThemeManager
         b.Freeze();
         return b;
     }
-
-    /// <summary>Blend <paramref name="amount"/> of <paramref name="into"/>
-    /// into <paramref name="baseColor"/> — cheap hover/pressed derivation.</summary>
-    private static Rgb Mix(Rgb baseColor, Rgb into, double amount) => new(
-        (byte)(baseColor.R + (into.R - baseColor.R) * amount),
-        (byte)(baseColor.G + (into.G - baseColor.G) * amount),
-        (byte)(baseColor.B + (into.B - baseColor.B) * amount));
 
     private static bool ReadOsPrefersDark()
     {
