@@ -80,6 +80,40 @@ public class ThemeTests
         Assert.Null(ThemePalette.ParseColor("not-a-color"));
     }
 
+    // Scheme registry scaffold: Schemes is the single enumeration every
+    // scheme-aware test iterates going forward, so pin its exact shape here
+    // (keys, palette identity, IsDark) plus FindScheme's lookup contract.
+    [Fact]
+    public void SchemesRegistryHasExactlyPaperAndGraphite()
+    {
+        Assert.Equal(2, ThemePalette.Schemes.Count);
+
+        var paper = ThemePalette.Schemes[0];
+        Assert.Equal("paper", paper.Key);
+        Assert.Same(ThemePalette.Light, paper.Palette);
+        Assert.False(paper.IsDark);
+
+        var graphite = ThemePalette.Schemes[1];
+        Assert.Equal("graphite", graphite.Key);
+        Assert.Same(ThemePalette.Dark, graphite.Palette);
+        Assert.True(graphite.IsDark);
+    }
+
+    [Theory]
+    [InlineData("paper", "paper")]
+    [InlineData("PAPER", "paper")]
+    [InlineData("Graphite", "graphite")]
+    [InlineData("GRAPHITE", "graphite")]
+    public void FindSchemeIsCaseInsensitive(string key, string expectedKey) =>
+        Assert.Equal(expectedKey, ThemePalette.FindScheme(key)?.Key);
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("nope")]
+    public void FindSchemeReturnsNullForNullOrUnknown(string? key) =>
+        Assert.Null(ThemePalette.FindScheme(key));
+
     // 2026-08-04 (Task 7): ThemeManager.Brush allocates and freezes a NEW
     // SolidColorBrush every call; the dashboard re-evaluates RgbToBrushConverter
     // per tile per refresh, so without caching that's a fresh brush per tick.

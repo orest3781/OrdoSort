@@ -4,6 +4,11 @@ namespace OrdoSort.Wpf.Theme;
 /// WCAG contrast contract stay unit-testable without a dispatcher.</summary>
 public readonly record struct Rgb(byte R, byte G, byte B);
 
+/// <summary>A named, user-selectable palette. The registry below is the single
+/// enumeration every scheme-aware test iterates — adding a scheme here automatically
+/// puts it behind the 4.5:1 contrast wall in ThemeTests.</summary>
+public sealed record ThemeScheme(string Key, string DisplayName, ThemePalette Palette, bool IsDark);
+
 /// <summary>The theme token tables (light + dark) and the WCAG 2.1 contrast
 /// math. Every text/background pairing shipped here is enforced to >= 4.5:1
 /// by ThemeTests.</summary>
@@ -215,6 +220,21 @@ public sealed record ThemePalette(
         // 7.27:1, StatusRed 4.90:1 -- all >=4.5, StatusRed (the tightest,
         // same one round 1 broke at 3.71:1) with a real 0.40 margin.
         RowHover: new(52, 38, 24));
+
+    // ------------------------------------------------------ scheme registry
+
+    public static IReadOnlyList<ThemeScheme> Schemes { get; } = new[]
+    {
+        new ThemeScheme("paper",    "Paper",    Light, IsDark: false),
+        new ThemeScheme("graphite", "Graphite", Dark,  IsDark: true),
+    };
+
+    /// <summary>Case-insensitive lookup by key. Null for null/blank/unknown —
+    /// callers fall back to a default scheme.</summary>
+    public static ThemeScheme? FindScheme(string? key) =>
+        string.IsNullOrEmpty(key)
+            ? null
+            : Schemes.FirstOrDefault(s => string.Equals(s.Key, key, StringComparison.OrdinalIgnoreCase));
 
     // ---------------------------------------------------------- WCAG 2.1 math
 
