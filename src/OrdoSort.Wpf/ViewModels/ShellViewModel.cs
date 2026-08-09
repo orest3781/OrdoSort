@@ -161,7 +161,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // the same proposition as a local SSD — re-measure there before
         // assuming this conclusion travels.
         var backupOk = RunHistoryBackup(dbPath, out _historyBackupDir);
-        HistoryBackupWarning = backupOk ? "" : BackupFailureMessage;
+        SetHistoryBackupWarning(backupOk);
         _history = new History(dbPath);
         _session = new Session(cfg, _history);
 
@@ -410,6 +410,27 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     // points at the backups folder for the database currently in use.
     private string _historyBackupDir = "";
 
+    /// <summary>True until the user dismisses the history-backup rail
+    /// notice. Cleared — the notice re-raises — on a false-&gt;true
+    /// transition of <see cref="HasHistoryBackupWarning"/> itself: unlike
+    /// the set-aside notice, this warning is only ever (re)computed at two
+    /// discrete moments (construction, a Settings history-db swap), never on
+    /// a poll, so there is no "count went up while already showing" case to
+    /// widen this for.</summary>
+    private bool _historyBackupDismissed;
+
+    /// <summary>The only writer of <see cref="HistoryBackupWarning"/> — both
+    /// call sites (the constructor, ApplySettingsAsync's db swap) route
+    /// through here so the dismiss re-raise rule and the rail refresh can't
+    /// drift out of sync with a THIRD direct assignment somewhere new.</summary>
+    private void SetHistoryBackupWarning(bool backupOk)
+    {
+        var wasWarning = HasHistoryBackupWarning;
+        HistoryBackupWarning = backupOk ? "" : BackupFailureMessage;
+        if (!wasWarning && HasHistoryBackupWarning) _historyBackupDismissed = false;
+        RefreshNotices();
+    }
+
     public RelayCommand StartCommand { get; }
     public RelayCommand RescanCommand { get; }
     public RelayCommand OpenDeferredCommand { get; }
@@ -528,9 +549,38 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         RefreshDashboard(scan, snap.Statuses);
     }
 
+    /// <summary>True until the user dismisses the set-aside rail notice; the
+    /// underlying warning itself does not clear just because it's dismissed
+    /// (see <see cref="DeferredAlert"/>/<see cref="HasDeferred"/>, unchanged).
+    /// Cleared — the notice re-raises — on either edge ApplyDeferred can see
+    /// cheaply from <see cref="Scanner.DeferredInfo"/> alone, no extra
+    /// file-set diffing needed: the count going 0 -&gt; positive (the alert
+    /// reappearing after the set-aside folder was cleared out) or, while
+    /// already positive, going UP further (more files landed while this was
+    /// dismissed) — <see cref="_deferredLastCount"/> is the cheapest signal
+    /// that tells both apart, since <see cref="Scanner.DeferredSummary"/>
+    /// already computes it on every scan this method is called from.</summary>
+    private bool _deferredDismissed;
+    private int _deferredLastCount;
+    private string _deferredMessage = "";
+    private string _deferredDetail = "";
+
     private void ApplyDeferred(Scanner.DeferredInfo info)
     {
-        if (info.Count == 0) { DeferredAlert = ""; return; }
+        if (info.Count == 0)
+        {
+            DeferredAlert = "";
+            _deferredMessage = "";
+            _deferredDetail = "";
+            _deferredDismissed = false;
+            _deferredLastCount = 0;
+            RefreshNotices();
+            return;
+        }
+        if (_deferredLastCount == 0 || info.Count > _deferredLastCount)
+            _deferredDismissed = false;
+        _deferredLastCount = info.Count;
+
         var age = info.OldestAgeDays switch
         {
             0 => "",
@@ -547,6 +597,18 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // break point and is left as regular spaces.
         DeferredAlert = $"⚠ {info.Count} set-aside file{(info.Count == 1 ? "" : "s")} waiting"
             + age + "   —   click to open";
+        // _deferredMessage/_deferredDetail: a SEPARATE, rail-facing split
+        // built alongside DeferredAlert above (Task 3.3, the notification
+        // rail) -- not a re-parse of that composed sentence, which stays
+        // exactly as it was for the tests/consumers that still read it.
+        _deferredMessage = $"{info.Count} set-aside file{(info.Count == 1 ? "" : "s")} waiting";
+        _deferredDetail = info.OldestAgeDays switch
+        {
+            0 => "",
+            1 => "oldest 1 day",
+            var d => $"oldest {d} days",
+        };
+        RefreshNotices();
     }
 
     private async Task RefreshDeferredAsync()
@@ -783,20 +845,122 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private string _toastDetail = "";
     public string ToastDetail { get => _toastDetail; private set => Set(ref _toastDetail, value); }
 
-    private void ShowToast(string text, string detail, string folder)
+    /// <summary>Internal (not private) purely as a test seam — same
+    /// "settable/callable only by tests" pattern as
+    /// <see cref="Theme.ThemeManager.IsHighContrast"/> — so
+    /// HighlightContrastTests.MainWindowToastIconContrast can drive a real
+    /// error-class notice through the exact production path instead of
+    /// reflecting a private method; production code only ever reaches this
+    /// via <see cref="RaiseNewAlerts"/>.</summary>
+    internal void ShowToast(string text, string detail, string folder)
     {
         ToastText = text;
         ToastDetail = detail;
         _toastFolder = folder;
         ToastVisible = true;
         _toastTimer.Change(ToastMs, Timeout.Infinite);
+        RefreshNotices();
     }
 
     internal void HideToast()
     {
         ToastVisible = false;
         _toastTimer.Change(Timeout.Infinite, Timeout.Infinite);
+        RefreshNotices();
     }
+
+    // ------------------------------------------------------ notification rail
+    // MainWindow's unified bottom rail (Phase 3, Task 3.3): one vertical
+    // stack of notice items replacing the old set-aside banner, history-
+    // backup banner, and floating toast, all three of which used to render
+    // (and animate, and gate hit-testing) completely independently of one
+    // another. Notices is derived fresh from the three sources above every
+    // time any of them changes — never a second source of truth — and the
+    // reconciliation below is deliberately NOT a Clear()+rebuild (unlike
+    // Tiles' simpler signature-guarded rebuild): a Clear() raises a single
+    // CollectionChanged Reset, which regenerates EVERY container regardless
+    // of whether that container's underlying item actually changed, and
+    // every container's Loaded-triggered entrance animation would replay on
+    // every poll tick right along with it — the exact "blink" bug
+    // RefreshDashboard's own tile-signature guard exists to avoid, just one
+    // layer further down (a per-item Insert/Move/Update mutation set, not a
+    // do-we-rebuild-at-all flag). A genuinely NEW notice (a key that wasn't
+    // present a moment ago) gets Insert()ed as a new NoticeVm and therefore
+    // plays the entrance; an EXISTING notice whose text merely changed (the
+    // deferred count ticking up, a fresh alert's toast text) is updated in
+    // place via NoticeVm.Update, which raises ordinary property-changed
+    // notifications the bound TextBlocks pick up without WPF ever tearing
+    // down and rebuilding that item's container.
+    public ObservableCollection<NoticeVm> Notices { get; } = new();
+
+    /// <summary>True while the rail has anything to show. Notices.Count
+    /// isn't itself an INotifyPropertyChanged member an ObservableCollection
+    /// raises on its own — RefreshNotices raises this explicitly, the same
+    /// way HasDeferred/HasHistoryBackupWarning wrap their own source.</summary>
+    public bool HasNotices => Notices.Count > 0;
+
+    private void RefreshNotices()
+    {
+        var wanted = new List<(string Key, NoticeKind Kind, string Message, string Detail)>();
+        if (HasDeferred && !_deferredDismissed)
+            wanted.Add(("deferred", NoticeKind.Warning, _deferredMessage, _deferredDetail));
+        if (HasHistoryBackupWarning && !_historyBackupDismissed)
+            wanted.Add(("history-backup", NoticeKind.Warning,
+                "Today's history backup didn't complete",
+                "The audit log has no fresh safety copy today — ask about disk space " +
+                "or permissions if this keeps happening."));
+        if (ToastVisible)
+            wanted.Add(("alert", NoticeKind.Error, ToastText, ToastDetail));
+
+        for (var i = Notices.Count - 1; i >= 0; i--)
+            if (!wanted.Any(w => w.Key == Notices[i].Key))
+                Notices.RemoveAt(i);
+
+        for (var i = 0; i < wanted.Count; i++)
+        {
+            var w = wanted[i];
+            var existing = -1;
+            for (var j = 0; j < Notices.Count; j++)
+                if (Notices[j].Key == w.Key) { existing = j; break; }
+
+            if (existing < 0)
+                Notices.Insert(i, new NoticeVm(w.Key, w.Kind, w.Message, w.Detail, "Open folder",
+                    NoticeActionFor(w.Key), NoticeDismissFor(w.Key)));
+            else
+            {
+                if (existing != i) Notices.Move(existing, i);
+                Notices[i].Update(w.Message, w.Detail);
+            }
+        }
+
+        Raise(nameof(HasNotices));
+    }
+
+    /// <summary>Reuses the SAME commands the rail's action link stands in
+    /// for — OpenDeferredCommand/OpenHistoryBackupFolderCommand/
+    /// OpenToastCommand already implement exactly the click behaviour each
+    /// old banner/toast had, so the rail item and a future direct caller of
+    /// those commands can never drift apart.</summary>
+    private Action NoticeActionFor(string key) => key switch
+    {
+        "deferred" => () => OpenDeferredCommand.Execute(null),
+        "history-backup" => () => OpenHistoryBackupFolderCommand.Execute(null),
+        "alert" => () => OpenToastCommand.Execute(null),
+        _ => () => { },
+    };
+
+    private Action NoticeDismissFor(string key) => key switch
+    {
+        "deferred" => () => { _deferredDismissed = true; RefreshNotices(); },
+        "history-backup" => () => { _historyBackupDismissed = true; RefreshNotices(); },
+        // The toast's dismiss IS HideToast -- there is no separate dismissed
+        // flag to track: the same auto-hide/re-show lifecycle that already
+        // governed the floating toast (ToastVisible false, then true again
+        // on the next RaiseNewAlerts) is exactly the re-raise behaviour a
+        // dismissed flag would otherwise exist to reproduce.
+        "alert" => () => HideToast(),
+        _ => () => { },
+    };
 
     internal void FlashTick()
     {
@@ -1549,7 +1713,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 _history.Dispose();
                 _history = fresh;
                 _historyBackupDir = backupDir;
-                HistoryBackupWarning = backupOk ? "" : BackupFailureMessage;
+                SetHistoryBackupWarning(backupOk);
             }
             catch (Exception ex)
             {

@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:views="clr-namespace:OrdoSort.Wpf.Views"
+        xmlns:vm="clr-namespace:OrdoSort.Wpf.ViewModels"
         Title="OrdoSort" Width="1280" Height="860"
         Icon="pack://application:,,,/OrdoSort;component/app.ico"
         Style="{StaticResource {x:Type Window}}">
@@ -11,7 +12,186 @@
         <KeyBinding Key="Z" Modifiers="Ctrl+Shift" Command="{Binding UndoCommand}" />
         <KeyBinding Key="Escape" Command="{Binding StopCommand}" />
     </Window.InputBindings>
-    <Grid>
+    <Window.Resources>
+        <!-- The notification-rail item (Phase 3, Task 3.3 — approved
+             mockup): icon · message (+ smaller detail run) · action link ·
+             dismiss, one row per live notice in ShellViewModel.Notices. Kept
+             as a KEYED resource (unlike the old floating toast, which lived
+             fully inline) specifically so HighlightContrastTests can resolve
+             the REAL production template by key — the exact technique
+             Theme/Styles.xaml's KvpValueTemplate/FontChoiceTemplate already
+             use — and apply it to a loose ContentPresenter, instead of
+             needing a live, Show()n MainWindow with a connected
+             PresentationSource just to force the ItemsControl to generate a
+             container. Show()ing MainWindow starts a REAL WebView2/Edge
+             process via _pdf.InitAsync on Loaded — the entire reason the
+             original toast-icon test went out of its way to avoid it (see
+             MainWindowToastIconContrast's own doc comment) — and this
+             preserves that.
+
+             The WARNING look (item bg Theme.Warning, text/icon
+             Theme.WarningText — the pairing ThemeTests.
+             EveryTextPairingMeetsWcagAa already enforces) is the template's
+             own declared/base look; the ERROR look (item bg
+             Theme.SurfaceRaised with a 1px Theme.Border, a
+             Theme.StatusRedRaised icon — the exact pairing
+             HighlightContrastTests.MainWindowToastIconContrast enforces,
+             carried over unchanged from the old floating toast) is the ONE
+             DataTrigger override below. TargetName Setters in a
+             DataTemplate's own Triggers outrank the same element's
+             template-declared values — the same precedence every
+             ControlTemplate.Triggers block elsewhere in this file (the old
+             banners/toast among them) already relies on. -->
+        <DataTemplate x:Key="NoticeItemTemplate" DataType="{x:Type vm:NoticeVm}">
+            <Border x:Name="Card" CornerRadius="4" Padding="10,8" Margin="0,0,0,6"
+                    Background="{DynamicResource Theme.Warning}" BorderThickness="0"
+                    SnapsToDevicePixels="True" RenderTransformOrigin="0.5,0.5">
+                <Border.RenderTransform>
+                    <TranslateTransform x:Name="Slide" />
+                </Border.RenderTransform>
+                <!-- entrance: fade + 16px slide-up over 150ms, the same
+                     vocabulary the old toast used — fires once per container,
+                     i.e. once per genuinely NEW notice (see
+                     ShellViewModel.RefreshNotices' own comment for why an
+                     existing notice's text updates in place instead of
+                     recreating this container and replaying this). -->
+                <Border.Triggers>
+                    <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0" To="1" Duration="0:0:0.15" />
+                                <DoubleAnimation Storyboard.TargetName="Slide"
+                                                 Storyboard.TargetProperty="Y"
+                                                 From="16" To="0" Duration="0:0:0.15" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </EventTrigger>
+                </Border.Triggers>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock x:Name="KindIcon" Grid.Column="0" Text="⚠" FontSize="16"
+                               VerticalAlignment="Top" Margin="0,1,10,0"
+                               Foreground="{DynamicResource Theme.WarningText}" />
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock x:Name="MessageText" Text="{Binding Message}"
+                                   Style="{StaticResource EmphasisText}" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Theme.WarningText}" />
+                        <TextBlock x:Name="DetailText" Text="{Binding Detail}" TextWrapping="Wrap"
+                                   FontSize="12" Margin="0,2,0,0" Opacity="0.85"
+                                   Foreground="{DynamicResource Theme.WarningText}"
+                                   Visibility="{Binding HasDetail, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+
+                    <!-- action link: the item's existing click behaviour
+                         (ShellViewModel.NoticeActionFor reuses the exact same
+                         command each old banner/toast already had), now an
+                         explicit, real, focusable, underlined text link. -->
+                    <Button Grid.Column="2" Command="{Binding ActionCommand}"
+                            Cursor="Hand" VerticalAlignment="Center" Margin="12,0,10,0"
+                            AutomationProperties.Name="{Binding ActionLabel}">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <!-- Foreground carries a Style+DataTrigger,
+                                     not a DataTemplate.Triggers TargetName
+                                     Setter (MC4111 — this TextBlock lives in
+                                     its OWN NameScope, one level down from
+                                     the item template's). {Binding Kind}
+                                     still resolves to the same NoticeVm:
+                                     DataContext flows through a
+                                     ControlTemplate uninterrupted. -->
+                                <TextBlock x:Name="ActionText" Text="{Binding ActionLabel}"
+                                           TextDecorations="Underline" FontWeight="SemiBold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                            <Setter Property="Foreground" Value="{DynamicResource Theme.WarningText}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Kind}" Value="{x:Static vm:NoticeKind.Error}">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Theme.Accent}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="ActionText" Property="Opacity" Value="0.75" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+
+                    <!-- ✕ dismiss: hides this notice until its underlying
+                         condition re-raises (ShellViewModel.NoticeDismissFor) —
+                         a real Button, not a decoration, so it's reachable and
+                         narratable like the action link beside it. -->
+                    <Button x:Name="DismissButton" Grid.Column="3" Command="{Binding DismissCommand}"
+                            Cursor="Hand" VerticalAlignment="Top" Padding="4"
+                            AutomationProperties.Name="Dismiss">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <!-- Same NameScope reasoning as ActionText
+                                     above: a local Style+DataTrigger, not a
+                                     DataTemplate.Triggers TargetName Setter. -->
+                                <TextBlock x:Name="DismissIcon" Text="&#xE711;" FontSize="11">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
+                                            <Setter Property="Foreground" Value="{DynamicResource Theme.WarningText}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Kind}" Value="{x:Static vm:NoticeKind.Error}">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="DismissIcon" Property="Opacity" Value="0.75" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <!-- Error-class (the old toast's job): carried over unchanged
+                     from the floating toast this replaces — same background,
+                     same border, same icon glyph/size/colour — the pairing
+                     HighlightContrastTests.MainWindowToastIconContrast
+                     enforces. -->
+                <DataTrigger Binding="{Binding Kind}" Value="{x:Static vm:NoticeKind.Error}">
+                    <Setter TargetName="Card" Property="Background" Value="{DynamicResource Theme.SurfaceRaised}" />
+                    <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource Theme.Border}" />
+                    <Setter TargetName="Card" Property="BorderThickness" Value="1" />
+                    <Setter TargetName="KindIcon" Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+                    <Setter TargetName="KindIcon" Property="Text" Value="&#xE7BA;" />
+                    <Setter TargetName="KindIcon" Property="FontSize" Value="20" />
+                    <Setter TargetName="KindIcon" Property="Foreground" Value="{DynamicResource Theme.StatusRedRaised}" />
+                    <Setter TargetName="MessageText" Property="Foreground" Value="{DynamicResource Theme.Text}" />
+                    <Setter TargetName="DetailText" Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
+                    <Setter TargetName="DetailText" Property="Opacity" Value="1" />
+                    <!-- ActionText/DismissIcon are NOT targeted here: they
+                         live inside their own Buttons' ControlTemplates, a
+                         SEPARATE NameScope a DataTemplate's own Triggers
+                         cannot reach by TargetName (MC4111) — see each
+                         Button's own inline TextBlock.Style DataTrigger
+                         instead, which reads {Binding Kind} directly since
+                         DataContext still flows through the template
+                         unbroken. -->
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </Window.Resources>
     <DockPanel>
         <Grid DockPanel.Dock="Top" Background="{DynamicResource Theme.WindowBg}">
             <Grid.ColumnDefinitions>
@@ -101,74 +281,31 @@
             </Menu>
         </Grid>
 
-        <!-- set-aside banner: a full-width filled warning bar on every screen
-             while deferred files exist — the old thin status-bar text was too
-             easy to miss. Clicking opens the folder. -->
-        <!-- EmphasisText size — FontSize/FontWeight are set on the Button and
-             inherit into the single TextBlock inside Button.Template below;
-             EmphasisText/SectionText are TextBlock-only, and reaching into
-             the template to move them would be template surgery for a
-             rename-only pass. -->
-        <Button DockPanel.Dock="Bottom"
-                Command="{Binding OpenDeferredCommand}"
-                Visibility="{Binding HasDeferred, Converter={StaticResource BoolToVis}}"
-                Cursor="Hand" FontWeight="SemiBold" FontSize="15"
-                AutomationProperties.Name="{Binding DeferredAlert}">
-            <Button.Template>
-                <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bar" Background="{DynamicResource Theme.Warning}"
-                            Padding="14,11" SnapsToDevicePixels="True">
-                        <TextBlock Text="{Binding DeferredAlert}"
-                                   Foreground="{DynamicResource Theme.WarningText}"
-                                   HorizontalAlignment="Center" TextWrapping="Wrap" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bar" Property="Opacity" Value="0.9" />
-                        </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Bar" Property="Opacity" Value="0.8" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Button.Template>
-        </Button>
-
-        <!-- history-backup banner: same full-width pattern as the set-aside
-             bar above, for the same reason — a daily backup that keeps
-             failing (permissions, a full disk, a disconnected share) used to
-             fail silently forever (2026-08-07 QC sweep R1). Stays up for the
-             rest of the session rather than a modal, which would either
-             block startup or reappear on every single launch for as long as
-             the underlying problem lasts. Clicking opens the backups folder
-             so the user can see what's there (or isn't). -->
-        <!-- EmphasisText size — same as the set-aside banner above: Button-
-             level FontSize/FontWeight inherited by the template's one
-             TextBlock; left literal rather than reaching into the template. -->
-        <Button DockPanel.Dock="Bottom"
-                Command="{Binding OpenHistoryBackupFolderCommand}"
-                Visibility="{Binding HasHistoryBackupWarning, Converter={StaticResource BoolToVis}}"
-                Cursor="Hand" FontWeight="SemiBold" FontSize="15"
-                AutomationProperties.Name="{Binding HistoryBackupWarning}">
-            <Button.Template>
-                <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bar" Background="{DynamicResource Theme.Warning}"
-                            Padding="14,11" SnapsToDevicePixels="True">
-                        <TextBlock Text="{Binding HistoryBackupWarning}"
-                                   Foreground="{DynamicResource Theme.WarningText}"
-                                   HorizontalAlignment="Center" TextWrapping="Wrap" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bar" Property="Opacity" Value="0.9" />
-                        </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Bar" Property="Opacity" Value="0.8" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Button.Template>
-        </Button>
+        <!-- notification rail (Phase 3, Task 3.3 — approved mockup): the
+             single replacement for the old set-aside banner, history-backup
+             banner, and floating alert toast, which used to render (and
+             animate, and hit-test) as three completely uncoordinated
+             surfaces. One vertical stack of notice rows, docked at the
+             window's bottom edge — it IS the bottom edge, there is no
+             separate "banner slot" any more. Visibility is driven by
+             HasNotices rather than the ItemsControl's own emptiness so the
+             1px top separator/padding never renders as a bare strip when
+             there is nothing to say. -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{DynamicResource Theme.WindowBg}"
+                BorderBrush="{DynamicResource Theme.Border}" BorderThickness="0,1,0,0"
+                Padding="8,12"
+                Visibility="{Binding HasNotices, Converter={StaticResource BoolToVis}}">
+            <ItemsControl x:Name="NoticeRail" ItemsSource="{Binding Notices}"
+                          ItemTemplate="{StaticResource NoticeItemTemplate}"
+                          Focusable="False">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+            </ItemsControl>
+        </Border>
 
         <Grid>
             <Grid.ColumnDefinitions>
@@ -216,82 +353,4 @@
             </ScrollViewer>
         </Grid>
     </DockPanel>
-
-        <!-- new-alert toast: floats bottom-right over everything, above the
-             set-aside banner; click opens the alerting folder. Reaches you
-             even when the alerting tile is scrolled off or the window is
-             unfocused (paired with the taskbar flash + chime). -->
-        <Button x:Name="ToastButton" VerticalAlignment="Bottom" HorizontalAlignment="Right"
-                Margin="0,0,16,16" MaxWidth="340" Cursor="Hand"
-                Command="{Binding OpenToastCommand}"
-                Visibility="{Binding ToastVisible, Converter={StaticResource BoolToVis}}"
-                AutomationProperties.Name="{Binding ToastText}">
-            <Button.Template>
-                <ControlTemplate TargetType="Button">
-                    <Border x:Name="Card" CornerRadius="4" Padding="14,12"
-                            Background="{DynamicResource Theme.SurfaceRaised}"
-                            BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
-                            RenderTransformOrigin="0.5,0.5">
-                        <Border.RenderTransform>
-                            <TranslateTransform x:Name="Slide" />
-                        </Border.RenderTransform>
-                        <StackPanel Orientation="Horizontal">
-                            <!-- Theme.StatusRedRaised, NOT Theme.StatusRed/Danger
-                                 (status-colour-vocabulary plan, 2026-08-08,
-                                 Task 3 Part B introduced StatusRed here; GAP
-                                 CLOSED 2026-08-09): this glyph is real
-                                 foreground text (a Segoe icon) on this
-                                 Border's REAL background, Theme.SurfaceRaised
-                                 — one step LIGHTER than Surface in dark mode
-                                 (a floating card needs to read as raised
-                                 without a shadow), NOT Theme.Surface/WindowBg
-                                 where StatusRed itself was tuned. StatusRed
-                                 measured only 4.11:1 there in graphite (short
-                                 of this app's 4.5 floor); StatusRedRaised is
-                                 a per-scheme value tuned specifically against
-                                 SurfaceRaised and clears 4.5:1 in all seven
-                                 schemes (see ThemePalette.cs's
-                                 StatusRedRaised field comment for the exact
-                                 numbers, and HighlightContrastTests'
-                                 MainWindowToastIconContrast for the clean
-                                 >=4.5 regression guard that replaced the old
-                                 >=3.0 + graphite-pin compromise). -->
-                            <!-- HeadlineCompactText size — Icon style already
-                                 sets FontFamily; converting would drop it. -->
-                            <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="20"
-                                       VerticalAlignment="Top" Margin="0,2,12,0"
-                                       Foreground="{DynamicResource Theme.StatusRedRaised}" />
-                            <StackPanel>
-                                <TextBlock Text="{Binding ToastText}" Style="{StaticResource SectionText}" />
-                                <TextBlock Text="{Binding ToastDetail}" TextWrapping="Wrap"
-                                           Style="{StaticResource SubtleText}" Margin="0,6,0,0" />
-                                <TextBlock Text="Click to open the folder"
-                                           Style="{StaticResource CaptionText}" Margin="0,4,0,0" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <!-- slide up + fade in when it appears -->
-                        <Trigger Property="Visibility" Value="Visible">
-                            <Trigger.EnterActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                         From="0" To="1" Duration="0:0:0.15" />
-                                        <DoubleAnimation Storyboard.TargetName="Slide"
-                                                         Storyboard.TargetProperty="Y"
-                                                         From="16" To="0" Duration="0:0:0.15" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.EnterActions>
-                        </Trigger>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Card" Property="BorderBrush"
-                                    Value="{DynamicResource Theme.Accent}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Button.Template>
-        </Button>
-    </Grid>
 </Window>

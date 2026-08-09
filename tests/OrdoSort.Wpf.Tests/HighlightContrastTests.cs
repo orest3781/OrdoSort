@@ -1461,26 +1461,41 @@ public class HighlightContrastTests
             $"ProcessingView warning preview ({schemeKey}): {fg} on {p.WindowBg} = {ratio:F2}");
     });
 
-    // -------------------------------------------------------- MainWindow toast
+    // ------------------------------------------------- MainWindow notice rail
 
-    /// <summary>MainWindow's alert-toast icon lives inline in MainWindow.xaml
-    /// (never extracted to a keyed Styles.xaml resource, unlike
-    /// KvpValueTemplate/FontChoiceTemplate), so proving its REAL, rendered
-    /// brush means constructing the REAL MainWindow — but never Show()n, the
-    /// same technique ShutdownDuringCommitTests already established as safe
-    /// here: Loaded (which starts a real WebView2/Edge process via
-    /// _pdf.InitAsync) only fires once a Window is connected to a live
-    /// PresentationSource, which Show() creates and a bare constructor does
-    /// not. Realize() below is called on the TOAST BUTTON alone — found by
-    /// x:Name straight off the Window's own NameScope, registered at
-    /// InitializeComponent time independent of layout — never on the Window
-    /// itself, and never touching the WebView2 sibling elsewhere in the
-    /// tree, so this stays exactly as hermetic as the rest of this
-    /// fixture's off-screen rendering. cfg.HistoryDb points at a fresh temp
-    /// path (dir pre-created, matching ShutdownDuringCommitTests) because
-    /// ShellViewModel's constructor opens a History connection synchronously
-    /// — Inbox/Deferred are left at Config's own "" default since nothing
-    /// here ever calls Shell.Initialize() (that's Loaded-gated too).
+    /// <summary>MainWindow's alert icon used to live on a standalone floating
+    /// toast Button; Phase 3 Task 3.3 (notification-rail unification,
+    /// 2026-08-09) folded that toast — plus the old set-aside/history-backup
+    /// banners — into one <c>NoticeItemTemplate</c>, a keyed resource in
+    /// MainWindow.Resources that <c>NoticeRail</c> (the rail's ItemsControl)
+    /// applies as its <c>ItemTemplate</c>. This still constructs the REAL
+    /// MainWindow, so the template resolved below is the exact production
+    /// resource, not a hand-copied stand-in — but it stops short of
+    /// realizing it through NoticeRail's own generated container: that would
+    /// need a connected PresentationSource (ItemContainerGenerator only
+    /// produces containers once the ItemsControl is laid out inside a
+    /// Show()n Window — see the ListBox-based tests elsewhere in this file,
+    /// which all call Show()), and Show()ing MainWindow fires Loaded, which
+    /// starts a REAL WebView2/Edge process via _pdf.InitAsync — the exact
+    /// cost this test always went out of its way to avoid (previously by
+    /// resolving the (then-inline) toast Button by x:Name off the Window's
+    /// own NameScope, never by Show()ing it).
+    ///
+    /// The fix: resolve NoticeItemTemplate BY KEY straight off the real,
+    /// already-InitializeComponent()'d Window.Resources (populated by the
+    /// constructor alone, no Show() required — the same technique
+    /// SettingsThemeCardRadioButtonShowsTheBronzeFocusRing already uses for
+    /// SettingsWindow's keyed "ThemeCard" style), and apply it as a loose
+    /// ContentPresenter's ContentTemplate with a real, Error-kind NoticeVm
+    /// as Content — the identical "resolve the production DataTemplate by
+    /// key, instantiate it on a loose container" technique
+    /// HighlightedComboBoxItemTextMeetsWcagAa already established for
+    /// KvpValueTemplate/FontChoiceTemplate above. FindTextElement below
+    /// walks the SAME depth-first order it always has; NoticeItemTemplate's
+    /// Grid declares the icon TextBlock (x:Name="KindIcon") as its first
+    /// child, so this still resolves the icon, not the message/detail text.
+    /// cfg.HistoryDb points at a fresh temp path (dir pre-created) because
+    /// ShellViewModel's constructor opens a History connection synchronously.
     ///
     /// Status-colour-vocabulary plan, 2026-08-08, Task 3 Part B: the icon
     /// glyph switched from Theme.Danger to Theme.StatusRed, which sits on
@@ -1494,7 +1509,9 @@ public class HighlightContrastTests
     /// per-scheme red tuned specifically against SurfaceRaised (see
     /// ThemePalette.cs's StatusRedRaised field comment for the search and
     /// the exact values/ratios). This test is now a clean >=4.5 assertion
-    /// for every scheme, no floor-lowering and no per-scheme pin.</summary>
+    /// for every scheme, no floor-lowering and no per-scheme pin — the
+    /// notice-rail move above changes WHERE the real icon is found, not
+    /// this assertion.</summary>
     [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
     public void MainWindowToastIconContrast(string schemeKey) => _fx.Invoke(() =>
     {
@@ -1514,21 +1531,25 @@ public class HighlightContrastTests
         };
         try
         {
-            var button = window.FindName("ToastButton") as Button
-                ?? throw new InvalidOperationException("no Button named ToastButton in MainWindow");
-            Realize(button);
+            var template = window.Resources["NoticeItemTemplate"] as DataTemplate
+                ?? throw new InvalidOperationException(
+                    "no DataTemplate keyed \"NoticeItemTemplate\" in MainWindow.Resources");
+            var notice = new NoticeVm("alert", NoticeKind.Error, "Alert",
+                "URGENT-callback.pdf — in Invoices", "Open folder", () => { }, () => { });
+            var presenter = new ContentPresenter { Content = notice, ContentTemplate = template };
+            Realize(presenter);
 
-            var card = FindDescendant<Border>(button)
-                ?? throw new InvalidOperationException("no Border ('Card') descendant under the toast Button");
-            var icon = FindTextElement(button)
-                ?? throw new InvalidOperationException("no TextBlock/AccessText descendant under the toast Button");
+            var card = FindDescendant<Border>(presenter)
+                ?? throw new InvalidOperationException("no Border ('Card') descendant under the notice item");
+            var icon = FindTextElement(presenter)
+                ?? throw new InvalidOperationException("no TextBlock/AccessText descendant under the notice item");
 
             var fg = ToRgb(ForegroundOf(icon));
             var bg = ToRgb(card.Background);
             Assert.Equal(p.StatusRedRaised, fg);
             var ratio = ThemePalette.ContrastRatio(fg, bg);
             Assert.True(ratio >= 4.5,
-                $"MainWindow toast icon ({schemeKey}): {fg} on {bg} = {ratio:F2}, want >= 4.5");
+                $"MainWindow notice rail icon ({schemeKey}): {fg} on {bg} = {ratio:F2}, want >= 4.5");
         }
         finally
         {
