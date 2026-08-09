@@ -30,7 +30,7 @@
                       ResizeBehavior="PreviousAndNext" IsTabStop="False" />
         <DockPanel Grid.Column="2" Margin="12">
             <StackPanel DockPanel.Dock="Top">
-                <TextBlock x:Name="Progress" Style="{StaticResource HeadlineText}" FontSize="20" />
+                <TextBlock x:Name="Progress" Style="{StaticResource HeadlineCompactText}" />
                 <TextBlock x:Name="FileName" Style="{StaticResource SubtleText}"
                            TextWrapping="Wrap" Margin="0,4,0,10" />
                 <TextBlock Text="Which row does this document belong to?  1–9 picks · Enter confirms · S skips"

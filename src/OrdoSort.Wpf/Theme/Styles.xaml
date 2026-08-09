@@ -1737,6 +1737,20 @@
         <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
     </Style>
 
+    <!-- The per-tile/per-preview count, one rung down from DisplayText's big
+         inbox number. FontSize + FontWeight only — deliberately NOT tabular
+         figures, unlike DisplayText above: the two consuming sites
+         (ReadyView's live tile and SettingsWindow's tile preview) disagree on
+         that one property — the live tile opts into
+         Typography.NumeralAlignment="Tabular" so the count doesn't wiggle as
+         files arrive, the settings preview never did. Baking Tabular in here
+         would change the settings preview's rendering, so each site keeps it
+         (or not) as a local value instead. -->
+    <Style x:Key="TileCountText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="27" />
+        <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+
     <Style x:Key="SectionText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
@@ -1752,6 +1766,19 @@
          path, a live preview note — and are small only to fit, not to recede. -->
     <Style x:Key="CaptionTextOnSurface" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="FontSize" Value="11" />
+    </Style>
+
+    <!-- One rung above Caption (11), one below body (the implicit 14 —
+         AppFontSize). Tile label rows and similar compact-but-legible text
+         that named an ad-hoc FontSize="12" at ~5 call sites before this. -->
+    <Style x:Key="BodySmallText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <!-- One rung above body, short of HeadlineCompactText (20) — warning
+         banners, the Start button's label. -->
+    <Style x:Key="EmphasisText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="15" />
     </Style>
 
     <!-- The app-level implicit TextBlock style (TargetType="TextBlock" above,
@@ -1869,6 +1896,14 @@
     <Style x:Key="HeadlineText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="FontSize" Value="26" />
         <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+
+    <!-- HeadlineText at TriageWindow's compact scale — same weight, smaller
+         size, so the review-matches header doesn't compete with the roster
+         grid for space. BasedOn HeadlineText: only FontSize differs here,
+         FontWeight="Bold" still comes from the base style. -->
+    <Style x:Key="HeadlineCompactText" TargetType="TextBlock" BasedOn="{StaticResource HeadlineText}">
+        <Setter Property="FontSize" Value="20" />
     </Style>
 
     <Style x:Key="StatusText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">

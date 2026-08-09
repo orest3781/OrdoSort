@@ -988,11 +988,11 @@
                                         HorizontalAlignment="Left"
                                         Background="{Binding TilePreviewBack, Converter={StaticResource RgbToBrush}}">
                                     <StackPanel>
-                                        <TextBlock Text="{Binding TilePreviewLabel}" FontSize="12"
+                                        <TextBlock Text="{Binding TilePreviewLabel}" Style="{StaticResource BodySmallText}"
                                                    FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                                                    Foreground="{Binding TilePreviewFore, Converter={StaticResource RgbToBrush}}" />
-                                        <TextBlock Text="{Binding TilePreviewCount}" FontSize="27"
-                                                   FontWeight="Bold" Margin="0,2,0,0"
+                                        <TextBlock Text="{Binding TilePreviewCount}" Style="{StaticResource TileCountText}"
+                                                   Margin="0,2,0,0"
                                                    Foreground="{Binding TilePreviewFore, Converter={StaticResource RgbToBrush}}" />
                                         <TextBlock Text="{Binding TilePreviewNote}" Style="{StaticResource CaptionTextOnSurface}"
                                                    TextTrimming="CharacterEllipsis"

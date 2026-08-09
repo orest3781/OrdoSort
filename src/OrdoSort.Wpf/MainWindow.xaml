@@ -56,6 +56,8 @@
                     </Style>
                 </Button.Style>
                 <StackPanel Orientation="Horizontal">
+                    <!-- BodySmallText size — Icon style already sets
+                         FontFamily; converting would drop it. -->
                     <TextBlock Style="{StaticResource Icon}" Text="&#xE72C;"
                                FontSize="12" Margin="0,0,6,0" />
                     <TextBlock Text="Refresh" />
@@ -102,6 +104,11 @@
         <!-- set-aside banner: a full-width filled warning bar on every screen
              while deferred files exist — the old thin status-bar text was too
              easy to miss. Clicking opens the folder. -->
+        <!-- EmphasisText size — FontSize/FontWeight are set on the Button and
+             inherit into the single TextBlock inside Button.Template below;
+             EmphasisText/SectionText are TextBlock-only, and reaching into
+             the template to move them would be template surgery for a
+             rename-only pass. -->
         <Button DockPanel.Dock="Bottom"
                 Command="{Binding OpenDeferredCommand}"
                 Visibility="{Binding HasDeferred, Converter={StaticResource BoolToVis}}"
@@ -135,6 +142,9 @@
              block startup or reappear on every single launch for as long as
              the underlying problem lasts. Clicking opens the backups folder
              so the user can see what's there (or isn't). -->
+        <!-- EmphasisText size — same as the set-aside banner above: Button-
+             level FontSize/FontWeight inherited by the template's one
+             TextBlock; left literal rather than reaching into the template. -->
         <Button DockPanel.Dock="Bottom"
                 Command="{Binding OpenHistoryBackupFolderCommand}"
                 Visibility="{Binding HasHistoryBackupWarning, Converter={StaticResource BoolToVis}}"
@@ -246,11 +256,13 @@
                                  MainWindowToastIconContrast for the clean
                                  >=4.5 regression guard that replaced the old
                                  >=3.0 + graphite-pin compromise). -->
+                            <!-- HeadlineCompactText size — Icon style already
+                                 sets FontFamily; converting would drop it. -->
                             <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" FontSize="20"
                                        VerticalAlignment="Top" Margin="0,1,11,0"
                                        Foreground="{DynamicResource Theme.StatusRedRaised}" />
                             <StackPanel>
-                                <TextBlock Text="{Binding ToastText}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding ToastText}" Style="{StaticResource SectionText}" />
                                 <TextBlock Text="{Binding ToastDetail}" TextWrapping="Wrap"
                                            Style="{StaticResource SubtleText}" Margin="0,6,0,0" />
                                 <TextBlock Text="Click to open the folder"

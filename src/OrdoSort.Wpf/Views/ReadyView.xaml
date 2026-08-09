@@ -8,7 +8,7 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <StackPanel>
-                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                            <TextBlock Text="{Binding Title}" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
                             <ItemsControl ItemsSource="{Binding Tiles}" Focusable="False">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
@@ -41,14 +41,17 @@
                                             </Button.Triggers>
                                             <StackPanel>
                                                 <StackPanel Orientation="Horizontal">
+                                                    <!-- EmphasisText/BodySmallText size — Icon style already sets
+                                                         FontFamily+VerticalAlignment; converting to a size-only
+                                                         style would drop the glyph font. -->
                                                     <TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;"
                                                                FontSize="12" Margin="0,0,6,0"
                                                                Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}" />
-                                                    <TextBlock Text="{Binding Label}" FontSize="12" FontWeight="SemiBold"
-                                                               TextTrimming="CharacterEllipsis"
+                                                    <TextBlock Text="{Binding Label}" Style="{StaticResource BodySmallText}"
+                                                               FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                                                                Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}" />
                                                 </StackPanel>
-                                                <TextBlock Text="{Binding CountText}" FontSize="27" FontWeight="Bold"
+                                                <TextBlock Text="{Binding CountText}" Style="{StaticResource TileCountText}"
                                                            Margin="0,2,0,0" Typography.NumeralAlignment="Tabular"
                                                            Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}" />
                                                 <!-- where the alerting file sits, when it's in
@@ -76,6 +79,8 @@
              silently vanishing the section -->
         <StackPanel Visibility="{Binding AllQuiet, Converter={StaticResource BoolToVis}}">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
+                <!-- BodySmallText size — Icon style already sets FontFamily;
+                     converting would drop it. -->
                 <TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" FontSize="12"
                            Foreground="{DynamicResource Theme.Success}" Margin="0,0,7,0" />
                 <TextBlock Text="All monitored folders are quiet"
@@ -157,10 +162,17 @@
             </Image.Style>
         </Image>
 
+        <!-- EmphasisText size — this FontSize is set on the Button (already
+             carrying Style="{StaticResource PrimaryButton}") so it inherits
+             into both TextBlocks below; EmphasisText is TextBlock-only, and
+             moving the value down into the template would be template
+             surgery for a rename-only pass. -->
         <Button Command="{Binding StartCommand}"
                 Style="{StaticResource PrimaryButton}" Height="48" Margin="0,14,0,0"
                 FontSize="15" AutomationProperties.Name="Start processing">
             <StackPanel Orientation="Horizontal">
+                <!-- EmphasisText size — Icon style already sets FontFamily;
+                     converting would drop it. -->
                 <TextBlock Style="{StaticResource Icon}" Text="&#xE768;" FontSize="15"
                            Margin="0,0,9,0" Foreground="{DynamicResource Theme.AccentText}" />
                 <!-- sentence case, like every other button in the app

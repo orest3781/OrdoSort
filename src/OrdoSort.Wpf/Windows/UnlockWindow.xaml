@@ -36,7 +36,7 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <TextBlock Text="PDFs to unlock:" Margin="0,0,0,6" FontWeight="SemiBold" />
+            <TextBlock Text="PDFs to unlock:" Margin="0,0,0,6" Style="{StaticResource SectionText}" />
             <Grid Grid.Row="1">
                 <ListBox x:Name="FileList" ItemsSource="{Binding Files}"
                          SelectionMode="Extended" MinHeight="120"
