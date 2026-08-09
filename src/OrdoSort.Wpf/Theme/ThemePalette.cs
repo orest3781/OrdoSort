@@ -271,6 +271,31 @@ public sealed record ThemePalette(
         SurfacePressed: new(94, 102, 122),
         RowHover: new(26, 36, 64));
 
+    // The manila folder itself — kraft cream and fountain-ink blue. Light.
+    // Values validated against the full pairing wall before landing.
+    public static ThemePalette Manila { get; } = new(
+        WindowBg: new(244, 238, 225),
+        Surface: new(251, 247, 236),
+        Text: new(42, 36, 24),
+        SubtleText: new(94, 86, 68),
+        Border: new(191, 182, 160),
+        Accent: new(31, 58, 95),
+        AccentText: new(255, 255, 255),
+        Warning: new(255, 236, 179),
+        WarningText: new(102, 60, 0),
+        Danger: new(192, 57, 43),
+        DangerText: new(255, 255, 255),
+        Success: new(40, 112, 45),
+        StatusAmber: new(134, 82, 2),
+        StatusGreen: new(40, 112, 45),
+        StatusRed: new(178, 50, 38),
+        TileDefaultBg: new(233, 224, 204),
+        BorderStrong: new(128, 119, 98),
+        AccentBronze: new(122, 94, 48),
+        SurfaceHover: new(206, 196, 174),
+        SurfacePressed: new(174, 162, 134),
+        RowHover: new(250, 238, 199));
+
     // ------------------------------------------------------ scheme registry
 
     public static IReadOnlyList<ThemeScheme> Schemes { get; } = new[]
@@ -279,6 +304,7 @@ public sealed record ThemePalette(
         new ThemeScheme("graphite",  "Graphite",  Dark,      IsDark: true),
         new ThemeScheme("ledger",    "Ledger",    Ledger,    IsDark: true),
         new ThemeScheme("microfilm", "Microfilm", Microfilm, IsDark: true),
+        new ThemeScheme("manila",    "Manila",    Manila,    IsDark: false),
     };
 
     /// <summary>Case-insensitive lookup by key. Null for null/blank/unknown —

@@ -91,7 +91,7 @@ public class ThemeTests
     [Fact]
     public void SchemesRegistryHasExpectedKeysAndPalettes()
     {
-        Assert.Equal(4, ThemePalette.Schemes.Count);
+        Assert.Equal(5, ThemePalette.Schemes.Count);
 
         var paper = ThemePalette.Schemes[0];
         Assert.Equal("paper", paper.Key);
@@ -112,6 +112,11 @@ public class ThemeTests
         Assert.Equal("microfilm", microfilm.Key);
         Assert.Same(ThemePalette.Microfilm, microfilm.Palette);
         Assert.True(microfilm.IsDark);
+
+        var manila = ThemePalette.Schemes[4];
+        Assert.Equal("manila", manila.Key);
+        Assert.Same(ThemePalette.Manila, manila.Palette);
+        Assert.False(manila.IsDark);
     }
 
     [Theory]
