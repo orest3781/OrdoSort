@@ -25,21 +25,30 @@ public static class Screenshots
         var notes = new List<string>();
         if (args.Length < 2)
         {
-            notes.Add("usage: screenshots <outdir> [light|dark|both]");
+            notes.Add("usage: screenshots <outdir> [light|dark|both|all|<scheme key>]");
             return notes;
         }
         var outdir = args[1];
         var themeArg = args.Length > 2 ? args[2].ToLowerInvariant() : "both";
+        // Legacy light/dark/both keep their old output filenames (the website
+        // asset pipeline names shots -light/-dark); scheme keys and "all" name
+        // shots by registry key.
         var themes = themeArg switch
         {
-            "light" => new[] { false },
-            "dark" => new[] { true },
-            "both" => new[] { false, true },
-            _ => Array.Empty<bool>(),
+            "light" => new[] { ("light", ThemePalette.FindScheme("paper")!) },
+            "dark" => new[] { ("dark", ThemePalette.FindScheme("graphite")!) },
+            "both" => new[]
+            {
+                ("light", ThemePalette.FindScheme("paper")!),
+                ("dark", ThemePalette.FindScheme("graphite")!),
+            },
+            "all" => ThemePalette.Schemes.Select(s => (s.Key, s)).ToArray(),
+            _ when ThemePalette.FindScheme(themeArg) is { } s => new[] { (s.Key, s) },
+            _ => Array.Empty<(string, ThemeScheme)>(),
         };
         if (themes.Length == 0)
         {
-            notes.Add($"usage: unknown theme '{themeArg}' — expected light/dark/both");
+            notes.Add($"usage: unknown theme '{themeArg}' — expected light/dark/both/all or a scheme key");
             return notes;
         }
 
@@ -88,20 +97,18 @@ public static class Screenshots
         try { File.Copy(Path.Combine(demoRoot, "box-labels.json"), boxLabelsScratch, overwrite: true); }
         catch (Exception ex) { notes.Add($"SKIP LabelMaker (both themes): couldn't stage box-labels.json: {ex.Message}"); }
 
-        foreach (var dark in themes)
+        foreach (var (theme, scheme) in themes)
         {
-            var theme = dark ? "dark" : "light";
-
-            // Force the theme: Apply(app, dark) is the exact primitive
+            // Force the theme: Apply(app, scheme) is the exact primitive
             // ThemeManager.Start/SetMode reduce to once "auto" is resolved —
             // it never reads the OS registry itself, so calling it directly
             // is the force path the OS-following SetMode("auto") would need
             // a real Windows preference to reach. SmokeUi.Boot() already
-            // uses it for its one-shot light default; here it's re-applied
-            // per theme, before any window in that pass is constructed, so
-            // every window resolves its DynamicResource brushes correctly
-            // from birth (not just after a later re-apply).
-            ThemeManager.Apply(app, dark);
+            // uses the bool overload for its one-shot light default; here the
+            // scheme is re-applied per pass, before any window in that pass
+            // is constructed, so every window resolves its DynamicResource
+            // brushes correctly from birth (not just after a later re-apply).
+            ThemeManager.Apply(app, scheme);
 
             Capture(notes, outdir, theme, "Unlock", () =>
                 new UnlockWindow(new UnlockViewModel(Config.Load(cfgPath), () => true)));
@@ -115,6 +122,16 @@ public static class Screenshots
             Capture(notes, outdir, theme, "Settings", () =>
                 new SettingsWindow(new SettingsViewModel(Config.Load(cfgPath), dialogs,
                     () => ThemeManager.Current, cfgPath, new SoundService())));
+            // Second Settings pass parked on the Appearance tab — the scheme
+            // picker is the thing these captures exist to show per scheme.
+            Capture(notes, outdir, theme, "Settings-appearance", () =>
+            {
+                var w = new SettingsWindow(new SettingsViewModel(Config.Load(cfgPath), dialogs,
+                    () => ThemeManager.Current, cfgPath, new SoundService()));
+                if (FindTabControl(w) is { } tabs)
+                    tabs.SelectedIndex = 5; // General/Filing/Destinations/Monitored/Alerts & polling/Appearance
+                return w;
+            });
 
             if (File.Exists(boxLabelsScratch))
             {
@@ -156,6 +173,14 @@ public static class Screenshots
     /// constructor/Loaded (e.g. HistoryViewModel's initial load), then
     /// rasterize and close. Anything that throws — or a ready-condition that
     /// times out — is recorded as a skip, never silently dropped.</summary>
+    /// <summary>First TabControl in the logical tree — safe pre-render, unlike
+    /// a visual-tree walk. Used to park the Settings capture on a chosen tab.</summary>
+    private static System.Windows.Controls.TabControl? FindTabControl(DependencyObject d) =>
+        d is System.Windows.Controls.TabControl t
+            ? t
+            : System.Windows.LogicalTreeHelper.GetChildren(d).OfType<DependencyObject>()
+                .Select(FindTabControl).FirstOrDefault(x => x is not null);
+
     private static void Capture(List<string> notes, string outdir, string theme, string name,
         Func<Window> make, Func<bool>? ready = null)
     {

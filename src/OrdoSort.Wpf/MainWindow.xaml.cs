@@ -333,6 +333,25 @@ public partial class MainWindow : Window
         vm.Dispose();   // cancel any still-armed rebuild probe now the dialog is closing
     }
 
+    private void OnPageCounts(object sender, RoutedEventArgs e) =>
+        new Windows.PageCountsWindow(new PageCountsViewModel(Dialogs, uiContext: SynchronizationContext.Current))
+        { Owner = this }.ShowDialog();
+
+    private void OnListReformat(object sender, RoutedEventArgs e) =>
+        new Windows.ListReformatWindow(new ListReformatViewModel()) { Owner = this }.ShowDialog();
+
+    private void OnZipMerge(object sender, RoutedEventArgs e) =>
+        new Windows.ZipMergeWindow(new ZipMergeViewModel(Dialogs, uiContext: SynchronizationContext.Current))
+        { Owner = this }.ShowDialog();
+
+    private void OnZip(object sender, RoutedEventArgs e) =>
+        new Windows.ZipWindow(new ZipViewModel(Dialogs, uiContext: SynchronizationContext.Current))
+        { Owner = this }.ShowDialog();
+
+    private void OnUnzip(object sender, RoutedEventArgs e) =>
+        new Windows.UnzipWindow(new UnzipViewModel(Dialogs, uiContext: SynchronizationContext.Current))
+        { Owner = this }.ShowDialog();
+
     private void OnTurnaroundReport(object sender, RoutedEventArgs e)
     {
         var vm = new TurnaroundViewModel(Shell.Cfg, Dialogs, Shell.SaveConfigNow,

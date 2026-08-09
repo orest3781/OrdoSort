@@ -5,6 +5,20 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False" AllowDrop="True"
         DragOver="OnDragOver" Drop="OnDrop"
         Style="{StaticResource {x:Type Window}}">
+    <Window.Resources>
+        <!-- Chrome shared by the four operation cards below (house card
+             style: Theme.Surface fill, Theme.Border edge, 4px corners,
+             10/8 padding). Local to this window — BulkRename is presently
+             the only place fields are grouped into named cards this way. -->
+        <Style x:Key="ParamCard" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource Theme.Surface}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="0,0,10,10" />
+        </Style>
+    </Window.Resources>
     <DockPanel Margin="14">
         <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
             <Button DockPanel.Dock="Right" Content="Close" Width="96" IsCancel="True" />
@@ -12,7 +26,13 @@
                 <Button Command="{Binding RenameCommand}"
                         Style="{StaticResource PrimaryButton}" MinWidth="130" Margin="0,0,8,0"
                         AutomationProperties.Name="{Binding RenameButtonText}">
-                    <TextBlock Text="{Binding RenameButtonText}" Style="{StaticResource PrimaryButtonLabel}" />
+                    <StackPanel Orientation="Horizontal">
+                        <!-- Same glyph as this tool's own Tools menu entry
+                             (MainWindow.xaml, "_Bulk rename…") — E8AC. -->
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE8AC;" Margin="0,0,8,0"
+                                   Foreground="{DynamicResource Theme.AccentText}" />
+                        <TextBlock Text="{Binding RenameButtonText}" Style="{StaticResource PrimaryButtonLabel}" />
+                    </StackPanel>
                 </Button>
                 <Button Content="Undo last rename" Command="{Binding UndoCommand}" Margin="0,0,10,0" />
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
@@ -37,75 +57,88 @@
                             IsEnabled="{Binding ReviewMode}" Width="130" />
             </StackPanel>
 
-            <Grid Grid.Row="1" Style="{StaticResource FieldRow}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="170" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="170" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="150" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,0,6,6" />
-                <TextBox Grid.Column="1" Margin="0,0,14,6"
-                         Text="{Binding Find, UpdateSourceTrigger=PropertyChanged}" />
-                <TextBlock Grid.Column="2" Text="Replace with:" VerticalAlignment="Center" Margin="0,0,6,6" />
-                <TextBox Grid.Column="3" Margin="0,0,14,6"
-                         Text="{Binding Replace, UpdateSourceTrigger=PropertyChanged}" />
-                <TextBlock Grid.Column="4" Text="Letter case:" VerticalAlignment="Center" Margin="0,0,6,6" />
-                <ComboBox Grid.Column="5" Margin="0,0,0,6" SelectedIndex="{Binding CaseIndex}">
-                    <ComboBoxItem Content="Keep case" />
-                    <ComboBoxItem Content="UPPERCASE" />
-                    <ComboBoxItem Content="lowercase" />
-                </ComboBox>
-                <TextBlock Grid.Row="1" Text="Add at start:" VerticalAlignment="Center" Margin="0,0,6,0" />
-                <TextBox Grid.Row="1" Grid.Column="1" Margin="0,0,14,0"
-                         Text="{Binding Prefix, UpdateSourceTrigger=PropertyChanged}" />
-                <TextBlock Grid.Row="1" Grid.Column="2" Text="Add at end:" VerticalAlignment="Center" Margin="0,0,6,0" />
-                <TextBox Grid.Row="1" Grid.Column="3" Margin="0,0,14,0"
-                         Text="{Binding Suffix, UpdateSourceTrigger=PropertyChanged}" />
-                <TextBlock Grid.Row="2" Text="Delete segment:" VerticalAlignment="Center" Margin="0,6,6,0" />
-                <!-- ColumnSpan="3": this row's own five checkboxes measure
-                     182px wide (Task 5, 2026-08-03 audit-remediation-finish),
-                     12px over column 1's fixed 170px — the width every other
-                     row's TextBox/ComboBox in this same Grid legitimately
-                     needs, so it can't just be widened for this row alone.
-                     Measured (headless, real Theme/Styles.xaml, off-screen
-                     Show()+UpdateLayout()): with ColumnSpan="1" the fifth
-                     checkbox's own glyph square painted fine (it fits inside
-                     170px) but its "last" text painted NOTHING — zero pixels
-                     differed from the window background, confirmed both by a
-                     column-by-column pixel scan of the whole row and by a
-                     WCAG contrast probe reading exactly 1.00 (fg==bg) even
-                     though the TextBlock's resolved Foreground DP, Opacity,
-                     Visibility and Clip were all completely normal at every
-                     level of the visual tree — i.e. NOT the auto-wrap
-                     Setter-outranks-inheritance trap this app has hit before
-                     elsewhere (that trap still resolves a WRONG but PAINTED
-                     colour; this was zero paint at all). Re-rendering the
-                     identical bound CheckBox with no surrounding width
-                     constraint reproduced it perfectly (49 distinct rendered
-                     colours, "last" fully legible) — isolating the cause to
-                     this row overflowing its column, not the checkbox itself.
-                     Columns 2–3 carry no content on this row (only "Add at
-                     end:"/its TextBox use them, on Row 1), so spanning into
-                     them costs nothing here and gives ~170+Auto+170px of
-                     headroom, comfortably covering the 182px this row needs
-                     even at larger configured font sizes. -->
-                <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3"
-                            Orientation="Horizontal" VerticalAlignment="Center" Margin="0,6,14,0">
-                    <CheckBox Content="1" IsChecked="{Binding DeleteSeg1}" Margin="0,0,8,0" />
-                    <CheckBox Content="2" IsChecked="{Binding DeleteSeg2}" Margin="0,0,8,0" />
-                    <CheckBox Content="3" IsChecked="{Binding DeleteSeg3}" Margin="0,0,8,0" />
-                    <CheckBox Content="4" IsChecked="{Binding DeleteSeg4}" Margin="0,0,8,0" />
-                    <CheckBox Content="last" IsChecked="{Binding DeleteSegLast}" />
-                </StackPanel>
-            </Grid>
+            <!-- Row 1: operation-parameter cards (approved mockup,
+                 2026-08-09). Replaces the old fixed 6-col/3-row FieldRow
+                 Grid, whose Delete-segment row needed a ColumnSpan="3"
+                 workaround to borrow width from neighbouring columns it
+                 didn't otherwise use — a rigid shared grid can't give one
+                 row more room than the others without doing that. Four
+                 independently-sized cards in a WrapPanel have no shared
+                 column to overflow: each gets whatever width its own
+                 content needs, and the row wraps instead of clipping. -->
+            <WrapPanel Grid.Row="1">
+                <Border Style="{StaticResource ParamCard}" MinWidth="230">
+                    <StackPanel>
+                        <TextBlock Text="Find &amp; replace" Style="{StaticResource SectionText}" Margin="0,0,0,8" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,0,6,6" />
+                            <TextBox Grid.Column="1" Width="150" Margin="0,0,0,6"
+                                     Text="{Binding Find, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Grid.Row="1" Text="Replace with:" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBox Grid.Row="1" Grid.Column="1" Width="150"
+                                     Text="{Binding Replace, UpdateSourceTrigger=PropertyChanged}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource ParamCard}" MinWidth="190">
+                    <StackPanel>
+                        <!-- "Add" carries the card header; the two rows below
+                             say only "At start:"/"At end:" (the old row-level
+                             labels were "Add at start:"/"Add at end:" — the
+                             word the header now carries). -->
+                        <TextBlock Text="Add" Style="{StaticResource SectionText}" Margin="0,0,0,8" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="At start:" VerticalAlignment="Center" Margin="0,0,6,6" />
+                            <TextBox Grid.Column="1" Width="130" Margin="0,0,0,6"
+                                     Text="{Binding Prefix, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Grid.Row="1" Text="At end:" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBox Grid.Row="1" Grid.Column="1" Width="130"
+                                     Text="{Binding Suffix, UpdateSourceTrigger=PropertyChanged}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource ParamCard}" MinWidth="200">
+                    <StackPanel>
+                        <TextBlock Text="Delete segments" Style="{StaticResource SectionText}" Margin="0,0,0,8" />
+                        <StackPanel Orientation="Horizontal">
+                            <CheckBox Content="1" IsChecked="{Binding DeleteSeg1}" Margin="0,0,8,0" />
+                            <CheckBox Content="2" IsChecked="{Binding DeleteSeg2}" Margin="0,0,8,0" />
+                            <CheckBox Content="3" IsChecked="{Binding DeleteSeg3}" Margin="0,0,8,0" />
+                            <CheckBox Content="4" IsChecked="{Binding DeleteSeg4}" Margin="0,0,8,0" />
+                            <CheckBox Content="last" IsChecked="{Binding DeleteSegLast}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource ParamCard}" MinWidth="150">
+                    <StackPanel>
+                        <TextBlock Text="Letter case" Style="{StaticResource SectionText}" Margin="0,0,0,8" />
+                        <ComboBox Width="150" SelectedIndex="{Binding CaseIndex}">
+                            <ComboBoxItem Content="Keep case" />
+                            <ComboBoxItem Content="UPPERCASE" />
+                            <ComboBoxItem Content="lowercase" />
+                        </ComboBox>
+                    </StackPanel>
+                </Border>
+            </WrapPanel>
 
             <DockPanel Grid.Row="2" Margin="0,0,0,8">
                 <!-- the counts are also the way in: when files are waiting on a
@@ -134,18 +167,23 @@
                           CellEditEnding="OnCellEditEnding" SelectionMode="Extended"
                           PreviewKeyDown="OnGridKeyDown">
                     <DataGrid.RowStyle>
-                        <!-- Local RowStyle: replaces implicit-by-type lookup for
-                             this DataGrid's rows entirely, so Styles.xaml's own
-                             implicit DataGridRow style (added alongside this,
-                             hover-tint strength review round 2, 2026-08-08)
-                             never reaches here — the IsMouseOver trigger below
-                             is this window's own copy of that same behaviour,
-                             not inherited. -->
-                        <Style TargetType="DataGridRow">
-                            <Setter Property="Background" Value="Transparent" />
+                        <!-- Local RowStyle, BasedOn the shared GridRow style
+                             (Theme/Styles.xaml) — GridRow carries the
+                             Background="Transparent" Setter and the
+                             IsMouseOver→Theme.RowHover trigger this window
+                             used to declare itself; only what's genuinely
+                             local to this grid (ToolTip=Source, the NeedsName
+                             tint) is left here. A derived style's own
+                             Setters/Triggers apply after its base's, so
+                             NeedsName below still layers on top of GridRow's
+                             inherited hover trigger exactly as it did when
+                             both lived in one Style. -->
+                        <Style TargetType="DataGridRow" BasedOn="{StaticResource GridRow}">
                             <Setter Property="ToolTip" Value="{Binding Source}" />
                             <Style.Triggers>
-                                <!-- Theme.RowHover, NOT Theme.SurfaceHover: this
+                                <!-- the few files waiting on a person: findable
+                                     at a glance among rows that are already right.
+                                     Theme.RowHover, NOT Theme.SurfaceHover: this
                                      row's Note column can show StatusAmber (see
                                      BulkRenameViewModel.ApplyPlans — NeedsName
                                      always implies NoteIsProblem) and its New
@@ -153,12 +191,6 @@
                                      the vocabulary Theme.RowHover is tuned to
                                      protect (ThemePalette.cs's RowHover
                                      comment). -->
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background"
-                                            Value="{DynamicResource Theme.RowHover}" />
-                                </Trigger>
-                                <!-- the few files waiting on a person: findable
-                                     at a glance among rows that are already right -->
                                 <DataTrigger Binding="{Binding NeedsName}" Value="True">
                                     <Setter Property="Background"
                                             Value="{DynamicResource Theme.RowHover}" />
@@ -196,15 +228,17 @@
                              where that floor reasoning now lives. -->
                         <DataGridTextColumn x:Name="CurrentColumn" Header="Current name" Binding="{Binding Current}"
                                             IsReadOnly="True" Width="Auto">
-                            <!-- BasedOn GridCellText (Theme/Styles.xaml), not the
-                                 bare {x:Type TextBlock} style: no status trigger
-                                 of its own here, so the shared style's default
-                                 Foreground + trailing "let selection win"
-                                 DataTrigger is the whole fix — same bug and same
-                                 shape as MatchMergeWindow's File/Becomes columns;
-                                 see GridCellText's own doc comment. -->
+                            <!-- BasedOn GridCellTextSelectionAware (Theme/
+                                 Styles.xaml), not plain GridCellText or the
+                                 bare {x:Type TextBlock} style: no status
+                                 trigger of its own here, so the shared
+                                 style's default Foreground + trailing "let
+                                 selection win" DataTrigger is the whole fix —
+                                 same bug and same shape as MatchMergeWindow's
+                                 File/Becomes columns; see
+                                 GridCellTextSelectionAware's own doc comment. -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding Current}" />
                                 </Style>
@@ -268,11 +302,13 @@
                              of what it held. -->
                         <DataGridTextColumn x:Name="NoteColumn" Header="Note" Binding="{Binding Note}"
                                             IsReadOnly="True" Width="Auto">
-                            <!-- BasedOn GridCellText for the shared Theme.Text
-                                 default; this column's own status triggers
-                                 below still need their own trailing "let
-                                 selection win" DataTrigger — see GridCellText's
-                                 own doc comment. -->
+                            <!-- BasedOn plain GridCellText, NOT
+                                 GridCellTextSelectionAware, for the shared
+                                 Theme.Text default; this column's own status
+                                 triggers below still need their own trailing
+                                 "let selection win" DataTrigger — see
+                                 GridCellTextSelectionAware's own doc comment
+                                 in Theme/Styles.xaml. -->
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />

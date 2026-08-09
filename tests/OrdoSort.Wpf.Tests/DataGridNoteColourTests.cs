@@ -47,9 +47,9 @@ public class DataGridNoteColourTests
 
     public static IEnumerable<object[]> PalettesAndSelection()
     {
-        foreach (var dark in new[] { false, true })
+        foreach (var s in ThemePalette.Schemes)
         foreach (var selected in new[] { false, true })
-            yield return new object[] { dark, selected };
+            yield return new object[] { s.Key, selected };
     }
 
     // ---------------------------------------------------------- Match & Merge
@@ -60,11 +60,12 @@ public class DataGridNoteColourTests
     /// ambiguous/suggested/no_roster (needs a person), subtle for already/
     /// no_match/no_name (a fact, not a problem) — or, once selected,
     /// AccentText regardless of Status (selection wins).</summary>
-    private void AssertMatchMergeNoteColour(bool dark, bool selected, string status,
+    private void AssertMatchMergeNoteColour(string schemeKey, bool selected, string status,
         Func<ThemePalette, Rgb> expectedUnselected)
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
         vm.Rows.Add(new MatchRow(@"C:\inbox\a.pdf", "a.pdf", "", "some note text here", status));
@@ -89,7 +90,7 @@ public class DataGridNoteColourTests
                 Assert.Equal(p.AccentText, fg);
                 var ratio = ThemePalette.ContrastRatio(fg, p.Accent);
                 Assert.True(ratio >= 4.5,
-                    $"MatchMerge Note selected, {status} ({(dark ? "dark" : "light")}): {fg} on {p.Accent} = {ratio:F2}");
+                    $"MatchMerge Note selected, {status} ({schemeKey}): {fg} on {p.Accent} = {ratio:F2}");
             }
             else
             {
@@ -102,7 +103,7 @@ public class DataGridNoteColourTests
                 // AssertUnlockFileListNoteContrast uses for its ListBox.
                 var ratio = ThemePalette.ContrastRatio(fg, p.Surface);
                 Assert.True(ratio >= 4.5,
-                    $"MatchMerge Note unselected, {status} ({(dark ? "dark" : "light")}): {fg} on {p.Surface} = {ratio:F2}");
+                    $"MatchMerge Note unselected, {status} ({schemeKey}): {fg} on {p.Surface} = {ratio:F2}");
             }
             _ = cellBg;
         }
@@ -113,31 +114,31 @@ public class DataGridNoteColourTests
     }
 
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void MatchMergeAmbiguousNoteIsAmberUnlessSelected(bool dark, bool selected) =>
-        _fx.Invoke(() => AssertMatchMergeNoteColour(dark, selected, "ambiguous", p => p.StatusAmber));
+    public void MatchMergeAmbiguousNoteIsAmberUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertMatchMergeNoteColour(schemeKey, selected, "ambiguous", p => p.StatusAmber));
 
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void MatchMergeSuggestedNoteIsAmberUnlessSelected(bool dark, bool selected) =>
-        _fx.Invoke(() => AssertMatchMergeNoteColour(dark, selected, "suggested", p => p.StatusAmber));
+    public void MatchMergeSuggestedNoteIsAmberUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertMatchMergeNoteColour(schemeKey, selected, "suggested", p => p.StatusAmber));
 
     /// <summary>no_roster ("load a roster first") is a thing the user must
     /// fix, not a passive fact — the plan's mapping calls it amber
     /// explicitly, distinct from already/no_match/no_name below.</summary>
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void MatchMergeNoRosterNoteIsAmberUnlessSelected(bool dark, bool selected) =>
-        _fx.Invoke(() => AssertMatchMergeNoteColour(dark, selected, "no_roster", p => p.StatusAmber));
+    public void MatchMergeNoRosterNoteIsAmberUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertMatchMergeNoteColour(schemeKey, selected, "no_roster", p => p.StatusAmber));
 
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void MatchMergeAlreadyNoteIsSubtleUnlessSelected(bool dark, bool selected) =>
-        _fx.Invoke(() => AssertMatchMergeNoteColour(dark, selected, "already", p => p.SubtleText));
+    public void MatchMergeAlreadyNoteIsSubtleUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertMatchMergeNoteColour(schemeKey, selected, "already", p => p.SubtleText));
 
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void MatchMergeNoMatchNoteIsSubtleUnlessSelected(bool dark, bool selected) =>
-        _fx.Invoke(() => AssertMatchMergeNoteColour(dark, selected, "no_match", p => p.SubtleText));
+    public void MatchMergeNoMatchNoteIsSubtleUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertMatchMergeNoteColour(schemeKey, selected, "no_match", p => p.SubtleText));
 
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void MatchMergeNoNameNoteIsSubtleUnlessSelected(bool dark, bool selected) =>
-        _fx.Invoke(() => AssertMatchMergeNoteColour(dark, selected, "no_name", p => p.SubtleText));
+    public void MatchMergeNoNameNoteIsSubtleUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertMatchMergeNoteColour(schemeKey, selected, "no_name", p => p.SubtleText));
 
     // ---------------------------------------------------------- Bulk rename
 
@@ -148,11 +149,12 @@ public class DataGridNoteColourTests
     /// BulkRenameViewModel.cs for why Manual/Changed/NeedsName alone can't
     /// tell "edited by hand" apart from "a problem that also got a manual
     /// edit".</summary>
-    private void AssertBulkRenameNoteColour(bool dark, bool selected, RenameRow row,
+    private void AssertBulkRenameNoteColour(string schemeKey, bool selected, RenameRow row,
         Func<ThemePalette, Rgb>? expectedUnselected)
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var vm = new BulkRenameViewModel();
         vm.Preview.Add(row);
@@ -177,7 +179,7 @@ public class DataGridNoteColourTests
                 Assert.Equal(p.AccentText, fg);
                 var ratio = ThemePalette.ContrastRatio(fg, p.Accent);
                 Assert.True(ratio >= 4.5,
-                    $"BulkRename Note selected ({(dark ? "dark" : "light")}): {fg} on {p.Accent} = {ratio:F2}");
+                    $"BulkRename Note selected ({schemeKey}): {fg} on {p.Accent} = {ratio:F2}");
             }
             else
             {
@@ -186,7 +188,7 @@ public class DataGridNoteColourTests
                 Assert.Equal(expected, fg);
                 var ratio = ThemePalette.ContrastRatio(fg, p.Surface);
                 Assert.True(ratio >= 4.5,
-                    $"BulkRename Note unselected ({(dark ? "dark" : "light")}): {fg} on {p.Surface} = {ratio:F2}");
+                    $"BulkRename Note unselected ({schemeKey}): {fg} on {p.Surface} = {ratio:F2}");
             }
         }
         finally
@@ -196,15 +198,15 @@ public class DataGridNoteColourTests
     }
 
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void BulkRenameEditedByHandNoteIsSubtleUnlessSelected(bool dark, bool selected) => _fx.Invoke(() =>
-        AssertBulkRenameNoteColour(dark, selected,
+    public void BulkRenameEditedByHandNoteIsSubtleUnlessSelected(string schemeKey, bool selected) => _fx.Invoke(() =>
+        AssertBulkRenameNoteColour(schemeKey, selected,
             new RenameRow(@"C:\inbox\a.pdf", "a.pdf", "NEW.pdf", "edited by hand",
                 changed: true, manual: true, needsName: false, editSeed: "NEW.pdf", noteIsProblem: false),
             p => p.SubtleText));
 
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void BulkRenameNoChangeNoteIsSubtleUnlessSelected(bool dark, bool selected) => _fx.Invoke(() =>
-        AssertBulkRenameNoteColour(dark, selected,
+    public void BulkRenameNoChangeNoteIsSubtleUnlessSelected(string schemeKey, bool selected) => _fx.Invoke(() =>
+        AssertBulkRenameNoteColour(schemeKey, selected,
             new RenameRow(@"C:\inbox\b.pdf", "b.pdf", "b.pdf", "(no change)",
                 changed: false, manual: false, needsName: false, editSeed: "b.pdf", noteIsProblem: false),
             p => p.SubtleText));
@@ -213,8 +215,8 @@ public class DataGridNoteColourTests
     /// illegal name, a would-be-empty name) — NeedsName true, NoteIsProblem
     /// true.</summary>
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void BulkRenameSkippedNoteIsAmberUnlessSelected(bool dark, bool selected) => _fx.Invoke(() =>
-        AssertBulkRenameNoteColour(dark, selected,
+    public void BulkRenameSkippedNoteIsAmberUnlessSelected(string schemeKey, bool selected) => _fx.Invoke(() =>
+        AssertBulkRenameNoteColour(schemeKey, selected,
             new RenameRow(@"C:\inbox\c.pdf", "c.pdf", "c.pdf",
                 "doesn't match the review-file layout — skipped",
                 changed: false, manual: false, needsName: true, editSeed: "c.pdf", noteIsProblem: true),
@@ -228,8 +230,8 @@ public class DataGridNoteColourTests
     /// still "reporting a problem" (the actual target differs from what was
     /// typed), so still amber — not "edited by hand"'s subtle.</summary>
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void BulkRenameCollisionNoteIsAmberEvenWhenManualUnlessSelected(bool dark, bool selected) => _fx.Invoke(() =>
-        AssertBulkRenameNoteColour(dark, selected,
+    public void BulkRenameCollisionNoteIsAmberEvenWhenManualUnlessSelected(string schemeKey, bool selected) => _fx.Invoke(() =>
+        AssertBulkRenameNoteColour(schemeKey, selected,
             new RenameRow(@"C:\inbox\d.pdf", "d.pdf", "TAKEN (2).pdf",
                 "name was taken — using a counter — edited by hand",
                 changed: true, manual: true, needsName: false, editSeed: "TAKEN (2).pdf", noteIsProblem: true),
@@ -253,10 +255,11 @@ public class DataGridNoteColourTests
     /// Calendar — see HighlightContrastTests' CalendarDayNumbersMeetWcagAa —
     /// resolves its style and generates containers with no live
     /// PresentationSource at all), never the window itself.</summary>
-    private void AssertTriageWhyColour(bool dark, bool selected)
+    private void AssertTriageWhyColour(string schemeKey, bool selected)
     {
-        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
-        ThemeManager.Apply(_fx.App, dark);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
 
         var item = new MatchMerge.MatchResult(@"C:\inbox\doc.pdf", "suggested", "SMITH", "JOHN",
             Suggestions: new List<MatchMerge.Suggestion>
@@ -288,14 +291,14 @@ public class DataGridNoteColourTests
                 Assert.Equal(p.AccentText, fg);
                 var ratio = ThemePalette.ContrastRatio(fg, p.Accent);
                 Assert.True(ratio >= 4.5,
-                    $"Triage Why selected ({(dark ? "dark" : "light")}): {fg} on {p.Accent} = {ratio:F2}");
+                    $"Triage Why selected ({schemeKey}): {fg} on {p.Accent} = {ratio:F2}");
             }
             else
             {
                 Assert.Equal(p.SubtleText, fg);
                 var ratio = ThemePalette.ContrastRatio(fg, p.Surface);
                 Assert.True(ratio >= 4.5,
-                    $"Triage Why unselected ({(dark ? "dark" : "light")}): {fg} on {p.Surface} = {ratio:F2}");
+                    $"Triage Why unselected ({schemeKey}): {fg} on {p.Surface} = {ratio:F2}");
             }
         }
         finally
@@ -305,8 +308,8 @@ public class DataGridNoteColourTests
     }
 
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void TriageWhyNoteIsSubtleUnlessSelected(bool dark, bool selected) =>
-        _fx.Invoke(() => AssertTriageWhyColour(dark, selected));
+    public void TriageWhyNoteIsSubtleUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertTriageWhyColour(schemeKey, selected));
 
     // -------------------------------------------------------------- plumbing
 

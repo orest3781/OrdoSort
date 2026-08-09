@@ -13,7 +13,13 @@
                     Style="{StaticResource PrimaryButton}" Width="110" Margin="0,0,8,0"
                     IsDefault="True"
                     AutomationProperties.Name="Unlock">
-                <TextBlock Text="Unlock" Style="{StaticResource PrimaryButtonLabel}" />
+                <StackPanel Orientation="Horizontal">
+                    <!-- Same glyph as this tool's own Tools menu entry
+                         (MainWindow.xaml, "_Unlock PDFs…") — E785. -->
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE785;" Margin="0,0,8,0"
+                               Foreground="{DynamicResource Theme.AccentText}" />
+                    <TextBlock Text="Unlock" Style="{StaticResource PrimaryButtonLabel}" />
+                </StackPanel>
             </Button>
             <!-- the batch's brake: files already done stay done, the rest
                  report cancelled instead of running on unstoppably -->
@@ -24,7 +30,13 @@
             <Button Content="Close" Width="96" IsCancel="True" />
         </StackPanel>
 
-        <Grid>
+        <!-- IsSharedSizeScope: only one FieldRow lives in this window today
+             (Password:, below), but it follows the LabelMakerWindow.xaml
+             SharedSizeGroup="LabelCol" pattern anyway (spacing-rhythm audit
+             B2) so the label sizes to its content instead of a fixed width,
+             and so any FieldRow added here later joins the same scope for
+             free. -->
+        <Grid Grid.IsSharedSizeScope="True">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -36,7 +48,7 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <TextBlock Text="PDFs to unlock:" Margin="0,0,0,6" FontWeight="SemiBold" />
+            <TextBlock Text="PDFs to unlock:" Margin="0,0,0,6" Style="{StaticResource SectionText}" />
             <Grid Grid.Row="1">
                 <ListBox x:Name="FileList" ItemsSource="{Binding Files}"
                          SelectionMode="Extended" MinHeight="120"
@@ -151,9 +163,8 @@
                         <Binding Path="Files.Count" Converter="{StaticResource ZeroToVis}" />
                     </Border.Visibility>
                     <StackPanel>
-                        <Image Height="80" Margin="0,0,0,8"
-                               RenderOptions.BitmapScalingMode="HighQuality"
-                               Source="pack://application:,,,/OrdoSort;component/Assets/unlock.png" />
+                        <ContentControl Template="{StaticResource Illustration.Unlock}"
+                                         Height="80" Margin="0,0,0,8" />
                         <TextBlock Text="Drag PDFs anywhere on this window, or press Add files…"
                                    Style="{StaticResource SubtleText}" HorizontalAlignment="Center" />
                     </StackPanel>
@@ -171,7 +182,7 @@
 
             <Grid Grid.Row="3" Style="{StaticResource FieldRow}" Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                     <ColumnDefinition Width="220" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />

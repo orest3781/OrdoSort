@@ -68,17 +68,33 @@ public partial class TriageWindow : Window
     private const double FillerMinWidth = 60;
 
     /// <summary>Resolves the shared Theme/Styles.xaml <c>GridCellText</c>
-    /// style — the same production resource MatchMergeWindow.xaml/
-    /// BulkRenameWindow.xaml/HistoryWindow.xaml's own
-    /// DataGridTextColumn.ElementStyle markup reaches via
+    /// style (NO selection-contrast trigger of its own — see
+    /// <see cref="GridCellTextSelectionAwareStyle"/> below for that) — the
+    /// same production resource MatchMergeWindow.xaml/BulkRenameWindow.xaml/
+    /// HistoryWindow.xaml's own status-coloured DataGridTextColumn.
+    /// ElementStyle markup reaches via
     /// <c>BasedOn="{StaticResource GridCellText}"</c>, just resolved from
     /// code instead of XAML since this window builds its columns
-    /// programmatically (constructor, and <see cref="ShowCurrentAsync"/>'s
-    /// "Why" column). FindResource, not TryFindResource: a missing
-    /// GridCellText style would silently strip every column's selection-
-    /// contrast fix, and that should fail loudly rather than fall back to a
-    /// plain, unstyled TextBlock.</summary>
+    /// programmatically. Used here only by the "Why" column
+    /// (<see cref="ShowCurrentAsync"/>), which — like Note/New name
+    /// elsewhere — carries its own unconditional Foreground Setter and so
+    /// must declare its own trailing "let selection win" trigger rather
+    /// than delegate to the shared one. FindResource, not TryFindResource: a
+    /// missing GridCellText style would silently strip every column's
+    /// selection-contrast fix, and that should fail loudly rather than fall
+    /// back to a plain, unstyled TextBlock.</summary>
     private static Style GridCellTextStyle => (Style)Application.Current.FindResource("GridCellText");
+
+    /// <summary>Resolves the shared Theme/Styles.xaml
+    /// <c>GridCellTextSelectionAware</c> style — GridCellText plus the one
+    /// trailing "let selection win" DataTrigger, for columns with no status
+    /// trigger of their own. Used by the plain roster columns built in the
+    /// constructor below, the same "no other Foreground trigger, so the
+    /// shared style is the whole fix" shape as MatchMergeWindow's File/
+    /// Becomes and BulkRenameWindow's Current name columns (their own XAML
+    /// comments explain the underlying bug).</summary>
+    private static Style GridCellTextSelectionAwareStyle =>
+        (Style)Application.Current.FindResource("GridCellTextSelectionAware");
 
     private readonly List<MatchMerge.MatchResult> _items;
     private readonly IReadOnlyList<string> _headers;
@@ -227,21 +243,22 @@ public partial class TriageWindow : Window
                 Width = isFiller
                     ? new DataGridLength(1, DataGridLengthUnitType.Star)
                     : DataGridLength.Auto,
-                // BasedOn GridCellText (Theme/Styles.xaml), the shared style
-                // MatchMerge/BulkRename/History's XAML columns now all use —
+                // BasedOn GridCellTextSelectionAware (Theme/Styles.xaml), the
+                // shared style MatchMergeWindow's File/Becomes and
+                // BulkRenameWindow's Current name XAML columns also use —
                 // this column carries no Foreground trigger of its own, so
-                // the base's default Theme.Text plus its trailing "let
-                // selection win" DataTrigger is the whole selection-contrast
-                // story for a roster column, the same as it is for a plain
-                // XAML column with no status trigger (File/Becomes/Current
-                // name). Before GridCellText existed, this style deliberately
-                // had NO BasedOn at all — a documented workaround (this
-                // column had no Foreground Setter of its own to conflict with
-                // the cell's own IsSelected inheritance), not a fix; using
-                // the shared base now makes this column's story identical to
-                // every other one instead of relying on the absence of a
-                // Setter to stay correct by accident.
-                ElementStyle = new Style(typeof(TextBlock), GridCellTextStyle)
+                // the shared style's default Theme.Text plus its trailing
+                // "let selection win" DataTrigger is the whole selection-
+                // contrast story for a roster column, the same as it is for
+                // a plain XAML column with no status trigger. Before
+                // GridCellText existed, this style deliberately had NO
+                // BasedOn at all — a documented workaround (this column had
+                // no Foreground Setter of its own to conflict with the
+                // cell's own IsSelected inheritance), not a fix; using the
+                // shared selection-aware style now makes this column's story
+                // identical to every other plain one instead of relying on
+                // the absence of a Setter to stay correct by accident.
+                ElementStyle = new Style(typeof(TextBlock), GridCellTextSelectionAwareStyle)
                 {
                     Setters =
                     {
@@ -308,15 +325,17 @@ public partial class TriageWindow : Window
                 Header = "Why",
                 Binding = new Binding("[__why]"),
                 Width = new DataGridLength(WhyColumnWidth),
-                // BasedOn GridCellText for the shared Theme.Text default and
-                // TextTrimming/ToolTip plumbing every other grid column now
-                // shares — the trailing "let selection win" DataTrigger below
-                // still has to stay local to THIS style too (it can't rely on
-                // GridCellText's own copy alone): this column's own
+                // BasedOn plain GridCellText, NOT GridCellTextSelectionAware,
+                // for the shared Theme.Text default and TextTrimming/ToolTip
+                // plumbing every other grid column shares — the trailing
+                // "let selection win" DataTrigger below still has to stay
+                // local to THIS style too (it can't delegate to
+                // GridCellTextSelectionAware): this column's own
                 // unconditional SubtleText Setter, just below, is a Style
                 // Setter on the same TextBlock and would otherwise keep
-                // outranking whatever the base style's trigger hands it — see
-                // GridCellText's own doc comment in Theme/Styles.xaml.
+                // outranking whatever a base-level trigger hands it — see
+                // GridCellTextSelectionAware's own doc comment in
+                // Theme/Styles.xaml.
                 ElementStyle = new Style(typeof(TextBlock), GridCellTextStyle)
                 {
                     Setters =

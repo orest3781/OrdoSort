@@ -12,12 +12,34 @@ namespace OrdoSort.Wpf.Theme;
 /// way.</summary>
 public static class ThemeManager
 {
+    /// <summary>Reflects the APPLIED scheme's <c>IsDark</c> — the legacy
+    /// auto/light/dark pair resolves to the paper/graphite schemes below, so
+    /// this stays correct for those too. Feeds TitleBar's DWM dark-titlebar
+    /// call.</summary>
     public static bool IsDark { get; private set; }
-    public static ThemePalette Current => IsDark ? ThemePalette.Dark : ThemePalette.Light;
 
-    /// <summary>"auto" (follow Windows), "light", or "dark" — the config's
-    /// theme key. Only auto reacts to the OS preference changing.</summary>
+    /// <summary>The applied scheme's palette. Backed by a field (not derived
+    /// from <see cref="IsDark"/>) so a future non-paper/graphite scheme
+    /// resolves to ITS OWN palette rather than being folded into just
+    /// Light/Dark.</summary>
+    public static ThemePalette Current { get; private set; } = ThemePalette.Light;
+
+    /// <summary>"auto" (follow Windows), "light", "dark", or any
+    /// <see cref="ThemePalette.Schemes"/> key (case-insensitive as typed;
+    /// normalized to the registry's own casing) — the config's theme key.
+    /// Only "auto" reacts to the OS preference changing; a pinned scheme key
+    /// behaves like "light"/"dark" in that respect (fixed until SetMode is
+    /// called again).</summary>
     public static string Mode { get; private set; } = "auto";
+
+    // The auto pair's two endpoints, as registry schemes — Apply(app, bool)
+    // below is a thin wrapper over Apply(app, ThemeScheme) so there is
+    // exactly one brush-publication loop for both the legacy bool entry
+    // point and arbitrary scheme keys. Resolved via FindScheme rather than
+    // referencing ThemePalette.Light/Dark directly so this stays correct if
+    // the registry ever reassigns which scheme is "the" light/dark default.
+    private static readonly ThemeScheme LightScheme = ThemePalette.FindScheme("paper")!;
+    private static readonly ThemeScheme DarkScheme = ThemePalette.FindScheme("graphite")!;
 
     /// <summary>Indirection over <c>SystemParameters.HighContrast</c> — a
     /// static BCL property that can't be faked directly — so tests can
@@ -37,27 +59,73 @@ public static class ThemeManager
             if (e.Category == UserPreferenceCategory.Accessibility)
                 // High Contrast (SPI_SETHIGHCONTRAST) — and any other
                 // accessibility toggle — lands in this category. Re-apply
-                // with the CURRENT dark/light state (not derived again from
-                // the OS preference) so the SystemColors step-aside gate
-                // re-evaluates live, regardless of whether Mode is "auto" or
-                // pinned to a fixed light/dark choice.
-                app.Dispatcher.BeginInvoke(() => Apply(app, IsDark));
+                // the CURRENT scheme as-is (not derived again from the OS
+                // light/dark preference, and NOT collapsed to the auto
+                // pair) so the SystemColors step-aside gate re-evaluates
+                // live, regardless of whether Mode is "auto", pinned to a
+                // fixed light/dark choice, or pinned to an arbitrary
+                // registry scheme key.
+                app.Dispatcher.BeginInvoke(() => Reapply(app));
             else if (Mode == "auto" &&
                 e.Category is UserPreferenceCategory.General or UserPreferenceCategory.Color)
+                // Only "auto" ever reaches here — a pinned scheme key (or a
+                // pinned legacy "light"/"dark") sets Mode to something other
+                // than "auto", so the OS preference changing never re-themes
+                // a pinned choice. Same gate that already protected legacy
+                // "light"/"dark"; scheme keys get it for free.
                 app.Dispatcher.BeginInvoke(() => Apply(app, ReadOsPrefersDark()));
         };
     }
 
+    /// <summary>Accepts "auto", "light", "dark", or any case-insensitive
+    /// <see cref="ThemePalette.Schemes"/> key (e.g. "graphite"). Unknown or
+    /// blank keys fall back to "auto" rather than throwing — Config
+    /// validates the key upstream, so this is a defensive default, not the
+    /// primary guard.</summary>
     public static void SetMode(Application app, string mode)
     {
+        var scheme = ThemePalette.FindScheme(mode);
+        if (scheme is not null)
+        {
+            Mode = scheme.Key;
+            Apply(app, scheme);
+            return;
+        }
+
         Mode = mode is "light" or "dark" ? mode : "auto";
         Apply(app, Mode == "dark" || (Mode == "auto" && ReadOsPrefersDark()));
     }
 
-    public static void Apply(Application app, bool dark)
+    /// <summary>The auto pair, fixed: dark → the graphite scheme, light →
+    /// paper. Kept as its own overload (rather than folded into the
+    /// <see cref="ThemeScheme"/> overload) because two test files
+    /// (AppearancePreviewTests, ThemeHighContrastTests) call it directly by
+    /// this exact bool signature — routes through the same scheme-aware core
+    /// as everything else, so there is no second publication loop to drift
+    /// out of sync.</summary>
+    public static void Apply(Application app, bool dark) =>
+        Apply(app, dark ? DarkScheme : LightScheme);
+
+    /// <summary>Pins the app to an explicit registry scheme (e.g. the
+    /// "graphite" entry SetMode resolves a matching config key to).</summary>
+    public static void Apply(Application app, ThemeScheme scheme) =>
+        ApplyCore(app, scheme.Palette, scheme.IsDark);
+
+    /// <summary>Re-publishes whichever scheme is already active
+    /// (<see cref="Current"/>/<see cref="IsDark"/>) without changing it —
+    /// used by the High Contrast listener above, which must re-evaluate the
+    /// SystemColors step-aside gate without touching which scheme is
+    /// applied.</summary>
+    private static void Reapply(Application app) => ApplyCore(app, Current, IsDark);
+
+    /// <summary>The single brush-publication loop — every entry point above
+    /// (the legacy bool overload, the scheme overload, and Reapply) routes
+    /// through here so there is exactly one place that writes
+    /// "Theme.*"/SystemColors.* resources.</summary>
+    private static void ApplyCore(Application app, ThemePalette p, bool dark)
     {
         IsDark = dark;
-        var p = Current;
+        Current = p;
         var r = app.Resources;
         r["Theme.WindowBg"] = Brush(p.WindowBg);
         r["Theme.Surface"] = Brush(p.Surface);
@@ -84,6 +152,10 @@ public static class ThemeManager
         r["Theme.StatusAmber"] = Brush(p.StatusAmber);
         r["Theme.StatusGreen"] = Brush(p.StatusGreen);
         r["Theme.StatusRed"] = Brush(p.StatusRed);
+        // The toast-icon gap (StatusRed short of 4.5:1 vs SurfaceRaised in
+        // graphite/ledger/microfilm) closed 2026-08-09 -- see
+        // ThemePalette.cs's StatusRedRaised field comment for the values.
+        r["Theme.StatusRedRaised"] = Brush(p.StatusRedRaised);
         r["Theme.TileDefaultBg"] = Brush(p.TileDefaultBg);
         // Hover/pressed/row tints -- three rounds of the same review
         // (2026-08-08), each correcting the last:
@@ -137,18 +209,23 @@ public static class ThemeManager
         r["Theme.SurfaceHover"] = Brush(p.SurfaceHover);
         r["Theme.SurfacePressed"] = Brush(p.SurfacePressed);
         r["Theme.RowHover"] = Brush(p.RowHover);
-        // Unchanged: computed but never consumed by any Theme.AccentHover
-        // DynamicResource lookup anywhere in src/OrdoSort.Wpf/**/*.xaml or
-        // *.cs (confirmed by search, 2026-08-08) -- dead since it was added,
-        // so raising it would not move a single rendered pixel. Left as-is
-        // rather than "fixed" as part of a task about pixels the owner can
-        // actually see; flagged here so a future reader doesn't assume its
-        // value means anything today.
-        r["Theme.AccentHover"] = Brush(Mix(p.Accent, new Rgb(255, 255, 255), 0.12));
-        // floating surfaces sit a step lighter in the dark (light mode's
-        // Surface is already near-white; the shadow does the lifting there)
-        r["Theme.SurfaceRaised"] = Brush(
-            dark ? Mix(p.Surface, new Rgb(255, 255, 255), 0.06) : p.Surface);
+        // Theme.AccentHover published here until the restyle's radius/style-
+        // consolidation pass (2026-08-09): re-confirmed by a fresh grep of
+        // the whole worktree that it had zero DynamicResource consumers
+        // outside this file (dead since it was added, so no rendered pixel
+        // ever depended on it) and removed. Mix(), below, went with it --
+        // this was Mix()'s only remaining call site once SurfaceRaised was
+        // materialized onto ThemePalette directly (see that field's own
+        // comment). If a future hover-family brush needs the same "blend
+        // toward another colour" shape, that's Mix()'s reason to come back,
+        // not a reason it should have stayed dead in the meantime.
+        // Materialized as a ThemePalette field 2026-08-09 (was: computed here
+        // via dark ? Mix(p.Surface, white, 0.06) : p.Surface) -- moved onto
+        // the palette itself, byte-identical to what this derivation used to
+        // produce, so StatusRedRaised has a concrete per-scheme value to be
+        // tuned against instead of a value computed after the fact. See
+        // ThemePalette.cs's SurfaceRaised field comment.
+        r["Theme.SurfaceRaised"] = Brush(p.SurfaceRaised);
 
         // The Appearance tab's preview cards show BOTH palettes side by side,
         // so they cannot use Theme.* — those follow the active theme. These
@@ -213,13 +290,6 @@ public static class ThemeManager
         b.Freeze();
         return b;
     }
-
-    /// <summary>Blend <paramref name="amount"/> of <paramref name="into"/>
-    /// into <paramref name="baseColor"/> — cheap hover/pressed derivation.</summary>
-    private static Rgb Mix(Rgb baseColor, Rgb into, double amount) => new(
-        (byte)(baseColor.R + (into.R - baseColor.R) * amount),
-        (byte)(baseColor.G + (into.G - baseColor.G) * amount),
-        (byte)(baseColor.B + (into.B - baseColor.B) * amount));
 
     private static bool ReadOsPrefersDark()
     {

@@ -611,10 +611,11 @@
          PrintPreviewWindow.xaml.cs's DocumentViewer comment for the full
          account of what's reachable here and why this part isn't. -->
 
-    <Style TargetType="StatusBar">
-        <Setter Property="Background" Value="{DynamicResource Theme.WindowBg}" />
-        <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
-    </Style>
+    <!-- StatusBar implicit style removed here (radius/style-consolidation
+         pass, 2026-08-09): a fresh grep of the whole worktree, including
+         inside every ControlTemplate, found zero <StatusBar> elements — the
+         app has never used the control. (WebViewPdfViewer.cs's
+         IsStatusBarEnabled is a CoreWebView2Settings property, unrelated.) -->
 
     <Style TargetType="ToolTip">
         <Setter Property="Background" Value="{DynamicResource Theme.Surface}" />
@@ -775,6 +776,24 @@
                 <Setter Property="Background" Value="{DynamicResource Theme.RowHover}" />
             </Trigger>
         </Style.Triggers>
+    </Style>
+
+    <!-- GridRow: the one thing BulkRenameWindow's, HistoryWindow's and
+         MatchMergeWindow's local DataGrid.RowStyle Styles actually had in
+         common — a Background="Transparent" Setter, plus the IsMouseOver→
+         Theme.RowHover trigger, which arrives for free via BasedOn on the
+         implicit style directly above (so it is NOT redeclared here; a
+         redeclaration would just shadow the inherited one, and WPF applies
+         a derived style's own Setters/Triggers after the base style's,
+         so anything genuinely local — BulkRename's NeedsName tint,
+         MatchMerge's ToolTip=Source, History's Reverted italic — still
+         layers on top correctly, and still wins over this base's hover
+         trigger, exactly as each window's un-consolidated copy did before.
+         TriageWindow's Candidates grid sets no RowStyle at all and keeps
+         resolving the plain implicit style above, untouched by this key
+         (TriageGridRowHoverRendersViaTheImplicitStyle pins that). -->
+    <Style x:Key="GridRow" TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+        <Setter Property="Background" Value="Transparent" />
     </Style>
 
     <!-- ItemTemplate-based ComboBox item shapes: a bare TextBlock bound to
@@ -1585,12 +1604,22 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
-                    <Border x:Name="Bd" Background="Transparent" BorderThickness="3,0,0,0"
-                            BorderBrush="Transparent" Padding="{TemplateBinding Padding}"
-                            SnapsToDevicePixels="True">
-                        <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
-                                          VerticalAlignment="Center" />
-                    </Border>
+                    <Grid SnapsToDevicePixels="True">
+                        <Border x:Name="Bd" Background="Transparent" BorderThickness="3,0,0,0"
+                                BorderBrush="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <!-- Selected-state underline, opt-in only (theme:TabItemOptions,
+                             this file's own Theme/TabItemOptions.cs) — Collapsed here so
+                             every plain TabItem in the app (this style's only Setters
+                             before this task) renders exactly as before. SettingsWindow.
+                             xaml's "SectionTab" style sets ShowSelectedUnderline="True"
+                             instead of duplicating this entire ControlTemplate just to
+                             add this one Border. -->
+                        <Border x:Name="Underline" Height="2" VerticalAlignment="Bottom"
+                                Background="Transparent" Visibility="Collapsed" />
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background"
@@ -1607,6 +1636,19 @@
                             <Setter Property="Foreground"
                                     Value="{DynamicResource Theme.SubtleText}" />
                         </Trigger>
+                        <!-- theme:TabItemOptions.ShowSelectedUnderline (only SectionTab
+                             sets it True): reveal the underline and colour it, but only
+                             once the tab is ALSO selected — a MultiTrigger, not two plain
+                             Triggers, since either condition alone must leave it hidden. -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsSelected" Value="True" />
+                                <Condition Property="theme:TabItemOptions.ShowSelectedUnderline" Value="True" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Underline" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="Underline" Property="Background"
+                                    Value="{DynamicResource Theme.AccentBronze}" />
+                        </MultiTrigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
@@ -1673,41 +1715,49 @@
          highlight.
 
          BasedOn the app-level implicit TextBlock style (same Theme.Text
-         default every other TextBlock in the app gets) plus ONE trailing
-         DataTrigger that reverts to Theme.AccentText once the ancestor
-         DataGridCell reports IsSelected — the exact "let selection win"
-         trigger Note/Why/History's own per-column fixes already carry
-         individually. Columns with NO other Foreground trigger of their own
-         (File, Becomes, Current name, and the roster columns TriageWindow
-         builds in code) get correct selection contrast for free just by
-         setting BasedOn="{StaticResource GridCellText}" — nothing else to
-         remember, which is the whole point: this is the fourth copy-pasted
-         "add a trailing IsSelected DataTrigger" fix in one day, and a FUTURE
-         plain column should not need a fifth.
+         default every other TextBlock in the app gets) — TextTrimming/
+         ToolTip plumbing only. NO selection-contrast trigger lives here;
+         see GridCellTextSelectionAware immediately below for that, and for
+         which columns use which key and why. -->
+    <Style x:Key="GridCellText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}" />
+
+    <!-- GridCellTextSelectionAware: GridCellText plus the ONE trailing
+         DataTrigger that reverts a cell's TextBlock to Theme.AccentText once
+         the ancestor DataGridCell reports IsSelected — the exact "let
+         selection win" trigger Note/Why/History's own per-column fixes
+         below still carry individually (status-colour-vocabulary plan,
+         2026-08-08 dedup pass). Columns with NO other Foreground trigger of
+         their own (MatchMergeWindow's File/Becomes, BulkRenameWindow's
+         Current name, the plain roster columns TriageWindow builds in code)
+         switch their ElementStyle's BasedOn from GridCellText to THIS key
+         wholesale and get correct selection contrast for free — nothing
+         else to remember, which is the whole point: this was the fourth
+         copy-pasted "add a trailing IsSelected DataTrigger" fix in one day,
+         and a FUTURE plain column should not need a fifth.
 
          Columns that ALSO carry their own status-coloured triggers (Note,
-         New name, Why, History's Reverted columns) still need to declare
-         their OWN trailing "let selection win" DataTrigger too, identical in
-         shape to this one, and CANNOT rely on this base style's copy alone
-         to win for them: WPF applies a derived style's own Setters/Triggers
-         on top of whatever it inherits via BasedOn, so a derived column's
-         OWN status trigger (e.g. Note's Status="ambiguous" -> StatusAmber)
-         would still outrank a selection override that lives only in the
-         BASE style, the same "more specific wins" rule that lets a derived
-         Setter override a base Setter for the same property. Those columns
-         still gain the shared Theme.Text default and TextTrimming/ToolTip
-         plumbing from BasedOn="{StaticResource GridCellText}", just not a
-         free ride past their own conflicting triggers — declaring the same
-         trigger twice (base and derived) is harmless (both resolve to the
-         identical value when both fire) and is cheaper to read than a
-         column-specific comment re-deriving why it can't be omitted.
-         Verified (not assumed) by DataGridSelectionContrastTests, which
-         enumerates every DataGridTextColumn across all four grid windows and
-         reads each cell's ACTUAL resolved TextBlock.Foreground, in both
-         palettes — a test that finds the trigger present in XAML would have
-         passed throughout the day this bug shipped, exactly the trap that
-         let it ship in the first place. -->
-    <Style x:Key="GridCellText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+         New name, Why, History's Reverted columns) stay on plain
+         GridCellText and keep declaring their OWN trailing "let selection
+         win" DataTrigger, identical in shape to this one — they CANNOT use
+         this key instead: WPF applies a derived style's own Setters/Triggers
+         on top of whatever it inherits via BasedOn, so if a column's own
+         status trigger (e.g. Note's Status="ambiguous" -> StatusAmber) sat
+         BELOW this key in the BasedOn chain, the status trigger — being the
+         more derived one — would always beat selection, inverting the
+         precedence a selected row needs (selection must win over status
+         colour, not the reverse). Declaring the identical trigger a second
+         time, locally, in each of those columns' own style is the only
+         correct way to give it top precedence for them; it is harmless
+         duplication (both resolve to the identical value when both would
+         fire) and cheaper to read than a column-specific comment re-deriving
+         why it can't delegate to this key. Verified (not assumed) by
+         DataGridSelectionContrastTests, which enumerates every
+         DataGridTextColumn across all four grid windows and reads each
+         cell's ACTUAL resolved TextBlock.Foreground, in both palettes — a
+         test that finds the trigger present in XAML would have passed
+         throughout the day this bug shipped, exactly the trap that let it
+         ship in the first place. -->
+    <Style x:Key="GridCellTextSelectionAware" TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
         <Style.Triggers>
             <DataTrigger Value="True">
                 <DataTrigger.Binding>
@@ -1737,6 +1787,20 @@
         <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
     </Style>
 
+    <!-- The per-tile/per-preview count, one rung down from DisplayText's big
+         inbox number. FontSize + FontWeight only — deliberately NOT tabular
+         figures, unlike DisplayText above: the two consuming sites
+         (ReadyView's live tile and SettingsWindow's tile preview) disagree on
+         that one property — the live tile opts into
+         Typography.NumeralAlignment="Tabular" so the count doesn't wiggle as
+         files arrive, the settings preview never did. Baking Tabular in here
+         would change the settings preview's rendering, so each site keeps it
+         (or not) as a local value instead. -->
+    <Style x:Key="TileCountText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="27" />
+        <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+
     <Style x:Key="SectionText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
@@ -1752,6 +1816,19 @@
          path, a live preview note — and are small only to fit, not to recede. -->
     <Style x:Key="CaptionTextOnSurface" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="FontSize" Value="11" />
+    </Style>
+
+    <!-- One rung above Caption (11), one below body (the implicit 14 —
+         AppFontSize). Tile label rows and similar compact-but-legible text
+         that named an ad-hoc FontSize="12" at ~5 call sites before this. -->
+    <Style x:Key="BodySmallText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <!-- One rung above body, short of HeadlineCompactText (20) — warning
+         banners, the Start button's label. -->
+    <Style x:Key="EmphasisText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="15" />
     </Style>
 
     <!-- The app-level implicit TextBlock style (TargetType="TextBlock" above,
@@ -1869,6 +1946,14 @@
     <Style x:Key="HeadlineText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="FontSize" Value="26" />
         <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+
+    <!-- HeadlineText at TriageWindow's compact scale — same weight, smaller
+         size, so the review-matches header doesn't compete with the roster
+         grid for space. BasedOn HeadlineText: only FontSize differs here,
+         FontWeight="Bold" still comes from the base style. -->
+    <Style x:Key="HeadlineCompactText" TargetType="TextBlock" BasedOn="{StaticResource HeadlineText}">
+        <Setter Property="FontSize" Value="20" />
     </Style>
 
     <Style x:Key="StatusText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">

@@ -142,6 +142,24 @@ public partial class ProductionWindow : Window
             if (isNumericColumn)
                 style.Setters.Add(new Setter(TextBlock.TextAlignmentProperty, TextAlignment.Right));
 
+            // "Let selection win" — the same trailing IsSelected trigger every
+            // XAML-declared column carries (see TurnaroundWindow.xaml's
+            // ElementStyle blocks). Code-built columns don't inherit it from
+            // GridCellText, and without it a selected row keeps Theme.Text on
+            // Theme.Accent — below 4.5:1 in most named schemes
+            // (DataGridSelectionContrastTests.ProductionAllColumnsSelectedClearContrast).
+            var selectionWins = new DataTrigger
+            {
+                Binding = new Binding("IsSelected")
+                {
+                    RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(DataGridRow), 1),
+                },
+                Value = true,
+            };
+            selectionWins.Setters.Add(new Setter(TextBlock.ForegroundProperty,
+                new DynamicResourceExtension("Theme.AccentText")));
+            style.Triggers.Add(selectionWins);
+
             var column = new DataGridTextColumn
             {
                 Header = name,

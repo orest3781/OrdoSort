@@ -1,3 +1,5 @@
+using System.Windows.Media;
+using OrdoSort.Core;
 using OrdoSort.Wpf.Theme;
 using OrdoSort.Wpf.Views;
 
@@ -9,8 +11,9 @@ public class ThemeTests
 {
     public static IEnumerable<object[]> TextPairs()
     {
-        foreach (var p in new[] { ThemePalette.Light, ThemePalette.Dark })
+        foreach (var s in ThemePalette.Schemes)
         {
+            var p = s.Palette;
             yield return new object[] { p.Text, p.WindowBg };
             yield return new object[] { p.Text, p.Surface };
             yield return new object[] { p.SubtleText, p.WindowBg };
@@ -35,6 +38,15 @@ public class ThemeTests
             yield return new object[] { p.AccentBronze, p.WindowBg };
             yield return new object[] { p.AccentBronze, p.Surface };
             yield return new object[] { p.Text, p.TileDefaultBg };
+            // SurfaceRaised wall (status-colour-vocabulary plan, gap closed
+            // 2026-08-09): the toast card's real background is SurfaceRaised,
+            // not Surface/WindowBg -- StatusRedRaised exists specifically to
+            // clear this pairing (see ThemePalette.cs's StatusRedRaised field
+            // comment), and the toast's title/detail text sit on the same
+            // background, so Text/SubtleText are enforced against it too.
+            yield return new object[] { p.StatusRedRaised, p.SurfaceRaised };
+            yield return new object[] { p.Text, p.SurfaceRaised };
+            yield return new object[] { p.SubtleText, p.SurfaceRaised };
         }
     }
 
@@ -80,6 +92,102 @@ public class ThemeTests
         Assert.Null(ThemePalette.ParseColor("not-a-color"));
     }
 
+    // Scheme registry scaffold: Schemes is the single enumeration every
+    // scheme-aware test iterates going forward, so pin its exact shape here
+    // (keys, palette identity, IsDark) plus FindScheme's lookup contract.
+    // Extended alongside each new scheme landing (ledger, microfilm, manila,
+    // carbon, blueprint) rather than left pinned at paper/graphite.
+    [Fact]
+    public void SchemesRegistryHasExpectedKeysAndPalettes()
+    {
+        Assert.Equal(7, ThemePalette.Schemes.Count);
+
+        var paper = ThemePalette.Schemes[0];
+        Assert.Equal("paper", paper.Key);
+        Assert.Same(ThemePalette.Light, paper.Palette);
+        Assert.False(paper.IsDark);
+
+        var graphite = ThemePalette.Schemes[1];
+        Assert.Equal("graphite", graphite.Key);
+        Assert.Same(ThemePalette.Dark, graphite.Palette);
+        Assert.True(graphite.IsDark);
+
+        var ledger = ThemePalette.Schemes[2];
+        Assert.Equal("ledger", ledger.Key);
+        Assert.Same(ThemePalette.Ledger, ledger.Palette);
+        Assert.True(ledger.IsDark);
+
+        var microfilm = ThemePalette.Schemes[3];
+        Assert.Equal("microfilm", microfilm.Key);
+        Assert.Same(ThemePalette.Microfilm, microfilm.Palette);
+        Assert.True(microfilm.IsDark);
+
+        var manila = ThemePalette.Schemes[4];
+        Assert.Equal("manila", manila.Key);
+        Assert.Same(ThemePalette.Manila, manila.Palette);
+        Assert.False(manila.IsDark);
+
+        var carbon = ThemePalette.Schemes[5];
+        Assert.Equal("carbon", carbon.Key);
+        Assert.Same(ThemePalette.Carbon, carbon.Palette);
+        Assert.True(carbon.IsDark);
+
+        var blueprint = ThemePalette.Schemes[6];
+        Assert.Equal("blueprint", blueprint.Key);
+        Assert.Same(ThemePalette.Blueprint, blueprint.Palette);
+        Assert.False(blueprint.IsDark);
+    }
+
+    [Theory]
+    [InlineData("paper", "paper")]
+    [InlineData("PAPER", "paper")]
+    [InlineData("Graphite", "graphite")]
+    [InlineData("GRAPHITE", "graphite")]
+    public void FindSchemeIsCaseInsensitive(string key, string expectedKey) =>
+        Assert.Equal(expectedKey, ThemePalette.FindScheme(key)?.Key);
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("nope")]
+    public void FindSchemeReturnsNullForNullOrUnknown(string? key) =>
+        Assert.Null(ThemePalette.FindScheme(key));
+
+    // OrdoSort.Core.Config.SchemeKeys mirrors this registry BY HAND (Core
+    // cannot reference Wpf, so there is no compile-time link) — see
+    // Config.SchemeKeys' own doc comment. This is the drift guard: every
+    // registry key here must pass Config's "theme" validation, and every
+    // key Config's whitelist accepts must resolve to a real registry entry.
+    // Whichever direction fails is exactly the signal that someone added a
+    // scheme to one list and forgot the other.
+    [Fact]
+    public void ConfigSchemeWhitelistAndRegistryStayInLockstep()
+    {
+        foreach (var scheme in ThemePalette.Schemes)
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "ordonk_themelockstep_" + Guid.NewGuid());
+            Directory.CreateDirectory(dir);
+            try
+            {
+                var path = Path.Combine(dir, "config.json");
+                // A minimal valid Config, same shape the Core-side round-trip
+                // tests build — only Theme varies. Config.Load runs the real
+                // validation path, so this throws ConfigException the moment
+                // Config.SchemeKeys stops accepting a registry key.
+                Config.Save(new Config { Theme = scheme.Key }, path);
+                var loaded = Config.Load(path);
+                Assert.Equal(scheme.Key, loaded.Theme);
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch { /* best effort */ }
+            }
+        }
+
+        foreach (var key in Config.SchemeKeys)
+            Assert.NotNull(ThemePalette.FindScheme(key));
+    }
+
     // 2026-08-04 (Task 7): ThemeManager.Brush allocates and freezes a NEW
     // SolidColorBrush every call; the dashboard re-evaluates RgbToBrushConverter
     // per tile per refresh, so without caching that's a fresh brush per tick.
@@ -100,4 +208,114 @@ public class ThemeTests
         var brush = Assert.IsType<System.Windows.Media.SolidColorBrush>(first);
         Assert.True(brush.IsFrozen);
     }
+}
+
+/// <summary>ThemeManager.SetMode's scheme-key support (2026-08-08): a
+/// registry scheme key (e.g. "graphite") pins that scheme's palette/IsDark,
+/// additive alongside the legacy "auto"/"light"/"dark" trio, which keeps
+/// resolving to the paper/graphite auto pair exactly as before. Needs a real
+/// Application to read back the published "Theme.*" resources, so this joins
+/// <see cref="HighlightContrastFixture"/> the same way
+/// <see cref="AppearancePreviewTests"/> does (see that class's doc) rather
+/// than declaring its own.</summary>
+[Collection(HighlightContrastTests.Name)]
+public class ThemeManagerSetModeTests
+{
+    private readonly HighlightContrastFixture _fx;
+    public ThemeManagerSetModeTests(HighlightContrastFixture fx) => _fx = fx;
+
+    private Color Brush(string key) =>
+        ((SolidColorBrush)_fx.App.Resources[key]).Color;
+
+    private static Color Expect(Rgb c) => Color.FromRgb(c.R, c.G, c.B);
+
+    /// <summary>Puts ThemeManager back to "auto" after each test so a pinned
+    /// scheme/mode never leaks into another test class sharing this fixture
+    /// — same reasoning as ThemeHighContrastTests.ResetSeam.</summary>
+    private void Reset() => _fx.Invoke(() => ThemeManager.SetMode(_fx.App, "auto"));
+
+    [Fact]
+    public void SetModeGraphitePublishesDarkPaletteBrushesAndIsDark() => _fx.Invoke(() =>
+    {
+        try
+        {
+            ThemeManager.SetMode(_fx.App, "graphite");
+
+            Assert.True(ThemeManager.IsDark);
+            Assert.Same(ThemePalette.Dark, ThemeManager.Current);
+            Assert.Equal("graphite", ThemeManager.Mode);
+            // Spot-check: Theme.WindowBg resolves to Dark.WindowBg.
+            Assert.Equal(Expect(ThemePalette.Dark.WindowBg), Brush("Theme.WindowBg"));
+        }
+        finally { Reset(); }
+    });
+
+    [Fact]
+    public void SetModePaperPublishesLightPaletteBrushesAndIsNotDark() => _fx.Invoke(() =>
+    {
+        try
+        {
+            ThemeManager.SetMode(_fx.App, "paper");
+
+            Assert.False(ThemeManager.IsDark);
+            Assert.Same(ThemePalette.Light, ThemeManager.Current);
+            Assert.Equal("paper", ThemeManager.Mode);
+            Assert.Equal(Expect(ThemePalette.Light.WindowBg), Brush("Theme.WindowBg"));
+        }
+        finally { Reset(); }
+    });
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("nope")]
+    [InlineData("not-a-registry-scheme")]
+    public void SetModeUnknownOrBlankKeyBehavesAsAutoAndDoesNotThrow(string mode) => _fx.Invoke(() =>
+    {
+        try
+        {
+            // No throw is the primary assertion: an exception here would
+            // propagate out of Invoke and fail the test on its own, but
+            // making the "never throws" contract explicit documents intent.
+            ThemeManager.SetMode(_fx.App, mode);
+
+            Assert.Equal("auto", ThemeManager.Mode);
+            var expected = ThemeManager.IsDark ? ThemePalette.Dark : ThemePalette.Light;
+            Assert.Equal(Expect(expected.WindowBg), Brush("Theme.WindowBg"));
+        }
+        finally { Reset(); }
+    });
+
+    [Theory]
+    [InlineData("light", false)]
+    [InlineData("dark", true)]
+    public void SetModeLegacyLightAndDarkAreUnchanged(string mode, bool expectDark) => _fx.Invoke(() =>
+    {
+        try
+        {
+            ThemeManager.SetMode(_fx.App, mode);
+
+            Assert.Equal(expectDark, ThemeManager.IsDark);
+            Assert.Equal(mode, ThemeManager.Mode);
+            var expected = expectDark ? ThemePalette.Dark : ThemePalette.Light;
+            Assert.Equal(Expect(expected.WindowBg), Brush("Theme.WindowBg"));
+        }
+        finally { Reset(); }
+    });
+
+    [Fact]
+    public void SetModeAutoIsUnchanged() => _fx.Invoke(() =>
+    {
+        try
+        {
+            ThemeManager.SetMode(_fx.App, "auto");
+
+            Assert.Equal("auto", ThemeManager.Mode);
+            // Whichever the OS preference resolves to, Current/IsDark and the
+            // published brush must agree with each other.
+            var expected = ThemeManager.IsDark ? ThemePalette.Dark : ThemePalette.Light;
+            Assert.Same(expected, ThemeManager.Current);
+            Assert.Equal(Expect(expected.WindowBg), Brush("Theme.WindowBg"));
+        }
+        finally { Reset(); }
+    });
 }

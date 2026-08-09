@@ -61,14 +61,19 @@ public class CopyAndTerminologyTests
             WindowStartupLocation = WindowStartupLocation.Manual,
         };
 
-    private static SettingsViewModel BuildSettingsVm(bool dark, out string cfgPath,
+    /// <summary>Takes the resolved <see cref="ThemePalette"/> directly (not a
+    /// bool/scheme key) so this one helper serves both the still-bool-dark
+    /// terminology Facts below (which pass ThemePalette.Light/Dark literally)
+    /// and the migrated contrast theories (which pass their own resolved
+    /// scheme.Palette) without needing two near-identical overloads.</summary>
+    private static SettingsViewModel BuildSettingsVm(ThemePalette palette, out string cfgPath,
         int probeDelayMs = 300)
     {
         var cfg = new Config();
         cfg.Routes.Add(new Route { Label = "Invoices", Path = @"C:\dest", Hotkey = "Ctrl+1" });
         cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_copy_" + Guid.NewGuid(), "config.json");
         return new SettingsViewModel(cfg, new NoDialogs(),
-            () => dark ? ThemePalette.Dark : ThemePalette.Light, cfgPath,
+            () => palette, cfgPath,
             uiContext: SynchronizationContext.Current, probeDelayMs: probeDelayMs);
     }
 
@@ -110,7 +115,7 @@ public class CopyAndTerminologyTests
     public void MonitoredFoldersIsCalledThatOnItsTabItsHeadingAndTheDataFilesLabel() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var vm = BuildSettingsVm(dark: false, out _);
+        var vm = BuildSettingsVm(ThemePalette.Light, out _);
         var window = BuildSettingsWindow(vm);
         try
         {
@@ -186,14 +191,14 @@ public class CopyAndTerminologyTests
     /// and whether that note is something the user has to act on.</summary>
     public static IEnumerable<object[]> NoteCases()
     {
-        foreach (var dark in new[] { false, true })
+        foreach (var s in ThemePalette.Schemes)
         {
             // a fact about a perfectly valid setting
-            yield return new object[] { dark, @"inbox", "relative — resolved beside the config file", false };
+            yield return new object[] { s.Key, @"inbox", "relative — resolved beside the config file", false };
             // a setting that will fail at OK time
-            yield return new object[] { dark, @"C:\definitely\not\here\ordo", "folder doesn't exist", true };
+            yield return new object[] { s.Key, @"C:\definitely\not\here\ordo", "folder doesn't exist", true };
             // blank inbox: nothing will ever be processed
-            yield return new object[] { dark, "", "no inbox folder set", true };
+            yield return new object[] { s.Key, "", "no inbox folder set", true };
         }
     }
 
@@ -209,10 +214,11 @@ public class CopyAndTerminologyTests
     /// field's note.</summary>
     [Theory, MemberData(nameof(NoteCases))]
     public void AnInformationalNoteIsSubtleAndOnlyAProblemIsAmber(
-        bool dark, string inbox, string expectedNote, bool expectedAmber) => _fx.Invoke(() =>
+        string schemeKey, string inbox, string expectedNote, bool expectedAmber) => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark);
-        var vm = BuildSettingsVm(dark, out _);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        ThemeManager.Apply(_fx.App, scheme);
+        var vm = BuildSettingsVm(scheme.Palette, out _);
         var window = BuildSettingsWindow(vm);
         try
         {
@@ -242,11 +248,11 @@ public class CopyAndTerminologyTests
             Assert.Equal(expectedAmber, vm.InboxNoteNeedsAttention);
             Assert.Equal(Visibility.Visible, note.Visibility);
 
-            var palette = dark ? ThemePalette.Dark : ThemePalette.Light;
+            var palette = scheme.Palette;
             var expected = expectedAmber ? palette.StatusAmber : palette.SubtleText;
             var actual = ToRgb(note.Foreground);
             Assert.True(expected == actual,
-                $"{(dark ? "dark" : "light")} \"{note.Text}\": expected " +
+                $"{schemeKey} \"{note.Text}\": expected " +
                 $"{(expectedAmber ? "StatusAmber" : "SubtleText")} {expected}, resolved {actual}");
         }
         finally { window.Close(); }
@@ -258,13 +264,12 @@ public class CopyAndTerminologyTests
     /// The threshold is WCAG AA for body text; the point of recording the
     /// number in the failure message is that a future palette tweak that
     /// drifts toward it says so.</summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ASubtleNoteStillMeetsAaContrastOnItsOwnBackground(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void ASubtleNoteStillMeetsAaContrastOnItsOwnBackground(string schemeKey) => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark);
-        var vm = BuildSettingsVm(dark, out _);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        ThemeManager.Apply(_fx.App, scheme);
+        var vm = BuildSettingsVm(scheme.Palette, out _);
         var window = BuildSettingsWindow(vm);
         try
         {
@@ -284,7 +289,7 @@ public class CopyAndTerminologyTests
             var (bg, source) = NearestPaintedBackground(note);
             var ratio = ThemePalette.ContrastRatio(fg, bg);
             Assert.True(ratio >= 4.5,
-                $"{(dark ? "dark" : "light")}: subtle note {fg} on {source} {bg} = {ratio:F2}");
+                $"{schemeKey}: subtle note {fg} on {source} {bg} = {ratio:F2}");
         }
         finally { window.Close(); }
     });
@@ -323,13 +328,12 @@ public class CopyAndTerminologyTests
     /// doesn't exist yet" branch is Info by design (the field is optional and
     /// the file is written the first time a name is learned), and asserting
     /// that here is what stops a later edit from quietly promoting it.</summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void EveryFieldNoteCarriesItsOwnSeverityToItsRenderedColour(bool dark) => _fx.Invoke(() =>
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void EveryFieldNoteCarriesItsOwnSeverityToItsRenderedColour(string schemeKey) => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark);
-        var vm = BuildSettingsVm(dark, out var cfgPath, probeDelayMs: 0);
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        ThemeManager.Apply(_fx.App, scheme);
+        var vm = BuildSettingsVm(scheme.Palette, out var cfgPath, probeDelayMs: 0);
         var cfgDir = Path.GetDirectoryName(cfgPath)!;
         Directory.CreateDirectory(cfgDir);
         // never created: the "folder doesn't exist" branches need a real miss
@@ -377,8 +381,8 @@ public class CopyAndTerminologyTests
             window.UpdateLayout();
             PumpRender();
 
-            AssertPhase(window, vm, cases, dark, second: false);
-            AssertPhase(window, vm, cases, dark, second: true);
+            AssertPhase(window, vm, cases, scheme, second: false);
+            AssertPhase(window, vm, cases, scheme, second: true);
         }
         finally
         {
@@ -406,7 +410,7 @@ public class CopyAndTerminologyTests
     /// never in the visual tree at the same moment). Every mismatch is
     /// collected before failing, so one run names all of them.</summary>
     private static void AssertPhase(Window window, SettingsViewModel vm,
-        NoteCase[] cases, bool dark, bool second)
+        NoteCase[] cases, ThemeScheme scheme, bool second)
     {
         (string Text, bool Amber) Expected(NoteCase c) =>
             second ? (c.ThenText, c.ThenNeedsAttention) : (c.FirstText, c.FirstNeedsAttention);
@@ -425,7 +429,7 @@ public class CopyAndTerminologyTests
                       $"{c.TextProperty}=\"{NoteText(vm, c.TextProperty)}\"" +
                       $"/{NoteFlag(vm, c.TextProperty)}")));
 
-        var palette = dark ? ThemePalette.Dark : ThemePalette.Light;
+        var palette = scheme.Palette;
         var tabControl = Descendants<TabControl>(window).First();
         var tabs = tabControl.Items.Cast<TabItem>().ToList();
         var problems = new List<string>();
@@ -447,7 +451,7 @@ public class CopyAndTerminologyTests
             foreach (var c in cases.Where(c => c.Tab == tabName))
             {
                 var (text, amber) = Expected(c);
-                var where = $"{(dark ? "dark" : "light")} {c.TextProperty}";
+                var where = $"{scheme.Key} {c.TextProperty}";
                 if (!notes.TryGetValue(c.TextProperty, out var note))
                 {
                     problems.Add($"{where}: no TextBlock on the \"{tabName}\" tab binds Text to it");

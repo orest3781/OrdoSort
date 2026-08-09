@@ -9,11 +9,16 @@
   <meta name="theme-color" content="#F7F8F9" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#1A1C1F" media="(prefers-color-scheme: dark)">
   <meta property="og:type" content="website">
+  <meta property="og:site_name" content="OrdoSort">
   <meta property="og:title" content="OrdoSort — Every document, where it belongs">
   <meta property="og:description" content="Name each arriving PDF, press a destination key — renamed, moved, audit-logged. A filing workbench for Windows.">
   <meta property="og:url" content="https://ordosort.com/">
   <meta property="og:image" content="https://ordosort.com/assets/og.png">
+  <meta property="og:image:alt" content="The OrdoSort brand mark and wordmark, with the tagline 'Every document, where it belongs.' on a dark card">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="OrdoSort — Every document, where it belongs">
+  <meta name="twitter:description" content="Name each arriving PDF, press a destination key — renamed, moved, audit-logged. A filing workbench for Windows.">
+  <meta name="twitter:image" content="https://ordosort.com/assets/og.png">
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="alternate icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
@@ -52,12 +57,71 @@
         <span class="btn btn-soon">v1.0 coming soon</span>
         <a class="cta-secondary" href="#screenshots">See it in action ↓</a>
       </div>
-      <picture class="hero-shot">
-        <source srcset="assets/hero-dark.png" media="(prefers-color-scheme: dark)">
-        <img src="assets/hero-light.png"
-             alt="The OrdoSort main window: a live inbox count and monitored-folder tiles, ready to file"
-             width="470" height="612">
-      </picture>
+
+      <div class="hero-mock" role="img" aria-label="The OrdoSort dashboard: four monitored-folder tiles for Invoices, Med records, Referrals and Faxes, a live count of 17 PDFs waiting in the inbox, and a Start processing button">
+        <div class="mock-titlebar">
+          <span class="mock-dot"></span>
+          <span class="mock-title">OrdoSort</span>
+        </div>
+        <div class="mock-body">
+          <p class="mock-group-label">Front desk scans</p>
+          <div class="mock-tiles">
+            <div class="mock-tile mock-tile-invoices">
+              <span class="mock-tile-name">Invoices</span>
+              <span class="mock-tile-count">12</span>
+            </div>
+            <div class="mock-tile mock-tile-med">
+              <span class="mock-tile-name">Med records</span>
+              <span class="mock-tile-count">3</span>
+            </div>
+            <div class="mock-tile mock-tile-referrals">
+              <span class="mock-tile-name">Referrals</span>
+              <span class="mock-tile-count">0</span>
+            </div>
+            <div class="mock-tile mock-tile-faxes">
+              <span class="mock-tile-name">Faxes</span>
+              <span class="mock-tile-count">2</span>
+            </div>
+          </div>
+          <hr class="mock-rule">
+          <div class="mock-count-block">
+            <span class="mock-count">17</span>
+            <span class="mock-caption">PDFs waiting in the inbox</span>
+          </div>
+          <span class="mock-cta">▶ Start processing</span>
+        </div>
+      </div>
+
+      <div class="scheme-switcher" role="group" aria-label="Preview a color scheme">
+        <button type="button" class="chip" data-scheme="paper" aria-pressed="false">
+          <span class="chip-swatch" data-theme="paper" aria-hidden="true"><span class="chip-bg"></span><span class="chip-accent"></span></span>
+          <span class="chip-name">Paper</span>
+        </button>
+        <button type="button" class="chip" data-scheme="graphite" aria-pressed="false">
+          <span class="chip-swatch" data-theme="graphite" aria-hidden="true"><span class="chip-bg"></span><span class="chip-accent"></span></span>
+          <span class="chip-name">Graphite</span>
+        </button>
+        <button type="button" class="chip" data-scheme="ledger" aria-pressed="false">
+          <span class="chip-swatch" data-theme="ledger" aria-hidden="true"><span class="chip-bg"></span><span class="chip-accent"></span></span>
+          <span class="chip-name">Ledger</span>
+        </button>
+        <button type="button" class="chip" data-scheme="microfilm" aria-pressed="false">
+          <span class="chip-swatch" data-theme="microfilm" aria-hidden="true"><span class="chip-bg"></span><span class="chip-accent"></span></span>
+          <span class="chip-name">Microfilm</span>
+        </button>
+        <button type="button" class="chip" data-scheme="manila" aria-pressed="false">
+          <span class="chip-swatch" data-theme="manila" aria-hidden="true"><span class="chip-bg"></span><span class="chip-accent"></span></span>
+          <span class="chip-name">Manila</span>
+        </button>
+        <button type="button" class="chip" data-scheme="carbon" aria-pressed="false">
+          <span class="chip-swatch" data-theme="carbon" aria-hidden="true"><span class="chip-bg"></span><span class="chip-accent"></span></span>
+          <span class="chip-name">Carbon</span>
+        </button>
+        <button type="button" class="chip" data-scheme="blueprint" aria-pressed="false">
+          <span class="chip-swatch" data-theme="blueprint" aria-hidden="true"><span class="chip-bg"></span><span class="chip-accent"></span></span>
+          <span class="chip-name">Blueprint</span>
+        </button>
+      </div>
     </div>
   </section>
 
@@ -131,21 +195,33 @@
       <h2 class="section-title">See it in action</h2>
       <div class="gallery-grid">
         <figure>
-          <picture>
+          <picture class="pic-default">
             <source srcset="assets/shot-settings-dark.png" media="(prefers-color-scheme: dark)">
             <img class="shot" src="assets/shot-settings-light.png" loading="lazy"
-                 alt="The Settings window: sectioned pages with live previews of routes and naming"
+                 alt="The Settings window on the Appearance page: seven color scheme cards with live previews"
                  width="880" height="820">
           </picture>
-          <figcaption>Settings, with live previews everywhere</figcaption>
+          <img class="shot shot-light" src="assets/shot-settings-light.png" loading="lazy"
+               alt="The Settings window on the Appearance page: seven color scheme cards with live previews"
+               width="880" height="820">
+          <img class="shot shot-dark" src="assets/shot-settings-dark.png" loading="lazy"
+               alt="The Settings window on the Appearance page: seven color scheme cards with live previews"
+               width="880" height="820">
+          <figcaption>Seven color schemes, previewed live in Settings</figcaption>
         </figure>
         <figure>
-          <picture>
+          <picture class="pic-default">
             <source srcset="assets/shot-labels-dark.png" media="(prefers-color-scheme: dark)">
             <img class="shot" src="assets/shot-labels-light.png" loading="lazy"
                  alt="The Box labels tool: a live label preview with barcode and print layout"
                  width="680" height="560">
           </picture>
+          <img class="shot shot-light" src="assets/shot-labels-light.png" loading="lazy"
+               alt="The Box labels tool: a live label preview with barcode and print layout"
+               width="680" height="560">
+          <img class="shot shot-dark" src="assets/shot-labels-dark.png" loading="lazy"
+               alt="The Box labels tool: a live label preview with barcode and print layout"
+               width="680" height="560">
           <figcaption>Box labels with barcodes, printed at exact scale</figcaption>
         </figure>
       </div>
@@ -174,5 +250,6 @@
     <a href="https://github.com/orest3781/OrdoSort">GitHub</a>
   </div>
 </footer>
+<script src="site.js" defer></script>
 </body>
 </html>
