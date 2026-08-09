@@ -142,12 +142,25 @@ public sealed record ThemePalette(
         // stays 10.09:1); Pressed 2.649:1 (Text 6.59:1).
         SurfaceHover: new(196, 197, 198),
         SurfacePressed: new(158, 159, 161),
-        // Row tier, all five protected: light's safe zone tops out at
-        // RGB 241 (StatusGreen-bound, byte search) -- there is no room to
-        // go further while keeping it legible, so this is deliberately
-        // modest. Hover 1.046:1 surround-delta; worst-protected colour
-        // (StatusGreen) still clears at 4.90:1.
-        RowHover: new(249, 250, 250));
+        // Row tier, round 3 (2026-08-08): a CHROMATIC tint, not a neutral
+        // grey -- round 2's neutral RowHover held luminance near Surface to
+        // protect the five foregrounds and, as a direct result, measured as
+        // LESS visible than what it replaced (see ThemeManager.cs's own
+        // comment at this field for the full round 1/2/3 CIE76 table).
+        // Surface is already pure white, so there is no headroom to
+        // *darken* into without re-breaking StatusGreen -- the fix is to
+        // hold L* and shift HUE instead: warm, in this app's own bronze
+        // family (AccentBronze is Lab hue ~78-85 deg; this sits at ~100
+        // deg, still the same warm/gold quadrant), by dropping blue while
+        // keeping red/green high, the cheapest channel for WCAG luminance
+        // to spend (0.0722 weight vs green's 0.7152). CIE76 vs Surface:
+        // 15.07 (round 1 grey measured 8.09, round 2 grey measured only
+        // 1.84 -- an order of magnitude fainter than what this round
+        // fixes). Legibility (ContrastRatio, unaffected by the metric
+        // switch): Text 16.48:1, SubtleText 6.57:1, StatusAmber 5.38:1,
+        // StatusGreen 4.84:1, StatusRed 5.14:1 -- all comfortably >=4.5,
+        // the tightest (StatusGreen) with a real 0.34 margin, not pinned.
+        RowHover: new(255, 249, 220));
 
     public static ThemePalette Dark { get; } = new(
         WindowBg: new(26, 28, 31),
@@ -187,15 +200,21 @@ public sealed record ThemePalette(
         // surround-delta (Text 6.87:1); Pressed 2.502:1 (Text 4.89:1).
         SurfaceHover: new(77, 79, 83),
         SurfacePressed: new(99, 101, 105),
-        // Row tier, all five protected, DARKENING (the only direction with
-        // headroom once StatusRed is back in scope -- its own luminance
-        // sits close enough to Text's that lightening leaves almost no
-        // safe room, byte search: unsafe by v=47 going up from Surface).
-        // Darkening toward black is safe for all five the whole way down
-        // (byte search, v=0 clears everything with margin) -- this stays
-        // well short of that extreme. Hover 1.192:1 surround-delta;
-        // worst-protected colour (StatusRed) still clears at 5.83:1.
-        RowHover: new(25, 26, 28));
+        // Row tier, round 3 (2026-08-08): same chromatic-not-neutral fix as
+        // Light's RowHover above -- round 2's neutral grey here (25,26,28)
+        // measured CIE76 7.37 against Surface, weaker than round 1's grey
+        // (8.73) despite being the "fixed" version (see ThemeManager.cs's
+        // own comment at this field for the full table). Holds L* close to
+        // Surface's own (16.4 vs this value's 16.4) rather than darkening
+        // further, and shifts hue warm instead -- red up, blue down,
+        // green nearly untouched (green carries 0.7152 of WCAG luminance
+        // weight, blue only 0.0722, so this is the cheap axis to spend),
+        // landing at Lab hue ~70 deg, the same warm/gold quadrant as
+        // AccentBronze's ~78-85 deg. CIE76 vs Surface: 15.59. Legibility:
+        // Text 12.24:1, SubtleText 6.48:1, StatusAmber 7.51:1, StatusGreen
+        // 7.27:1, StatusRed 4.90:1 -- all >=4.5, StatusRed (the tightest,
+        // same one round 1 broke at 3.71:1) with a real 0.40 margin.
+        RowHover: new(52, 38, 24));
 
     // ---------------------------------------------------------- WCAG 2.1 math
 
@@ -240,5 +259,66 @@ public sealed record ThemePalette(
         {
             return null;
         }
+    }
+
+    // --------------------------------------------------------- CIE Lab math
+    //
+    // Hover-tint strength review, round 3 (2026-08-08): ContrastRatio above
+    // is a pure LUMINANCE ratio -- it cannot see hue at all, which is
+    // exactly why round 2's neutral-grey Theme.RowHover, tuned by holding
+    // luminance near Surface to protect the five foregrounds, measured as
+    // FAINTER than round 1's shared value even though round 1 was the
+    // complaint being fixed (round 1 grey 8.09:1 light / 8.73 dark on the
+    // scale below; round 2 grey only 1.84 / 7.37). A chromatic tint that
+    // shifts hue at near-constant luminance is plainly visible while
+    // costing almost nothing in WCAG contrast -- this is that measurement.
+    // CIE76 (D65 white point, the standard illuminant WCAG's own linear-RGB
+    // math already assumes): ~1-2 is the classic "just noticeable
+    // difference" for a trained eye under ideal viewing conditions; this
+    // codebase's own hover tints target well above that floor. See
+    // ThemeManager.cs's comment at Theme.RowHover for the full table this
+    // round measured before choosing a value.
+
+    private static (double X, double Y, double Z) ToXyz(Rgb c)
+    {
+        var (r, g, b) = (Linear(c.R), Linear(c.G), Linear(c.B));
+        return (
+            r * 0.4124564 + g * 0.3575761 + b * 0.1804375,
+            r * 0.2126729 + g * 0.7151522 + b * 0.0721750,
+            r * 0.0193339 + g * 0.1191920 + b * 0.9503041);
+    }
+
+    // D65 reference white, the same illuminant sRGB (and this file's own
+    // WCAG Linear/Luminance) is defined against.
+    private const double XN = 0.95047, YN = 1.0, ZN = 1.08883;
+
+    private static double LabF(double t)
+    {
+        const double delta = 6.0 / 29.0;
+        return t > delta * delta * delta ? Math.Cbrt(t) : t / (3 * delta * delta) + 4.0 / 29.0;
+    }
+
+    /// <summary>CIE L*a*b* (D65), the perceptual space ContrastRatio cannot
+    /// see into: L* tracks lightness (roughly what WCAG luminance also
+    /// tracks), a*/b* track the hue/chroma a chromatic tint actually
+    /// spends.</summary>
+    public static (double L, double A, double B) Lab(Rgb c)
+    {
+        var (x, y, z) = ToXyz(c);
+        var (fx, fy, fz) = (LabF(x / XN), LabF(y / YN), LabF(z / ZN));
+        return (116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz));
+    }
+
+    /// <summary>CIE76 perceptual colour distance between two RGB colours --
+    /// the Euclidean distance in Lab space. NOT a substitute for
+    /// ContrastRatio (that still governs text legibility); this measures
+    /// whether two BACKGROUNDS read as visibly different from each other,
+    /// which a luminance-only ratio structurally cannot when the two
+    /// colours are held close in lightness on purpose.</summary>
+    public static double DeltaE76(Rgb a, Rgb b)
+    {
+        var (l1, a1, b1) = Lab(a);
+        var (l2, a2, b2) = Lab(b);
+        return Math.Sqrt((l1 - l2) * (l1 - l2) + (a1 - a2) * (a1 - a2) + (b1 - b2) * (b1 - b2));
     }
 }

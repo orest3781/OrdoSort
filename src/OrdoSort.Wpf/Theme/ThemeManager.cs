@@ -85,25 +85,55 @@ public static class ThemeManager
         r["Theme.StatusGreen"] = Brush(p.StatusGreen);
         r["Theme.StatusRed"] = Brush(p.StatusRed);
         r["Theme.TileDefaultBg"] = Brush(p.TileDefaultBg);
-        // Hover/pressed/row tints, round 2 (hover-tint strength review,
-        // 2026-08-08). Round 1 derived these from a single shared
-        // Mix(Surface, Text, amount) formula and raised the amount from
-        // 0.08 to 0.10 -- a parallel audit found that mechanism can't
-        // deliver what the owner actually asked for ("too light... make
-        // them stronger"): moving the background toward Text simultaneously
-        // grows the surround-delta AND erodes every non-Text foreground
-        // that can sit on it, capping any single shared value at a barely-
-        // there ~1.2:1 delta if StatusGreen/StatusRed are to stay legible
-        // at all (they measured 4.343:1 and 3.945:1 -- already BELOW the
-        // 4.5:1 floor -- at the old 0.08, before this review touched
-        // anything). These three are now hand-tuned, per-palette constants
-        // on ThemePalette itself (SurfaceHover/SurfacePressed/RowHover --
-        // same pattern as StatusAmber/StatusGreen/StatusRed), chosen by
-        // brute-force search over which foregrounds actually render on
-        // each tier's real consumers rather than derived live here. See
-        // ThemePalette.cs's own comment at those three fields for the full
-        // reasoning, the exact safe-zone boundaries, and the measured
-        // surround-deltas each value achieves.
+        // Hover/pressed/row tints -- three rounds of the same review
+        // (2026-08-08), each correcting the last:
+        //
+        // Round 1: a single shared Mix(Surface, Text, amount) formula,
+        // raised from 0.08 to 0.10. Moving the background toward Text
+        // simultaneously grows the WCAG surround-delta AND erodes every
+        // non-Text foreground that can sit on it -- two status colours
+        // (StatusGreen light, StatusRed dark) were already below 4.5:1 at
+        // the OLD 0.08, before round 1 touched anything.
+        //
+        // Round 2: a parallel audit found Match & Merge/Bulk rename/
+        // History/Triage had NO DataGridRow hover at all (added this
+        // round, see Styles.xaml), and split the single token into two
+        // per-palette tiers on ThemePalette (SurfaceHover/SurfacePressed
+        // for chrome -- MenuItem/TabItem/ChipButton, Text-only, free to be
+        // strong; RowHover for grid/list rows, which can show StatusAmber/
+        // Green/Red/SubtleText). RowHover was tuned as a NEUTRAL grey held
+        // close to Surface's own luminance to keep all five foregrounds
+        // legible -- which is real, correct WCAG reasoning that led
+        // somewhere wrong: ContrastRatio is a pure luminance ratio, so
+        // "hold luminance near Surface" is indistinguishable, by that
+        // metric, from "make the tint barely visible". Measured directly
+        // (CIE76 below): round 2's grey was FAINTER than round 1's, in
+        // light mode by almost 5x.
+        //
+        // Round 3: still-per-palette, still ThemePalette constants, but
+        // RowHover is now a CHROMATIC tint (warm, this app's own
+        // AccentBronze family) instead of a neutral grey -- shifting HUE
+        // at near-constant lightness is nearly free in WCAG terms (hue
+        // doesn't move the luminance ratio at all) but reads as plainly
+        // visible to the eye, which is exactly the gap ContrastRatio
+        // alone can't see. Measured with ThemePalette.DeltaE76 (CIE76,
+        // Lab space) against the real Surface each sits on, both palettes:
+        //
+        //   Light   Round 1 grey (231,232,232): dE76  8.09
+        //           Round 2 grey (249,250,250): dE76  1.84  <- the regression
+        //           Round 3 warm (255,249,220): dE76 15.07
+        //   Dark    Round 1 grey ( 57, 60, 64): dE76  8.73
+        //           Round 2 grey ( 25, 26, 28): dE76  7.37  <- also fainter
+        //           Round 3 warm ( 52, 38, 24): dE76 15.59
+        //
+        // Legibility (ContrastRatio, the metric that never changed) holds
+        // throughout round 3 -- all five foregrounds >=4.5:1 in both
+        // palettes, no exceptions, no pinning. See ThemePalette.cs's own
+        // comment at SurfaceHover/SurfacePressed/RowHover for the exact
+        // per-colour numbers and why the chromatic direction is nearly
+        // free (blue carries only 0.0722 of WCAG's luminance weight vs
+        // green's 0.7152, so dropping blue buys hue distance at almost no
+        // luminance cost).
         r["Theme.SurfaceHover"] = Brush(p.SurfaceHover);
         r["Theme.SurfacePressed"] = Brush(p.SurfacePressed);
         r["Theme.RowHover"] = Brush(p.RowHover);

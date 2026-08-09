@@ -1551,10 +1551,26 @@ public class HighlightContrastTests
     /// never the ThemeManager resource value directly — so a future edit
     /// that stops wiring a trigger to the right tier fails these tests even
     /// if the resource itself still computed a strong number (the "verify
-    /// it reaches the pixel" caution this review was given both rounds,
+    /// it reaches the pixel" caution this review was given all three rounds,
     /// after one XAML highlight was found declared but dead the first
     /// time, and a second — HistoryWindow's Reverted trigger — found dead
-    /// the same way by round 2's own audit).</summary>
+    /// the same way by round 2's own audit).
+    ///
+    /// ROUND 3 correction: round 2's ROW tier reasoning above ("hold
+    /// luminance near Surface to protect the five foregrounds") was real
+    /// WCAG math that led somewhere wrong — ContrastRatio is a pure
+    /// luminance ratio, so it can't distinguish "held near Surface on
+    /// purpose" from "barely visible", and round 2's neutral-grey RowHover
+    /// measured PERCEPTUALLY fainter (CIE76) than round 1's shared value,
+    /// in light mode by almost 5x. RowHover is now a CHROMATIC tint (warm,
+    /// this app's own AccentBronze family) instead of a neutral grey: hue
+    /// shifts at near-constant lightness cost almost nothing in WCAG terms
+    /// but read as plainly visible — see ThemeManager.cs's own comment at
+    /// the Theme.RowHover assignment for the full round 1/2/3 CIE76 table,
+    /// and ThemePalette.cs's RowHover field comments for the exact
+    /// per-colour contrast numbers. CHROME is UNCHANGED this round (still
+    /// neutral, still luminance-tuned — it never had ROW's problem, since
+    /// only Theme.Text ever sits on it).</summary>
 
     /// <summary>Renders a real TabItem (Theme.SurfaceHover's CHROME tier —
     /// only Theme.Text ever sits on it) with IsMouseOver forced via
@@ -1695,21 +1711,30 @@ public class HighlightContrastTests
         }
     });
 
-    /// <summary>Theme.RowHover's surround-delta against a real, rendered
-    /// ListBoxItem — deliberately a LOW floor (only "strictly more than
-    /// no hover at all", i.e. > 1.0), not a taste number: ThemePalette.cs's
-    /// RowHover comment shows this tier is mathematically capped near
-    /// 1.0-1.2:1 by StatusGreen/StatusRed's own luminance if every one of
-    /// the five foregrounds that can render on it is to clear 4.5:1 — going
-    /// stronger is exactly what breaks the legibility tests below. The real
-    /// proof that RowHover is "obviously there" isn't a bigger ratio, it's
-    /// that a hover now exists on these rows AT ALL where round 1's audit
-    /// found literally none (see the DataGridRow tests further down); this
-    /// test only guards against a future edit accidentally leaving the
-    /// background at plain Surface (delta exactly 1.0) while still wiring
-    /// the trigger.</summary>
+    /// <summary>Hover-tint strength review, round 3 (2026-08-08): a
+    /// luminance-ratio floor is the WRONG guard for Theme.RowHover, and
+    /// this test (round 2's RowHoverSurroundDeltaIsNonTrivial, which this
+    /// replaces) proved it by turning red the moment RowHover became a
+    /// chromatic tint — not because the tint got weaker, but because
+    /// holding L* close to Surface (by design, to keep StatusGreen/
+    /// StatusRed legible without a luminance floor to fall back on) makes
+    /// ContrastRatio measure almost exactly 1:1 regardless of how far the
+    /// hue has shifted (dark measured 1.001:1 the first time this ran
+    /// against the new value — reproduced deliberately, not a guess).
+    /// ContrastRatio cannot see hue at all; ThemePalette.DeltaE76 (CIE76,
+    /// Lab space) can, and is what this app's chromatic tint actually
+    /// spends. Renders a real ListBoxItem the identical way the old test
+    /// did (IsMouseOver forced, real "Bd" Border.Background read).
+    ///
+    /// The floor (10.0, both palettes) sits strictly between round 2's
+    /// grey (dE76 1.84 light / 7.37 dark — the regression this round
+    /// fixes) and round 3's actual chromatic value (15.07 / 15.59 — see
+    /// ThemeManager.cs's own comment at the Theme.RowHover assignment for
+    /// the full round 1/2/3 table), and comfortably above the ~1-2 "just
+    /// noticeable difference" CIE76 threshold — the target is "obviously
+    /// there", not "technically different".</summary>
     [Theory, MemberData(nameof(Palettes))]
-    public void RowHoverSurroundDeltaIsNonTrivial(bool dark) => _fx.Invoke(() =>
+    public void RowHoverDeltaEIsComfortablyVisible(bool dark) => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark);
 
@@ -1722,11 +1747,11 @@ public class HighlightContrastTests
             ?? throw new InvalidOperationException("no Border descendant under ListBoxItem");
         var hoverRgb = ToRgb(bd.Background);
         var surfaceRgb = ToRgb((Brush)_fx.App.Resources["Theme.Surface"]);
-        var delta = ThemePalette.ContrastRatio(hoverRgb, surfaceRgb);
+        var dE = ThemePalette.DeltaE76(hoverRgb, surfaceRgb);
 
-        var floor = dark ? 1.05 : 1.02;
-        Assert.True(delta >= floor,
-            $"Row hover surround-delta ({(dark ? "dark" : "light")}): {hoverRgb} vs surface {surfaceRgb} = {delta:F3}:1, want >= {floor}");
+        var floor = 10.0;
+        Assert.True(dE >= floor,
+            $"Row hover CIE76 ({(dark ? "dark" : "light")}): {hoverRgb} vs surface {surfaceRgb} = dE76 {dE:F2}, want >= {floor}");
     });
 
     /// <summary>The live "SubtleText and StatusAmber on Hover" pairing this
@@ -1824,7 +1849,7 @@ public class HighlightContrastTests
     /// (see SettingsRouteListGestureTextStaysSubtleUnlessSelected above,
     /// which covers selected/unselected-but-not-hovered; this test is the
     /// hovered-but-unselected state that was never previously exercised).
-    /// IsMouseOver forced the same way RowHoverSurroundDeltaIsNonTrivial
+    /// IsMouseOver forced the same way RowHoverDeltaEIsComfortablyVisible
     /// does above.</summary>
     [Theory, MemberData(nameof(Palettes))]
     public void RouteListGestureTextStaysLegibleWhenHoveredButUnselected(bool dark) => _fx.Invoke(() =>
