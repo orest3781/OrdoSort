@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.ViewModels;
@@ -45,6 +46,23 @@ public class ProductionViewModelTests : IDisposable
 
     private static ProductionViewModel MakeVm(Config cfg, FakeDialogs dialogs, Action? saveCfg = null) =>
         new(cfg, dialogs, saveCfg, new InlineWorkScheduler(), uiContext: null, probeDelayMs: 0);
+
+    /// <summary>Final whole-branch review finding 3: vm.Rows is keyed by each
+    /// column's INDEX in vm.ColumnNames, not by its NAME (see
+    /// ProductionViewModel.Rows' own doc comment for why — a literal
+    /// "Records" header, or the same header ticked in both Group and Sum,
+    /// would otherwise collide on a name key). Every test below that used to
+    /// read <c>vm.Rows[n]["SOME-HEADER"]</c> directly now goes through this
+    /// helper, which resolves "SOME-HEADER" to its live position in
+    /// ColumnNames first — so these tests keep reading as "the SOURCE-FOLDER
+    /// cell", not "cell 0", while still exercising the real index-based
+    /// storage.</summary>
+    private static string Cell(ProductionViewModel vm, Dictionary<string, string> row, string column)
+    {
+        var index = vm.ColumnNames.ToList().IndexOf(column);
+        Assert.True(index >= 0, $"'{column}' not found in ColumnNames ({string.Join(",", vm.ColumnNames)})");
+        return row[index.ToString(CultureInfo.InvariantCulture)];
+    }
 
     private const string SweepHeaders = "DATE-TIME,FILE-OWNER,FILE-NAME,ACTION,PDF-PAGE-COUNT,SOURCE-FOLDER";
 
@@ -98,21 +116,21 @@ public class ProductionViewModelTests : IDisposable
         // CLAIMS/jsmith, INVOICES/user1, INVOICES/jsmith
         WaitFor(() => vm.Rows.Count == 3, "all three (SOURCE-FOLDER, Employee) groups should appear");
 
-        Assert.Equal("CLAIMS", vm.Rows[0]["SOURCE-FOLDER"]);
-        Assert.Equal("jsmith", vm.Rows[0]["Employee"]);
-        Assert.Equal("2", vm.Rows[0]["Records"]);
-        Assert.Equal("6", vm.Rows[0]["PDF-PAGE-COUNT"]);
+        Assert.Equal("CLAIMS", Cell(vm, vm.Rows[0], "SOURCE-FOLDER"));
+        Assert.Equal("jsmith", Cell(vm, vm.Rows[0], "Employee"));
+        Assert.Equal("2", Cell(vm, vm.Rows[0], "Records"));
+        Assert.Equal("6", Cell(vm, vm.Rows[0], "PDF-PAGE-COUNT"));
 
-        Assert.Equal("INVOICES", vm.Rows[1]["SOURCE-FOLDER"]);
+        Assert.Equal("INVOICES", Cell(vm, vm.Rows[1], "SOURCE-FOLDER"));
         // ACME\user1 -> user1: domain prefix stripped
-        Assert.Equal("user1", vm.Rows[1]["Employee"]);
-        Assert.Equal("2", vm.Rows[1]["Records"]);
-        Assert.Equal("5", vm.Rows[1]["PDF-PAGE-COUNT"]);
+        Assert.Equal("user1", Cell(vm, vm.Rows[1], "Employee"));
+        Assert.Equal("2", Cell(vm, vm.Rows[1], "Records"));
+        Assert.Equal("5", Cell(vm, vm.Rows[1], "PDF-PAGE-COUNT"));
 
-        Assert.Equal("INVOICES", vm.Rows[2]["SOURCE-FOLDER"]);
-        Assert.Equal("jsmith", vm.Rows[2]["Employee"]);
-        Assert.Equal("1", vm.Rows[2]["Records"]);
-        Assert.Equal("4", vm.Rows[2]["PDF-PAGE-COUNT"]);
+        Assert.Equal("INVOICES", Cell(vm, vm.Rows[2], "SOURCE-FOLDER"));
+        Assert.Equal("jsmith", Cell(vm, vm.Rows[2], "Employee"));
+        Assert.Equal("1", Cell(vm, vm.Rows[2], "Records"));
+        Assert.Equal("4", Cell(vm, vm.Rows[2], "PDF-PAGE-COUNT"));
     }
 
     [Fact]
@@ -134,9 +152,10 @@ public class ProductionViewModelTests : IDisposable
         // fewer key columns really does mean fewer rows here: INVOICES'
         // user1 and jsmith rows collapse into one folder-level total
         Assert.Equal(2, vm.Rows.Count);
-        var invoices = vm.Rows.Single(r => r["SOURCE-FOLDER"] == "INVOICES");
-        Assert.Equal("3", invoices["Records"]);
-        Assert.Equal("9", invoices["PDF-PAGE-COUNT"]);
+        var sourceFolderIndex = vm.ColumnNames.ToList().IndexOf("SOURCE-FOLDER").ToString(CultureInfo.InvariantCulture);
+        var invoices = vm.Rows.Single(r => r[sourceFolderIndex] == "INVOICES");
+        Assert.Equal("3", Cell(vm, invoices, "Records"));
+        Assert.Equal("9", Cell(vm, invoices, "PDF-PAGE-COUNT"));
     }
 
     [Fact]
@@ -177,9 +196,9 @@ public class ProductionViewModelTests : IDisposable
         foreach (var p in vm.SumPicks) p.IsChosen = false;
 
         Assert.Single(vm.Rows);
-        Assert.Equal("2025-04-01", vm.Rows[0]["Date"]);
-        Assert.Equal("07", vm.Rows[0]["Hour"]);
-        Assert.Equal("1", vm.Rows[0]["Records"]);
+        Assert.Equal("2025-04-01", Cell(vm, vm.Rows[0], "Date"));
+        Assert.Equal("07", Cell(vm, vm.Rows[0], "Hour"));
+        Assert.Equal("1", Cell(vm, vm.Rows[0], "Records"));
     }
 
     [Fact]
@@ -202,6 +221,48 @@ public class ProductionViewModelTests : IDisposable
         Assert.Equal("SOURCE-FOLDER,Employee,record_count,PDF-PAGE-COUNT", lines[0]);
         Assert.Equal(4, lines.Length);   // header + 3 groups
         Assert.Single(dialogs.Infos);
+        // Finding 4 (final whole-branch review): count is results.Count —
+        // GROUPS, not source rows — the completion dialog's own wording used
+        // to say "rows" regardless.
+        Assert.Equal($"Exported 3 groups to {savePath}", dialogs.Infos[0].Message);
+    }
+
+    /// <summary>Finding 3 (final whole-branch review, feature/reports): before
+    /// this fix, vm.Rows' display Dictionary was keyed by column NAME, which
+    /// collides whenever two entries in ColumnNames share a name — here, the
+    /// same header (SOURCE-FOLDER) ticked as BOTH a Group and a Sum column.
+    /// ProductionReport.Group's own doc comment: a non-numeric sum cell
+    /// contributes 0, so the SUM value ("0") and the GROUP value (the real
+    /// folder text) are unmistakably different — pre-fix, whichever
+    /// RecomputeResults wrote last (the sum loop runs after the group loop)
+    /// would have silently overwritten the group's own folder text with "0"
+    /// under the shared "SOURCE-FOLDER" key. Keyed by INDEX instead, both
+    /// values now live at their own distinct position.</summary>
+    [Fact]
+    public void SameColumnTickedAsBothGroupAndSumDoesNotClobberEitherDisplayedValue()
+    {
+        Write("20250303-1144-swept.csv", SweepHeaders + "\n" + FixtureRows);
+        var cfg = new Config
+        {
+            ProductionGroupColumns = new List<string> { "SOURCE-FOLDER" },
+            ProductionSumColumns = new List<string> { "SOURCE-FOLDER" },
+        };
+        var vm = MakeVm(cfg, new FakeDialogs());
+
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 2, "two SOURCE-FOLDER groups should appear");
+
+        // SOURCE-FOLDER appears TWICE in ColumnNames: once as the ticked
+        // GROUP column, once as the ticked SUM column.
+        var indexes = vm.ColumnNames
+            .Select((name, i) => (name, i)).Where(x => x.name == "SOURCE-FOLDER").Select(x => x.i).ToList();
+        Assert.Equal(2, indexes.Count);
+        var groupIndex = indexes[0].ToString(CultureInfo.InvariantCulture);
+        var sumIndex = indexes[1].ToString(CultureInfo.InvariantCulture);
+
+        var claims = vm.Rows.Single(r => r[groupIndex] == "CLAIMS");
+        Assert.Equal("CLAIMS", claims[groupIndex]);   // the group's own real value
+        Assert.Equal("0", claims[sumIndex]);          // the non-numeric sum, unclobbered
     }
 
     [Fact]

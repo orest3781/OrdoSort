@@ -130,16 +130,22 @@ public partial class ProductionWindow : Window
             // gives for leaving its own short "Undone" column uncapped.
             var isNumericColumn = i >= recordsIndex;
 
+            // Bound by INDEX, not name — ProductionViewModel.Rows' own doc
+            // comment: a literal "Records" header, or the same header ticked
+            // in both Group and Sum, would otherwise put two columns on the
+            // SAME dictionary key ("[{name}]"), and whichever RecomputeResults
+            // wrote last would silently win the shared cell. Header stays the
+            // NAME — that's still what a person reads.
             var style = new Style(typeof(TextBlock), GridCellTextStyle);
             style.Setters.Add(new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis));
-            style.Setters.Add(new Setter(FrameworkElement.ToolTipProperty, new Binding($"[{name}]")));
+            style.Setters.Add(new Setter(FrameworkElement.ToolTipProperty, new Binding($"[{i}]")));
             if (isNumericColumn)
                 style.Setters.Add(new Setter(TextBlock.TextAlignmentProperty, TextAlignment.Right));
 
             var column = new DataGridTextColumn
             {
                 Header = name,
-                Binding = new Binding($"[{name}]"),
+                Binding = new Binding($"[{i}]"),
                 Width = isFirstGroupColumn
                     ? new DataGridLength(1, DataGridLengthUnitType.Star)
                     : DataGridLength.Auto,

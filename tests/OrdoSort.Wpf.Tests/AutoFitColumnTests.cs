@@ -1009,6 +1009,90 @@ public class AutoFitColumnTests
         };
     }
 
+    // --------------------------------------------------------- Turnaround
+    //
+    // FIX (final whole-branch review, feature/reports, finding 2): unlike
+    // every other grid's unbounded text column in this app, Turnaround's own
+    // Category column (TurnaroundWindow.xaml) shipped Width="Auto" with NO
+    // DataGridColumnCap.Track call at all. Category is user-mappable to ANY
+    // loaded header — the whole point of the mapping row above the grid — so
+    // an Auto column with no cap just grows to fit whatever the longest
+    // mapped value happens to be, CharacterEllipsis never engaging, a real
+    // horizontal scrollbar. File name is this grid's own star filler
+    // (Width="*", MinWidth=180); Doc date/Upload date/TAT (days) stay
+    // uncapped — same reasoning History's own Undone column gives for
+    // staying uncapped (short, bounded values with no realistic way to grow
+    // large). This suite had NO Turnaround coverage at all before this round
+    // — new coverage, not a revision of an existing fact.
+
+    [Fact]
+    public void Turnaround_LongCategoryValueAtMinWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
+    {
+        var (win, vm, dir) = BuildTurnaroundWindowWithLongCategory(VeryLongValue, ManyRowCount);
+        try
+        {
+            ShowOffscreenAtWidth(win, win.MinWidth);
+            AssertNoHorizontalScrollbar(win,
+                $"Turnaround (at MinWidth {win.MinWidth}, {ManyRowCount} rows, long category)");
+        }
+        finally { CleanupTurnaround(win, vm, dir); }
+    });
+
+    /// <summary>Builds a real TurnaroundWindow with <paramref name="rowCount"/>
+    /// PECF-shaped rows, every one carrying <paramref name="categoryValue"/>
+    /// as its SourceType (auto-guessed as CategoryColumn — "SourceType"
+    /// contains the "sourcetype" needle) — so every row's Category cell is
+    /// worst-cased, not just some. Each row's own FileName still carries a
+    /// real 8-digit date prefix so TurnaroundTime.ComputeAll gives it a real
+    /// TatDays (irrelevant to this fact, but keeps the fixture honest rather
+    /// than relying on ComputeAll's "still counts even without a parseable
+    /// date" fallback). Same off-thread-probe-then-poll shape every other
+    /// builder in this suite (and DataGridSelectionContrastTests' own
+    /// BuildTurnaroundWindow) uses for TurnaroundViewModel/ProductionViewModel's
+    /// shared DebouncedProbe&lt;SweptTable.Table&gt; load.</summary>
+    private static (TurnaroundWindow win, TurnaroundViewModel vm, string dir) BuildTurnaroundWindowWithLongCategory(
+        string categoryValue, int rowCount)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ordo_test_tatfit_" + Guid.NewGuid());
+        Directory.CreateDirectory(dir);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("SourceType,FileName");
+        for (var i = 0; i < rowCount; i++)
+            sb.AppendLine($"{categoryValue},20250101-f{i}.pdf");
+        File.WriteAllText(Path.Combine(dir, "20250303-1144-PECF Report.csv"), sb.ToString());
+
+        var vm = new TurnaroundViewModel(new Config(), new FakeDialogs(), saveCfg: null,
+            new InlineWorkScheduler(), uiContext: null, probeDelayMs: 0);
+        vm.AddPaths(new[] { dir });
+        WaitForTurnaroundLoad(() => vm.Documents.Count == rowCount, "the turnaround fixture rows should load");
+
+        return (new TurnaroundWindow(vm), vm, dir);
+    }
+
+    /// <summary>Same shape as ProductionViewModelTests.WaitFor/
+    /// DataGridSelectionContrastTests.WaitForTurnaroundLoad — the load this
+    /// builder drives is genuinely off-thread even with InlineWorkScheduler/
+    /// probeDelayMs: 0 (DebouncedProbe's own Timer still fires on a
+    /// threadpool thread), so Documents has to be polled for rather than
+    /// asserted the instant AddPaths returns.</summary>
+    private static void WaitForTurnaroundLoad(Func<bool> condition, string because, int timeoutMs = 3000)
+    {
+        var sw = Stopwatch.StartNew();
+        while (!condition())
+        {
+            if (sw.ElapsedMilliseconds > timeoutMs)
+                Assert.Fail($"condition never became true within {timeoutMs}ms: {because}");
+            Thread.Sleep(5);
+        }
+    }
+
+    private static void CleanupTurnaround(Window win, TurnaroundViewModel vm, string dir)
+    {
+        try { win.Close(); } catch { /* best effort */ }
+        vm.Dispose();
+        try { Directory.Delete(dir, true); } catch { /* best effort */ }
+    }
+
     // ---------------------------------------------------------- Production
     //
     // FIX ROUND 6 (2026-08-09, task-7 review finding): new coverage, not a
@@ -1073,7 +1157,13 @@ public class AutoFitColumnTests
             Assert.True(column.ActualWidth == expectedCap,
                 $"Production DEPARTMENT column with long content is {column.ActualWidth}px, " +
                 $"expected exactly its cap {expectedCap}px");
-            AssertTrimmingAndTooltip((DataGridBoundColumn)column, "DEPARTMENT");
+            // Finding 3 (final whole-branch review): ProductionWindow's own
+            // columns now bind by INDEX, not by name (ProductionViewModel.
+            // Rows' own doc comment) — the tooltip Binding's Path is
+            // "[{index}]", not "[DEPARTMENT]", so the expected substring has
+            // to be DEPARTMENT's live position in ColumnNames, not its name.
+            var departmentIndex = vm.ColumnNames.ToList().IndexOf("DEPARTMENT");
+            AssertTrimmingAndTooltip((DataGridBoundColumn)column, $"[{departmentIndex}]");
         }
         finally { CleanupProduction(win, vm, dir); }
     });

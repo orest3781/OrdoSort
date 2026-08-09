@@ -156,6 +156,21 @@ public sealed class TurnaroundViewModel : ObservableObject, IDisposable
         get => _filenameColumn;
         set
         {
+            // ApplyTable's Headers.Clear() (every load after the first —
+            // a second AddPaths, a re-browse, a subfolder toggle, or Clear
+            // itself) empties the ComboBox's own ItemsSource out from under
+            // a live Selector; WPF responds by pushing a NULL SelectedItem
+            // back through this TwoWay binding, straight into this setter —
+            // even though the property is typed non-nullable, nothing stops
+            // a null reference at runtime from a XAML binding. Silently
+            // ignoring it here (rather than persisting null into
+            // cfg.TatHeaders and leaving _filenameColumn null for
+            // RecomputeDocRows' own .Length read — the NRE that used to
+            // surface the app-level crash dialog) is safe: ApplyTable always
+            // calls RestoreMapping immediately afterward, once Headers is
+            // resettled, which re-selects a real header unconditionally
+            // whenever the current choice no longer matches anything loaded.
+            if (value is null) return;
             if (!Set(ref _filenameColumn, value)) return;
             _cfg.TatHeaders["filename"] = value;
             _saveCfg?.Invoke();
@@ -169,6 +184,17 @@ public sealed class TurnaroundViewModel : ObservableObject, IDisposable
         get => _categoryColumn;
         set
         {
+            // Same WPF Selector null-push as FilenameColumn's own guard
+            // above — see its doc comment for the mechanism (here it's also
+            // provoked by Raise(nameof(CategoryChoices)) in ApplyTable,
+            // which resets the Category ComboBox's ItemsSource the same way
+            // Headers.Clear() resets the File name one). "" (no category —
+            // CategoryChoices' own leading sentinel) is still a perfectly
+            // legitimate, explicit VALUE here, distinct from an actual null;
+            // only null (never a real user choice — NoneSentinelConverter
+            // only ever displays "" as "(none)", it never IS null) is
+            // ignored.
+            if (value is null) return;
             if (!Set(ref _categoryColumn, value)) return;
             _cfg.TatHeaders["category"] = value;
             _saveCfg?.Invoke();
@@ -198,9 +224,31 @@ public sealed class TurnaroundViewModel : ObservableObject, IDisposable
         }
         if (_categoryColumn.Length == 0 || !headers.Contains(_categoryColumn))
         {
-            var saved = _cfg.TatHeaders.TryGetValue("category", out var s) && headers.Contains(s) ? s : null;
-            var next = saved ?? Guess(headers, "sourcetype", "category", "dest", "type") ?? "";
-            Set(ref _categoryColumn, next, nameof(CategoryColumn));
+            // Unlike filename, "" is a real, savable CHOICE here (an
+            // explicit "(none)" pick — CategoryChoices' own leading
+            // sentinel), not just "nothing decided yet". cfg.TatHeaders
+            // ["category"] being PRESENT with an empty value means the user
+            // picked "(none)" last time and that must round-trip across a
+            // restart exactly like any other saved header would — never
+            // falling through to Guess and re-populating a column the user
+            // deliberately turned off. Only a genuinely ABSENT "category"
+            // key (never saved at all, e.g. a first-ever load) still
+            // auto-guesses. A saved NON-empty value that no longer names a
+            // loaded header (a differently-shaped report swapped in) still
+            // falls through to Guess, same as filename's own saved-but-stale
+            // case above.
+            if (_cfg.TatHeaders.TryGetValue("category", out var saved))
+            {
+                var next = saved.Length == 0 || headers.Contains(saved)
+                    ? saved
+                    : Guess(headers, "sourcetype", "category", "dest", "type") ?? "";
+                Set(ref _categoryColumn, next, nameof(CategoryColumn));
+            }
+            else
+            {
+                var next = Guess(headers, "sourcetype", "category", "dest", "type") ?? "";
+                Set(ref _categoryColumn, next, nameof(CategoryColumn));
+            }
         }
     }
 
@@ -284,6 +332,18 @@ public sealed class TurnaroundViewModel : ObservableObject, IDisposable
     {
         var noTat = _docRows.Count(r => r.TatDays is null);
         var text = $"{_table.FilesRead} files · {_table.Rows.Count} rows · {noTat} without TAT";
+        // TurnaroundTime.ExceedingThreshold was computed nowhere until this
+        // fix — every row already carries IsOverThreshold for the grid's own
+        // Warning styling, but the status line (the one place a reviewer
+        // sees a COUNT without opening the Documents tab) never surfaced it.
+        // Omitted entirely at 0 rather than reading "0 over threshold" —
+        // the other segments (files/rows/without TAT) are always-meaningful
+        // totals, but "over threshold" is a call-out, and a call-out that's
+        // always present even when there's nothing to call out just becomes
+        // noise.
+        var overThreshold = TurnaroundTime.ExceedingThreshold(_docRows, ThresholdDays).Count;
+        if (overThreshold > 0)
+            text += $" · {overThreshold} over threshold";
         if (_table.FileErrors.Count > 0)
             text += $" · {_table.FileErrors.Count} file errors: {_table.FileErrors[0]}";
         return text;

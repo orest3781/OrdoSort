@@ -85,7 +85,14 @@
                      a DataGridCell's own IsSelected trigger, the same trap
                      this mirrors. -->
                 <TabItem Header="Documents">
-                    <DataGrid ItemsSource="{Binding Documents}" AutoGenerateColumns="False"
+                    <!-- x:Name: TurnaroundWindow.xaml.cs tracks this grid's own
+                         live ActualWidth (DataGridColumnCap.Track) to keep the
+                         Category column's cap correct as the window is
+                         resized — see that file's own comment for why:
+                         Category is user-mappable to ANY loaded header, so
+                         unlike Doc date/Upload date/TAT (days) it has no
+                         natural bound on its own. -->
+                    <DataGrid x:Name="DocumentsGrid" ItemsSource="{Binding Documents}" AutoGenerateColumns="False"
                               IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
                               SelectionMode="Extended">
                         <DataGrid.RowStyle>
@@ -132,7 +139,20 @@
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
-                            <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="Auto">
+                            <!-- x:Name="CategoryColumn": Category is user-
+                                 mappable to ANY loaded header — unlike the
+                                 four columns around it, its values are
+                                 UNBOUNDED, so Width="Auto" alone (no cap)
+                                 just grows to fit the longest mapped value
+                                 with CharacterEllipsis never engaging,
+                                 exactly the shape that produces a horizontal
+                                 scrollbar on a wide value. Capped in code —
+                                 TurnaroundWindow.xaml.cs, DataGridColumnCap —
+                                 the same "content-sized, capped" shape every
+                                 other grid's unbounded text column already
+                                 uses. -->
+                            <DataGridTextColumn x:Name="CategoryColumn" Header="Category"
+                                                Binding="{Binding Category}" Width="Auto">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                         <Setter Property="TextTrimming" Value="CharacterEllipsis" />

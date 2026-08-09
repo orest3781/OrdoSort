@@ -503,6 +503,187 @@ public class DataGridSelectionContrastTests
         finally { CleanupProduction(win, vm, dir); }
     });
 
+    // --------------------------- header reload / Clear crash (finding 1)
+    //
+    // Final whole-branch review, feature/reports: a first successful load
+    // leaves FilenameColumn/CategoryColumn (Turnaround) or DatetimeColumn
+    // (Production) pointing at real headers, with the ComboBoxes'
+    // SelectedItem TwoWay-bound to them. ApplyTable's own Headers.Clear()
+    // (called by EVERY subsequent load — a second AddPaths, a re-browse, a
+    // subfolder toggle, or Clear itself) empties the ItemsSource out from
+    // under a LIVE Selector, which — before TurnaroundViewModel.
+    // FilenameColumn/CategoryColumn's and ProductionViewModel.
+    // DatetimeColumn's own null-tolerant setters — pushed a NULL
+    // SelectedItem straight through the TwoWay binding into these
+    // non-nullable string properties, persisting null into cfg and then
+    // NRE'ing off the now-null field's own .Length read (RecomputeDocRows /
+    // RestoreDatetimeColumn) the moment the very next line of ApplyTable ran.
+    // Reproduced ONLY with the window actually attached (DataContext'd and
+    // Show()n) — a bare ViewModel-only AddPaths never drives WPF's own
+    // Selector at all, so this needs a real window, not a VM-level test.
+    // Builds its own Config/ViewModel/Window (rather than reusing
+    // BuildTurnaroundWindow/BuildProductionWindow above, whose cfg reference
+    // this test needs to inspect directly) but drives the same off-thread
+    // DebouncedProbe load and real Show()n ComboBoxes those builders use.
+
+    /// <summary>DebouncedProbe's own timer callback ALWAYS fires on a
+    /// threadpool thread (System.Threading.Timer's own contract), and
+    /// DebouncedProbe.RunAsync only marshals the ApplyTable result onto a
+    /// caller-supplied SynchronizationContext when one exists
+    /// (DebouncedProbe.cs's own doc comment: "the real app always marshals
+    /// ApplyTable back to the UI thread ... never null"). Every OTHER
+    /// builder in this file passes uiContext: null — safe there because none
+    /// of them ever have a window ATTACHED yet at load time (they load
+    /// first, then construct+Show() the window afterward), so ApplyTable's
+    /// Headers.Clear()/Add() mutating an unbound ObservableCollection from a
+    /// background thread never collides with WPF's own cross-thread
+    /// collection-view guard. This finding's regression tests need the
+    /// OPPOSITE — a window already Show()n and its ComboBoxes' SelectedItem
+    /// already TwoWay-bound WHILE a reload runs — the only shape that
+    /// actually drives WPF's Selector into pushing a null SelectedItem back
+    /// through the binding. That requires ApplyTable to run ON the window's
+    /// own Dispatcher thread, so uiContext here is a real
+    /// DispatcherSynchronizationContext bound to the fixture's own
+    /// Dispatcher (the same one WaitForLoadPumping below then has to pump —
+    /// a bare Thread.Sleep loop never processes a SynchronizationContext.
+    /// Post'ed callback because it's blocking the very thread that would run
+    /// it).</summary>
+    private static SynchronizationContext DispatcherUiContext(HighlightContrastFixture fx) =>
+        new System.Windows.Threading.DispatcherSynchronizationContext(fx.Dispatcher);
+
+    /// <summary>Same polling shape as WaitForTurnaroundLoad/
+    /// WaitForProductionLoad above, but pumps the CURRENT thread's own
+    /// Dispatcher queue (DispatcherPriority.Background — draining anything
+    /// queued at or above it, which includes a Normal-priority
+    /// SynchronizationContext.Post) on every iteration instead of a bare
+    /// Thread.Sleep — required only for the DispatcherUiContext-based tests
+    /// below, since a plain Sleep loop on the SAME thread the posted
+    /// ApplyTable callback needs to run on would just block it forever. Same
+    /// nested-Dispatcher.Invoke pumping idiom AutoFitColumnTests.cs already
+    /// uses to drain WPF's own deferred star-column reconciliation.</summary>
+    private static void WaitForLoadPumping(Func<bool> condition, string because, int timeoutMs = 3000)
+    {
+        var sw = Stopwatch.StartNew();
+        while (!condition())
+        {
+            if (sw.ElapsedMilliseconds > timeoutMs)
+                Assert.Fail($"condition never became true within {timeoutMs}ms: {because}");
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                () => { }, System.Windows.Threading.DispatcherPriority.Background);
+            Thread.Sleep(5);
+        }
+    }
+
+    [Fact]
+    public void TurnaroundWindowSurvivesReloadAndClearWithoutThrowingOrPersistingNull() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var dir = Path.Combine(Path.GetTempPath(), "ordo_test_tat_reload_" + Guid.NewGuid());
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "20250303-1144-PECF Report.csv"),
+            "SourceType,FileName\nDRG,20250101-a-long-enough-filename-to-matter.pdf\n");
+        var cfg = new Config();
+        var vm = new TurnaroundViewModel(cfg, new FakeDialogs(), saveCfg: null,
+            new InlineWorkScheduler(), DispatcherUiContext(_fx), probeDelayMs: 0);
+        var win = new TurnaroundWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            win.Show();
+            win.UpdateLayout();
+
+            vm.AddPaths(new[] { dir });
+            WaitForLoadPumping(() => vm.Documents.Count == 1, "the first load should settle on one row");
+            win.UpdateLayout();
+            Assert.Equal("FileName", vm.FilenameColumn);
+            Assert.Equal("SourceType", vm.CategoryColumn);
+
+            // Second load, window still attached and both ComboBoxes still
+            // bound to the FIRST load's selections — the exact "add more
+            // files"/re-browse gesture the finding names. ApplyTable's
+            // Headers.Clear() empties the live ItemsSource out from under
+            // the Selector here.
+            var reloadEx = Record.Exception(() =>
+            {
+                vm.AddPaths(new[] { dir });
+                WaitForLoadPumping(() => vm.Documents.Count == 1, "the reload should re-settle on one row");
+                win.UpdateLayout();
+            });
+            Assert.Null(reloadEx);
+            // re-guessed, not left null/empty by a swallowed crash
+            Assert.Equal("FileName", vm.FilenameColumn);
+            Assert.Equal("SourceType", vm.CategoryColumn);
+
+            // Clear: sources emptied, Headers goes to zero — the other half
+            // of the finding's repro list. The empty-_sources fast path
+            // (TurnaroundViewModel.Refresh) calls ApplyTable directly,
+            // synchronously, on whatever thread calls ClearCommand — already
+            // this test's own Dispatcher thread, no pumping needed.
+            var clearEx = Record.Exception(() =>
+            {
+                vm.ClearCommand.Execute(null);
+                win.UpdateLayout();
+            });
+            Assert.Null(clearEx);
+            Assert.Empty(vm.Headers);
+
+            Assert.All(cfg.TatHeaders, kv => Assert.NotNull(kv.Value));
+        }
+        finally { CleanupTurnaround(win, vm, dir); }
+    });
+
+    [Fact]
+    public void ProductionWindowSurvivesReloadAndClearWithoutThrowingOrPersistingNull() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var dir = Path.Combine(Path.GetTempPath(), "ordo_test_prod_reload_" + Guid.NewGuid());
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "20250303-1144-swept.csv"),
+            "DATE-TIME,FILE-OWNER,FILE-NAME,ACTION,PDF-PAGE-COUNT,SOURCE-FOLDER\n" +
+            "4/1/2025 7:55,ACME\\user1,a-long-enough-filename-to-matter.pdf,filed,3,INVOICES\n");
+        var cfg = new Config();
+        var vm = new ProductionViewModel(cfg, new FakeDialogs(), saveCfg: null,
+            new InlineWorkScheduler(), DispatcherUiContext(_fx), probeDelayMs: 0);
+        var win = new ProductionWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            win.Show();
+            win.UpdateLayout();
+
+            vm.AddPaths(new[] { dir });
+            WaitForLoadPumping(() => vm.Rows.Count == 1, "the first load should settle on one row");
+            win.UpdateLayout();
+            Assert.Equal("DATE-TIME", vm.DatetimeColumn);
+
+            var reloadEx = Record.Exception(() =>
+            {
+                vm.AddPaths(new[] { dir });
+                WaitForLoadPumping(() => vm.Rows.Count == 1, "the reload should re-settle on one row");
+                win.UpdateLayout();
+            });
+            Assert.Null(reloadEx);
+            Assert.Equal("DATE-TIME", vm.DatetimeColumn);
+
+            var clearEx = Record.Exception(() =>
+            {
+                vm.ClearCommand.Execute(null);
+                win.UpdateLayout();
+            });
+            Assert.Null(clearEx);
+            Assert.Empty(vm.Headers);
+
+            Assert.NotNull(cfg.ProductionDatetimeColumn);
+        }
+        finally { CleanupProduction(win, vm, dir); }
+    });
+
     // --------------------------------------- Turnaround's own extra trigger
 
     /// <summary>IsOverThreshold's own composite, unselected: the ROW's

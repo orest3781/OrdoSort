@@ -132,6 +132,61 @@ public class TurnaroundViewModelTests : IDisposable
         Assert.Equal("—", vm.Documents[0].TatDaysText);
     }
 
+    /// <summary>Finding 1's Task-6 gap (final whole-branch review): explicitly
+    /// picking "(none)" — CategoryColumn = "" — must round-trip across a
+    /// brand new view model instance over the SAME cfg (the "restart" this
+    /// finding names), not silently fall back through to auto-guess just
+    /// because "" is also cfg.TatHeaders' own default-if-missing shape.
+    /// cfg.TatHeaders["category"] being PRESENT with an empty value is the
+    /// distinguishing signal from a genuinely missing key (never saved —
+    /// still covered by HeadersAutoGuessFilenameAndCategoryColumns above).</summary>
+    [Fact]
+    public void ExplicitNoneCategoryChoiceRoundTripsAcrossANewViewModelInstance()
+    {
+        Write("20250303-1144-PECF Report.csv", PecfHeaders + "\nDRG,1,20250228-a.pdf,1\n");
+        var cfg = new Config();
+        var vm1 = MakeVm(cfg, new FakeDialogs());
+        vm1.AddPaths(new[] { _dir });
+        WaitFor(() => vm1.Documents.Count == 1, "the row should load before picking a category");
+        WaitFor(() => vm1.CategoryColumn == "SourceType", "the auto-guess should land first");
+
+        // explicit "(none)" — CategoryChoices' own "" sentinel
+        vm1.CategoryColumn = "";
+        Assert.Equal("", cfg.TatHeaders["category"]);
+
+        var vm2 = MakeVm(cfg, new FakeDialogs());
+        vm2.AddPaths(new[] { _dir });
+        WaitFor(() => vm2.Documents.Count == 1, "the second instance's row should load too");
+
+        Assert.Equal("", vm2.CategoryColumn);
+    }
+
+    /// <summary>Finding 5 (final whole-branch review): TurnaroundTime.
+    /// ExceedingThreshold was computed nowhere in this view model before this
+    /// fix — dead code — even though every DocumentRow already carries
+    /// IsOverThreshold for the grid's own Warning styling. The status line
+    /// is the one place a reviewer sees a COUNT without opening the
+    /// Documents tab.</summary>
+    [Fact]
+    public void StatusLineAppendsOverThresholdCountWhenAnyRowExceedsIt()
+    {
+        Write("20250303-1144-PECF Report.csv",
+            PecfHeaders + "\n" +
+            "DRG,1,20250228-HELTON-EMILY-KYPT2024-11-63094.pdf,3\n" +   // TAT 3
+            "DRG,2,20250301-x.pdf,2\n");                                  // TAT 2
+        var vm = MakeVm(new Config(), new FakeDialogs());
+
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Documents.Count == 2, "both rows should load");
+        // default threshold is 5 — neither TAT (3, 2) is over it yet, so the
+        // segment is omitted entirely.
+        Assert.Equal("1 files · 2 rows · 0 without TAT", vm.Status);
+
+        vm.ThresholdDays = 2;   // TAT 3 now exceeds it; TAT 2 stays AT it, not over
+
+        Assert.Equal("1 files · 2 rows · 0 without TAT · 1 over threshold", vm.Status);
+    }
+
     [Fact]
     public void ExportWritesTheDocRowsThroughAskSaveFile()
     {

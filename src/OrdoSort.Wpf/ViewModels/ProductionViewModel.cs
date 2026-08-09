@@ -61,16 +61,36 @@ public sealed class ProductionViewModel : ObservableObject, IDisposable
     public ObservableCollection<string> Headers { get; } = new();
     public ObservableCollection<HeaderPick> GroupPicks { get; } = new();
     public ObservableCollection<HeaderPick> SumPicks { get; } = new();
+
+    /// <summary>Display rows for the grid, one Dictionary per group — keyed
+    /// by the matching entry's INDEX in <see cref="ColumnNames"/> (an
+    /// invariant-culture string, "0", "1", …), never by its NAME. A name key
+    /// collides two ways a real CSV/user pick can genuinely produce: a
+    /// header literally named "Records" (colliding with the reserved
+    /// record-count entry every row also carries) or the SAME header ticked
+    /// in both Group and Sum (colliding with itself) — either way one
+    /// RecomputeResults write silently overwrote the other's displayed cell.
+    /// Export (ProductionReport.ExportCsv, keyed by GroupResult.Key/Sums
+    /// directly, never through this dictionary) was never affected — only
+    /// this display projection was. An index can't collide: every position
+    /// in ColumnNames gets its own slot regardless of how many group/sum
+    /// columns share a name or happen to be named "Records".
+    /// ProductionWindow.xaml.cs's own RebuildColumns binds each column to
+    /// "[{index}]" to match, using Header (not Binding) for the name a
+    /// person actually reads.</summary>
     public ObservableCollection<Dictionary<string, string>> Rows { get; } = new();
 
     /// <summary>Group column names, then "Records", then sum column names —
     /// the window builds one DataGridTextColumn per entry (TriageWindow.xaml.cs
     /// is the template for building DataGrid columns from a dynamic list in
-    /// code-behind). "Records" is also the boundary the window uses to tell
-    /// group columns (need a filler + ellipsis) from numeric ones (short,
-    /// right-aligned, uncapped) apart, so it is never itself a group/sum
-    /// column name — ProductionReport.Group's own group/sum column picks are
-    /// always real headers, and "Records" isn't a header this app derives.</summary>
+    /// code-behind), Header set to the entry here and Binding set to its
+    /// INDEX (see Rows' own doc comment for why). "Records" is ALSO the
+    /// boundary the window uses to tell group columns (need a filler +
+    /// ellipsis) from numeric ones (short, right-aligned, uncapped) apart by
+    /// NAME match — unlike Rows' own keying, that positional boundary search
+    /// is not collision-proofed against a real header literally named
+    /// "Records" ahead of the reserved entry; ProductionReport.Group places
+    /// no such restriction on a group/sum column's name.</summary>
     public IReadOnlyList<string> ColumnNames { get; private set; } = Array.Empty<string>();
 
     /// <summary>Bumped every time Rows/ColumnNames are rebuilt — the window
@@ -176,6 +196,23 @@ public sealed class ProductionViewModel : ObservableObject, IDisposable
         get => _datetimeColumn;
         set
         {
+            // ApplyTable's Headers.Clear() (every load after the first — a
+            // second AddPaths, a re-browse, a subfolder toggle, or Clear
+            // itself) empties the ComboBox's own ItemsSource out from under
+            // a live Selector; WPF responds by pushing a NULL SelectedItem
+            // back through this TwoWay binding, straight into this setter —
+            // even though the property is typed non-nullable, nothing stops
+            // a null reference at runtime from a XAML binding. Silently
+            // ignoring it here (rather than persisting null into
+            // cfg.ProductionDatetimeColumn and leaving _datetimeColumn null
+            // for RestoreDatetimeColumn's own .Length read — the NRE that
+            // used to surface the app-level crash dialog) is safe: ApplyTable
+            // always calls RestoreDatetimeColumn immediately afterward, once
+            // Headers is resettled, which re-selects a real header
+            // unconditionally whenever the current choice no longer matches
+            // anything loaded — same contract TurnaroundViewModel.
+            // FilenameColumn's own guard holds.
+            if (value is null) return;
             if (!Set(ref _datetimeColumn, value)) return;
             _cfg.ProductionDatetimeColumn = value;
             _saveCfg?.Invoke();
@@ -289,10 +326,14 @@ public sealed class ProductionViewModel : ObservableObject, IDisposable
     // ---------------------------------------------------------------- results
 
     /// <summary>Groups _derived per the current pick order, then turns each
-    /// GroupResult into a display row keyed by column name — Binding($"[{name}]")
-    /// over a dictionary is the TriageWindow way (its own doc comment), which
-    /// is what lets the window's dynamically-built columns bind without a
-    /// display DTO type of their own.</summary>
+    /// GroupResult into a display row keyed by its column's INDEX in
+    /// ColumnNames — Binding($"[{index}]") over a dictionary is the
+    /// TriageWindow way (its own doc comment) adapted to sidestep the
+    /// name-collision class Rows' own doc comment describes, which is what
+    /// lets the window's dynamically-built columns bind without a display
+    /// DTO type of their own AND without a literal "Records" header or a
+    /// column ticked in both Group and Sum silently clobbering another
+    /// cell's value.</summary>
     private void RecomputeResults()
     {
         _results = ProductionReport.Group(_derived, _groupOrder, _sumOrder);
@@ -304,10 +345,18 @@ public sealed class ProductionViewModel : ObservableObject, IDisposable
         Rows.Clear();
         foreach (var r in _results)
         {
+            // Index math mirrors the `columns` list built just above
+            // (_groupOrder, then the single reserved "Records" slot, then
+            // _sumOrder) exactly — every position gets its own dictionary
+            // key regardless of what any of these columns are NAMED.
             var row = new Dictionary<string, string>();
-            for (var i = 0; i < _groupOrder.Count; i++) row[_groupOrder[i]] = r.Key[i];
-            row["Records"] = r.Count.ToString(CultureInfo.InvariantCulture);
-            foreach (var s in _sumOrder) row[s] = r.Sums[s].ToString("0.##", CultureInfo.InvariantCulture);
+            for (var i = 0; i < _groupOrder.Count; i++)
+                row[i.ToString(CultureInfo.InvariantCulture)] = r.Key[i];
+            row[_groupOrder.Count.ToString(CultureInfo.InvariantCulture)] =
+                r.Count.ToString(CultureInfo.InvariantCulture);
+            for (var i = 0; i < _sumOrder.Count; i++)
+                row[(_groupOrder.Count + 1 + i).ToString(CultureInfo.InvariantCulture)] =
+                    r.Sums[_sumOrder[i]].ToString("0.##", CultureInfo.InvariantCulture);
             Rows.Add(row);
         }
 
@@ -339,7 +388,10 @@ public sealed class ProductionViewModel : ObservableObject, IDisposable
         try
         {
             var count = await _scheduler.Run(() => ProductionReport.ExportCsv(results, groupCols, sumCols, dest));
-            _dialogs.Info($"Exported {count} rows to {dest}", "OrdoSort");
+            // count is results.Count — GROUPS, not source rows (ExportCsv's
+            // own doc comment already calls this "N groups exported"; the
+            // dialog text just hadn't matched it).
+            _dialogs.Info($"Exported {count} groups to {dest}", "OrdoSort");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
