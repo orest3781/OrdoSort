@@ -183,4 +183,34 @@ public class ZipMergeTests : IDisposable
         Assert.Equal("error", r.Status);
         Assert.NotEqual("", r.Message);
     }
+
+    /// <summary>Fix round (review finding, Important): RemoveQuietly used to
+    /// fire unconditionally on a save failure, deleting whatever sat at the
+    /// picked target name — even a file this call never created. Collision-
+    /// free/pickOutput only proves the name was free AT CHECK TIME; another
+    /// process can claim that exact name before FileMode.CreateNew runs, in
+    /// which case the constructor itself throws and this call must NOT touch
+    /// what's there — the exact bug Unlock.PlaceAndSwap's own markCreated
+    /// gate exists to close (2026-08 audit finding 1.2).
+    ///
+    /// The internal pickOutput seam stands in for that race deterministically:
+    /// instead of hoping to win a timing race against a second process, this
+    /// makes the "collision-free" name resolve straight to a path that
+    /// ALREADY has real content on disk, so FileMode.CreateNew is guaranteed
+    /// to throw (the name is taken) before a single byte of the merge is
+    /// written — proving the `created` gate, not just its intent.</summary>
+    [Fact]
+    public void SaveFailureNeverDeletesAFileThisCallDidNotCreate()
+    {
+        var zip = MakeZip("collide.zip", ("a.pdf", MakePdfBytes(1)));
+        var peerPath = Path.Combine(_dir, "peer.pdf");
+        File.WriteAllText(peerPath, "not touched");
+
+        var r = ZipMerge.MergeZip(zip, pickOutput: _ => peerPath);
+
+        Assert.Equal("error", r.Status);
+        Assert.Contains("couldn't save", r.Message);
+        Assert.True(File.Exists(peerPath));
+        Assert.Equal("not touched", File.ReadAllText(peerPath));
+    }
 }

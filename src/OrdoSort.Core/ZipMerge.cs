@@ -53,11 +53,21 @@ public static class ZipMerge
     /// InvalidDataException, an entry that fails to parse as a PDF, a save
     /// that fails partway — can ever throw out to the caller; every one of
     /// those becomes a readable MergeResult instead.</summary>
-    public static MergeResult MergeZip(string zipPath)
+    public static MergeResult MergeZip(string zipPath) => MergeZip(zipPath, pickOutput: null);
+
+    /// <summary>Test seam for the save-failure cleanup gate (see
+    /// MergeZipCore's own comment on <c>created</c>): <paramref
+    /// name="pickOutput"/> defaults to <see cref="Collision.FreeFile"/> and
+    /// stands in for it, so a test can make the "collision-free" name
+    /// resolve to a path IT already controls — the deterministic equivalent
+    /// of another station claiming that exact name in the gap between the
+    /// real FreeFile probe and this call's own FileMode.CreateNew, without
+    /// needing real thread timing to provoke it.</summary>
+    internal static MergeResult MergeZip(string zipPath, Func<string, string>? pickOutput)
     {
         try
         {
-            return MergeZipCore(zipPath);
+            return MergeZipCore(zipPath, pickOutput ?? Collision.FreeFile);
         }
         catch (Exception ex)
         {
@@ -65,7 +75,7 @@ public static class ZipMerge
         }
     }
 
-    private static MergeResult MergeZipCore(string zipPath)
+    private static MergeResult MergeZipCore(string zipPath, Func<string, string> pickOutput)
     {
         using var zip = ZipFile.OpenRead(zipPath);
 
@@ -145,19 +155,31 @@ public static class ZipMerge
 
             var zipDir = Path.GetDirectoryName(Path.GetFullPath(zipPath))!;
             var zipStem = Path.GetFileNameWithoutExtension(zipPath);
-            var target = Collision.FreeFile(Path.Combine(zipDir, zipStem + ".pdf"));
+            var target = pickOutput(Path.Combine(zipDir, zipStem + ".pdf"));
 
+            // created is set ONLY once FileMode.CreateNew has actually
+            // succeeded — mirroring Unlock.PlaceAndSwap's own markCreated
+            // gate (2026-08 audit finding 1.2, that file's own doc comment).
+            // pickOutput/Collision.FreeFile only proves the name was free AT
+            // CHECK TIME: another process can create that exact file in the
+            // gap before this line runs, in which case the FileStream ctor
+            // itself throws and `created` is never set — so the catch below
+            // must NOT call RemoveQuietly in that case, or it deletes a file
+            // this call never wrote a single byte of. RemoveQuietly only
+            // ever runs against a target THIS call is certain it created.
+            var created = false;
             try
             {
                 // Exclusive create, same as Unlock.PlaceAndSwap's own write:
                 // fails atomically if the name is taken rather than
                 // truncating whatever another station just wrote there.
                 using var fs = new FileStream(target, FileMode.CreateNew, FileAccess.Write);
+                created = true;
                 output.Save(fs, closeStream: false);
             }
             catch (Exception ex)
             {
-                RemoveQuietly(target);
+                if (created) RemoveQuietly(target);
                 return new(zipPath, "error", Message: $"couldn't save the merged PDF: {ex.Message}");
             }
 
