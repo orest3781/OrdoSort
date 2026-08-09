@@ -16,12 +16,27 @@ namespace OrdoSort.Core;
 /// is set ONLY once the filesystem object this method is responsible for has
 /// actually been created by THIS call, and cleanup on failure — deleting the
 /// partial zip in <see cref="CreateZip"/>, deleting the partial output
-/// folder in <see cref="Extract"/> — runs ONLY when that flag is set. This is
+/// folder in <see cref="Extract(string)"/> — runs ONLY when that flag is set. This is
 /// the exact discipline ZipMerge.MergeZipCore's own `created` gate documents
 /// (2026-08 audit finding 1.2, Unlock.PlaceAndSwap's markCreated): cleanup
 /// must never touch something this call did not itself bring into existence.
 ///
-/// ZipSlip: <see cref="Extract"/> hands the whole zip to
+/// The two directions get there differently, though, and it matters: for
+/// CreateZip's file target, ZipFile.Open's own FileMode.CreateNew is
+/// ATOMIC — it throws immediately if the name is taken, so `created` can be
+/// set right after that call succeeds with no gap at all. Directory.CreateDirectory
+/// has no such primitive — it is idempotent and does NOT throw just because
+/// the target already exists (empty or not), so Extract's own `created` flag
+/// is set from an explicit Directory.Exists check taken immediately before
+/// the create call. That closes the race window down to those two lines
+/// instead of leaving it open for the whole extraction, but — unlike the
+/// file case — it is a narrowed window, not a hard guarantee (2026-08 review
+/// finding: an earlier version of this method set `created = true`
+/// unconditionally after CreateDirectory returned, which meant a directory
+/// that already existed — created by another process, or a user in Explorer —
+/// could get deleted, contents and all, the moment extraction into it failed).
+///
+/// ZipSlip: <see cref="Extract(string)"/> hands the whole zip to
 /// <see cref="ZipFile.ExtractToDirectory(string, string)"/>, which since
 /// .NET's original 4.5/Core ZipFile implementation has always refused to
 /// extract an entry whose resolved path would land outside the destination
@@ -101,13 +116,27 @@ public static class Zipper
             using (var archive = ZipFile.Open(target, ZipArchiveMode.Create))
             {
                 created = true;
-                // In-archive dedupe for loose files sharing a root entry
-                // name — a tiny local counter, not Collision (which only
+                // In-archive dedupe for anything that becomes a ROOT-LEVEL
+                // name in the archive — a loose file's own entry name, OR a
+                // folder's own name (the prefix every file under it
+                // inherits). A tiny local counter, not Collision (which only
                 // ever probes the real filesystem): two files both named
                 // "a.txt" dropped from different folders become "a.txt" and
-                // "a (2).txt" INSIDE the archive. Folder entries carry their
-                // own folder-name prefix and can't collide with a root entry
-                // the same way, so they're outside this set.
+                // "a (2).txt"; two DIFFERENT top-level folders both named
+                // "docs" become "docs/..." and "docs (2)/...".
+                //
+                // The folder half of this isn't just cosmetic (2026-08
+                // review finding): ZipArchive.CreateEntry happily writes two
+                // entries sharing the exact same FullName, but
+                // ZipFile.ExtractToDirectory throws IOException the second
+                // time it tries to write that same relative path — so
+                // without this, zipping two same-named folders with
+                // overlapping contents (e.g. "ProjectA\docs" and
+                // "ProjectB\docs", both containing "readme.txt") would
+                // return Status "ok" here for an archive this app's own
+                // Extract could never fully unpack. One shared set covering
+                // both kinds means a root name is claimed the instant either
+                // a loose file or a folder uses it, regardless of order.
                 var usedRootNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var p in existing)
                 {
@@ -124,7 +153,7 @@ public static class Zipper
                         // zip's own entry-name convention is '/' even on
                         // Windows (Path.GetRelativePath gives back whatever
                         // this OS uses, hence the explicit replace).
-                        var folderName = new DirectoryInfo(p).Name;
+                        var folderName = UniqueRootName(usedRootNames, new DirectoryInfo(p).Name);
                         foreach (var file in Directory.EnumerateFiles(p, "*", SearchOption.AllDirectories))
                         {
                             var rel = Path.GetRelativePath(p, file).Replace('\\', '/');
@@ -197,11 +226,22 @@ public static class Zipper
     /// for why <see cref="ZipFile.ExtractToDirectory(string, string)"/>'s own
     /// traversal protection is load-bearing for this method's path safety,
     /// and for the created-gate discipline the cleanup below follows.</summary>
-    public static UnzipResult Extract(string zipPath)
+    public static UnzipResult Extract(string zipPath) => Extract(zipPath, pickOutputDir: null);
+
+    /// <summary>Test seam for the created-gate cleanup (see ExtractCore's own
+    /// comment on `created`): <paramref name="pickOutputDir"/> defaults to
+    /// <see cref="Collision.FreeDirectory"/> and stands in for it, so a test
+    /// can make the "collision-free" name resolve to a path IT already
+    /// controls — the deterministic equivalent of another process (or a user
+    /// in Explorer) claiming that exact folder in the gap between the real
+    /// FreeDirectory probe and this call's own Directory.Exists check,
+    /// without needing real thread timing to provoke it. Same shape as
+    /// ZipMerge.MergeZip's internal pickOutput seam.</summary>
+    internal static UnzipResult Extract(string zipPath, Func<string, string>? pickOutputDir)
     {
         try
         {
-            return ExtractCore(zipPath);
+            return ExtractCore(zipPath, pickOutputDir ?? Collision.FreeDirectory);
         }
         catch (Exception ex)
         {
@@ -209,23 +249,28 @@ public static class Zipper
         }
     }
 
-    private static UnzipResult ExtractCore(string zipPath)
+    private static UnzipResult ExtractCore(string zipPath, Func<string, string> pickOutputDir)
     {
         var zipDir = Path.GetDirectoryName(Path.GetFullPath(zipPath))!;
         var zipStem = Path.GetFileNameWithoutExtension(zipPath);
-        var dir = Collision.FreeDirectory(Path.Combine(zipDir, zipStem));
+        var dir = pickOutputDir(Path.Combine(zipDir, zipStem));
 
-        // created flips true only once Directory.CreateDirectory below has
-        // actually succeeded — the same gate CreateZipCore uses, so a
-        // failure that happens before the folder exists (or a FreeDirectory
-        // name lost to a race, in which case CreateDirectory itself either
-        // succeeds harmlessly into the existing empty folder or throws)
-        // never deletes something this call didn't create.
+        // Directory.CreateDirectory is idempotent — unlike ZipFile.Open's
+        // FileMode.CreateNew for the CreateZip file path, it does NOT throw
+        // just because `dir` already exists (empty or not), so "did THIS
+        // call create it" can't be inferred from CreateDirectory succeeding
+        // the way `created = true` right after ZipFile.Open works above.
+        // Instead `created` is decided by an explicit existence check taken
+        // immediately before the create call — Collision.FreeDirectory (or
+        // whatever pickOutputDir returns) only proves the name was free AT
+        // CHECK TIME, and another process/user can still claim it in the gap
+        // before this line runs. See the class doc comment for why this is a
+        // narrowed race window, not the atomic guarantee the file path gets.
         var created = false;
         try
         {
+            created = !Directory.Exists(dir);
             Directory.CreateDirectory(dir);
-            created = true;
             ZipFile.ExtractToDirectory(zipPath, dir);
             return new UnzipResult(zipPath, "ok", dir);
         }

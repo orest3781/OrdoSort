@@ -74,6 +74,73 @@ public class ZipperTests : IDisposable
         Assert.Equal(new[] { "a (2).txt", "a.txt" }, names);
     }
 
+    /// <summary>2026-08 review finding: the in-archive dedupe originally only
+    /// covered loose files, not folder names — but ZipArchive.CreateEntry
+    /// happily writes two entries sharing a FullName even though
+    /// ZipFile.ExtractToDirectory later throws IOException on the second one.
+    /// Two DIFFERENT top-level folders sharing a name (e.g. from two
+    /// different projects) with overlapping relative paths inside must both
+    /// survive, under "docs/..." and "docs (2)/...", and the resulting
+    /// archive must fully round-trip through this class's own Extract.</summary>
+    [Fact]
+    public void TwoTopLevelFoldersSharingANameGetACounterSuffixSoTheArchiveRoundTrips()
+    {
+        var docsA = MakeFolder(Path.Combine("ProjectA", "docs"));
+        MakeFile(Path.Combine("ProjectA", "docs", "readme.txt"), "from A");
+        var docsB = MakeFolder(Path.Combine("ProjectB", "docs"));
+        MakeFile(Path.Combine("ProjectB", "docs", "readme.txt"), "from B");
+        var target = Path.Combine(_dir, "collide.zip");
+
+        var r = Zipper.CreateZip(new[] { docsA, docsB }, target);
+
+        Assert.Equal("ok", r.Status);
+        using (var zip = ZipFile.OpenRead(target))
+        {
+            var names = zip.Entries.Select(e => e.FullName).OrderBy(n => n, StringComparer.Ordinal).ToList();
+            Assert.Equal(new[] { "docs (2)/readme.txt", "docs/readme.txt" }, names);
+        }
+
+        var extracted = Zipper.Extract(target);
+        Assert.Equal("ok", extracted.Status);
+        var outDir = extracted.OutputFolder!;
+        Assert.Equal("from A", File.ReadAllText(Path.Combine(outDir, "docs", "readme.txt")));
+        Assert.Equal("from B", File.ReadAllText(Path.Combine(outDir, "docs (2)", "readme.txt")));
+    }
+
+    /// <summary>Same finding as the folder/folder case above, but a loose
+    /// file and a top-level folder sharing a root name — the shared
+    /// usedRootNames set has to catch the collision regardless of which
+    /// kind claims the name first.</summary>
+    [Fact]
+    public void ALooseFileAndATopLevelFolderSharingANameStillDedupeAndRoundTrip()
+    {
+        var file = MakeFile("shared.txt", "loose file content");
+        // The folder lives under its own parent ("nested\") so its NAME can
+        // be "shared.txt" too without an OS-level naming clash against the
+        // loose file above — Windows won't allow a file and a directory to
+        // share one name in the SAME parent, but that's not what's under
+        // test here; the collision under test is the ARCHIVE root name both
+        // produce ("shared.txt"), not their real filesystem paths.
+        var folder = MakeFolder(Path.Combine("nested", "shared.txt"));
+        MakeFile(Path.Combine("nested", "shared.txt", "inside.txt"), "folder content");
+        var target = Path.Combine(_dir, "sharedname.zip");
+
+        var r = Zipper.CreateZip(new[] { file, folder }, target);
+
+        Assert.Equal("ok", r.Status);
+        using (var zip = ZipFile.OpenRead(target))
+        {
+            var names = zip.Entries.Select(e => e.FullName).OrderBy(n => n, StringComparer.Ordinal).ToList();
+            Assert.Equal(new[] { "shared (2).txt/inside.txt", "shared.txt" }, names);
+        }
+
+        var extracted = Zipper.Extract(target);
+        Assert.Equal("ok", extracted.Status);
+        var outDir = extracted.OutputFolder!;
+        Assert.Equal("loose file content", File.ReadAllText(Path.Combine(outDir, "shared.txt")));
+        Assert.Equal("folder content", File.ReadAllText(Path.Combine(outDir, "shared (2).txt", "inside.txt")));
+    }
+
     [Fact]
     public void FolderEntriesUseForwardSlashRelativePathsUnderTheFolderNamePrefix()
     {
@@ -212,5 +279,39 @@ public class ZipperTests : IDisposable
         Assert.Equal("error", r.Status);
         Assert.Contains("not a valid zip", r.Message);
         Assert.False(Directory.Exists(Path.Combine(_dir, "junk")));
+    }
+
+    /// <summary>2026-08 review finding: Directory.CreateDirectory is
+    /// idempotent — it does NOT throw just because the target already
+    /// exists, unlike ZipFile.Open's FileMode.CreateNew for the CreateZip
+    /// path — so an earlier version of ExtractCore set `created = true`
+    /// unconditionally right after CreateDirectory returned, whether or not
+    /// the folder was already there. A subsequent extraction failure then
+    /// deleted a directory (and whatever was inside it) this call never
+    /// created.
+    ///
+    /// Collision.FreeDirectory would skip right past a directory that
+    /// already exists, so proving the race deterministically needs the same
+    /// seam ZipMergeTests.SaveFailureNeverDeletesAFileThisCallDidNotCreate
+    /// uses: the internal pickOutputDir overload stands in for "another
+    /// process/user claimed this exact folder name first" by resolving
+    /// straight to a path that already has real content in it.</summary>
+    [Fact]
+    public void ExtractFailureNeverDeletesADirectoryThisCallDidNotCreate()
+    {
+        var path = Path.Combine(_dir, "junk2.zip");
+        File.WriteAllBytes(path, Encoding.UTF8.GetBytes("this is not a zip"));
+
+        var peerDir = Path.Combine(_dir, "peer");
+        Directory.CreateDirectory(peerDir);
+        var sentinel = Path.Combine(peerDir, "sentinel.txt");
+        File.WriteAllText(sentinel, "not touched");
+
+        var r = Zipper.Extract(path, pickOutputDir: _ => peerDir);
+
+        Assert.Equal("error", r.Status);
+        Assert.True(Directory.Exists(peerDir));
+        Assert.True(File.Exists(sentinel));
+        Assert.Equal("not touched", File.ReadAllText(sentinel));
     }
 }
