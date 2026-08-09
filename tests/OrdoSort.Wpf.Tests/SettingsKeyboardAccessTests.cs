@@ -76,7 +76,7 @@ public class SettingsKeyboardAccessTests
         yield return new object[] { "_Filing", "F" };
         yield return new object[] { "_Destinations", "D" };
         yield return new object[] { "_Monitored folders", "M" };
-        yield return new object[] { "Alerts & _Polling", "P" };
+        yield return new object[] { "Alerts & _polling", "P" };
         yield return new object[] { "_Appearance", "A" };
         yield return new object[] { "Da_ta files", "T" };
     }
@@ -215,7 +215,7 @@ public class SettingsKeyboardAccessTests
         yield return new object[] { "_Filing", "Filing" };
         yield return new object[] { "_Destinations", "Destinations" };
         yield return new object[] { "_Monitored folders", "Monitored folders" };
-        yield return new object[] { "Alerts & _Polling", "Alerts & polling" };
+        yield return new object[] { "Alerts & _polling", "Alerts & polling" };
         yield return new object[] { "_Appearance", "Appearance" };
         yield return new object[] { "Da_ta files", "Data files" };
     }

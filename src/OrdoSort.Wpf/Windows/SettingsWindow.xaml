@@ -195,7 +195,9 @@
                  Polling regions it used to carry moved to a new seventh tab,
                  inserted right after it. Its initial letter, A, is already
                  Appearance's; the other candidate initial, P (Polling), is
-                 free, so the header is "Alerts &amp; _Polling" — the mnemonic
+                 free, so the header is "Alerts &amp; _polling" — the mnemonic
+                 stays P (access keys are case-insensitive) while the visible
+                 header keeps the app's sentence case —
                  reads on its second word, same shape as Data files reading on
                  its second syllable. Checked against all seven live headers
                  (G, F, D, M, A, T, P) — still zero collisions.
@@ -1139,7 +1141,7 @@
                  width. Neither section uses a FieldRow/LabelCol grid (nothing
                  here did before the split either), so unlike its neighbours
                  this tab has no Grid.IsSharedSizeScope to set. -->
-            <TabItem Header="Alerts &amp; _Polling" AutomationProperties.Name="Alerts &amp; polling">
+            <TabItem Header="Alerts &amp; _polling" AutomationProperties.Name="Alerts &amp; polling">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="16,8">
                         <TextBlock Text="Alerts" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
