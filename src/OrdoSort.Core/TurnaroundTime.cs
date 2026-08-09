@@ -163,7 +163,7 @@ public static partial class TurnaroundTime
             })
             .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Week)
             .Select(g => new PeriodAverage(
-                $"{g.Key.Year}-W{g.Key.Week:00}",
+                $"{g.Key.Year.ToString(CultureInfo.InvariantCulture)}-W{g.Key.Week.ToString("00", CultureInfo.InvariantCulture)}",
                 g.Average(r => r.TatDays!.Value),
                 g.Count()))
             .ToList();

@@ -406,7 +406,12 @@ public class TurnaroundTimeTests : IDisposable
     /// <summary>Mirrors CultureInvariantDatesTests' UnderCulture swap: parsing
     /// and export both route every format/parse through InvariantCulture, so
     /// de-DE's comma decimal separator and th-TH's Buddhist-era calendar
-    /// must never change a single byte of the result.</summary>
+    /// must never change a single byte of the result. Also covers
+    /// DailyAverages/WeeklyAverages' Period labels — a regression there
+    /// (e.g. WeeklyAverages' "yyyy-Www" label once built with a bare
+    /// interpolated `:00` that resolved through CurrentCulture instead of
+    /// InvariantCulture) would slip past the parse/export checks above
+    /// entirely, since neither of those calls WeeklyAverages.</summary>
     [Theory]
     [InlineData("de-DE")]
     [InlineData("th-TH")]
@@ -424,10 +429,14 @@ public class TurnaroundTimeTests : IDisposable
         var invariantDest = Path.Combine(_dir, "invariant.csv");
         TurnaroundTime.ExportCsv(rows, invariantDest);
         var invariantBytes = File.ReadAllBytes(invariantDest);
+        var invariantDaily = TurnaroundTime.DailyAverages(rows).Select(p => p.Period).ToList();
+        var invariantWeekly = TurnaroundTime.WeeklyAverages(rows).Select(p => p.Period).ToList();
 
         DateTime? swappedUpload = null;
         DateOnly? swappedDoc = null;
         byte[] swappedBytes = Array.Empty<byte>();
+        List<string> swappedDaily = new();
+        List<string> swappedWeekly = new();
         UnderCulture(culture, () =>
         {
             swappedUpload = TurnaroundTime.UploadTimeFromReportName("20250303-1144-PECF Report.xlsx");
@@ -435,10 +444,15 @@ public class TurnaroundTimeTests : IDisposable
             var swappedDest = Path.Combine(_dir, $"swapped-{culture}.csv");
             TurnaroundTime.ExportCsv(rows, swappedDest);
             swappedBytes = File.ReadAllBytes(swappedDest);
+            swappedDaily = TurnaroundTime.DailyAverages(rows).Select(p => p.Period).ToList();
+            swappedWeekly = TurnaroundTime.WeeklyAverages(rows).Select(p => p.Period).ToList();
         });
 
         Assert.Equal(invariantUpload, swappedUpload);
         Assert.Equal(invariantDoc, swappedDoc);
         Assert.Equal(invariantBytes, swappedBytes);
+        Assert.Equal(invariantDaily, swappedDaily);
+        Assert.Equal(invariantWeekly, swappedWeekly);
+        Assert.Equal("2025-W10", Assert.Single(swappedWeekly));
     }
 }
