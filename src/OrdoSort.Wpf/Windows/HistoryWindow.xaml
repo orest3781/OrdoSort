@@ -73,6 +73,17 @@
                         </Style.Triggers>
                     </Style>
                 </DataGrid.RowStyle>
+                <!-- Every text column's ElementStyle below is BasedOn
+                     GridCellText (Theme/Styles.xaml), not the bare
+                     {x:Type TextBlock} style — same shared base
+                     MatchMergeWindow/BulkRenameWindow now use. These five
+                     columns already carried their own trailing "let
+                     selection win" DataTrigger (below, after Reverted) and
+                     were already correct before this change; the swap is
+                     purely for consistency with the shared style everywhere
+                     else, not a behaviour fix — see GridCellText's own doc
+                     comment on why the Reverted trigger still needs its own
+                     copy regardless. -->
                 <DataGrid.Columns>
                     <!-- 2026-08-07 autofit-columns, Step 5: this window is the
                          one deliberate exception to "content-sized (Auto),
@@ -119,7 +130,7 @@
                     <DataGridTextColumn x:Name="WhenColumn" Header="When" Binding="{Binding When}"
                                         Width="Auto">
                         <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                 <Setter Property="ToolTip" Value="{Binding When}" />
                                 <Style.Triggers>
@@ -178,7 +189,7 @@
                          any window size as they did before, never less. -->
                     <DataGridTextColumn Header="Original" Binding="{Binding Original}" Width="*" MinWidth="120">
                         <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                 <Setter Property="ToolTip" Value="{Binding Original}" />
                                 <Style.Triggers>
@@ -200,7 +211,7 @@
                     </DataGridTextColumn>
                     <DataGridTextColumn Header="Filed as" Binding="{Binding FiledAs}" Width="*" MinWidth="120">
                         <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                 <Setter Property="ToolTip" Value="{Binding FiledAs}" />
                                 <Style.Triggers>
@@ -229,7 +240,7 @@
                     <DataGridTextColumn x:Name="NameColumn" Header="Name" Binding="{Binding Name}"
                                         Width="Auto">
                         <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                 <Setter Property="ToolTip" Value="{Binding Name}" />
                                 <Style.Triggers>
@@ -262,7 +273,7 @@
                     <DataGridTextColumn x:Name="DestinationColumn" Header="Destination" Binding="{Binding Route}"
                                         Width="Auto">
                         <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                 <Setter Property="ToolTip" Value="{Binding Route}" />
                                 <Style.Triggers>

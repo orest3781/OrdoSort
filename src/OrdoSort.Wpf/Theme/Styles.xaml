@@ -1646,6 +1646,78 @@
         </Style.Triggers>
     </Style>
 
+    <!-- Shared base for every DataGridTextColumn.ElementStyle in the app
+         (MatchMergeWindow's File/Becomes/Note, BulkRenameWindow's Current
+         name/New name/Note, HistoryWindow's five columns, TriageWindow's
+         code-built roster columns and its "Why" column) — the fix for the
+         FOURTH instance of one specific bug found in this repo in one day
+         (status-colour-vocabulary plan, 2026-08-08): a cell's TextBlock
+         needs its OWN Style Setter for TextTrimming/ToolTip (autofit-
+         columns), and the moment a column's ElementStyle carries ANY
+         Foreground-touching Setter or Trigger of its own — even one merely
+         BasedOn="{StaticResource {x:Type TextBlock}}", which pulls in that
+         style's unconditional Foreground=Theme.Text Setter — it outranks
+         whatever this TextBlock would otherwise INHERIT from its ancestor
+         DataGridCell, including the Accent/AccentText pair the cell's own
+         IsSelected trigger (above) paints. Property-value inheritance is
+         lower precedence than ANY Style Setter on the element itself,
+         regardless of whether that Setter arrived via BasedOn or was
+         written directly on the column's own style — so a plain
+         BasedOn="{x:Type TextBlock}" column silently loses selection
+         contrast the instant it adds TextTrimming/ToolTip, with no warning
+         and no visual difference until someone actually selects that row.
+         Measured directly on MatchMergeWindow's File/Becomes columns (the
+         bug this style exists to fix): (233,235,238) Theme.Text on
+         (205,210,218) Theme.Accent (dark) = 1.10:1, nowhere near the 4.5:1
+         floor — a selected row's own filename unreadable against its own
+         highlight.
+
+         BasedOn the app-level implicit TextBlock style (same Theme.Text
+         default every other TextBlock in the app gets) plus ONE trailing
+         DataTrigger that reverts to Theme.AccentText once the ancestor
+         DataGridCell reports IsSelected — the exact "let selection win"
+         trigger Note/Why/History's own per-column fixes already carry
+         individually. Columns with NO other Foreground trigger of their own
+         (File, Becomes, Current name, and the roster columns TriageWindow
+         builds in code) get correct selection contrast for free just by
+         setting BasedOn="{StaticResource GridCellText}" — nothing else to
+         remember, which is the whole point: this is the fourth copy-pasted
+         "add a trailing IsSelected DataTrigger" fix in one day, and a FUTURE
+         plain column should not need a fifth.
+
+         Columns that ALSO carry their own status-coloured triggers (Note,
+         New name, Why, History's Reverted columns) still need to declare
+         their OWN trailing "let selection win" DataTrigger too, identical in
+         shape to this one, and CANNOT rely on this base style's copy alone
+         to win for them: WPF applies a derived style's own Setters/Triggers
+         on top of whatever it inherits via BasedOn, so a derived column's
+         OWN status trigger (e.g. Note's Status="ambiguous" -> StatusAmber)
+         would still outrank a selection override that lives only in the
+         BASE style, the same "more specific wins" rule that lets a derived
+         Setter override a base Setter for the same property. Those columns
+         still gain the shared Theme.Text default and TextTrimming/ToolTip
+         plumbing from BasedOn="{StaticResource GridCellText}", just not a
+         free ride past their own conflicting triggers — declaring the same
+         trigger twice (base and derived) is harmless (both resolve to the
+         identical value when both fire) and is cheaper to read than a
+         column-specific comment re-deriving why it can't be omitted.
+         Verified (not assumed) by DataGridSelectionContrastTests, which
+         enumerates every DataGridTextColumn across all four grid windows and
+         reads each cell's ACTUAL resolved TextBlock.Foreground, in both
+         palettes — a test that finds the trigger present in XAML would have
+         passed throughout the day this bug shipped, exactly the trap that
+         let it ship in the first place. -->
+    <Style x:Key="GridCellText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Style.Triggers>
+            <DataTrigger Value="True">
+                <DataTrigger.Binding>
+                    <Binding Path="IsSelected" RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                </DataTrigger.Binding>
+                <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
     <!-- Named styles -->
 
     <!-- Fluent glyphs from the system icon font — no image assets, always

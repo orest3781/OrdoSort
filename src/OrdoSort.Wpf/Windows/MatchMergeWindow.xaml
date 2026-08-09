@@ -173,8 +173,15 @@
                              let someone verify, so it gets the room instead. -->
                         <DataGridTextColumn x:Name="FileColumn" Header="File" Binding="{Binding File}"
                                             Width="Auto">
+                            <!-- BasedOn GridCellText (Theme/Styles.xaml), not the
+                                 bare {x:Type TextBlock} style: this column has no
+                                 status trigger of its own, so the shared style's
+                                 default Foreground + trailing "let selection win"
+                                 DataTrigger is the whole fix — see GridCellText's
+                                 own doc comment for the bug this closes (measured
+                                 1.10:1 dark before it). -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding File}" />
                                 </Style>
@@ -189,8 +196,9 @@
                              need. -->
                         <DataGridTextColumn Header="Becomes" Binding="{Binding Becomes}"
                                             Width="*" MinWidth="120">
+                            <!-- BasedOn GridCellText — same reasoning as File above. -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding Becomes}" />
                                 </Style>
@@ -206,8 +214,14 @@
                              one. -->
                         <DataGridTextColumn x:Name="NoteColumn" Header="Note" Binding="{Binding Note}"
                                             Width="Auto">
+                            <!-- BasedOn GridCellText for the shared Theme.Text
+                                 default — but this column's own status triggers
+                                 below still need their own trailing "let
+                                 selection win" DataTrigger; the base style's
+                                 copy alone would lose to Status="ambiguous" et
+                                 al, see GridCellText's own doc comment. -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding Note}" />
                                     <Style.Triggers>

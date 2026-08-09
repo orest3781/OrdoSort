@@ -52,6 +52,19 @@ public partial class TriageWindow : Window
     /// for whatever capped roster columns sit alongside it.</summary>
     private const double FillerMinWidth = 60;
 
+    /// <summary>Resolves the shared Theme/Styles.xaml <c>GridCellText</c>
+    /// style — the same production resource MatchMergeWindow.xaml/
+    /// BulkRenameWindow.xaml/HistoryWindow.xaml's own
+    /// DataGridTextColumn.ElementStyle markup reaches via
+    /// <c>BasedOn="{StaticResource GridCellText}"</c>, just resolved from
+    /// code instead of XAML since this window builds its columns
+    /// programmatically (constructor, and <see cref="ShowCurrentAsync"/>'s
+    /// "Why" column). FindResource, not TryFindResource: a missing
+    /// GridCellText style would silently strip every column's selection-
+    /// contrast fix, and that should fail loudly rather than fall back to a
+    /// plain, unstyled TextBlock.</summary>
+    private static Style GridCellTextStyle => (Style)Application.Current.FindResource("GridCellText");
+
     private readonly List<MatchMerge.MatchResult> _items;
     private readonly IReadOnlyList<string> _headers;
     private readonly WebViewPdfViewer _pdf;
@@ -183,7 +196,21 @@ public partial class TriageWindow : Window
                 Width = isFiller
                     ? new DataGridLength(1, DataGridLengthUnitType.Star)
                     : DataGridLength.Auto,
-                ElementStyle = new Style(typeof(TextBlock))
+                // BasedOn GridCellText (Theme/Styles.xaml), the shared style
+                // MatchMerge/BulkRename/History's XAML columns now all use —
+                // this column carries no Foreground trigger of its own, so
+                // the base's default Theme.Text plus its trailing "let
+                // selection win" DataTrigger is the whole selection-contrast
+                // story for a roster column, the same as it is for a plain
+                // XAML column with no status trigger (File/Becomes/Current
+                // name). Before GridCellText existed, this style deliberately
+                // had NO BasedOn at all — a documented workaround (this
+                // column had no Foreground Setter of its own to conflict with
+                // the cell's own IsSelected inheritance), not a fix; using
+                // the shared base now makes this column's story identical to
+                // every other one instead of relying on the absence of a
+                // Setter to stay correct by accident.
+                ElementStyle = new Style(typeof(TextBlock), GridCellTextStyle)
                 {
                     Setters =
                     {
@@ -245,7 +272,16 @@ public partial class TriageWindow : Window
                 Header = "Why",
                 Binding = new Binding("[__why]"),
                 Width = new DataGridLength(WhyColumnWidth),
-                ElementStyle = new Style(typeof(TextBlock))
+                // BasedOn GridCellText for the shared Theme.Text default and
+                // TextTrimming/ToolTip plumbing every other grid column now
+                // shares — the trailing "let selection win" DataTrigger below
+                // still has to stay local to THIS style too (it can't rely on
+                // GridCellText's own copy alone): this column's own
+                // unconditional SubtleText Setter, just below, is a Style
+                // Setter on the same TextBlock and would otherwise keep
+                // outranking whatever the base style's trigger hands it — see
+                // GridCellText's own doc comment in Theme/Styles.xaml.
+                ElementStyle = new Style(typeof(TextBlock), GridCellTextStyle)
                 {
                     Setters =
                     {

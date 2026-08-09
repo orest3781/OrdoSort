@@ -196,8 +196,15 @@
                              where that floor reasoning now lives. -->
                         <DataGridTextColumn x:Name="CurrentColumn" Header="Current name" Binding="{Binding Current}"
                                             IsReadOnly="True" Width="Auto">
+                            <!-- BasedOn GridCellText (Theme/Styles.xaml), not the
+                                 bare {x:Type TextBlock} style: no status trigger
+                                 of its own here, so the shared style's default
+                                 Foreground + trailing "let selection win"
+                                 DataTrigger is the whole fix — same bug and same
+                                 shape as MatchMergeWindow's File/Becomes columns;
+                                 see GridCellText's own doc comment. -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding Current}" />
                                 </Style>
@@ -216,8 +223,24 @@
                              instead of also being star. -->
                         <DataGridTextColumn Header="New name  ·  click or press F2 to edit"
                                             Binding="{Binding NewName}" Width="*" MinWidth="120">
+                            <!-- BasedOn GridCellText for the shared Theme.Text
+                                 default — but the Changed="False" DataTrigger
+                                 below still needs its own trailing "let
+                                 selection win" DataTrigger, same as Note's
+                                 (status-colour-vocabulary plan, Task 2 Step 2):
+                                 this column's own SubtleText Setter is a Style
+                                 Setter on THIS TextBlock, and it outranks
+                                 whatever it would otherwise inherit from the
+                                 selected DataGridCell just as surely as the
+                                 dead RowStyle triggers this repo already fixed
+                                 elsewhere — this one had NO override at all
+                                 before (unlike Note, which already carried one),
+                                 so an unchanged row picked up 1.85:1 SubtleText-
+                                 on-Accent the moment it was selected. Declared
+                                 last so it overrides both triggers above once
+                                 selected. -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding NewName}" />
                                     <Style.Triggers>
@@ -228,6 +251,14 @@
                                         <DataTrigger Binding="{Binding Manual}" Value="True">
                                             <Setter Property="FontWeight" Value="Bold" />
                                         </DataTrigger>
+                                        <DataTrigger Value="True">
+                                            <DataTrigger.Binding>
+                                                <Binding Path="IsSelected"
+                                                         RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                                            </DataTrigger.Binding>
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.AccentText}" />
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
@@ -237,8 +268,13 @@
                              of what it held. -->
                         <DataGridTextColumn x:Name="NoteColumn" Header="Note" Binding="{Binding Note}"
                                             IsReadOnly="True" Width="Auto">
+                            <!-- BasedOn GridCellText for the shared Theme.Text
+                                 default; this column's own status triggers
+                                 below still need their own trailing "let
+                                 selection win" DataTrigger — see GridCellText's
+                                 own doc comment. -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding Note}" />
                                     <Style.Triggers>
