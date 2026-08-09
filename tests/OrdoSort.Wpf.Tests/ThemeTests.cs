@@ -1,3 +1,4 @@
+using System.Windows.Media;
 using OrdoSort.Wpf.Theme;
 using OrdoSort.Wpf.Views;
 
@@ -135,4 +136,114 @@ public class ThemeTests
         var brush = Assert.IsType<System.Windows.Media.SolidColorBrush>(first);
         Assert.True(brush.IsFrozen);
     }
+}
+
+/// <summary>ThemeManager.SetMode's scheme-key support (2026-08-08): a
+/// registry scheme key (e.g. "graphite") pins that scheme's palette/IsDark,
+/// additive alongside the legacy "auto"/"light"/"dark" trio, which keeps
+/// resolving to the paper/graphite auto pair exactly as before. Needs a real
+/// Application to read back the published "Theme.*" resources, so this joins
+/// <see cref="HighlightContrastFixture"/> the same way
+/// <see cref="AppearancePreviewTests"/> does (see that class's doc) rather
+/// than declaring its own.</summary>
+[Collection(HighlightContrastTests.Name)]
+public class ThemeManagerSetModeTests
+{
+    private readonly HighlightContrastFixture _fx;
+    public ThemeManagerSetModeTests(HighlightContrastFixture fx) => _fx = fx;
+
+    private Color Brush(string key) =>
+        ((SolidColorBrush)_fx.App.Resources[key]).Color;
+
+    private static Color Expect(Rgb c) => Color.FromRgb(c.R, c.G, c.B);
+
+    /// <summary>Puts ThemeManager back to "auto" after each test so a pinned
+    /// scheme/mode never leaks into another test class sharing this fixture
+    /// — same reasoning as ThemeHighContrastTests.ResetSeam.</summary>
+    private void Reset() => _fx.Invoke(() => ThemeManager.SetMode(_fx.App, "auto"));
+
+    [Fact]
+    public void SetModeGraphitePublishesDarkPaletteBrushesAndIsDark() => _fx.Invoke(() =>
+    {
+        try
+        {
+            ThemeManager.SetMode(_fx.App, "graphite");
+
+            Assert.True(ThemeManager.IsDark);
+            Assert.Same(ThemePalette.Dark, ThemeManager.Current);
+            Assert.Equal("graphite", ThemeManager.Mode);
+            // Spot-check: Theme.WindowBg resolves to Dark.WindowBg.
+            Assert.Equal(Expect(ThemePalette.Dark.WindowBg), Brush("Theme.WindowBg"));
+        }
+        finally { Reset(); }
+    });
+
+    [Fact]
+    public void SetModePaperPublishesLightPaletteBrushesAndIsNotDark() => _fx.Invoke(() =>
+    {
+        try
+        {
+            ThemeManager.SetMode(_fx.App, "paper");
+
+            Assert.False(ThemeManager.IsDark);
+            Assert.Same(ThemePalette.Light, ThemeManager.Current);
+            Assert.Equal("paper", ThemeManager.Mode);
+            Assert.Equal(Expect(ThemePalette.Light.WindowBg), Brush("Theme.WindowBg"));
+        }
+        finally { Reset(); }
+    });
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("nope")]
+    [InlineData("not-a-registry-scheme")]
+    public void SetModeUnknownOrBlankKeyBehavesAsAutoAndDoesNotThrow(string mode) => _fx.Invoke(() =>
+    {
+        try
+        {
+            // No throw is the primary assertion: an exception here would
+            // propagate out of Invoke and fail the test on its own, but
+            // making the "never throws" contract explicit documents intent.
+            ThemeManager.SetMode(_fx.App, mode);
+
+            Assert.Equal("auto", ThemeManager.Mode);
+            var expected = ThemeManager.IsDark ? ThemePalette.Dark : ThemePalette.Light;
+            Assert.Equal(Expect(expected.WindowBg), Brush("Theme.WindowBg"));
+        }
+        finally { Reset(); }
+    });
+
+    [Theory]
+    [InlineData("light", false)]
+    [InlineData("dark", true)]
+    public void SetModeLegacyLightAndDarkAreUnchanged(string mode, bool expectDark) => _fx.Invoke(() =>
+    {
+        try
+        {
+            ThemeManager.SetMode(_fx.App, mode);
+
+            Assert.Equal(expectDark, ThemeManager.IsDark);
+            Assert.Equal(mode, ThemeManager.Mode);
+            var expected = expectDark ? ThemePalette.Dark : ThemePalette.Light;
+            Assert.Equal(Expect(expected.WindowBg), Brush("Theme.WindowBg"));
+        }
+        finally { Reset(); }
+    });
+
+    [Fact]
+    public void SetModeAutoIsUnchanged() => _fx.Invoke(() =>
+    {
+        try
+        {
+            ThemeManager.SetMode(_fx.App, "auto");
+
+            Assert.Equal("auto", ThemeManager.Mode);
+            // Whichever the OS preference resolves to, Current/IsDark and the
+            // published brush must agree with each other.
+            var expected = ThemeManager.IsDark ? ThemePalette.Dark : ThemePalette.Light;
+            Assert.Same(expected, ThemeManager.Current);
+            Assert.Equal(Expect(expected.WindowBg), Brush("Theme.WindowBg"));
+        }
+        finally { Reset(); }
+    });
 }
