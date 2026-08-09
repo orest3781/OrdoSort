@@ -1427,6 +1427,105 @@ public class HighlightContrastTests
             $"ReadyView BigCount alert ({schemeKey}): {fg} on {p.WindowBg} = {ratio:F2}");
     });
 
+    /// <summary>Phase 3, Task 3.4 (approved mockup): pins
+    /// WidthToColumnsConverter's breakpoint against a REAL ShellViewModel
+    /// with four tiles in one group — the bare <see cref="ReadyViewStub"/>
+    /// above (no Tiles at all) can't exercise the UniformGrid this test
+    /// needs. Built the same way DashboardTests' WithWatchFolder helper
+    /// builds a fixture (real temp folders/files, no config.json write
+    /// needed), four watch folders sharing the default (blank) Section so
+    /// they land in a SINGLE TileGroupViewModel.Tiles collection — the
+    /// thing the UniformGrid below actually wraps.
+    ///
+    /// Measured/Arranged at two explicit ReadyView widths rather than via a
+    /// real MainWindow: the compact/normal window geometry itself is pinned
+    /// separately by reasoning, and confirmed empirically (pixel-measured
+    /// off a real MainWindow-ready-graphite.png smoke screenshot at the
+    /// compact 470-wide window — see WidthToColumnsConverter.cs's own doc
+    /// comment for the exact pixel math, 422px), by the OrdoSort.Smoke
+    /// screenshot this task's own verification step already requires; this
+    /// test only needs to prove the CONVERTER'S breakpoint actually reaches
+    /// the UniformGrid it's bound to, at widths straddling it (422 is the
+    /// measured real compact panel width, 620 stands in for the mockup's
+    /// "user widens" case).</summary>
+    [Fact]
+    public void ReadyViewTileGridIsTwoColumnsCompactThreeColumnsWide() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, ThemePalette.FindScheme("paper")!);
+
+        using var fx = new ShellFixture(cfg =>
+        {
+            for (var i = 0; i < 4; i++)
+            {
+                var path = Path.Combine(cfg.Inbox, "..", $"watch{i}");
+                Directory.CreateDirectory(path);
+                cfg.WatchFolders.Add(new WatchFolder { Label = $"Folder {i}", Path = path, Filetypes = "pdf" });
+                File.WriteAllText(Path.Combine(path, "a.pdf"), "x");
+            }
+        });
+        fx.Shell.Initialize();
+        var group = Assert.Single(fx.Shell.TileGroups);
+        Assert.Equal(4, group.Tiles.Count);
+
+        var view = new ReadyView { DataContext = fx.Shell };
+
+        // narrower than WidthToColumnsConverter.Breakpoint (560) — 422 is
+        // the real compact-parked ActualWidth, pixel-measured off a real
+        // MainWindow-ready-graphite.png smoke screenshot (see
+        // WidthToColumnsConverter.cs's own doc comment)
+        view.Measure(new Size(422, 2000));
+        view.Arrange(new Rect(0, 0, 422, 2000));
+        view.UpdateLayout();
+        var grid = FindDescendant<UniformGrid>(view)
+            ?? throw new InvalidOperationException("no UniformGrid under ReadyView's tile group");
+        Assert.Equal(2, grid.Columns);
+
+        // wider than the breakpoint — the "user widens" case
+        view.Measure(new Size(620, 2000));
+        view.Arrange(new Rect(0, 0, 620, 2000));
+        view.UpdateLayout();
+        Assert.Equal(3, grid.Columns);
+    });
+
+    /// <summary>Phase 3, Task 3.4: the skeleton restructure (StackPanel-of-
+    /// StackPanel -> a single Grid with one row per section) moved
+    /// DashboardVisible/AllQuiet's Visibility bindings off two WRAPPING
+    /// StackPanels onto each of their two children individually (tiles +
+    /// divider; quiet-line + divider) — the exact seam a reparent like that
+    /// could silently break. The tile-grid test above only ever exercises
+    /// the DashboardVisible=true branch; this covers the other one:
+    /// AllQuiet=true (watch folders configured, all empty — WithWatchFolder-
+    /// style, no files ever written) must show the "quiet" line and hide
+    /// the tiles ItemsControl, proving each row still collapses
+    /// independently now that nothing wraps them.</summary>
+    [Fact]
+    public void ReadyViewShowsTheQuietLineAndHidesTilesWhenAllQuiet() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, ThemePalette.FindScheme("paper")!);
+
+        using var fx = new ShellFixture(cfg =>
+        {
+            var path = Path.Combine(cfg.Inbox, "..", "watched");
+            Directory.CreateDirectory(path);
+            cfg.WatchFolders.Add(new WatchFolder { Label = "Failed faxes", Path = path, Filetypes = "pdf" });
+        });
+        fx.Shell.Initialize();
+        Assert.True(fx.Shell.AllQuiet);
+        Assert.False(fx.Shell.DashboardVisible);
+
+        var view = new ReadyView { DataContext = fx.Shell };
+        Realize(view);
+
+        var quietLine = FindAllDescendants<TextBlock>(view)
+            .FirstOrDefault(t => t.Text == "All monitored folders are quiet");
+        Assert.NotNull(quietLine);
+        Assert.Equal(Visibility.Visible, ((FrameworkElement)quietLine!.Parent).Visibility);
+
+        var tilesItemsControl = FindDescendant<ItemsControl>(view)
+            ?? throw new InvalidOperationException("no ItemsControl under ReadyView");
+        Assert.Equal(Visibility.Collapsed, tilesItemsControl.Visibility);
+    });
+
     /// <summary>Same purpose as <see cref="ReadyViewStub"/> above, for
     /// ProcessingView's illegal-name Preview warning.</summary>
     private sealed class ProcessingViewStub

@@ -1,7 +1,13 @@
 <UserControl x:Class="OrdoSort.Wpf.Views.ReadyView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:OrdoSort.Wpf.Views">
     <UserControl.Resources>
+        <!-- Width-adaptive tile grid (Phase 3, Task 3.4, approved mockup):
+             see WidthToColumnsConverter.cs for the full breakpoint math and
+             why UniformGrid (not a plain WrapPanel) stays the panel. -->
+        <local:WidthToColumnsConverter x:Key="WidthToColumns" />
+
         <!-- Tile entrance cascade (Phase-2 restyle, D3): a one-time,
              ~30ms-per-tile stagger on the Ready dashboard's folder tiles,
              replacing the single simultaneous 150ms fade every tile used to
@@ -157,93 +163,123 @@
             </Style.Triggers>
         </Style>
     </UserControl.Resources>
-    <StackPanel>
+    <!-- Skeleton (Phase 3, Task 3.4): eight stacked rows — dashboard groups /
+         divider / quiet line / divider / big count block / detail /
+         illustration / Start button — replacing what used to be two
+         StackPanels wrapping the first two conditionally-visible sections.
+         Grid.RowDefinitions carry no spacing of their own (same as
+         StackPanel's implicit zero gap), so every Margin below is unchanged
+         from what each element already carried as a StackPanel child — this
+         is a reparent, not a re-tune. A collapsed row's sole child measures
+         (0,0), so an Auto row holding it collapses to zero height on its
+         own; DashboardVisible/AllQuiet no longer need a wrapping panel to
+         hide their two elements (tiles+divider, quiet-line+divider) together. -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />   <!-- 0: dashboard groups -->
+            <RowDefinition Height="Auto" />   <!-- 1: divider -->
+            <RowDefinition Height="Auto" />   <!-- 2: quiet line -->
+            <RowDefinition Height="Auto" />   <!-- 3: divider -->
+            <RowDefinition Height="Auto" />   <!-- 4: big count block -->
+            <RowDefinition Height="Auto" />   <!-- 5: detail -->
+            <RowDefinition Height="Auto" />   <!-- 6: illustration -->
+            <RowDefinition Height="Auto" />   <!-- 7: Start button -->
+        </Grid.RowDefinitions>
+
         <!-- monitored folders: grid of cards at the top -->
-        <StackPanel Visibility="{Binding DashboardVisible, Converter={StaticResource BoolToVis}}">
-            <ItemsControl ItemsSource="{Binding TileGroups}" Focusable="False">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel>
-                            <TextBlock Text="{Binding Title}" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
-                            <ItemsControl ItemsSource="{Binding Tiles}" Focusable="False"
-                                          AlternationCount="8">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <UniformGrid Columns="2" />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <!-- a grid card per folder; a real Button, so it's
-                                             keyboard-focusable and screen-reader-named -->
-                                        <!-- Style="{StaticResource TileCascade}": tiles fade in as
-                                             folders light up, staggered ~30ms/tile — see
-                                             TileCascade's own doc comment (UserControl.Resources
-                                             above) for the mechanism and why the plain Loaded
-                                             EventTrigger this used to carry couldn't stagger. -->
-                                        <Button Command="{Binding OpenCommand}"
-                                                Style="{StaticResource TileCascade}"
-                                                Background="{Binding Back, Converter={StaticResource RgbToBrush}}"
-                                                Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}"
-                                                AutomationProperties.Name="{Binding Display}"
-                                                ToolTip="{Binding Tooltip}"
-                                                MinHeight="78" Margin="0,0,6,6" Padding="12,8"
-                                                HorizontalContentAlignment="Left"
-                                                VerticalContentAlignment="Top"
-                                                BorderThickness="0" Cursor="Hand">
-                                            <StackPanel>
-                                                <StackPanel Orientation="Horizontal">
-                                                    <!-- EmphasisText/BodySmallText size — Icon style already sets
-                                                         FontFamily+VerticalAlignment; converting to a size-only
-                                                         style would drop the glyph font. -->
-                                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;"
-                                                               FontSize="12" Margin="0,0,6,0"
-                                                               Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}" />
-                                                    <TextBlock Text="{Binding Label}" Style="{StaticResource BodySmallText}"
-                                                               FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
-                                                               Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}" />
-                                                </StackPanel>
-                                                <TextBlock Text="{Binding CountText}" Style="{StaticResource TileCountText}"
-                                                           Margin="0,2,0,0" Typography.NumeralAlignment="Tabular"
+        <ItemsControl Grid.Row="0" ItemsSource="{Binding TileGroups}" Focusable="False"
+                      Visibility="{Binding DashboardVisible, Converter={StaticResource BoolToVis}}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Title}" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
+                        <ItemsControl ItemsSource="{Binding Tiles}" Focusable="False"
+                                      AlternationCount="8">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <!-- Columns bound off the ANCESTOR ItemsControl's own
+                                         ActualWidth (not this UniformGrid's own — the two
+                                         report the same number since both default to
+                                         HorizontalAlignment="Stretch", but going through the
+                                         ancestor avoids a same-element self-reference read).
+                                         See WidthToColumnsConverter.cs for the breakpoint math. -->
+                                    <UniformGrid Columns="{Binding ActualWidth,
+                                                 RelativeSource={RelativeSource AncestorType=ItemsControl},
+                                                 Converter={StaticResource WidthToColumns}}" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <!-- a grid card per folder; a real Button, so it's
+                                         keyboard-focusable and screen-reader-named -->
+                                    <!-- Style="{StaticResource TileCascade}": tiles fade in as
+                                         folders light up, staggered ~30ms/tile — see
+                                         TileCascade's own doc comment (UserControl.Resources
+                                         above) for the mechanism and why the plain Loaded
+                                         EventTrigger this used to carry couldn't stagger. -->
+                                    <Button Command="{Binding OpenCommand}"
+                                            Style="{StaticResource TileCascade}"
+                                            Background="{Binding Back, Converter={StaticResource RgbToBrush}}"
+                                            Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}"
+                                            AutomationProperties.Name="{Binding Display}"
+                                            ToolTip="{Binding Tooltip}"
+                                            MinHeight="78" Margin="0,0,6,6" Padding="12,8"
+                                            HorizontalContentAlignment="Left"
+                                            VerticalContentAlignment="Top"
+                                            BorderThickness="0" Cursor="Hand">
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal">
+                                                <!-- EmphasisText/BodySmallText size — Icon style already sets
+                                                     FontFamily+VerticalAlignment; converting to a size-only
+                                                     style would drop the glyph font. -->
+                                                <TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;"
+                                                           FontSize="12" Margin="0,0,6,0"
                                                            Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}" />
-                                                <!-- where the alerting file sits, when it's in
-                                                     a subfolder of the watched folder -->
-                                                <TextBlock Text="{Binding SubfolderNote}" Style="{StaticResource CaptionTextOnSurface}"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Visibility="{Binding HasSubfolderNote,
-                                                                        Converter={StaticResource BoolToVis}}"
+                                                <TextBlock Text="{Binding Label}" Style="{StaticResource BodySmallText}"
+                                                           FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                                                            Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}" />
                                             </StackPanel>
-                                        </Button>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                                            <TextBlock Text="{Binding CountText}" Style="{StaticResource TileCountText}"
+                                                       Margin="0,2,0,0" Typography.NumeralAlignment="Tabular"
+                                                       Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}" />
+                                            <!-- where the alerting file sits, when it's in
+                                                 a subfolder of the watched folder -->
+                                            <TextBlock Text="{Binding SubfolderNote}" Style="{StaticResource CaptionTextOnSurface}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Visibility="{Binding HasSubfolderNote,
+                                                                    Converter={StaticResource BoolToVis}}"
+                                                       Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
 
-            <!-- separation between the monitored folders and the inbox block -->
-            <Rectangle Height="1" Fill="{DynamicResource Theme.Border}" Margin="0,14,0,0" />
-        </StackPanel>
+        <!-- separation between the monitored folders and the inbox block -->
+        <Rectangle Grid.Row="1" Height="1" Fill="{DynamicResource Theme.Border}" Margin="0,14,0,0"
+                   Visibility="{Binding DashboardVisible, Converter={StaticResource BoolToVis}}" />
 
         <!-- monitoring is on and nothing needs attention — say so instead of
              silently vanishing the section -->
-        <StackPanel Visibility="{Binding AllQuiet, Converter={StaticResource BoolToVis}}">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
-                <!-- BodySmallText size — Icon style already sets FontFamily;
-                     converting would drop it. -->
-                <TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" FontSize="12"
-                           Foreground="{DynamicResource Theme.Success}" Margin="0,0,6,0" />
-                <TextBlock Text="All monitored folders are quiet"
-                           Style="{StaticResource SubtleText}" />
-            </StackPanel>
-            <Rectangle Height="1" Fill="{DynamicResource Theme.Border}" Margin="0,12,0,0" />
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0"
+                    Visibility="{Binding AllQuiet, Converter={StaticResource BoolToVis}}">
+            <!-- BodySmallText size — Icon style already sets FontFamily;
+                 converting would drop it. -->
+            <TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" FontSize="12"
+                       Foreground="{DynamicResource Theme.Success}" Margin="0,0,6,0" />
+            <TextBlock Text="All monitored folders are quiet"
+                       Style="{StaticResource SubtleText}" />
         </StackPanel>
+        <Rectangle Grid.Row="3" Height="1" Fill="{DynamicResource Theme.Border}" Margin="0,12,0,0"
+                   Visibility="{Binding AllQuiet, Converter={StaticResource BoolToVis}}" />
 
         <!-- the inbox: one big number over the Start button. A real button —
              clicking it opens the inbox folder (keyboard/screen-reader too) -->
-        <Button Command="{Binding OpenInboxCommand}"
+        <Button Grid.Row="4" Command="{Binding OpenInboxCommand}"
                 HorizontalAlignment="Center" Margin="0,14,0,0"
                 Cursor="Hand" ToolTip="Open the inbox folder"
                 AutomationProperties.Name="{Binding CountLine}">
@@ -290,20 +326,31 @@
                         </Style>
                     </TextBlock.Style>
                 </TextBlock>
-                <!-- Negative margin, not a spacing-rhythm value — pulls this
-                     caption up under the big count's tight line-height.
-                     Phase-3 layout work owns this; left as-is by the
-                     spacing-rhythm audit (B1). -->
+                <!-- Negative margin, not a spacing-rhythm value, and not
+                     debt (Phase 3, Task 3.4 — the skeleton-restructure pass
+                     that owned resolving this, per the B1 spacing-rhythm
+                     audit that first flagged it): DisplayText (Styles.xaml)
+                     is FontSize=76, and WPF reserves a line box for that
+                     size from the font's own ascent+descent+internal-
+                     leading metrics — there is no non-negative TextBlock/
+                     row-layout property (Padding, a Grid row's Height, …)
+                     that trims JUST that reserved leading out from under a
+                     single line of text without also risking clipping or
+                     shifting the glyphs themselves. A negative top margin on
+                     the sibling below is the standard, narrowly-scoped WPF
+                     technique for this exact "the font's own line box is
+                     taller than its ink" gap — kept deliberately intentional
+                     here, not a leftover to revisit. -->
                 <TextBlock Text="{Binding CountCaption}" Style="{StaticResource SubtleText}"
                            HorizontalAlignment="Center" Margin="0,-6,0,0" />
             </StackPanel>
         </Button>
-        <TextBlock Text="{Binding DetailLine}" Style="{StaticResource SubtleText}"
+        <TextBlock Grid.Row="5" Text="{Binding DetailLine}" Style="{StaticResource SubtleText}"
                    HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
                    Margin="0,4,0,0" />
 
         <!-- a calm moment when the inbox is actually empty -->
-        <ContentControl Template="{StaticResource Illustration.InboxClear}"
+        <ContentControl Grid.Row="6" Template="{StaticResource Illustration.InboxClear}"
                          Height="104" Margin="0,12,0,0">
             <ContentControl.Style>
                 <Style TargetType="ContentControl">
@@ -322,7 +369,7 @@
              into both TextBlocks below; EmphasisText is TextBlock-only, and
              moving the value down into the template would be template
              surgery for a rename-only pass. -->
-        <Button Command="{Binding StartCommand}"
+        <Button Grid.Row="7" Command="{Binding StartCommand}"
                 Style="{StaticResource PrimaryButton}" Height="48" Margin="0,14,0,0"
                 FontSize="15" AutomationProperties.Name="Start processing">
             <StackPanel Orientation="Horizontal">
@@ -339,5 +386,5 @@
                            Foreground="{DynamicResource Theme.AccentText}" />
             </StackPanel>
         </Button>
-    </StackPanel>
+    </Grid>
 </UserControl>
