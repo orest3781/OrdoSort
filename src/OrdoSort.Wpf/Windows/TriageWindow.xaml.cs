@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
+using OrdoSort.Wpf.Views;
 
 namespace OrdoSort.Wpf.Windows;
 
@@ -22,25 +23,39 @@ public partial class TriageWindow : Window
     /// horizontal growth by wrapping its (prose, "a match you can't explain
     /// is one you can't trust") content instead of ellipsizing, since a
     /// truncated reason is far less useful than a taller row — but its own
-    /// fixed 260px FOOTPRINT still has to be budgeted for, which the first
-    /// version of this fix (2026-08-07) missed: it reasoned about Why's
-    /// content, not its column width, and left the roster-column budget
-    /// unaware Why could ever be on screen at the same time.</summary>
-    private const double WhyColumnWidth = 260;
-
-    /// <summary>This window's own DockPanel (TriageWindow.xaml,
-    /// <c>Grid.Column="2" Margin="12"</c>) — 12px on each side of the side
-    /// panel's content area, subtracted from SidePanelColumn's declared
-    /// width below to get genuinely available room rather than the whole
-    /// column.</summary>
-    private const double PanelHorizontalMargins = 24;
+    /// fixed FOOTPRINT still has to be budgeted for, which the first version
+    /// of this fix (2026-08-07) missed: it reasoned about Why's content, not
+    /// its column width, and left the roster-column budget unaware Why could
+    /// ever be on screen at the same time.
+    ///
+    /// FIX ROUND 5 (2026-08-08, "columns can't be moved and are hiding text"
+    /// task): was 260. Measured off-screen at the default 440px panel width
+    /// with the app's default 2-header roster pick ("First name"/"Control
+    /// ID"): 260 left the one capped roster column (Control ID) at a 76px
+    /// cap — roughly 8-9 characters before ellipsizing, the "hidden text"
+    /// the owner reported. Why's own content WRAPS rather than ellipsizing —
+    /// narrowing it costs only row height, never information — while the
+    /// roster columns ellipsize, and the roster is what a person actually
+    /// reads to make the match/merge decision; Why is supporting context,
+    /// not the primary content the window exists to show. Cut to 150: still
+    /// comfortable for the short reason phrases MatchMerge.cs's token pass
+    /// actually generates ("token match on last name" et al. — well under
+    /// two wrapped lines at this width, not a wall of near-vertical text),
+    /// while raising the default 2-header roster cap from 76px to 169px and
+    /// the 3-header cap (AutoFitColumnTests' own worst case) from ~38px to
+    /// 84.5px — both re-measured after this change, see AutoFitColumnTests.</summary>
+    private const double WhyColumnWidth = 150;
 
     /// <summary>Headroom subtracted from the roster-column budget for the
-    /// DataGrid's own border/padding and a possible vertical scrollbar (a
-    /// long candidate list scrolls) eating into the horizontal viewport —
-    /// neither is exactly predictable from XAML-declared widths alone, so
-    /// this stays a deliberate, conservative buffer rather than budgeting to
-    /// the exact pixel and finding out empirically it wasn't quite enough.</summary>
+    /// DataGrid's own border/padding — a possible vertical scrollbar (a long
+    /// candidate list scrolls) is reserved separately, by
+    /// <see cref="DataGridColumnCap.Track(DataGrid, Func{double, double},
+    /// DataGridColumn[])"/> itself, before this budget ever sees its
+    /// viewport width (fix round 5 — see that class's own doc comment).
+    /// Border/padding isn't exactly predictable from XAML-declared widths
+    /// alone, so this stays a deliberate, conservative buffer rather than
+    /// budgeting to the exact pixel and finding out empirically it wasn't
+    /// quite enough.</summary>
     private const double SafetyMargin = 20;
 
     /// <summary>Floor for the filler roster column. Smaller than History/
@@ -147,8 +162,6 @@ public partial class TriageWindow : Window
         // gets the room and later ones are capped.
         //
         // The budget divides whatever's genuinely left of the side panel
-        // (SidePanelColumn's own declared 440px, NOT the whole window —
-        // this grid lives in a fixed side column, not across the window)
         // EVENLY among however many capped columns exist, rather than a flat
         // per-column share: a flat share is exactly what shipped first here
         // (2026-08-07) and fit at the default 2-header case only by
@@ -161,30 +174,48 @@ public partial class TriageWindow : Window
         // first version of this fix could afford to ignore (it didn't
         // account for Why's column footprint at all, only reasoned about its
         // wrapped CONTENT never growing sideways — true, but irrelevant to
-        // the 260px the column itself always occupies once inserted). If
-        // this window's whole batch contains even one suggested item, Why
+        // the fixed width the column itself always occupies once inserted).
+        // If this window's whole batch contains even one suggested item, Why
         // can appear at ANY point during the review pass — reviewing one
         // ambiguous item can be followed by a suggested one — so the budget
         // reserves Why's full width from the START rather than only once
         // it's actually on screen; a layout that fit before Why appeared and
         // started needing a horizontal scrollbar the moment it did would be
         // exactly the bug this task exists to prevent, just deferred to
-        // whenever the batch happens to reach a suggested item.
-        // MARGIN NOTE (fix round 4 gate measurement): the tightest of any
-        // grid in this app. Worst case measured — Why present, default 2
-        // roster columns, both capped columns and Why itself at their
-        // longest, PLUS the vertical scrollbar a long candidate list
-        // forces — totals 397px inside this 416px panel: 19px of margin.
-        // It passes today, but whoever next adds a roster column here (or
-        // widens WhyColumnWidth, or shrinks SidePanelColumn) is spending
-        // out of that same 19px, not a comfortable cushion — re-measure
-        // before assuming it still holds.
+        // whenever the batch happens to reach a suggested item. couldShowWhy
+        // is therefore computed once, from the WHOLE batch, not the current
+        // item — it does not need to be recomputed as the review pass
+        // advances.
+        //
+        // FIX ROUND 5 (2026-08-08, "columns can't be moved and are hiding
+        // text" task): the cap used to be computed ONCE here, from
+        // SidePanelColumn's DECLARED Width (440) — but that column is
+        // actually resizable (TriageWindow.xaml's GridSplitter), so dragging
+        // it never revisited the cap. Measured directly: widening the panel
+        // from 440 to 700px left the roster cap frozen at 76px both before
+        // and after. Now tracked live via DataGridColumnCap.Track (the same
+        // mechanism MatchMerge/BulkRename/History already use for their own
+        // window-resize case), against Candidates' own live ActualWidth —
+        // not SidePanelColumn's, and with no separate margin subtraction:
+        // Candidates is the DockPanel's last, non-Dock'd child
+        // (DockPanel.LastChildFill, TriageWindow.xaml) so it fills the
+        // panel's already-margin-reduced content area on its own; its
+        // ActualWidth is already net of the DockPanel's own Margin="12" on
+        // each side. DataGridColumnCap.Track further reserves
+        // SystemParameters.VerticalScrollBarWidth from that before this
+        // formula ever sees it (a long candidate list scrolls), so
+        // SafetyMargin below only has to cover the grid's own border/padding.
         var couldShowWhy = items.Any(i => i.Status == "suggested");
-        var sidePanelWidth = SidePanelColumn.Width.Value;
-        var rosterBudget = Math.Max(FillerMinWidth, sidePanelWidth - PanelHorizontalMargins
-            - SafetyMargin - (couldShowWhy ? WhyColumnWidth : 0));
         var cappedColumnCount = Math.Max(1, _headers.Count - 1);
-        var columnCap = Math.Max(20, (rosterBudget - FillerMinWidth) / cappedColumnCount);
+
+        double ComputeRosterColumnCap(double viewportWidth)
+        {
+            var rosterBudget = Math.Max(FillerMinWidth,
+                viewportWidth - SafetyMargin - (couldShowWhy ? WhyColumnWidth : 0));
+            return Math.Max(20, (rosterBudget - FillerMinWidth) / cappedColumnCount);
+        }
+
+        var cappedRosterColumns = new List<DataGridColumn>();
         for (var i = 0; i < _headers.Count; i++)
         {
             var h = _headers[i];
@@ -220,9 +251,14 @@ public partial class TriageWindow : Window
                 },
             };
             if (isFiller) column.MinWidth = FillerMinWidth;
-            else column.MaxWidth = columnCap;
+            else cappedRosterColumns.Add(column);
             Candidates.Columns.Add(column);
         }
+        // Track live (see FIX ROUND 5 note above) rather than setting a
+        // one-shot MaxWidth on each capped column here — this is also where
+        // a user's own manual column resize starts winning over the cap
+        // (DataGridColumnCap's own doc comment).
+        DataGridColumnCap.Track(Candidates, ComputeRosterColumnCap, cappedRosterColumns.ToArray());
         Loaded += async (_, _) => await InitAndShowAsync(_pdf.InitAsync);
     }
 

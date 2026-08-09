@@ -10,11 +10,17 @@
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" MinWidth="320" />
             <ColumnDefinition Width="5" />
-            <!-- x:Name: TriageWindow.xaml.cs reads this column's own declared
-                 Width to cap the Candidates grid's content columns as a share
-                 of the side panel it actually lives in (440px) — NOT the
-                 whole 1150px window, which is what capping against Width
-                 would otherwise measure. -->
+            <!-- x:Name: kept for the GridSplitter above (ResizeBehavior=
+                 PreviousAndNext) and for tests that simulate a splitter drag
+                 by setting this column's Width directly. TriageWindow.xaml.cs
+                 no longer reads this column's Width itself — the Candidates
+                 grid's roster-column cap is tracked against Candidates' own
+                 live ActualWidth (DataGridColumnCap.Track), the same
+                 mechanism MatchMergeWindow/BulkRenameWindow/HistoryWindow use
+                 for their own live window-resize case. That fixes a real bug
+                 (2026-08-08): this column IS resizable (drag the
+                 GridSplitter), but a cap computed once from its declared
+                 440px never revisited a wider or narrower live width. -->
             <ColumnDefinition x:Name="SidePanelColumn" Width="440" MinWidth="380" />
         </Grid.ColumnDefinitions>
         <!-- same tab hygiene as the main window: Tab goes straight to the

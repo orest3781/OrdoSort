@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Theme;
@@ -111,7 +112,32 @@ namespace OrdoSort.Wpf.Tests;
 /// (ShowOffscreenThenResizeTo) clears it. What that does and doesn't prove
 /// about a real user's mouse-driven drag is spelled out on the restored
 /// fact's own doc comment — this session still can't drive a real mouse to
-/// confirm it directly.</summary>
+/// confirm it directly.
+///
+/// FIX ROUND 5 (2026-08-08, "the columns are not able to be moved and are
+/// hiding text" — the owner's own report on TriageWindow, "Review matches").
+/// Two independent defects, measured off-screen before either was touched:
+///
+/// (1) Every capped column in all FOUR grid windows was unable to be widened
+/// by a user at all — WPF's own interactive column-resize is live-clamped to
+/// MaxWidth in real time, and every one of these columns had a MaxWidth. The
+/// *_UserDraggedXSurvivesBeyondTheCapAndStaysPinnedAfterResize facts below
+/// simulate the real drag gesture via the column header's actual resize
+/// Thumb (SimulateColumnHeaderDragResize) — not just setting Width, which
+/// wouldn't exercise DataGridColumnCap's fix at all — and prove both that
+/// the drag survives AND that a later automatic recompute doesn't reclamp
+/// it. See DataGridColumnCap.cs's own doc comment for the fix.
+///
+/// (2) TriageWindow specifically computed its roster-column cap ONCE, from
+/// its side panel's DECLARED Width — but that panel is resizable (a
+/// GridSplitter) and the cap never revisited a live resize.
+/// Triage_RosterColumnCapTracksLivePanelWidthNotDeclared proves the fix;
+/// Triage_DefaultRosterColumnCapIsWideEnoughToBeReadable is the assertion
+/// whose ABSENCE let the underlying starvation ship in the first place (this
+/// suite had scrollbar-avoidance coverage for Triage but nothing that
+/// checked the resulting cap was actually usable) — WhyColumnWidth also
+/// dropped from 260 to 150 in this round; see TriageWindow.xaml.cs's own
+/// doc comment on that constant.</summary>
 [Collection(HighlightContrastTests.Name)]
 public class AutoFitColumnTests
 {
@@ -274,6 +300,68 @@ public class AutoFitColumnTests
         finally { win.Close(); }
     });
 
+    /// <summary>FIX ROUND 5 (2026-08-08, "columns can't be moved" task): before
+    /// this round, EVERY capped column in every one of the four grid windows
+    /// was measured unable to be widened past its cap even by setting Width
+    /// directly — WPF's own live column-resize drag is clamped to MaxWidth in
+    /// real time, so a real mouse drag could never even produce a wider Width
+    /// value. Simulates the actual drag gesture (DragStarted/DragCompleted on
+    /// the column header's real resize Thumb, via SimulateColumnHeaderDragResize)
+    /// rather than just setting Width, since DataGridColumnCap's fix
+    /// specifically listens for those events, not for Width changing in
+    /// isolation — a test that skipped the Thumb events would prove nothing
+    /// about the real fix. Asserts the survived width, THEN forces an ordinary
+    /// automatic recompute (a further window resize) and asserts it's STILL not
+    /// reclamped — that second assertion is what actually proves "the cap
+    /// governs automatic sizing only, and stops once the user has resized,"
+    /// not just that one drag briefly succeeded.
+    ///
+    /// The requested growth (+50px over the old cap) is deliberately modest,
+    /// not an arbitrarily huge target: diagnosed directly (temporary probe,
+    /// deleted after use) that WPF's own interactive column resize — separate
+    /// from and in addition to MaxWidth — also declines to shrink OTHER
+    /// columns below their own MinWidth, so an oversized request (+200px, on
+    /// Triage's tight side panel) landed short of the literal target (334px of
+    /// 369px requested) even with this fix's MaxWidth relaxed to infinity.
+    /// That's a separate, legitimate WPF behavior this fix neither causes nor
+    /// needs to override — a real user's mouse-driven drag would hit the exact
+    /// same floor. +50px stays comfortably inside every one of the four
+    /// grids' headroom while still being unreachable pre-fix.</summary>
+    [Fact]
+    public void MatchMerge_UserDraggedFileColumnSurvivesBeyondTheCapAndStaysPinnedAfterResize() => _fx.Invoke(() =>
+    {
+        var win = BuildMatchMergeWindow(fileValue: VeryLongValue, noteValue: "");
+        try
+        {
+            ShowOffscreen(win);
+            var grid = FindDescendant<DataGrid>(win)!;
+            var column = FindColumnByHeader(win, "File");
+            var capBefore = column.MaxWidth;
+            var draggedWidth = capBefore + 50;
+
+            SimulateColumnHeaderDragResize(grid, column, draggedWidth);
+            win.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                () => { }, System.Windows.Threading.DispatcherPriority.Background);
+            win.UpdateLayout();
+
+            Assert.True(column.ActualWidth >= draggedWidth - 1,
+                $"MatchMerge File column after a simulated drag to {draggedWidth}px is " +
+                $"{column.ActualWidth}px — expected it to survive beyond the old cap {capBefore}px");
+
+            win.Width -= 10;
+            win.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                () => { }, System.Windows.Threading.DispatcherPriority.Background);
+            win.UpdateLayout();
+
+            Assert.True(column.ActualWidth >= draggedWidth - 1,
+                $"MatchMerge File column after a SUBSEQUENT window resize is {column.ActualWidth}px — " +
+                $"expected the user's {draggedWidth}px drag to still win, not be reclamped");
+        }
+        finally { win.Close(); }
+    });
+
     private static MatchMergeWindow BuildMatchMergeWindow(string fileValue, string noteValue, int rowCount = 1)
     {
         var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
@@ -380,6 +468,44 @@ public class AutoFitColumnTests
         finally { win.Close(); }
     });
 
+    /// <summary>Same proof as MatchMerge's identical fact above, for this
+    /// window's own capped Current name column — see its doc comment for the
+    /// full reasoning.</summary>
+    [Fact]
+    public void BulkRename_UserDraggedCurrentNameColumnSurvivesBeyondTheCapAndStaysPinnedAfterResize() => _fx.Invoke(() =>
+    {
+        var win = BuildBulkRenameWindow(currentValue: VeryLongValue, noteValue: "");
+        try
+        {
+            ShowOffscreen(win);
+            var grid = FindDescendant<DataGrid>(win)!;
+            var column = FindColumnByHeader(win, "Current name");
+            var capBefore = column.MaxWidth;
+            var draggedWidth = capBefore + 50;
+
+            SimulateColumnHeaderDragResize(grid, column, draggedWidth);
+            win.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                () => { }, System.Windows.Threading.DispatcherPriority.Background);
+            win.UpdateLayout();
+
+            Assert.True(column.ActualWidth >= draggedWidth - 1,
+                $"BulkRename Current name column after a simulated drag to {draggedWidth}px is " +
+                $"{column.ActualWidth}px — expected it to survive beyond the old cap {capBefore}px");
+
+            win.Width -= 10;
+            win.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                () => { }, System.Windows.Threading.DispatcherPriority.Background);
+            win.UpdateLayout();
+
+            Assert.True(column.ActualWidth >= draggedWidth - 1,
+                $"BulkRename Current name column after a SUBSEQUENT window resize is {column.ActualWidth}px — " +
+                $"expected the user's {draggedWidth}px drag to still win, not be reclamped");
+        }
+        finally { win.Close(); }
+    });
+
     private static BulkRenameWindow BuildBulkRenameWindow(string currentValue, string noteValue, int rowCount = 1)
     {
         var vm = new BulkRenameViewModel();
@@ -478,6 +604,44 @@ public class AutoFitColumnTests
         try { File.Delete(dbPath); } catch { /* best effort */ }
     }
 
+    /// <summary>Same proof as MatchMerge's identical fact above, for this
+    /// window's own capped Name column — see its doc comment for the full
+    /// reasoning.</summary>
+    [Fact]
+    public void History_UserDraggedNameColumnSurvivesBeyondTheCapAndStaysPinnedAfterResize() => _fx.Invoke(() =>
+    {
+        var (win, history, dbPath) = BuildHistoryWindow(nameValue: VeryLongValue, routeLabelValue: "");
+        try
+        {
+            ShowOffscreen(win);
+            var grid = FindDescendant<DataGrid>(win)!;
+            var column = FindColumnByHeader(win, "Name");
+            var capBefore = column.MaxWidth;
+            var draggedWidth = capBefore + 50;
+
+            SimulateColumnHeaderDragResize(grid, column, draggedWidth);
+            win.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                () => { }, System.Windows.Threading.DispatcherPriority.Background);
+            win.UpdateLayout();
+
+            Assert.True(column.ActualWidth >= draggedWidth - 1,
+                $"History Name column after a simulated drag to {draggedWidth}px is " +
+                $"{column.ActualWidth}px — expected it to survive beyond the old cap {capBefore}px");
+
+            win.Width -= 10;
+            win.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                () => { }, System.Windows.Threading.DispatcherPriority.Background);
+            win.UpdateLayout();
+
+            Assert.True(column.ActualWidth >= draggedWidth - 1,
+                $"History Name column after a SUBSEQUENT window resize is {column.ActualWidth}px — " +
+                $"expected the user's {draggedWidth}px drag to still win, not be reclamped");
+        }
+        finally { CleanupHistory(win, history, dbPath); }
+    });
+
     // ------------------------------------------------------------ Triage
     //
     // Fix round 1 finding: the first version of these tests set
@@ -494,18 +658,30 @@ public class AutoFitColumnTests
 
     /// <summary>Reproduces TriageWindow's own internal budget formula (see
     /// its constructor) so these tests double as a live check that the
-    /// production constants (WhyColumnWidth/PanelHorizontalMargins/
-    /// SafetyMargin/FillerMinWidth, duplicated here — same pattern as
-    /// MatchMerge/BulkRename's tests inlining their 0.35 share) and this
-    /// test's own expectation can't silently drift apart.</summary>
-    private static double ExpectedTriageColumnCap(int headerCount, bool couldShowWhy)
+    /// production constants (WhyColumnWidth/SafetyMargin/FillerMinWidth,
+    /// duplicated here — same pattern as MatchMerge/BulkRename's tests
+    /// inlining their 0.35 share) and this test's own expectation can't
+    /// silently drift apart.
+    ///
+    /// FIX ROUND 5 (2026-08-08): was hardcoded against the panel's DECLARED
+    /// 440px width minus a separate 24px margin constant — matching what
+    /// TriageWindow.xaml.cs used to compute once, itself. Now that the
+    /// production cap is tracked live off Candidates' own ActualWidth via
+    /// DataGridColumnCap.Track (which reserves
+    /// SystemParameters.VerticalScrollBarWidth unconditionally, same as the
+    /// other three windows' own ExpectedColumnCap below), this helper takes
+    /// the window and reproduces that same viewport math instead of a
+    /// hardcoded 440. WhyColumnWidth dropped from 260 to 150 in this same
+    /// round — see TriageWindow.xaml.cs's own doc comment on that
+    /// constant for why.</summary>
+    private static double ExpectedTriageColumnCap(TriageWindow win, int headerCount, bool couldShowWhy)
     {
-        const double whyColumnWidth = 260;
-        const double panelHorizontalMargins = 24;
+        const double whyColumnWidth = 150;
         const double safetyMargin = 20;
         const double fillerMinWidth = 60;
-        var rosterBudget = Math.Max(fillerMinWidth, 440 - panelHorizontalMargins
-            - safetyMargin - (couldShowWhy ? whyColumnWidth : 0));
+        var viewportWidth = Math.Max(0, win.Candidates.ActualWidth - SystemParameters.VerticalScrollBarWidth);
+        var rosterBudget = Math.Max(fillerMinWidth, viewportWidth - safetyMargin
+            - (couldShowWhy ? whyColumnWidth : 0));
         var cappedColumnCount = Math.Max(1, headerCount - 1);
         return Math.Max(20, (rosterBudget - fillerMinWidth) / cappedColumnCount);
     }
@@ -519,7 +695,7 @@ public class AutoFitColumnTests
             ShowOffscreenAndDriveCurrent(win);
             var column = win.Candidates.Columns.First(c => (string)c.Header == "Control ID");
             // No "Why" in this batch (ambiguous only) — the wide, no-Why cap
-            // (336px, see ExpectedTriageColumnCap) applies; "a.pdf" needs a
+            // (see ExpectedTriageColumnCap) applies; "a.pdf" needs a
             // small fraction of it regardless.
             Assert.True(column.ActualWidth < 110,
                 $"Triage Control ID column with short content is {column.ActualWidth}px, expected < 110px");
@@ -535,7 +711,7 @@ public class AutoFitColumnTests
         {
             ShowOffscreenAndDriveCurrent(win);
             var column = win.Candidates.Columns.First(c => (string)c.Header == "Control ID");
-            var expectedCap = ExpectedTriageColumnCap(headerCount: 2, couldShowWhy: false);
+            var expectedCap = ExpectedTriageColumnCap(win, headerCount: 2, couldShowWhy: false);
             Assert.True(column.ActualWidth == expectedCap,
                 $"Triage Control ID column with long content is {column.ActualWidth}px, " +
                 $"expected exactly its cap {expectedCap}px");
@@ -597,6 +773,164 @@ public class AutoFitColumnTests
         finally { win.Close(); }
     });
 
+    /// <summary>FIX ROUND 5 (2026-08-08, "columns can't be moved and are
+    /// hiding text" task) — bug 1's proof. Before this round, Triage computed
+    /// its roster-column cap ONCE, from SidePanelColumn's DECLARED Width
+    /// (440) — but that column IS resizable (TriageWindow.xaml's
+    /// GridSplitter, ResizeBehavior="PreviousAndNext"), and dragging it never
+    /// revisited the cap. Measured directly, off-screen, pre-fix: widening
+    /// the panel from 440 to 700px left the cap frozen at 76px both before
+    /// and after. Sets SidePanelColumn's own Width directly — exactly what
+    /// dragging the GridSplitter does (it changes the ColumnDefinition's
+    /// Width, same mechanism this file's ShowOffscreenAtWidth/
+    /// ShowOffscreenThenResizeTo use to simulate a WINDOW resize elsewhere)
+    /// — then asserts the cap grew.</summary>
+    [Fact]
+    public void Triage_RosterColumnCapTracksLivePanelWidthNotDeclared() => _fx.Invoke(() =>
+    {
+        var win = BuildTriageWindow(new[] { "First name", "Control ID" }, suggested: true, VeryLongValue);
+        try
+        {
+            ShowOffscreenAndDriveCurrent(win);
+            var column = win.Candidates.Columns.First(c => (string)c.Header == "Control ID");
+            var capAtDefault = column.MaxWidth;
+
+            win.SidePanelColumn.Width = new GridLength(700);
+            win.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                () => { }, System.Windows.Threading.DispatcherPriority.Background);
+            win.UpdateLayout();
+            var capAfterWidening = column.MaxWidth;
+
+            Assert.True(capAfterWidening > capAtDefault,
+                $"Triage Control ID cap at the 440px default panel width was {capAtDefault}px; after " +
+                $"widening the panel to 700px it's {capAfterWidening}px — expected it to grow, proving " +
+                "the cap tracks the panel's LIVE width, not its declared one");
+        }
+        finally { win.Close(); }
+    });
+
+    /// <summary>The assertion whose ABSENCE let this ship: this suite already
+    /// had scrollbar-avoidance coverage for Triage but nothing that checked
+    /// the resulting cap was actually WIDE ENOUGH, not just narrow enough to
+    /// avoid a scrollbar. 120px is this codebase's own established "readable
+    /// content column" floor — the star-column MinWidth MatchMergeWindow's
+    /// Becomes and HistoryWindow's Original/Filed-as already use — reused
+    /// here as the concrete bar rather than inventing a new one. Pre-fix
+    /// (WhyColumnWidth=260, declared-width cap), this configuration measured
+    /// 76px — the "hidden text" the owner reported.</summary>
+    [Fact]
+    public void Triage_DefaultRosterColumnCapIsWideEnoughToBeReadable() => _fx.Invoke(() =>
+    {
+        // the app's own default roster pick (2 headers) reviewing a
+        // SUGGESTED item (the common queue, per MatchMerge.cs) — the exact
+        // configuration a person sees most often opening this window.
+        var win = BuildTriageWindow(new[] { "First name", "Control ID" }, suggested: true, VeryLongValue);
+        try
+        {
+            ShowOffscreenAndDriveCurrent(win);
+            var column = win.Candidates.Columns.First(c => (string)c.Header == "Control ID");
+            Assert.True(column.MaxWidth >= 120,
+                $"Triage's default roster column cap (2 headers, Why present) is {column.MaxWidth}px, " +
+                "expected >= 120px to show meaningful content, not just avoid a scrollbar");
+        }
+        finally { win.Close(); }
+    });
+
+    /// <summary>Triage's own axis for "minimum size, many rows, no
+    /// scrollbar" — its side panel doesn't resize with the window the way
+    /// MatchMerge/BulkRename/History's grids do; it resizes via the
+    /// GridSplitter/SidePanelColumn, down to SidePanelColumn's own declared
+    /// MinWidth (380). Uses many CANDIDATES on one item (not many items —
+    /// ShowCurrentAsync binds Candidates.ItemsSource to the CURRENT item's
+    /// own candidate/suggestion list, so many MatchResults would still only
+    /// ever show one row at a time) to force the vertical scrollbar this
+    /// class's own doc comment identifies as the thing that must be reserved
+    /// for. ManyRowCount matches the other three windows' own bracketed
+    /// value.</summary>
+    [Fact]
+    public void Triage_AtMinPanelWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
+    {
+        var win = BuildTriageWindowWithManyCandidates(
+            new[] { "First name", "Control ID" }, suggested: true, ManyRowCount, VeryLongValue);
+        try
+        {
+            win.SidePanelColumn.Width = new GridLength(win.SidePanelColumn.MinWidth);
+            ShowOffscreenAndDriveCurrent(win);
+            Assert.Contains(win.Candidates.Columns, c => (string)c.Header == "Why");
+            AssertNoHorizontalScrollbar(win,
+                $"Triage (at panel MinWidth {win.SidePanelColumn.MinWidth}, {ManyRowCount} rows)");
+        }
+        finally { win.Close(); }
+    });
+
+    /// <summary>Same proof as MatchMerge's identical fact above, for Triage's
+    /// own capped roster column — see its doc comment for the full
+    /// reasoning. The automatic-recompute step that must NOT reclamp the
+    /// user's width here is a PANEL resize (SidePanelColumn/GridSplitter),
+    /// Triage's own live-tracking axis, not a window resize.
+    ///
+    /// The subsequent resize is a MODEST one (-10px, same magnitude the other
+    /// three windows' equivalent facts use), not a drop all the way to
+    /// SidePanelColumn's own MinWidth (380). Diagnosed directly (temporary
+    /// probe, deleted after use): a drop that drastic triggers a SEPARATE,
+    /// unrelated WPF behavior — the DataGrid's own space-fitting shrinks
+    /// EVERY non-floor column, not just this fix's capped ones, to try to
+    /// avoid a scrollbar before giving up (measured: even the "Why" column,
+    /// fixed-width and never touched by DataGridColumnCap at all, shrank from
+    /// 135px to 105px on that same drop). That's WPF's own pre-existing
+    /// layout behavior, outside this fix's contract ("the cap governs
+    /// automatic sizing only" is about OUR MaxWidth-based cap specifically,
+    /// not WPF's independent space-reclaiming) — Triage_AtMinPanelWidthNo
+    /// HorizontalScrollbar above already covers that axis (no scrollbar at
+    /// the panel's true floor) without conflating it with the pinning
+    /// contract this fact exists to prove.</summary>
+    [Fact]
+    public void Triage_UserDraggedRosterColumnSurvivesBeyondTheCapAndStaysPinnedAfterPanelResize() => _fx.Invoke(() =>
+    {
+        var win = BuildTriageWindow(new[] { "First name", "Control ID" }, suggested: true, VeryLongValue);
+        try
+        {
+            ShowOffscreenAndDriveCurrent(win);
+            var column = win.Candidates.Columns.First(c => (string)c.Header == "Control ID");
+            var capBefore = column.MaxWidth;
+            var draggedWidth = capBefore + 50;
+
+            SimulateColumnHeaderDragResize(win.Candidates, column, draggedWidth);
+            win.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                () => { }, System.Windows.Threading.DispatcherPriority.Background);
+            win.UpdateLayout();
+
+            Assert.True(column.ActualWidth >= draggedWidth - 1,
+                $"Triage Control ID column after a simulated drag to {draggedWidth}px is " +
+                $"{column.ActualWidth}px — expected it to survive beyond the old cap {capBefore}px");
+
+            win.SidePanelColumn.Width = new GridLength(win.SidePanelColumn.Width.Value - 10);
+            win.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                () => { }, System.Windows.Threading.DispatcherPriority.Background);
+            win.UpdateLayout();
+
+            // NOT ">= draggedWidth - 1" here (unlike MatchMerge/BulkRename/
+            // History's identical facts above, whose far larger grids don't
+            // trigger this): even a MODEST panel shrink measurably engages
+            // WPF's own independent space-fitting on Triage's uniquely tight
+            // margin (measured: 219px requested -> 214px rendered here, a
+            // legitimate few-pixel WPF adjustment, not a defect — see this
+            // fact's own doc comment). The assertion that actually matters is
+            // "not reclamped back down to what the OLD, PRE-DRAG automatic
+            // cap was" (capBefore, 169px) — that's the specific regression
+            // this fix's Recalculate()-skips-pinned-columns logic exists to
+            // prevent, and a few pixels of WPF's own legitimate space-fitting
+            // is nowhere near it.
+            Assert.True(column.ActualWidth > capBefore,
+                $"Triage Control ID column after a SUBSEQUENT panel resize is {column.ActualWidth}px — " +
+                $"expected it to stay clearly above the pre-drag automatic cap {capBefore}px, not be reclamped to it");
+        }
+        finally { win.Close(); }
+    });
+
     /// <summary>Builds a real TriageWindow with one real MatchMerge.MatchResult
     /// (status "suggested" or "ambiguous", matching whether the caller wants
     /// Why present) and a real candidate row — headers[0] always gets a
@@ -615,6 +949,36 @@ public class AutoFitColumnTests
                 Suggestions: new List<MatchMerge.Suggestion> { new(candidate, "token match") })
             : new MatchMerge.MatchResult("doc.pdf", "ambiguous",
                 Candidates: new List<MatchMerge.Candidate> { candidate });
+
+        return new TriageWindow(new List<MatchMerge.MatchResult> { item }, headers)
+        {
+            Dialogs = new FakeDialogs(),
+        };
+    }
+
+    /// <summary>Like BuildTriageWindow, but the CURRENT item carries
+    /// <paramref name="candidateCount"/> candidates/suggestions instead of
+    /// one — needed to force a vertical scrollbar (Triage_AtMinPanelWidthNo
+    /// HorizontalScrollbar): ShowCurrentAsync binds Candidates.ItemsSource to
+    /// the CURRENT item's own candidate list, so many MatchResults (as
+    /// BuildTriageWindow's single-item batches use) would still only ever
+    /// show ONE row at a time — many rows on screen means many candidates on
+    /// ONE item, not many items in the batch.</summary>
+    private static TriageWindow BuildTriageWindowWithManyCandidates(
+        string[] headers, bool suggested, int candidateCount, params string[] columnValues)
+    {
+        var candidates = new List<MatchMerge.Candidate>();
+        for (var i = 0; i < candidateCount; i++)
+        {
+            var row = new Dictionary<string, string> { [headers[0]] = "Pat" + i };
+            for (var j = 1; j < headers.Length; j++) row[headers[j]] = columnValues[j - 1];
+            candidates.Add(new MatchMerge.Candidate(i.ToString(), row));
+        }
+
+        var item = suggested
+            ? new MatchMerge.MatchResult("doc.pdf", "suggested",
+                Suggestions: candidates.Select(c => new MatchMerge.Suggestion(c, "token match")).ToList())
+            : new MatchMerge.MatchResult("doc.pdf", "ambiguous", Candidates: candidates);
 
         return new TriageWindow(new List<MatchMerge.MatchResult> { item }, headers)
         {
@@ -754,6 +1118,37 @@ public class AutoFitColumnTests
         Assert.NotEqual(Visibility.Visible, scrollViewer.ComputedHorizontalScrollBarVisibility);
     }
 
+    /// <summary>FIX ROUND 5 (2026-08-08): simulates a real user's column-header
+    /// drag-resize without a real mouse (this session cannot drive one — see
+    /// this repo's own standing note on that). Finds <paramref name="column"/>'s
+    /// realized <see cref="DataGridColumnHeader"/> and the resize
+    /// <see cref="Thumb"/> inside its (unmodified — Theme/Styles.xaml only
+    /// carries Setters for DataGridColumnHeader, no ControlTemplate override,
+    /// so the default template's PART_RightHeaderGripper/PART_LeftHeaderGripper
+    /// Thumbs are present) template, then raises the exact routed events
+    /// DataGridColumnCap.Track listens for: DragStarted (which it responds to
+    /// by relaxing MaxWidth so the drag isn't blocked), then sets the column's
+    /// Width directly to <paramref name="newWidth"/> — this is what WPF's own
+    /// internal DragDelta handler computes once MaxWidth no longer clamps it,
+    /// converting Width from Auto to a fixed pixel value — then raises
+    /// DragCompleted (which Track responds to by reading that Auto-to-pixel
+    /// change as "this column was the one dragged" and pinning it). Does NOT
+    /// call UpdateLayout() itself — the caller decides when to flush layout,
+    /// same as every other resize helper in this file.</summary>
+    private static void SimulateColumnHeaderDragResize(DataGrid grid, DataGridColumn column, double newWidth)
+    {
+        var header = FindAllDescendants<DataGridColumnHeader>(grid).FirstOrDefault(h => h.Column == column)
+            ?? throw new InvalidOperationException(
+                $"no realized DataGridColumnHeader for column '{column.Header}'");
+        var thumb = FindDescendant<Thumb>(header)
+            ?? throw new InvalidOperationException(
+                $"no resize Thumb found under the header for column '{column.Header}'");
+
+        thumb.RaiseEvent(new DragStartedEventArgs(0, 0) { RoutedEvent = Thumb.DragStartedEvent });
+        column.Width = new DataGridLength(newWidth);
+        thumb.RaiseEvent(new DragCompletedEventArgs(0, 0, false) { RoutedEvent = Thumb.DragCompletedEvent });
+    }
+
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
     {
         var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
@@ -764,5 +1159,18 @@ public class AutoFitColumnTests
             if (FindDescendant<T>(child) is { } nested) return nested;
         }
         return null;
+    }
+
+    private static List<T> FindAllDescendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        var results = new List<T>();
+        var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is T match) results.Add(match);
+            results.AddRange(FindAllDescendants<T>(child));
+        }
+        return results;
     }
 }
