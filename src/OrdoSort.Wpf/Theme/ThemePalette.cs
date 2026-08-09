@@ -246,13 +246,39 @@ public sealed record ThemePalette(
         SurfacePressed: new(92, 104, 93),
         RowHover: new(48, 45, 20));
 
+    // Deep archive blue with reader-glow cyan. Dark. Values validated
+    // against the full pairing wall before landing.
+    public static ThemePalette Microfilm { get; } = new(
+        WindowBg: new(21, 25, 34),
+        Surface: new(30, 36, 48),
+        Text: new(230, 234, 242),
+        SubtleText: new(163, 171, 186),
+        Border: new(73, 81, 99),
+        Accent: new(196, 206, 224),
+        AccentText: new(21, 25, 34),
+        Warning: new(84, 62, 8),
+        WarningText: new(255, 224, 130),
+        Danger: new(192, 57, 43),
+        DangerText: new(255, 255, 255),
+        Success: new(46, 125, 50),
+        StatusAmber: new(240, 173, 78),
+        StatusGreen: new(129, 199, 132),
+        StatusRed: new(229, 115, 115),
+        TileDefaultBg: new(46, 54, 70),
+        BorderStrong: new(106, 116, 136),
+        AccentBronze: new(111, 174, 198),
+        SurfaceHover: new(72, 80, 98),
+        SurfacePressed: new(94, 102, 122),
+        RowHover: new(26, 36, 64));
+
     // ------------------------------------------------------ scheme registry
 
     public static IReadOnlyList<ThemeScheme> Schemes { get; } = new[]
     {
-        new ThemeScheme("paper",    "Paper",    Light,  IsDark: false),
-        new ThemeScheme("graphite", "Graphite", Dark,   IsDark: true),
-        new ThemeScheme("ledger",   "Ledger",   Ledger, IsDark: true),
+        new ThemeScheme("paper",     "Paper",     Light,     IsDark: false),
+        new ThemeScheme("graphite",  "Graphite",  Dark,      IsDark: true),
+        new ThemeScheme("ledger",    "Ledger",    Ledger,    IsDark: true),
+        new ThemeScheme("microfilm", "Microfilm", Microfilm, IsDark: true),
     };
 
     /// <summary>Case-insensitive lookup by key. Null for null/blank/unknown —

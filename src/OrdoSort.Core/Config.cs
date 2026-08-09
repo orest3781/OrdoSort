@@ -93,7 +93,7 @@ public sealed class Config
     /// keeps them in sync at test time; extend both lists together whenever a
     /// new scheme ships (ledger, microfilm, manila, carbon, blueprint are
     /// planned next).</summary>
-    public static readonly IReadOnlyList<string> SchemeKeys = new[] { "paper", "graphite", "ledger" };
+    public static readonly IReadOnlyList<string> SchemeKeys = new[] { "paper", "graphite", "ledger", "microfilm" };
 
     [JsonPropertyName("inbox")] public string Inbox { get; set; } = "";
     [JsonPropertyName("deferred")] public string Deferred { get; set; } = "";
