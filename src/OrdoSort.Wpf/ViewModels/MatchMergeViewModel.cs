@@ -180,16 +180,25 @@ public sealed class MatchMergeViewModel : ObservableObject
         HasRoster = true;   // headers are in — show the mapping row
         Headers.Clear();
         foreach (var h in headers) Headers.Add(h);
-        string Pick(string key, params string[] needles)
+        // Word/token matching, not a raw substring: "id" must not match
+        // Paid Date, Resident or Video (each contains the letters "i","d"
+        // adjacent, none of them AS a whole token), while First Name,
+        // Given name, Surname, Last, MRN and Control ID must still be
+        // recognised.
+        static IEnumerable<string> Tokenize(string header) =>
+            header.ToLowerInvariant().Split(new[] { ' ', '_', '-', '.', '/' },
+                StringSplitOptions.RemoveEmptyEntries);
+        string? Pick(string key, params string[] needles)
         {
-            var saved = _cfg.MergeHeaders.TryGetValue(key, out var s) && headers.Contains(s) ? s : null;
-            return saved
-                ?? headers.FirstOrDefault(h => needles.Any(n => h.ToLowerInvariant().Contains(n)))
-                ?? headers.FirstOrDefault() ?? "";
+            var saved = _cfg.MergeHeaders.TryGetValue(key, out var s) && s.Length > 0 && headers.Contains(s)
+                ? s : null;
+            // No confident match means NO pick — never headers[0]. An unset
+            // role shows up unmapped in the picker; it is never guessed.
+            return saved ?? headers.FirstOrDefault(h => Tokenize(h).Any(needles.Contains));
         }
-        _firstHeader = Pick("first", "first");
-        _lastHeader = Pick("last", "last");
-        _controlHeader = Pick("control", "control", "id");
+        _firstHeader = Pick("first", "first", "given");
+        _lastHeader = Pick("last", "last", "surname");
+        _controlHeader = Pick("control", "control", "id", "mrn");
         Raise(nameof(FirstHeader));
         Raise(nameof(LastHeader));
         Raise(nameof(ControlHeader));
@@ -198,13 +207,50 @@ public sealed class MatchMergeViewModel : ObservableObject
         RebuildColumnPicks();
     }
 
+    /// <summary>Joins role names the way a sentence would: "Control",
+    /// "First and Control", "First, Last and Control".</summary>
+    private static string RoleList(IReadOnlyList<string> roles) => roles.Count switch
+    {
+        1 => roles[0],
+        2 => $"{roles[0]} and {roles[1]}",
+        _ => string.Join(", ", roles.Take(roles.Count - 1)) + " and " + roles[^1],
+    };
+
     private void ReloadRoster()
     {
-        if (_fillingHeaders || RosterPath.Length == 0
-            || FirstHeader is null || LastHeader is null || ControlHeader is null) return;
+        if (_fillingHeaders || RosterPath.Length == 0) return;
+
+        // Every role must be picked, AND the three picks must be distinct —
+        // neither condition is optional. Whichever fails, the mapping row
+        // (Headers is already populated) stays up so the user can fix it
+        // from the picker; nothing gets loaded, and nothing claims success.
+        var picks = new (string Role, string? Header)[]
+        {
+            ("First", FirstHeader), ("Last", LastHeader), ("Control", ControlHeader),
+        };
+        var unmapped = picks.Where(p => p.Header is null).Select(p => p.Role).ToList();
+        var collisions = picks.Where(p => p.Header is not null)
+            .GroupBy(p => p.Header)
+            .Where(g => g.Count() > 1)
+            .ToList();
+        if (unmapped.Count > 0 || collisions.Count > 0)
+        {
+            _roster = null;
+            HasRoster = true;
+            Status = collisions.Count > 0
+                ? "Ambiguous roster headers — " + string.Join("; ", collisions.Select(g =>
+                    $"{RoleList(g.Select(p => p.Role).ToList())} {(g.Count() == 2 ? "both" : "all")} " +
+                    $"matched \"{g.Key}\""))
+                  + ". Choose different columns for First, Last and Control above."
+                : $"Couldn't guess {RoleList(unmapped)} from the roster headers — " +
+                  $"choose {(unmapped.Count == 1 ? "it" : "them")} above.";
+            Refresh();
+            return;
+        }
+
         try
         {
-            _roster = MatchMerge.LoadRoster(RosterPath, FirstHeader, LastHeader, ControlHeader);
+            _roster = MatchMerge.LoadRoster(RosterPath, FirstHeader!, LastHeader!, ControlHeader!);
         }
         catch (RosterException ex)
         {
@@ -217,7 +263,7 @@ public sealed class MatchMergeViewModel : ObservableObject
         HasRoster = true;
         _saveHeaders(new Dictionary<string, string>
         {
-            ["first"] = FirstHeader, ["last"] = LastHeader, ["control"] = ControlHeader,
+            ["first"] = FirstHeader!, ["last"] = LastHeader!, ["control"] = ControlHeader!,
         });
         if (_cfg.MergeRoster != RosterPath)
         {

@@ -155,6 +155,50 @@ public class MatchMergeTests : IDisposable
         Assert.Equal("20240126-EVANS-FRANK-176797656 (2).pdf", Path.GetFileName(outcome.Final!));
     }
 
+    // ------------------------------------------ header-mapping plan, Task 1
+    // MatchMerge.LoadRoster resolves headers by name via IndexOf (first
+    // wins, defect 4) and stores each row name-keyed (defect 5), so a
+    // duplicate header name silently loses its twin's data. A blank header
+    // is exactly as unsafe: nothing distinguishes it from any other blank
+    // header if there happen to be two. Reject the file outright rather
+    // than guess which occurrence the user meant.
+
+    [Fact]
+    public void DuplicateHeaderNamesAreRejectedRatherThanSilentlyLosingAColumn()
+    {
+        var path = Path.Combine(_dir, "dup.csv");
+        File.WriteAllText(path, "First,Last,Control,Extra,Extra\nJohn,Doe,123,AAA,BBB\n");
+
+        var ex = Assert.Throws<RosterException>(() =>
+            MatchMerge.LoadRoster(path, "First", "Last", "Control"));
+        Assert.Contains("Extra", ex.Message);
+    }
+
+    [Fact]
+    public void DuplicateRoleHeaderNoLongerCollapsesFirstAndLastToTheSameColumn()
+    {
+        // firstHeader == lastHeader == "Name": IndexOf resolves BOTH to the
+        // same column, so Last silently reads First's data. Must be
+        // rejected, not silently mis-mapped.
+        var path = Path.Combine(_dir, "samename.csv");
+        File.WriteAllText(path, "Name,Name,Control\nJohn,Doe,123\n");
+
+        var ex = Assert.Throws<RosterException>(() =>
+            MatchMerge.LoadRoster(path, "Name", "Name", "Control"));
+        Assert.Contains("Name", ex.Message);
+    }
+
+    [Fact]
+    public void BlankHeaderIsRejectedRatherThanBeingMappable()
+    {
+        var path = Path.Combine(_dir, "blank.csv");
+        File.WriteAllText(path, "First,Last,Control,\nJohn,Doe,123,X\n");
+
+        var ex = Assert.Throws<RosterException>(() =>
+            MatchMerge.LoadRoster(path, "First", "Last", "Control"));
+        Assert.Contains("blank", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void QuotedCsvFieldsWithCommas()
     {

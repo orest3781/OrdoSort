@@ -55,6 +55,26 @@ public static partial class MatchMerge
             throw new RosterException("The spreadsheet is empty.");
         var headers = rows[0].Select(h => h.Trim()).ToList();
 
+        // A duplicate or blank column header is unsafe no matter which
+        // three columns the caller asked to map: LoadRoster resolves a
+        // header NAME to a column index (IndexOf, first occurrence wins)
+        // and stores each row keyed by that same name, so a second column
+        // sharing a name — or two blank columns — silently collapse to one
+        // and the other's data is simply gone. Refuse the whole file rather
+        // than guess which occurrence was meant.
+        var blankCount = headers.Count(h => h.Length == 0);
+        if (blankCount > 0)
+            throw new RosterException(
+                $"The spreadsheet has {blankCount} blank column header{(blankCount == 1 ? "" : "s")}. " +
+                "Every column needs a name before it can be mapped.");
+
+        var duplicates = headers.GroupBy(h => h).Where(g => g.Count() > 1)
+            .Select(g => g.Key).ToList();
+        if (duplicates.Count > 0)
+            throw new RosterException(
+                "These column headers appear more than once, so mapping them would silently lose a " +
+                "column's data: " + string.Join(", ", duplicates) + ". Rename the duplicates and try again.");
+
         var missing = new[] { firstHeader, lastHeader, controlHeader }
             .Where(h => !headers.Contains(h)).ToList();
         if (missing.Count > 0)
