@@ -333,6 +333,10 @@ public partial class MainWindow : Window
         vm.Dispose();   // cancel any still-armed rebuild probe now the dialog is closing
     }
 
+    private void OnPageCounts(object sender, RoutedEventArgs e) =>
+        new Windows.PageCountsWindow(new PageCountsViewModel(Dialogs, uiContext: SynchronizationContext.Current))
+        { Owner = this }.ShowDialog();
+
     private void OnSettings(object sender, RoutedEventArgs e)
     {
         if (!Shell.IsReady)

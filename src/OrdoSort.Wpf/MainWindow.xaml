@@ -99,6 +99,9 @@
                 <MenuItem Header="_Filename list…" Click="OnFilenameList">
                     <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE8FD;" /></MenuItem.Icon>
                 </MenuItem>
+                <MenuItem Header="PDF page _counts…" Click="OnPageCounts">
+                    <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE7C3;" /></MenuItem.Icon>
+                </MenuItem>
             </MenuItem>
             </Menu>
         </Grid>
