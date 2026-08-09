@@ -132,10 +132,30 @@
                          each column's own ElementStyle (see NoteColumn),
                          same technique as BulkRenameWindow.xaml's "New name"
                          column and TriageWindow.xaml.cs's "Why" column. -->
+                    <!-- Local RowStyle: replaces implicit-by-type lookup for
+                         this DataGrid's rows entirely, so Styles.xaml's own
+                         implicit DataGridRow style (added alongside this,
+                         hover-tint strength review round 2, 2026-08-08) never
+                         reaches here — the IsMouseOver trigger below is this
+                         window's own copy of that same behaviour, not
+                         inherited. This grid had NO hover feedback at all
+                         before: confirmed by grep, no IsMouseOver trigger
+                         existed on DataGridRow or DataGridCell anywhere in
+                         this app. -->
                     <DataGrid.RowStyle>
                         <Style TargetType="DataGridRow">
                             <Setter Property="Background" Value="Transparent" />
                             <Setter Property="ToolTip" Value="{Binding Source}" />
+                            <Style.Triggers>
+                                <!-- Theme.RowHover, NOT Theme.SurfaceHover: this
+                                     row's Note column can show StatusAmber/
+                                     SubtleText (below) — the vocabulary
+                                     Theme.RowHover is tuned to protect. -->
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background"
+                                            Value="{DynamicResource Theme.RowHover}" />
+                                </Trigger>
+                            </Style.Triggers>
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>

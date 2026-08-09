@@ -722,9 +722,19 @@
                         <ContentPresenter />
                     </Border>
                     <ControlTemplate.Triggers>
+                        <!-- Theme.RowHover, NOT Theme.SurfaceHover (hover-tint
+                             strength review round 2, 2026-08-08): a ListBoxItem's
+                             content can be RouteList/LabelMaker/ManageSaved's
+                             SubtleText caption or UnlockWindow FileList's
+                             StatusAmber/StatusGreen/StatusRed Note — the exact
+                             vocabulary Theme.RowHover is tuned to protect, and
+                             the vocabulary that a stronger Text-only chrome tint
+                             would break (StatusGreen/StatusRed were already
+                             below 4.5:1 here even at the OLD, weaker mix —
+                             see ThemePalette.cs's RowHover comment). -->
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource Theme.SurfaceHover}" />
+                                    Value="{DynamicResource Theme.RowHover}" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Bd" Property="Background"
@@ -736,6 +746,35 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- DataGridRow: Styles.xaml had ZERO style for this before the hover-tint
+         strength review round 2 (2026-08-08) — confirmed by grep, no
+         IsMouseOver trigger existed on DataGridRow OR DataGridCell anywhere
+         in this app, so hovering a row in Match & Merge, Bulk rename,
+         History or Triage produced no visible feedback at all, the one
+         gap every other list-like control (ListBoxItem, MenuItem, TabItem,
+         Calendar) didn't have. Implicit (not keyed): BulkRenameWindow,
+         MatchMergeWindow and HistoryWindow each set their OWN local
+         DataGrid.RowStyle already (for NeedsName/Transparent/Reverted), and
+         a local RowStyle entirely replaces implicit-by-type lookup for that
+         DataGrid's rows — the same "local value outranks style" trap this
+         file's ListBoxItem/ComboBoxItem comments document repeatedly — so
+         this implicit style ONLY reaches TriageWindow's Candidates grid,
+         which sets no RowStyle of its own. The other three each got the
+         identical IsMouseOver trigger added to their own local RowStyle
+         directly (see each window's own XAML) so every one of the four
+         grids the owner actually uses ends up with the same hover, even
+         though only one of them resolves it through this shared Style.
+         Theme.RowHover (not SurfaceHover): a row's Note/status-vocabulary
+         columns can show StatusAmber/SubtleText, the exact colours that
+         tier protects — see ThemePalette.cs's RowHover comment. -->
+    <Style TargetType="DataGridRow">
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Theme.RowHover}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- ItemTemplate-based ComboBox item shapes: a bare TextBlock bound to
@@ -1166,9 +1205,15 @@
                                           VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                     </Border>
                     <ControlTemplate.Triggers>
+                        <!-- Theme.RowHover, NOT Theme.SurfaceHover: IsInactive
+                             (below) can pair SubtleText with this SAME hover —
+                             a real, reachable combo (hovering a leading/
+                             trailing-month day) the chrome tier isn't tuned
+                             to protect. See ThemePalette.cs's RowHover
+                             comment. -->
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Chrome" Property="Background"
-                                    Value="{DynamicResource Theme.SurfaceHover}" />
+                                    Value="{DynamicResource Theme.RowHover}" />
                         </Trigger>
                         <Trigger Property="IsToday" Value="True">
                             <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Theme.Accent}" />
@@ -1217,9 +1262,12 @@
                                           VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                     </Border>
                     <ControlTemplate.Triggers>
+                        <!-- Theme.RowHover, NOT Theme.SurfaceHover: same
+                             IsInactive/SubtleText combo as CalendarDayButton
+                             above. -->
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Chrome" Property="Background"
-                                    Value="{DynamicResource Theme.SurfaceHover}" />
+                                    Value="{DynamicResource Theme.RowHover}" />
                         </Trigger>
                         <Trigger Property="IsInactive" Value="True">
                             <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
@@ -1282,9 +1330,11 @@
                                                   Fill="{DynamicResource Theme.SubtleText}" />
                                         </Border>
                                         <ControlTemplate.Triggers>
+                                            <!-- Theme.RowHover: the glyph above is
+                                                 Theme.SubtleText, not Theme.Text. -->
                                             <Trigger Property="IsMouseOver" Value="True">
                                                 <Setter TargetName="Chrome" Property="Background"
-                                                        Value="{DynamicResource Theme.SurfaceHover}" />
+                                                        Value="{DynamicResource Theme.RowHover}" />
                                             </Trigger>
                                             <Trigger Property="IsEnabled" Value="False">
                                                 <Setter Property="Opacity" Value="0.4" />
@@ -1312,9 +1362,13 @@
                                                               VerticalAlignment="Center" />
                                         </Border>
                                         <ControlTemplate.Triggers>
+                                            <!-- Theme.RowHover for consistency with
+                                                 this popup's Previous/Next buttons
+                                                 either side of it, even though this
+                                                 one shows only Theme.Text. -->
                                             <Trigger Property="IsMouseOver" Value="True">
                                                 <Setter TargetName="Chrome" Property="Background"
-                                                        Value="{DynamicResource Theme.SurfaceHover}" />
+                                                        Value="{DynamicResource Theme.RowHover}" />
                                             </Trigger>
                                             <Trigger Property="IsEnabled" Value="False">
                                                 <Setter Property="Opacity" Value="0.4" />
@@ -1336,9 +1390,11 @@
                                                   Fill="{DynamicResource Theme.SubtleText}" />
                                         </Border>
                                         <ControlTemplate.Triggers>
+                                            <!-- Theme.RowHover: same glyph reasoning
+                                                 as PART_PreviousButton above. -->
                                             <Trigger Property="IsMouseOver" Value="True">
                                                 <Setter TargetName="Chrome" Property="Background"
-                                                        Value="{DynamicResource Theme.SurfaceHover}" />
+                                                        Value="{DynamicResource Theme.RowHover}" />
                                             </Trigger>
                                             <Trigger Property="IsEnabled" Value="False">
                                                 <Setter Property="Opacity" Value="0.4" />

@@ -54,7 +54,62 @@ public sealed record ThemePalette(
                         // rather than adding a token tuned for one call site.
     Rgb TileDefaultBg, // dashboard tile with no configured color
     Rgb BorderStrong,  // emphasized borders (focus rings, active dividers)
-    Rgb AccentBronze)  // warm secondary accent (badges, highlights on graphite)
+    Rgb AccentBronze,  // warm secondary accent (badges, highlights on graphite)
+    // ------------------------------------------------------- hover/pressed
+    // Hover-tint strength review, round 2 (2026-08-08). Round 1 raised a
+    // SINGLE derived Mix(Surface, Text, amount) shared by every hover/
+    // pressed surface in the app. A parallel audit found that mechanism
+    // fundamentally can't work: Mix moves the background toward Text, which
+    // simultaneously (a) grows the surround-delta and (b) shrinks contrast
+    // for every OTHER foreground that can sit on it -- and two status
+    // colours were found to ALREADY be below the 4.5:1 floor at even the
+    // old, barely-there 0.08 amount (StatusGreen light 4.343:1, StatusRed
+    // dark 3.945:1), which no test had ever caught. These three fields
+    // replace that shared formula with hand-tuned, per-palette constants --
+    // same pattern as StatusAmber/StatusGreen/StatusRed above -- split into
+    // two tiers by what can actually render underneath them, verified by
+    // reading every real IsMouseOver/IsSubmenuOpen consumer in Styles.xaml
+    // and every window, not assumed:
+    //
+    //   CHROME tier (SurfaceHover/SurfacePressed) -- MenuItem (all three
+    //   templates), TabItem/SectionTab, ChipButton's resting fill, and
+    //   MainWindow's Rescan button. None of these ever paints anything but
+    //   Theme.Text underneath while hovered/pressed in THIS app: the one
+    //   theoretical exception (IsEnabled="False" combined with a hover/
+    //   highlight state, which would show SubtleText instead) is provably
+    //   unreachable here -- grep confirms zero MenuItem/TabItem in
+    //   src/OrdoSort.Wpf/**/*.xaml ever binds or sets IsEnabled. Free to be
+    //   strong: bounded only by Theme.Text, which has enormous headroom
+    //   (>=6.5:1 at every value chosen here, both palettes).
+    //
+    //   ROW tier (RowHover) -- DataGridRow (BulkRename/MatchMerge/History/
+    //   Triage, newly added this round -- Styles.xaml had NO DataGridRow
+    //   style at all before this, confirmed by the parallel audit),
+    //   ListBoxItem (RouteList/LabelMaker/ManageSaved/UnlockWindow -- whose
+    //   FileList Note column is exactly where StatusGreen/StatusRed were
+    //   found broken), the Calendar family's day/month/nav buttons (whose
+    //   IsInactive state pairs SubtleText with the SAME hover trigger), and
+    //   ReadyView's "open inbox" button (whose BigCount can render
+    //   StatusRed mid-hover when CountAlertOn is set). Bounded by the
+    //   TIGHTEST of Text/SubtleText/StatusAmber/StatusGreen/StatusRed in
+    //   each palette -- verified by brute-force byte search, not estimated:
+    //   in light mode Surface is already pure white (255,255,255), so
+    //   there is NO headroom to lighten further, and StatusGreen's own
+    //   luminance (0.1548) caps how far this can darken before contrast
+    //   against it drops below 4.5 -- the safe zone is only
+    //   RGB 241-254, and even PURE BLACK does not recover it (WCAG's
+    //   (Lfg+0.05)/(Lbg+0.05) tops out at 4.10 for StatusGreen against
+    //   black, still short of 4.5). No "pressed" variant exists: none of
+    //   this tier's consumers have a WPF IsPressed concept (DataGridRow and
+    //   ListBoxItem have none; the Calendar/inbox buttons' existing styles
+    //   never gained one).
+    //
+    // Every consumer verified against ITS OWN real rendered background by
+    // HighlightContrastTests (resolved brushes, not the resource value
+    // read directly) -- see that file's Hover/Pressed-strength region.
+    Rgb SurfaceHover,   // chrome hover (Text-only)
+    Rgb SurfacePressed, // chrome pressed (Text-only), stronger than SurfaceHover
+    Rgb RowHover)       // row/list hover (Text+SubtleText+StatusAmber+StatusGreen+StatusRed)
 {
     public static ThemePalette Light { get; } = new(
         WindowBg: new(247, 248, 249),
@@ -80,7 +135,19 @@ public sealed record ThemePalette(
         StatusRed: new(192, 57, 43),
         TileDefaultBg: new(228, 230, 233),
         BorderStrong: new(120, 128, 138),
-        AccentBronze: new(140, 109, 63));
+        AccentBronze: new(140, 109, 63),
+        // Chrome tier, Text-only: darkest safe boundary against Text alone
+        // (Text-only, byte search) is v=130 -- these sit well inside it
+        // with real margin. Hover 1.729:1 surround-delta vs Surface (Text
+        // stays 10.09:1); Pressed 2.649:1 (Text 6.59:1).
+        SurfaceHover: new(196, 197, 198),
+        SurfacePressed: new(158, 159, 161),
+        // Row tier, all five protected: light's safe zone tops out at
+        // RGB 241 (StatusGreen-bound, byte search) -- there is no room to
+        // go further while keeping it legible, so this is deliberately
+        // modest. Hover 1.046:1 surround-delta; worst-protected colour
+        // (StatusGreen) still clears at 4.90:1.
+        RowHover: new(249, 250, 250));
 
     public static ThemePalette Dark { get; } = new(
         WindowBg: new(26, 28, 31),
@@ -109,7 +176,26 @@ public sealed record ThemePalette(
         StatusRed: new(229, 115, 115),
         TileDefaultBg: new(54, 58, 63),
         BorderStrong: new(110, 118, 128),
-        AccentBronze: new(201, 169, 106));
+        AccentBronze: new(201, 169, 106),
+        // Chrome tier, Text-only, LIGHTENING (not darkening -- dark mode's
+        // Surface (38,41,45) is already near-black, so darkening further
+        // caps at only ~1.44:1 no matter what; going toward Text's own
+        // near-white luminance has far more real room once SubtleText/
+        // StatusColours are off the table). Text-only safe boundary
+        // (byte search) is v=106 before Text itself enters its own
+        // contrast valley; these sit inside it with margin. Hover 1.780:1
+        // surround-delta (Text 6.87:1); Pressed 2.502:1 (Text 4.89:1).
+        SurfaceHover: new(77, 79, 83),
+        SurfacePressed: new(99, 101, 105),
+        // Row tier, all five protected, DARKENING (the only direction with
+        // headroom once StatusRed is back in scope -- its own luminance
+        // sits close enough to Text's that lightening leaves almost no
+        // safe room, byte search: unsafe by v=47 going up from Surface).
+        // Darkening toward black is safe for all five the whole way down
+        // (byte search, v=0 clears everything with margin) -- this stays
+        // well short of that extreme. Hover 1.192:1 surround-delta;
+        // worst-protected colour (StatusRed) still clears at 5.83:1.
+        RowHover: new(25, 26, 28));
 
     // ---------------------------------------------------------- WCAG 2.1 math
 

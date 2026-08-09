@@ -85,73 +85,28 @@ public static class ThemeManager
         r["Theme.StatusGreen"] = Brush(p.StatusGreen);
         r["Theme.StatusRed"] = Brush(p.StatusRed);
         r["Theme.TileDefaultBg"] = Brush(p.TileDefaultBg);
-        // hover/pressed shades derived once so Styles.xaml stays declarative.
-        //
-        // Raised from 0.08/0.16 (hover-tint strength review, 2026-08-08):
-        // the owner's own words were "too light... lose track of what's
-        // hovered or selected", explicitly choosing "make them stronger"
-        // over "tone them down". 0.08 moved Light.Surface (255,255,255) only
-        // to ~(236,236,237) -- a surround-delta (ContrastRatio against the
-        // plain Surface it sits on) of just 1.181:1 in light, 1.240:1 in
-        // dark -- imperceptible at a glance, which is exactly the report.
-        //
-        // The ceiling here is NOT taste, it's text sitting on top of the
-        // tint: this Mix formula moves the background TOWARD Theme.Text, so
-        // raising the amount simultaneously helps the surround-delta and
-        // HURTS every foreground colour that isn't Text itself (their
-        // fixed luminance sits between Surface's and Text's, so the
-        // background sliding toward Text erodes their contrast headroom).
-        // Measured every candidate amount against the app's real hover
-        // pairings (ThemePalette.ContrastRatio, both palettes) before
-        // picking one:
-        //   * Theme.Text on Hover: huge margin regardless (>=9:1 up to at
-        //     least 0.25) -- never the binding constraint.
-        //   * Theme.SubtleText on Hover: the real pairing is RouteList/
-        //     LabelMaker/ManageSaved's caption text on an unselected,
-        //     hovered row, AND BulkRenameWindow's "New name" column on a
-        //     NeedsName row (whose DataGridRow.Background is this same
-        //     SurfaceHover -- see that window's RowStyle). Crosses below
-        //     4.5:1 in dark between amount 0.12 (4.616:1) and 0.13
-        //     (4.474:1).
-        //   * Theme.StatusAmber on Hover: the real pairing is that SAME
-        //     BulkRenameWindow NeedsName row's Note column -- NeedsName
-        //     implies NoteIsProblem in BulkRenameViewModel.ApplyPlans, so a
-        //     NeedsName row's Note is ALWAYS StatusAmber, never Subtle.
-        //     Crosses below 4.5:1 in light between 0.11 (4.525:1) and 0.12
-        //     (4.442:1) -- the tightest of the three "must-hold" pairings.
-        //   * Theme.StatusGreen / Theme.StatusRed on Hover: real pairing is
-        //     UnlockWindow's FileList Note column, unselected but hovered
-        //     (Styles.xaml's ListBoxItem IsMouseOver trigger paints the SAME
-        //     Bd.Background regardless of which status coloured the Note).
-        //     These were ALREADY below the floor at the OLD 0.08: StatusRed
-        //     measured 3.945:1 in dark and StatusGreen 4.343:1 in light,
-        //     neither ever asserted by any test before this change --
-        //     "SurfaceHover" and "SurfacePressed" have zero prior hits
-        //     anywhere in tests/. StatusRed in light was passing but paper-
-        //     thin (4.606:1, a 0.106 margin) and does cross below 4.5 at the
-        //     new amount (4.430:1 at 0.10) -- a small, deliberate, measured
-        //     regression on an already-marginal pairing, not something this
-        //     change could avoid without abandoning the strengthening the
-        //     owner asked for. See HighlightContrastTests' hover/pressed
-        //     coverage (added alongside this change) for the full, current
-        //     pass/fail table across both palettes -- pinned with real
-        //     numbers rather than left to silently drift.
-        //
-        // 0.10/0.20 keeps StatusAmber and SubtleText (the two pairings with
-        // an unambiguous live DataGrid/ListBox call site AND real baseline
-        // margin) at or above 4.5:1 in BOTH palettes at Hover, roughly
-        // doubling the pre-existing margin most call sites had, while
-        // giving a real, measured surround-delta gain: Hover
-        // 1.181:1->1.228:1 light, 1.240:1->1.318:1 dark. Pressed
-        // (0.16->0.20) has no live SubtleText/status-colour pairing at all
-        // today -- its only real call site is MenuTopLevelHeader's
-        // IsSubmenuOpen trigger, whose header text is always Theme.Text --
-        // so it was raised further for "pressed visibly stronger than
-        // hover" (surround-delta 1.400:1->1.529:1 light, 1.587:1->1.780:1
-        // dark) without that headroom being spent on a pairing that doesn't
-        // exist in this app.
-        r["Theme.SurfaceHover"] = Brush(Mix(p.Surface, p.Text, 0.10));
-        r["Theme.SurfacePressed"] = Brush(Mix(p.Surface, p.Text, 0.20));
+        // Hover/pressed/row tints, round 2 (hover-tint strength review,
+        // 2026-08-08). Round 1 derived these from a single shared
+        // Mix(Surface, Text, amount) formula and raised the amount from
+        // 0.08 to 0.10 -- a parallel audit found that mechanism can't
+        // deliver what the owner actually asked for ("too light... make
+        // them stronger"): moving the background toward Text simultaneously
+        // grows the surround-delta AND erodes every non-Text foreground
+        // that can sit on it, capping any single shared value at a barely-
+        // there ~1.2:1 delta if StatusGreen/StatusRed are to stay legible
+        // at all (they measured 4.343:1 and 3.945:1 -- already BELOW the
+        // 4.5:1 floor -- at the old 0.08, before this review touched
+        // anything). These three are now hand-tuned, per-palette constants
+        // on ThemePalette itself (SurfaceHover/SurfacePressed/RowHover --
+        // same pattern as StatusAmber/StatusGreen/StatusRed), chosen by
+        // brute-force search over which foregrounds actually render on
+        // each tier's real consumers rather than derived live here. See
+        // ThemePalette.cs's own comment at those three fields for the full
+        // reasoning, the exact safe-zone boundaries, and the measured
+        // surround-deltas each value achieves.
+        r["Theme.SurfaceHover"] = Brush(p.SurfaceHover);
+        r["Theme.SurfacePressed"] = Brush(p.SurfacePressed);
+        r["Theme.RowHover"] = Brush(p.RowHover);
         // Unchanged: computed but never consumed by any Theme.AccentHover
         // DynamicResource lookup anywhere in src/OrdoSort.Wpf/**/*.xaml or
         // *.cs (confirmed by search, 2026-08-08) -- dead since it was added,

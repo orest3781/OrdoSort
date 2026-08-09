@@ -30,12 +30,44 @@
             <DataGrid x:Name="HistoryGrid" ItemsSource="{Binding RowsView}" AutoGenerateColumns="False"
                       IsReadOnly="True" HeadersVisibility="Column"
                       SelectionMode="Single" CanUserAddRows="False">
+                <!-- Local RowStyle: replaces implicit-by-type lookup for this
+                     DataGrid's rows entirely, so Styles.xaml's own implicit
+                     DataGridRow style (added alongside this, hover-tint
+                     strength review round 2, 2026-08-08) never reaches here —
+                     the IsMouseOver trigger below is this window's own copy
+                     of that same behaviour, not inherited.
+
+                     The Reverted DataTrigger's Foreground Setter below was
+                     DEAD from the day it shipped, the same trap Match & Merge
+                     already had fixed once (see MatchMergeWindow.xaml's own
+                     comment on this exact mechanism): Styles.xaml's
+                     DataGridCell style always sets the CELL's own Foreground
+                     via its own Style.Triggers block, which outranks whatever
+                     the cell would otherwise inherit from its row — so a
+                     Reverted row's text never actually turned SubtleText,
+                     ever, only italic (FontStyle isn't touched by
+                     DataGridCell's style, so that half worked, which is why
+                     nobody noticed the other half didn't). Removed here; the
+                     working replacement is each text column's own
+                     ElementStyle below (When/Original/Filed as/Name/
+                     Destination), the identical per-column technique Match &
+                     Merge's Note column and Bulk rename's New name/Note
+                     columns already use. No test caught this before —
+                     covered now (HistoryWindow tests, hover-tint strength
+                     review round 2). -->
                 <DataGrid.RowStyle>
                     <Style TargetType="DataGridRow">
                         <Setter Property="Background" Value="Transparent" />
                         <Style.Triggers>
+                            <!-- Theme.RowHover, NOT Theme.SurfaceHover: this
+                                 row's text columns can show SubtleText (see
+                                 the Reverted fix below) — the vocabulary
+                                 Theme.RowHover is tuned to protect. -->
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background"
+                                        Value="{DynamicResource Theme.RowHover}" />
+                            </Trigger>
                             <DataTrigger Binding="{Binding Reverted}" Value="True">
-                                <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
                                 <Setter Property="FontStyle" Value="Italic" />
                             </DataTrigger>
                         </Style.Triggers>
@@ -90,6 +122,28 @@
                             <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                 <Setter Property="ToolTip" Value="{Binding When}" />
+                                <Style.Triggers>
+                                    <!-- the working replacement for the dead
+                                         RowStyle trigger removed above — see
+                                         this DataGrid.RowStyle's own comment. -->
+                                    <DataTrigger Binding="{Binding Reverted}" Value="True">
+                                        <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
+                                    </DataTrigger>
+                                    <!-- Let selection win — same trap and same fix
+                                         as MatchMergeWindow.xaml's Note column:
+                                         a Style Setter on THIS TextBlock always
+                                         outranks what it would otherwise inherit
+                                         from the DataGridCell's own IsSelected
+                                         trigger. Declared last so it overrides
+                                         the trigger above once selected. -->
+                                    <DataTrigger Value="True">
+                                        <DataTrigger.Binding>
+                                            <Binding Path="IsSelected"
+                                                     RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                                        </DataTrigger.Binding>
+                                        <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
@@ -127,6 +181,20 @@
                             <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                 <Setter Property="ToolTip" Value="{Binding Original}" />
+                                <Style.Triggers>
+                                    <!-- same Reverted/"let selection win" pair as
+                                         the When column above. -->
+                                    <DataTrigger Binding="{Binding Reverted}" Value="True">
+                                        <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
+                                    </DataTrigger>
+                                    <DataTrigger Value="True">
+                                        <DataTrigger.Binding>
+                                            <Binding Path="IsSelected"
+                                                     RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                                        </DataTrigger.Binding>
+                                        <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
@@ -135,6 +203,20 @@
                             <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                 <Setter Property="ToolTip" Value="{Binding FiledAs}" />
+                                <Style.Triggers>
+                                    <!-- same Reverted/"let selection win" pair as
+                                         the When column above. -->
+                                    <DataTrigger Binding="{Binding Reverted}" Value="True">
+                                        <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
+                                    </DataTrigger>
+                                    <DataTrigger Value="True">
+                                        <DataTrigger.Binding>
+                                            <Binding Path="IsSelected"
+                                                     RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                                        </DataTrigger.Binding>
+                                        <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
@@ -150,6 +232,20 @@
                             <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                 <Setter Property="ToolTip" Value="{Binding Name}" />
+                                <Style.Triggers>
+                                    <!-- same Reverted/"let selection win" pair as
+                                         the When column above. -->
+                                    <DataTrigger Binding="{Binding Reverted}" Value="True">
+                                        <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
+                                    </DataTrigger>
+                                    <DataTrigger Value="True">
+                                        <DataTrigger.Binding>
+                                            <Binding Path="IsSelected"
+                                                     RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                                        </DataTrigger.Binding>
+                                        <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
@@ -169,6 +265,20 @@
                             <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                 <Setter Property="ToolTip" Value="{Binding Route}" />
+                                <Style.Triggers>
+                                    <!-- same Reverted/"let selection win" pair as
+                                         the When column above. -->
+                                    <DataTrigger Binding="{Binding Reverted}" Value="True">
+                                        <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
+                                    </DataTrigger>
+                                    <DataTrigger Value="True">
+                                        <DataTrigger.Binding>
+                                            <Binding Path="IsSelected"
+                                                     RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                                        </DataTrigger.Binding>
+                                        <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>

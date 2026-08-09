@@ -1520,53 +1520,71 @@ public class HighlightContrastTests
 
     // --------------------------------------------- Hover/pressed tint strength
 
-    /// <summary>Hover-tint strength review (2026-08-08): the review's own
-    /// brief noted that nothing measures the "surround-delta" — the contrast
-    /// between a highlight background and the plain surface it sits on —
-    /// confirmed directly: "SurfaceHover"/"SurfacePressed" had zero hits
-    /// anywhere under tests/ before this. Renders a REAL ListBoxItem (the
-    /// control every plain hover tint in this app either IS, or is styled
-    /// identically to — MenuItem/TabItem/CalendarDayButton/CalendarButton
-    /// all wire the SAME Theme.SurfaceHover DynamicResource to their own
-    /// "Bd"/"Chrome" Border on IsMouseOver in Styles.xaml) with IsMouseOver
-    /// forced via <see cref="ForceMouseOver"/> — the identical
-    /// Realize-then-force-then-Realize shape
-    /// <see cref="SelectedListBoxItemUsesTheAccentPalette"/> already uses for
-    /// IsSelected, and <see cref="ForceHighlighted"/>'s own doc comment
-    /// establishes as equivalent to real input for a read-only DP. Reads the
-    /// container's ACTUAL rendered "Bd" Border.Background — never the
-    /// ThemeManager resource value directly — so a future edit that stops
-    /// wiring IsMouseOver to Theme.SurfaceHover fails this test even if the
-    /// resource itself still computed a strong number (the "verify it
-    /// reaches the pixel" caution this review was given, after one XAML
-    /// highlight was found declared but dead earlier the same day).
+    /// <summary>Hover-tint strength review, ROUND 2 (2026-08-08). A parallel
+    /// audit of round 1 found two problems: (1) Match & Merge/Bulk rename/
+    /// History/Triage — "where the owner spends their time" — had NO
+    /// DataGridRow hover at all (Styles.xaml had zero style for it), so
+    /// round 1's stronger SurfaceHover never reached the grids the complaint
+    /// was actually about; (2) a single shared Mix(Surface, Text, amount)
+    /// formula can't both grow the surround-delta AND protect every
+    /// foreground colour that can sit on it — two status colours (StatusGreen
+    /// light, StatusRed dark) were already below 4.5:1 at round 1's OLD 0.08,
+    /// which round 1 raised further without knowing it, and could only
+    /// "fix" by staying so weak the delta barely moved.
     ///
-    /// The floor (1.22 light / 1.30 dark) sits strictly between the OLD
-    /// 0.08 mix (measured directly against the pre-change constants: 1.181:1
-    /// light, 1.240:1 dark) and the NEW 0.10 mix (1.228:1 light, 1.318:1
-    /// dark) — see ThemeManager.cs's own comment at the Mix(...) call for
-    /// the full candidate table this floor was picked from — so reverting
-    /// the mix amount fails THIS assertion specifically ("delta too small"),
-    /// never a missing-render error (Step 5's teeth proof).</summary>
+    /// This round replaces the single shared token with TWO tiers, hand-
+    /// tuned per palette on ThemePalette itself (see that file's own
+    /// comment at SurfaceHover/SurfacePressed/RowHover for the full
+    /// reasoning and safe-zone boundaries):
+    ///   CHROME (Theme.SurfaceHover/SurfacePressed) — MenuItem, TabItem,
+    ///   ChipButton, MainWindow's Rescan button. Only Theme.Text ever
+    ///   renders on these, so they're free to be strong.
+    ///   ROW (Theme.RowHover) — DataGridRow (newly added to all four grids
+    ///   this round), ListBoxItem, the Calendar family, ReadyView's inbox
+    ///   button. StatusAmber/StatusGreen/StatusRed/SubtleText can all
+    ///   render on these, so it's deliberately modest — but, unlike round
+    ///   1, EVERY one of those five foregrounds is now guaranteed >=4.5:1
+    ///   against it in both palettes (verified by brute-force byte search),
+    ///   closing the two pre-existing gaps round 1 could only document.
+    ///
+    /// Every test below reads a REAL rendered brush from a REAL control —
+    /// never the ThemeManager resource value directly — so a future edit
+    /// that stops wiring a trigger to the right tier fails these tests even
+    /// if the resource itself still computed a strong number (the "verify
+    /// it reaches the pixel" caution this review was given both rounds,
+    /// after one XAML highlight was found declared but dead the first
+    /// time, and a second — HistoryWindow's Reverted trigger — found dead
+    /// the same way by round 2's own audit).</summary>
+
+    /// <summary>Renders a real TabItem (Theme.SurfaceHover's CHROME tier —
+    /// only Theme.Text ever sits on it) with IsMouseOver forced via
+    /// <see cref="ForceMouseOver"/>, the same Realize-then-force-then-
+    /// Realize shape <see cref="SelectedListBoxItemUsesTheAccentPalette"/>
+    /// already uses for IsSelected. The floor (1.5 light / 1.5 dark) sits
+    /// strictly between round 1's shared 0.10 mix (1.228:1 light, 1.318:1
+    /// dark — what a lazy "just reuse round 1's number" fix would still
+    /// measure) and round 2's actual CHROME values (1.729:1 light, 1.780:1
+    /// dark), so reverting to round 1's shared token fails THIS assertion
+    /// specifically, not a missing-render error.</summary>
     [Theory, MemberData(nameof(Palettes))]
-    public void HoverSurroundDeltaClearsTheStrengthenedFloor(bool dark) => _fx.Invoke(() =>
+    public void ChromeHoverSurroundDeltaClearsTheStrengthenedFloor(bool dark) => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark);
 
-        var item = new ListBoxItem { Content = "Invoices" };
-        Realize(item);
-        ForceMouseOver(item, true);
-        Realize(item);
+        var tab = new TabItem { Header = "Destinations" };
+        Realize(tab);
+        ForceMouseOver(tab, true);
+        Realize(tab);
 
-        var bd = FindDescendant<Border>(item)
-            ?? throw new InvalidOperationException("no Border descendant under ListBoxItem");
+        var bd = FindDescendant<Border>(tab)
+            ?? throw new InvalidOperationException("no Border ('Bd') descendant under TabItem");
         var hoverRgb = ToRgb(bd.Background);
         var surfaceRgb = ToRgb((Brush)_fx.App.Resources["Theme.Surface"]);
         var delta = ThemePalette.ContrastRatio(hoverRgb, surfaceRgb);
 
-        var floor = dark ? 1.30 : 1.22;
+        var floor = 1.5;
         Assert.True(delta >= floor,
-            $"Hover surround-delta ({(dark ? "dark" : "light")}): {hoverRgb} vs surface {surfaceRgb} = {delta:F3}:1, want >= {floor}");
+            $"Chrome hover surround-delta ({(dark ? "dark" : "light")}): {hoverRgb} vs surface {surfaceRgb} = {delta:F3}:1, want >= {floor}");
     });
 
     /// <summary>Same purpose as the Hover test above, for
@@ -1578,11 +1596,11 @@ public class HighlightContrastTests
     /// IsSubmenuOpen is a plain public read/write property (unlike
     /// IsHighlighted), so no reflection trick is needed here.
     ///
-    /// The floor (1.45 light / 1.65 dark) sits strictly between the OLD 0.16
-    /// mix (1.400:1 light, 1.587:1 dark) and the NEW 0.20 mix (1.529:1
-    /// light, 1.780:1 dark).</summary>
+    /// The floor (2.0 light / 2.0 dark) sits strictly between round 1's
+    /// shared 0.20 mix (1.529:1 light, 1.780:1 dark) and round 2's actual
+    /// CHROME pressed values (2.649:1 light, 2.502:1 dark).</summary>
     [Theory, MemberData(nameof(Palettes))]
-    public void PressedSurroundDeltaClearsTheStrengthenedFloor(bool dark) => _fx.Invoke(() =>
+    public void ChromePressedSurroundDeltaClearsTheStrengthenedFloor(bool dark) => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark);
 
@@ -1615,9 +1633,9 @@ public class HighlightContrastTests
             var surfaceRgb = ToRgb((Brush)_fx.App.Resources["Theme.Surface"]);
             var delta = ThemePalette.ContrastRatio(pressedRgb, surfaceRgb);
 
-            var floor = dark ? 1.65 : 1.45;
+            var floor = 2.0;
             Assert.True(delta >= floor,
-                $"Pressed surround-delta ({(dark ? "dark" : "light")}): {pressedRgb} vs surface {surfaceRgb} = {delta:F3}:1, want >= {floor}");
+                $"Chrome pressed surround-delta ({(dark ? "dark" : "light")}): {pressedRgb} vs surface {surfaceRgb} = {delta:F3}:1, want >= {floor}");
         }
         finally
         {
@@ -1626,22 +1644,25 @@ public class HighlightContrastTests
     });
 
     /// <summary>Step 2's own instruction: "keep pressed visibly stronger than
-    /// hover" — a structural invariant on the two REAL rendered brushes the
-    /// tests above already resolve independently, re-derived here rather
-    /// than hardcoding two numbers that could drift apart from each other
-    /// without either individual floor test failing.</summary>
+    /// hover" — a structural invariant on the two REAL rendered CHROME-tier
+    /// brushes the tests above already resolve independently, re-derived
+    /// here rather than hardcoding two numbers that could drift apart from
+    /// each other without either individual floor test failing. (The ROW
+    /// tier has no pressed variant at all — see ThemePalette.cs's RowHover
+    /// comment for why none of its consumers need one — so this comparison
+    /// is CHROME-only.)</summary>
     [Theory, MemberData(nameof(Palettes))]
-    public void PressedSurroundDeltaExceedsHoverSurroundDelta(bool dark) => _fx.Invoke(() =>
+    public void ChromePressedSurroundDeltaExceedsChromeHoverSurroundDelta(bool dark) => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark);
         var surfaceRgb = ToRgb((Brush)_fx.App.Resources["Theme.Surface"]);
 
-        var item = new ListBoxItem { Content = "Invoices" };
-        Realize(item);
-        ForceMouseOver(item, true);
-        Realize(item);
-        var hoverRgb = ToRgb((FindDescendant<Border>(item)
-            ?? throw new InvalidOperationException("no Border descendant under ListBoxItem")).Background);
+        var tab = new TabItem { Header = "Destinations" };
+        Realize(tab);
+        ForceMouseOver(tab, true);
+        Realize(tab);
+        var hoverRgb = ToRgb((FindDescendant<Border>(tab)
+            ?? throw new InvalidOperationException("no Border ('Bd') descendant under TabItem")).Background);
         var hoverDelta = ThemePalette.ContrastRatio(hoverRgb, surfaceRgb);
 
         var menu = new Menu();
@@ -1666,7 +1687,7 @@ public class HighlightContrastTests
             var pressedDelta = ThemePalette.ContrastRatio(pressedRgb, surfaceRgb);
 
             Assert.True(pressedDelta > hoverDelta,
-                $"Pressed ({pressedDelta:F3}:1) should read stronger than Hover ({hoverDelta:F3}:1) in {(dark ? "dark" : "light")}");
+                $"Chrome Pressed ({pressedDelta:F3}:1) should read stronger than Chrome Hover ({hoverDelta:F3}:1) in {(dark ? "dark" : "light")}");
         }
         finally
         {
@@ -1674,26 +1695,61 @@ public class HighlightContrastTests
         }
     });
 
+    /// <summary>Theme.RowHover's surround-delta against a real, rendered
+    /// ListBoxItem — deliberately a LOW floor (only "strictly more than
+    /// no hover at all", i.e. > 1.0), not a taste number: ThemePalette.cs's
+    /// RowHover comment shows this tier is mathematically capped near
+    /// 1.0-1.2:1 by StatusGreen/StatusRed's own luminance if every one of
+    /// the five foregrounds that can render on it is to clear 4.5:1 — going
+    /// stronger is exactly what breaks the legibility tests below. The real
+    /// proof that RowHover is "obviously there" isn't a bigger ratio, it's
+    /// that a hover now exists on these rows AT ALL where round 1's audit
+    /// found literally none (see the DataGridRow tests further down); this
+    /// test only guards against a future edit accidentally leaving the
+    /// background at plain Surface (delta exactly 1.0) while still wiring
+    /// the trigger.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void RowHoverSurroundDeltaIsNonTrivial(bool dark) => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark);
+
+        var item = new ListBoxItem { Content = "Invoices" };
+        Realize(item);
+        ForceMouseOver(item, true);
+        Realize(item);
+
+        var bd = FindDescendant<Border>(item)
+            ?? throw new InvalidOperationException("no Border descendant under ListBoxItem");
+        var hoverRgb = ToRgb(bd.Background);
+        var surfaceRgb = ToRgb((Brush)_fx.App.Resources["Theme.Surface"]);
+        var delta = ThemePalette.ContrastRatio(hoverRgb, surfaceRgb);
+
+        var floor = dark ? 1.05 : 1.02;
+        Assert.True(delta >= floor,
+            $"Row hover surround-delta ({(dark ? "dark" : "light")}): {hoverRgb} vs surface {surfaceRgb} = {delta:F3}:1, want >= {floor}");
+    });
+
     /// <summary>The live "SubtleText and StatusAmber on Hover" pairing this
     /// review's own brief named directly: BulkRenameWindow.xaml's
-    /// DataGridRow RowStyle paints a NeedsName row's Background with this
-    /// SAME Theme.SurfaceHover (a persistent state highlight, not literal
-    /// mouse hover, but the identical resource and the identical legibility
-    /// question), and BulkRenameViewModel.ApplyPlans makes NeedsName=true
-    /// ALWAYS imply NoteIsProblem=true (needsName is defined as
-    /// `!pr.Changed && pr.Note.Length > 0`, and noteIsProblem is `pr.Note.Length
-    /// > 0` — the first condition is strictly narrower) — so a NeedsName
-    /// row's Note column is ALWAYS StatusAmber (Manual/Changed's SubtleText
-    /// triggers are declared before it and always lose), and its
-    /// Changed=false always holds too, so "New name" is ALWAYS SubtleText.
+    /// DataGridRow RowStyle paints a NeedsName row's Background with
+    /// Theme.RowHover (a persistent state highlight, not literal mouse
+    /// hover, but the identical resource and the identical legibility
+    /// question — and, this round, ALSO the same token IsMouseOver itself
+    /// now uses on that same RowStyle, see BulkRenameWindow.xaml), and
+    /// BulkRenameViewModel.ApplyPlans makes NeedsName=true ALWAYS imply
+    /// NoteIsProblem=true (needsName is defined as `!pr.Changed &&
+    /// pr.Note.Length > 0`, and noteIsProblem is `pr.Note.Length > 0` — the
+    /// first condition is strictly narrower) — so a NeedsName row's Note
+    /// column is ALWAYS StatusAmber (Manual/Changed's SubtleText triggers
+    /// are declared before it and always lose), and its Changed=false
+    /// always holds too, so "New name" is ALWAYS SubtleText.
     /// DataGridNoteColourTests' own BulkRename coverage checks these same
     /// colours against Theme.Surface (the DataGrid's OWN Background,
     /// correct for a Transparent-background row) — not what a NeedsName
     /// row's REAL background is. This test reads the ROW's actual rendered
     /// Background instead, closing exactly that gap, and — the "reaches the
-    /// pixel" check — asserts it against the SAME resolved Theme.SurfaceHover
-    /// resource rather than a hardcoded RGB triple, so it stays correct
-    /// however the mix amount is tuned in the future.</summary>
+    /// pixel" check — asserts it against the SAME resolved Theme.RowHover
+    /// resource rather than a hardcoded RGB triple.</summary>
     [Theory, MemberData(nameof(Palettes))]
     public void BulkRenameNeedsNameRowStaysLegibleOnItsOwnHoverTint(bool dark) => _fx.Invoke(() =>
     {
@@ -1722,7 +1778,7 @@ public class HighlightContrastTests
             row.UpdateLayout();
 
             var rowBg = ToRgb(row.Background);
-            Assert.Equal(ToRgb((Brush)_fx.App.Resources["Theme.SurfaceHover"]), rowBg);
+            Assert.Equal(ToRgb((Brush)_fx.App.Resources["Theme.RowHover"]), rowBg);
 
             var newNameColumn = grid.Columns.FirstOrDefault(c => (c.Header as string)?.StartsWith("New name") == true)
                 ?? throw new InvalidOperationException("no 'New name' column found");
@@ -1758,8 +1814,8 @@ public class HighlightContrastTests
         }
     });
 
-    /// <summary>The other live "SubtleText on Hover" pairing — the one Step
-    /// 3's own brief predicted as "the most likely casualty": RouteList's
+    /// <summary>The other live "SubtleText on Hover" pairing — the one round
+    /// 1's brief predicted as "the most likely casualty": RouteList's
     /// GestureText caption (Theme.SubtleText, via its CaptionText-based
     /// inline Style) on an unselected, hovered ListBoxItem row. Same shape
     /// LabelMakerWindow's NextNumberText and ManageSavedWindow's
@@ -1768,7 +1824,7 @@ public class HighlightContrastTests
     /// (see SettingsRouteListGestureTextStaysSubtleUnlessSelected above,
     /// which covers selected/unselected-but-not-hovered; this test is the
     /// hovered-but-unselected state that was never previously exercised).
-    /// IsMouseOver forced the same way HoverSurroundDeltaClearsTheStrengthenedFloor
+    /// IsMouseOver forced the same way RowHoverSurroundDeltaIsNonTrivial
     /// does above.</summary>
     [Theory, MemberData(nameof(Palettes))]
     public void RouteListGestureTextStaysLegibleWhenHoveredButUnselected(bool dark) => _fx.Invoke(() =>
@@ -1823,7 +1879,7 @@ public class HighlightContrastTests
             var bd = FindDescendant<Border>(container)
                 ?? throw new InvalidOperationException("no Border descendant under the RouteList row");
             var rowBg = ToRgb(bd.Background);
-            Assert.Equal(ToRgb((Brush)_fx.App.Resources["Theme.SurfaceHover"]), rowBg);
+            Assert.Equal(ToRgb((Brush)_fx.App.Resources["Theme.RowHover"]), rowBg);
 
             // GestureText is declared FIRST in the DockPanel (Dock="Right",
             // after the non-Text Rectangle swatch) — same element
@@ -1842,35 +1898,27 @@ public class HighlightContrastTests
     });
 
     /// <summary>UnlockWindow's FileList Note column, hovered but NOT
-    /// selected — the pairing that surfaced the review's most important
-    /// finding: two of these four status colours were ALREADY below 4.5:1
-    /// here at the OLD 0.08 mix, before this review touched anything
-    /// (StatusGreen light 4.343:1, StatusRed dark 3.945:1 — measured against
-    /// the pre-change constants), because Styles.xaml's ListBoxItem
-    /// IsMouseOver trigger paints the SAME Theme.SurfaceHover behind
-    /// whichever status coloured the Note, and neither existing test here
-    /// (which only ever checks "selected" or plain "Theme.Surface")
-    /// exercised "hovered, unselected" at all. StatusRed in light was
-    /// passing but paper-thin pre-existing (4.606:1, a 0.106 margin) and
-    /// does cross below 4.5 at the strengthened mix — a small, deliberate,
-    /// measured regression on an already-marginal pairing, not something
-    /// achievable to avoid while still strengthening Hover at all (see
-    /// ThemeManager.cs's own comment at the Mix(...) call for the full
-    /// candidate table). Pinned with the real, current numbers — the same
-    /// "assert the honest range, don't assert a floor that isn't true"
-    /// convention <see cref="MainWindowToastIconContrast"/> already
-    /// establishes for this codebase — rather than silently left uncovered
-    /// or asserted against a floor guaranteed to fail. If any of the
-    /// "known gap" cases below ever climbs to >=4.5 (a future per-state
-    /// hover background, say), TIGHTEN that case's assertion to `>= 4.5` and
-    /// update this comment; don't just widen the range further.</summary>
+    /// selected — the pairing that surfaced round 1's most important
+    /// finding, and round 2's proof that the fix actually landed: ALL FOUR
+    /// statuses now clear 4.5:1 here in BOTH palettes, closing the two
+    /// pre-existing gaps round 1 could only document as known/open
+    /// (StatusGreen light was 4.343:1, StatusRed dark was 3.945:1 — both
+    /// already below the floor at the ORIGINAL 0.08 mix, before either
+    /// round touched anything) plus the one round 1's own strengthening
+    /// pushed under the floor for the first time (StatusRed light, 4.606:1
+    /// -> 4.430:1 at round 1's 0.10). Theme.RowHover's per-palette,
+    /// all-five-protected design (ThemePalette.cs's own comment) is what
+    /// makes this a straight `>= 4.5` assertion instead of the "known,
+    /// open gap" range round 1 had to pin here — this test IS the proof
+    /// that "fix the contrast failures rather than pinning them" was
+    /// actually achieved, not just claimed.</summary>
     [Theory]
-    [InlineData(false, "Ready")]         // StatusGreen, light: KNOWN GAP (pre-existing)
-    [InlineData(true, "Ready")]          // StatusGreen, dark: clears
-    [InlineData(false, "NeedsPassword")] // StatusAmber, light: clears
-    [InlineData(true, "NeedsPassword")]  // StatusAmber, dark: clears
-    [InlineData(false, "Unreadable")]    // StatusRed, light: KNOWN GAP (newly crossed by this change)
-    [InlineData(true, "Unreadable")]     // StatusRed, dark: KNOWN GAP (pre-existing)
+    [InlineData(false, "Ready")]
+    [InlineData(true, "Ready")]
+    [InlineData(false, "NeedsPassword")]
+    [InlineData(true, "NeedsPassword")]
+    [InlineData(false, "Unreadable")]
+    [InlineData(true, "Unreadable")]
     public void UnlockFileListHoverUnselectedNoteContrast(bool dark, string statusName) => _fx.Invoke(() =>
     {
         var status = statusName switch
@@ -1923,7 +1971,7 @@ public class HighlightContrastTests
             var bd = FindDescendant<Border>(container)
                 ?? throw new InvalidOperationException("no Border descendant under FileList's ListBoxItem");
             var rowBg = ToRgb(bd.Background);
-            Assert.Equal(ToRgb((Brush)_fx.App.Resources["Theme.SurfaceHover"]), rowBg);
+            Assert.Equal(ToRgb((Brush)_fx.App.Resources["Theme.RowHover"]), rowBg);
 
             var textBlocks = FindAllDescendants<TextBlock>(container);
             Assert.True(textBlocks.Count >= 2,
@@ -1932,17 +1980,229 @@ public class HighlightContrastTests
             Assert.Equal(expectedColor(p), noteFg);
             var ratio = ThemePalette.ContrastRatio(noteFg, rowBg);
 
-            var knownGap = (dark, statusName) is (false, "Ready") or (false, "Unreadable") or (true, "Unreadable");
-            if (knownGap)
-                Assert.True(ratio is >= 3.0 and < 4.5,
-                    $"UnlockWindow FileList hovered-unselected {statusName} ({(dark ? "dark" : "light")}): {noteFg} on {rowBg} = {ratio:F3} — expected a KNOWN, still-open gap, not a pass or a total collapse");
-            else
-                Assert.True(ratio >= 4.5,
-                    $"UnlockWindow FileList hovered-unselected {statusName} ({(dark ? "dark" : "light")}): {noteFg} on {rowBg} = {ratio:F3}");
+            Assert.True(ratio >= 4.5,
+                $"UnlockWindow FileList hovered-unselected {statusName} ({(dark ? "dark" : "light")}): {noteFg} on {rowBg} = {ratio:F3}");
         }
         finally
         {
             window.Close();
+        }
+    });
+
+    // ------------------------------------------- DataGridRow hover coverage
+
+    /// <summary>The complaint round 1 missed entirely: Styles.xaml had ZERO
+    /// style for DataGridRow before round 2 — no IsMouseOver trigger on
+    /// DataGridRow OR DataGridCell anywhere in this app, confirmed by grep
+    /// — so Match & Merge, one of the four grids "where the owner spends
+    /// their time" (round 2's own brief), showed no hover feedback
+    /// whatsoever no matter how strong any Theme.* token was. Renders a
+    /// REAL MatchMergeWindow with one "ambiguous" (StatusAmber Note) row,
+    /// forces IsMouseOver on the real DataGridRow container (MatchGrid's
+    /// OWN local RowStyle now carries the same IsMouseOver trigger this
+    /// review added — see MatchMergeWindow.xaml), and asserts BOTH that the
+    /// row's actual Background resolves to Theme.RowHover (the "reaches the
+    /// pixel" check) and that the Note text stays legible on it.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void MatchMergeGridRowHoverRendersAndStaysLegible(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
+        vm.Rows.Add(new MatchRow(@"C:\inbox\a.pdf", "a.pdf", "", "some note text here", "ambiguous"));
+        var window = new MatchMergeWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+
+            var grid = FindDescendant<DataGrid>(window)
+                ?? throw new InvalidOperationException("no DataGrid descendant under MatchMergeWindow");
+            var row = grid.ItemContainerGenerator.ContainerFromIndex(0) as DataGridRow
+                ?? throw new InvalidOperationException("row 0 never realized a container");
+            row.ApplyTemplate();
+            row.UpdateLayout();
+            ForceMouseOver(row, true);
+            row.UpdateLayout();
+
+            var rowBg = ToRgb(row.Background);
+            Assert.Equal(ToRgb((Brush)_fx.App.Resources["Theme.RowHover"]), rowBg);
+
+            var noteColumn = grid.Columns.FirstOrDefault(c => (c.Header as string) == "Note")
+                ?? throw new InvalidOperationException("no 'Note' column found");
+            var noteCell = FindAllDescendants<DataGridCell>(row).FirstOrDefault(c => c.Column == noteColumn)
+                ?? throw new InvalidOperationException("'Note' cell never realized");
+            noteCell.ApplyTemplate();
+            noteCell.UpdateLayout();
+            var noteText = FindDescendant<TextBlock>(noteCell)
+                ?? throw new InvalidOperationException("'Note' cell TextBlock never realized");
+            var noteFg = ToRgb(noteText.Foreground);
+            Assert.Equal(p.StatusAmber, noteFg);
+            var ratio = ThemePalette.ContrastRatio(noteFg, rowBg);
+            Assert.True(ratio >= 4.5,
+                $"Match & Merge row Note (StatusAmber) on its own Hover tint ({(dark ? "dark" : "light")}): {noteFg} on {rowBg} = {ratio:F3}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>TriageWindow's Candidates grid sets NO local RowStyle at all
+    /// (unlike BulkRename/MatchMerge/History) — confirmed by reading
+    /// TriageWindow.xaml — so it's the ONE grid that resolves the new
+    /// implicit `&lt;Style TargetType="DataGridRow"&gt;` Styles.xaml gained
+    /// this round, rather than a window-local copy of the same trigger.
+    /// Proves that implicit style actually reaches a real grid (the same
+    /// "local value outranks style" trap this file documents repeatedly
+    /// elsewhere means it CANNOT be assumed from the other three windows'
+    /// tests passing). Built the same way DataGridNoteColourTests'
+    /// AssertTriageWhyColour does — ShowCurrentAsync() directly rather than
+    /// Show()ing the window, since Show() would start a real WebView2 init
+    /// this sandbox can't complete.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void TriageGridRowHoverRendersViaTheImplicitStyle(bool dark) => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark);
+
+        var item = new MatchMerge.MatchResult(@"C:\inbox\doc.pdf", "suggested", "SMITH", "JOHN",
+            Suggestions: new List<MatchMerge.Suggestion>
+            {
+                new(new MatchMerge.Candidate("1", new Dictionary<string, string> { ["A"] = "x" }),
+                    "token match on last name"),
+            });
+        var window = new TriageWindow(new List<MatchMerge.MatchResult> { item }, new[] { "A" })
+        {
+            Dialogs = new FakeDialogs(),
+        };
+        try
+        {
+#pragma warning disable xUnit1031
+            window.ShowCurrentAsync().GetAwaiter().GetResult();
+#pragma warning restore xUnit1031
+
+            var grid = window.Candidates;
+            grid.ApplyTemplate();
+            grid.Measure(new Size(440, 500));
+            grid.Arrange(new Rect(0, 0, 440, 500));
+            grid.UpdateLayout();
+
+            var row = grid.ItemContainerGenerator.ContainerFromIndex(0) as DataGridRow
+                ?? throw new InvalidOperationException("Candidates row 0 never realized a container");
+            row.ApplyTemplate();
+            row.UpdateLayout();
+            // Sanity: really resolved through the NEW implicit
+            // {x:Type DataGridRow} style (an implicit style's resource key
+            // is the CLR Type, not a string), not some other local value —
+            // this is the one grid with no local RowStyle of its own to
+            // compete with it.
+            Assert.Same(_fx.App.Resources[typeof(DataGridRow)], row.Style);
+            ForceMouseOver(row, true);
+            row.UpdateLayout();
+
+            var rowBg = ToRgb(row.Background);
+            Assert.Equal(ToRgb((Brush)_fx.App.Resources["Theme.RowHover"]), rowBg);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>HistoryWindow's Reverted DataTrigger — round 2's second
+    /// finding, "same trap as Match & Merge": a Foreground Setter declared
+    /// on DataGridRow's own RowStyle, which Styles.xaml's DataGridCell
+    /// style's own unconditional Foreground Setter always outranks (the
+    /// cell inherits nothing from the row that carries any weight), so it
+    /// never painted anything, ever — the row's OTHER Setter on that same
+    /// trigger (FontStyle="Italic") DID render, which is exactly why nobody
+    /// noticed the Foreground half was dead. Fixed the identical way Task 2
+    /// fixed Match & Merge: a per-column ElementStyle DataTrigger on each of
+    /// the five text columns (When/Original/Filed as/Name/Destination).
+    /// This test builds a REAL reverted history row, reads the When
+    /// column's actual rendered TextBlock, and proves both halves now work:
+    /// unselected shows Theme.SubtleText (the fix), selected still shows
+    /// Theme.AccentText (the "let selection win" override, same shape as
+    /// every other per-column vocabulary fix in this file) — plus that
+    /// hovering the row (a state nothing here exercised before either)
+    /// renders Theme.RowHover on the row itself.</summary>
+    [Theory, MemberData(nameof(Palettes))]
+    public void HistoryRevertedRowIsNowLegibleAndHoverRenders(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+
+        var dbPath = Path.Combine(Path.GetTempPath(), "ordo_test_history_" + Guid.NewGuid() + ".sqlite");
+        var history = new History(dbPath);
+        try
+        {
+            var id = history.LogCommit(@"c:\in\x.pdf", "x.pdf", "Y.pdf", "Y",
+                "insert", "", "Invoices", @"c:\out", tagged: false, "");
+            history.MarkReverted(id);
+            var vm = new HistoryViewModel(history, new FakeDialogs(), new InlineWorkScheduler());
+            var window = new HistoryWindow(vm)
+            {
+                Left = -20000, Top = 0, ShowActivated = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+            };
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+
+                var grid = FindDescendant<DataGrid>(window)
+                    ?? throw new InvalidOperationException("no DataGrid descendant under HistoryWindow");
+                var row = grid.ItemContainerGenerator.ContainerFromIndex(0) as DataGridRow
+                    ?? throw new InvalidOperationException("row 0 never realized a container");
+                row.ApplyTemplate();
+                row.UpdateLayout();
+                Assert.Equal(FontStyles.Italic, row.FontStyle);   // the half that always worked
+
+                ForceMouseOver(row, true);
+                row.UpdateLayout();
+                var rowBg = ToRgb(row.Background);
+                Assert.Equal(ToRgb((Brush)_fx.App.Resources["Theme.RowHover"]), rowBg);
+                ForceMouseOver(row, false);
+                row.UpdateLayout();
+
+                var whenColumn = grid.Columns.FirstOrDefault(c => (c.Header as string) == "When")
+                    ?? throw new InvalidOperationException("no 'When' column found");
+                var whenCell = FindAllDescendants<DataGridCell>(row).FirstOrDefault(c => c.Column == whenColumn)
+                    ?? throw new InvalidOperationException("'When' cell never realized");
+                whenCell.ApplyTemplate();
+                whenCell.UpdateLayout();
+                var whenText = FindDescendant<TextBlock>(whenCell)
+                    ?? throw new InvalidOperationException("'When' cell TextBlock never realized");
+
+                var unselectedFg = ToRgb(whenText.Foreground);
+                Assert.Equal(p.SubtleText, unselectedFg);   // the half that was DEAD before this fix
+                var unselectedRatio = ThemePalette.ContrastRatio(unselectedFg, p.Surface);
+                Assert.True(unselectedRatio >= 4.5,
+                    $"History Reverted row 'When' unselected ({(dark ? "dark" : "light")}): {unselectedFg} on {p.Surface} = {unselectedRatio:F3}");
+
+                grid.SelectedIndex = 0;
+                grid.UpdateLayout();
+                var selectedFg = ToRgb(whenText.Foreground);
+                Assert.Equal(p.AccentText, selectedFg);   // let selection win
+                var selectedRatio = ThemePalette.ContrastRatio(selectedFg, p.Accent);
+                Assert.True(selectedRatio >= 4.5,
+                    $"History Reverted row 'When' selected ({(dark ? "dark" : "light")}): {selectedFg} on {p.Accent} = {selectedRatio:F3}");
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            history.Dispose();
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            try { File.Delete(dbPath); } catch { /* best effort */ }
         }
     });
 

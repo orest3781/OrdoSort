@@ -134,15 +134,34 @@
                           CellEditEnding="OnCellEditEnding" SelectionMode="Extended"
                           PreviewKeyDown="OnGridKeyDown">
                     <DataGrid.RowStyle>
+                        <!-- Local RowStyle: replaces implicit-by-type lookup for
+                             this DataGrid's rows entirely, so Styles.xaml's own
+                             implicit DataGridRow style (added alongside this,
+                             hover-tint strength review round 2, 2026-08-08)
+                             never reaches here — the IsMouseOver trigger below
+                             is this window's own copy of that same behaviour,
+                             not inherited. -->
                         <Style TargetType="DataGridRow">
                             <Setter Property="Background" Value="Transparent" />
                             <Setter Property="ToolTip" Value="{Binding Source}" />
                             <Style.Triggers>
+                                <!-- Theme.RowHover, NOT Theme.SurfaceHover: this
+                                     row's Note column can show StatusAmber (see
+                                     BulkRenameViewModel.ApplyPlans — NeedsName
+                                     always implies NoteIsProblem) and its New
+                                     name column can show SubtleText — exactly
+                                     the vocabulary Theme.RowHover is tuned to
+                                     protect (ThemePalette.cs's RowHover
+                                     comment). -->
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background"
+                                            Value="{DynamicResource Theme.RowHover}" />
+                                </Trigger>
                                 <!-- the few files waiting on a person: findable
                                      at a glance among rows that are already right -->
                                 <DataTrigger Binding="{Binding NeedsName}" Value="True">
                                     <Setter Property="Background"
-                                            Value="{DynamicResource Theme.SurfaceHover}" />
+                                            Value="{DynamicResource Theme.RowHover}" />
                                     <Setter Property="ToolTip"
                                             Value="Needs a name — press F2 or Enter to type one" />
                                 </DataTrigger>

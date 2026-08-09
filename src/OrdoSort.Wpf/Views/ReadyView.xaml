@@ -97,9 +97,15 @@
                         <ContentPresenter />
                     </Border>
                     <ControlTemplate.Triggers>
+                        <!-- Theme.RowHover, NOT Theme.SurfaceHover (hover-tint
+                             strength review round 2, 2026-08-08): BigCount
+                             below can render Theme.StatusRed while
+                             CountAlertOn, so this hover must protect that
+                             pairing the same way a grid Note cell does — see
+                             ThemePalette.cs's RowHover comment. -->
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bg" Property="Background"
-                                    Value="{DynamicResource Theme.SurfaceHover}" />
+                                    Value="{DynamicResource Theme.RowHover}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
