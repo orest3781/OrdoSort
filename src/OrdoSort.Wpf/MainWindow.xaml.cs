@@ -333,6 +333,22 @@ public partial class MainWindow : Window
         vm.Dispose();   // cancel any still-armed rebuild probe now the dialog is closing
     }
 
+    private void OnTurnaroundReport(object sender, RoutedEventArgs e)
+    {
+        var vm = new TurnaroundViewModel(Shell.Cfg, Dialogs, Shell.SaveConfigNow,
+            uiContext: SynchronizationContext.Current);
+        new Windows.TurnaroundWindow(vm) { Owner = this }.ShowDialog();
+        vm.Dispose();
+    }
+
+    private void OnProductionReport(object sender, RoutedEventArgs e)
+    {
+        var vm = new ProductionViewModel(Shell.Cfg, Dialogs, Shell.SaveConfigNow,
+            uiContext: SynchronizationContext.Current);
+        new Windows.ProductionWindow(vm) { Owner = this }.ShowDialog();
+        vm.Dispose();
+    }
+
     private void OnSettings(object sender, RoutedEventArgs e)
     {
         if (!Shell.IsReady)
