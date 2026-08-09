@@ -22,15 +22,38 @@ public partial class ProductionWindow : Window
     /// TriageWindow's own FillerMinWidth (60) does.</summary>
     private const double FillerMinWidth = 120;
 
-    /// <summary>Share of ResultsGrid's own live ActualWidth each capped group
-    /// column (every group column after the first — see RebuildColumns) may
-    /// grow to before ellipsizing. The same flat-share DataGridColumnCap.Track
-    /// overload BulkRenameWindow/MatchMergeWindow/HistoryWindow already use
-    /// for their own content columns, not TriageWindow's per-column-count
-    /// formula: Production has no fixed-width "Why"-style column competing
-    /// for the same budget, so the simpler overload is the honest fit here,
-    /// not an under-engineered shortcut.</summary>
-    private const double GroupColumnShare = 0.30;
+    /// <summary>Headroom subtracted from the group-column budget for the
+    /// DataGrid's own border/padding — same role as TriageWindow's own
+    /// SafetyMargin (a possible vertical scrollbar is reserved separately, by
+    /// DataGridColumnCap.Track itself, before this budget ever sees its
+    /// viewport width — see that class's own doc comment).</summary>
+    private const double SafetyMargin = 20;
+
+    /// <summary>Estimated width reserved PER numeric column (Records plus
+    /// every ticked sum column — see RebuildColumns' own isNumericColumn
+    /// comment) when computing how much budget is left for the capped group
+    /// columns. Those columns are Auto and deliberately left UNCAPPED (short
+    /// formatted numbers, "0.##" InvariantCulture —
+    /// ProductionViewModel.RecomputeResults), but their rendered width still
+    /// comes out of the same viewport a group column's cap is computed
+    /// against, and — unlike TriageWindow's WhyColumnWidth, a single
+    /// fixed-width column — there's no exact figure to subtract: both HOW
+    /// MANY numeric columns exist (Records + however many sum columns are
+    /// ticked) and their content are user/data controlled, and an Auto
+    /// column's width is driven by its HEADER TEXT too, not just its short
+    /// numeric cell values — a sum column's header is a real, arbitrary CSV
+    /// column name (this app's own default, "PDF-PAGE-COUNT", is 14
+    /// characters). 90px was the first guess here and measured directly
+    /// (AutoFitColumnTests.Production_AtMinWidthWithFourGroupColumnsNo
+    /// HorizontalScrollbar) short: "PDF-PAGE-COUNT" alone rendered at 133px,
+    /// leaving too little reserved and a real, reproduced horizontal
+    /// scrollbar at this window's own MinWidth with many rows. 140px is
+    /// comfortably above that measurement — chosen generously so a further
+    /// miss here fails safe (a slightly smaller group-column cap) rather
+    /// than unsafe (an overflow), matching the ~150px magnitude
+    /// TriageWindow's own WhyColumnWidth already reserves for
+    /// comparably-sized text.</summary>
+    private const double NumericColumnWidthEstimate = 140;
 
     /// <summary>Same FindResource lookup as TriageWindow.xaml.cs's own
     /// GridCellTextStyle — resolved from code since this grid's columns are
@@ -87,6 +110,11 @@ public partial class ProductionWindow : Window
         for (var i = 0; i < names.Count; i++)
             if (names[i] == "Records") { recordsIndex = i; break; }
 
+        // Records + every ticked sum column — see NumericColumnWidthEstimate's
+        // own doc comment for why this count (not a fixed figure) drives the
+        // budget reservation below.
+        var numericColumnCount = Math.Max(0, names.Count - recordsIndex);
+
         var cappedGroupColumns = new List<DataGridColumn>();
         for (var i = 0; i < names.Count; i++)
         {
@@ -123,8 +151,36 @@ public partial class ProductionWindow : Window
             ResultsGrid.Columns.Add(column);
         }
 
+        // Budget-DIVIDING, not a flat per-column share: unlike MatchMerge/
+        // BulkRename/HistoryWindow's own flat-share Track calls — each tuned
+        // for a small, REPO-FIXED capped-column count baked into their own
+        // share constant — the number of capped group columns here is
+        // however many the user has ticked beyond the first, with no upper
+        // bound. A flat share (the first version of this fix) gives EVERY
+        // capped column the same independent MaxWidth, so N capped columns
+        // can jointly claim N times that share — 4 ticked group columns at a
+        // 0.30 share alone would demand 120% of the viewport before Records/
+        // the sum columns are even counted, guaranteed overflow, the exact
+        // invariant DataGridColumnCap exists to prevent. TriageWindow solved
+        // the identical "variable roster-column count" problem with the
+        // Func&lt;double,double&gt; overload dividing ITS OWN budget by
+        // cappedColumnCount (TriageWindow.xaml.cs's own ComputeRosterColumnCap)
+        // — this mirrors that shape exactly, substituting
+        // NumericColumnWidthEstimate*numericColumnCount for Triage's single
+        // fixed WhyColumnWidth reservation.
         if (cappedGroupColumns.Count > 0)
-            DataGridColumnCap.Track(ResultsGrid, GroupColumnShare, cappedGroupColumns.ToArray());
+        {
+            var cappedColumnCount = cappedGroupColumns.Count;
+
+            double ComputeGroupColumnCap(double viewportWidth)
+            {
+                var groupBudget = Math.Max(FillerMinWidth,
+                    viewportWidth - SafetyMargin - numericColumnCount * NumericColumnWidthEstimate);
+                return Math.Max(20, (groupBudget - FillerMinWidth) / cappedColumnCount);
+            }
+
+            DataGridColumnCap.Track(ResultsGrid, ComputeGroupColumnCap, cappedGroupColumns.ToArray());
+        }
     }
 
     private void OnDragOver(object sender, DragEventArgs e)

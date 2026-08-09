@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -137,7 +139,28 @@ namespace OrdoSort.Wpf.Tests;
 /// suite had scrollbar-avoidance coverage for Triage but nothing that
 /// checked the resulting cap was actually usable) — WhyColumnWidth also
 /// dropped from 260 to 150 in this round; see TriageWindow.xaml.cs's own
-/// doc comment on that constant.</summary>
+/// doc comment on that constant.
+///
+/// FIX ROUND 6 (2026-08-09, task-7 review finding): ProductionWindow (Task 7,
+/// the Production report grid) shipped with the FLAT-share
+/// DataGridColumnCap.Track overload — the same one MatchMerge/BulkRename/
+/// History use — but, unlike those three windows' fixed, small,
+/// repo-baked-in capped-column count, Production's capped-column count is
+/// however many group columns a person ticks beyond the first, with no
+/// upper bound. A flat share gives EVERY capped column the same
+/// independently-computed MaxWidth, so N capped columns can jointly demand N
+/// times that share: 4 ticked group columns alone would have claimed 3 ×
+/// 0.30 = 90% of the viewport before Records/the sum columns were even
+/// counted — guaranteed overflow, the exact invariant this whole suite
+/// exists to catch. Fixed by switching to the Func&lt;double,double&gt;
+/// overload, mirroring TriageWindow's own budget-dividing formula (divide
+/// what's left of the viewport, after a fixed reservation, by
+/// cappedColumnCount) — see ProductionWindow.xaml.cs's own doc comment for
+/// the exact shape. The Production_* facts below are new coverage, not a
+/// revision of existing ones: this suite had no ProductionWindow coverage at
+/// all before this round, so — unlike Triage's fix rounds, each proving a
+/// REGRESSION against previously-passing facts — there was no green suite
+/// for the bug to slip past; this is the ABSENCE this round closes.</summary>
 [Collection(HighlightContrastTests.Name)]
 public class AutoFitColumnTests
 {
@@ -984,6 +1007,301 @@ public class AutoFitColumnTests
         {
             Dialogs = new FakeDialogs(),
         };
+    }
+
+    // ---------------------------------------------------------- Production
+    //
+    // FIX ROUND 6 (2026-08-09, task-7 review finding): new coverage, not a
+    // revision of an existing fact — see this class's own doc comment. The
+    // one configuration named in the finding — "4 ticked group columns plus
+    // a sum column" — is BuildProductionWindowWithManyGroupColumns' whole
+    // reason to exist: the app's own defaults only ever tick TWO group
+    // columns (SOURCE-FOLDER + Employee), which a flat share can (and did)
+    // get away with by accident; this suite has to actually reach four to
+    // mean anything.
+
+    /// <summary>Reproduces ProductionWindow.xaml.cs's own budget-dividing cap
+    /// formula (FillerMinWidth/SafetyMargin/NumericColumnWidthEstimate,
+    /// duplicated here — same pattern as ExpectedColumnCap/
+    /// ExpectedTriageColumnCap above for the other three windows' own
+    /// formulas) so this test doubles as a live check that the production
+    /// constants and this expectation can't silently drift apart.</summary>
+    private static double ExpectedProductionGroupColumnCap(DataGrid grid, int cappedColumnCount, int numericColumnCount)
+    {
+        const double fillerMinWidth = 120;
+        const double safetyMargin = 20;
+        const double numericColumnWidthEstimate = 140;
+        var viewportWidth = Math.Max(0, grid.ActualWidth - SystemParameters.VerticalScrollBarWidth);
+        var groupBudget = Math.Max(fillerMinWidth,
+            viewportWidth - safetyMargin - numericColumnCount * numericColumnWidthEstimate);
+        return Math.Max(20, (groupBudget - fillerMinWidth) / cappedColumnCount);
+    }
+
+    [Fact]
+    public void Production_ShortGroupValueMeasuresNarrow() => _fx.Invoke(() =>
+    {
+        var (win, vm, dir) = BuildProductionWindowWithManyGroupColumns(ShortValue);
+        try
+        {
+            ShowOffscreen(win);
+            var column = FindColumnByHeader(win, "DEPARTMENT");
+            // Threshold is looser than MatchMerge's analogous check: an Auto
+            // column sizes to max(header, cell content), and "DEPARTMENT" is
+            // itself a 10-character header (measured 104px) — same reasoning
+            // BulkRename_ShortCurrentValueMeasuresNarrow gives for its own
+            // looser threshold. Still well under this fact's own cap (~193px
+            // pre this round's NumericColumnWidthEstimate fix, smaller now).
+            Assert.True(column.ActualWidth < 130,
+                $"Production DEPARTMENT column with short content is {column.ActualWidth}px, expected < 130px");
+        }
+        finally { CleanupProduction(win, vm, dir); }
+    });
+
+    [Fact]
+    public void Production_LongGroupValueStopsAtTheCapWithEllipsisAndTooltip() => _fx.Invoke(() =>
+    {
+        var (win, vm, dir) = BuildProductionWindowWithManyGroupColumns(VeryLongValue);
+        try
+        {
+            ShowOffscreen(win);
+            var grid = FindDescendant<DataGrid>(win)!;
+            var column = FindColumnByHeader(win, "DEPARTMENT");
+            // 3 capped columns (DEPARTMENT, REGION, Employee — SOURCE-FOLDER
+            // is the first-ticked column, so it's the filler, not capped) and
+            // 2 numeric columns (Records, PDF-PAGE-COUNT).
+            var expectedCap = ExpectedProductionGroupColumnCap(grid, cappedColumnCount: 3, numericColumnCount: 2);
+            Assert.True(column.ActualWidth == expectedCap,
+                $"Production DEPARTMENT column with long content is {column.ActualWidth}px, " +
+                $"expected exactly its cap {expectedCap}px");
+            AssertTrimmingAndTooltip((DataGridBoundColumn)column, "DEPARTMENT");
+        }
+        finally { CleanupProduction(win, vm, dir); }
+    });
+
+    [Fact]
+    public void Production_FirstTickedGroupColumnIsTheStarFillerColumn() => _fx.Invoke(() =>
+    {
+        var (win, vm, dir) = BuildProductionWindowWithManyGroupColumns(ShortValue);
+        try
+        {
+            ShowOffscreen(win);
+            var grid = FindDescendant<DataGrid>(win)!;
+            var star = Assert.Single(grid.Columns.Where(c => c.Width.IsStar));
+            Assert.Equal("SOURCE-FOLDER", star.Header);
+        }
+        finally { CleanupProduction(win, vm, dir); }
+    });
+
+    /// <summary>The Critical this round's fix addresses, made concrete: FOUR
+    /// ticked group columns (SOURCE-FOLDER as the filler, DEPARTMENT/REGION/
+    /// Employee capped) plus PDF-PAGE-COUNT as the one ticked sum column —
+    /// the exact configuration named in the finding — every CAPPED column
+    /// fed VeryLongValue so each is straining for room, the real worst case
+    /// for this invariant (same shape as every other window's own
+    /// *AllCappedColumnsAtWorstCase fact above). Pre-fix (flat 0.30 share,
+    /// 3 capped columns), this alone demanded 90% of the viewport before
+    /// Records/PDF-PAGE-COUNT were even counted.</summary>
+    [Fact]
+    public void Production_FourGroupColumnsPlusSumColumnStillFitWithNoHorizontalScrollbar() => _fx.Invoke(() =>
+    {
+        var (win, vm, dir) = BuildProductionWindowWithManyGroupColumns(VeryLongValue);
+        try
+        {
+            ShowOffscreen(win);
+            // sanity: this really is the 4-group-columns-plus-a-sum-column
+            // configuration the finding names — SOURCE-FOLDER/Employee/
+            // DEPARTMENT/REGION, Records, PDF-PAGE-COUNT — not a smaller
+            // configuration that would leave this fact silently vacuous.
+            // (NOT a MaxWidth-based count here: a star/filler column's own
+            // MaxWidth reads back as WPF's internal star-sizing sentinel,
+            // 10000 — not double.PositiveInfinity — measured directly while
+            // building this fact, so "how many columns have MaxWidth <
+            // PositiveInfinity" silently over-counts by one and isn't a
+            // reliable way to tell "how many did DataGridColumnCap.Track
+            // actually cap.")
+            var grid = FindDescendant<DataGrid>(win)!;
+            Assert.Equal(6, grid.Columns.Count);
+            AssertNoHorizontalScrollbar(win, "Production (4 group columns + 1 sum column)");
+        }
+        finally { CleanupProduction(win, vm, dir); }
+    });
+
+    /// <summary>Same "shown small from the start" axis as the other three
+    /// windows' own AtMinWidth facts, carrying ManyRowCount DISTINCT groups
+    /// (not ManyRowCount identical rows — ProductionReport.Group aggregates
+    /// identical keys, so identical input rows would collapse to ONE
+    /// displayed row regardless of row count; BuildProductionWindowWithManyGroupColumns
+    /// gives each row its own SOURCE-FOLDER value specifically so ManyRowCount
+    /// really does produce ManyRowCount displayed groups, forcing the same
+    /// vertical-scrollbar-claims-width-too case the other windows' identical
+    /// facts prove for their own grids) so the columns' cap actually has to
+    /// shrink to account for it, the same reasoning fix round 3 (this class's
+    /// own doc comment) established for the other three windows.</summary>
+    [Fact]
+    public void Production_AtMinWidthWithFourGroupColumnsNoHorizontalScrollbar() => _fx.Invoke(() =>
+    {
+        var (win, vm, dir) = BuildProductionWindowWithManyGroupColumns(VeryLongValue, ManyRowCount);
+        try
+        {
+            ShowOffscreenAtWidth(win, win.MinWidth);
+            AssertNoHorizontalScrollbar(win,
+                $"Production (at MinWidth {win.MinWidth}, {ManyRowCount} groups, 4 group columns + 1 sum column)");
+        }
+        finally { CleanupProduction(win, vm, dir); }
+    });
+
+    /// <summary>Same proof as MatchMerge/BulkRename/History's identical facts
+    /// above, for Production's own capped DEPARTMENT column — see MatchMerge's
+    /// doc comment for the full reasoning. Only ONE DataGridColumnCap.Track
+    /// registration is ever live during this test (no pick list is re-ticked
+    /// after the window is built), so the "PREVIOUS Track call's handlers
+    /// stay subscribed too" caveat ProductionWindow.xaml.cs's own
+    /// RebuildColumns doc comment describes doesn't apply here — this proves
+    /// the SAME single registration's pin-then-resize contract every other
+    /// window's equivalent fact proves for its own grid.</summary>
+    [Fact]
+    public void Production_UserDraggedGroupColumnSurvivesBeyondTheCapAndStaysPinnedAfterResize() => _fx.Invoke(() =>
+    {
+        var (win, vm, dir) = BuildProductionWindowWithManyGroupColumns(VeryLongValue);
+        try
+        {
+            ShowOffscreen(win);
+            var grid = FindDescendant<DataGrid>(win)!;
+            var column = FindColumnByHeader(win, "DEPARTMENT");
+            var capBefore = column.MaxWidth;
+            var draggedWidth = capBefore + 50;
+
+            SimulateColumnHeaderDragResize(grid, column, draggedWidth);
+            win.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                () => { }, System.Windows.Threading.DispatcherPriority.Background);
+            win.UpdateLayout();
+
+            Assert.True(column.ActualWidth >= draggedWidth - 1,
+                $"Production DEPARTMENT column after a simulated drag to {draggedWidth}px is " +
+                $"{column.ActualWidth}px — expected it to survive beyond the old cap {capBefore}px");
+
+            win.Width -= 10;
+            win.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                () => { }, System.Windows.Threading.DispatcherPriority.Background);
+            win.UpdateLayout();
+
+            // NOT ">= draggedWidth - 1" here (unlike MatchMerge/BulkRename/
+            // History's identical facts): measured directly, a modest
+            // -10px window resize on Production's own grid — three capped
+            // columns sharing one divided budget, tighter than MatchMerge/
+            // BulkRename's one or two flat-shared columns — engages WPF's
+            // own independent space-fitting by a couple of pixels (241px
+            // rendered against a 243px target), the same "legitimate few-
+            // pixel WPF adjustment, not a defect" Triage's own identical
+            // fact already documents for its own tight margin (see
+            // Triage_UserDraggedRosterColumnSurvivesBeyondTheCapAndStaysPinned
+            // AfterPanelResize's doc comment). The assertion that actually
+            // matters is "not reclamped back down to the OLD, PRE-DRAG
+            // automatic cap" (capBefore) — that's the specific regression
+            // DataGridColumnCap's Recalculate()-skips-pinned-columns logic
+            // exists to prevent, and a couple of pixels of WPF's own
+            // legitimate space-fitting is nowhere near it.
+            Assert.True(column.ActualWidth > capBefore,
+                $"Production DEPARTMENT column after a SUBSEQUENT window resize is {column.ActualWidth}px — " +
+                $"expected it to stay clearly above the pre-drag automatic cap {capBefore}px, not be reclamped to it");
+        }
+        finally { CleanupProduction(win, vm, dir); }
+    });
+
+    /// <summary>Builds a real ProductionWindow with a fixture carrying enough
+    /// extra headers to tick FOUR group columns in total: SOURCE-FOLDER
+    /// (ticked first, by the app's own default — see ProductionViewModel.
+    /// RebuildPicksAndResults' DefaultColumns call — so it's the FILLER, not
+    /// capped) plus DEPARTMENT and REGION (plain sweep columns, ticked here)
+    /// and Employee (the derived column, already ticked by default) — three
+    /// CAPPED columns total, plus PDF-PAGE-COUNT as the one ticked sum
+    /// column (also already a default). <paramref name="groupValue"/> feeds
+    /// DEPARTMENT/REGION/FILE-OWNER directly, so the derived Employee (owner
+    /// minus its ACME\ prefix) carries it too — every CAPPED column
+    /// worst-cased, not just some. Each row's SOURCE-FOLDER is
+    /// "{groupValue}-{row index}" — a per-row discriminator so
+    /// <paramref name="rowCount"/> distinct rows really do produce
+    /// <paramref name="rowCount"/> distinct GROUPS (ProductionReport.Group
+    /// aggregates identical keys — see Production_AtMinWidthWithFourGroupColumns
+    /// NoHorizontalScrollbar's own doc comment for why that distinction
+    /// matters here and not for the other three windows' flat, ungrouped
+    /// grids).</summary>
+    private static (ProductionWindow win, ProductionViewModel vm, string dir) BuildProductionWindowWithManyGroupColumns(
+        string groupValue, int rowCount = 1)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ordo_test_prodfit_" + Guid.NewGuid());
+        Directory.CreateDirectory(dir);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("DATE-TIME,FILE-OWNER,FILE-NAME,ACTION,PDF-PAGE-COUNT,SOURCE-FOLDER,DEPARTMENT,REGION");
+        for (var i = 0; i < rowCount; i++)
+            sb.AppendLine(
+                $"4/1/2025 7:55,ACME\\{groupValue},f{i}.pdf,filed,3,{groupValue}-{i},{groupValue},{groupValue}");
+        File.WriteAllText(Path.Combine(dir, "20250303-1144-swept.csv"), sb.ToString());
+
+        var vm = new ProductionViewModel(new Config(), new FakeDialogs(), saveCfg: null,
+            new InlineWorkScheduler(), uiContext: null, probeDelayMs: 0);
+        vm.AddPaths(new[] { dir });
+        // Wait for the EXACT expected row count, not just "GroupPicks has its
+        // first entry" — ApplyTable/RebuildPicksAndResults/RecomputeResults
+        // all run on the probe's threadpool thread (uiContext: null), and
+        // GroupPicks gets its FIRST HeaderPick added partway through that
+        // same call, well before it (and _groupOrder, and Rows) are actually
+        // done settling. Ticking DEPARTMENT/REGION below from THIS (test)
+        // thread while that's still in flight is a genuine data race on the
+        // shared, unsynchronized _groupOrder List<string> — reproduced
+        // directly (temporary diagnostic, since removed): it threw
+        // IndexOutOfRange inside ProductionViewModel.RecomputeResults, some
+        // rows' Key built against a 2-element _groupOrder and others against
+        // a 3-element one from the SAME Group() call, because _groupOrder
+        // was mutated mid-iteration. Every row's SOURCE-FOLDER value below is
+        // unique ("{groupValue}-{i}"), so the default (SOURCE-FOLDER +
+        // Employee) grouping already produces exactly rowCount distinct
+        // groups — Rows.Count only reaches rowCount once RecomputeResults'
+        // own Rows.Add loop (the last thing RebuildPicksAndResults does) has
+        // fully finished, which is what actually proves _groupOrder is done
+        // being read and safe for this thread to mutate next. This is a
+        // test-construction race, not a production one: the real app always
+        // marshals ApplyTable back to the UI thread via DebouncedProbe's
+        // SynchronizationContext (never null), so a real CheckBox tick can
+        // never land mid-load the way this test's uiContext: null can.
+        WaitForProductionLoad(() => vm.Rows.Count == rowCount, "the production fixture rows should fully load");
+
+        // defaults already tick SOURCE-FOLDER + Employee (group) and
+        // PDF-PAGE-COUNT (sum) — see ProductionViewModel.RebuildPicksAndResults
+        // — so ticking these two more gets to FOUR group columns total,
+        // ticked synchronously (InlineWorkScheduler; OnGroupTick has no async
+        // step of its own), so vm.Rows already reflects all four the moment
+        // this returns.
+        vm.GroupPicks.Single(p => p.Name == "DEPARTMENT").IsChosen = true;
+        vm.GroupPicks.Single(p => p.Name == "REGION").IsChosen = true;
+
+        return (new ProductionWindow(vm), vm, dir);
+    }
+
+    /// <summary>Same shape as ProductionViewModelTests.WaitFor/
+    /// DataGridSelectionContrastTests.WaitForProductionLoad — the load this
+    /// builder drives is genuinely off-thread even with InlineWorkScheduler/
+    /// probeDelayMs: 0 (DebouncedProbe's own Timer still fires on a
+    /// threadpool thread), so the pick lists have to be polled for rather
+    /// than asserted the instant AddPaths returns.</summary>
+    private static void WaitForProductionLoad(Func<bool> condition, string because, int timeoutMs = 3000)
+    {
+        var sw = Stopwatch.StartNew();
+        while (!condition())
+        {
+            if (sw.ElapsedMilliseconds > timeoutMs)
+                Assert.Fail($"condition never became true within {timeoutMs}ms: {because}");
+            Thread.Sleep(5);
+        }
+    }
+
+    private static void CleanupProduction(Window win, ProductionViewModel vm, string dir)
+    {
+        try { win.Close(); } catch { /* best effort */ }
+        vm.Dispose();
+        try { Directory.Delete(dir, true); } catch { /* best effort */ }
     }
 
     /// <summary>Show()s off-screen (firing the real Loaded handler, and
