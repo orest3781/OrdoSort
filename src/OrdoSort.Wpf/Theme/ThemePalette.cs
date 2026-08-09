@@ -296,6 +296,31 @@ public sealed record ThemePalette(
         SurfacePressed: new(174, 162, 134),
         RowHover: new(250, 238, 199));
 
+    // Carbon paper — near-black with carbon-copy violet, OLED-friendly.
+    // Dark. Values validated against the full pairing wall before landing.
+    public static ThemePalette Carbon { get; } = new(
+        WindowBg: new(15, 16, 19),
+        Surface: new(26, 27, 31),
+        Text: new(242, 242, 245),
+        SubtleText: new(176, 177, 186),
+        Border: new(70, 72, 82),
+        Accent: new(173, 160, 214),
+        AccentText: new(15, 16, 19),
+        Warning: new(84, 62, 8),
+        WarningText: new(255, 224, 130),
+        Danger: new(192, 57, 43),
+        DangerText: new(255, 255, 255),
+        Success: new(46, 125, 50),
+        StatusAmber: new(240, 173, 78),
+        StatusGreen: new(129, 199, 132),
+        StatusRed: new(229, 115, 115),
+        TileDefaultBg: new(40, 41, 48),
+        BorderStrong: new(106, 108, 120),
+        AccentBronze: new(142, 130, 184),
+        SurfaceHover: new(66, 67, 75),
+        SurfacePressed: new(88, 89, 99),
+        RowHover: new(38, 32, 54));
+
     // ------------------------------------------------------ scheme registry
 
     public static IReadOnlyList<ThemeScheme> Schemes { get; } = new[]
@@ -305,6 +330,7 @@ public sealed record ThemePalette(
         new ThemeScheme("ledger",    "Ledger",    Ledger,    IsDark: true),
         new ThemeScheme("microfilm", "Microfilm", Microfilm, IsDark: true),
         new ThemeScheme("manila",    "Manila",    Manila,    IsDark: false),
+        new ThemeScheme("carbon",    "Carbon",    Carbon,    IsDark: true),
     };
 
     /// <summary>Case-insensitive lookup by key. Null for null/blank/unknown —
