@@ -179,6 +179,69 @@ public class DataGridSelectionContrastTests
         try { Directory.Delete(dir, true); } catch { /* best effort */ }
     }
 
+    /// <summary>Task 7's own grid: unlike every other window here, its
+    /// columns are entirely dynamic (ProductionWindow.xaml.cs's RebuildColumns,
+    /// the same TriageWindow-style construction TurnaroundWindow's own grid
+    /// does NOT need) — one DataGridTextColumn per currently-picked group
+    /// column, then Records, then one per picked sum column. The generic
+    /// enumeration this file's core assertions already do (grid.Columns.
+    /// OfType&lt;DataGridTextColumn&gt;()) needs no change to cover that:
+    /// it reads whatever's actually on the grid, however it got built. Same
+    /// off-thread-probe-then-poll shape as BuildTurnaroundWindow — see that
+    /// builder's own doc comment — since ProductionViewModel's table load
+    /// goes through the identical DebouncedProbe&lt;SweptTable.Table&gt;
+    /// mechanism. The one fixture row's defaults (SOURCE-FOLDER + Employee
+    /// present) collapse to a single group, so Rows.Count == 1 is the load
+    /// signal to poll for.</summary>
+    private static (ProductionWindow win, DataGrid grid, ProductionViewModel vm, string dir)
+        BuildProductionWindow()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ordo_test_prod_" + Guid.NewGuid());
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "20250303-1144-swept.csv"),
+            "DATE-TIME,FILE-OWNER,FILE-NAME,ACTION,PDF-PAGE-COUNT,SOURCE-FOLDER\n" +
+            "4/1/2025 7:55,ACME\\user1,a-long-enough-filename-to-matter.pdf,filed,3,INVOICES\n");
+        var vm = new ProductionViewModel(new Config(), new FakeDialogs(), saveCfg: null,
+            new InlineWorkScheduler(), uiContext: null, probeDelayMs: 0);
+
+        vm.AddPaths(new[] { dir });
+        WaitForProductionLoad(() => vm.Rows.Count == 1, "the production fixture row should load");
+
+        var win = new ProductionWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        win.Show();
+        win.UpdateLayout();
+        var grid = FindDescendant<DataGrid>(win)
+            ?? throw new InvalidOperationException("no DataGrid descendant under ProductionWindow");
+        return (win, grid, vm, dir);
+    }
+
+    /// <summary>Same shape as WaitForTurnaroundLoad — the load this builder
+    /// drives is genuinely off-thread even with InlineWorkScheduler/
+    /// probeDelayMs: 0 (DebouncedProbe's own Timer still fires on a
+    /// threadpool thread), so the row has to be polled for rather than
+    /// asserted the instant AddPaths returns.</summary>
+    private static void WaitForProductionLoad(Func<bool> condition, string because, int timeoutMs = 3000)
+    {
+        var sw = Stopwatch.StartNew();
+        while (!condition())
+        {
+            if (sw.ElapsedMilliseconds > timeoutMs)
+                Assert.Fail($"condition never became true within {timeoutMs}ms: {because}");
+            Thread.Sleep(5);
+        }
+    }
+
+    private static void CleanupProduction(Window win, ProductionViewModel vm, string dir)
+    {
+        try { win.Close(); } catch { /* best effort */ }
+        vm.Dispose();
+        try { Directory.Delete(dir, true); } catch { /* best effort */ }
+    }
+
     /// <summary>Built with a "suggested" current item so the code-built "Why"
     /// column (TriageWindow.xaml.cs, ShowCurrentAsync) is present — the one
     /// column on this grid that ISN'T built in the constructor, so a test
@@ -418,6 +481,26 @@ public class DataGridSelectionContrastTests
         var (win, grid, vm, dir) = BuildTurnaroundWindow(overThreshold: false);
         try { AssertEveryUnselectedColumnClearsContrast(grid, p, "TurnaroundWindow"); }
         finally { CleanupTurnaround(win, vm, dir); }
+    });
+
+    [Theory, MemberData(nameof(Palettes))]
+    public void ProductionAllColumnsSelectedClearContrast(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+        var (win, grid, vm, dir) = BuildProductionWindow();
+        try { AssertEverySelectedColumnClearsContrast(grid, p, "ProductionWindow"); }
+        finally { CleanupProduction(win, vm, dir); }
+    });
+
+    [Theory, MemberData(nameof(Palettes))]
+    public void ProductionAllColumnsUnselectedClearContrast(bool dark) => _fx.Invoke(() =>
+    {
+        var p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        ThemeManager.Apply(_fx.App, dark);
+        var (win, grid, vm, dir) = BuildProductionWindow();
+        try { AssertEveryUnselectedColumnClearsContrast(grid, p, "ProductionWindow"); }
+        finally { CleanupProduction(win, vm, dir); }
     });
 
     // --------------------------------------- Turnaround's own extra trigger
