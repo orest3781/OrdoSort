@@ -106,14 +106,19 @@
         <Style x:Key="ThemeCard" TargetType="RadioButton">
             <Setter Property="GroupName" Value="ThemeMode" />
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Margin" Value="0,0,10,0" />
+            <!-- Bottom margin added alongside the scheme-picker ItemsControl
+                 (WrapPanel): with 7 registry schemes the cards wrap across
+                 multiple rows, and a right-only margin left wrapped rows
+                 touching with no vertical gap. -->
+            <Setter Property="Margin" Value="0,0,10,10" />
             <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
             <!-- Task 8 (focus-ring coverage): this Style has no BasedOn back
                  to the implicit {x:Type RadioButton} style Theme/Styles.xaml
                  just gave a FocusVisualStyle Setter — an explicit x:Key
                  style entirely bypasses implicit-by-type lookup, so that
-                 Setter would silently never reach these three theme-card
-                 RadioButtons without repeating it here (the exact
+                 Setter would silently never reach these theme-card
+                 RadioButtons (the Auto card below plus one per
+                 SchemeOptions entry) without repeating it here (the exact
                  "named style suppresses the base Style's Setters" shape
                  flagged for this task). -->
             <Setter Property="FocusVisualStyle" Value="{StaticResource BronzeFocusVisual}" />
@@ -1093,7 +1098,21 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="16,8">
                     <TextBlock Text="Colors" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
-                    <StackPanel Orientation="Horizontal">
+                    <!-- WrapPanel, not the StackPanel this row used to be:
+                         with 7 registry schemes (was 2) the row is wider than
+                         the window and MUST wrap. A horizontal StackPanel
+                         gives every child infinite width in the stacking
+                         direction — including the ItemsControl below, whose
+                         OWN inner WrapPanel would then never see a bounded
+                         width to wrap against and the cards would run off
+                         the window edge. A WrapPanel instead measures each
+                         child with ITS OWN (bounded) constraint, so the
+                         bound width really does reach the inner WrapPanel
+                         through the ItemsControl — verified against WPF's
+                         own WrapPanel.MeasureOverride, which passes
+                         `constraint` (its own received size), not infinity,
+                         to each child it measures. -->
+                    <WrapPanel>
                         <!-- Auto: half of each world -->
                         <RadioButton Style="{StaticResource ThemeCard}" Tag="Auto"
                                      IsChecked="{Binding ThemeAuto}"
@@ -1130,41 +1149,51 @@
                                 </Border>
                             </Grid>
                         </RadioButton>
-                        <RadioButton Style="{StaticResource ThemeCard}" Tag="Light"
-                                     IsChecked="{Binding ThemeLight}"
-                                     AutomationProperties.Name="Always light">
-                            <Border Width="112" Height="70" CornerRadius="8" Background="{DynamicResource Light.WindowBg}"
-                                    BorderBrush="{DynamicResource Light.Border}" BorderThickness="1">
-                                <StackPanel Margin="10,9">
-                                    <Border Height="16" CornerRadius="4" Background="{DynamicResource Light.Surface}"
-                                            BorderBrush="{DynamicResource Light.Border}" BorderThickness="1" />
-                                    <Rectangle Height="4" RadiusX="2" RadiusY="2" Fill="{DynamicResource Light.SubtleText}"
-                                               Margin="0,7,26,0" />
-                                    <Border Width="44" Height="11" CornerRadius="5.5"
-                                            Background="{DynamicResource Light.Accent}" HorizontalAlignment="Left"
-                                            Margin="0,8,0,0" />
-                                </StackPanel>
-                            </Border>
-                        </RadioButton>
-                        <RadioButton Style="{StaticResource ThemeCard}" Tag="Dark"
-                                     IsChecked="{Binding ThemeDark}"
-                                     AutomationProperties.Name="Always dark">
-                            <Border Width="112" Height="70" CornerRadius="8" Background="{DynamicResource Dark.WindowBg}"
-                                    BorderBrush="{DynamicResource Dark.Border}" BorderThickness="1">
-                                <StackPanel Margin="10,9">
-                                    <Border Height="16" CornerRadius="4" Background="{DynamicResource Dark.Surface}"
-                                            BorderBrush="{DynamicResource Dark.Border}" BorderThickness="1" />
-                                    <Rectangle Height="4" RadiusX="2" RadiusY="2" Fill="{DynamicResource Dark.SubtleText}"
-                                               Margin="0,7,26,0" />
-                                    <Border Width="44" Height="11" CornerRadius="5.5"
-                                            Background="{DynamicResource Dark.Accent}" HorizontalAlignment="Left"
-                                            Margin="0,8,0,0" />
-                                </StackPanel>
-                            </Border>
-                        </RadioButton>
-                    </StackPanel>
+                        <!-- one card per ThemePalette.Schemes registry entry —
+                             data-driven so a new scheme needs no XAML edit.
+                             Same ThemeCard style/chrome as Auto above (shared
+                             GroupName="ThemeMode" set BY the style, so WPF's
+                             own radio-group exclusivity covers Auto + every
+                             card here); preview colors come from the VM's
+                             Rgb-typed SchemeOptionVm properties through the
+                             house RgbToBrush converter, not new resource
+                             keys — ThemeManager's Light.*/Dark.* publication
+                             (pinned by AppearancePreviewTests) is untouched. -->
+                        <ItemsControl ItemsSource="{Binding SchemeOptions}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <RadioButton Style="{StaticResource ThemeCard}" Tag="{Binding DisplayName}"
+                                                 IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                 AutomationProperties.Name="{Binding DisplayName}">
+                                        <Border Width="112" Height="70" CornerRadius="8"
+                                                Background="{Binding PreviewWindowBg, Converter={StaticResource RgbToBrush}}"
+                                                BorderBrush="{Binding PreviewBorder, Converter={StaticResource RgbToBrush}}"
+                                                BorderThickness="1">
+                                            <StackPanel Margin="10,9">
+                                                <Border Height="16" CornerRadius="4"
+                                                        Background="{Binding PreviewSurface, Converter={StaticResource RgbToBrush}}"
+                                                        BorderBrush="{Binding PreviewBorder, Converter={StaticResource RgbToBrush}}"
+                                                        BorderThickness="1" />
+                                                <Rectangle Height="4" RadiusX="2" RadiusY="2"
+                                                           Fill="{Binding PreviewSubtleText, Converter={StaticResource RgbToBrush}}"
+                                                           Margin="0,7,26,0" />
+                                                <Border Width="44" Height="11" CornerRadius="5.5"
+                                                        Background="{Binding PreviewAccent, Converter={StaticResource RgbToBrush}}"
+                                                        HorizontalAlignment="Left" Margin="0,8,0,0" />
+                                            </StackPanel>
+                                        </Border>
+                                    </RadioButton>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </WrapPanel>
                     <TextBlock Style="{StaticResource CaptionText}" Margin="4,6,0,0"
-                               Text="Every text pairing in both palettes meets WCAG AA contrast — enforced by the test suite." />
+                               Text="Every text pairing in every scheme meets WCAG AA contrast — enforced by the test suite." />
 
                     <TextBlock Text="Text" Style="{StaticResource SectionText}" Margin="0,16,0,10" />
                     <Grid Style="{StaticResource FieldRow}">
