@@ -1,4 +1,5 @@
 using System.Windows.Media;
+using OrdoSort.Core;
 using OrdoSort.Wpf.Theme;
 using OrdoSort.Wpf.Views;
 
@@ -115,6 +116,41 @@ public class ThemeTests
     [InlineData("nope")]
     public void FindSchemeReturnsNullForNullOrUnknown(string? key) =>
         Assert.Null(ThemePalette.FindScheme(key));
+
+    // OrdoSort.Core.Config.SchemeKeys mirrors this registry BY HAND (Core
+    // cannot reference Wpf, so there is no compile-time link) — see
+    // Config.SchemeKeys' own doc comment. This is the drift guard: every
+    // registry key here must pass Config's "theme" validation, and every
+    // key Config's whitelist accepts must resolve to a real registry entry.
+    // Whichever direction fails is exactly the signal that someone added a
+    // scheme to one list and forgot the other.
+    [Fact]
+    public void ConfigSchemeWhitelistAndRegistryStayInLockstep()
+    {
+        foreach (var scheme in ThemePalette.Schemes)
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "ordonk_themelockstep_" + Guid.NewGuid());
+            Directory.CreateDirectory(dir);
+            try
+            {
+                var path = Path.Combine(dir, "config.json");
+                // A minimal valid Config, same shape the Core-side round-trip
+                // tests build — only Theme varies. Config.Load runs the real
+                // validation path, so this throws ConfigException the moment
+                // Config.SchemeKeys stops accepting a registry key.
+                Config.Save(new Config { Theme = scheme.Key }, path);
+                var loaded = Config.Load(path);
+                Assert.Equal(scheme.Key, loaded.Theme);
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch { /* best effort */ }
+            }
+        }
+
+        foreach (var key in Config.SchemeKeys)
+            Assert.NotNull(ThemePalette.FindScheme(key));
+    }
 
     // 2026-08-04 (Task 7): ThemeManager.Brush allocates and freezes a NEW
     // SolidColorBrush every call; the dashboard re-evaluates RgbToBrushConverter

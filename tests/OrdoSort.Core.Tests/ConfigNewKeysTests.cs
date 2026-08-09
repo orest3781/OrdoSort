@@ -158,4 +158,49 @@ public class ConfigNewKeysTests : IDisposable
         var ex = Assert.Throws<ConfigException>(() => LoadJson("{ \"theme\": \"blue\" }"));
         Assert.Contains("theme", ex.Message);
     }
+
+    // Named theme schemes (2026-08-08): "theme" also accepts a
+    // Config.SchemeKeys entry, additive alongside the legacy auto/light/dark
+    // trio — see Config.SchemeKeys' own doc comment for why this list is
+    // hand-mirrored from OrdoSort.Wpf.Theme.ThemePalette.Schemes rather than
+    // referenced directly (Core cannot reference Wpf).
+    [Theory]
+    [InlineData("paper")]
+    [InlineData("graphite")]
+    public void ThemeAcceptsSchemeKeys(string scheme) =>
+        Assert.Equal(scheme, LoadJson($"{{ \"theme\": \"{scheme}\" }}").Theme);
+
+    // Validation is case-SENSITIVE today for auto/light/dark (the pattern
+    // match `cfg.Theme is not ("auto" or "light" or "dark")` is an ordinal
+    // string comparison) — "AUTO" already throws before this change, and
+    // scheme keys join that exact same check, so they inherit the same
+    // case-sensitivity rather than gaining their own case-insensitive rule.
+    [Theory]
+    [InlineData("AUTO")]
+    [InlineData("Light")]
+    [InlineData("DARK")]
+    [InlineData("PAPER")]
+    [InlineData("Graphite")]
+    public void ThemeRejectsCaseVariantsJustLikeItAlwaysHas(string mode)
+    {
+        var ex = Assert.Throws<ConfigException>(() => LoadJson($"{{ \"theme\": \"{mode}\" }}"));
+        Assert.Contains("theme", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("nope")]
+    public void ThemeStillRejectsBlankAndUnknownValues(string mode)
+    {
+        var ex = Assert.Throws<ConfigException>(() => LoadJson($"{{ \"theme\": \"{mode}\" }}"));
+        Assert.Contains("theme", ex.Message);
+    }
+
+    [Fact]
+    public void ThemeDarkRoundTripsUnchanged() =>
+        Assert.Equal("dark", RoundTrip(new Config { Theme = "dark" }).Theme);
+
+    [Fact]
+    public void ThemePaperRoundTripsUnchanged() =>
+        Assert.Equal("paper", RoundTrip(new Config { Theme = "paper" }).Theme);
 }
