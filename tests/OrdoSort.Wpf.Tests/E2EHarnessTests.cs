@@ -139,4 +139,36 @@ public class E2EHarnessTests
         Assert.Single(table.Rows);
         Assert.Equal("INVOICE", table.Rows[0].Cells["Category"]);
     }
+
+    /// <summary>Queued answers come back in order — a scenario that queues
+    /// two save paths is describing two saves, and getting them swapped
+    /// would file evidence under the wrong name.</summary>
+    [Fact]
+    public void ScriptedDialogsReturnQueuedAnswersInOrder()
+    {
+        var d = new ScriptedDialogs().QueueSaveFile("first.zip", "second.zip");
+
+        Assert.Equal("first.zip", d.AskSaveFile("*.zip", "x"));
+        Assert.Equal("second.zip", d.AskSaveFile("*.zip", "x"));
+    }
+
+    /// <summary>An empty queue answers null — "the user cancelled" — rather
+    /// than throwing, because cancellation is a real path several scenarios
+    /// exercise deliberately.</summary>
+    [Fact]
+    public void ScriptedDialogsAnswerNullWhenTheQueueIsEmpty()
+    {
+        Assert.Null(new ScriptedDialogs().AskSaveFile("*.zip", "x"));
+    }
+
+    /// <summary>A leftover answer means the scenario never took the path it
+    /// claimed to — that is a broken scenario, and the runner must be able
+    /// to see it.</summary>
+    [Fact]
+    public void ScriptedDialogsReportUnconsumedAnswers()
+    {
+        var d = new ScriptedDialogs().QueueSaveFile("never-used.zip");
+
+        Assert.Contains("AskSaveFile (1)", d.Unconsumed);
+    }
 }
