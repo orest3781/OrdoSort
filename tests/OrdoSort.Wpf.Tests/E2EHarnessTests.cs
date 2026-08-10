@@ -171,4 +171,37 @@ public class E2EHarnessTests
 
         Assert.Contains("AskSaveFile (1)", d.Unconsumed);
     }
+
+    /// <summary>A recorded failure must not throw — the runner needs every
+    /// assertion in a scenario, not just the ones before the first break,
+    /// and a partial report is exactly what you want when something breaks.</summary>
+    [Fact]
+    public void ContextRecordsFailuresWithoutThrowing()
+    {
+        using var fx = Fixture.Create("ctx-check");
+        var ctx = new ScenarioContext(fx, new ScriptedDialogs());
+
+        ctx.Check("this one holds", true);
+        ctx.Check("this one does not", false);
+        ctx.Check("and this one still runs", true);
+
+        Assert.Equal(3, ctx.Assertions.Count);
+        Assert.Single(ctx.Assertions.Where(a => !a.Passed));
+    }
+
+    /// <summary>BytesUnchanged is the never-overwrite guarantee's assertion —
+    /// it must actually compare content, not just existence.</summary>
+    [Fact]
+    public void BytesUnchangedDetectsAModifiedFile()
+    {
+        using var fx = Fixture.Create("bytes-check");
+        var path = fx.Text("original.txt", "before");
+        var before = File.ReadAllBytes(path);
+        File.WriteAllText(path, "after");
+
+        var ctx = new ScenarioContext(fx, new ScriptedDialogs());
+        ctx.BytesUnchanged(path, before, "original survives");
+
+        Assert.False(ctx.Assertions.Single().Passed);
+    }
 }
