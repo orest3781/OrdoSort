@@ -320,4 +320,50 @@ public class E2EHarnessTests
         Assert.Contains("Unzip", md);
         Assert.Contains("1 failed", md);
     }
+
+    /// <summary>Regression coverage for a defect in Task 6's own runner: it
+    /// booted the STA thread and ran scenarios without ever installing a
+    /// SynchronizationContext, so every scenario handed its view model
+    /// <c>SynchronizationContext.Current</c> — which was null.
+    ///
+    /// That matters because the uiContext seam is exactly what
+    /// ZipViewModel.ApplyResult (and ZipMergeViewModel, and the rest) uses to
+    /// get an off-thread result back onto the UI thread: "a raw thread-pool
+    /// continuation has no synchronization context of its own to inherit". A
+    /// null uiContext makes ApplyResult take its other branch and apply
+    /// inline, so the whole marshalling hop the seam exists for goes
+    /// unexercised — silently, with every scenario still green. That is the
+    /// mock-theatre failure this suite is supposed to prevent.
+    ///
+    /// The first assertion is the load-bearing one, and the reason the install
+    /// is needed at all: a bare STA thread does NOT get a context for free.
+    /// WPF only installs one inside Application.Run/Dispatcher.Run, neither of
+    /// which the runner calls. The third asserts the install has to be made for
+    /// the THREAD rather than relied on from a pump: Dispatcher.PushFrame
+    /// installs its own context only for the frame it is running and restores
+    /// the previous one on the way out, so a context that came from a pump is
+    /// gone again by the time the next scenario constructs a view model.</summary>
+    [Fact]
+    public void ABareHarnessThreadHasNoSynchronizationContextUntilTheRunnerInstallsOne()
+    {
+        SynchronizationContext? beforeInstall = null;
+        SynchronizationContext? afterInstall = null;
+        SynchronizationContext? afterAPumpHasComeAndGone = null;
+
+        var t = new Thread(() =>
+        {
+            beforeInstall = SynchronizationContext.Current;
+            E2ERunner.InstallUiSynchronizationContext();
+            afterInstall = SynchronizationContext.Current;
+            E2EPump.Until(() => false, timeoutMs: 50);
+            afterAPumpHasComeAndGone = SynchronizationContext.Current;
+        });
+        t.SetApartmentState(ApartmentState.STA);
+        t.Start();
+        t.Join();
+
+        Assert.Null(beforeInstall);
+        Assert.IsType<DispatcherSynchronizationContext>(afterInstall);
+        Assert.IsType<DispatcherSynchronizationContext>(afterAPumpHasComeAndGone);
+    }
 }
