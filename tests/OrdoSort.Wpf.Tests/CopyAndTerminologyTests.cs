@@ -218,7 +218,14 @@ public class CopyAndTerminologyTests
     {
         var scheme = ThemePalette.FindScheme(schemeKey)!;
         ThemeManager.Apply(_fx.App, scheme);
-        var vm = BuildSettingsVm(scheme.Palette, out _);
+        var vm = BuildSettingsVm(scheme.Palette, out var cfgPath);
+        // 2026-08 audit finding C2: a relative Inbox now really does resolve
+        // beside config.json (Config.ResolveBeside) and the note's own
+        // existence check runs against THAT location — so the "inbox" case
+        // below needs a real folder there, or it would (correctly, post-fix)
+        // report "folder doesn't exist" instead of the relative-info text.
+        var cfgDir = Path.GetDirectoryName(cfgPath)!;
+        Directory.CreateDirectory(Path.Combine(cfgDir, "inbox"));
         var window = BuildSettingsWindow(vm);
         try
         {
@@ -226,11 +233,10 @@ public class CopyAndTerminologyTests
             window.UpdateLayout();
             PumpRender();
 
-            // Every note value this test uses is a synchronous fast path (blank
-            // or relative resolve with no I/O; a non-existent absolute folder
-            // resolves through the probe, which the fixture's inline scheduler
-            // and immediate=false debounce would otherwise delay) — so pump
-            // until the text arrives rather than assuming a single layout pass.
+            // Blank resolves with no I/O; a relative value now goes through
+            // the same debounced, off-thread existence probe an absolute
+            // value does (see the class doc above) — so pump until the text
+            // arrives rather than assuming a single layout pass.
             vm.Inbox = inbox;
             var note = Descendants<TextBlock>(window).FirstOrDefault(t =>
                     BindingOperations.GetBinding(t, TextBlock.TextProperty)?.Path.Path == nameof(vm.InboxNote))
@@ -255,7 +261,11 @@ public class CopyAndTerminologyTests
                 $"{schemeKey} \"{note.Text}\": expected " +
                 $"{(expectedAmber ? "StatusAmber" : "SubtleText")} {expected}, resolved {actual}");
         }
-        finally { window.Close(); }
+        finally
+        {
+            window.Close();
+            try { Directory.Delete(cfgDir, true); } catch (IOException) { }
+        }
     });
 
     /// <summary>The de-emphasis this task introduces must not be illegible.
@@ -269,7 +279,12 @@ public class CopyAndTerminologyTests
     {
         var scheme = ThemePalette.FindScheme(schemeKey)!;
         ThemeManager.Apply(_fx.App, scheme);
-        var vm = BuildSettingsVm(scheme.Palette, out _);
+        var vm = BuildSettingsVm(scheme.Palette, out var cfgPath);
+        // 2026-08 audit finding C2: relative Inbox now resolves — and is
+        // existence-checked — beside config.json, so "inbox" needs a real
+        // folder there to settle on the relative-info text this test reads.
+        var cfgDir = Path.GetDirectoryName(cfgPath)!;
+        Directory.CreateDirectory(Path.Combine(cfgDir, "inbox"));
         var window = BuildSettingsWindow(vm);
         try
         {
@@ -277,12 +292,13 @@ public class CopyAndTerminologyTests
             window.UpdateLayout();
             PumpRender();
 
-            vm.Inbox = "inbox";                 // relative -> informational, resolved synchronously
-            window.UpdateLayout();
-            PumpRender();
-
+            vm.Inbox = "inbox";                 // relative -> informational, once the debounced probe settles
             var note = Descendants<TextBlock>(window).First(t =>
                 BindingOperations.GetBinding(t, TextBlock.TextProperty)?.Path.Path == nameof(vm.InboxNote));
+            PumpUntil(() => note.Text.Contains("relative", StringComparison.Ordinal),
+                () => $"InboxNote never settled on the relative-info text; last seen \"{note.Text}\"");
+            window.UpdateLayout();
+            PumpRender();
             Assert.Contains("relative", note.Text);
 
             var fg = ToRgb(note.Foreground);
@@ -291,7 +307,11 @@ public class CopyAndTerminologyTests
             Assert.True(ratio >= 4.5,
                 $"{schemeKey}: subtle note {fg} on {source} {bg} = {ratio:F2}");
         }
-        finally { window.Close(); }
+        finally
+        {
+            window.Close();
+            try { Directory.Delete(cfgDir, true); } catch (IOException) { }
+        }
     });
 
     /// <summary>One per-field note: which tab it lives on, the view-model
@@ -340,6 +360,13 @@ public class CopyAndTerminologyTests
         var absent = Path.Combine(Path.GetTempPath(), "ordo_absent_" + Guid.NewGuid());
         foreach (var name in new[] { "destinations", "folders", "alerts", "labels" })
             File.WriteAllText(Path.Combine(cfgDir, $"broken-{name}.json"), "{ not json");
+        // 2026-08 audit finding C2: Inbox/Deferred's relative-info branches
+        // below ("inbox", "set-aside") are real folders now that a relative
+        // value's existence is checked beside config.json rather than never
+        // checked at all — create them so those branches stay Info, not a
+        // "folder doesn't exist" regression neither case intends to cover.
+        Directory.CreateDirectory(Path.Combine(cfgDir, "inbox"));
+        Directory.CreateDirectory(Path.Combine(cfgDir, "set-aside"));
 
         const string relative = "relative — resolved beside the config file";
         var cases = new[]

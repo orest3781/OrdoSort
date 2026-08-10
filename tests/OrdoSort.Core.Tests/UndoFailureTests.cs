@@ -42,13 +42,14 @@ public class UndoFailureTests : IDisposable
     public const string Name = "Commit undo-race collection";
 
     private readonly string _root = Path.Combine(Path.GetTempPath(), "ordoundo_" + Guid.NewGuid());
-    private readonly string _inbox, _dest, _deferred;
+    private readonly string _inbox, _dest, _deferred, _cfgPath;
 
     public UndoFailureTests()
     {
         _inbox = Path.Combine(_root, "inbox");
         _dest = Path.Combine(_root, "dest");
         _deferred = Path.Combine(_root, "deferred");
+        _cfgPath = Path.Combine(_root, "config.json");   // Deferred above is already absolute, so this base is never actually consulted
         foreach (var d in new[] { _inbox, _dest, _deferred }) Directory.CreateDirectory(d);
     }
 
@@ -150,7 +151,7 @@ public class UndoFailureTests : IDisposable
     {
         var cfg = new Config { Inbox = _inbox, Deferred = _deferred };
         var history = new History(Path.Combine(_root, "h_" + Guid.NewGuid() + ".sqlite"));
-        var session = new Session(cfg, history);
+        var session = new Session(cfg, history, _cfgPath);
         src = MakePdf(_inbox, "20240115--111111.pdf");
         session.Start(new[] { src });
         var outcome = session.CommitCurrent("SMITH", new Route { Label = "R", Path = _dest });

@@ -16,6 +16,15 @@ public sealed class Session
     // effectively frozen for the life of one session.
     private readonly Config _cfg;
     private readonly History _history;
+    // Where config.json lives — the base a relative cfg.Deferred resolves
+    // against (Config.ResolveBeside), same rule as names_file/history_db.
+    // Stored, not resolved once up front here, because SkipCurrent is the
+    // point of use: cfg.Deferred itself must stay exactly what Settings
+    // wrote (see Config.TrySaveMain's doc comment on why a shared
+    // config.json can never be silently rewritten), and the folder actually
+    // used for the move/log has to be recomputed from that raw value, not
+    // cached from a Config snapshot that could theoretically go stale.
+    private readonly string _cfgPath;
     private readonly LinkedList<UndoEntry> _undo = new();
 
     public string SessionMode { get; set; }
@@ -26,10 +35,11 @@ public sealed class Session
     public int Vanished { get; private set; }
     public List<long> RowIds { get; } = new();
 
-    public Session(Config cfg, History history)
+    public Session(Config cfg, History history, string cfgPath)
     {
         _cfg = cfg;
         _history = history;
+        _cfgPath = cfgPath;
         SessionMode = cfg.NamingMode;
     }
 
@@ -134,12 +144,13 @@ public sealed class Session
     public Commit.SkipOutcome SkipCurrent()
     {
         var src = Current ?? throw new CommitError("No document is loaded.");
-        var outcome = Commit.SkipFile(src, _cfg.Deferred);
+        var deferred = Config.ResolveBeside(_cfgPath, _cfg.Deferred);
+        var outcome = Commit.SkipFile(src, deferred);
         if (outcome.Vanished) { LogVanished(src); return outcome; }
 
         var rowId = TryLog(() => _history.LogCommit(
             src, Path.GetFileName(src), Path.GetFileName(outcome.NewPath!),
-            "", SessionMode, "", SkipLabel, _cfg.Deferred, tagged: false,
+            "", SessionMode, "", SkipLabel, deferred, tagged: false,
             outcome.CollisionSuffix), out var failure);
         Push(new UndoEntry(rowId, Pos, outcome.NewPath!, src, true));
         Skipped++;

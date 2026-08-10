@@ -1017,23 +1017,58 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private void RecomputeDeferredNote(bool immediate = false) =>
         RecomputeFolderNote(Deferred, FieldNote.Clear, _deferredProbe, immediate);
 
-    /// <summary>Shared live-note logic for a folder path box: blank/relative
-    /// answers instantly (no I/O — <see cref="DebouncedProbe{T}.Resolve"/>
-    /// cancels whatever's pending before applying it, so a probe armed by an
-    /// earlier, longer value can never survive to overwrite this); otherwise
-    /// the note goes neutral and the real Directory.Exists check is
-    /// (re)triggered on <paramref name="probe"/>.</summary>
+    /// <summary>Shared live-note logic for a folder path box: blank answers
+    /// instantly (no I/O — <see cref="DebouncedProbe{T}.Resolve"/> cancels
+    /// whatever's pending before applying it, so a probe armed by an
+    /// earlier, longer value can never survive to overwrite this).
+    ///
+    /// A relative value resolves beside config.json — the same
+    /// <see cref="Config.ResolveBeside"/> rule names_file/history_db already
+    /// use — and, once there IS a config path to resolve against, the real
+    /// Directory.Exists check that's (re)triggered on <paramref
+    /// name="probe"/> runs against THAT resolved location, not the raw
+    /// typed value. Before this fix (2026-08 audit finding C2) the check
+    /// ran on the literal relative spelling, which resolves against
+    /// Environment.CurrentDirectory and so almost never agreed with the
+    /// note text right next to it claiming the folder was "resolved beside
+    /// the config file" — this method could say a folder was missing when
+    /// it existed beside config, or silent-clear when it didn't. With no
+    /// known config path yet (Settings opened before any file was loaded —
+    /// see <see cref="_cfgPath"/>'s own doc comment), there is nothing to
+    /// resolve beside, so a relative value still answers instantly with the
+    /// informational note and skips the check, same as before this fix.
+    /// An absolute value is untouched either way: relative is false, so it
+    /// goes straight to the same Directory.Exists check on the same string
+    /// this method always ran for it.</summary>
     private void RecomputeFolderNote(string path, FieldNote blankMeans,
         DebouncedProbe<FieldNote> probe, bool immediate)
     {
         var p = path.Trim();
+        var relative = p.Length > 0 && !Path.IsPathRooted(p);
         FieldNote? fastPath = p.Length == 0 ? blankMeans
-            : !Path.IsPathRooted(p) ? FieldNote.Info("relative — resolved beside the config file")
+            : relative && _cfgPath is null ? FieldNote.Info("relative — resolved beside the config file")
             : null;
+        var full = ResolveFolderPath(p);
         probe.Resolve(fastPath, FieldNote.Clear,
-            () => _directoryExists(p) ? FieldNote.Clear : FieldNote.Problem($"folder doesn't exist: {p}"),
+            () => _directoryExists(full)
+                ? (relative ? FieldNote.Info("relative — resolved beside the config file") : FieldNote.Clear)
+                : FieldNote.Problem($"folder doesn't exist: {full}"),
             immediate);
     }
+
+    /// <summary>Resolve a relative Inbox/Deferred value beside config.json —
+    /// the same <see cref="Config.ResolveBeside"/> rule names_file/
+    /// history_db already get — or hand back the value unchanged when it's
+    /// already absolute, or there's no known config path yet to resolve
+    /// beside (<see cref="_cfgPath"/> null; nothing else to do without a
+    /// base directory). Shared by <see cref="RecomputeFolderNote"/>'s live
+    /// check and <see cref="Warnings"/>' Save-time check so the two can
+    /// never disagree about where the app will actually look — the whole
+    /// point of this fix (2026-08 audit finding C2) was that a probe
+    /// checking one location and a note claiming another is how the tab
+    /// ended up telling users something false in the first place.</summary>
+    private string ResolveFolderPath(string p) =>
+        !Path.IsPathRooted(p) && _cfgPath is { } cfgPath ? Config.ResolveBeside(cfgPath, p) : p;
 
     private string _namesFileNote = "";
     public string NamesFileNote => _namesFileNote;
@@ -2130,12 +2165,14 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     public List<string> Warnings()
     {
         var warnings = new List<string>();
-        if (Inbox.Trim().Length == 0)
+        var inbox = Inbox.Trim();
+        if (inbox.Length == 0)
             warnings.Add("No inbox folder is set — there will be nothing to process.");
-        else if (!_directoryExists(Inbox.Trim()))
-            warnings.Add($"The inbox folder doesn't exist: {Inbox.Trim()}");
-        if (Deferred.Trim().Length > 0 && !_directoryExists(Deferred.Trim()))
-            warnings.Add($"The set-aside folder doesn't exist: {Deferred.Trim()}");
+        else if (!_directoryExists(ResolveFolderPath(inbox)))
+            warnings.Add($"The inbox folder doesn't exist: {ResolveFolderPath(inbox)}");
+        var deferred = Deferred.Trim();
+        if (deferred.Length > 0 && !_directoryExists(ResolveFolderPath(deferred)))
+            warnings.Add($"The set-aside folder doesn't exist: {ResolveFolderPath(deferred)}");
         foreach (var r in Routes)
         {
             var problem = _validateRoute(r.ToRoute());

@@ -163,12 +163,16 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         var backupOk = RunHistoryBackup(dbPath, out _historyBackupDir);
         SetHistoryBackupWarning(backupOk);
         _history = new History(dbPath);
-        _session = new Session(cfg, _history);
+        _session = new Session(cfg, _history, _cfgPath);
 
         StartCommand = new RelayCommand(StartProcessing, () => StartEnabled);
         RescanCommand = new RelayCommand(Rescan);
-        OpenDeferredCommand = new RelayCommand(() => OpenFolder(_cfg.Deferred));
-        OpenInboxCommand = new RelayCommand(() => OpenFolder(_cfg.Inbox));
+        // Inbox/Deferred may be a relative, config-relative value (Settings
+        // says so, and now it's true) — resolve at the moment the folder is
+        // opened, not once at startup, so a Settings edit applied later is
+        // reflected here without a matching edit to this closure.
+        OpenDeferredCommand = new RelayCommand(() => OpenFolder(ResolvePath(_cfg.Deferred, _cfgPath)));
+        OpenInboxCommand = new RelayCommand(() => OpenFolder(ResolvePath(_cfg.Inbox, _cfgPath)));
         OpenToastCommand = new RelayCommand(() => { OpenFolder(_toastFolder); HideToast(); });
         OpenHistoryBackupFolderCommand = new RelayCommand(() => OpenFolder(_historyBackupDir));
         RouteCommand = new AsyncRelayCommand<int>(OnRouteAsync);
@@ -445,9 +449,11 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     internal async Task InitializeAsync()
     {
         var cfg = _cfg;
+        var cfgPath = _cfgPath;
         // Directory.Exists + watcher registration are network round trips on
         // an SMB share — never on the UI thread
-        await _scheduler.Run(() => _watch.SetFolders(cfg.Inbox, cfg.Deferred));
+        await _scheduler.Run(() => _watch.SetFolders(
+            ResolvePath(cfg.Inbox, cfgPath), ResolvePath(cfg.Deferred, cfgPath)));
         Rescan();
     }
 
@@ -487,9 +493,10 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 var mode = TileMode;
                 var wantStatuses = Screen != Screen.Processing && mode != "hidden";
                 var cfg = _cfg;
+                var cfgPath = _cfgPath;
                 var snap = await _scheduler.Run(() => new FolderSnapshot(
-                    Scanner.Scan(cfg.Inbox, cfg.Sort, cfg.NamingMode),
-                    Scanner.DeferredSummary(cfg.Deferred),
+                    Scanner.Scan(ResolvePath(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode),
+                    Scanner.DeferredSummary(ResolvePath(cfg.Deferred, cfgPath)),
                     wantStatuses
                         ? FolderMonitor.All(cfg.WatchFolders, cfg.AlertTexts)
                             .Where(s => mode == "all" || s.HasFiles || s.Error.Length > 0)
@@ -613,7 +620,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     private async Task RefreshDeferredAsync()
     {
-        var deferred = _cfg.Deferred;
+        var deferred = ResolvePath(_cfg.Deferred, _cfgPath);
         ApplyDeferred(await _scheduler.Run(() => Scanner.DeferredSummary(deferred)));
     }
 
@@ -792,7 +799,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         {
             var nm = Path.GetFileName(f);
             if (FolderMonitor.IsAlerting(nm, _cfg.AlertTexts))
-                current.Add(new AlertItem($"inbox\0{nm}", "the inbox", nm, _cfg.Inbox));
+                current.Add(new AlertItem($"inbox\0{nm}", "the inbox", nm,
+                    ResolvePath(_cfg.Inbox, _cfgPath)));
         }
 
         // first sweep after launch/rescan: adopt what's already there silently —
@@ -1132,10 +1140,11 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     {
         if (_busy) return;
         var cfg = _cfg;
+        var cfgPath = _cfgPath;
         // the scan AND the destination probes (ProbeWritable touches every
         // route folder — a network round trip each) run off the UI thread
         var (scan, problems) = await _scheduler.Run(() =>
-            (Scanner.Scan(cfg.Inbox, cfg.Sort, cfg.NamingMode),
+            (Scanner.Scan(ResolvePath(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode),
              cfg.Routes.Select(Config.ValidateRoute).ToList()));
         if (Screen == Screen.Processing) return;   // a double Start raced us
         if (scan.Count == 0) { Rescan(); return; }
@@ -1787,8 +1796,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // WarnSaveFailure's doc comment.
         if (!Config.TrySave(cfg, _cfgPath, out var error, out var refusedKeys))
             WarnSaveFailure(error, refusedKeys, alwaysWarn: true);
-        _session = new Session(cfg, _history);
-        await _scheduler.Run(() => _watch.SetFolders(cfg.Inbox, cfg.Deferred));
+        _session = new Session(cfg, _history, _cfgPath);
+        await _scheduler.Run(() => _watch.SetFolders(
+            ResolvePath(cfg.Inbox, _cfgPath), ResolvePath(cfg.Deferred, _cfgPath)));
         _watch.SetPollInterval(cfg.PollSeconds * 1000);   // adopt a changed cadence live
         Raise(nameof(UppercaseNames));
         Raise(nameof(TileVisibilityIndex));
@@ -1994,10 +2004,17 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     }
 
     // ------------------------------------------------------------- helpers
+    // Thin wrapper over Config.ResolveBeside — kept as its own name/call
+    // shape (every existing call site here already reads `ResolvePath(x,
+    // _cfgPath)`) rather than rewriting them, but no longer a second copy of
+    // the resolution logic itself: an absolute value stays; a relative one
+    // lands beside config.json. Unconfined, deliberately — see
+    // Config.ResolveBeside's own doc comment for why the four side-file
+    // keys get a confined variant and general config-relative paths
+    // (Inbox/Deferred, the section-file "where would this point?" previews)
+    // do not.
     internal static string ResolvePath(string value, string cfgPath) =>
-        Path.IsPathRooted(value)
-            ? value
-            : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(cfgPath))!, value);
+        Config.ResolveBeside(cfgPath, value);
 
     internal static void OpenFolder(string folder)
     {

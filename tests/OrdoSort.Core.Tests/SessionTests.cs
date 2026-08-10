@@ -65,7 +65,7 @@ public class SessionTests : IDisposable
     public async Task CurrentDoesNotThrowWhenPosIsMutatedBetweenItsTwoReads()
     {
         using var h = new History(Path.Combine(_dir, "h.sqlite"));
-        var session = new Session(new Config(), h);
+        var session = new Session(new Config(), h, Path.Combine(_dir, "config.json"));
         session.Start(new[] { "only.pdf" });
 
         var posSetter = typeof(Session).GetProperty(nameof(Session.Pos))!
@@ -137,7 +137,7 @@ public class SessionTests : IDisposable
     public async Task CurrentDoesNotThrowWhenQueueIsMutatedBetweenItsTwoReads()
     {
         using var h = new History(Path.Combine(_dir, "h2.sqlite"));
-        var session = new Session(new Config(), h);
+        var session = new Session(new Config(), h, Path.Combine(_dir, "config.json"));
         session.Start(new[] { "a.pdf", "b.pdf" });
 
         var posSetter = typeof(Session).GetProperty(nameof(Session.Pos))!
