@@ -47,9 +47,17 @@ public sealed class TurnaroundViewModel : ObservableObject, IDisposable
 
     // Off-thread, debounced — SweptTable.Load walks the filesystem and
     // parses every file, which must never run on the UI thread.
-    private readonly DebouncedProbe<SweptTable.Table> _tableProbe;
+    private readonly DebouncedProbe<LoadResult> _tableProbe;
+
+    /// <summary>Bundles the loaded table with the Intake.Expand result that
+    /// produced its file list. Table alone can't explain WHY a load came
+    /// back empty — an unreadable subfolder Intake caught into Expanded.Error,
+    /// or every file Intake found being the wrong extension (Expanded.Ignored)
+    /// — BuildStatus needs both to answer that.</summary>
+    private sealed record LoadResult(SweptTable.Table Table, Intake.Expanded Expanded);
 
     private SweptTable.Table _table = EmptyTable;
+    private Intake.Expanded _expanded = new(new List<string>(), 0);
     private IReadOnlyList<TurnaroundTime.DocRow> _docRows = Array.Empty<TurnaroundTime.DocRow>();
 
     public ObservableCollection<string> Headers { get; } = new();
@@ -69,7 +77,7 @@ public sealed class TurnaroundViewModel : ObservableObject, IDisposable
         _dialogs = dialogs;
         _saveCfg = saveCfg;
         _scheduler = scheduler ?? new TaskWorkScheduler();
-        _tableProbe = new DebouncedProbe<SweptTable.Table>(_scheduler, uiContext, ApplyTable, probeDelayMs);
+        _tableProbe = new DebouncedProbe<LoadResult>(_scheduler, uiContext, ApplyTable, probeDelayMs);
         _thresholdDays = cfg.TatThresholdDays;
 
         BrowseCommand = new RelayCommand(() =>
@@ -92,7 +100,10 @@ public sealed class TurnaroundViewModel : ObservableObject, IDisposable
     public void Dispose() => _tableProbe.Dispose();
 
     // ------------------------------------------------------------- sources
-    private bool _includeSubfolders;
+    // Defaults on: reports live in dated subfolder trees, and a fresh window
+    // should sweep the whole tree without the user needing to know this
+    // checkbox exists — they can still untick it per-load.
+    private bool _includeSubfolders = true;
     public bool IncludeSubfolders
     {
         get => _includeSubfolders;
@@ -125,27 +136,28 @@ public sealed class TurnaroundViewModel : ObservableObject, IDisposable
         if (sourcesSnapshot.Count == 0)
         {
             _tableProbe.Cancel();
-            ApplyTable(EmptyTable);
+            ApplyTable(new LoadResult(EmptyTable, new Intake.Expanded(new List<string>(), 0)));
             return;
         }
 
         _tableProbe.Trigger(() =>
         {
             var expanded = Intake.Expand(sourcesSnapshot, recursive, ReportExtensions);
-            return SweptTable.Load(expanded.Files);
+            return new LoadResult(SweptTable.Load(expanded.Files), expanded);
         }, immediate);
     }
 
     /// <summary>Only ever runs on the UI thread (DebouncedProbe's
     /// SynchronizationContext marshal, or the empty-sources fast path
     /// above), so mutating Headers/the mapping/the results here is safe.</summary>
-    private void ApplyTable(SweptTable.Table table)
+    private void ApplyTable(LoadResult result)
     {
-        _table = table;
+        _table = result.Table;
+        _expanded = result.Expanded;
         Headers.Clear();
-        foreach (var h in table.Headers) Headers.Add(h);
+        foreach (var h in _table.Headers) Headers.Add(h);
         Raise(nameof(CategoryChoices));
-        RestoreMapping(table.Headers);
+        RestoreMapping(_table.Headers);
         RecomputeDocRows();
     }
 
@@ -346,6 +358,21 @@ public sealed class TurnaroundViewModel : ObservableObject, IDisposable
             text += $" · {overThreshold} over threshold";
         if (_table.FileErrors.Count > 0)
             text += $" · {_table.FileErrors.Count} file errors: {_table.FileErrors[0]}";
+        // Intake.Expand's own Error — e.g. a subfolder Directory.EnumerateFiles
+        // couldn't open — is a DIFFERENT failure than FileErrors above (those
+        // are SweptTable.Load's per-file parse failures, after Intake already
+        // successfully found the file). Surfaced here, not swallowed, so "0
+        // files · 0 rows" has an answer instead of leaving a reviewer to guess
+        // whether the folder was really empty or something went wrong walking it.
+        if (_expanded.Error.Length > 0)
+            text += $" · {_expanded.Error}";
+        // Only on an EMPTY load: this answers "why is this empty" — every
+        // file Intake found was the wrong extension for a report (csv/xlsx)
+        // — but would just be noise appended to every successful load that
+        // also happens to skip some unrelated file (a .DS_Store, a lock
+        // file) alongside real report data.
+        if (_table.FilesRead == 0 && _expanded.Ignored > 0)
+            text += $" · {_expanded.Ignored} skipped (not csv/xlsx)";
         return text;
     }
 
