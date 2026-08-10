@@ -266,21 +266,21 @@ public class ProductionViewModelTests : IDisposable
         Assert.Equal("0", claims[sumIndex]);          // the non-numeric sum, unclobbered
     }
 
-    /// <summary>Mirrors TurnaroundSubfolderTests.TickSubfoldersThenBrowseLoadsNestedCsvs
-    /// — the subfolder-loading fix (Intake.Expand switching to
-    /// EnumerationOptions) applies to every report window's load, not just
-    /// Turnaround's.</summary>
+    /// <summary>Mirrors TurnaroundSubfolderTests.SubfoldersAreIncludedByDefault
+    /// — IncludeSubfolders now defaults to true (reports live in dated
+    /// subfolder trees; a fresh window should sweep the whole tree without
+    /// the user knowing the checkbox exists), so AddPaths alone, no checkbox
+    /// touch at all, must already pull nested CSVs in.</summary>
     [Fact]
-    public void CsvsOnlyInSubfoldersLoadWhenIncludeSubfoldersIsSet()
+    public void SubfoldersAreIncludedByDefault()
     {
         Write(Path.Combine("sub", "20250303-1144-swept.csv"), SweepHeaders + "\n" + FixtureRows);
         var vm = MakeVm(new Config(), new FakeDialogs());
 
-        vm.IncludeSubfolders = true;
         vm.AddPaths(new[] { _dir });
 
         WaitFor(() => vm.Rows.Count == 3,
-            $"nested CSVs should load with Include subfolders set; status was: '{vm.Status}'");
+            $"nested CSVs should load with no checkbox touch at all; status was: '{vm.Status}'");
     }
 
     /// <summary>Mirrors TurnaroundSubfolderTests.EmptyLoadExplainsExtensionSkippedFiles

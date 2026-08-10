@@ -140,7 +140,10 @@ public sealed class ProductionViewModel : ObservableObject, IDisposable
     public void Dispose() => _tableProbe.Dispose();
 
     // ------------------------------------------------------------- sources
-    private bool _includeSubfolders;
+    // Defaults on: reports live in dated subfolder trees, and a fresh window
+    // should sweep the whole tree without the user needing to know this
+    // checkbox exists — they can still untick it per-load.
+    private bool _includeSubfolders = true;
     public bool IncludeSubfolders
     {
         get => _includeSubfolders;

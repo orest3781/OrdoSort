@@ -45,8 +45,12 @@ public class TurnaroundSubfolderTests : IDisposable
 
     private const string PecfHeaders = "SourceType,Controlid,FileName,Pagecount";
 
+    /// <summary>IncludeSubfolders now defaults to true (reports live in dated
+    /// subfolder trees; a fresh window should sweep the whole tree without
+    /// the user knowing the checkbox exists) — AddPaths alone, no checkbox
+    /// touch at all, must already pull nested CSVs in.</summary>
     [Fact]
-    public void TickSubfoldersThenBrowseLoadsNestedCsvs()
+    public void SubfoldersAreIncludedByDefault()
     {
         Write(Path.Combine("2025-03", "20250303-1144-PECF Report.csv"),
             PecfHeaders + "\nDRG,1,20250228-a.pdf,3\n");
@@ -54,11 +58,10 @@ public class TurnaroundSubfolderTests : IDisposable
             PecfHeaders + "\nCOPR,2,20250302-y.pdf,1\n");
         var vm = MakeVm();
 
-        vm.IncludeSubfolders = true;
         vm.AddPaths(new[] { _dir });
 
         WaitFor(() => vm.Documents.Count == 2,
-            $"both nested CSVs should load; status was: '{vm.Status}'");
+            $"both nested CSVs should load with no checkbox touch at all; status was: '{vm.Status}'");
     }
 
     [Fact]
@@ -68,6 +71,11 @@ public class TurnaroundSubfolderTests : IDisposable
             PecfHeaders + "\nDRG,1,20250228-a.pdf,3\n");
         var vm = MakeVm();
 
+        // IncludeSubfolders now defaults to true, so exercising the
+        // untick-then-retick order needs an explicit false first — otherwise
+        // the tick below would be a no-op and this test wouldn't be testing
+        // the toggle at all.
+        vm.IncludeSubfolders = false;
         vm.AddPaths(new[] { _dir });   // nothing at the top level — loads 0
         vm.IncludeSubfolders = true;   // the checkbox tick, after the browse
 
@@ -76,12 +84,13 @@ public class TurnaroundSubfolderTests : IDisposable
     }
 
     [Fact]
-    public void UncheckedSubfoldersLoadsNothingFromANestedOnlyFolder()
+    public void UntickingSubfoldersExcludesNestedCsvs()
     {
         Write(Path.Combine("sub", "20250303-1144-PECF Report.csv"),
             PecfHeaders + "\nDRG,1,20250228-a.pdf,3\n");
         var vm = MakeVm();
 
+        vm.IncludeSubfolders = false;   // explicit — default is now true
         vm.AddPaths(new[] { _dir });
 
         // Deliberately give the probe time to run, then confirm nothing loaded.
