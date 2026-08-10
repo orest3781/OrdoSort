@@ -368,6 +368,9 @@ public partial class MainWindow : Window
         vm.Dispose();
     }
 
+    private void OnAbout(object sender, RoutedEventArgs e) =>
+        new Windows.AboutWindow { Owner = this }.ShowDialog();
+
     private void OnSettings(object sender, RoutedEventArgs e)
     {
         if (!Shell.IsReady)
