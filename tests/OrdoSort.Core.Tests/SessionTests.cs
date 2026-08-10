@@ -59,8 +59,19 @@ public class SessionTests : IDisposable
     /// setter, without needing to win a race against disk I/O to do it. On
     /// the unfixed code this reliably throws within a fraction of a second
     /// (600,457 exceptions over 26.5M reads in 5 seconds in one local run,
-    /// a 2.3% hit rate); the 500ms budget below is comfortably enough to
-    /// catch at least one.</summary>
+    /// a 2.3% hit rate).
+    ///
+    /// The workload is a fixed READ COUNT, not a wall-clock budget: the
+    /// reader loop runs until it has performed <c>TargetReads</c> reads (or
+    /// hit the bug), full stop. A slow/starved CI runner just takes longer
+    /// to get there — it can never do FEWER reads and so can never produce
+    /// the "only N reads happened" vacuous pass this test used to be able
+    /// to report before construction ruled it out. The flipper keeps
+    /// racing for exactly as long as the reader is still reading, so the
+    /// interleaving this test exists to hit — a real Pos mutation landing
+    /// between Current's two field reads — stays live for the whole fixed
+    /// workload, not for however much of a timer happened to survive
+    /// scheduling delay.</summary>
     [Fact]
     public async Task CurrentDoesNotThrowWhenPosIsMutatedBetweenItsTwoReads()
     {
@@ -73,13 +84,15 @@ public class SessionTests : IDisposable
         var toOne = new object[] { 1 };
         var toZero = new object[] { 0 };
 
+        const long TargetReads = 2_000_000;
+
         // Round-2 review, Minor 3: the stop signal used to be a captured
         // plain `bool`, with nothing stopping the JIT from hoisting the
-        // flipper/reader loops' reads of it and spinning forever past the
-        // 500ms budget — a suite-hang mode with no xUnit timeout to catch
-        // it. CancellationTokenSource gives the same handshake proper
-        // cross-thread visibility (IsCancellationRequested/Cancel are
-        // documented thread-safe) at no cost to what's under test.
+        // flipper/reader loops' reads of it and spinning forever. Kept as a
+        // CancellationTokenSource for the same documented cross-thread
+        // visibility (IsCancellationRequested/Cancel), now used only to
+        // stop the flipper once the reader's fixed workload is done —
+        // never to cut the reader's workload short.
         using var cts = new CancellationTokenSource();
         Exception? caught = null;
         long iterations = 0;
@@ -94,7 +107,7 @@ public class SessionTests : IDisposable
         });
         var reader = Task.Run(() =>
         {
-            while (!cts.IsCancellationRequested && caught is null)
+            while (iterations < TargetReads)
             {
                 try { _ = session.Current; }
                 catch (Exception ex) { caught = ex; break; }
@@ -102,15 +115,15 @@ public class SessionTests : IDisposable
             }
         });
 
-        await Task.Delay(500);
+        await reader;
         cts.Cancel();
-        await Task.WhenAll(flipper, reader);
+        await flipper;
 
         // Check the real defect first: a fast failure (a handful of reads
         // before the exception) is itself strong evidence of the race, not
         // a reason to report "budget too short" instead.
         Assert.Null(caught);
-        Assert.True(iterations > 1000, $"only {iterations} reads happened — budget too short to mean anything");
+        Assert.Equal(TargetReads, iterations);
     }
 
     /// <summary>Round-1 review finding: <c>Current</c> reads <c>Queue</c>
@@ -132,7 +145,14 @@ public class SessionTests : IDisposable
     /// a 500ms budget. This does not drive the race through a real
     /// Start()-during-a-commit interleaving (no such path exists today); it
     /// isolates the same field-level access Current's getter performs,
-    /// exactly as the Pos test does for Pos.</summary>
+    /// exactly as the Pos test does for Pos.
+    ///
+    /// Same construction as the Pos test above, and for the same reason: a
+    /// fixed READ COUNT (<c>TargetReads</c>) drives the workload instead of
+    /// a wall-clock budget, so a starved CI runner takes longer but never
+    /// does less work and can never again report "only 0 reads happened —
+    /// budget too short to mean anything" (the failure this test actually
+    /// produced on windows-latest).</summary>
     [Fact]
     public async Task CurrentDoesNotThrowWhenQueueIsMutatedBetweenItsTwoReads()
     {
@@ -149,9 +169,13 @@ public class SessionTests : IDisposable
         var bigEnough = new object[] { new List<string> { "a.pdf", "b.pdf" } };   // Pos=1 in range
         var tooSmall = new object[] { new List<string> { "a.pdf" } };             // Pos=1 out of range
 
+        const long TargetReads = 2_000_000;
+
         // Round-2 review, Minor 3 — same fix as the Pos test above: a
         // CancellationTokenSource instead of a captured plain `bool` so the
-        // stop signal can't be hoisted out of the flipper/reader loops.
+        // stop signal can't be hoisted out of the flipper/reader loops. Now
+        // used only to stop the flipper once the reader's fixed workload is
+        // done, never to cut the reader's workload short.
         using var cts = new CancellationTokenSource();
         Exception? caught = null;
         long iterations = 0;
@@ -166,7 +190,7 @@ public class SessionTests : IDisposable
         });
         var reader = Task.Run(() =>
         {
-            while (!cts.IsCancellationRequested && caught is null)
+            while (iterations < TargetReads)
             {
                 try { _ = session.Current; }
                 catch (Exception ex) { caught = ex; break; }
@@ -174,11 +198,11 @@ public class SessionTests : IDisposable
             }
         });
 
-        await Task.Delay(500);
+        await reader;
         cts.Cancel();
-        await Task.WhenAll(flipper, reader);
+        await flipper;
 
         Assert.Null(caught);
-        Assert.True(iterations > 1000, $"only {iterations} reads happened — budget too short to mean anything");
+        Assert.Equal(TargetReads, iterations);
     }
 }
