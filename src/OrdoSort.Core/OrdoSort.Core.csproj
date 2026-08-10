@@ -9,6 +9,13 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
     <PackageReference Include="PdfSharp" Version="6.1.1" />
+    <!-- CVE-2025-6965: SQLitePCLRaw floors at 2.1.6 through Microsoft.Data.Sqlite
+         8.0.11 (and every 8.0.x/9.0.x release checked), which bundles a pre-3.50.2
+         SQLite vulnerable to an aggregate-query integer truncation. Bumping
+         Microsoft.Data.Sqlite doesn't reach a fix on its own, so the transitive
+         package is pinned directly to the first release that bundles a patched
+         SQLite (2.1.12 -> SQLite 3.53.3). -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
   </ItemGroup>
 
   <ItemGroup>
