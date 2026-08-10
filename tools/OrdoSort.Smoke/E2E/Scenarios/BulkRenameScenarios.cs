@@ -247,8 +247,8 @@ public static class BulkRenameScenarios
         ctx.Check("undo is offered after a rename", vm.UndoCommand.CanExecute(null), "command disabled");
 
         vm.UndoCommand.Execute(null);
-        var restored = E2EPump.Until(() => File.Exists(a), 8000);
-        ctx.Check("the original name came back", restored, $"{a} still missing");
+        Settle(ctx, () => vm.Status);
+        ctx.FileExists(a);
         ctx.BytesUnchanged(a, beforeBytes, "the restored file is byte-identical to the original");
         ctx.FileMissing(renamedPath);
         ctx.Check("undo is no longer offered once the batch is restored",
