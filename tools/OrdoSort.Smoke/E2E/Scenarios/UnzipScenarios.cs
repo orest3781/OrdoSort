@@ -145,11 +145,15 @@ public static class UnzipScenarios
         ctx.BytesUnchanged(squatterFile, before, "the folder already there is untouched");
         ctx.Check("extraction still succeeded", vm.Rows[0].StatusKind == UnzipRowStatus.Ok,
             $"status was {vm.Rows[0].StatusKind} — {vm.Rows[0].Note}");
-        ctx.Check("output went somewhere else",
+        // Pinned to the exact counter-suffixed name, not just "differs from
+        // the squatter" — parity with ZipScenarios.NameTaken, which pins
+        // "src (2).zip" rather than merely asserting a second archive exists.
+        var expected = Path.Combine(Path.GetDirectoryName(squatter)!, "bundle (2)");
+        ctx.Check("output went to the counter-suffixed name",
             vm.Rows[0].OutputFolder is not null
-            && !string.Equals(Path.GetFullPath(vm.Rows[0].OutputFolder!),
-                Path.GetFullPath(squatter), StringComparison.OrdinalIgnoreCase),
-            $"output was {vm.Rows[0].OutputFolder}");
+            && string.Equals(Path.GetFullPath(vm.Rows[0].OutputFolder!),
+                Path.GetFullPath(expected), StringComparison.OrdinalIgnoreCase),
+            $"output was {vm.Rows[0].OutputFolder}, expected {expected}");
         ctx.Capture(win);
     }
 
@@ -160,7 +164,13 @@ public static class UnzipScenarios
         var vm = NewVm(ctx);
         var win = Extract(ctx, vm, zip);
 
-        ctx.Check("handled without an error", vm.Rows[0].Note.Length > 0, "no note at all");
+        // Not Note.Length > 0 — Note is non-empty on BOTH outcomes ("→
+        // folder" on Ok, the error message on Error), so that check would
+        // still read as passed if empty-archive extraction ever regressed to
+        // an error. Pin StatusKind explicitly, same as every other awkward
+        // scenario in this file.
+        ctx.Check("extracted without an error", vm.Rows[0].StatusKind == UnzipRowStatus.Ok,
+            $"status was {vm.Rows[0].StatusKind} — {vm.Rows[0].Note}");
         ctx.Check("did not crash the window", win.IsLoaded, "window went away");
         ctx.Capture(win);
     }
