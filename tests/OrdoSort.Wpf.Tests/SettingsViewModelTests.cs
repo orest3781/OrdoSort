@@ -354,6 +354,55 @@ public class SettingsViewModelTests : IDisposable
         Assert.Equal("Invoices   ·   Ctrl+1", r.PreviewLabel);
     }
 
+    // ---- RouteFilingExample (Destinations tab live filename preview) —
+    // must mirror ShellViewModel.UpdatePreview's real BuildTarget call
+    // (route Suffix/AppendSuffix), not silently drop the suffix.
+
+    [Fact]
+    public void RouteFilingExampleIncludesTheRoutesSuffixWhenAppended()
+    {
+        var cfg = new Config
+        {
+            Routes = { new Route { Label = "A", Path = _dir, Suffix = "-KYPT", AppendSuffix = true } },
+        };
+        var vm = new SettingsViewModel(cfg, _dialogs);
+        vm.SelectedRoute = vm.Routes[0];
+        Assert.EndsWith("-KYPT.pdf", vm.RouteFilingExample);
+    }
+
+    [Fact]
+    public void RouteFilingExampleOmitsTheSuffixWhenAppendSuffixIsOff()
+    {
+        var cfg = new Config
+        {
+            Routes = { new Route { Label = "A", Path = _dir, Suffix = "-KYPT", AppendSuffix = false } },
+        };
+        var vm = new SettingsViewModel(cfg, _dialogs);
+        vm.SelectedRoute = vm.Routes[0];
+        Assert.DoesNotContain("-KYPT", vm.RouteFilingExample);
+    }
+
+    [Fact]
+    public void RouteFilingExampleRaisesLiveWhenTheSelectedRoutesSuffixOrAppendSuffixChanges()
+    {
+        var cfg = new Config
+        {
+            Routes = { new Route { Label = "A", Path = _dir, Suffix = "-KYPT", AppendSuffix = true } },
+        };
+        var vm = new SettingsViewModel(cfg, _dialogs);
+        vm.SelectedRoute = vm.Routes[0];
+
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        vm.SelectedRoute.Suffix = "-OTHER";
+        Assert.Contains(nameof(vm.RouteFilingExample), raised);
+
+        raised.Clear();
+        vm.SelectedRoute.AppendSuffix = false;
+        Assert.Contains(nameof(vm.RouteFilingExample), raised);
+    }
+
     [Fact]
     public void HistoryDbBrowseUsesTheOpenStylePicker()
     {
