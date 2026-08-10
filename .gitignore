@@ -27,3 +27,16 @@ history.sqlite-wal
 history.sqlite-shm
 crash.log
 .env
+
+# Claude Code session/agent state — never shipped, never reviewed
+.claude/
+
+# Playwright MCP artifacts (screenshots/traces from ad-hoc browser testing)
+.playwright-mcp/
+
+# Stray screenshots dropped at the repo root by ad-hoc tooling. Real app/site
+# image assets live in src/OrdoSort.Wpf/Assets/ and ordosort.com/assets/ (and
+# docs/), never at the repo root — this is anchored so those are unaffected.
+/*.png
+/*.jpg
+/*.jpeg
