@@ -42,4 +42,37 @@ public class E2EHarnessTests
 
         Assert.True(E2EPump.Until(() => flipped, timeoutMs: 3000));
     }
+
+    /// <summary>Regression coverage for the bug hunted down while verifying
+    /// Task 1's extraction: <paramref name="kickoff"/> must be queued
+    /// through the dispatcher (BeginInvoke), not invoked inline before the
+    /// pump starts. PushFrame installs a DispatcherSynchronizationContext
+    /// only for the frame it's running; invoke kickoff before that frame is
+    /// live and an `await` inside it captures whatever context is ambient
+    /// AT THAT CALL (typically null on a bare thread), so its continuation
+    /// resumes off a bare thread-pool thread instead — exactly what crashed
+    /// the real StartProcessing/OnRouteAsync kickoffs in Screenshots.cs the
+    /// moment they touched a bound ObservableCollection.
+    ///
+    /// A plain "did the continuation eventually run" flag does not catch
+    /// this: Task.Yield's continuation completes either way, just via a
+    /// different thread, so the flag flips true regardless. Asserting the
+    /// *type* of SynchronizationContext.Current the continuation resumed on
+    /// is what actually discriminates: null under the inline-invoke bug, a
+    /// live DispatcherSynchronizationContext once queued correctly.</summary>
+    [Fact]
+    public void UntilQueuesKickoffSoItsAwaitResumesOnTheLiveDispatcherContext()
+    {
+        SynchronizationContext? resumedOn = null;
+        var ready = false;
+
+        E2EPump.Until(() => ready, timeoutMs: 3000, kickoff: async () =>
+        {
+            await Task.Yield();
+            resumedOn = SynchronizationContext.Current;
+            ready = true;
+        });
+
+        Assert.IsType<DispatcherSynchronizationContext>(resumedOn);
+    }
 }
