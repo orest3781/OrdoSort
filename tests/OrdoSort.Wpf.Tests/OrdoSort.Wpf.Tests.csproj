@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OrdoSort.Wpf\OrdoSort.Wpf.csproj" />
+    <ProjectReference Include="..\..\tools\OrdoSort.Smoke\OrdoSort.Smoke.csproj" />
   </ItemGroup>
 
 </Project>

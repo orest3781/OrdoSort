@@ -4,6 +4,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using OrdoSort.Core;
+using OrdoSort.Smoke.E2E;
 using OrdoSort.Wpf;
 using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.Theme;
@@ -76,7 +77,7 @@ public static class Screenshots
         // operation that invokes the real App.OnStartup the first time
         // anything ever pumps this thread's dispatcher. SmokeUi.Boot() never
         // pumps (so DialogCheck, which only Measures, never wakes it) — but
-        // this tool's Pump() does. Left alone it fires mid-capture: parses
+        // this tool's use of E2EPump.Until() does. Left alone it fires mid-capture: parses
         // (nonexistent) --config args, loads a throwaway default Config
         // beside the built exe, calls ThemeManager.Start(this, "auto") —
         // which reads the REAL OS dark-mode preference and stomps whatever
@@ -160,7 +161,7 @@ public static class Screenshots
     /// run starts from a clean, fully-under-our-control state.</summary>
     private static void FlushPendingAppStartup(App app)
     {
-        Pump(() => false, 1000);
+        E2EPump.Until(() => false, 1000);
         foreach (var w in app.Windows.Cast<Window>().ToList())
         {
             try { w.Close(); } catch { /* best effort — it only exists to be discarded */ }
@@ -188,8 +189,8 @@ public static class Screenshots
         try
         {
             win = make();
-            ShowOffscreen(win);
-            if (ready is not null && !Pump(ready, 8000))
+            E2EPump.ShowOffscreen(win);
+            if (ready is not null && !E2EPump.Until(ready, 8000))
                 notes.Add($"NOTE {name}-{theme}: async content didn't settle within 8s — captured anyway");
             win.UpdateLayout();
             Save(win, outdir, name, theme);
@@ -204,16 +205,6 @@ public static class Screenshots
         }
     }
 
-    private static void ShowOffscreen(Window win)
-    {
-        win.WindowStartupLocation = WindowStartupLocation.Manual;
-        win.Left = -20000;
-        win.Top = 0;
-        win.ShowActivated = false;
-        win.Show();
-        win.UpdateLayout();
-    }
-
     private static void Save(Window win, string outdir, string name, string theme)
     {
         var w = (int)Math.Ceiling(win.ActualWidth);
@@ -226,47 +217,6 @@ public static class Screenshots
         enc.Frames.Add(BitmapFrame.Create(bmp));
         using var fs = File.Create(Path.Combine(outdir, $"{name}-{theme}.png"));
         enc.Save(fs);
-    }
-
-    /// <summary>Pump this thread's dispatcher (via a nested frame, not
-    /// InvokeShutdown — the tool needs to do this many times over, and a shut
-    /// -down dispatcher can never Run() again) until <paramref name="ready"/>
-    /// is true or <paramref name="timeoutMs"/> elapses. Lets async
-    /// continuations posted to the UI SynchronizationContext (WebView2 init,
-    /// the initial folder scan, History's async load…) actually run.
-    ///
-    /// <paramref name="kickoff"/>, when given, is queued via BeginInvoke
-    /// instead of called inline before the pump starts. PushFrame installs a
-    /// DispatcherSynchronizationContext only for the frame it's running —
-    /// between two Pump calls there is none. A Shell method invoked directly
-    /// from this file (StartProcessing, OnRouteAsync) has its first `await`
-    /// capture whatever context is ambient AT THAT CALL; call it between
-    /// pumps and the continuation resumes on a bare thread-pool thread, which
-    /// crashes the moment it touches a bound ObservableCollection
-    /// (WPF's CollectionView enforces thread affinity — the exact failure
-    /// this hunted down while building the Processing/Done captures). Queuing
-    /// it as kickoff instead means it runs once THIS pump's frame is already
-    /// live, so its await correctly captures this pump's context.</summary>
-    private static bool Pump(Func<bool> ready, int timeoutMs, Action? kickoff = null)
-    {
-        if (kickoff is null && ready()) return true;
-        var frame = new DispatcherFrame();
-        var deadline = Environment.TickCount64 + timeoutMs;
-        var success = false;
-        var timer = new DispatcherTimer(DispatcherPriority.Background)
-        {
-            Interval = TimeSpan.FromMilliseconds(50),
-        };
-        timer.Tick += (_, _) =>
-        {
-            if (ready()) { success = true; frame.Continue = false; }
-            else if (Environment.TickCount64 >= deadline) { frame.Continue = false; }
-        };
-        if (kickoff is not null) Dispatcher.CurrentDispatcher.BeginInvoke(kickoff);
-        timer.Start();
-        Dispatcher.PushFrame(frame);
-        timer.Stop();
-        return success;
     }
 
     // ---------------------------------------------------------------- Triage
@@ -382,14 +332,14 @@ public static class Screenshots
         {
             window = new MainWindow(Config.Load(cfgPath), cfgPath);
             window.Dialogs = new RecordingDialogs();
-            ShowOffscreen(window);
+            E2EPump.ShowOffscreen(window);
 
-            if (!Pump(() => window.Pdf.Ready || window.Pdf.InitError != null, 20_000))
+            if (!E2EPump.Until(() => window.Pdf.Ready || window.Pdf.InitError != null, 20_000))
             {
                 notes.Add($"SKIP MainWindow-ready-{theme}, MainWindow-processing-{theme}: WebView2 never finished initializing");
                 return;
             }
-            if (!Pump(() => window.Shell.CountLine.Length > 0, 20_000))
+            if (!E2EPump.Until(() => window.Shell.CountLine.Length > 0, 20_000))
             {
                 notes.Add($"SKIP MainWindow-ready-{theme}, MainWindow-processing-{theme}: the initial demo-full inbox scan never completed");
                 return;
@@ -398,14 +348,14 @@ public static class Screenshots
             window.UpdateLayout();
             Save(window, outdir, "MainWindow-ready", theme);
 
-            if (!Pump(() => window.Shell.CurrentFilename.Length > 0, 15_000,
+            if (!E2EPump.Until(() => window.Shell.CurrentFilename.Length > 0, 15_000,
                     kickoff: () => window.Shell.StartProcessing()))
             {
                 notes.Add($"SKIP MainWindow-processing-{theme}: the session never loaded its first document");
                 return;
             }
             // give the just-grown layout (compact -> normal) a beat to settle
-            Pump(() => false, 500);
+            E2EPump.Until(() => false, 500);
             window.Left = -20000; window.Top = 0;
             window.UpdateLayout();
             Save(window, outdir, "MainWindow-processing", theme);
@@ -456,18 +406,18 @@ public static class Screenshots
 
             window = new MainWindow(Config.Load(cfgPath), cfgPath);
             window.Dialogs = new RecordingDialogs();
-            ShowOffscreen(window);
+            E2EPump.ShowOffscreen(window);
 
-            if (!Pump(() => window.Pdf.Ready || window.Pdf.InitError != null, 20_000))
+            if (!E2EPump.Until(() => window.Pdf.Ready || window.Pdf.InitError != null, 20_000))
                 throw new TimeoutException("WebView2 never finished initializing");
-            if (!Pump(() => window.Shell.CountLine.Length > 0, 20_000))
+            if (!E2EPump.Until(() => window.Shell.CountLine.Length > 0, 20_000))
                 throw new TimeoutException("the initial scan never completed");
 
-            if (!Pump(() => window.Shell.CurrentFilename.Length > 0, 15_000,
+            if (!E2EPump.Until(() => window.Shell.CurrentFilename.Length > 0, 15_000,
                     kickoff: () => window.Shell.StartProcessing()))
                 throw new TimeoutException("the session never loaded its one document");
 
-            if (!Pump(() => window.Shell.IsDone, 15_000,
+            if (!E2EPump.Until(() => window.Shell.IsDone, 15_000,
                     kickoff: () =>
                     {
                         window.Shell.TypedName = "SAMPLE DONE";
@@ -477,7 +427,7 @@ public static class Screenshots
 
             // the Done summary fades its text/buttons in; give the animation
             // a beat so the capture isn't a half-opacity mid-transition frame
-            Pump(() => false, 800);
+            E2EPump.Until(() => false, 800);
             window.Left = -20000; window.Top = 0;
             window.UpdateLayout();
             Save(window, outdir, "MainWindow-done", theme);
