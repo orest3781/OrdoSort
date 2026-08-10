@@ -230,4 +230,54 @@ public class E2EHarnessTests
 
         Assert.False(ctx.Assertions.Single().Passed);
     }
+
+    private static ScenarioResult Result(string surface, string name, string kind, bool passed) =>
+        new(surface, name, kind, passed,
+            new[] { new Assertion("a check", passed, passed ? null : "it did not hold") },
+            passed ? null : "boom", ScreenshotFile: null, ElapsedMs: 12);
+
+    /// <summary>The report must be self-contained and must show failures —
+    /// a report that renders a red run as green is worse than no report.</summary>
+    [Fact]
+    public void ReportHtmlIsSelfContainedAndShowsBothOutcomes()
+    {
+        using var fx = Fixture.Create("evidence-check");
+        var outDir = fx.Dir("out");
+
+        Evidence.Write(outDir, new[]
+        {
+            Result("Zip", "files and folders", "clean", passed: true),
+            Result("Unzip", "zip slip", "awkward", passed: false),
+        }, TimeSpan.FromSeconds(3));
+
+        var html = File.ReadAllText(Path.Combine(outDir, "report.html"));
+
+        Assert.Contains("files and folders", html);
+        Assert.Contains("zip slip", html);
+        Assert.Contains("it did not hold", html);
+        // Self-contained: no external fetches of any kind.
+        Assert.DoesNotContain("http://", html);
+        Assert.DoesNotContain("https://", html);
+        Assert.DoesNotContain("<script src", html);
+    }
+
+    /// <summary>report.md carries the same verdicts, for pasting into a PR.</summary>
+    [Fact]
+    public void ReportMarkdownCarriesEveryScenario()
+    {
+        using var fx = Fixture.Create("evidence-md-check");
+        var outDir = fx.Dir("out");
+
+        Evidence.Write(outDir, new[]
+        {
+            Result("Zip", "files and folders", "clean", passed: true),
+            Result("Unzip", "zip slip", "awkward", passed: false),
+        }, TimeSpan.FromSeconds(3));
+
+        var md = File.ReadAllText(Path.Combine(outDir, "report.md"));
+
+        Assert.Contains("Zip", md);
+        Assert.Contains("Unzip", md);
+        Assert.Contains("1 failed", md);
+    }
 }
