@@ -128,16 +128,18 @@ dotnet test
 ## The end-to-end suite
 
 ```
-dotnet run --project tools\OrdoSort.Smoke -- e2e
+e2e.bat
 ```
 
+(or `dotnet run --project tools\OrdoSort.Smoke -- e2e` — the bat wraps that
+command, forwards any arguments, and opens the report when the run ends)
 drives all 14 user-facing surfaces — the ten Tools-menu utilities, both
 Reports, History, and the routing loop — as real windows against real files
 in a throwaway temp folder, then writes `evidence\<timestamp>\report.html`:
 one row per scenario, with the assertions it ran and a screenshot of the
 window.
 
-Run a single surface with `-- e2e zip` (or `unzip`, `zipmerge`, `unlock`, …
+Run a single surface with `e2e.bat zip` (or `unzip`, `zipmerge`, `unlock`, …
 — the filter is exact-match-first, so `zip` selects Zip alone rather than
 dragging in Zip merge), and add `--keep` to leave that run's fixtures on
 disk for inspection. It drives real WPF windows and WebView2, so it needs a
