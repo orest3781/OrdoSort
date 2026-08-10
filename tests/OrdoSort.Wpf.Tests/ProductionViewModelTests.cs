@@ -28,6 +28,7 @@ public class ProductionViewModelTests : IDisposable
     private string Write(string name, string content)
     {
         var path = Path.Combine(_dir, name);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, content);
         return path;
     }
@@ -263,6 +264,43 @@ public class ProductionViewModelTests : IDisposable
         var claims = vm.Rows.Single(r => r[groupIndex] == "CLAIMS");
         Assert.Equal("CLAIMS", claims[groupIndex]);   // the group's own real value
         Assert.Equal("0", claims[sumIndex]);          // the non-numeric sum, unclobbered
+    }
+
+    /// <summary>Mirrors TurnaroundSubfolderTests.TickSubfoldersThenBrowseLoadsNestedCsvs
+    /// — the subfolder-loading fix (Intake.Expand switching to
+    /// EnumerationOptions) applies to every report window's load, not just
+    /// Turnaround's.</summary>
+    [Fact]
+    public void CsvsOnlyInSubfoldersLoadWhenIncludeSubfoldersIsSet()
+    {
+        Write(Path.Combine("sub", "20250303-1144-swept.csv"), SweepHeaders + "\n" + FixtureRows);
+        var vm = MakeVm(new Config(), new FakeDialogs());
+
+        vm.IncludeSubfolders = true;
+        vm.AddPaths(new[] { _dir });
+
+        WaitFor(() => vm.Rows.Count == 3,
+            $"nested CSVs should load with Include subfolders set; status was: '{vm.Status}'");
+    }
+
+    /// <summary>Mirrors TurnaroundSubfolderTests.EmptyLoadExplainsExtensionSkippedFiles
+    /// — same Intake.Expanded plumbing, same skipped-note wording, applied to
+    /// this view model's own status line shape ("... groups" instead of "...
+    /// without TAT").</summary>
+    [Fact]
+    public void EmptyLoadExplainsExtensionSkippedFiles()
+    {
+        Write(Path.Combine("sub", "notes.txt"), "irrelevant");
+        Write("readme.txt", "irrelevant");
+        var vm = MakeVm(new Config(), new FakeDialogs());
+
+        vm.IncludeSubfolders = true;
+        vm.AddPaths(new[] { _dir });
+
+        WaitFor(() => vm.Status.Contains("skipped"),
+            $"status should explain the empty load; was: '{vm.Status}'");
+        Assert.Empty(vm.Rows);
+        Assert.Equal("0 files · 0 rows · 0 groups · 2 skipped (not csv/xlsx)", vm.Status);
     }
 
     [Fact]

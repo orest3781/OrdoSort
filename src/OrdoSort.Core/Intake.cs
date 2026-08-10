@@ -30,8 +30,24 @@ public static class Intake
                 }
                 else if (Directory.Exists(path))
                 {
-                    var option = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-                    foreach (var f in Directory.EnumerateFiles(path, "*", option))
+                    // The SearchOption overload aborts the WHOLE walk with
+                    // UnauthorizedAccessException at the first subfolder it
+                    // can't open (denied ACL, cloud placeholder, junction) —
+                    // losing every file already found, not just the
+                    // unreadable subtree. EnumerationOptions with
+                    // IgnoreInaccessible = true skips just that subfolder
+                    // instead. AttributesToSkip = 0 is required alongside it:
+                    // the EnumerationOptions default silently skips
+                    // Hidden|System files, which the old SearchOption
+                    // overload never did — leaving it at 0 keeps this an
+                    // exact match for the old behavior everywhere but the abort.
+                    var options = new EnumerationOptions
+                    {
+                        RecurseSubdirectories = recursive,
+                        IgnoreInaccessible = true,
+                        AttributesToSkip = 0,
+                    };
+                    foreach (var f in Directory.EnumerateFiles(path, "*", options))
                         AddIfMatches(f, extensions, files, ref ignored);
                 }
                 else
