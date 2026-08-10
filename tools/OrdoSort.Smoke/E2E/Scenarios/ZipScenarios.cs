@@ -1,7 +1,6 @@
-using System.IO.Compression;
-using OrdoSort.Wpf.Services;
-using OrdoSort.Wpf.ViewModels;
+﻿using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Windows;
+using static OrdoSort.Smoke.E2E.Scenarios.ScenarioKit;
 
 namespace OrdoSort.Smoke.E2E.Scenarios;
 
@@ -22,10 +21,11 @@ public static class ZipScenarios
 
     /// <summary>Real seams: only dialogs and the scheduler are injected, and
     /// uiContext is the live dispatcher context (E2ERunner installs one on the
-    /// STA thread) so results marshal back the way they do in production. The
-    /// zipper seam is left at its default on purpose — every archive these
-    /// scenarios assert about is written by the real Zipper.CreateZip, which is
-    /// the whole difference between this suite and ZipViewModelTests.</summary>
+    /// STA thread, and every scenario asserts it is there) so results marshal
+    /// back the way they do in production. The zipper seam is left at its
+    /// default on purpose — every archive these scenarios assert about is
+    /// written by the real Zipper.CreateZip, which is the whole difference
+    /// between this suite and ZipViewModelTests.</summary>
     private static ZipViewModel NewVm(ScenarioContext ctx) =>
         new(ctx.Dialogs, new InlineScheduler(), SynchronizationContext.Current);
 
@@ -39,44 +39,11 @@ public static class ZipScenarios
     private static string[] Archives(ScenarioContext ctx) =>
         Directory.GetFiles(ctx.Fx.Root, "*.zip", SearchOption.AllDirectories);
 
-    /// <summary>Wait for the window's own verdict line, then record that it
-    /// arrived. Status is what the result text under the Zip button binds to,
-    /// and — unlike "the file appeared on disk" — it only becomes non-empty
-    /// once ZipViewModel.ApplyResult has posted back through uiContext. Waiting
-    /// on it therefore exercises that marshalling hop rather than stepping
-    /// around it, which is the difference between driving the window and
-    /// driving the filesystem.</summary>
-    private static void Settle(ScenarioContext ctx, ZipViewModel vm)
-    {
-        var settled = E2EPump.Until(
-            () => vm.Status.Length > 0 || ctx.Dialogs.Warnings.Count > 0, 15000);
-        ctx.Check("the window reported a result", settled,
-            "no status line and no warning within 15s");
-    }
-
     private static void CheckCreated(ScenarioContext ctx, ZipViewModel vm, string archiveName) =>
         ctx.Check($"the status line reports {archiveName}",
             vm.Status.StartsWith("Created ", StringComparison.Ordinal)
             && vm.Status.Contains(archiveName, StringComparison.Ordinal),
             $"status was \"{vm.Status}\"");
-
-    /// <summary>Entry names, sorted, and never throwing: an archive that cannot
-    /// be opened has to surface as a failed assertion carrying the reason, not
-    /// as an exception that ends the scenario — same discipline as
-    /// ScenarioContext's own I/O helpers.</summary>
-    private static IReadOnlyList<string> EntriesOf(string zipPath)
-    {
-        try
-        {
-            using var archive = ZipFile.OpenRead(zipPath);
-            return archive.Entries.Select(e => e.FullName)
-                .OrderBy(n => n, StringComparer.Ordinal).ToList();
-        }
-        catch (Exception ex)
-        {
-            return new[] { $"<unreadable: {ex.GetType().Name}: {ex.Message}>" };
-        }
-    }
 
     private static void FilesAndFolder(ScenarioContext ctx)
     {
@@ -88,15 +55,14 @@ public static class ZipScenarios
         var vm = NewVm(ctx);
         var win = Open(vm);
 
-        var add = vm.AddPaths(new[] { a, b, folder });
-        E2EPump.Until(() => add.IsCompleted, 8000);
+        Added(ctx, vm.AddPaths(new[] { a, b, folder }));
         ctx.Check("three sources listed", vm.Rows.Count == 3, $"got {vm.Rows.Count}");
         ctx.Check("the folder is listed as a folder, not expanded into files",
             vm.Rows.Count(r => r.Kind == "folder") == 1,
             string.Join(", ", vm.Rows.Select(r => $"{r.Display}:{r.Kind}")));
 
         vm.CreateCommand.Execute(null);
-        Settle(ctx, vm);
+        Settle(ctx, () => vm.Status);
 
         var zips = Archives(ctx);
         ctx.Check("exactly one archive written", zips.Length == 1, $"got {zips.Length}");
@@ -123,19 +89,24 @@ public static class ZipScenarios
         var vm = NewVm(ctx);
         var win = Open(vm);
 
-        var add = vm.AddPaths(new[] { a });
-        E2EPump.Until(() => add.IsCompleted, 8000);
+        Added(ctx, vm.AddPaths(new[] { a }));
+        ctx.Check("the source is listed", vm.Rows.Count == 1, $"got {vm.Rows.Count}");
 
         vm.CreateAsCommand.Execute(null);
-        Settle(ctx, vm);
+        Settle(ctx, () => vm.Status);
 
         ctx.FileExists(target);
         CheckCreated(ctx, vm, "chosen-name.zip");
+
+        // Read once, assert once: EntriesOf reopens the archive on every call,
+        // and an eagerly-built detail string would pay that cost on every pass.
+        var entries = EntriesOf(target);
         ctx.Check("the chosen name holds the document",
-            EntriesOf(target).SequenceEqual(new[] { "one.pdf" }),
-            string.Join(", ", EntriesOf(target)));
-        ctx.Check("nothing was written anywhere else",
-            Archives(ctx).Length == 1, $"got {Archives(ctx).Length} archives");
+            entries.SequenceEqual(new[] { "one.pdf" }), string.Join(", ", entries));
+
+        var zips = Archives(ctx);
+        ctx.Check("nothing was written anywhere else", zips.Length == 1,
+            "archives: " + string.Join(", ", zips.Select(Path.GetFileName)));
         ctx.Capture(win);
     }
 
@@ -164,12 +135,11 @@ public static class ZipScenarios
         var vm = NewVm(ctx);
         var win = Open(vm);
 
-        var add = vm.AddPaths(new[] { a });
-        E2EPump.Until(() => add.IsCompleted, 8000);
+        Added(ctx, vm.AddPaths(new[] { a }));
         ctx.Check("the source is listed", vm.Rows.Count == 1, $"got {vm.Rows.Count}");
 
         vm.CreateCommand.Execute(null);
-        Settle(ctx, vm);
+        Settle(ctx, () => vm.Status);
 
         ctx.BytesUnchanged(taken, before, "the archive already there is untouched");
 
@@ -186,9 +156,9 @@ public static class ZipScenarios
         if (fresh is not null)
         {
             CheckCreated(ctx, vm, Path.GetFileName(fresh));
+            var entries = EntriesOf(fresh);
             ctx.Check("and it holds the document",
-                EntriesOf(fresh).SequenceEqual(new[] { "one.pdf" }),
-                string.Join(", ", EntriesOf(fresh)));
+                entries.SequenceEqual(new[] { "one.pdf" }), string.Join(", ", entries));
         }
         ctx.Capture(win);
     }
@@ -216,22 +186,23 @@ public static class ZipScenarios
         var vm = NewVm(ctx);
         var win = Open(vm);
 
-        var add = vm.AddPaths(new[] { a });
-        E2EPump.Until(() => add.IsCompleted, 8000);
+        Added(ctx, vm.AddPaths(new[] { a }));
+        ctx.Check("the source is listed", vm.Rows.Count == 1, $"got {vm.Rows.Count}");
 
         vm.CreateAsCommand.Execute(null);
-        Settle(ctx, vm);
+        Settle(ctx, () => vm.Status);
 
         CheckCreated(ctx, vm, "taken.zip");
+
+        var entries = EntriesOf(target);
         ctx.Check("the chosen name now holds a real, readable archive",
-            EntriesOf(target).SequenceEqual(new[] { "one.pdf" }),
-            string.Join(", ", EntriesOf(target)));
+            entries.SequenceEqual(new[] { "one.pdf" }), string.Join(", ", entries));
         ctx.Check("the old contents are gone rather than appended to",
-            new FileInfo(target).Length != before,
-            $"still {before} bytes");
-        ctx.Check("and nothing was countered around it",
-            Archives(ctx).Length == 1,
-            "archives: " + string.Join(", ", Archives(ctx).Select(Path.GetFileName)));
+            new FileInfo(target).Length != before, $"still {before} bytes");
+
+        var zips = Archives(ctx);
+        ctx.Check("and nothing was countered around it", zips.Length == 1,
+            "archives: " + string.Join(", ", zips.Select(Path.GetFileName)));
         ctx.Capture(win);
     }
 
@@ -243,12 +214,11 @@ public static class ZipScenarios
         var vm = NewVm(ctx);
         var win = Open(vm);
 
-        var add = vm.AddPaths(new[] { a, b });
-        E2EPump.Until(() => add.IsCompleted, 8000);
+        Added(ctx, vm.AddPaths(new[] { a, b }));
         ctx.Check("both sources listed", vm.Rows.Count == 2, $"got {vm.Rows.Count}");
 
         vm.CreateCommand.Execute(null);
-        Settle(ctx, vm);
+        Settle(ctx, () => vm.Status);
 
         var zips = Archives(ctx);
         ctx.Check("archive written", zips.Length == 1, $"got {zips.Length}");
@@ -279,14 +249,4 @@ public static class ZipScenarios
         ctx.Check("no archive written", Archives(ctx).Length == 0, "an archive appeared");
         ctx.Capture(win);
     }
-}
-
-/// <summary>Runs scheduled work inline so a scenario's assertions follow the
-/// call rather than a sleep. Mirrors OrdoSort.Wpf.Tests.InlineWorkScheduler,
-/// duplicated here because the test project's types are not visible to the
-/// Smoke tool — the project dependency runs the other way.</summary>
-internal sealed class InlineScheduler : IWorkScheduler
-{
-    public Task<T> Run<T>(Func<T> work) => Task.FromResult(work());
-    public Task Run(Action work) { work(); return Task.CompletedTask; }
 }

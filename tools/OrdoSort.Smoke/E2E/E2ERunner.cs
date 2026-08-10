@@ -172,6 +172,25 @@ public static class E2ERunner
         string? error = null;
         string? shot = null;
 
+        // Recorded here, once, so all nine surface files inherit it rather than
+        // remembering to assert it themselves. Scenarios pass
+        // SynchronizationContext.Current as their view model's uiContext, and
+        // ZipViewModel.ApplyResult reads "if (_uiContext is null) Apply(); else
+        // _uiContext.Post(…)". If this thread ever loses its context, every
+        // scenario silently takes the inline branch: the result is applied
+        // synchronously, the Settle wait finds Status already set and returns
+        // without arming a frame, and the whole run goes green having never
+        // exercised the marshalling hop — byte-identical output to a correct
+        // run. Asserting it is the only thing that makes that visible.
+        ctx.Check("the scenario thread carries a UI synchronization context",
+            SynchronizationContext.Current is not null,
+            "null — every view model gets a null uiContext and skips the marshalling hop");
+
+        // What the scenario itself added starts from here, so the runner's own
+        // bookkeeping assertions (above and below) cannot mask a scenario that
+        // asserted nothing of its own.
+        var beforeRun = ctx.Assertions.Count;
+
         try
         {
             s.Run(ctx);
@@ -196,16 +215,28 @@ public static class E2ERunner
             if (!keep) fx.Dispose();
         }
 
+        // A scenario that asserted nothing passed vacuously; that is a defect
+        // in the scenario, and silently green is exactly the failure mode this
+        // whole suite exists to avoid. Decided BEFORE the runner adds any
+        // further checks of its own, and against beforeRun rather than zero, so
+        // it keeps judging the scenario.
+        var assertedNothing = ctx.Assertions.Count == beforeRun;
+
         // A leftover dialog answer means the scenario never reached the prompt
         // it was written for — a broken scenario, reported as one.
         if (ctx.Dialogs.Unconsumed.Count > 0)
             ctx.Check("every queued dialog answer was used", false,
                 "unused: " + string.Join(", ", ctx.Dialogs.Unconsumed));
 
-        // A scenario that asserted nothing passed vacuously; that is a defect
-        // in the scenario, and silently green is exactly the failure mode this
-        // whole suite exists to avoid.
-        if (ctx.Assertions.Count == 0 && error is null) error = "scenario asserted nothing";
+        // Symmetric with the guard above, and for the same reason: a scenario
+        // that never nominated a window yields a report row with no screenshot,
+        // and an evidence report with silently missing evidence is worth less
+        // than one that says so.
+        if (ctx.Captured is null)
+            ctx.Check("the scenario nominated a window as evidence", false,
+                "no ctx.Capture(win) call — this row has no screenshot");
+
+        if (assertedNothing && error is null) error = "scenario asserted nothing";
 
         sw.Stop();
         var passed = error is null && ctx.Assertions.Count > 0 && ctx.Assertions.All(a => a.Passed);
