@@ -125,6 +125,25 @@ dotnet build
 dotnet test
 ```
 
+## The end-to-end suite
+
+```
+dotnet run --project tools\OrdoSort.Smoke -- e2e
+```
+
+drives all 14 user-facing surfaces — the ten Tools-menu utilities, both
+Reports, History, and the routing loop — as real windows against real files
+in a throwaway temp folder, then writes `evidence\<timestamp>\report.html`:
+one row per scenario, with the assertions it ran and a screenshot of the
+window.
+
+Run a single surface with `-- e2e zip` (or `unzip`, `zipmerge`, `unlock`, …
+— the filter is exact-match-first, so `zip` selects Zip alone rather than
+dragging in Zip merge), and add `--keep` to leave that run's fixtures on
+disk for inspection. It drives real WPF windows and WebView2, so it needs a
+desktop session — that's why it runs as its own CI job (`e2e.yml`) rather
+than alongside the headless unit tests in `ci.yml`.
+
 ## Run the demo
 
 Run `demo-full.bat` once to generate the workbench (300 inbox documents,
