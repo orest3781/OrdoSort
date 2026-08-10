@@ -366,4 +366,81 @@ public class E2EHarnessTests
         Assert.IsType<DispatcherSynchronizationContext>(afterInstall);
         Assert.IsType<DispatcherSynchronizationContext>(afterAPumpHasComeAndGone);
     }
+
+    /// <summary>Regression coverage for a defect found in Task 13, in the
+    /// PRE-EXISTING standalone smoke harness rather than in any new code.
+    ///
+    /// The old Program.cs built its MainWindow on a bare STA thread, before
+    /// <c>Dispatcher.Run()</c>. By the test above, such a thread has no
+    /// SynchronizationContext — so <c>MainWindow</c>'s constructor read
+    /// <c>SynchronizationContext.Current</c> as <b>null</b> and handed that
+    /// null on to both <c>FolderWatchService</c> and
+    /// <c>ShellViewModel</c>'s uiContext (MainWindow.cs:54-57). Measured
+    /// directly by printing it from the unmodified harness before the fix:
+    /// <c>SynchronizationContext.Current at MainWindow construction =
+    /// &lt;null&gt;</c>.
+    ///
+    /// ShellViewModel branches on that field in five places
+    /// (ShellViewModel.cs:82-93, 517, 528): <c>FlashTick</c>,
+    /// <c>HideLastAction</c> and <c>HideToast</c> all read
+    /// "if (_uiContext is null) DoItHere(); else _uiContext.Post(...)", and
+    /// they are driven by timers, not by the dispatcher. With a null context
+    /// the smoke harness ran every one of them straight off a timer thread,
+    /// mutating state the window's bindings were reading — and the
+    /// auto-hide behind HideLastAction is armed by the very commit and
+    /// set-aside the harness exists to exercise. It never crashed only
+    /// because the timers outlast the 25-second run.
+    ///
+    /// The fix is that RoutingLoop.OpenWindow installs the context BEFORE it
+    /// constructs anything, so both callers — the standalone smoke mode and
+    /// the e2e scenario — get the production shape.
+    ///
+    /// This pins the ORDERING, not merely the end state, and it does so
+    /// without needing App.xaml's resources on the test's own thread. A
+    /// MainWindow built where no Application has been booted throws out of
+    /// InitializeComponent ("Cannot find resource named 'BoolToVis'"), which
+    /// is exactly what makes the assertion discriminating: the context has to
+    /// be installed on the way IN, because an install written after the
+    /// `new MainWindow(...)` line — or deleted — never runs at all, and this
+    /// thread's context is still null when OpenWindow gives up. The window
+    /// itself is beside the point here; what is being pinned is what the
+    /// constructor would have read.</summary>
+    [Fact]
+    public void RoutingLoopInstallsTheUiContextBeforeItBuildsTheWindow()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ordo_rl_" + Guid.NewGuid().ToString("N"));
+        SynchronizationContext? beforeOpen = null;
+        SynchronizationContext? afterOpen = null;
+
+        var t = new Thread(() =>
+        {
+            beforeOpen = SynchronizationContext.Current;
+            var bed = RoutingLoop.Prepare(root);
+            // Whether the window itself comes up depends on an Application
+            // having been booted on this thread, which is not this test's
+            // subject — the install has to have happened either way.
+            try { RoutingLoop.OpenWindow(bed, new ScriptedDialogs()); }
+            catch { /* see the doc comment */ }
+            afterOpen = SynchronizationContext.Current;
+        });
+        t.SetApartmentState(ApartmentState.STA);
+        t.Start();
+        t.Join();
+
+        try
+        {
+            // The premise: without the install, this thread has nothing to
+            // give MainWindow's constructor.
+            Assert.Null(beforeOpen);
+            // THE ASSERTION: the reverted build leaves this null.
+            Assert.IsType<DispatcherSynchronizationContext>(afterOpen);
+        }
+        finally
+        {
+            for (var i = 0; i < 10; i++)
+            {
+                try { Directory.Delete(root, true); break; } catch { Thread.Sleep(50); }
+            }
+        }
+    }
 }
