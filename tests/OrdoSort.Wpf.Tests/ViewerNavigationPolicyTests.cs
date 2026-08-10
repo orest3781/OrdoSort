@@ -446,4 +446,88 @@ public class WebViewPdfViewerGuardBehaviourTests : IDisposable
             window.Close();
         }
     });
+
+    /// <summary>v1.0 release blockers, Task 2. Before this, a missing WebView2 Runtime
+    /// surfaced only once CoreWebView2Environment.CreateAsync itself threw — the same
+    /// intermittent <c>COMException (0x8007139F): Class not registered</c> this suite's own
+    /// tests hit on this machine — dumped verbatim via ex.ToString() into InitError. This
+    /// proves the new up-front check instead: with <see cref="WebViewPdfViewer.RuntimeAvailable"/>
+    /// stubbed to report "absent", InitAsync must fail fast with a plain-language message
+    /// naming the runtime and where to get it, and — this is the falsifiable part — it must
+    /// never have touched the real engine at all. CoreWebView2 is documented to return null
+    /// until initialization completes (see WebView2.CoreWebView2 remarks), so asserting it is
+    /// still null here proves EnsureCoreWebView2Async was never reached. Deleting the guard, or
+    /// inverting its condition, would let this call proceed to the real init — which succeeds
+    /// on this machine (every other test in this class relies on that) — and CoreWebView2 would
+    /// stop being null, failing this test. The test never depends on whether THIS machine
+    /// actually has the runtime: the stub decides, not the host.</summary>
+    [Fact]
+    public void MissingRuntimeFailsFastWithoutTouchingTheRealEngine() => _fx.Invoke(() =>
+    {
+        var (view, window) = NewView();
+        try
+        {
+            var previous = WebViewPdfViewer.RuntimeAvailable;
+            WebViewPdfViewer.RuntimeAvailable = () => false;
+            try
+            {
+                var viewer = new WebViewPdfViewer(view);
+
+                Assert.False(InitReady(viewer));
+                Assert.False(viewer.Ready);
+                Assert.NotNull(viewer.InitError);
+                Assert.Contains("WebView2 Runtime", viewer.InitError);
+                Assert.Contains("https://developer.microsoft.com/microsoft-edge/webview2/",
+                    viewer.InitError);
+                Assert.Null(view.CoreWebView2);
+            }
+            finally
+            {
+                WebViewPdfViewer.RuntimeAvailable = previous;
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>The other branch of the same guard: reporting the runtime "present" must NOT
+    /// be treated as "absent". This does not assert that the real engine succeeds — that
+    /// outcome belongs to this class's other tests (and their known, separately-tracked COM
+    /// flake on this machine) — only that the specific missing-runtime short-circuit did not
+    /// fire. If the guard's condition were inverted (so "present" incorrectly skips init),
+    /// InitAsync would return the missing-runtime message here instead, and the Contains
+    /// assertion below would fail — that is what makes this test, not just the "absent" one,
+    /// load-bearing against an inverted condition.</summary>
+    [Fact]
+    public void RuntimeReportedPresentIsNotTreatedAsMissing() => _fx.Invoke(() =>
+    {
+        var (view, window) = NewView();
+        try
+        {
+            var previous = WebViewPdfViewer.RuntimeAvailable;
+            WebViewPdfViewer.RuntimeAvailable = () => true;
+            try
+            {
+                var viewer = new WebViewPdfViewer(view);
+                var ready = InitReady(viewer);
+
+                if (!ready)
+                {
+                    Assert.NotNull(viewer.InitError);
+                    Assert.DoesNotContain("WebView2 Runtime, which isn't installed",
+                        viewer.InitError);
+                }
+            }
+            finally
+            {
+                WebViewPdfViewer.RuntimeAvailable = previous;
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
 }
