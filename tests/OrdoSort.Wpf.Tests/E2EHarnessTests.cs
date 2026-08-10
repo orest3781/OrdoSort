@@ -204,4 +204,30 @@ public class E2EHarnessTests
 
         Assert.False(ctx.Assertions.Single().Passed);
     }
+
+    /// <summary>NothingNewOutside must not be fooled by a sibling whose name
+    /// merely shares allowedDir's name as a string prefix — a stray
+    /// "...\evil-extra.txt" is not under "...\evil". A bare
+    /// StartsWith(allowedDir) would treat it as "inside" and hide exactly
+    /// the zip-slip escape this assertion exists to catch, which is the
+    /// worst direction for this check to be wrong in. This is a committed
+    /// regression test for that fix (Scenario.cs's private IsUnder
+    /// helper).</summary>
+    [Fact]
+    public void NothingNewOutsideCatchesASiblingSharingTheAllowedDirNamePrefix()
+    {
+        using var fx = Fixture.Create("prefix-check");
+        var ctx = new ScenarioContext(fx, new ScriptedDialogs());
+        var allowedDir = fx.Dir("evil");
+
+        var before = ctx.Snapshot();
+
+        // A sibling of allowedDir, not a descendant of it — its name just
+        // happens to start with "evil" too.
+        File.WriteAllText(Path.Combine(fx.Root, "evil-extra.txt"), "escaped");
+
+        ctx.NothingNewOutside(allowedDir, before, "nothing escaped outside allowedDir");
+
+        Assert.False(ctx.Assertions.Single().Passed);
+    }
 }

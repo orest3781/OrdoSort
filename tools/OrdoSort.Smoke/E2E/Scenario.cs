@@ -42,21 +42,53 @@ public sealed class ScenarioContext
         Check($"file absent: {Rel(path)}", !File.Exists(path), "unexpectedly present");
 
     /// <summary>The never-overwrite guarantee: content identical, not merely
-    /// present.</summary>
+    /// present. The read is guarded: between the File.Exists check above and
+    /// this read, the file can be deleted, locked, or made inaccessible
+    /// (TOCTOU) — that must surface as a failed assertion, not an escaping
+    /// exception.</summary>
     public void BytesUnchanged(string path, byte[] before, string description)
     {
         if (!File.Exists(path)) { Check(description, false, "file is gone"); return; }
-        var now = File.ReadAllBytes(path);
+        byte[] now;
+        try { now = File.ReadAllBytes(path); }
+        catch (Exception ex) { Check(description, false, $"could not read: {ex.Message}"); return; }
         Check(description, now.SequenceEqual(before),
             $"content changed ({before.Length} → {now.Length} bytes)");
     }
 
     /// <summary>Every path currently under the fixture (and one level above
     /// it, so an escape out of the root is visible). Take this before the
-    /// act, hand it to NothingNewOutside after.</summary>
-    public string[] Snapshot() => ScanBase() is { } b
-        ? Directory.GetFileSystemEntries(b, "*", SearchOption.AllDirectories)
-        : Array.Empty<string>();
+    /// act, hand it to NothingNewOutside after.
+    ///
+    /// Walks one directory at a time instead of a single
+    /// SearchOption.AllDirectories call so a subdirectory that throws
+    /// (UnauthorizedAccessException, IOException — exactly the kind of
+    /// thing an adversarial payload can produce) does not blow up the whole
+    /// scan. The failure is recorded as a failed assertion and the walk
+    /// continues with whatever it could see.</summary>
+    public string[] Snapshot()
+    {
+        if (ScanBase() is not { } b) return Array.Empty<string>();
+        var found = new List<string>();
+        ScanInto(b, found);
+        return found.ToArray();
+    }
+
+    private void ScanInto(string dir, List<string> found)
+    {
+        string[] entries;
+        try { entries = Directory.GetFileSystemEntries(dir); }
+        catch (Exception ex)
+        {
+            Check($"scan: {Rel(dir)}", false, ex.Message);
+            return;
+        }
+        foreach (var entry in entries)
+        {
+            found.Add(entry);
+            if (Directory.Exists(entry)) ScanInto(entry, found);
+        }
+    }
 
     /// <summary>Nothing new appeared anywhere except inside
     /// <paramref name="allowedDir"/>. This is the zip-slip assertion, and it
@@ -97,8 +129,13 @@ public sealed class ScenarioContext
     /// runner rasterizes it after Run returns, while it is still open.</summary>
     public void Capture(Window win) => Captured = win;
 
+    /// <summary>Display-only shortening of a path relative to the fixture
+    /// root. Guarded: if path is exactly Fx.Root (no trailing separator to
+    /// skip past), slicing at Fx.Root.Length + 1 would run past the end of
+    /// the string and throw — the same never-throw defect class as the I/O
+    /// above, just from string indexing instead of file access.</summary>
     private string Rel(string path) =>
-        path.StartsWith(Fx.Root, StringComparison.OrdinalIgnoreCase)
+        path.Length > Fx.Root.Length && path.StartsWith(Fx.Root, StringComparison.OrdinalIgnoreCase)
             ? path[(Fx.Root.Length + 1)..]
             : path;
 }
