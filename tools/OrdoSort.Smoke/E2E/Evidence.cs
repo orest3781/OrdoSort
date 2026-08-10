@@ -5,11 +5,17 @@ using System.Windows.Media.Imaging;
 
 namespace OrdoSort.Smoke.E2E;
 
-/// <summary>One scenario's outcome, as the report renders it.</summary>
+/// <summary>One scenario's outcome, as the report renders it.
+/// <paramref name="CaptureNote"/> is set when the scenario nominated a
+/// window (<c>ctx.Capture(win)</c>) but <see cref="Capture"/> still came
+/// back with no image — a machine without a desktop session, say. That is
+/// worth a visible note on the row, not a failed assertion: rasterization
+/// is evidence, not the thing under test, so it must not turn an otherwise
+/// passing scenario red.</summary>
 public sealed record ScenarioResult(
     string Surface, string Name, string Kind, bool Passed,
     IReadOnlyList<Assertion> Assertions, string? Error,
-    string? ScreenshotFile, long ElapsedMs);
+    string? ScreenshotFile, long ElapsedMs, string? CaptureNote = null);
 
 /// <summary>Writes the run's evidence: a self-contained report.html with the
 /// screenshots inlined as data: URIs (so it can be mailed or attached to a CI
@@ -91,6 +97,7 @@ public static class Evidence
         sb.Append(".kind{color:var(--muted);font-size:.85rem}.v{font-weight:600}.pass{color:var(--ok)}.fail{color:var(--bad)}");
         sb.Append("ul{margin:.75rem 0 0;padding-left:1.25rem}li{margin:.15rem 0}li.no{color:var(--bad)}.det{color:var(--muted)}");
         sb.Append(".err{color:var(--bad);font-family:ui-monospace,Consolas,monospace;font-size:.85rem;margin-top:.5rem;white-space:pre-wrap}");
+        sb.Append(".note{color:var(--muted);font-style:italic;font-size:.85rem;margin-top:.5rem}");
         sb.Append("img{max-width:100%;height:auto;margin-top:.85rem;border:1px solid var(--line);border-radius:6px;display:block}");
         sb.Append("</style></head><body><main>");
 
@@ -121,6 +128,7 @@ public static class Evidence
                 }
                 sb.Append("</ul>");
                 if (r.Error is not null) sb.Append($"<div class=\"err\">{Esc(r.Error)}</div>");
+                if (r.CaptureNote is not null) sb.Append($"<div class=\"note\">{Esc(r.CaptureNote)}</div>");
 
                 if (r.ScreenshotFile is not null)
                 {
@@ -160,6 +168,7 @@ public static class Evidence
                     sb.AppendLine($"- {(a.Passed ? "[x]" : "[ ]")} {a.Description}"
                         + (!a.Passed && a.Detail is not null ? $" — {a.Detail}" : ""));
                 if (r.Error is not null) sb.AppendLine().AppendLine("```").AppendLine(r.Error).AppendLine("```");
+                if (r.CaptureNote is not null) sb.AppendLine().AppendLine($"_{r.CaptureNote}_");
                 sb.AppendLine();
             }
         }

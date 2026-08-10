@@ -44,7 +44,27 @@ public static class ScenarioKit
     /// did. <paramref name="status"/> must read a UI-facing string — the
     /// property the result line binds to — not a filesystem probe; see the class
     /// summary for why that distinction is load-bearing. A warning counts as a
-    /// verdict too: a surface that refuses the work has still reported.</summary>
+    /// verdict too: a surface that refuses the work has still reported.
+    ///
+    /// Only call this where <paramref name="status"/> is actually assigned
+    /// from INSIDE the uiContext.Post marshalling hop, not where the calling
+    /// thread assigns it directly and returns. It used to be called at 7
+    /// sites where it could never fail (5 in BulkRenameScenarios.cs, 2 in
+    /// MatchMergeScenarios.cs): BulkRenameViewModel.Apply/UndoBatch and
+    /// MatchMergeViewModel's DoMerge/UndoBatch all set Status synchronously,
+    /// on the calling thread, with no Post anywhere in the method — so
+    /// `status()` already satisfied the predicate before E2EPump.Until ever
+    /// ran, and its pre-pump fast path (`if (kickoff is null && ready())
+    /// return true`) answered on the spot. The recorded assertion could not
+    /// fail no matter what Apply/UndoBatch/DoMerge actually did — the same
+    /// false-green-line defect <see cref="Added"/>'s doc comment describes,
+    /// just aimed at a view-model property instead of a Task. Those 7 sites
+    /// now assert the outcome string Apply/UndoBatch/DoMerge actually
+    /// produced (e.g. `vm.Status.StartsWith("Renamed", …)`), which is a check
+    /// that genuinely fails if the operation didn't do what it claims. Do not
+    /// reintroduce Settle at a site whose verdict property is assigned
+    /// outside of a uiContext.Post callback: check the resulting outcome
+    /// string directly instead, the way those 7 sites do now.</summary>
     public static void Settle(ScenarioContext ctx, Func<string> status, int timeoutMs = 15000)
     {
         var settled = E2EPump.Until(

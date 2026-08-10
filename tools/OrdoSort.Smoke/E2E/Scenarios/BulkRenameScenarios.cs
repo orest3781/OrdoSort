@@ -1,6 +1,5 @@
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Windows;
-using static OrdoSort.Smoke.E2E.Scenarios.ScenarioKit;
 
 namespace OrdoSort.Smoke.E2E.Scenarios;
 
@@ -28,19 +27,25 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 /// E2EPump.Until to pump a frame — it is never already true on the
 /// pre-pump check.
 ///
-/// Status is the opposite shape, and it is direct, not a hazard: Apply() and
-/// UndoBatch() assign Status themselves, synchronously, on the calling
-/// thread — no Post anywhere in either method. Critically, unlike Summary in
-/// Unzip/ZipMerge (an aggregate that can be non-empty from a live "N of M…"
-/// line while individual rows are still Pending), there is no async
-/// per-row completion Status could race ahead of here: BulkRename.Execute
-/// and BulkRename.Revert are plain foreach/File.Move loops with no Task.Run
-/// of their own, called directly at the top of Apply()/UndoBatch() before
-/// Status is ever touched. So by the time RenameCommand.Execute(null)
-/// returns, the real rename has already happened and Status already
-/// reports it — Settle(ctx, () => vm.Status) below is the right verdict
-/// property precisely because there is nothing left in flight for it to be
-/// stale against, not merely because it happens to compile.
+/// Status is the opposite shape, and it is direct, not a hazard for reading
+/// it — but a trap for waiting on it: Apply() and UndoBatch() assign Status
+/// themselves, synchronously, on the calling thread — no Post anywhere in
+/// either method. Critically, unlike Summary in Unzip/ZipMerge (an aggregate
+/// that can be non-empty from a live "N of M…" line while individual rows
+/// are still Pending), there is no async per-row completion Status could
+/// race ahead of here: BulkRename.Execute and BulkRename.Revert are plain
+/// foreach/File.Move loops with no Task.Run of their own, called directly at
+/// the top of Apply()/UndoBatch() before Status is ever touched. So by the
+/// time RenameCommand.Execute(null)/UndoCommand.Execute(null) return, the
+/// real rename has already happened and Status already reports it — which
+/// is exactly why ScenarioKit.Settle does not belong here: its wait exists
+/// to pump a frame while a result is still in flight, and nothing is in
+/// flight by the time these five sites would have called it, so
+/// E2EPump.Until's pre-pump fast path always answered before Settle's own
+/// wait could ever matter. The five sites below assert `vm.Status` directly
+/// instead — the same right verdict property, checked for what it actually
+/// says (e.g. `vm.Status.StartsWith("Renamed", …)`) rather than waited on
+/// for a hop that never happens. See ScenarioKit.Settle's doc comment.
 ///
 /// Two of the brief's own waits had exactly the trap ScenarioKit.Settle
 /// warns about, just aimed at a view-model property instead of the
@@ -115,7 +120,7 @@ public static class BulkRenameScenarios
         ctx.Check("rename is offered", vm.RenameCommand.CanExecute(null), "command disabled");
 
         vm.RenameCommand.Execute(null);
-        Settle(ctx, () => vm.Status);
+        ctx.Check("the rename is reported", vm.Status.StartsWith("Renamed", StringComparison.Ordinal), vm.Status);
 
         var expectedA = Path.Combine(ctx.Fx.Root, "in", "RENAMED-alpha.pdf");
         var expectedB = Path.Combine(ctx.Fx.Root, "in", "RENAMED-beta.pdf");
@@ -153,7 +158,7 @@ public static class BulkRenameScenarios
             "rows: " + string.Join(", ", vm.Preview.Select(r => $"{r.Current}->{r.NewName} manual={r.Manual}")));
 
         vm.RenameCommand.Execute(null);
-        Settle(ctx, () => vm.Status);
+        ctx.Check("the rename is reported", vm.Status.StartsWith("Renamed", StringComparison.Ordinal), vm.Status);
 
         var onDisk = Directory.GetFiles(Path.Combine(ctx.Fx.Root, "in"));
         ctx.Check("no file was lost to the collision", onDisk.Length == 2,
@@ -216,7 +221,8 @@ public static class BulkRenameScenarios
         // BulkRename.Execute skips any PlannedRename with Changed == false,
         // so this proves the safety net, not just the UI gate.
         vm.RenameCommand.Execute(null);
-        Settle(ctx, () => vm.Status);
+        ctx.Check("the rename reports zero renamed, confirming the safety net actually ran",
+            vm.Status == "Renamed 0 files.", vm.Status);
         ctx.BytesUnchanged(a, before, "the original is untouched even after a forced Execute");
         ctx.FileExists(a);
         ctx.Capture(win);
@@ -239,7 +245,7 @@ public static class BulkRenameScenarios
             vm.Preview.Count > 0 ? $"NewName={vm.Preview[0].NewName} manual={vm.Preview[0].Manual}" : "no row");
 
         vm.RenameCommand.Execute(null);
-        Settle(ctx, () => vm.Status);
+        ctx.Check("the rename is reported", vm.Status.StartsWith("Renamed", StringComparison.Ordinal), vm.Status);
 
         var renamedPath = Path.Combine(ctx.Fx.Root, "in", "RENAMED.pdf");
         ctx.FileExists(renamedPath);
@@ -247,7 +253,7 @@ public static class BulkRenameScenarios
         ctx.Check("undo is offered after a rename", vm.UndoCommand.CanExecute(null), "command disabled");
 
         vm.UndoCommand.Execute(null);
-        Settle(ctx, () => vm.Status);
+        ctx.Check("the undo is reported", vm.Status == "Original names restored.", vm.Status);
         ctx.FileExists(a);
         ctx.BytesUnchanged(a, beforeBytes, "the restored file is byte-identical to the original");
         ctx.FileMissing(renamedPath);

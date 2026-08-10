@@ -61,6 +61,14 @@ public static class E2ERunner
         ui.Join();
         sw.Stop();
 
+        // Unreachable today — DriveAll always returns one ScenarioResult per
+        // scenario, and Run already rejected an empty scenario list above —
+        // but a green E2E job that ran zero scenarios is the single outcome
+        // this suite must never produce silently, so it gets its own guard
+        // rather than relying on that invariant holding forever.
+        if (results.Count == 0)
+        { Console.WriteLine("E2E FAIL:\n  * the run produced no results"); return 1; }
+
         Evidence.Write(outDir, results, sw.Elapsed);
 
         var failed = results.Where(r => !r.Passed).ToList();
@@ -180,6 +188,7 @@ public static class E2ERunner
         var ctx = new ScenarioContext(fx, new ScriptedDialogs());
         string? error = null;
         string? shot = null;
+        string? captureNote = null;
 
         // Recorded here, once, so all nine surface files inherit it rather than
         // remembering to assert it themselves. Scenarios pass
@@ -212,7 +221,20 @@ public static class E2ERunner
         {
             // Capture while the window is still open, then close everything so
             // the next scenario starts from a clean desktop.
-            if (ctx.Captured is not null) shot = Evidence.Capture(ctx.Captured, outDir, stem);
+            if (ctx.Captured is not null)
+            {
+                shot = Evidence.Capture(ctx.Captured, outDir, stem);
+                // A window WAS nominated but rasterizing it still came back
+                // empty (zero-size window, or the catch in Evidence.Capture)
+                // — that is worth a visible note on the report row. It is
+                // deliberately not a failed ctx.Check: a machine without a
+                // desktop session shouldn't turn the whole run red on
+                // rasterization alone, but a silently missing screenshot is
+                // still worth less than one that says why it's missing.
+                if (shot is null)
+                    captureNote = "the scenario nominated a window, but no screenshot " +
+                        "was captured (zero-size window, or Evidence.Capture threw)";
+            }
             // Null-conditional on Current deliberately: if an Application
             // shutdown ever does slip through, this cleanup must degrade into a
             // reported scenario failure, not a NullReferenceException thrown
@@ -251,7 +273,7 @@ public static class E2ERunner
         var passed = error is null && ctx.Assertions.Count > 0 && ctx.Assertions.All(a => a.Passed);
 
         return new ScenarioResult(s.Surface, s.Name, s.Kind, passed,
-            ctx.Assertions.ToList(), error, shot, sw.ElapsedMilliseconds);
+            ctx.Assertions.ToList(), error, shot, sw.ElapsedMilliseconds, captureNote);
     }
 
     private static string Slug(string s)

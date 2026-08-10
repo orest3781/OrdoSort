@@ -1,7 +1,6 @@
 using OrdoSort.Core;
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Windows;
-using static OrdoSort.Smoke.E2E.Scenarios.ScenarioKit;
 
 namespace OrdoSort.Smoke.E2E.Scenarios;
 
@@ -37,12 +36,15 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 /// between "assigned directly" and "assigned from inside a Post" the way
 /// BulkRenameViewModel.Preview/Status or Unzip/ZipMerge's Summary/rows are —
 /// Rows, Headers, MergeCount and Status are all just plain fields set before
-/// each method returns. E2EPump.Until below is kept anyway, for the same
-/// reason UnlockScenarios keeps it despite ResultLines/Summary both being
-/// "safe" there: it is the one shared idiom every surface uses to wait on
-/// its own verdict rather than the filesystem, and keeping it here costs
-/// nothing (the predicate is already true on the very first, pre-pump check)
-/// while staying robust if this view model ever gains a real async seam.</summary>
+/// each method returns. That is exactly why ScenarioKit.Settle does not
+/// belong on the two MergeCommand.Execute(null) call sites below: DoMerge
+/// sets Status synchronously, so `vm.Status.Length > 0` was already true
+/// before Settle's own E2EPump.Until wait could ever run, and Settle's
+/// recorded "the window reported a result" assertion could not fail no
+/// matter what DoMerge actually did — see ScenarioKit.Settle's doc comment.
+/// Both sites assert `vm.Status` directly instead, for what it actually
+/// says (`vm.Status.StartsWith("Merged", …)`), which is a check that
+/// genuinely fails if the merge didn't do what it claims.</summary>
 public static class MatchMergeScenarios
 {
     private const string Surface = "Match and merge";
@@ -99,7 +101,7 @@ public static class MatchMergeScenarios
         ctx.Check("merge is offered", vm.MergeCommand.CanExecute(null), "command disabled");
 
         vm.MergeCommand.Execute(null);
-        Settle(ctx, () => vm.Status);
+        ctx.Check("the merge is reported", vm.Status.StartsWith("Merged", StringComparison.Ordinal), vm.Status);
 
         var expectedA = Path.Combine(ctx.Fx.Root, "in", "20240101-SMITH-JOHN-1111.pdf");
         var expectedB = Path.Combine(ctx.Fx.Root, "in", "20240102-JONES-MARY-2222.pdf");
@@ -145,7 +147,7 @@ public static class MatchMergeScenarios
         ctx.Check("merge count only includes the real match", vm.MergeCount == 1, $"got {vm.MergeCount}");
 
         vm.MergeCommand.Execute(null);
-        Settle(ctx, () => vm.Status);
+        ctx.Check("the merge is reported", vm.Status.StartsWith("Merged", StringComparison.Ordinal), vm.Status);
 
         ctx.BytesUnchanged(stranger, strangerBefore, "the unmatched document is left where it was");
         ctx.FileExists(Path.Combine(ctx.Fx.Root, "in", "20240101-SMITH-JOHN-1111.pdf"));
