@@ -75,6 +75,25 @@ path, a confirm, a chosen folder — it supplies a `ScriptedDialogs`
 `IDialogService` whose answers are queued per scenario. That is answering the
 user's side of a prompt, not replacing the app's work.
 
+### Waiting, not sleeping
+
+Five surfaces (Filename list, Page counts, Bulk rename, and both Reports) load
+through `DebouncedProbe<T>`. As `FilenameListViewModelTests` documents, results
+are only *eventually* correct even with `InlineWorkScheduler` and
+`probeDelayMs: 0`, because the underlying `System.Threading.Timer` still fires
+on a threadpool thread. The existing view model tests poll with
+`Thread.Sleep`, which is fine off the UI thread.
+
+The E2E harness cannot do that. Its scenarios run on the STA dispatcher thread
+that owns the windows, so sleeping there blocks the very message loop the probe
+needs to marshal its result back through `uiContext`, and the wait deadlocks
+until it times out. Scenarios must instead pump the dispatcher —
+`Screenshots.Pump(ready, timeoutMs)` already implements exactly this with a
+`DispatcherFrame` and a background-priority `DispatcherTimer`, and moves into
+the shared E2E helper. View models are constructed with
+`uiContext: SynchronizationContext.Current` so their results marshal back to
+the dispatcher thread as they do in production.
+
 ## Architecture
 
 ```
@@ -185,10 +204,17 @@ corrupt PDF row; the good rows still report.
 **List reformatter** — reformat with blank lines, duplicates, and unicode
 input.
 
-**Turn-around time report** — report over a seeded `history.sqlite`; empty date
-range; culture-invariant dates.
+**Turn-around time report** — a folder of PECF report spreadsheets (csv and
+xlsx) loaded via `AddPaths`, column mapping applied, aggregates computed; a
+document dated after its own upload (negative TAT, shown as-is rather than
+clamped); unparseable dates rendering `—`; empty sources resetting to the empty
+table.
 
-**Production report** — same three, over the same seeded history.
+**Production report** — the same spreadsheet sources with group-by and sum
+column picks; empty sources; a sum column holding non-numeric values.
+
+Note: both Reports read spreadsheets through `SweptTable.Load`, **not**
+`history.sqlite`. Only the History surface touches the audit database.
 
 **History** — the window loads real rows; export to spreadsheet writes a real
 file (`XlsxTable`).
