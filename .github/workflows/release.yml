@@ -89,14 +89,23 @@ jobs:
 
       # zips download cleaner than bare exes (browsers and SmartScreen are
       # kinder to archives), and they carry a proper inner filename
+      # THIRD-PARTY-NOTICES ships INSIDE the zip, not just beside the exe in a
+      # local publish. The csproj copies it to the build output, but this step
+      # used to archive the bare exe alone — so every downloaded release
+      # shipped without the licence notices, and About's "View third-party
+      # notices" button (AboutWindow.xaml.cs, `if (!File.Exists(path)) return;`)
+      # silently did nothing for every real user. Copied from the repo root
+      # rather than the publish folder so it cannot go missing if the csproj's
+      # copy rule is ever changed. (v1.0 release audit, 2026-08-09.)
       - name: Zip the assets
         shell: pwsh
         run: |
+          if (-not (Test-Path THIRD-PARTY-NOTICES)) { throw "THIRD-PARTY-NOTICES is missing from the repo root" }
           Copy-Item out/portable/OrdoSort.exe ordosort.exe
-          Compress-Archive -Path ordosort.exe -DestinationPath "ordosort-${{ steps.ver.outputs.tag }}-win-x64.zip"
+          Compress-Archive -Path ordosort.exe, THIRD-PARTY-NOTICES -DestinationPath "ordosort-${{ steps.ver.outputs.tag }}-win-x64.zip"
           Remove-Item ordosort.exe
           Copy-Item out/selfcontained/OrdoSort.exe ordosort.exe
-          Compress-Archive -Path ordosort.exe -DestinationPath "ordosort-${{ steps.ver.outputs.tag }}-win-x64-selfcontained.zip"
+          Compress-Archive -Path ordosort.exe, THIRD-PARTY-NOTICES -DestinationPath "ordosort-${{ steps.ver.outputs.tag }}-win-x64-selfcontained.zip"
           Remove-Item ordosort.exe
 
       - name: Create the GitHub release
