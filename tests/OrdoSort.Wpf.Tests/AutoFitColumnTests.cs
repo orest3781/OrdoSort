@@ -1394,6 +1394,217 @@ public class AutoFitColumnTests
         try { Directory.Delete(dir, true); } catch { /* best effort */ }
     }
 
+    // --------------------- PDF page counts / Merge PDFs from zip / Unzip
+    //
+    // 2026-08-09 Tools-menu utilities audit finding 2: these three windows'
+    // Note/Result columns render ex.Message-derived text (PageCounts.Count's
+    // own failure message; ZipMerge/Zipper's own merge/extract failure
+    // message) but never called DataGridColumnCap.Track, unlike every other
+    // Auto content column in the app — BulkRenameWindow.xaml.cs:24 and
+    // MatchMergeWindow.xaml.cs:23 are the reference. A long exception message
+    // therefore produced the exact horizontal scrollbar every other grid's
+    // capped columns are built to prevent. Only ONE capped column per window
+    // here (File/Zip is the star filler, and PageCounts' own Pages column is
+    // a short uncapped number — see each window's own XAML comments), so
+    // ExpectedColumnCap(win, ContentColumnShare) below reuses the SAME
+    // single-share helper MatchMerge/BulkRename's own facts use, just with
+    // each window's own (higher, since there's only one competing column)
+    // share constant duplicated from its own XAML.CS file — same pattern
+    // every other window's facts in this suite already follow.
+    //
+    // Builders seed rows directly through each row type's own internal
+    // Apply (ZipRow/UnzipRow/PageCountRow — InternalsVisibleTo covers this
+    // test assembly, the same access ZipMergeViewModelTests/
+    // UnzipViewModelTests/PageCountsViewModelTests already use) rather than
+    // touching the filesystem through AddFilesAsync — there is no probe to
+    // debounce here (unlike FilenameListViewModel), so this is a pure
+    // shortcut, not a behavior change from what AddFilesAsync would produce.
+
+    private const double PageCountsNoteShare = 0.45;
+    private const double ZipMergeResultShare = 0.45;
+    private const double UnzipResultShare = 0.45;
+
+    private static PageCountsWindow BuildPageCountsWindow(string noteValue, int rowCount = 1)
+    {
+        var vm = new PageCountsViewModel(new FakeDialogs());
+        for (var i = 0; i < rowCount; i++)
+        {
+            var row = new PageCountRow($@"C:\inbox\f{i}.pdf");
+            row.Apply(new PageCounts.CountResult(row.Path, null, noteValue));
+            vm.Rows.Add(row);
+        }
+        return new PageCountsWindow(vm);
+    }
+
+    private static ZipMergeWindow BuildZipMergeWindow(string resultValue, int rowCount = 1)
+    {
+        var vm = new ZipMergeViewModel(new FakeDialogs());
+        for (var i = 0; i < rowCount; i++)
+        {
+            var row = new ZipRow($@"C:\inbox\f{i}.zip");
+            row.Apply(new ZipMerge.MergeResult(row.Path, "error", Message: resultValue));
+            vm.Rows.Add(row);
+        }
+        return new ZipMergeWindow(vm);
+    }
+
+    private static UnzipWindow BuildUnzipWindow(string resultValue, int rowCount = 1)
+    {
+        var vm = new UnzipViewModel(new FakeDialogs());
+        for (var i = 0; i < rowCount; i++)
+        {
+            var row = new UnzipRow($@"C:\inbox\f{i}.zip");
+            row.Apply(new Zipper.UnzipResult(row.Path, "error", null, resultValue));
+            vm.Rows.Add(row);
+        }
+        return new UnzipWindow(vm);
+    }
+
+    [Fact]
+    public void PageCounts_ShortNoteValueMeasuresNarrow() => _fx.Invoke(() =>
+    {
+        var win = BuildPageCountsWindow(ShortValue);
+        try
+        {
+            ShowOffscreen(win);
+            var column = FindColumnByHeader(win, "Note");
+            Assert.True(column.ActualWidth < 100,
+                $"PageCounts Note column with short content is {column.ActualWidth}px, expected < 100px");
+        }
+        finally { win.Close(); }
+    });
+
+    [Fact]
+    public void PageCounts_LongNoteValueStopsAtTheCapWithEllipsisAndTooltip() => _fx.Invoke(() =>
+    {
+        var win = BuildPageCountsWindow(VeryLongValue);
+        try
+        {
+            ShowOffscreen(win);
+            var column = FindColumnByHeader(win, "Note");
+            var expectedCap = ExpectedColumnCap(win, PageCountsNoteShare);
+            Assert.True(column.ActualWidth == expectedCap,
+                $"PageCounts Note column with long content is {column.ActualWidth}px, " +
+                $"expected exactly its cap {expectedCap}px");
+            AssertTrimmingAndTooltip((DataGridBoundColumn)column, "Note");
+        }
+        finally { win.Close(); }
+    });
+
+    /// <summary>The literal proof of this task's Finding 2: before
+    /// DataGridColumnCap.Track was added, this exact configuration (a long
+    /// "couldn't count" message, enough rows to force a vertical scrollbar,
+    /// shown at the window's own MinWidth) produced a visible horizontal
+    /// scrollbar — the Note column had no cap at all and simply grew to fit
+    /// the longest message. Break the fix (remove PageCountsWindow.xaml.cs's
+    /// DataGridColumnCap.Track call) and this fails for a value reason — a
+    /// visible scrollbar, not a render error.</summary>
+    [Fact]
+    public void PageCounts_AtMinWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
+    {
+        var win = BuildPageCountsWindow(VeryLongValue, ManyRowCount);
+        try
+        {
+            ShowOffscreenAtWidth(win, win.MinWidth);
+            AssertNoHorizontalScrollbar(win, $"PageCounts (at MinWidth {win.MinWidth}, {ManyRowCount} rows)");
+        }
+        finally { win.Close(); }
+    });
+
+    [Fact]
+    public void ZipMerge_ShortResultValueMeasuresNarrow() => _fx.Invoke(() =>
+    {
+        var win = BuildZipMergeWindow(ShortValue);
+        try
+        {
+            ShowOffscreen(win);
+            var column = FindColumnByHeader(win, "Result");
+            Assert.True(column.ActualWidth < 100,
+                $"ZipMerge Result column with short content is {column.ActualWidth}px, expected < 100px");
+        }
+        finally { win.Close(); }
+    });
+
+    [Fact]
+    public void ZipMerge_LongResultValueStopsAtTheCapWithEllipsisAndTooltip() => _fx.Invoke(() =>
+    {
+        var win = BuildZipMergeWindow(VeryLongValue);
+        try
+        {
+            ShowOffscreen(win);
+            var column = FindColumnByHeader(win, "Result");
+            var expectedCap = ExpectedColumnCap(win, ZipMergeResultShare);
+            Assert.True(column.ActualWidth == expectedCap,
+                $"ZipMerge Result column with long content is {column.ActualWidth}px, " +
+                $"expected exactly its cap {expectedCap}px");
+            AssertTrimmingAndTooltip((DataGridBoundColumn)column, "Note");
+        }
+        finally { win.Close(); }
+    });
+
+    /// <summary>Same proof as PageCounts_AtMinWidthNoHorizontalScrollbar
+    /// above, for ZipMergeWindow's own Result column — a long merge-failure
+    /// exception message, ManyRowCount rows so a vertical scrollbar is also
+    /// claiming part of the viewport, shown at this window's own MinWidth.</summary>
+    [Fact]
+    public void ZipMerge_AtMinWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
+    {
+        var win = BuildZipMergeWindow(VeryLongValue, ManyRowCount);
+        try
+        {
+            ShowOffscreenAtWidth(win, win.MinWidth);
+            AssertNoHorizontalScrollbar(win, $"ZipMerge (at MinWidth {win.MinWidth}, {ManyRowCount} rows)");
+        }
+        finally { win.Close(); }
+    });
+
+    [Fact]
+    public void Unzip_ShortResultValueMeasuresNarrow() => _fx.Invoke(() =>
+    {
+        var win = BuildUnzipWindow(ShortValue);
+        try
+        {
+            ShowOffscreen(win);
+            var column = FindColumnByHeader(win, "Result");
+            Assert.True(column.ActualWidth < 100,
+                $"Unzip Result column with short content is {column.ActualWidth}px, expected < 100px");
+        }
+        finally { win.Close(); }
+    });
+
+    [Fact]
+    public void Unzip_LongResultValueStopsAtTheCapWithEllipsisAndTooltip() => _fx.Invoke(() =>
+    {
+        var win = BuildUnzipWindow(VeryLongValue);
+        try
+        {
+            ShowOffscreen(win);
+            var column = FindColumnByHeader(win, "Result");
+            var expectedCap = ExpectedColumnCap(win, UnzipResultShare);
+            Assert.True(column.ActualWidth == expectedCap,
+                $"Unzip Result column with long content is {column.ActualWidth}px, " +
+                $"expected exactly its cap {expectedCap}px");
+            AssertTrimmingAndTooltip((DataGridBoundColumn)column, "Note");
+        }
+        finally { win.Close(); }
+    });
+
+    /// <summary>Same proof as PageCounts_AtMinWidthNoHorizontalScrollbar
+    /// above, for UnzipWindow's own Result column — a long extract-failure
+    /// exception message, ManyRowCount rows, shown at this window's own
+    /// MinWidth.</summary>
+    [Fact]
+    public void Unzip_AtMinWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
+    {
+        var win = BuildUnzipWindow(VeryLongValue, ManyRowCount);
+        try
+        {
+            ShowOffscreenAtWidth(win, win.MinWidth);
+            AssertNoHorizontalScrollbar(win, $"Unzip (at MinWidth {win.MinWidth}, {ManyRowCount} rows)");
+        }
+        finally { win.Close(); }
+    });
+
     /// <summary>Show()s off-screen (firing the real Loaded handler, and
     /// therefore starting a real, genuinely-async WebView2 init in the
     /// background — proven safe across repeated runs during fix round 1),

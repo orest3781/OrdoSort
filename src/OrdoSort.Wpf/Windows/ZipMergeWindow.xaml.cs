@@ -1,11 +1,24 @@
 using System.Windows;
 using Microsoft.Win32;
 using OrdoSort.Wpf.ViewModels;
+using OrdoSort.Wpf.Views;
 
 namespace OrdoSort.Wpf.Windows;
 
 public partial class ZipMergeWindow : Window
 {
+    /// <summary>Share of ZipsGrid's own LIVE ActualWidth that Result may grow
+    /// to before ellipsizing — same mechanism and same reasoning as
+    /// PageCountsWindow's identical constant (see its own doc comment): only
+    /// one capped column here (Zip is the star filler), so this runs higher
+    /// than BulkRename/MatchMerge's 0.35-per-of-two-columns share. Result
+    /// carries the merge's own error/no-pdfs message on NoPdfs/Error
+    /// (ZipRow's own doc comment) — an unreadable zip's exception text was
+    /// growing this column unbounded before this fix, producing the exact
+    /// horizontal scrollbar every other grid's Auto content columns are
+    /// capped to prevent.</summary>
+    private const double ContentColumnShare = 0.45;
+
     private readonly ZipMergeViewModel _vm;
 
     public ZipMergeWindow(ZipMergeViewModel vm)
@@ -13,6 +26,7 @@ public partial class ZipMergeWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
+        DataGridColumnCap.Track(ZipsGrid, ContentColumnShare, ResultColumn);
     }
 
     private void OnAddFiles(object sender, RoutedEventArgs e)

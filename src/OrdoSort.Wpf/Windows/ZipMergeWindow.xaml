@@ -69,24 +69,41 @@
                              row (Result carries that), so it gets whatever
                              width Result doesn't need. -->
                         <DataGridTextColumn Header="Zip" Binding="{Binding FileName}" Width="*">
-                            <!-- BasedOn GridCellText (Theme/Styles.xaml), not the
+                            <!-- BasedOn GridCellTextSelectionAware (Theme/
+                                 Styles.xaml), not plain GridCellText or the
                                  bare {x:Type TextBlock} style: no status trigger
                                  of its own here, so the shared style's default
                                  Foreground + trailing "let selection win"
                                  DataTrigger is the whole fix — same shape as
                                  PageCountsWindow's File column; see
-                                 GridCellText's own doc comment. -->
+                                 GridCellTextSelectionAware's own doc comment.
+                                 Measured directly (off-screen, before this fix,
+                                 when this column was plain GridCellText):
+                                 Theme.Text on Theme.Accent ranged 1.26:1-2.14:1
+                                 across every scheme — this window shipped with
+                                 the exact selection-contrast bug
+                                 GridCellTextSelectionAware exists to prevent,
+                                 just never switched to it. -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding Path}" />
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Result: content-sized, amber whenever a zip's
-                             merge attempt ended in NoPdfs or Error — the two
-                             explicit DataTriggers below, driven off StatusKind
-                             (an enum, so {x:Static vm:ZipRowStatus.…} rather
+                        <!-- Result: content-sized. NoPdfs is amber (a zip
+                             with zero PDFs inside isn't a failure the way an
+                             unreadable one is — ZipRow's own doc comment —
+                             so it's "needs attention," not an error). Error
+                             is Theme.StatusRed: a genuine merge failure, not
+                             the same colour as NoPdfs' merely-informational
+                             "nothing failed, there was just nothing to
+                             merge" note — UnlockWindow.xaml's Unreadable
+                             DataTrigger is the reference for this same
+                             red-vs-amber split (status-colour-vocabulary
+                             plan, 2026-08-08: amber must never mean a merely
+                             informational fact). Driven off StatusKind (an
+                             enum, so {x:Static vm:ZipRowStatus.…} rather
                              than a plain Value string — same idiom
                              UnlockWindow.xaml's ReadinessStatus triggers use).
                              Same recipe as PageCountsWindow.xaml's Note
@@ -107,7 +124,7 @@
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding StatusKind}"
                                                      Value="{x:Static vm:ZipRowStatus.Error}">
-                                            <Setter Property="Foreground" Value="{DynamicResource Theme.StatusAmber}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource Theme.StatusRed}" />
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding StatusKind}"
                                                      Value="{x:Static vm:ZipRowStatus.NoPdfs}">

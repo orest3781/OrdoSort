@@ -236,6 +236,233 @@ public class DataGridSelectionContrastTests
         try { Directory.Delete(dir, true); } catch { /* best effort */ }
     }
 
+    // ------------------------ five Tools-menu utilities (2026-08-09 merge)
+    //
+    // Filename list, Zip, Merge PDFs from zip, Unzip and PDF page counts —
+    // the five windows this task's own audit named as having ZERO coverage
+    // in this suite (and in DataGridNoteColourTests): DataGridSelectionContrastTests
+    // ENUMERATES columns within windows it already has a builder for, so a
+    // window nobody added a builder for is invisible to it — exactly what
+    // happened here for a full day after these five landed. Each builder
+    // below seeds its ViewModel's Rows directly (ZipRow/UnzipRow/PageCountRow
+    // via their own internal Apply, the same internal-member access
+    // ZipMergeViewModelTests/UnzipViewModelTests/PageCountsViewModelTests
+    // already use) rather than driving a real file-system batch through
+    // AddFilesAsync — same shortcut BuildMatchMergeWindow/BuildBulkRenameWindow
+    // above take with MatchRow/RenameRow, and harmless here since these
+    // Windows/ViewModels never re-derive Status from anything but the Apply
+    // call itself.
+    //
+    // See DataGridWindowCoverageTests for the OTHER half of this task's own
+    // brief: a suite that discovers — via reflection over
+    // OrdoSort.Wpf.Windows plus each window's own XAML source, not a
+    // hand-maintained list of window NAMES — every Window with a
+    // &lt;DataGrid&gt; and fails loudly, naming it, if it's missing from
+    // this file's own CoveredWindows registry. That closes the DISCOVERY
+    // gap (a future window can no longer vanish silently); it does not
+    // itself write the builder a future window still needs — see that
+    // file's own class doc for the honest scope of what "automatic" means
+    // here.
+
+    private static (ZipMergeWindow win, DataGrid grid) BuildZipMergeWindow()
+    {
+        var vm = new ZipMergeViewModel(new FakeDialogs());
+        var row = new ZipRow(@"C:\inbox\a-long-enough-filename-to-matter.zip");
+        row.Apply(new ZipMerge.MergeResult(row.Path, "error",
+            Message: "couldn't read 'entry.pdf' inside the zip — a long enough exception message to matter"));
+        vm.Rows.Add(row);
+        var win = new ZipMergeWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        win.Show();
+        win.UpdateLayout();
+        var grid = FindDescendant<DataGrid>(win)
+            ?? throw new InvalidOperationException("no DataGrid descendant under ZipMergeWindow");
+        return (win, grid);
+    }
+
+    private static (UnzipWindow win, DataGrid grid) BuildUnzipWindow()
+    {
+        var vm = new UnzipViewModel(new FakeDialogs());
+        var row = new UnzipRow(@"C:\inbox\a-long-enough-filename-to-matter.zip");
+        row.Apply(new Zipper.UnzipResult(row.Path, "error", null,
+            "not a valid zip archive — a long enough exception message to matter"));
+        vm.Rows.Add(row);
+        var win = new UnzipWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        win.Show();
+        win.UpdateLayout();
+        var grid = FindDescendant<DataGrid>(win)
+            ?? throw new InvalidOperationException("no DataGrid descendant under UnzipWindow");
+        return (win, grid);
+    }
+
+    private static (PageCountsWindow win, DataGrid grid) BuildPageCountsWindow()
+    {
+        var vm = new PageCountsViewModel(new FakeDialogs());
+        var row = new PageCountRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf");
+        row.Apply(new PageCounts.CountResult(row.Path, null,
+            "password-protected or unreadable — couldn't count"));
+        vm.Rows.Add(row);
+        var win = new PageCountsWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        win.Show();
+        win.UpdateLayout();
+        var grid = FindDescendant<DataGrid>(win)
+            ?? throw new InvalidOperationException("no DataGrid descendant under PageCountsWindow");
+        return (win, grid);
+    }
+
+    private static (ZipWindow win, DataGrid grid) BuildZipWindow()
+    {
+        var vm = new ZipViewModel(new FakeDialogs());
+        vm.Rows.Add(new PathRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf", "file"));
+        var win = new ZipWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        win.Show();
+        win.UpdateLayout();
+        var grid = FindDescendant<DataGrid>(win)
+            ?? throw new InvalidOperationException("no DataGrid descendant under ZipWindow");
+        return (win, grid);
+    }
+
+    private static (FilenameListWindow win, DataGrid grid) BuildFilenameListWindow()
+    {
+        var vm = new FilenameListViewModel(new FakeDialogs());
+        vm.Rows.Add("a-long-enough-filename-to-matter.pdf");
+        var win = new FilenameListWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        win.Show();
+        win.UpdateLayout();
+        var grid = FindDescendant<DataGrid>(win)
+            ?? throw new InvalidOperationException("no DataGrid descendant under FilenameListWindow");
+        return (win, grid);
+    }
+
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void ZipMergeAllColumnsSelectedClearContrast(string schemeKey) => _fx.Invoke(() =>
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+        var (win, grid) = BuildZipMergeWindow();
+        try { AssertEverySelectedColumnClearsContrast(grid, p, "ZipMergeWindow"); }
+        finally { win.Close(); }
+    });
+
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void ZipMergeAllColumnsUnselectedClearContrast(string schemeKey) => _fx.Invoke(() =>
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+        var (win, grid) = BuildZipMergeWindow();
+        try { AssertEveryUnselectedColumnClearsContrast(grid, p, "ZipMergeWindow"); }
+        finally { win.Close(); }
+    });
+
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void UnzipAllColumnsSelectedClearContrast(string schemeKey) => _fx.Invoke(() =>
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+        var (win, grid) = BuildUnzipWindow();
+        try { AssertEverySelectedColumnClearsContrast(grid, p, "UnzipWindow"); }
+        finally { win.Close(); }
+    });
+
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void UnzipAllColumnsUnselectedClearContrast(string schemeKey) => _fx.Invoke(() =>
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+        var (win, grid) = BuildUnzipWindow();
+        try { AssertEveryUnselectedColumnClearsContrast(grid, p, "UnzipWindow"); }
+        finally { win.Close(); }
+    });
+
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void PageCountsAllColumnsSelectedClearContrast(string schemeKey) => _fx.Invoke(() =>
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+        var (win, grid) = BuildPageCountsWindow();
+        try { AssertEverySelectedColumnClearsContrast(grid, p, "PageCountsWindow"); }
+        finally { win.Close(); }
+    });
+
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void PageCountsAllColumnsUnselectedClearContrast(string schemeKey) => _fx.Invoke(() =>
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+        var (win, grid) = BuildPageCountsWindow();
+        try { AssertEveryUnselectedColumnClearsContrast(grid, p, "PageCountsWindow"); }
+        finally { win.Close(); }
+    });
+
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void ZipAllColumnsSelectedClearContrast(string schemeKey) => _fx.Invoke(() =>
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+        var (win, grid) = BuildZipWindow();
+        try { AssertEverySelectedColumnClearsContrast(grid, p, "ZipWindow"); }
+        finally { win.Close(); }
+    });
+
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void ZipAllColumnsUnselectedClearContrast(string schemeKey) => _fx.Invoke(() =>
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+        var (win, grid) = BuildZipWindow();
+        try { AssertEveryUnselectedColumnClearsContrast(grid, p, "ZipWindow"); }
+        finally { win.Close(); }
+    });
+
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void FilenameListAllColumnsSelectedClearContrast(string schemeKey) => _fx.Invoke(() =>
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+        var (win, grid) = BuildFilenameListWindow();
+        try { AssertEverySelectedColumnClearsContrast(grid, p, "FilenameListWindow"); }
+        finally { win.Close(); }
+    });
+
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void FilenameListAllColumnsUnselectedClearContrast(string schemeKey) => _fx.Invoke(() =>
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+        var (win, grid) = BuildFilenameListWindow();
+        try { AssertEveryUnselectedColumnClearsContrast(grid, p, "FilenameListWindow"); }
+        finally { win.Close(); }
+    });
+
     /// <summary>Built with a "suggested" current item so the code-built "Why"
     /// column (TriageWindow.xaml.cs, ShowCurrentAsync) is present — the one
     /// column on this grid that ISN'T built in the constructor, so a test

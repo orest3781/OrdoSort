@@ -64,12 +64,20 @@
                     <DataGrid.Columns>
                         <!-- Item: the filler (Width="*") — the added file or
                              folder's own name. No status trigger of its own,
-                             so GridCellText's shared default (plus its
-                             trailing "let selection win" DataTrigger) is the
-                             whole style, same as ZipMergeWindow's Zip column. -->
+                             so GridCellTextSelectionAware's shared default
+                             (plus its trailing "let selection win"
+                             DataTrigger) is the whole style, same as
+                             ZipMergeWindow's Zip column — NOT plain
+                             GridCellText, which has no such trigger. Measured
+                             directly (off-screen, before this fix, when this
+                             column was plain GridCellText): Theme.Text on
+                             Theme.Accent ranged 1.26:1-2.14:1 across every
+                             scheme — this window shipped with the exact
+                             selection-contrast bug GridCellTextSelectionAware
+                             exists to prevent, just never switched to it. -->
                         <DataGridTextColumn Header="Item" Binding="{Binding Display}" Width="*">
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding Path}" />
                                 </Style>
@@ -77,11 +85,46 @@
                         </DataGridTextColumn>
                         <!-- Kind: content-sized, "file"/"folder" — a quiet
                              tag rather than a status, so SubtleText rather
-                             than GridCellText (no selection-contrast trigger
-                             needed: this text never changes color). -->
+                             than GridCellText. SubtleText's own unconditional
+                             Foreground Setter is the exact shape
+                             GridCellTextSelectionAware's own doc comment
+                             warns about (Theme/Styles.xaml): it outranks
+                             whatever this TextBlock would otherwise INHERIT
+                             from its ancestor DataGridCell, including the
+                             Accent/AccentText pair the cell's own IsSelected
+                             trigger paints — "this text never changes
+                             color" is true in isolation but false once
+                             selection is considered. Measured directly
+                             (off-screen, before this trailing DataTrigger
+                             existed): Theme.SubtleText on Theme.Accent
+                             ranged 1.07:1-1.85:1 across every scheme, nowhere
+                             near the 4.5:1 floor — a selected row's own
+                             file/folder tag unreadable against its own
+                             highlight, the same trap Note/Why/History's own
+                             per-column fixes close, just never given this
+                             column's own copy since it was BasedOn SubtleText
+                             rather than GridCellText and so never went
+                             through the review that added the others. Can't
+                             delegate to GridCellTextSelectionAware (SubtleText
+                             is a different base, not GridCellText), so this
+                             is a local trailing "let selection win"
+                             DataTrigger — same shape and same ancestor
+                             (DataGridCell) every other status-coloured column
+                             in the app uses. -->
                         <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="Auto">
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource SubtleText}" />
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
+                                    <Style.Triggers>
+                                        <DataTrigger Value="True">
+                                            <DataTrigger.Binding>
+                                                <Binding Path="IsSelected"
+                                                         RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                                            </DataTrigger.Binding>
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.AccentText}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
                     </DataGrid.Columns>

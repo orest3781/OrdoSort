@@ -1,11 +1,28 @@
 using System.Windows;
 using Microsoft.Win32;
 using OrdoSort.Wpf.ViewModels;
+using OrdoSort.Wpf.Views;
 
 namespace OrdoSort.Wpf.Windows;
 
 public partial class PageCountsWindow : Window
 {
+    /// <summary>Share of CountsGrid's own LIVE ActualWidth that Note may grow
+    /// to before ellipsizing — tracked continuously, same mechanism
+    /// BulkRenameWindow/MatchMergeWindow use for their own Note columns; see
+    /// DataGridColumnCap's class doc. Only one capped column here (File is
+    /// the star filler, Pages is a short uncapped number — see this window's
+    /// XAML comments), so this can run higher than BulkRename/MatchMerge's
+    /// 0.35-per-column share without risking the same combined-overflow this
+    /// class's own "HONESTY CHECK" paragraph warns about: Note is the ONLY
+    /// column competing for the viewport share this constant governs.
+    /// Note carries PageCounts.Count's own failure message (PageCountsRow's
+    /// doc comment: "the count/read that failed's own error"), which was
+    /// growing this column unbounded before this fix — a long exception
+    /// message produced the exact horizontal scrollbar every other grid's
+    /// Auto content columns are capped to prevent.</summary>
+    private const double ContentColumnShare = 0.45;
+
     private readonly PageCountsViewModel _vm;
 
     public PageCountsWindow(PageCountsViewModel vm)
@@ -13,6 +30,7 @@ public partial class PageCountsWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
+        DataGridColumnCap.Track(CountsGrid, ContentColumnShare, NoteColumn);
     }
 
     private void OnAddFiles(object sender, RoutedEventArgs e)
