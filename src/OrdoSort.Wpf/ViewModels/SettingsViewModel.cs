@@ -840,7 +840,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 or nameof(RouteEditVm.Suffix) or nameof(RouteEditVm.AppendSuffix)
                 or nameof(RouteEditVm.Color))
                 RecomputeRouteDerived();
-            if (e.PropertyName is nameof(RouteEditVm.NamingMode)
+            if (e.PropertyName is nameof(RouteEditVm.NamingMode) or nameof(RouteEditVm.Suffix)
+                    or nameof(RouteEditVm.AppendSuffix)
                 && ReferenceEquals(r, SelectedRoute))
                 Raise(nameof(RouteFilingExample));
         };
@@ -867,7 +868,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 var result = Naming.BuildTarget(
                     sample, "Smith John",
                     routeMode: routeMode, globalMode: FilingMode,
-                    routeSuffix: "", appendSuffix: false, exists: _ => false);
+                    routeSuffix: r.Suffix, appendSuffix: r.AppendSuffix, exists: _ => false);
                 return result.Filename;
             }
             catch (ArgumentException ex)
