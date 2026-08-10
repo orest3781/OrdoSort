@@ -580,6 +580,7 @@ public sealed class Config
                 }
                 catch (IOException) when (attempt < 49) { }
                 catch (UnauthorizedAccessException) when (attempt < 49) { }
+                OnRetryForTests?.Invoke(attempt);
                 System.Threading.Thread.Sleep(10);
             }
         }
@@ -647,6 +648,34 @@ public sealed class Config
     /// Real callers never set this. Same "settable only by tests" seam
     /// pattern as Theme.ThemeManager.IsHighContrast.</summary>
     internal static Action<string>? BeforeCreateOnlyMove;
+
+    /// <summary>Test seam: invoked once per failed attempt in
+    /// <see cref="WriteAtomic"/>'s retry loop, right after the attempt's own
+    /// catch and immediately before the loop's Thread.Sleep(10), with the
+    /// zero-based attempt index that just failed. Lets a test release a
+    /// destination-holding reader deterministically partway through the
+    /// retry budget — proving the retry loop, not luck, is what makes the
+    /// write succeed — instead of racing an independent wall-clock timer
+    /// against it. AtomicWriteTests.WriteSucceedsOnceAReaderReleasesWithinTheRetryBudget
+    /// used to release its reader from a Task.Run'd Thread.Sleep(100) while
+    /// WriteAtomic retried on a separate real-time budget (up to 500ms via
+    /// Thread.Sleep(10) * 50): two independently-clocked waits that only
+    /// stayed in the right order because 100ms is comfortably under 500ms on
+    /// an unloaded machine. Under thread-pool contention on a shared CI
+    /// runner, the releaser's own Task.Run dispatch is not guaranteed to run
+    /// within any fixed window (the same throttled-injection mechanism
+    /// documented on UnlockViewModel.OffUiThreadDispatchForTests), so the
+    /// race could flip. This hook removes the second clock entirely: the
+    /// test releases its reader from INSIDE the retry loop's own callback,
+    /// on the same thread, with no timer of its own. Real callers never set
+    /// this. Same "settable only by tests, inert in production" shape as
+    /// <see cref="BeforeCreateOnlyMove"/> / Commit.RaceHookForTests. No
+    /// [Collection] coordination needed for the same reason
+    /// BeforeCreateOnlyMove's own doc comment gives for a per-path guard —
+    /// here, more simply, only AtomicWriteTests sets this field at all, and
+    /// its own test methods already run one at a time under xUnit's default
+    /// same-class sequencing.</summary>
+    internal static Action<int>? OnRetryForTests;
 
     private static void SaveMain(Config cfg, string path)
     {

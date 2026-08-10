@@ -119,25 +119,48 @@ public class AtomicWriteTests : IDisposable
     /// and the atomicity test's reader opens with FileShare.Delete so Replace
     /// never contends. This is the one test that actually needs the loop
     /// (2026-08 audit finding 2): hold the destination open for less than the
-    /// 500ms retry budget, release it, and require the write to have
-    /// succeeded — not thrown — with the new content landed.</summary>
+    /// retry budget, release it, and require the write to have succeeded —
+    /// not thrown — with the new content landed.
+    ///
+    /// The release is gated on Config.OnRetryForTests, fired synchronously
+    /// from inside WriteAtomic's own retry loop, rather than on a
+    /// Task.Run'd Thread.Sleep racing the loop's real 500ms budget on an
+    /// independent clock (2026-08 CI audit: that version flaked on GitHub
+    /// Actions' windows-latest runner because the releaser's own Task.Run
+    /// dispatch has no guaranteed upper bound under shared-runner thread-pool
+    /// contention — see OnRetryForTests's own doc comment). Releasing on
+    /// attempt 2 (not attempt 0) keeps the retry loop's own claim honest:
+    /// the first two attempts genuinely fail while the reader still holds
+    /// the file, so the eventual success is the loop actually working, not
+    /// a lucky first try.</summary>
     [Fact]
-    public async Task WriteSucceedsOnceAReaderReleasesWithinTheRetryBudget()
+    public void WriteSucceedsOnceAReaderReleasesWithinTheRetryBudget()
     {
         var path = Path.Combine(_dir, "config.json");
         File.WriteAllText(path, "{\"initial\":\"content\"}");
 
-        using var hold = new FileStream(path, FileMode.Open, FileAccess.Read,
+        var hold = new FileStream(path, FileMode.Open, FileAccess.Read,
             FileShare.Read, bufferSize: 4096, useAsync: false);
-        var releaser = Task.Run(() =>
+        var releasedAtAttempt = -1;
+        Config.OnRetryForTests = attempt =>
         {
-            Thread.Sleep(100);
-            hold.Dispose();
-        });
+            if (attempt == 2)
+            {
+                releasedAtAttempt = attempt;
+                hold.Dispose();
+            }
+        };
+        try
+        {
+            Config.WriteAtomic(path, "{\"new\":\"content\"}");
+        }
+        finally
+        {
+            Config.OnRetryForTests = null;
+            hold.Dispose();   // no-op if the callback above already ran
+        }
 
-        Config.WriteAtomic(path, "{\"new\":\"content\"}");
-        await releaser;
-
+        Assert.Equal(2, releasedAtAttempt);   // the loop really did retry, not succeed on try #1
         Assert.Equal("{\"new\":\"content\"}", File.ReadAllText(path));
     }
 }
