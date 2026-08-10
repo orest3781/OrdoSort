@@ -22,6 +22,7 @@ public static class E2ERunner
             .Concat(UnlockScenarios.All())
             .Concat(BulkRenameScenarios.All())
             .Concat(MatchMergeScenarios.All())
+            .Concat(SmallToolScenarios.All())
             .ToList();
 
     public static int Run(string[] args)
