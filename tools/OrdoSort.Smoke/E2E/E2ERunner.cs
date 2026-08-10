@@ -19,6 +19,7 @@ public static class E2ERunner
         ZipScenarios.All()
             .Concat(UnzipScenarios.All())
             .Concat(ZipMergeScenarios.All())
+            .Concat(UnlockScenarios.All())
             .ToList();
 
     public static int Run(string[] args)
