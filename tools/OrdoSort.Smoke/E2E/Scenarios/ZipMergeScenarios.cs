@@ -1,7 +1,6 @@
 using OrdoSort.Core;
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Windows;
-using static OrdoSort.Smoke.E2E.Scenarios.ScenarioKit;
 
 namespace OrdoSort.Smoke.E2E.Scenarios;
 
@@ -60,7 +59,15 @@ public static class ZipMergeScenarios
         var win = new ZipMergeWindow(vm);
         E2EPump.ShowOffscreen(win);
 
-        Added(ctx, vm.AddFilesAsync(zips));
+        // AddFilesAsync's one await is `_scheduler.Run(...)`, which
+        // InlineScheduler completes synchronously, so Rows is already
+        // populated by the time this call returns — the row-count check
+        // below is the real assertion that intake worked; see ScenarioKit's
+        // class doc comment for why an Added(ctx, ...) wrapper here could
+        // never have failed.
+        _ = vm.AddFilesAsync(zips);
+        ctx.Check("every archive is listed", vm.Rows.Count == zips.Length,
+            $"got {vm.Rows.Count} of {zips.Length}");
 
         vm.MergeCommand.Execute(null);
 

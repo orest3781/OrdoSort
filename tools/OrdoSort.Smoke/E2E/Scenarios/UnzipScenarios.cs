@@ -55,7 +55,14 @@ public static class UnzipScenarios
     private static UnzipWindow Extract(ScenarioContext ctx, UnzipViewModel vm, string zip)
     {
         var win = Open(vm);
-        Added(ctx, vm.AddFilesAsync(new[] { zip }));
+        // AddFilesAsync's one await is `_scheduler.Run(...)`, which
+        // InlineScheduler completes synchronously, so Rows is already
+        // populated by the time this call returns — the row-count check
+        // below is the real assertion that intake worked; see ScenarioKit's
+        // class doc comment for why an Added(ctx, ...) wrapper here could
+        // never have failed.
+        _ = vm.AddFilesAsync(new[] { zip });
+        ctx.Check("the archive is listed", vm.Rows.Count == 1, $"got {vm.Rows.Count}");
         vm.ExtractCommand.Execute(null);
         Settle(ctx, () => vm.Rows.Count > 0 ? vm.Rows[0].Note : "");
         return win;

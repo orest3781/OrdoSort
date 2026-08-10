@@ -55,7 +55,12 @@ public static class ZipScenarios
         var vm = NewVm(ctx);
         var win = Open(vm);
 
-        Added(ctx, vm.AddPaths(new[] { a, b, folder }));
+        // AddPaths' one await is `_scheduler.Run(...)`, which InlineScheduler
+        // completes synchronously — so by the time this call returns, Rows is
+        // already whatever it's going to be, and the row-count check below is
+        // the real assertion; see ScenarioKit's class doc comment for why an
+        // Added(ctx, ...) wrapper here could never have failed.
+        _ = vm.AddPaths(new[] { a, b, folder });
         ctx.Check("three sources listed", vm.Rows.Count == 3, $"got {vm.Rows.Count}");
         ctx.Check("the folder is listed as a folder, not expanded into files",
             vm.Rows.Count(r => r.Kind == "folder") == 1,
@@ -89,7 +94,7 @@ public static class ZipScenarios
         var vm = NewVm(ctx);
         var win = Open(vm);
 
-        Added(ctx, vm.AddPaths(new[] { a }));
+        _ = vm.AddPaths(new[] { a });   // synchronous under InlineScheduler — see FilesAndFolder above
         ctx.Check("the source is listed", vm.Rows.Count == 1, $"got {vm.Rows.Count}");
 
         vm.CreateAsCommand.Execute(null);
@@ -135,7 +140,7 @@ public static class ZipScenarios
         var vm = NewVm(ctx);
         var win = Open(vm);
 
-        Added(ctx, vm.AddPaths(new[] { a }));
+        _ = vm.AddPaths(new[] { a });   // synchronous under InlineScheduler — see FilesAndFolder above
         ctx.Check("the source is listed", vm.Rows.Count == 1, $"got {vm.Rows.Count}");
 
         vm.CreateCommand.Execute(null);
@@ -186,7 +191,7 @@ public static class ZipScenarios
         var vm = NewVm(ctx);
         var win = Open(vm);
 
-        Added(ctx, vm.AddPaths(new[] { a }));
+        _ = vm.AddPaths(new[] { a });   // synchronous under InlineScheduler — see FilesAndFolder above
         ctx.Check("the source is listed", vm.Rows.Count == 1, $"got {vm.Rows.Count}");
 
         vm.CreateAsCommand.Execute(null);
@@ -214,7 +219,7 @@ public static class ZipScenarios
         var vm = NewVm(ctx);
         var win = Open(vm);
 
-        Added(ctx, vm.AddPaths(new[] { a, b }));
+        _ = vm.AddPaths(new[] { a, b });   // synchronous under InlineScheduler — see FilesAndFolder above
         ctx.Check("both sources listed", vm.Rows.Count == 2, $"got {vm.Rows.Count}");
 
         vm.CreateCommand.Execute(null);

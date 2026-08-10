@@ -1,7 +1,6 @@
 using OrdoSort.Core;
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Windows;
-using static OrdoSort.Smoke.E2E.Scenarios.ScenarioKit;
 
 namespace OrdoSort.Smoke.E2E.Scenarios;
 
@@ -57,11 +56,12 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 /// every scenario below supplies SynchronizationContext.Current — so
 /// row.Pages/Note/Pending and the RaiseTotals() call inside that same Do()
 /// are deferred onto the dispatcher queue regardless of how fast the count
-/// itself ran. That is the load-bearing consequence: `add.IsCompleted` can
-/// (and, empirically, does) read true on the very first check, proving
-/// nothing about whether any row has actually settled — only
-/// `vm.Rows.All(r => !r.Pending)` does, which is why both counts scenarios
-/// wait on that and not merely on the task.
+/// itself ran. That is the load-bearing consequence: AddFilesAsync's own
+/// returned Task can (and, empirically, does) already read IsCompleted the
+/// instant it's handed back, proving nothing about whether any row has
+/// actually settled — only `vm.Rows.All(r => !r.Pending)` does, which is why
+/// both counts scenarios below wait on that alone and never bother waiting
+/// on the task itself.
 ///
 /// <b>ListReformatViewModel</b> has no scheduler, no uiContext, and no
 /// DebouncedProbe — Recompute() runs synchronously and inline inside every
@@ -95,15 +95,12 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 /// have gained a specific NextNumber) would have caught it by failing, not
 /// by looking accidentally green.
 ///
-/// <b>E2EPump.Drain() verdict:</b> not called anywhere in this file. Drain's
-/// contract is "work is already posted and only needs a turn of the loop,
-/// WITH NO CONDITION TO WAIT ON". Every deferred update actually found above
-/// has a real condition its scenario waits on (Rows/CountsLine for
-/// FilenameList's debounced probe; Pending for PageCounts' per-row Post),
-/// and List reformatter and Box labels cross no dispatcher boundary at all
-/// under InlineScheduler, so there is nothing queued for Drain to flush in
-/// either. Forcing a Drain call into any of the four would be decorative —
-/// exactly what was asked not to do.</summary>
+/// Every deferred update actually found above has a real condition its
+/// scenario waits on (Rows/CountsLine for FilenameList's debounced probe;
+/// Pending for PageCounts' per-row Post), and List reformatter and Box
+/// labels cross no dispatcher boundary at all under InlineScheduler, so
+/// there is nothing here that ever needed a "just flush whatever's queued,
+/// there's no condition to check" wait.</summary>
 public static class SmallToolScenarios
 {
     public static IReadOnlyList<Scenario> All() => new[]
@@ -196,14 +193,11 @@ public static class SmallToolScenarios
         var win = new PageCountsWindow(vm);
         E2EPump.ShowOffscreen(win);
 
-        var add = vm.AddFilesAsync(new[] { one, two });
-        // Under InlineScheduler, AddFilesAsync's own Task is already complete
-        // the instant it's returned — see the class doc comment — so this
-        // Until answers on its very first check without ever arming a frame.
-        // That is expected, not a defect: it is a genuine Task.IsCompleted
-        // read, not a filesystem predicate, and it does not stand in for the
-        // wait that follows.
-        E2EPump.Until(() => add.IsCompleted, 8000);
+        // No wait on the returned Task itself: under InlineScheduler it is
+        // already IsCompleted the instant AddFilesAsync hands it back — see
+        // the class doc comment — so a wait on it would answer on its very
+        // first check without ever arming a frame, proving nothing.
+        _ = vm.AddFilesAsync(new[] { one, two });
         // Pending is only ever cleared inside CountOneAsync's Do(), reached
         // through an unconditional _uiContext.Post — THIS is the wait that
         // needs the pump.
@@ -224,8 +218,9 @@ public static class SmallToolScenarios
         var win = new PageCountsWindow(vm);
         E2EPump.ShowOffscreen(win);
 
-        var add = vm.AddFilesAsync(new[] { good, locked, broken });
-        E2EPump.Until(() => add.IsCompleted, 8000);
+        // No wait on the returned Task itself — same reasoning as CountsClean
+        // above; the Pending wait below is the one that needs the pump.
+        _ = vm.AddFilesAsync(new[] { good, locked, broken });
         E2EPump.Until(() => vm.Rows.Count == 3 && vm.Rows.All(r => !r.Pending), 20000);
 
         ctx.Check("every row settled", vm.Rows.All(r => !r.Pending), "a row is still pending");

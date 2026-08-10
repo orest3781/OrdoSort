@@ -18,7 +18,26 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 /// <see cref="E2EPump.Until"/> answers on its first evaluation without ever
 /// arming a frame. The scenario then goes green having proved the archive was
 /// written but never that the window learned about it, which is the difference
-/// between driving the app and driving the disk.</summary>
+/// between driving the app and driving the disk.
+///
+/// <see cref="Added"/> used to be the same bug in a different disguise: it
+/// waited on a Task's own IsCompleted instead of on the filesystem, but for
+/// ZipViewModel.AddPaths, ZipMergeViewModel.AddFilesAsync and
+/// UnzipViewModel.AddFilesAsync the only await in the method body is
+/// `await _scheduler.Run(...)`, and every scenario constructs those view
+/// models with InlineScheduler, whose Run() hands back an already-completed
+/// Task.FromResult. The intake Task was therefore IsCompleted before Added
+/// was ever called, <see cref="E2EPump.Until"/>'s own pre-pump fast path
+/// (`if (kickoff is null && ready()) return true`) answered on the spot, and
+/// the assertion built on that could not fail no matter what AddPaths
+/// actually did — a passing check that proved nothing, at 7 of its 10 call
+/// sites. That form is gone: those 7 sites now assert the row count the
+/// intake was supposed to produce, right where the result is needed anyway,
+/// which is a check that genuinely fails if the rows never land. <see
+/// cref="Added"/> itself survives only for the 3 call sites in
+/// UnlockScenarios.cs, where UnlockViewModel's own lack of a scheduler seam
+/// makes intake.IsCompleted a real, failable condition — see that method's
+/// doc comment.</summary>
 public static class ScenarioKit
 {
     /// <summary>Pump until the surface publishes its verdict, and record that it
@@ -34,10 +53,24 @@ public static class ScenarioKit
             $"no status line and no warning within {timeoutMs}ms");
     }
 
-    /// <summary>Wait for an intake call (AddPaths/AddFiles/…) and record that it
-    /// finished. Callers otherwise discard the Task, so intake that never
-    /// completes surfaces as a puzzling timeout several assertions downstream
-    /// instead of naming itself.</summary>
+    /// <summary>Wait for an intake call (AddFilesAsync) to cross a genuine
+    /// thread-pool hop, and record that it did.
+    ///
+    /// Only call this where the intake can really still be running at the
+    /// moment it's checked. Today that is the 3 call sites in
+    /// UnlockScenarios.cs — the one view model in this suite with no
+    /// IWorkScheduler seam at all: UnlockViewModel.AddFilesAsync awaits a raw
+    /// Task.Run, so there is no InlineScheduler to collapse it to synchronous
+    /// completion, and intake.IsCompleted genuinely can read false on the
+    /// first check.
+    ///
+    /// It used to be called at 7 other sites too (5 in ZipScenarios.cs, 1
+    /// each in UnzipScenarios.cs and ZipMergeScenarios.cs) where it could
+    /// never fail — see the class doc comment above for why, and for what
+    /// replaced it there. Do not reintroduce it at a site whose view model
+    /// takes an IWorkScheduler and is constructed with InlineScheduler: check
+    /// the resulting row count directly instead, the way those 7 sites do
+    /// now.</summary>
     public static void Added(ScenarioContext ctx, Task intake, int timeoutMs = 8000)
     {
         ctx.Check("the sources finished loading",

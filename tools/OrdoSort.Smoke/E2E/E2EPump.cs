@@ -55,17 +55,6 @@ public static class E2EPump
         return success;
     }
 
-    /// <summary>Run every queued dispatcher operation down to Background
-    /// priority, then return — for the case where work is already posted and
-    /// only needs a turn of the loop, with no condition to wait on.</summary>
-    public static void Drain()
-    {
-        var frame = new DispatcherFrame();
-        Dispatcher.CurrentDispatcher.BeginInvoke(
-            DispatcherPriority.Background, new Action(() => frame.Continue = false));
-        Dispatcher.PushFrame(frame);
-    }
-
     /// <summary>Show a window far off-screen so it lays out and renders
     /// without stealing focus or appearing during a run.</summary>
     public static void ShowOffscreen(Window win)
