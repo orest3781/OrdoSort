@@ -20,6 +20,8 @@ public static class E2ERunner
             .Concat(UnzipScenarios.All())
             .Concat(ZipMergeScenarios.All())
             .Concat(UnlockScenarios.All())
+            .Concat(BulkRenameScenarios.All())
+            .Concat(MatchMergeScenarios.All())
             .ToList();
 
     public static int Run(string[] args)
