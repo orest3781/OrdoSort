@@ -290,11 +290,21 @@ public class UnlockViewModelTests : IDisposable
         // started when cancel lands. Completed files stay completed — each is
         // individually safe — and the rest say so instead of running on after
         // the user asked them not to.
+        //
+        // "Four are running" used to be inferred from a bounded poll (up to
+        // 500 * 10ms = 5000ms) — the same elapsed-time-budget-against-a-
+        // shared-ThreadPool shape UnlockReadinessProbeTests' comment on
+        // ASavedPasswordChangeDuringAnInFlightAddProbeDoesNotLetTheStaleResultWin
+        // documents as a real, previously-fixed CI flake. A CountdownEvent
+        // the four unlocker calls themselves signal replaces the guess with
+        // a fact: no elapsed-time budget anywhere in this test.
         var started = 0;
+        using var fourStarted = new CountdownEvent(4);
         var block = new ManualResetEventSlim(false);
         var vm = new UnlockViewModel(_cfg, () => { _saves++; return true; }, unlocker: (p, _) =>
         {
             Interlocked.Increment(ref started);
+            fourStarted.Signal();
             block.Wait();
             return new OrdoSort.Core.Unlock.UnlockResult("ok", p, p, InPlace: true);
         });
@@ -303,7 +313,7 @@ public class UnlockViewModelTests : IDisposable
         vm.Password = "x";
 
         var run = vm.UnlockAsync();
-        for (var i = 0; i < 500 && Volatile.Read(ref started) < 4; i++) await Task.Delay(10);
+        fourStarted.Wait();   // blocks until all four gate slots are actually running — a fact, not a hope
         Assert.Equal(4, Volatile.Read(ref started));
         Assert.True(vm.IsUnlocking);
 

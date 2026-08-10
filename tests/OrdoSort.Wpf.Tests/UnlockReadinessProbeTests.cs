@@ -85,18 +85,24 @@ public class UnlockReadinessProbeTests : IDisposable
     [Fact]
     public async Task ARowIsPendingWithNoSuffixUntilItsOwnProbeReturns()
     {
+        // Same fix as ASavedPasswordChangeDuringAnInFlightAddProbeDoesNotLetTheStaleResultWin
+        // / ClearingTheListCancelsAnInFlightProbeSoItsLateResultIsDiscarded
+        // below: no elapsed-time budget on either signal. "The probe
+        // started" and "the test released it" are facts the delegate and
+        // this method establish directly, not events raced against a
+        // millisecond guess about ThreadPool/STA-fixture contention.
         var file = Touch("f.pdf");
         var started = new ManualResetEventSlim(false);
         var release = new ManualResetEventSlim(false);
         var vm = new UnlockViewModel(new Config(), () => true, probe: (path, candidates) =>
         {
             started.Set();
-            Assert.True(release.Wait(2000), "test never released the probe");
+            release.Wait();   // no timeout: this test's own gate, not a race against it
             return new Unlock.ProbeResult("ready", path, MatchedIndex: 0, Message: "ok");
         });
 
         var addTask = vm.AddFilesAsync(new[] { file });
-        Assert.True(started.Wait(2000), "the probe never started");
+        started.Wait();   // blocks until the probe itself proves it is running — a fact, not a hope
 
         var row = Assert.Single(vm.Files);
         Assert.Equal(ReadinessStatus.Pending, row.Status);
@@ -292,18 +298,22 @@ public class UnlockReadinessProbeTests : IDisposable
     [Fact]
     public async Task ClosingTheWindowCancelsAnInFlightProbeSoItsLateResultIsDiscarded()
     {
+        // Same no-timeout gate as ClearingTheListCancelsAnInFlightProbeSoItsLateResultIsDiscarded
+        // just above — see that test's comment on
+        // ASavedPasswordChangeDuringAnInFlightAddProbeDoesNotLetTheStaleResultWin
+        // for why a fixed millisecond budget here is a race, not a check.
         var file = Touch("f.pdf");
         var started = new ManualResetEventSlim(false);
         var release = new ManualResetEventSlim(false);
         var vm = new UnlockViewModel(new Config(), () => true, probe: (path, candidates) =>
         {
             started.Set();
-            Assert.True(release.Wait(2000), "test never released the probe");
+            release.Wait();   // no timeout: this test's own gate, not a race against it
             return new Unlock.ProbeResult("ready", path, MatchedIndex: 0, Message: "late");
         });
 
         var addTask = vm.AddFilesAsync(new[] { file });
-        Assert.True(started.Wait(2000), "the probe never started");
+        started.Wait();   // blocks until the probe itself proves it is running — a fact, not a hope
         var row = Assert.Single(vm.Files);
 
         // Mirrors UnlockWindow.OnClosed calling CancelProbes() alongside
