@@ -261,6 +261,46 @@ public class E2EHarnessTests
         Assert.DoesNotContain("<script src", html);
     }
 
+    /// <summary>Regression coverage for the attribute-injection defect found
+    /// while implementing Evidence.Html: the img alt="" attribute is a
+    /// double-quoted HTML attribute context, not a text node, so escaping
+    /// only &amp;/&lt;/&gt; (as the original Esc did) is not enough — an
+    /// unescaped `"` in a scenario Name closes the attribute early and lets
+    /// anything after it land on the &lt;img&gt; tag as a live attribute of
+    /// its own. This is the only committed test that reaches that branch:
+    /// both ReportHtmlIsSelfContainedAndShowsBothOutcomes and
+    /// ReportMarkdownCarriesEveryScenario go through Result(), which always
+    /// passes ScreenshotFile: null, so neither exercises the &lt;img&gt;
+    /// line at all.</summary>
+    [Fact]
+    public void ReportHtmlEscapesQuotesInScreenshotAltAttribute()
+    {
+        using var fx = Fixture.Create("evidence-quote-check");
+        var outDir = fx.Dir("out");
+
+        // A minimal real PNG (1x1, decoded from base64) so Evidence.Write's
+        // File.Exists(png) guard lets the <img> branch run.
+        File.WriteAllBytes(Path.Combine(outDir, "shot.png"), Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="));
+
+        var evilName = "evidence\" onmouseover=\"alert(1)";
+        Evidence.Write(outDir, new[]
+        {
+            new ScenarioResult("Zip", evilName, "clean", true,
+                new[] { new Assertion("a check", true) }, null, "shot.png", ElapsedMs: 12),
+        }, TimeSpan.FromSeconds(1));
+
+        var html = File.ReadAllText(Path.Combine(outDir, "report.html"));
+
+        // The alt attribute must stay well-formed: the embedded quote comes
+        // through as the &quot; entity, not a literal " that closes the
+        // attribute early.
+        Assert.Contains("<img alt=\"evidence&quot; onmouseover=&quot;alert(1)\"", html);
+        // And onmouseover must never appear as a live, executable attribute
+        // on the tag.
+        Assert.DoesNotContain("onmouseover=\"alert(1)\"", html);
+    }
+
     /// <summary>report.md carries the same verdicts, for pasting into a PR.</summary>
     [Fact]
     public void ReportMarkdownCarriesEveryScenario()
