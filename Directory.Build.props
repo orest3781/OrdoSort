@@ -1,0 +1,27 @@
+<Project>
+
+  <!-- Single source of truth for the app's version (v1.0 release-blockers
+       plan, 2026-08-09, Task 1 Step 1). MSBuild implicitly imports this file
+       into every csproj under this directory, and none of them declares
+       Version/AssemblyVersion/FileVersion/InformationalVersion itself
+       (verified before adding this file), so <Version> here is the ONE
+       place that number is written. The SDK's own
+       Microsoft.NET.GenerateAssemblyInfo targets derive AssemblyVersion,
+       FileVersion and InformationalVersion FROM Version whenever a project
+       doesn't set them explicitly, which is what makes the four properties
+       structurally unable to disagree: there is nowhere else for any of
+       them to come from. -->
+  <PropertyGroup>
+    <Version>1.0.0</Version>
+    <!-- The SDK's built-in source-control integration otherwise appends
+         "+<git-sha>" to InformationalVersion on any build made inside this
+         git repo (confirmed empirically: a plain build here produced
+         "1.0.0+a961c59b..."), which would make the one property meant to
+         read as the shipped version instead read as a build fingerprint,
+         exactly the kind of drift-in-appearance this file exists to
+         prevent, and not something AboutWindow's user-facing display
+         should show. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+</Project>

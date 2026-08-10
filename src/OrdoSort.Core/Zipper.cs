@@ -65,11 +65,22 @@ public static class Zipper
     /// <see cref="Collision.FreeFile"/> so an existing file is never
     /// clobbered. A non-null <paramref name="outputPath"/> is a Save-As
     /// path: the save dialog that produced it already asked the user to
-    /// confirm overwriting, so it is used verbatim — but this method still
-    /// creates the file EXCLUSIVELY (delete whatever's there first, then
-    /// FileMode.CreateNew via ZipArchiveMode.Create) rather than letting
-    /// ZipArchive open in a mode that could append to or otherwise reuse an
-    /// existing file's bytes.</summary>
+    /// confirm overwriting, so a pre-existing file there is replaced — but
+    /// NEVER by deleting it up front. The archive is built to a GUID-named
+    /// temp sibling first (FileMode.CreateNew via ZipArchiveMode.Create, so
+    /// the created-gate below still gets an unambiguous signal) and only
+    /// moved onto <paramref name="outputPath"/> — via <see cref="File.Replace"/>
+    /// when something is there, <see cref="File.Move"/> when nothing is —
+    /// once the zip is fully and successfully written. A delete-then-create
+    /// leaves a window, on the SMB shares this app targets, where two
+    /// coworkers who both Zip -> Save-As to the same filename at nearly the
+    /// same instant can have the second one delete the first one's
+    /// just-written archive with nothing yet in its place to recover from
+    /// (2026-08 audit finding); temp-then-replace closes that window and
+    /// also means a zip build that fails after this call already created
+    /// the temp file leaves whatever was previously at
+    /// <paramref name="outputPath"/> untouched, not deleted. Same shape as
+    /// <see cref="Config.WriteAtomic"/>.</summary>
     public static ZipResult CreateZip(IReadOnlyList<string> paths, string? outputPath = null)
     {
         try
@@ -88,16 +99,24 @@ public static class Zipper
         if (existing.Count == 0)
             return new ZipResult("error", null, "nothing to zip");
 
+        // finalPath is set only for the Save-As case: `target` is always
+        // where THIS call's ZipFile.Open actually writes bytes (a temp
+        // sibling when Save-As is replacing something), and finalPath is
+        // where those bytes get moved once the build succeeds. See the
+        // class doc comment on CreateZip for why Save-As no longer deletes
+        // the pre-existing file up front.
         string target;
+        string? finalPath = null;
         if (outputPath is not null)
         {
-            // Save-As semantics: the dialog already confirmed overwrite
-            // intent, so a pre-existing file at this exact path is expected
-            // and fine to remove — the exclusive create right after is what
-            // actually protects the created-gate below, not this delete.
-            try { if (File.Exists(outputPath)) File.Delete(outputPath); }
-            catch { /* let ZipFile.Open's own exception surface the real error */ }
-            target = outputPath;
+            finalPath = outputPath;
+            // GUID-suffixed, not a fixed "<name>.tmp": two coworkers racing
+            // Zip -> Save-As to the same filename on the same SMB share
+            // must never share one temp name either, or the second one
+            // could install the first one's bytes, or find its own temp
+            // deleted out from under it (same reasoning as
+            // Config.WriteAtomic's own temp naming).
+            target = $"{outputPath}.{Guid.NewGuid():N}.tmp";
         }
         else
         {
@@ -162,12 +181,56 @@ public static class Zipper
                     }
                 }
             }
-            return new ZipResult("ok", target);
+
+            if (finalPath is not null)
+            {
+                // The zip is fully and successfully written to the temp
+                // sibling — move it onto the real Save-As path atomically.
+                // `created` deliberately stays true until this succeeds: if
+                // PlaceAtomically itself throws (e.g. the retry loop below
+                // exhausts its attempts), the catch below must still clean
+                // up the temp file, and finalPath — never touched by
+                // anything above — is left exactly as the user last saw it.
+                PlaceAtomically(target, finalPath);
+                created = false;   // ownership of `target`'s bytes has moved to finalPath
+            }
+            return new ZipResult("ok", finalPath ?? target);
         }
         catch (Exception ex)
         {
             if (created) RemoveFileQuietly(target);
             return new ZipResult("error", null, $"couldn't create the zip: {ex.Message}");
+        }
+    }
+
+    /// <summary>Moves the fully-written temp file at <paramref name="tempPath"/>
+    /// onto <paramref name="finalPath"/> in one atomic step: <see cref="File.Replace"/>
+    /// when something is already there (Save-As's confirmed-overwrite intent —
+    /// the existing file is swapped out in a single filesystem operation,
+    /// never deleted first and rebuilt after), <see cref="File.Move"/> when
+    /// nothing is (Replace requires the destination to already exist).
+    /// Retries on the destination being briefly held open (e.g. another
+    /// process still has the previous archive open for reading) — same
+    /// shape, same reasoning, as <see cref="Config.WriteAtomic"/>'s own
+    /// retry loop. <paramref name="tempPath"/> must be a sibling of
+    /// <paramref name="finalPath"/>: File.Replace only works within one
+    /// volume, which callers here guarantee by naming the temp file
+    /// alongside the real target.</summary>
+    private static void PlaceAtomically(string tempPath, string finalPath)
+    {
+        for (var attempt = 0; attempt < 50; attempt++)
+        {
+            try
+            {
+                if (File.Exists(finalPath))
+                    File.Replace(tempPath, finalPath, destinationBackupFileName: null);
+                else
+                    File.Move(tempPath, finalPath);
+                return;
+            }
+            catch (IOException) when (attempt < 49) { }
+            catch (UnauthorizedAccessException) when (attempt < 49) { }
+            System.Threading.Thread.Sleep(10);
         }
     }
 

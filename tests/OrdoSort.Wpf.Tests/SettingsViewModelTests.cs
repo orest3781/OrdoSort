@@ -455,6 +455,93 @@ public class SettingsViewModelTests : IDisposable
             "HistoryDbNote should report a new database once the real check resolves");
     }
 
+    // ---- 2026-08 audit finding C2: a relative Inbox/Deferred value must
+    // resolve beside config.json (Config.ResolveBeside — the names_file/
+    // history_db rule), and the Settings note's own existence probe must
+    // check that SAME resolved location, not the raw typed spelling.
+
+    [Fact]
+    public void RelativeInboxNoteChecksExistenceBesideTheConfigFileNotTheWorkingDirectory()
+    {
+        // _dir (a fresh temp guid folder) is never the test process's
+        // working directory — asserted here per the "make sure they
+        // differ" rule: a fixture where config.json's directory and the
+        // working directory coincide would pass whether or not resolution
+        // is actually wired to the config file.
+        Assert.NotEqual(
+            Path.GetFullPath(_dir).TrimEnd(Path.DirectorySeparatorChar),
+            Path.GetFullPath(Environment.CurrentDirectory).TrimEnd(Path.DirectorySeparatorChar));
+
+        var cfgPath = Path.Combine(_dir, "config.json");
+        Config.Save(new Config(), cfgPath);
+        var cfg = Config.Load(cfgPath);
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
+
+        var missingResolved = Path.Combine(_dir, "relative-inbox-missing");
+        vm.Inbox = "relative-inbox-missing";
+
+        // doesn't exist yet anywhere — the Problem note must name the
+        // RESOLVED (beside-config) location, not the raw typed spelling.
+        WaitFor(() => vm.InboxNoteNeedsAttention, "InboxNote should flag the missing folder");
+        Assert.Contains(missingResolved, vm.InboxNote);
+
+        // a DIFFERENT relative value whose resolved folder is created ONLY
+        // beside the config file, never beside the working directory —
+        // property setters only re-probe on an actual value change, so this
+        // (rather than creating missingResolved after the fact) is what
+        // drives a fresh check.
+        var presentResolved = Path.Combine(_dir, "relative-inbox-present");
+        Directory.CreateDirectory(presentResolved);
+        vm.Inbox = "relative-inbox-present";
+        // NeedsAttention alone would race the transient neutral "" state
+        // Resolve applies before the debounced probe finishes — wait for
+        // the settled text instead.
+        WaitFor(() => vm.InboxNote.Contains("relative"),
+            "InboxNote should report resolved-relative once the folder exists beside the config file");
+        Assert.False(vm.InboxNoteNeedsAttention);
+    }
+
+    [Fact]
+    public void WarningsCheckExistenceAtTheSameResolvedLocationAsTheLiveNote()
+    {
+        var cfgPath = Path.Combine(_dir, "config.json");
+        Config.Save(new Config(), cfgPath);
+        var cfg = Config.Load(cfgPath);
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
+        var resolved = Path.Combine(_dir, "relative-deferred");
+
+        vm.Inbox = _dir;              // real, so only Deferred's warning is under test
+        vm.Deferred = "relative-deferred";
+
+        var before = Assert.Single(vm.Warnings(), w => w.Contains("set-aside folder doesn't exist"));
+        Assert.Contains(resolved, before);   // names the RESOLVED location
+
+        // the same folder the live note would resolve to — creating it
+        // beside config.json (never beside the working directory) must
+        // clear the Save-time warning too
+        Directory.CreateDirectory(resolved);
+        Assert.DoesNotContain(vm.Warnings(), w => w.Contains("set-aside folder doesn't exist"));
+    }
+
+    [Fact]
+    public void ARelativeInboxAndDeferredSurviveSaveWithTheirRawSpellingUnchanged()
+    {
+        // Config.TrySaveMain's own doc comment: never silently rewrite a
+        // relative value to absolute on save — resolution happens only at
+        // the point of use, and a shared config.json under other stations
+        // must never be touched by resolving THIS station's copy.
+        var cfg = new Config { Inbox = _dir };
+        var vm = new SettingsViewModel(cfg, _dialogs);
+        vm.Inbox = "relative-inbox";
+        vm.Deferred = "relative-deferred";
+        _dialogs.ConfirmAnswer = true;   // both are "missing" warnings — save anyway
+
+        Assert.True(vm.TryBuildResult());
+
+        Assert.Equal("relative-inbox", vm.Result!.Inbox);
+        Assert.Equal("relative-deferred", vm.Result.Deferred);
+    }
+
     [Fact]
     public void WatchFoldersReorderWithTheCommands()
     {

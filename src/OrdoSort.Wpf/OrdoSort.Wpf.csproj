@@ -24,6 +24,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Copied beside the exe so AboutWindow's "View third-party notices"
+         button (Task 1 Step 2) can open the real, shipped file via
+         AppContext.BaseDirectory instead of a repo-relative path that
+         wouldn't exist on an installed machine. Plain None+CopyToOutputDirectory,
+         not a Resource/EmbeddedResource: this needs to be a standalone file
+         on disk a shell association can open, not a WPF pack-URI resource. -->
+    <None Include="..\..\THIRD-PARTY-NOTICES" Link="THIRD-PARTY-NOTICES"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- the WPF SDK drops the System.IO implicit using (Shapes.Path clash);
          this app is file-plumbing, so bring it back project-wide -->
     <Using Include="System.IO" />

@@ -1,0 +1,27 @@
+<Window x:Class="OrdoSort.Wpf.Windows.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="OrdoSort — About" Width="380" Height="240" MinWidth="340" MinHeight="220"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Style="{StaticResource {x:Type Window}}">
+    <DockPanel Margin="14">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="0,14,0,0">
+            <!-- IsCancel: Esc closes, like every other tool window -->
+            <Button Content="Close" Width="96" IsCancel="True" IsDefault="True" />
+        </StackPanel>
+
+        <StackPanel VerticalAlignment="Center">
+            <TextBlock Text="OrdoSort" Style="{StaticResource SectionText}" Margin="0,0,0,4" />
+            <!-- x:Name'd so AboutWindowVersionTests can read exactly what's
+                 displayed, off the real control, and compare it against the
+                 assembly's own metadata rather than trusting a second
+                 hardcoded copy of the number (see the code-behind's own
+                 doc comment). -->
+            <TextBlock x:Name="VersionText" Style="{StaticResource SubtleText}" Margin="0,0,0,14" />
+            <Button x:Name="NoticesButton" Content="View third-party notices…" HorizontalAlignment="Left"
+                    Click="OnViewThirdPartyNotices"
+                    AutomationProperties.Name="View third-party notices" />
+        </StackPanel>
+    </DockPanel>
+</Window>

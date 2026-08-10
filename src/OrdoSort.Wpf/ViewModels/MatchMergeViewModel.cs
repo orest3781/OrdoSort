@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Text;
+using System.Text.RegularExpressions;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Mvvm;
 using OrdoSort.Wpf.Services;
@@ -33,6 +35,13 @@ public sealed class HeaderPick : ObservableObject
 /// mapping is auto-guessed, remembered in config, and restored next time.</summary>
 public sealed class MatchMergeViewModel : ObservableObject
 {
+    // Splits "FirstName"/"ControlID" into "First"/"Name" and "Control"/"ID":
+    // a boundary before an uppercase letter that follows a lowercase/digit,
+    // or before the last uppercase letter of a run that's followed by a
+    // lowercase one (so "IDNumber" splits "ID"/"Number", not "I"/"D"/"Number").
+    private static readonly Regex CamelCaseBoundary = new(
+        @"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", RegexOptions.Compiled);
+
     private readonly Config _cfg;
     private readonly Action<Dictionary<string, string>> _saveHeaders;
     private readonly IDialogService _dialogs;
@@ -180,16 +189,71 @@ public sealed class MatchMergeViewModel : ObservableObject
         HasRoster = true;   // headers are in — show the mapping row
         Headers.Clear();
         foreach (var h in headers) Headers.Add(h);
-        string Pick(string key, params string[] needles)
+        // Word/token matching, not a raw substring: "id" must not match
+        // Paid Date, Resident or Video (each contains the letters "i","d"
+        // adjacent, none of them AS a whole token), while First Name,
+        // Given name, Surname, Last, MRN and Control ID must still be
+        // recognised. Concatenated headers (FirstName, LastName, ControlID)
+        // are split on camel/Pascal-case boundaries first, so they tokenize
+        // the same as their spaced equivalents. '#' joins the usual
+        // delimiters (Control#), and any Unicode whitespace — not just
+        // ASCII space — separates words, so a non-breaking space copied out
+        // of a spreadsheet still splits. A header with no case boundary and
+        // no delimiter at all (plain lowercase "controlid") still tokenizes
+        // to one word and, correctly, matches nothing — failing toward "ask
+        // a human" is the safe direction, not a guess.
+        static IEnumerable<string> Tokenize(string header)
         {
-            var saved = _cfg.MergeHeaders.TryGetValue(key, out var s) && headers.Contains(s) ? s : null;
-            return saved
-                ?? headers.FirstOrDefault(h => needles.Any(n => h.ToLowerInvariant().Contains(n)))
-                ?? headers.FirstOrDefault() ?? "";
+            var spaced = CamelCaseBoundary.Replace(header, " ");
+            var sb = new StringBuilder(spaced.Length);
+            foreach (var c in spaced)
+                sb.Append(char.IsWhiteSpace(c) || c is '_' or '-' or '.' or '/' or '#' ? ' ' : c);
+            return sb.ToString().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         }
-        _firstHeader = Pick("first", "first");
-        _lastHeader = Pick("last", "last");
-        _controlHeader = Pick("control", "control", "id");
+        // How well a header matches a role: (tokens that hit a needle, total
+        // tokens in the header). "Control ID" is 2/2 — every token is
+        // signal. "Guardian ID" is 1/2 — one token is signal, one is noise.
+        // "First Visit Date" is 1/3 — even more noise. Ranking by this ratio
+        // (not by position in the file) is what makes "Control ID" beat
+        // "Guardian ID" and "First Name" beat "First Visit Date" regardless
+        // of which one the roster happens to list first.
+        static (int Matched, int Total) Score(string header, string[] needles)
+        {
+            var tokens = Tokenize(header).ToList();
+            return (tokens.Count(needles.Contains), tokens.Count);
+        }
+        // Cross-multiplied rational comparison — a/b vs c/d without division
+        // — so two headers with equal signal ratios compare exactly equal,
+        // never off by floating-point rounding.
+        static int CompareRatio((int Matched, int Total) a, (int Matched, int Total) b) =>
+            (a.Matched * b.Total).CompareTo(b.Matched * a.Total);
+        string? Pick(string key, params string[] needles)
+        {
+            var saved = _cfg.MergeHeaders.TryGetValue(key, out var s) && s.Length > 0 && headers.Contains(s)
+                ? s : null;
+            if (saved is not null) return saved;
+
+            // No confident match means NO pick — never headers[0], and never
+            // "whichever came first in the file". Every header that matches
+            // at all is ranked by how much of it is signal; the single
+            // best-ranked header wins. Two headers ranked EQUALLY well is
+            // real ambiguity (e.g. both "MRN" and "Control ID" present), not
+            // a coin flip to resolve silently — leave the role unmapped,
+            // same as no match at all, so the picker asks a human instead.
+            var candidates = headers
+                .Select(h => (Header: h, Score: Score(h, needles)))
+                .Where(c => c.Score.Matched > 0)
+                .ToList();
+            if (candidates.Count == 0) return null;
+            var best = candidates[0].Score;
+            foreach (var c in candidates)
+                if (CompareRatio(c.Score, best) > 0) best = c.Score;
+            var winners = candidates.Where(c => CompareRatio(c.Score, best) == 0).ToList();
+            return winners.Count == 1 ? winners[0].Header : null;
+        }
+        _firstHeader = Pick("first", "first", "given");
+        _lastHeader = Pick("last", "last", "surname");
+        _controlHeader = Pick("control", "control", "id", "mrn");
         Raise(nameof(FirstHeader));
         Raise(nameof(LastHeader));
         Raise(nameof(ControlHeader));
@@ -198,13 +262,50 @@ public sealed class MatchMergeViewModel : ObservableObject
         RebuildColumnPicks();
     }
 
+    /// <summary>Joins role names the way a sentence would: "Control",
+    /// "First and Control", "First, Last and Control".</summary>
+    private static string RoleList(IReadOnlyList<string> roles) => roles.Count switch
+    {
+        1 => roles[0],
+        2 => $"{roles[0]} and {roles[1]}",
+        _ => string.Join(", ", roles.Take(roles.Count - 1)) + " and " + roles[^1],
+    };
+
     private void ReloadRoster()
     {
-        if (_fillingHeaders || RosterPath.Length == 0
-            || FirstHeader is null || LastHeader is null || ControlHeader is null) return;
+        if (_fillingHeaders || RosterPath.Length == 0) return;
+
+        // Every role must be picked, AND the three picks must be distinct —
+        // neither condition is optional. Whichever fails, the mapping row
+        // (Headers is already populated) stays up so the user can fix it
+        // from the picker; nothing gets loaded, and nothing claims success.
+        var picks = new (string Role, string? Header)[]
+        {
+            ("First", FirstHeader), ("Last", LastHeader), ("Control", ControlHeader),
+        };
+        var unmapped = picks.Where(p => p.Header is null).Select(p => p.Role).ToList();
+        var collisions = picks.Where(p => p.Header is not null)
+            .GroupBy(p => p.Header)
+            .Where(g => g.Count() > 1)
+            .ToList();
+        if (unmapped.Count > 0 || collisions.Count > 0)
+        {
+            _roster = null;
+            HasRoster = true;
+            Status = collisions.Count > 0
+                ? "Ambiguous roster headers — " + string.Join("; ", collisions.Select(g =>
+                    $"{RoleList(g.Select(p => p.Role).ToList())} {(g.Count() == 2 ? "both" : "all")} " +
+                    $"matched \"{g.Key}\""))
+                  + ". Choose different columns for First, Last and Control above."
+                : $"Couldn't guess {RoleList(unmapped)} from the roster headers — " +
+                  $"choose {(unmapped.Count == 1 ? "it" : "them")} above.";
+            Refresh();
+            return;
+        }
+
         try
         {
-            _roster = MatchMerge.LoadRoster(RosterPath, FirstHeader, LastHeader, ControlHeader);
+            _roster = MatchMerge.LoadRoster(RosterPath, FirstHeader!, LastHeader!, ControlHeader!);
         }
         catch (RosterException ex)
         {
@@ -217,7 +318,7 @@ public sealed class MatchMergeViewModel : ObservableObject
         HasRoster = true;
         _saveHeaders(new Dictionary<string, string>
         {
-            ["first"] = FirstHeader, ["last"] = LastHeader, ["control"] = ControlHeader,
+            ["first"] = FirstHeader!, ["last"] = LastHeader!, ["control"] = ControlHeader!,
         });
         if (_cfg.MergeRoster != RosterPath)
         {

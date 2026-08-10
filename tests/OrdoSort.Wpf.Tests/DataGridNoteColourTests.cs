@@ -237,6 +237,220 @@ public class DataGridNoteColourTests
                 changed: true, manual: true, needsName: false, editSeed: "TAKEN (2).pdf", noteIsProblem: true),
             p => p.StatusAmber));
 
+    // -------------------------------------------------- Merge PDFs from zip
+    //
+    // 2026-08-09 Tools-menu utilities audit finding 1: ZipMergeWindow's own
+    // Result column rendered a genuine merge failure (Error) in the SAME
+    // Theme.StatusAmber as NoPdfs — a zip with zero PDFs inside, which
+    // ZipRow's own doc comment calls out explicitly as "not a failure the
+    // way an unreadable PDF is." The vocabulary (status-colour-vocabulary
+    // plan, 2026-08-08): amber means "needs attention," never "a merely
+    // informational fact" and never a stand-in for a real error — Error gets
+    // Theme.StatusRed instead, the same colour UnlockWindow.xaml's
+    // Unreadable DataTrigger already uses for its own genuine failure.
+    // NoPdfs stays amber; it's still the correct "needs attention" case.
+
+    /// <summary>Shared body for ZipMergeWindow Result-column cases. Builds a
+    /// real window with one ZipRow driven through its own internal Apply
+    /// (same internal-member access ZipMergeViewModelTests already uses —
+    /// InternalsVisibleTo covers this test assembly), reads the Result
+    /// cell's actual TextBlock, and asserts against the vocabulary — or,
+    /// once selected, AccentText regardless of status (selection wins).</summary>
+    private void AssertZipMergeResultColour(string schemeKey, bool selected, string status,
+        Func<ThemePalette, Rgb> expectedUnselected)
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+
+        var vm = new ZipMergeViewModel(new FakeDialogs());
+        var row = new ZipRow(@"C:\inbox\a.zip");
+        row.Apply(new ZipMerge.MergeResult(row.Path, status, Message: "some result text here"));
+        vm.Rows.Add(row);
+        var window = new ZipMergeWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+
+            var grid = FindDescendant<DataGrid>(window)
+                ?? throw new InvalidOperationException("no DataGrid descendant under ZipMergeWindow");
+            if (selected) { grid.SelectedIndex = 0; grid.UpdateLayout(); }
+
+            var (fg, _) = ResolveNoteCellForeground(grid, "Result");
+
+            if (selected)
+            {
+                Assert.Equal(p.AccentText, fg);
+                var ratio = ThemePalette.ContrastRatio(fg, p.Accent);
+                Assert.True(ratio >= 4.5,
+                    $"ZipMerge Result selected, {status} ({schemeKey}): {fg} on {p.Accent} = {ratio:F2}");
+            }
+            else
+            {
+                var expected = expectedUnselected(p);
+                Assert.Equal(expected, fg);
+                var ratio = ThemePalette.ContrastRatio(fg, p.Surface);
+                Assert.True(ratio >= 4.5,
+                    $"ZipMerge Result unselected, {status} ({schemeKey}): {fg} on {p.Surface} = {ratio:F2}");
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The literal fix this task's Finding 1 made: a genuine merge
+    /// failure is Theme.StatusRed, not Theme.StatusAmber. Break this fix
+    /// (revert the trigger's Setter to StatusAmber) and this fails for a
+    /// value reason — wrong brush, not a render error — the teeth proof this
+    /// task's own brief requires.</summary>
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void ZipMergeErrorResultIsRedUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertZipMergeResultColour(schemeKey, selected, "error", p => p.StatusRed));
+
+    /// <summary>NoPdfs is deliberately left amber by this task's fix — a zip
+    /// with nothing to merge is "needs attention," not an error and not
+    /// merely informational either (someone likely wants to know). This case
+    /// exists so a future edit that flattens Error and NoPdfs back to the
+    /// same colour (in EITHER direction) is caught here, not just by the
+    /// Error case above.</summary>
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void ZipMergeNoPdfsResultIsAmberUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertZipMergeResultColour(schemeKey, selected, "no_pdfs", p => p.StatusAmber));
+
+    // -------------------------------------------------------------- Unzip
+    //
+    // Same finding, same fix, on UnzipWindow's own Result column — see
+    // ZipMergeWindow's section above for the fuller reasoning. UnzipRowStatus
+    // has no NoPdfs-equivalent middle state (just Ok/Error), so there is only
+    // the one case to cover here.
+
+    private void AssertUnzipResultColour(string schemeKey, bool selected, string status,
+        Func<ThemePalette, Rgb> expectedUnselected)
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+
+        var vm = new UnzipViewModel(new FakeDialogs());
+        var row = new UnzipRow(@"C:\inbox\a.zip");
+        row.Apply(new Zipper.UnzipResult(row.Path, status, null, "some result text here"));
+        vm.Rows.Add(row);
+        var window = new UnzipWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+
+            var grid = FindDescendant<DataGrid>(window)
+                ?? throw new InvalidOperationException("no DataGrid descendant under UnzipWindow");
+            if (selected) { grid.SelectedIndex = 0; grid.UpdateLayout(); }
+
+            var (fg, _) = ResolveNoteCellForeground(grid, "Result");
+
+            if (selected)
+            {
+                Assert.Equal(p.AccentText, fg);
+                var ratio = ThemePalette.ContrastRatio(fg, p.Accent);
+                Assert.True(ratio >= 4.5,
+                    $"Unzip Result selected, {status} ({schemeKey}): {fg} on {p.Accent} = {ratio:F2}");
+            }
+            else
+            {
+                var expected = expectedUnselected(p);
+                Assert.Equal(expected, fg);
+                var ratio = ThemePalette.ContrastRatio(fg, p.Surface);
+                Assert.True(ratio >= 4.5,
+                    $"Unzip Result unselected, {status} ({schemeKey}): {fg} on {p.Surface} = {ratio:F2}");
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void UnzipErrorResultIsRedUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertUnzipResultColour(schemeKey, selected, "error", p => p.StatusRed));
+
+    // -------------------------------------------------------- PDF page counts
+    //
+    // Not named in this task's Finding 1 (PageCountsWindow's Note column was
+    // already correct — PageCounts.Count never puts anything but a genuine
+    // failure message there, so unconditional StatusAmber was never a
+    // vocabulary violation the way ZipMerge/Unzip's Error-as-amber was), but
+    // added here as part of closing this suite's OWN coverage gap for the
+    // five Tools windows — see DataGridWindowCoverageTests.
+
+    private void AssertPageCountsNoteColour(string schemeKey, bool selected, string note,
+        Func<ThemePalette, Rgb> expectedUnselected)
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+
+        var vm = new PageCountsViewModel(new FakeDialogs());
+        var row = new PageCountRow(@"C:\inbox\a.pdf");
+        row.Apply(new PageCounts.CountResult(row.Path, note.Length == 0 ? 3 : null, note));
+        vm.Rows.Add(row);
+        var window = new PageCountsWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+
+            var grid = FindDescendant<DataGrid>(window)
+                ?? throw new InvalidOperationException("no DataGrid descendant under PageCountsWindow");
+            if (selected) { grid.SelectedIndex = 0; grid.UpdateLayout(); }
+
+            var (fg, _) = ResolveNoteCellForeground(grid, "Note");
+
+            if (selected)
+            {
+                Assert.Equal(p.AccentText, fg);
+                var ratio = ThemePalette.ContrastRatio(fg, p.Accent);
+                Assert.True(ratio >= 4.5,
+                    $"PageCounts Note selected ({schemeKey}): {fg} on {p.Accent} = {ratio:F2}");
+            }
+            else
+            {
+                var expected = expectedUnselected(p);
+                Assert.Equal(expected, fg);
+                var ratio = ThemePalette.ContrastRatio(fg, p.Surface);
+                Assert.True(ratio >= 4.5,
+                    $"PageCounts Note unselected ({schemeKey}): {fg} on {p.Surface} = {ratio:F2}");
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void PageCountsErrorNoteIsAmberUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertPageCountsNoteColour(schemeKey, selected,
+            "password-protected or unreadable — couldn't count", p => p.StatusAmber));
+
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void PageCountsCleanCountNoteIsTextUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertPageCountsNoteColour(schemeKey, selected, "", p => p.Text));
+
     // ---------------------------------------------------------------- Triage
 
     /// <summary>TriageWindow's "Why" column only exists for a "suggested"

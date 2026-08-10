@@ -56,9 +56,16 @@ public partial class ProductionWindow : Window
     private const double NumericColumnWidthEstimate = 140;
 
     /// <summary>Same FindResource lookup as TriageWindow.xaml.cs's own
-    /// GridCellTextStyle — resolved from code since this grid's columns are
-    /// built programmatically, not declared in XAML.</summary>
-    private static Style GridCellTextStyle => (Style)Application.Current.FindResource("GridCellText");
+    /// GridCellTextSelectionAwareStyle — resolved from code since this
+    /// grid's columns are built programmatically, not declared in XAML.
+    /// Every column here (group and numeric alike) carries no OTHER
+    /// Foreground trigger of its own, the same "nothing else to remember"
+    /// case TriageWindow's own plain roster columns are in — see
+    /// GridCellTextSelectionAware's own doc comment in Theme/Styles.xaml for
+    /// why that makes this key, not plain GridCellText plus a hand-rolled
+    /// trigger, the correct BasedOn.</summary>
+    private static Style GridCellTextSelectionAwareStyle =>
+        (Style)Application.Current.FindResource("GridCellTextSelectionAware");
 
     private readonly ProductionViewModel _vm;
 
@@ -136,29 +143,28 @@ public partial class ProductionWindow : Window
             // SAME dictionary key ("[{name}]"), and whichever RecomputeResults
             // wrote last would silently win the shared cell. Header stays the
             // NAME — that's still what a person reads.
-            var style = new Style(typeof(TextBlock), GridCellTextStyle);
+            //
+            // BasedOn GridCellTextSelectionAware, not plain GridCellText plus
+            // a hand-rolled trigger: this column carries no OTHER Foreground
+            // trigger, so the shared style's own trailing "let selection win"
+            // DataTrigger (bound to the ancestor DataGridCell's IsSelected —
+            // every other selection-aware column in the app, XAML-declared or
+            // code-built, binds the same ancestor; see
+            // GridCellTextSelectionAware's own doc comment in Theme/
+            // Styles.xaml) is the whole selection-contrast story, same as it
+            // is for TriageWindow's own plain roster columns. A prior version
+            // of this style hand-rolled an identical trigger bound to the
+            // ancestor DataGridRow instead — a comment/code mismatch (it
+            // claimed to mirror the DataGridCell pattern but didn't) that
+            // only rendered correctly because SelectionUnit defaults to
+            // FullRow app-wide, under which DataGridCell.IsSelected already
+            // mirrors DataGridRow.IsSelected — not something to rely on
+            // structurally.
+            var style = new Style(typeof(TextBlock), GridCellTextSelectionAwareStyle);
             style.Setters.Add(new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis));
             style.Setters.Add(new Setter(FrameworkElement.ToolTipProperty, new Binding($"[{i}]")));
             if (isNumericColumn)
                 style.Setters.Add(new Setter(TextBlock.TextAlignmentProperty, TextAlignment.Right));
-
-            // "Let selection win" — the same trailing IsSelected trigger every
-            // XAML-declared column carries (see TurnaroundWindow.xaml's
-            // ElementStyle blocks). Code-built columns don't inherit it from
-            // GridCellText, and without it a selected row keeps Theme.Text on
-            // Theme.Accent — below 4.5:1 in most named schemes
-            // (DataGridSelectionContrastTests.ProductionAllColumnsSelectedClearContrast).
-            var selectionWins = new DataTrigger
-            {
-                Binding = new Binding("IsSelected")
-                {
-                    RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(DataGridRow), 1),
-                },
-                Value = true,
-            };
-            selectionWins.Setters.Add(new Setter(TextBlock.ForegroundProperty,
-                new DynamicResourceExtension("Theme.AccentText")));
-            style.Triggers.Add(selectionWins);
 
             var column = new DataGridTextColumn
             {

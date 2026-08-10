@@ -306,6 +306,11 @@
                     <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE9D9;" /></MenuItem.Icon>
                 </MenuItem>
             </MenuItem>
+            <MenuItem Header="_Help">
+                <MenuItem Header="_About OrdoSort…" Click="OnAbout">
+                    <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE946;" /></MenuItem.Icon>
+                </MenuItem>
+            </MenuItem>
             </Menu>
         </Grid>
 

@@ -20,6 +20,50 @@ public sealed class WebViewPdfViewer : IPdfViewer
     public string? InitError { get; private set; }
     public bool Ready => _ready;
 
+    private const string InstallUrl = "https://developer.microsoft.com/microsoft-edge/webview2/";
+
+    private static string MissingRuntimeMessage =>
+        "Document previews need the Microsoft Edge WebView2 Runtime, which isn't installed on this " +
+        "computer.\n\nInstall it from " + InstallUrl + " (the free \"Evergreen Bootstrapper\" — no " +
+        "restart required) and reopen OrdoSort.\n\nEverything else keeps working without it: scanning, " +
+        "renaming, filing, and history are all unaffected. Only the preview pane stays blank until " +
+        "it's installed.";
+
+    private static string UnexpectedInitFailureMessage(bool crashLogged) =>
+        "Document preview couldn't start this session, even though the WebView2 Runtime is installed. " +
+        "The rest of OrdoSort is unaffected — scanning, renaming, filing, and history keep working; " +
+        "only the preview pane stays blank.\n\n" +
+        (crashLogged
+            ? "The technical details were written to crash.log, beside your config file."
+            : "The technical details could not be written to crash.log — the location may not be " +
+              "writable.") +
+        "\n\nIf this keeps happening, try reinstalling the WebView2 Runtime from " + InstallUrl + ".";
+
+    /// <summary>Whether the WebView2 Runtime is present, checked with the SDK's own
+    /// purpose-built probe (<see cref="CoreWebView2Environment.GetAvailableBrowserVersionString"/>,
+    /// documented to throw <see cref="WebView2RuntimeNotFoundException"/> — not return null —
+    /// when nothing is installed) instead of waiting for <c>CreateAsync</c> to fail with a bare
+    /// COM HRESULT. Internal (not private) only so a test can force "missing" and "present"
+    /// without needing the runtime uninstalled on the test machine; production code never
+    /// assigns to this. Same "settable only by tests" seam pattern as
+    /// <see cref="OrdoSort.Wpf.App._crashDir"/> and <see cref="Theme.ThemeManager.IsHighContrast"/> —
+    /// the existing WebView2 test seams in this file all drive a REAL browser on the STA fixture
+    /// (by design, for the navigation-guard behaviour they prove), which is exactly what this
+    /// probe must NOT depend on: whether THIS machine happens to have the runtime installed is
+    /// not what "does OrdoSort report a missing runtime correctly" should hinge on.</summary>
+    internal static Func<bool> RuntimeAvailable = () =>
+    {
+        try
+        {
+            CoreWebView2Environment.GetAvailableBrowserVersionString(browserExecutableFolder: null);
+            return true;
+        }
+        catch (WebView2RuntimeNotFoundException)
+        {
+            return false;
+        }
+    };
+
     /// <summary>Where Edge keeps its browser profile for us. Left to itself
     /// WebView2 puts this BESIDE THE EXECUTABLE, which breaks the moment the
     /// app is run from a network share: it tries to create the profile on the
@@ -33,10 +77,38 @@ public sealed class WebViewPdfViewer : IPdfViewer
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "OrdoSort", "WebView2");
 
+    /// <summary>Starts the real browser engine. Degrades, never blocks: a failure here
+    /// (missing runtime or anything else) only ever sets <see cref="InitError"/> and returns
+    /// false — it never throws, and callers keep running with an inert viewer (see
+    /// <see cref="Ready"/>-gated no-ops below on <see cref="ShowAsync"/>/<see cref="Blank"/>/
+    /// <see cref="ReleaseAsync"/>). That degrade-not-block posture is a deliberate choice, not
+    /// an accident: this app's core job is filing documents — scanning, renaming, committing,
+    /// history, the Label maker — none of which touches the PDF pane, so refusing to start over
+    /// a missing preview engine would make the product worse, not safer. The one enforcement
+    /// point for that choice lives in MainWindow.xaml.cs's Loaded handler, which calls
+    /// Shell.Initialize() unconditionally after this returns, whatever it returns — that call is
+    /// NOT gated on this method's result, and must stay that way.
+    ///
+    /// Before this, a missing runtime surfaced only as
+    /// <c>System.Runtime.InteropServices.COMException (0x8007139F): Class not registered</c> (or
+    /// similar), caught below and dumped verbatim into <see cref="InitError"/> via
+    /// <c>ex.ToString()</c> — a raw stack trace, not a sentence a user could act on, and it never
+    /// reached crash.log (the catch swallowed it, so neither DispatcherUnhandledException nor
+    /// AppDomain.UnhandledException ever saw it). <see cref="RuntimeAvailable"/> now checks for
+    /// that specific, common cause up front and reports it in plain language with what to
+    /// install; a genuinely unexpected failure (runtime present, something else wrong) still
+    /// gets a plain-language message AND now reaches crash.log via <see cref="App.LogCrash"/>,
+    /// matching how every other unanticipated exception in this app is handled.</summary>
     public async Task<bool> InitAsync()
     {
         try
         {
+            if (!RuntimeAvailable())
+            {
+                InitError = MissingRuntimeMessage;
+                return false;
+            }
+
             Directory.CreateDirectory(UserDataFolder);
             var env = await CoreWebView2Environment.CreateAsync(
                 browserExecutableFolder: null, userDataFolder: UserDataFolder);
@@ -84,9 +156,18 @@ public sealed class WebViewPdfViewer : IPdfViewer
             _ready = true;
             return true;
         }
+        catch (WebView2RuntimeNotFoundException)
+        {
+            // Reached deeper than the RuntimeAvailable() pre-check (e.g. the runtime was
+            // removed in the gap between the check and CreateAsync) — same friendly message
+            // either way; the user does not care where in the call stack this was noticed.
+            InitError = MissingRuntimeMessage;
+            return false;
+        }
         catch (Exception ex)
         {
-            InitError = ex.ToString();
+            var logged = App.LogCrash(ex);
+            InitError = UnexpectedInitFailureMessage(logged);
             return false;
         }
     }

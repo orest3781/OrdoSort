@@ -23,13 +23,14 @@ namespace OrdoSort.Core.Tests;
 public class AuditFailureTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "ordoaudit_" + Guid.NewGuid());
-    private readonly string _inbox, _dest, _deferred;
+    private readonly string _inbox, _dest, _deferred, _cfgPath;
 
     public AuditFailureTests()
     {
         _inbox = Path.Combine(_root, "inbox");
         _dest = Path.Combine(_root, "dest");
         _deferred = Path.Combine(_root, "deferred");
+        _cfgPath = Path.Combine(_root, "config.json");   // Deferred above is already absolute, so this base is never actually consulted
         foreach (var d in new[] { _inbox, _dest, _deferred }) Directory.CreateDirectory(d);
     }
 
@@ -54,7 +55,7 @@ public class AuditFailureTests : IDisposable
     {
         cfg = new Config { Inbox = _inbox, Deferred = _deferred };
         var history = new History(Path.Combine(_root, "h.sqlite"));
-        var session = new Session(cfg, history);
+        var session = new Session(cfg, history, _cfgPath);
         history.Dispose();   // the audit DB dies mid-session
         return (session, history);
     }
@@ -127,7 +128,7 @@ public class AuditFailureTests : IDisposable
     {
         var cfg = new Config { Inbox = _inbox, Deferred = _deferred };
         var history = new History(Path.Combine(_root, "h.sqlite"));
-        var session = new Session(cfg, history);
+        var session = new Session(cfg, history, _cfgPath);
         var src = MakePdf("20240115--111111.pdf");
         session.Start(new[] { src });
         history.Dispose();
@@ -149,7 +150,7 @@ public class AuditFailureTests : IDisposable
     {
         var cfg = new Config { Inbox = _inbox, Deferred = _deferred };
         using var history = new History(Path.Combine(_root, "ok.sqlite"));
-        var session = new Session(cfg, history);
+        var session = new Session(cfg, history, _cfgPath);
         var src = MakePdf("20240115--111111.pdf");
         session.Start(new[] { src });
 

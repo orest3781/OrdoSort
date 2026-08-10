@@ -554,6 +554,40 @@ public sealed class LabelMakerViewModel : ObservableObject
     /// deliberately typed a number of their own, which still wins.</summary>
     internal void Persist()
     {
+        // A client's id going blank through editing — not the explicit
+        // Remove button — is the same destructive act wearing a different
+        // hat: without this, clearing the Id box and closing the window
+        // sweeps the row with no confirmation at all, while Remove asks.
+        // Ask the identical question here, keyed off the row's last REAL
+        // on-disk id (_originId), before anything below can act on it.
+        // Declining restores that id exactly — which also makes the row's
+        // origin equal its current id again, so the "still owned" guard
+        // below protects it from the very sweep this loop just cancelled.
+        foreach (var vm in Clients.ToList())
+        {
+            if (vm.Id.Length > 0) continue;
+            if (!_originId.TryGetValue(vm, out var origin) || origin.Length == 0) continue;
+
+            var shownNumber = vm.NextNumberText;
+            try
+            {
+                var onDisk = BoxLabelStore.Read(_boxLabelsPath).LabelClients
+                    .FirstOrDefault(c => c.Id == origin);
+                if (onDisk is not null) shownNumber = onDisk.NextNumber.ToString();
+            }
+            catch (ConfigException) { /* fall back to the VM's number */ }
+
+            if (_dialogs.Confirm(
+                    $"Remove \"{origin}\"?\n\nIts running label number ({shownNumber}) "
+                    + "will be lost — re-adding the client starts back at 1.",
+                    "OrdoSort — label maker"))
+                continue;   // confirmed: leave the blank id — the sweep below removes it
+
+            _suppressDirty = true;
+            try { vm.Id = origin; }   // declined: put it back exactly as it was
+            finally { _suppressDirty = false; }
+        }
+
         if (_dirty.Count == 0 && _removedIds.Count == 0) return;   // zero-edit close writes nothing
 
         var duplicate = Clients
@@ -597,7 +631,22 @@ public sealed class LabelMakerViewModel : ObservableObject
                     if (originRow is not null) carried[vm] = originRow.NextNumber;
                 }
 
-                doc.LabelClients.RemoveAll(c => _removedIds.Contains(c.Id));
+                // An id merely TRANSITED through on the way to some other
+                // final id (see the Hook doc comment on _removedIds) must
+                // never sweep a different, LIVE client that still genuinely
+                // holds it. "Still genuinely holds" is narrower than "some
+                // row's current Id equals it" — a row whose ORIGIN (its true
+                // on-disk identity) still equals its CURRENT id has never
+                // actually left that identity, no matter what a sibling's
+                // edit queued into _removedIds along the way. A row that
+                // instead landed on this id via its OWN edit (origin
+                // differs, e.g. remove-then-re-add under the same id) is not
+                // protected — that case's "starts back at 1" promise, tested
+                // above, depends on the old row still being swept.
+                var stillOwned = new HashSet<string>(Clients
+                    .Where(vm => _originId.TryGetValue(vm, out var o) && o.Length > 0 && o == vm.Id)
+                    .Select(vm => vm.Id));
+                doc.LabelClients.RemoveAll(c => _removedIds.Contains(c.Id) && !stillOwned.Contains(c.Id));
                 foreach (var vm in Clients)
                 {
                     if (!_dirty.Contains(vm)) continue;        // untouched: disk wins

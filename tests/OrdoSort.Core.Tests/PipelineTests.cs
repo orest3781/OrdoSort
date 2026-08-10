@@ -18,13 +18,14 @@ namespace OrdoSort.Core.Tests;
 public class PipelineTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "pltest_" + Guid.NewGuid());
-    private readonly string _inbox, _dest, _deferred;
+    private readonly string _inbox, _dest, _deferred, _cfgPath;
 
     public PipelineTests()
     {
         _inbox = Path.Combine(_root, "inbox");
         _dest = Path.Combine(_root, "dest");
         _deferred = Path.Combine(_root, "deferred");
+        _cfgPath = Path.Combine(_root, "config.json");   // Deferred above is already absolute, so this base is never actually consulted
         foreach (var d in new[] { _inbox, _dest, _deferred }) Directory.CreateDirectory(d);
     }
 
@@ -195,7 +196,7 @@ public class PipelineTests : IDisposable
     {
         using var h = new History(Path.Combine(_root, "h.sqlite"));
         var cfg = new Config { Inbox = _inbox, Deferred = _deferred, NamingMode = "insert" };
-        var s = new Session(cfg, h);
+        var s = new Session(cfg, h, _cfgPath);
         var a = MakePdf(_inbox, "20240101--1.pdf");
         var b = MakePdf(_inbox, "20240102--2.pdf");
         s.Start(new[] { a, b });
@@ -213,7 +214,7 @@ public class PipelineTests : IDisposable
     {
         using var h = new History(Path.Combine(_root, "h.sqlite"));
         var cfg = new Config { Inbox = _inbox, Deferred = _deferred };
-        var s = new Session(cfg, h);
+        var s = new Session(cfg, h, _cfgPath);
         var a = MakePdf(_inbox, "20240101--1.pdf");
         s.Start(new[] { a });
         s.CommitCurrent("SMITH JOHN", Dest);
@@ -231,7 +232,7 @@ public class PipelineTests : IDisposable
     {
         using var h = new History(Path.Combine(_root, "h.sqlite"));
         var cfg = new Config { Inbox = _inbox, Deferred = _deferred };
-        var s = new Session(cfg, h);
+        var s = new Session(cfg, h, _cfgPath);
         var a = MakePdf(_inbox, "20240101--1.pdf");
         s.Start(new[] { a });
         Assert.Equal(1, s.Total);

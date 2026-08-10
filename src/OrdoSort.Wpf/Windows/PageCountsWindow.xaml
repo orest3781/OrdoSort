@@ -71,15 +71,23 @@
                              carries that), so it gets whatever width Pages and
                              Note don't need. -->
                         <DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="*">
-                            <!-- BasedOn GridCellText (Theme/Styles.xaml), not the
+                            <!-- BasedOn GridCellTextSelectionAware (Theme/
+                                 Styles.xaml), not plain GridCellText or the
                                  bare {x:Type TextBlock} style: no status trigger
                                  of its own here, so the shared style's default
                                  Foreground + trailing "let selection win"
                                  DataTrigger is the whole fix — same shape as
                                  BulkRenameWindow's Current name / MatchMergeWindow's
-                                 File column; see GridCellText's own doc comment. -->
+                                 File column; see GridCellTextSelectionAware's
+                                 own doc comment. Measured directly (off-screen,
+                                 before this fix, when this column was plain
+                                 GridCellText): Theme.Text on Theme.Accent
+                                 ranged 1.26:1-2.14:1 across every scheme — this
+                                 window shipped with the exact selection-contrast
+                                 bug GridCellTextSelectionAware exists to
+                                 prevent, just never switched to it. -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding Path}" />
                                 </Style>
@@ -89,10 +97,16 @@
                              numbers reads fastest lined up on the ones place.
                              Blank for a row that's still Pending or that
                              couldn't be counted at all (Note carries the
-                             explanation for the latter). -->
+                             explanation for the latter). BasedOn
+                             GridCellTextSelectionAware for the same reason as
+                             File above — no status trigger of its own, and the
+                             same measured selection-contrast failure applied
+                             here too before this fix (a selected row's page
+                             count is just as unreadable as its filename would
+                             have been). -->
                         <DataGridTextColumn Header="Pages" Binding="{Binding Pages}" Width="Auto">
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
                                     <Setter Property="HorizontalAlignment" Value="Right" />
                                 </Style>
                             </DataGridTextColumn.ElementStyle>

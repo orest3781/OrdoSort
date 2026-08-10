@@ -155,6 +155,78 @@ public class MatchMergeTests : IDisposable
         Assert.Equal("20240126-EVANS-FRANK-176797656 (2).pdf", Path.GetFileName(outcome.Final!));
     }
 
+    // ------------------------------------------ header-mapping plan, Task 1
+    // MatchMerge.LoadRoster resolves First/Last/Control by name via IndexOf
+    // (first wins, defect 4) and stores each row name-keyed (defect 5), so a
+    // duplicate header name silently loses its twin's data. That is only a
+    // real threat when the duplicated (or blank) name IS one of the three
+    // mapped roles — a stray duplicate/blank column the roles never touch
+    // can't corrupt the mapping, and rejecting the whole file over it (a
+    // stray "Notes" column, the blank a trailing comma leaves) was too
+    // aggressive: reject only when the mapping itself is at risk.
+
+    [Fact]
+    public void DuplicateRoleHeaderNoLongerCollapsesFirstAndLastToTheSameColumn()
+    {
+        // firstHeader == lastHeader == "Name": IndexOf resolves BOTH to the
+        // same column, so Last silently reads First's data. Must be
+        // rejected, not silently mis-mapped.
+        var path = Path.Combine(_dir, "samename.csv");
+        File.WriteAllText(path, "Name,Name,Control\nJohn,Doe,123\n");
+
+        var ex = Assert.Throws<RosterException>(() =>
+            MatchMerge.LoadRoster(path, "Name", "Name", "Control"));
+        Assert.Contains("Name", ex.Message);
+    }
+
+    [Fact]
+    public void DuplicateRoleHeaderIsRejectedEvenWhenBlank()
+    {
+        // controlHeader == "": two blank columns exist, and the caller asked
+        // for the blank one specifically. IndexOf can't tell which blank was
+        // meant, so this must reject exactly like a named duplicate would.
+        var path = Path.Combine(_dir, "blankrole.csv");
+        File.WriteAllText(path, "First,Last,,\nJohn,Doe,123,X\n");
+
+        var ex = Assert.Throws<RosterException>(() =>
+            MatchMerge.LoadRoster(path, "First", "Last", ""));
+        Assert.Contains("blank", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void UnrelatedDuplicateHeaderNoLongerFailsTheWholeFile()
+    {
+        // "Extra" is duplicated but is not First, Last or Control — narrowed
+        // rejection must let this load. First occurrence wins for "Extra"
+        // (matching the same IndexOf-first-occurrence rule the three mapped
+        // roles already use), so behaviour is deterministic, not silently
+        // random — and nothing addressable through this API is lost: First/
+        // Last/Control resolve correctly, and Row["Extra"] deterministically
+        // reports the FIRST "Extra" column's value, not a coin flip.
+        var path = Path.Combine(_dir, "dup.csv");
+        File.WriteAllText(path, "First,Last,Control,Extra,Extra\nJohn,Doe,123,AAA,BBB\n");
+
+        var roster = MatchMerge.LoadRoster(path, "First", "Last", "Control");
+
+        var person = Assert.Single(roster.Lookup("Doe", "John"));
+        Assert.Equal("123", person.ControlId);
+        Assert.Equal("AAA", person.Row["Extra"]);   // first occurrence, not the second (BBB)
+    }
+
+    [Fact]
+    public void UnrelatedBlankHeaderNoLongerFailsTheWholeFile()
+    {
+        // The blank trailing-comma column isn't First, Last or Control —
+        // narrowed rejection must let this load, and mapping is unaffected.
+        var path = Path.Combine(_dir, "blank.csv");
+        File.WriteAllText(path, "First,Last,Control,\nJohn,Doe,123,X\n");
+
+        var roster = MatchMerge.LoadRoster(path, "First", "Last", "Control");
+
+        var person = Assert.Single(roster.Lookup("Doe", "John"));
+        Assert.Equal("123", person.ControlId);
+    }
+
     [Fact]
     public void QuotedCsvFieldsWithCommas()
     {

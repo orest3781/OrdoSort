@@ -55,6 +55,40 @@ public static partial class MatchMerge
             throw new RosterException("The spreadsheet is empty.");
         var headers = rows[0].Select(h => h.Trim()).ToList();
 
+        // A duplicate or blank column header is only unsafe when it collides
+        // with one of the three columns actually being mapped: LoadRoster
+        // resolves First/Last/Control by name via IndexOf (first occurrence
+        // wins), so if the DUPLICATED name is one of those three, the wrong
+        // occurrence's values can silently become "the" answer for who a
+        // document is filed against. A stray duplicate or blank column that
+        // has nothing to do with First/Last/Control carries no such risk —
+        // nobody can even address a specific occurrence of a repeated name
+        // through this tool, since headers are always deduplicated by name
+        // downstream (the column picker, ChosenColumns) — so refusing the
+        // whole file over it only costs the user a roster that used to
+        // load. The row builder below breaks any such harmless tie the same
+        // way (first occurrence), so behaviour stays deterministic either
+        // way; nothing addressable is ever lost.
+        var mappedRoles = new[] { firstHeader, lastHeader, controlHeader };
+        var unsafeDuplicates = headers.GroupBy(h => h)
+            .Where(g => g.Count() > 1 && mappedRoles.Contains(g.Key))
+            .Select(g => g.Key)
+            .ToList();
+        if (unsafeDuplicates.Count > 0)
+        {
+            var named = unsafeDuplicates.Where(d => d.Length > 0).ToList();
+            var blank = unsafeDuplicates.Any(d => d.Length == 0);
+            var parts = new List<string>();
+            if (named.Count > 0)
+                parts.Add("These column headers appear more than once and are needed for the First/Last/" +
+                    "Control mapping, so mapping them would silently lose a column's data: " +
+                    string.Join(", ", named));
+            if (blank)
+                parts.Add("A blank column header appears more than once and one of those blanks is " +
+                    "needed for the First/Last/Control mapping");
+            throw new RosterException(string.Join(". ", parts) + ". Rename the duplicates and try again.");
+        }
+
         var missing = new[] { firstHeader, lastHeader, controlHeader }
             .Where(h => !headers.Contains(h)).ToList();
         if (missing.Count > 0)
@@ -75,8 +109,14 @@ public static partial class MatchMerge
             var control = Cell(ci);
             if (first.Length == 0 || last.Length == 0 || control.Length == 0) continue;
 
+            // First occurrence wins — the same rule headers.IndexOf already
+            // applies when resolving fi/li/ci above, so a harmless duplicate
+            // name (one that isn't First/Last/Control, see the guard above)
+            // resolves identically everywhere instead of "whichever column
+            // happened to be assigned last".
             var row = new Dictionary<string, string>();
-            for (var i = 0; i < headers.Count; i++) row[headers[i]] = Cell(i);
+            for (var i = 0; i < headers.Count; i++)
+                if (!row.ContainsKey(headers[i])) row[headers[i]] = Cell(i);
 
             var key = (Norm(last), Norm(first));
             if (!roster.People.TryGetValue(key, out var list))

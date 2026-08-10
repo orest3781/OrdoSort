@@ -558,6 +558,69 @@ public class LabelMakerViewModelTests : IDisposable
     }
 
     [Fact]
+    public void EditingOneClientsIdCannotSweepAnUntouchedSiblingItTransitsThrough()
+    {
+        // ACME is being edited down toward AC — a live, distinct, UNTOUCHED
+        // sibling client that never itself changes. Each Id assignment below
+        // stands in for one keystroke: ACME->ACM->AC->ACX. "ACM" and "AC" are
+        // both merely transited THROUGH on the way to the final id "ACX" —
+        // but "AC" is a real, live client's actual id, not a throwaway
+        // intermediate string, and it must still be sitting on disk
+        // afterward, untouched, not just referenced by a status line.
+        var path = PathWith(
+            new LabelClient { Id = "ACME", DestroyDays = 30, NextNumber = 7 },
+            new LabelClient { Id = "AC", DestroyDays = 45, NextNumber = 500 });
+        var vm = Vm(path);
+
+        var edited = vm.Clients.Single(c => c.Id == "ACME");
+        edited.Id = "ACM";   // ACME -> ACM
+        edited.Id = "AC";    // ACM -> AC   (the sibling's own live id, momentarily)
+        edited.Id = "ACX";   // AC -> ACX   (final: queues "AC" for the sweep)
+
+        vm.Persist();
+
+        var stored = BoxLabelStore.Read(path).LabelClients;
+        var sibling = stored.SingleOrDefault(c => c.Id == "AC");
+        Assert.NotNull(sibling);                    // AC must still be ON DISK...
+        Assert.Equal(500, sibling!.NextNumber);      // ...with its own data intact
+        Assert.Contains(stored, c => c.Id == "ACX"); // and the real rename still landed
+    }
+
+    [Fact]
+    public void BlankingAClientsIdViaEditingAsksBeforeRemovingItLikeExplicitRemoveDoes()
+    {
+        // Typing a client's Id field down to nothing is the keystroke path's
+        // version of Remove — it must ask the same question Remove asks, not
+        // silently sweep the row at the next Persist.
+        var path = PathWith(new LabelClient { Id = "MEDR", DestroyDays = 30, NextNumber = 5000 });
+        var vm = Vm(path);
+
+        _dialogs.ConfirmAnswer = false;   // decline — the client survives
+        vm.Clients.Single().Id = "";
+
+        vm.Persist();
+
+        var kept = Assert.Single(BoxLabelStore.Read(path).LabelClients);
+        Assert.Equal("MEDR", kept.Id);
+        Assert.Equal(5000, kept.NextNumber);
+        Assert.Contains("MEDR", Assert.Single(_dialogs.Confirms).Message);
+    }
+
+    [Fact]
+    public void ConfirmingABlankedIdRemovesItJustLikeExplicitRemove()
+    {
+        var path = PathWith(new LabelClient { Id = "MEDR", DestroyDays = 30, NextNumber = 5000 });
+        var vm = Vm(path);
+
+        _dialogs.ConfirmAnswer = true;    // confirm — deliberate removal
+        vm.Clients.Single().Id = "";
+
+        vm.Persist();
+
+        Assert.Empty(BoxLabelStore.Read(path).LabelClients);
+    }
+
+    [Fact]
     public void PersistRefusesUnderDuplicateIdsAndPreservesTheDisk()
     {
         // renaming AAAA onto BBBB's id is the sharpest way to get two rows

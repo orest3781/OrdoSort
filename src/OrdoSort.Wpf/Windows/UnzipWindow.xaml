@@ -64,24 +64,35 @@
                     <DataGrid.Columns>
                         <!-- Zip: the filler (Width="*") — the source
                              filename, same reasoning as ZipMergeWindow's own
-                             Zip column. -->
+                             Zip column. BasedOn GridCellTextSelectionAware,
+                             not plain GridCellText — same fix and same
+                             measured 1.26:1-2.14:1 selection-contrast failure
+                             as ZipMergeWindow's own Zip column; see that
+                             file's doc comment. -->
                         <DataGridTextColumn Header="Zip" Binding="{Binding FileName}" Width="*">
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding Path}" />
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Result: content-sized, amber whenever a zip's
-                             extract attempt ended in Error — the same
+                        <!-- Result: content-sized, Theme.StatusRed whenever a
+                             zip's extract attempt ended in Error — a genuine
+                             failure, not "needs attention," so it gets the
+                             same colour UnlockWindow.xaml's Unreadable
+                             DataTrigger uses, not Theme.StatusAmber (status-
+                             colour-vocabulary plan, 2026-08-08: amber must
+                             never mean a merely informational fact — see
+                             ZipMergeWindow.xaml's own Result column comment
+                             for the fuller red-vs-amber reasoning). Same
                              GridCellText-plus-triggers recipe as
-                             ZipMergeWindow.xaml's own Result column (see that
-                             file's doc comment for the measured contrast
-                             numbers the trailing "let selection win"
-                             DataTrigger exists to fix), minus the NoPdfs
-                             trigger — UnzipRowStatus has no equivalent
-                             middle state, just Ok/Error. -->
+                             ZipMergeWindow.xaml's own Result column
+                             otherwise (see that file's doc comment for the
+                             measured contrast numbers the trailing "let
+                             selection win" DataTrigger exists to fix), minus
+                             the NoPdfs trigger — UnzipRowStatus has no
+                             equivalent middle state, just Ok/Error. -->
                         <DataGridTextColumn x:Name="ResultColumn" Header="Result" Binding="{Binding Note}"
                                             Width="Auto">
                             <DataGridTextColumn.ElementStyle>
@@ -91,7 +102,7 @@
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding StatusKind}"
                                                      Value="{x:Static vm:UnzipRowStatus.Error}">
-                                            <Setter Property="Foreground" Value="{DynamicResource Theme.StatusAmber}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource Theme.StatusRed}" />
                                         </DataTrigger>
                                         <!-- Declared last so it overrides the
                                              trigger above once selected —
