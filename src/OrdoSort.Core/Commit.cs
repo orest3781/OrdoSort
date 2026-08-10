@@ -89,10 +89,42 @@ public static class Commit
         var result = Naming.BuildTarget(
             Path.GetFileName(src), "", null, Naming.ModeInsert, "", false,
             name => File.Exists(Path.Combine(deferredDir, name)));
-        MoveNeverOverwrite(src, Path.Combine(deferredDir, result.Filename));
+        SkipRaceHookForTests?.Invoke();
+        try
+        {
+            MoveNeverOverwrite(src, Path.Combine(deferredDir, result.Filename));
+        }
+        catch (FileExistsRace ex)
+        {
+            // Same situation CommitFile's own catch (:67) and UndoAction's
+            // own catch (:123) both guard against: something claimed this
+            // name in the gap between Naming.BuildTarget's probe above and
+            // MoveNeverOverwrite's own File.Exists guard firing a few
+            // microseconds later. Without this catch, that private
+            // exception type escaped OrdoSort.Core past
+            // ShellViewModel.OnSkipAsync's CommitError/AuditError handlers
+            // as an unhandled crash — even though no document was lost: the
+            // guard fires before src is ever touched, same as here. Give the
+            // caller the same actionable CommitError its two siblings
+            // produce instead.
+            throw new CommitError(ex.Message);
+        }
         return new SkipOutcome(false, Path.Combine(deferredDir, result.Filename),
             result.CollisionSuffix);
     }
+
+    /// <summary>Test-only seam: when set, invoked immediately before the
+    /// final move in <see cref="SkipFile"/> — right after Naming.BuildTarget
+    /// has picked a name but before MoveNeverOverwrite's own guard checks
+    /// it. Mirrors <see cref="RaceHookForTests"/> (UndoAction's own seam for
+    /// the identical kind of race) but kept as a separate field: the two
+    /// methods are exercised by different test classes, and a shared field
+    /// would mean each class's set/clear sequence could stomp the other's
+    /// mid-test whenever xUnit runs their classes in parallel — the same
+    /// reason RaceHookForTests's own doc comment gives for why the classes
+    /// that DO share it must share an xUnit collection instead. Production
+    /// code never sets this.</summary>
+    internal static Action? SkipRaceHookForTests;
 
     /// <summary>Test-only seam: when set, invoked immediately before the final
     /// move in <see cref="UndoAction"/> — right after all three guards have

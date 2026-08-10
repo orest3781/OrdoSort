@@ -195,8 +195,53 @@ public class ZipperTests : IDisposable
 
         Assert.Equal("ok", r.Status);
         Assert.Equal(target, r.Output);
+        // The old bytes are actually gone, not just "a zip now parses here"
+        // — proves the pre-existing file was replaced, not appended to or
+        // reused by ZipArchive opening in some other mode.
+        Assert.NotEqual("old content, not a real zip", File.ReadAllText(target));
         using var zip = ZipFile.OpenRead(target);
         Assert.Single(zip.Entries);
+        // No temp sibling left behind after a successful Save-As replace.
+        Assert.Equal(
+            new[] { "a.txt", "existing.zip" },
+            Directory.GetFileSystemEntries(_dir).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal));
+    }
+
+    /// <summary>2026-08 audit finding: CreateZip used to delete whatever was
+    /// at a Save-As <c>outputPath</c> up front, before ever building the new
+    /// archive — reasoning that the Save-As dialog already confirmed
+    /// overwrite intent. True of the file the user SAW, but the delete ran
+    /// after the dialog closed: on the SMB shares this app targets, two
+    /// coworkers both Zip -> Save-As to the same filename could race, and
+    /// the second one's delete destroyed the first one's just-written
+    /// archive unrecoverably — with no elevated access needed, and even if
+    /// the SECOND zip then failed to build. This is the regression test for
+    /// that: the pre-existing file at the target must survive a zip build
+    /// that fails, not just one that succeeds. The failure here is real, not
+    /// simulated through a test seam: the input file is opened with
+    /// FileShare.None so ZipArchive.CreateEntryFromFile's own internal read
+    /// genuinely throws IOException partway through the archive build.</summary>
+    [Fact]
+    public void AFailedZipBuildLeavesThePreExistingOutputFileIntact()
+    {
+        var locked = MakeFile("locked.txt", "will fail to read");
+        var target = Path.Combine(_dir, "existing.zip");
+        var original = Encoding.UTF8.GetBytes("previously saved archive bytes, not touched");
+        File.WriteAllBytes(target, original);
+
+        Zipper.ZipResult r;
+        using (new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            r = Zipper.CreateZip(new[] { locked }, target);
+        }
+
+        Assert.Equal("error", r.Status);
+        Assert.True(File.Exists(target));
+        Assert.Equal(original, File.ReadAllBytes(target));
+        // And no orphaned temp sibling left beside it either.
+        Assert.DoesNotContain(
+            Directory.GetFileSystemEntries(_dir),
+            f => f.Contains(".tmp", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
