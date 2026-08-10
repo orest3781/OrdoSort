@@ -1,8 +1,10 @@
 using System.Text;
 
+namespace OrdoSort.Smoke.E2E;
+
 /// <summary>A minimal valid one-page PDF Edge renders fine. One copy — the
 /// old harness carried this verbatim in two files.</summary>
-internal static class MinimalPdf
+public static class MinimalPdf
 {
     public static void Write(string path, string text)
     {

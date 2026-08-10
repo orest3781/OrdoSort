@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Windows.Threading;
 using OrdoSort.Core;
+using OrdoSort.Smoke.E2E;
 using OrdoSort.Wpf;
 
 /// <summary>Regression harness for the commit reentrancy bug: firing the route

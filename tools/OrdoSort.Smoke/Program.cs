@@ -11,6 +11,7 @@
 using System.Text.Json;
 using System.Windows.Threading;
 using OrdoSort.Core;
+using OrdoSort.Smoke.E2E;
 using OrdoSort.Wpf;
 
 if (args.Length > 0 && args[0] == "dialogs") return DialogCheck.Run();
