@@ -603,7 +603,7 @@ public sealed class UnlockViewModel : ObservableObject
         var candidates = paths.ToList();
         var already = new HashSet<string>(Files.Select(f => f.Path), StringComparer.OrdinalIgnoreCase);
 
-        var (keep, ignored) = await RunOffUiThread(() =>
+        var (keep, ignored) = await Task.Run(() =>
         {
             var keep = new List<string>();
             var ignored = 0;
@@ -726,7 +726,7 @@ public sealed class UnlockViewModel : ObservableObject
             try
             {
                 if (token.IsCancellationRequested) return;
-                var result = await RunOffUiThread(() => _probe(row.Path, probeCandidates));
+                var result = await Task.Run(() => _probe(row.Path, probeCandidates));
                 if (!token.IsCancellationRequested && myGeneration == row.ProbeGeneration)
                     ApplyProbeResult(row, result);
             }
@@ -735,60 +735,6 @@ public sealed class UnlockViewModel : ObservableObject
                 _probeGate.Release();
             }
         }));
-    }
-
-    /// <summary>Test seam: how this class gets work off the UI thread —
-    /// both AddFilesAsync's existence-check pass and each row's probe call
-    /// in ProbeRowsAsync go through this instead of calling Task.Run
-    /// directly. Real callers never set this; production always dispatches
-    /// via Task.Run, i.e. the process-wide ThreadPool shared with every
-    /// other test class xUnit runs concurrently. That sharing is exactly
-    /// what made UnlockReadinessProbeTests.ASavedPasswordChangeDuringAnInFlightAddProbeDoesNotLetTheStaleResultWin
-    /// and .ClearingTheListCancelsAnInFlightProbeSoItsLateResultIsDiscarded
-    /// flaky on GitHub Actions' windows-latest runner: both deliberately
-    /// hold a probe call open on a background thread and then assert — via a
-    /// fixed real-time budget, started.Wait(2000) — that it is still in
-    /// flight a moment later. Confirmed by reproduction, not guesswork:
-    /// saturating the ThreadPool with 64 other blocked Task.Run calls
-    /// (standing in for the ~1676 other Wpf.Tests classes xUnit
-    /// parallelizes against) made Task.Run's dispatch take over 2 seconds
-    /// just to START, because the CLR throttles new-thread injection under
-    /// starvation to roughly one thread every few hundred ms — a real,
-    /// load-dependent wall-clock quantity that no fixed timeout on the
-    /// WAITING side can fix deterministically, since the budget and the
-    /// starvation race the same clock. The first attempt at this seam only
-    /// covered the probe's own Task.Run and still reproduced the failure
-    /// (elapsedToStart over 2000ms under the same 64-way saturation) because
-    /// AddFilesAsync's existence-check Task.Run sits in the SAME call path,
-    /// ahead of the probe, and was just as exposed to the same throttle —
-    /// hence one seam covering both, not two. Tests that need this class's
-    /// off-thread work to start immediately, regardless of how saturated
-    /// the shared pool is, set this to dispatch via a dedicated Thread
-    /// instead — sidestepping the throttle rather than outwaiting it. No
-    /// [Collection] coordination is needed the way Commit.RaceHookForTests /
-    /// Config.BeforeCreateOnlyMove need it: this field is read only from
-    /// inside this class, and the only class that ever sets it
-    /// (UnlockReadinessProbeTests) has no other class sharing its
-    /// (implicit, unlisted) xUnit collection, so its own test methods — the
-    /// only place this is set — already run one at a time by xUnit's
-    /// default same-class sequencing; nothing else in the suite creates an
-    /// UnlockViewModel while this could be non-null. Same "settable only by
-    /// tests, inert in production" shape as Commit.RaceHookForTests /
-    /// Config.BeforeCreateOnlyMove otherwise.</summary>
-    internal static Action<Action>? OffUiThreadDispatchForTests;
-
-    private static Task<T> RunOffUiThread<T>(Func<T> work)
-    {
-        if (OffUiThreadDispatchForTests is not { } dispatch)
-            return Task.Run(work);
-
-        var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        dispatch(() =>
-        {
-            try { tcs.SetResult(work()); }
-            catch (Exception ex) { tcs.SetException(ex); }
-        });
-        return tcs.Task;
     }
 
     private static void ApplyProbeResult(UnlockFileRow row, Unlock.ProbeResult result)
