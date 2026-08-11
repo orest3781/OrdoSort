@@ -31,6 +31,19 @@ crash.log
 # Claude Code session/agent state — never shipped, never reviewed
 .claude/
 
+# Real production/TAT exports used to design the report windows against live
+# data. These contain REAL PATIENT NAMES and staff account names — they must
+# never enter the repo. Kept out of the working tree's staging path entirely
+# rather than relying on anyone remembering not to `git add -A`.
+.realSamples/
+
+# Agent/skill tooling state dropped into the repo by installers and the
+# brainstorming visual companion — local scratch, never reviewed.
+.agents/
+.superpowers/
+skills-lock.json
+evidence/
+
 # Playwright MCP artifacts (screenshots/traces from ad-hoc browser testing)
 .playwright-mcp/
 
