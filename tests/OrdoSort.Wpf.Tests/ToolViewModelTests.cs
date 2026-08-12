@@ -951,6 +951,26 @@ public class UnlockViewModelTests : IDisposable
         Assert.Contains("1 ignored", vm.AddNote);
         Assert.True(vm.UnlockCommand.CanExecute(null));
     }
+
+    /// <summary>Windows resolves a path case-insensitively, so "locked.pdf"
+    /// and "LOCKED.pdf" are the same file on disk — File.Exists says yes to
+    /// both. AddFilesAsync's dedupe now runs through Intake.Add (Core),
+    /// which canonicalizes each path before comparing — this pins that the
+    /// second spelling is turned away as "already listed" instead of
+    /// landing as a second row over the same bytes.</summary>
+    [Fact]
+    public async Task ACaseOnlyDuplicateIsNotAddedTwice()
+    {
+        var vm = Vm();
+        var path = MakeEncrypted("locked.pdf");
+        var shouty = Path.Combine(_dir, "LOCKED.pdf");   // same file, different spelling
+
+        await vm.AddFilesAsync(new[] { path, shouty });
+
+        Assert.Single(vm.Files);
+        Assert.Contains("1 added", vm.AddNote);
+        Assert.Contains("1 ignored", vm.AddNote);
+    }
 }
 
 public class BulkRenameViewModelTests : IDisposable

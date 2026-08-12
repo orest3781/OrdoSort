@@ -139,6 +139,26 @@ public class ZipViewModelTests : IDisposable
         Assert.Contains("already listed", vm.AddNote);
     }
 
+    /// <summary>Windows resolves a path case-insensitively, so "a.txt" and
+    /// "A.txt" are the same file on disk — File.Exists says yes to both.
+    /// AddPaths' dedupe now runs through Intake.Add (Core), which
+    /// canonicalizes each path before comparing — this pins that the second
+    /// spelling is turned away as "already listed" instead of landing as a
+    /// second row over the same bytes.</summary>
+    [Fact]
+    public async Task ACaseOnlyDuplicateIsNotAddedTwice()
+    {
+        var a = TouchFile("a.txt");
+        var shouty = Path.Combine(_dir, "A.txt");   // same file, different spelling
+        var vm = MakeVm(new FakeDialogs());
+
+        await vm.AddPaths(new[] { a, shouty });
+
+        Assert.Single(vm.Rows);
+        Assert.Contains("1 added", vm.AddNote);
+        Assert.Contains("1 ignored", vm.AddNote);
+    }
+
     [Fact]
     public async Task AddPathsRecordsFileAndFolderKindSeparately()
     {

@@ -195,6 +195,10 @@ public sealed class UnlockViewModel : ObservableObject
 
     private CancellationTokenSource? _cts;
 
+    /// <summary>Extension set in Intake's shape (dot-less, lowercase) rather
+    /// than the EndsWith(".pdf") this used to inline — same rule, one place.</summary>
+    private static readonly ISet<string> Pdfs = new HashSet<string> { "pdf" };
+
     public ObservableCollection<UnlockFileRow> Files { get; } = new();
     public ObservableCollection<SavedPassword> Saved { get; }
     public ObservableCollection<UnlockResultLine> ResultLines { get; } = new();
@@ -601,57 +605,39 @@ public sealed class UnlockViewModel : ObservableObject
         // is what made dropping a folder's worth of documents feel stuck. The
         // existence checks go off-thread; only the list update comes back.
         var candidates = paths.ToList();
-        var already = new HashSet<string>(Files.Select(f => f.Path), StringComparer.OrdinalIgnoreCase);
+        var already = Files.Select(f => f.Path).ToList();
 
-        var (keep, ignored) = await Task.Run(() =>
-        {
-            var keep = new List<string>();
-            var ignored = 0;
-            // a set, not ObservableCollection.Contains: that was a linear scan
-            // per candidate, so a big drop cost quadratic time before it even
-            // touched the disk
-            var seen = new HashSet<string>(already, StringComparer.OrdinalIgnoreCase);
-            foreach (var p in candidates)
-            {
-                if (p.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
-                    && seen.Add(p) && File.Exists(p))
-                    keep.Add(p);
-                else
-                    ignored++;
-            }
-            return (keep, ignored);
-        });
+        // Intake.Add builds its own set rather than scanning the
+        // ObservableCollection per candidate — the quadratic cost this method
+        // was already avoiding by hand, now avoided in one place.
+        var offThread = await Task.Run(() => Intake.Add(already, candidates, Pdfs, File.Exists));
 
         // Re-checked against the LIVE list, not the snapshot taken before the
         // await: a second drop can have read the same list and be adding the
         // same file right now. Cheap — this is the handful that passed, not the
         // whole batch.
-        var live = new HashSet<string>(Files.Select(f => f.Path), StringComparer.OrdinalIgnoreCase);
-        var added = 0;
+        var settled = Intake.Add(Files.Select(f => f.Path), offThread.Files);
         var newRows = new List<UnlockFileRow>();
         // one CanExecute re-query for the whole batch instead of one per file
         _bulkAdding = true;
         try
         {
-            foreach (var p in keep)
-                if (live.Add(p))
-                {
-                    var row = new UnlockFileRow(p);
-                    Files.Add(row);
-                    newRows.Add(row);
-                    added++;
-                }
+            foreach (var p in settled.Files)
+            {
+                var row = new UnlockFileRow(p);
+                Files.Add(row);
+                newRows.Add(row);
+            }
         }
         finally { _bulkAdding = false; }
         UnlockCommand.RaiseCanExecuteChanged();
-        ignored += keep.Count - added;
 
         // a silently-shrinking drop reads as "it didn't work" — say what happened
-        AddNote = added == 0 && ignored > 0
-            ? $"nothing added — {ignored} item{(ignored == 1 ? " isn't a PDF" : "s aren't PDFs")} (or already listed)"
-            : ignored > 0
-                ? $"{added} added · {ignored} ignored (not PDFs, or already listed)"
-                : "";
+        AddNote = (offThread with
+        {
+            Files = settled.Files,
+            AlreadyListed = offThread.AlreadyListed + settled.AlreadyListed,
+        }).Note("PDF");
 
         // Probe just the new arrivals — never the whole list on every drop
         // (risk 1: see ProbeRowsAsync's own doc comment). Awaited here (not

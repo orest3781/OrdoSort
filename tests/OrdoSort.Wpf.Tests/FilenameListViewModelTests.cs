@@ -182,4 +182,23 @@ public class FilenameListViewModelTests : IDisposable
         vm.AddPaths(new[] { _dir });   // same root again
         Assert.Contains("already listed", vm.AddNote);
     }
+
+    /// <summary>Windows resolves a path case-insensitively, so the same
+    /// folder root named in two different spellings is one location on
+    /// disk. AddPaths dedupes _sources with StringComparer.OrdinalIgnoreCase
+    /// — the same policy Intake.Add now owns for the tools that route their
+    /// dedupe through it — so the second spelling must not sweep the folder
+    /// a second time and land as a second entry.</summary>
+    [Fact]
+    public void ACaseOnlyDuplicateIsNotAddedTwice()
+    {
+        var vm = MakeVm(new FakeDialogs());
+        var shouty = Path.Combine(Path.GetDirectoryName(_dir)!, Path.GetFileName(_dir).ToUpperInvariant());
+
+        vm.AddPaths(new[] { _dir });
+        Assert.Equal("", vm.AddNote);
+
+        vm.AddPaths(new[] { shouty });   // same folder, different spelling
+        Assert.Contains("already listed", vm.AddNote);
+    }
 }

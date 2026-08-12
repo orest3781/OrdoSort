@@ -61,6 +61,10 @@ public sealed class UnzipViewModel : ObservableObject
     // reasoning as ZipMergeViewModel's own _cts.
     private readonly CancellationTokenSource _cts = new();
 
+    /// <summary>Extension set in Intake's shape (dot-less, lowercase) rather
+    /// than the EndsWith(".zip") this used to inline — same rule, one place.</summary>
+    private static readonly ISet<string> Zips = new HashSet<string> { "zip" };
+
     public ObservableCollection<UnzipRow> Rows { get; } = new();
 
     public UnzipViewModel(IDialogService dialogs, IWorkScheduler? scheduler = null,
@@ -126,42 +130,21 @@ public sealed class UnzipViewModel : ObservableObject
     public async Task AddFilesAsync(IEnumerable<string> paths)
     {
         var candidates = paths.ToList();
-        var already = new HashSet<string>(Rows.Select(r => r.Path), StringComparer.OrdinalIgnoreCase);
+        var already = Rows.Select(r => r.Path).ToList();
 
-        var (keep, ignored) = await _scheduler.Run(() =>
-        {
-            var keepList = new List<string>();
-            var ignoredCount = 0;
-            var seen = new HashSet<string>(already, StringComparer.OrdinalIgnoreCase);
-            foreach (var p in candidates)
-            {
-                if (p.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
-                    && seen.Add(p) && File.Exists(p))
-                    keepList.Add(p);
-                else
-                    ignoredCount++;
-            }
-            return (keepList, ignoredCount);
-        });
+        var offThread = await _scheduler.Run(() => Intake.Add(already, candidates, Zips, File.Exists));
 
         // Re-checked against the LIVE list, not the snapshot taken before the
         // await — the same second-drop race ZipMergeViewModel.AddFilesAsync
         // guards against.
-        var live = new HashSet<string>(Rows.Select(r => r.Path), StringComparer.OrdinalIgnoreCase);
-        var added = 0;
-        foreach (var p in keep)
-            if (live.Add(p))
-            {
-                Rows.Add(new UnzipRow(p));
-                added++;
-            }
-        ignored += keep.Count - added;
+        var settled = Intake.Add(Rows.Select(r => r.Path), offThread.Files);
+        foreach (var p in settled.Files) Rows.Add(new UnzipRow(p));
 
-        AddNote = added == 0 && ignored > 0
-            ? $"nothing added — {ignored} item{(ignored == 1 ? " isn't a zip" : "s aren't zips")} (or already listed)"
-            : ignored > 0
-                ? $"{added} added · {ignored} ignored (not zips, or already listed)"
-                : "";
+        AddNote = (offThread with
+        {
+            Files = settled.Files,
+            AlreadyListed = offThread.AlreadyListed + settled.AlreadyListed,
+        }).Note("zip");
     }
 
     /// <summary>Removes exactly the rows the window's grid selection holds —

@@ -102,8 +102,11 @@ public static partial class BulkRename
         };
     }
 
-    private static bool SameFile(string a, string b) =>
-        string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+    /// <summary>Guards the File.Move decisions in Plan/Execute/UndoBatch.
+    /// Was a raw ordinal-insensitive string compare, which was correct only
+    /// as long as every path reaching it happened to be spelled the same way
+    /// — now correct by construction. See PathIdentity.</summary>
+    private static bool SameFile(string a, string b) => PathIdentity.Same(a, b);
 
     /// <summary>Compute the batch, in input order. Touches nothing on disk
     /// beyond existence checks. <paramref name="overrides"/> maps a source

@@ -170,25 +170,23 @@ public sealed class PageCountsViewModel : ObservableObject
         var expanded = await _scheduler.Run(() =>
             Intake.Expand(candidates, recursive: true, new HashSet<string> { "pdf" }));
 
-        var live = new HashSet<string>(Rows.Select(r => r.Path), StringComparer.OrdinalIgnoreCase);
+        // Expand did the folder walk and the extension filter; Intake.Add does
+        // the dedupe half, so this tool shares the one policy rather than
+        // keeping its own set.
+        var settled = Intake.Add(Rows.Select(r => r.Path), expanded.Files);
         var newRows = new List<PageCountRow>();
-        foreach (var p in expanded.Files)
-            if (live.Add(p))
-            {
-                var row = new PageCountRow(p);
-                Rows.Add(row);
-                newRows.Add(row);
-            }
+        foreach (var p in settled.Files)
+        {
+            var row = new PageCountRow(p);
+            Rows.Add(row);
+            newRows.Add(row);
+        }
 
-        // expanded.Ignored already covers non-PDF/missing paths; the gap
-        // between what Intake found and what actually became a new row is
-        // everything already listed (this batch or an earlier one).
-        var ignored = expanded.Ignored + (expanded.Files.Count - newRows.Count);
-        AddNote = newRows.Count == 0 && ignored > 0
-            ? $"nothing added — {ignored} item{(ignored == 1 ? " isn't a PDF" : "s aren't PDFs")} (or already listed)"
-            : ignored > 0
-                ? $"{newRows.Count} added · {ignored} ignored (not PDFs, or already listed)"
-                : "";
+        // Expand reports ONE Ignored count that mixes "wrong extension" with
+        // "neither a file nor a folder" and has no breakdown to hand on, so
+        // both land under WrongType here. That's no worse than what this note
+        // said before, which hedged across the same two cases anyway.
+        AddNote = (settled with { WrongType = expanded.Ignored }).Note("PDF");
 
         RaiseTotals();
         if (newRows.Count == 0) return;

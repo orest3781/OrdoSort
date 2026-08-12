@@ -67,6 +67,26 @@ public class TurnaroundViewModelTests : IDisposable
         Assert.Equal("2 files · 3 rows · 0 without TAT", vm.Status);
     }
 
+    /// <summary>Windows resolves a path case-insensitively, so the same
+    /// folder root added twice under two different spellings names one
+    /// location on disk. AddPaths' own dedupe (StringComparer.OrdinalIgnoreCase
+    /// over _sources — the same policy Intake.Add now owns for the tools that
+    /// route their dedupe through it) must keep the second spelling from
+    /// sweeping the fixture a second time and doubling every row.</summary>
+    [Fact]
+    public void ACaseOnlyDuplicateIsNotAddedTwice()
+    {
+        Write("20250303-1144-PECF Report.csv",
+            PecfHeaders + "\nDRG,1,20250228-HELTON-EMILY-KYPT2024-11-63094.pdf,3\n");
+        var vm = MakeVm(new Config(), new FakeDialogs());
+        var shouty = Path.Combine(Path.GetDirectoryName(_dir)!, Path.GetFileName(_dir).ToUpperInvariant());
+
+        vm.AddPaths(new[] { _dir, shouty });
+
+        WaitFor(() => vm.Documents.Count == 1, "the fixture row should load exactly once, not doubled");
+        Assert.Equal("1 files · 1 rows · 0 without TAT", vm.Status);
+    }
+
     [Fact]
     public void HeadersAutoGuessFilenameAndCategoryColumns()
     {

@@ -134,6 +134,26 @@ public class ProductionViewModelTests : IDisposable
         Assert.Equal("4", Cell(vm, vm.Rows[2], "PDF-PAGE-COUNT"));
     }
 
+    /// <summary>Windows resolves a path case-insensitively, so the same
+    /// folder root added twice under two different spellings names one
+    /// location on disk. AddPaths' own dedupe (StringComparer.OrdinalIgnoreCase
+    /// over _sources — the same policy Intake.Add now owns for the tools that
+    /// route their dedupe through it) must keep the second spelling from
+    /// sweeping the fixture a second time and doubling every row.</summary>
+    [Fact]
+    public void ACaseOnlyDuplicateIsNotAddedTwice()
+    {
+        Write("20250303-1144-swept.csv", SweepHeaders + "\n" + FixtureRows);
+        var vm = MakeVm(new Config(), new FakeDialogs());
+        var shouty = Path.Combine(Path.GetDirectoryName(_dir)!, Path.GetFileName(_dir).ToUpperInvariant());
+
+        vm.AddPaths(new[] { _dir, shouty });
+
+        WaitFor(() => vm.Rows.Count == 3, "all three (SOURCE-FOLDER, Employee) groups should appear exactly once, not doubled");
+        // CLAIMS/user2 — would be "4" if the fixture had swept twice
+        Assert.Equal("2", Cell(vm, vm.Rows[0], "Records"));
+    }
+
     [Fact]
     public void UncheckingEmployeeRegroupsAndPersistsToConfig()
     {

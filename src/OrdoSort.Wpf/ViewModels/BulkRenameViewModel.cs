@@ -220,25 +220,16 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
             DeleteLastSegment: DeleteSegLast);
     }
 
+    /// <summary>Dedupe, canonicalisation and the status line all come from
+    /// Intake.Add. This tool is why the dedupe has to be spelling-proof
+    /// rather than merely tidy: two rows over one file both reach
+    /// BulkRename.Execute as File.Moves, and the second fails on bytes the
+    /// first already moved. See PathIdentity.</summary>
     public void AddFiles(IEnumerable<string> paths)
     {
-        int added = 0, ignored = 0;
-        foreach (var p in paths)
-        {
-            // OrdinalIgnoreCase, not the default List.Contains: Windows resolves
-            // a path case-insensitively, so "scan.pdf" and "SCAN.pdf" name one
-            // file. Accepting both as rows sends two File.Moves after the same
-            // bytes — the second reports a failure with no cause. Matches the
-            // comparer the other intake sites already use.
-            if (File.Exists(p) && !_files.Contains(p, StringComparer.OrdinalIgnoreCase))
-            { _files.Add(p); added++; }
-            else ignored++;
-        }
-        AddNote = added == 0 && ignored > 0
-            ? $"nothing added — {ignored} item{(ignored == 1 ? "" : "s")} missing or already listed"
-            : ignored > 0
-                ? $"{added} added · {ignored} ignored (missing, or already listed)"
-                : "";
+        var taken = Intake.Add(_files, paths, exists: File.Exists);
+        _files.AddRange(taken.Files);
+        AddNote = taken.Note("file");
         Refresh(immediate: true);
     }
 

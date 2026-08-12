@@ -108,41 +108,31 @@ public sealed class ZipViewModel : ObservableObject
     public async Task AddPaths(IEnumerable<string> paths)
     {
         var candidates = paths.ToList();
-        var already = new HashSet<string>(Rows.Select(r => r.Path), StringComparer.OrdinalIgnoreCase);
+        var already = Rows.Select(r => r.Path).ToList();
 
-        var (keep, ignored) = await _scheduler.Run(() =>
+        // No extension set — this tool takes files AND folders, so "exists"
+        // means either. Kind is settled in the same off-thread pass rather
+        // than after the await, so no File.Exists lands on the UI thread.
+        var (offThread, kinds) = await _scheduler.Run(() =>
         {
-            var keepList = new List<(string Path, string Kind)>();
-            var ignoredCount = 0;
-            var seen = new HashSet<string>(already, StringComparer.OrdinalIgnoreCase);
-            foreach (var p in candidates)
-            {
-                if (!seen.Add(p)) { ignoredCount++; continue; }
-                if (File.Exists(p)) keepList.Add((p, "file"));
-                else if (Directory.Exists(p)) keepList.Add((p, "folder"));
-                else ignoredCount++;
-            }
-            return (keepList, ignoredCount);
+            var taken = Intake.Add(already, candidates,
+                exists: p => File.Exists(p) || Directory.Exists(p));
+            var kind = taken.Files.ToDictionary(
+                p => p, p => File.Exists(p) ? "file" : "folder", StringComparer.OrdinalIgnoreCase);
+            return (taken, kind);
         });
 
         // Re-checked against the LIVE list, not the snapshot taken before the
         // await — the same second-drop race ZipMergeViewModel.AddFilesAsync
         // guards against.
-        var live = new HashSet<string>(Rows.Select(r => r.Path), StringComparer.OrdinalIgnoreCase);
-        var added = 0;
-        foreach (var (p, kind) in keep)
-            if (live.Add(p))
-            {
-                Rows.Add(new PathRow(p, kind));
-                added++;
-            }
-        ignored += keep.Count - added;
+        var settled = Intake.Add(Rows.Select(r => r.Path), offThread.Files);
+        foreach (var p in settled.Files) Rows.Add(new PathRow(p, kinds[p]));
 
-        AddNote = added == 0 && ignored > 0
-            ? $"nothing added — {ignored} item{(ignored == 1 ? " doesn't exist" : "s don't exist")} (or already listed)"
-            : ignored > 0
-                ? $"{added} added · {ignored} ignored (missing, or already listed)"
-                : "";
+        AddNote = (offThread with
+        {
+            Files = settled.Files,
+            AlreadyListed = offThread.AlreadyListed + settled.AlreadyListed,
+        }).Note("item");
     }
 
     /// <summary>Removes exactly the rows the window's grid selection holds —

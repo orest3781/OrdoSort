@@ -47,6 +47,10 @@ public sealed class MatchMergeViewModel : ObservableObject
     private readonly IDialogService _dialogs;
     private readonly Action? _saveCfg;
 
+    /// <summary>Extension set in Intake's shape (dot-less, lowercase) rather
+    /// than the EndsWith(".pdf") this used to inline — same rule, one place.</summary>
+    private static readonly ISet<string> Pdfs = new HashSet<string> { "pdf" };
+
     private readonly List<string> _files = new();
     private MatchMerge.Roster? _roster;
     private List<MatchMerge.MatchResult> _results = new();
@@ -342,30 +346,14 @@ public sealed class MatchMergeViewModel : ObservableObject
         else Status = $"Last roster wasn't found: {remembered}";
     }
 
+    /// <summary>Dedupe, canonicalisation and the status line come from
+    /// Intake.Add — same reasoning as BulkRenameViewModel.AddFiles, and the
+    /// same stakes: this tool moves files too.</summary>
     public void AddFiles(IEnumerable<string> paths)
     {
-        int added = 0, ignored = 0;
-        foreach (var p in paths)
-        {
-            // OrdinalIgnoreCase, not the default List.Contains — see
-            // BulkRenameViewModel.AddFiles for why the case-sensitive compare
-            // let one file on disk become two rows headed for a file move.
-            if (File.Exists(p) && p.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
-                && !_files.Contains(p, StringComparer.OrdinalIgnoreCase))
-            {
-                _files.Add(p);
-                added++;
-            }
-            else
-            {
-                ignored++;
-            }
-        }
-        AddNote = added == 0 && ignored > 0
-            ? $"nothing added — {ignored} item{(ignored == 1 ? " isn't a PDF" : "s aren't PDFs")} (or already listed)"
-            : ignored > 0
-                ? $"{added} added · {ignored} ignored (not PDFs, or already listed)"
-                : "";
+        var taken = Intake.Add(_files, paths, Pdfs, File.Exists);
+        _files.AddRange(taken.Files);
+        AddNote = taken.Note("PDF");
         Refresh();
     }
 
