@@ -36,6 +36,21 @@ crash.log
 # Claude Code session/agent state — never shipped, never reviewed
 .claude/
 
+# Real production/TAT exports used to design the report windows against live
+# data. These contain REAL PATIENT NAMES and staff account names. They now live
+# OUTSIDE this repo, at S:\OrdoSort-samples — an ignore rule only stops a
+# commit, it does nothing about a tool that copies, greps, or uploads the
+# working tree, so the data itself is kept out of the tree entirely. This rule
+# stays as a safety net for the day someone drops a sample folder back in here.
+.realSamples/
+
+# Agent/skill tooling state dropped into the repo by installers and the
+# brainstorming visual companion — local scratch, never reviewed.
+.agents/
+.superpowers/
+skills-lock.json
+evidence/
+
 # Playwright MCP artifacts (screenshots/traces from ad-hoc browser testing)
 .playwright-mcp/
 
