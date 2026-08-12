@@ -43,14 +43,16 @@ alone — the method already used in Excel:
 - **Upload date** — the date in the report's own filename, i.e. when the report
   that first lists the document was generated.
 
-De-duplicated to 23,306 distinct documents (246 repeats removed), 22,866 are
-measurable. Calendar days, the existing method:
+De-duplicated to 23,306 distinct documents (246 repeats removed). ECAA is not
+part of this process and is ignored (see "Ignoring sources" below), removing
+2,247 documents and leaving 21,059, of which 20,952 are measurable. Calendar
+days, the existing method:
 
 | Bucket | Documents | Share |
 |---|---|---|
-| 0–1 days | 19,883 | **87.0%** |
-| 2 days | 319 | 1.4% |
-| 3+ days | 2,664 | **11.7%** |
+| 0–1 days | 18,508 | **88.3%** |
+| 2 days | 86 | 0.4% |
+| 3+ days | 2,358 | **11.3%** |
 
 By source, calendar days — the spread is the point, and it survives:
 
@@ -60,9 +62,8 @@ By source, calendar days — the spread is the point, and it survives:
 | FAX | 3,315 | 87.3% | 0.0% | 12.7% |
 | CD | 1,990 | 83.4% | 1.3% | 15.4% |
 | Paper | 2,899 | 81.4% | 1.0% | 17.6% |
-| ECAA | 1,914 | 71.8% | 12.2% | 16.0% |
 
-Counted in business days the same population reads 95.4% / 4.1% / 0.5%, which
+Counted in business days the same population reads 96.6% / 3.1% / 0.3%, which
 flattens the category differences that make the report useful. **Calendar days
 is the headline**, matching what leadership already receives; the business-day
 figure appears as a single secondary line so the weekend's contribution stays
@@ -100,19 +101,39 @@ A new tab, opened by default. A strip of five category cards (documents per
 category), then a staff table (Staff, Docs, Pages, busiest category). No trend
 chart. The existing grid remains as drill-down.
 
-### 3. Turn-around data rules
+### 3. Ignoring sources
 
-- **Parse both filename conventions.** `YYYYMMDD-…` covers 90.4% of upload rows
-  (Email, FAX, Paper, CD). ECAA uses `MMDDYYYY …` with a space (8.1%) or carries
-  no leading date (1.4%). A parser understanding only the first convention
-  silently drops every ECAA document. 333 names remain unparseable — all ECAA —
-  and are excluded and counted, never guessed.
+Some values in the source data belong to processes this report does not cover.
+ECAA is one today; there will be others. Rather than hard-coding a rule per
+value, both windows carry an **ignore list**: the set of values discovered in
+the loaded data is presented as a checklist, and unchecking one removes it from
+every figure. The choice persists in config (`tat_ignored_sources`,
+`production_ignored_categories`) so it survives a restart and does not have to
+be re-applied each month.
+
+Ignored values are never silently dropped. The summary always states what was
+set aside and how much of it there was — "ignored: ECAA (2,247 documents)" —
+so a reader can tell the difference between data that was absent and data that
+was excluded on purpose.
+
+This deployment ignores ECAA on the turn-around side. Nothing is ignored by
+default in a fresh install; the list ships empty.
+
+### 4. Turn-around data rules
+
+- **Parse the document date from the filename.** With ECAA ignored, every
+  remaining document uses `YYYYMMDD-…` and **all 20,952 parse cleanly** — the
+  333 unparseable names in the raw data were all ECAA. `DocumentDate` also
+  understands the `MMDDYYYY ` (space-separated) form ECAA uses, so re-including
+  it later yields real dates rather than a wall of exclusions.
+- **Count, never guess, unparseable names.** A name with no recoverable date is
+  excluded and reported, never inferred from position or neighbours.
 - **De-duplicate by filename, earliest report wins.** A document listed in
   several reports is one document, uploaded once.
 - **Exclude documents whose upload date precedes their document date** — 107 in
   the sample, from future-dated filenames. Never render a negative turn-around.
 
-### 4. Production data rules
+### 5. Production data rules
 
 - **Take the category from the containing folder**, which yields exactly the
   five real categories. `SOURCE-FOLDER` is unreliable for this: it now encodes
@@ -140,14 +161,14 @@ chart. The existing grid remains as drill-down.
 Every excluded or ambiguous document is counted and displayed next to the figure
 it affects, so the denominator can be defended when questioned.
 
-### 5. Export and copy
+### 6. Export and copy
 
 Each window's Export produces one `.xlsx`: sheet 1 the summary figures including
 every exclusion count, sheet 2 the underlying detail rows. A **Copy summary**
 button places the headline figures on the clipboard as plain text for pasting
 into email.
 
-### 6. Visual polish
+### 7. Visual polish
 
 Both windows adopt the app's established typography, spacing and status
 vocabulary, and gain designed empty states. Summary tabs must be
@@ -166,9 +187,14 @@ recursively, which covers the dated and per-category subfolder layouts.
 
 - **New `DocumentDate`** — the two filename date conventions in one tested
   place.
+- **New `IgnoreList`** — the shared set-membership rule behind both windows'
+  ignore lists, so "which values exist in this data" and "which are excluded"
+  are answered the same way on both sides and each ignored value carries its
+  own count for display.
 - **`TurnaroundTime`** — de-duplication, calendar and business-day bucket
   classifiers, and the summary aggregate: totals, per-bucket counts and
-  percentages, per-`SourceType` breakdown, weekly series, exclusion counts.
+  percentages, per-`SourceType` breakdown, weekly series, ignored and excluded
+  counts.
 - **`ProductionReport`** — folder-derived categories, owner attribution, and the
   production summary aggregate: per-category documents and pages, per-staff
   totals with busiest category, day coverage, no-activity days, and the unknown
@@ -190,10 +216,15 @@ controls; the sparkline is a small drawn element, not a charting dependency.
 ## Testing
 
 Core is tested against hand-built fixtures, one per rule: a document listed in
-two reports, an ECAA `MMDDYYYY ` name, a name with no date, a future-dated name,
+two reports, an `MMDDYYYY ` name, a name with no date, a future-dated name,
 an ISO and a US `DATE-TIME` in one file, a comma-bearing quoted filename, a
 `CATEGORY@EMPLOYEE` source folder, a legacy `EMAILS_APPEAL` alias, an `Unknown`
 owner, and an empty file.
+
+The ignore list gets its own tests, because it changes every published figure:
+an ignored value must leave the percentages computed over the remaining
+population, must still report its own count, and must round-trip through config
+so a restart does not silently re-include it.
 
 The live figures quoted in this document become a miniature regression fixture —
 same shapes, small enough to verify by hand.
