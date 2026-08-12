@@ -139,7 +139,7 @@ default in a fresh install; the list ships empty.
 
 - **Take the category from the containing folder**, which yields exactly the
   five real categories. `SOURCE-FOLDER` is unreliable for this: it now encodes
-  `CATEGORY@EMPLOYEE` (`FAX@OHUMINILOWITSH`) and carries legacy aliases for the
+  `CATEGORY@EMPLOYEE` (`FAX@ASMITH`) and carries legacy aliases for the
   same category — `APPEALS` and `EMAILS_APPEAL` are one category, as are `MR`
   and `EMAILS_MR`. Deriving from `SOURCE-FOLDER` produces seven categories where
   there are five.
