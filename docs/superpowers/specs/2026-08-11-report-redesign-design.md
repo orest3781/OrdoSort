@@ -241,6 +241,26 @@ real patient and staff names. `.realSamples/` is gitignored.
 - Merging near-duplicate staff identities automatically.
 - Changing how the source logs are produced.
 
+## Deferred: the report builder
+
+A Power-Query-style report builder — choose columns, filter rows, group and
+aggregate, define computed columns, save the result as a named report — was
+raised and put on hold on 2026-08-11. One decision was taken before the pause
+and should survive it: **the builder would be the foundation, with Turn-around
+and Production shipping as built-in saved presets** rather than hard-coded
+windows. Nothing in this spec should make that harder later.
+
+The open question when it was paused was how computed columns get defined: a
+menu of canned transforms with parameters (extract a date from text, days
+between, bucket a number, text before a delimiter, first path segment — the six
+derivations these two reports actually need) versus a formula language. The
+former is days of work, the latter weeks.
+
+The design below deliberately keeps its transformations in small, named Core
+seams (`DocumentDate`, `IgnoreList`, the bucket classifiers, the category
+derivations) rather than inline in the view models, so a future builder can
+expose them as steps instead of reimplementing them.
+
 ## Sequencing
 
 Four phases, each independently shippable:
