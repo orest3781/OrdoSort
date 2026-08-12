@@ -347,8 +347,11 @@ public sealed class MatchMergeViewModel : ObservableObject
         int added = 0, ignored = 0;
         foreach (var p in paths)
         {
+            // OrdinalIgnoreCase, not the default List.Contains — see
+            // BulkRenameViewModel.AddFiles for why the case-sensitive compare
+            // let one file on disk become two rows headed for a file move.
             if (File.Exists(p) && p.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
-                && !_files.Contains(p))
+                && !_files.Contains(p, StringComparer.OrdinalIgnoreCase))
             {
                 _files.Add(p);
                 added++;

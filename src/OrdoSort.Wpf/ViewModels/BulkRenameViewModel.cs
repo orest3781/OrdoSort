@@ -225,7 +225,13 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         int added = 0, ignored = 0;
         foreach (var p in paths)
         {
-            if (File.Exists(p) && !_files.Contains(p)) { _files.Add(p); added++; }
+            // OrdinalIgnoreCase, not the default List.Contains: Windows resolves
+            // a path case-insensitively, so "scan.pdf" and "SCAN.pdf" name one
+            // file. Accepting both as rows sends two File.Moves after the same
+            // bytes — the second reports a failure with no cause. Matches the
+            // comparer the other intake sites already use.
+            if (File.Exists(p) && !_files.Contains(p, StringComparer.OrdinalIgnoreCase))
+            { _files.Add(p); added++; }
             else ignored++;
         }
         AddNote = added == 0 && ignored > 0

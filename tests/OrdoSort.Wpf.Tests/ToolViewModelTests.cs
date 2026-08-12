@@ -1031,6 +1031,28 @@ public class BulkRenameViewModelTests : IDisposable
         Assert.Single(vm.Preview);
     }
 
+    /// <summary>Windows resolves a path case-insensitively, so "scan_001.pdf"
+    /// and "SCAN_001.pdf" are the same file on disk — File.Exists says yes to
+    /// both. AddFiles used to dedupe with the default (ordinal, case-SENSITIVE)
+    /// List.Contains, so the second spelling was accepted as a second row over
+    /// the same bytes. Both rows then reach BulkRename.Execute: the first
+    /// File.Move succeeds, the second fails on a file that is no longer where
+    /// the row says it is, and the user is told "1 failed" for a file with
+    /// nothing wrong with it. Seven sibling tools already deduped with
+    /// OrdinalIgnoreCase; this one and MatchMerge did not.</summary>
+    [Fact]
+    public void ACaseOnlyDuplicateIsNotAddedTwice()
+    {
+        var vm = new BulkRenameViewModel();
+        var a = Touch("scan_001.pdf");
+        var shouty = Path.Combine(_dir, "SCAN_001.pdf");   // same file, different spelling
+
+        vm.AddFiles(new[] { a, shouty });
+
+        Assert.Contains("1 added", vm.AddNote);
+        Assert.Contains("1 ignored", vm.AddNote);
+    }
+
     [Fact]
     public void CountsLineCallsOutTheRowsStillWaitingOnAName()
     {
@@ -1533,6 +1555,26 @@ public class MatchMergeViewModelTests : IDisposable
         vm.RemoveFiles(new[] { drop });
         Assert.Single(vm.Rows);
         Assert.Equal(keep, vm.Rows[0].Source);
+    }
+
+    /// <summary>Same defect as BulkRenameViewModelTests.ACaseOnlyDuplicateIsNot
+    /// AddedTwice — these two were the only intake sites of ten still deduping
+    /// with the default case-SENSITIVE List.Contains. Both drive a file move,
+    /// which is what makes the duplicate row reachable as a phantom failure
+    /// rather than a cosmetic double-listing.</summary>
+    [Fact]
+    public void ACaseOnlyDuplicateIsNotAddedTwice()
+    {
+        var vm = Vm();
+        vm.LoadRosterFrom(WriteRoster());
+        var a = Touch("20240126-EVANS-FRANK.pdf");
+        var shouty = Path.Combine(_dir, "20240126-evans-frank.pdf");   // same file
+
+        vm.AddFiles(new[] { a, shouty });
+
+        Assert.Single(vm.Rows);
+        Assert.Contains("1 added", vm.AddNote);
+        Assert.Contains("1 ignored", vm.AddNote);
     }
 
     [Fact]
