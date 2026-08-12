@@ -163,12 +163,24 @@ public static class BoxLabelStore
                 // refuse. This ordering removes the state instead of
                 // detecting it. Not a substitute for the guard — an
                 // already-damaged file can still arrive from an older build.
+                // Truncate BEFORE the durability barrier, not after it. The
+                // old order flushed to disk and only then called SetLength, so
+                // a shorter save (a label client removed, or just shorter
+                // JSON) left a window where the new content was durable but
+                // the shrink was not: a crash or SMB drop there leaves a valid
+                // JSON prefix followed by stale trailing bytes from the old
+                // content, which System.Text.Json rejects outright — turning
+                // the guard above into a hard stop on box-number issuance at
+                // every station until someone hand-edits the file. Writing,
+                // shrinking, then flushing once pushes the content and the
+                // length together, and still never puts the file through the
+                // 0-byte state the old SetLength(0)-first order did.
                 var bytes = new UTF8Encoding(false).GetBytes(
                     JsonSerializer.Serialize(doc, Opts) + "\n");
                 fs.Seek(0, SeekOrigin.Begin);
                 fs.Write(bytes, 0, bytes.Length);
-                fs.Flush(flushToDisk: true);
                 fs.SetLength(bytes.Length);
+                fs.Flush(flushToDisk: true);
                 return result;
             }
         }

@@ -1,3 +1,4 @@
+using System.Text;
 using OrdoSort.Core;
 
 namespace OrdoSort.Core.Tests;
@@ -116,5 +117,92 @@ public class CsvTests : IDisposable
 
         Assert.Equal(new[] { "A", "B" }, rows[0]);
         Assert.Equal(new[] { "1", "2" }, rows[1]);
+    }
+
+    // ------------------------------------- stray quotes (regression)
+
+    /// <summary>A quote that is not at the start of a field is literal, and
+    /// above all does not swallow the rest of the file. Before the fix, the
+    /// unescaped quote in `3" pipe` flipped the parser into quote mode with
+    /// no closing quote ahead of it, so every following delimiter and newline
+    /// was appended as text into that one cell and Sue's row disappeared
+    /// entirely from the result — silently, with no exception. Asserting the
+    /// row COUNT is what makes this fail against the original: the old parser
+    /// returned 2 rows here, not 3.</summary>
+    [Fact]
+    public void AStrayQuoteMidFieldIsLiteralAndDoesNotSwallowTheFollowingRows()
+    {
+        var rows = Csv.Parse("Name,Note\nBob,3\" pipe\nSue,ok\n");
+
+        Assert.Equal(3, rows.Count);
+        Assert.Equal(new[] { "Name", "Note" }, rows[0]);
+        Assert.Equal(new[] { "Bob", "3\" pipe" }, rows[1]);
+        Assert.Equal(new[] { "Sue", "ok" }, rows[2]);
+    }
+
+    /// <summary>The roster shape of the same bug: a nickname quoted inside an
+    /// otherwise unquoted field. Every later person must still be parsed —
+    /// a dropped roster row means someone silently stops being matchable.</summary>
+    [Fact]
+    public void AQuotedNicknameInsideAnUnquotedFieldKeepsEveryLaterRow()
+    {
+        var rows = Csv.Parse("Name,Id\nRobert \"Bob\" Smith,7\nMaria Garcia,8\n");
+
+        Assert.Equal(3, rows.Count);
+        Assert.Equal(new[] { "Robert \"Bob\" Smith", "7" }, rows[1]);
+        Assert.Equal(new[] { "Maria Garcia", "8" }, rows[2]);
+    }
+
+    /// <summary>The fix must not regress the properly-quoted case: a quote at
+    /// the start of a field still opens a quoted field that may embed the
+    /// delimiter, doubled quotes and newlines.</summary>
+    [Fact]
+    public void AQuoteAtTheStartOfAFieldStillOpensAQuotedField()
+    {
+        var rows = Csv.Parse("Name,Note\n\"Smith, John\",\"said \"\"hi\"\"\"\nSue,ok\n");
+
+        Assert.Equal(3, rows.Count);
+        Assert.Equal(new[] { "Smith, John", "said \"hi\"" }, rows[1]);
+        Assert.Equal(new[] { "Sue", "ok" }, rows[2]);
+    }
+
+    // ------------------------------------- encoding (regression)
+
+    /// <summary>Excel's plain "CSV (Comma delimited)" export writes the system
+    /// ANSI codepage with no BOM, not UTF-8. Decoding those bytes as UTF-8
+    /// (the old behaviour) does not throw — it substitutes U+FFFD — so GARCÍA
+    /// silently loaded as GARC�A and MatchMerge's exact-match key no longer
+    /// matched. Asserting the absence of U+FFFD is what fails against the
+    /// original.</summary>
+    [Fact]
+    public void AnAnsiEncodedCsvKeepsItsAccentsInsteadOfBecomingReplacementChars()
+    {
+        var path = Path.Combine(_dir, "ansi.csv");
+        // 0xCD is Í and 0xC9 is É in both Latin-1 and Windows-1252, and
+        // neither byte is valid standalone UTF-8.
+        File.WriteAllBytes(path, new byte[]
+        {
+            (byte)'N', (byte)'a', (byte)'m', (byte)'e', (byte)',', (byte)'I', (byte)'d', (byte)'\n',
+            (byte)'G', (byte)'A', (byte)'R', (byte)'C', 0xCD, (byte)'A', (byte)',', (byte)'1', (byte)'\n',
+            (byte)'J', (byte)'O', (byte)'S', 0xC9, (byte)',', (byte)'2', (byte)'\n',
+        });
+
+        var rows = Csv.ReadTable(path);
+
+        Assert.Equal(new[] { "GARCÍA", "1" }, rows[1]);
+        Assert.Equal(new[] { "JOSÉ", "2" }, rows[2]);
+        Assert.DoesNotContain(rows.SelectMany(r => r), f => f.Contains('�'));
+    }
+
+    [Fact]
+    public void ValidUtf8IsStillDecodedAsUtf8WithOrWithoutABom()
+    {
+        var withBom = Path.Combine(_dir, "bom.csv");
+        var noBom = Path.Combine(_dir, "nobom.csv");
+        File.WriteAllText(withBom, "Name,Id\nGARCÍA,1\n", new UTF8Encoding(true));
+        File.WriteAllText(noBom, "Name,Id\nGARCÍA,1\n", new UTF8Encoding(false));
+
+        Assert.Equal(new[] { "GARCÍA", "1" }, Csv.ReadTable(withBom)[1]);
+        Assert.Equal(new[] { "GARCÍA", "1" }, Csv.ReadTable(noBom)[1]);
     }
 }

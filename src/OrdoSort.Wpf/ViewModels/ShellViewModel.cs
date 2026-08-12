@@ -240,6 +240,40 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             "OrdoSort — that didn't finish");
     }
 
+    /// <summary>Await a fire-and-forget task and report anything it throws.
+    ///
+    /// Initialize, StartProcessing and ApplySettings are all entry points the
+    /// window calls as <c>_ = SomethingAsync()</c>. An exception thrown inside
+    /// an async method — including before its first await — is captured into
+    /// the returned Task rather than thrown to the caller, and .NET does not
+    /// tear the process down for an unobserved faulted Task, so discarding
+    /// that Task discarded the failure with it: no dialog, no crash.log line,
+    /// nothing. The worst case was Initialize, where a throw from
+    /// <c>_watch.SetFolders</c> (a locked-down share can list a folder while
+    /// denying change-notification rights, and the share can drop between the
+    /// Directory.Exists check and EnableRaisingEvents) skipped the first scan
+    /// AND left the session with no live folder watcher — for the whole
+    /// session, since nothing re-arms it — while the dashboard looked merely
+    /// idle. This is the same net RouteCommand/SkipCommand/UndoCommand get
+    /// from AsyncRelayCommand; these three had no equivalent.
+    ///
+    /// The wording is deliberately not ReportUnexpected's: that one promises
+    /// "the document is in one of two places", which is the right sentence for
+    /// a failed file move and the wrong one for a failed startup or a failed
+    /// settings save, where no document was in flight at all.</summary>
+    private async Task RunGuarded(Task work, string action, string consequence)
+    {
+        try { await work; }
+        catch (Exception ex)
+        {
+            UnexpectedError?.Invoke(ex);
+            _dialogs.Warn(
+                $"{action} didn't finish.\n\n{consequence}\n\n" +
+                "The technical details were written to crash.log, beside your config file.",
+                "OrdoSort — that didn't finish");
+        }
+    }
+
     /// <summary>Tell the user a document moved but went unrecorded, and keep
     /// going — the queue has already advanced past it.</summary>
     private void ReportAuditFailure(AuditError ex, string title)
@@ -444,7 +478,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     /// <summary>Called once by the window after the viewer init attempt:
     /// start watching and take the first scan.</summary>
-    public void Initialize() => _ = InitializeAsync();
+    public void Initialize() => _ = RunGuarded(InitializeAsync(), "Starting up",
+        "Folder watching may not be live for this session, so new arrivals might " +
+        "not appear on their own. Use Rescan to refresh, or restart OrdoSort.");
 
     internal async Task InitializeAsync()
     {
@@ -1134,7 +1170,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     private void RaiseProgress() => ProgressLine = $"{_session.Pos + 1} / {_session.Total}";
 
-    internal void StartProcessing() => _ = StartProcessingAsync();
+    internal void StartProcessing() => _ = RunGuarded(StartProcessingAsync(),
+        "Starting that session",
+        "No document has been renamed or moved. Go back to the dashboard and try again.");
 
     internal async Task StartProcessingAsync()
     {
@@ -1658,7 +1696,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// fresh daily backup for the NEW db), save (warning, not crashing, on a
     /// read-only file), rebuild watchers, refresh Ready. Settings is only
     /// reachable from Ready, so no live session.</summary>
-    internal void ApplySettings(Config cfg) => _ = ApplySettingsAsync(cfg);
+    internal void ApplySettings(Config cfg) => _ = RunGuarded(ApplySettingsAsync(cfg),
+        "Saving your settings",
+        "Some of what you changed may not have been applied. Reopen Settings to check.");
 
     internal async Task ApplySettingsAsync(Config cfg)
     {

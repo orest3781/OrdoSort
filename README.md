@@ -57,11 +57,13 @@ workflow tests, builds, zips, and publishes.
   word-separator polishing, and a color-coded confirmation card after every
   routing. Commit, set-aside, and undo are reentrancy-guarded — a fast
   double-press can never mislabel a document.
-- **Two naming modes** — *Insert at the `--`*: any filename containing `--`
+- **Four naming modes** — *Insert at the `--`*: any filename containing `--`
   gets the typed name spliced at the first one (`REPORT--1042.pdf` + SMITH
-  JOHN → `REPORT-SMITH JOHN-1042.pdf`); or *Full replace*, which takes
-  **every** PDF in the inbox (insert sessions only pick up `--` files).
-  Per-route overrides, filename suffixes, and real config-driven hotkeys.
+  JOHN → `REPORT-SMITH JOHN-1042.pdf`); *Full replace*, which takes
+  **every** PDF in the inbox (insert sessions only pick up `--` files); or
+  *Prefix* and *Append*, which put the typed name before or after the
+  existing filename. Per-route overrides, filename suffixes, and real
+  config-driven hotkeys.
 - **Dashboard** — a compact window parked in the corner of your screen that
   sizes itself to its content: a big inbox count, plus a grid of monitored
   folder tiles. A header dropdown picks their visibility: *Active only*
@@ -99,7 +101,14 @@ workflow tests, builds, zips, and publishes.
   per-client retention offsets, and a resettable running number; a live
   card previews the exact label, a full-sheet print preview with printer
   picker prints in-app at guaranteed 100% scale, and PDF export remains as
-  an alternative).
+  an alternative). Also *Filename list*, *PDF page counts*, *List
+  reformatter*, *Merge PDFs from zip*, *Zip* and *Unzip*.
+- **Reports** — *Turn-around time* reads a folder of PECF report exports
+  (xlsx or csv) and reports how long each document waited between its date
+  and its upload; *Production reports* sweeps a folder of daily move-log
+  CSVs and totals them by whichever columns you tick, with derived
+  Employee, Date and Hour columns. Both load subfolders by default, say
+  what they skipped, and export to spreadsheet.
 
 ## Structure
 
@@ -155,7 +164,7 @@ on purpose:
 |---|---|
 | `locked\` | Password-protected PDFs: twelve whose passwords are pre-saved in the config, six whose passwords you deliberately do **not** have, and two that aren't encrypted at all. |
 | `rename\` | Review-stem names to rebuild, a junk token to find/replace, mixed case, and a pair that collides once renamed. |
-| `merge\` | A roster and 22 PDFs engineered to hit every match status: 8 clean, **5 ambiguous** and **3 suggested** (these open Review matches), 2 already merged, 2 unmatched, 2 unnamed. |
+| `merge\` | A roster and 23 PDFs engineered to hit every match status: 8 clean, **5 ambiguous** and **3 suggested** (these open Review matches), 3 already merged, 2 unmatched, 2 unnamed. |
 
 The generator is deterministic — same seed, same workbench — and finishes by
 running the app's own `Config`, `Scanner`, `MatchMerge` and `Unlock` logic

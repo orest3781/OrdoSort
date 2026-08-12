@@ -70,13 +70,13 @@ public class ProductionViewModelTests : IDisposable
     // Two owners, two source-folders — INVOICES carries BOTH owners (so
     // unchecking Employee actually merges two rows into one, not just drops
     // a column that happened to already be 1:1 with its folder), CLAIMS
-    // carries only jsmith.
+    // carries only user2.
     private const string FixtureRows =
         "4/1/2025 7:55,ACME\\user1,a.pdf,filed,3,INVOICES\n" +
         "4/1/2025 9:10,ACME\\user1,b.pdf,filed,2,INVOICES\n" +
-        "4/1/2025 11:20,ACME\\jsmith,e.pdf,filed,4,INVOICES\n" +
-        "4/1/2025 14:30,ACME\\jsmith,c.pdf,filed,5,CLAIMS\n" +
-        "4/2/2025 8:00,ACME\\jsmith,d.pdf,filed,1,CLAIMS\n";
+        "4/1/2025 11:20,ACME\\user2,e.pdf,filed,4,INVOICES\n" +
+        "4/1/2025 14:30,ACME\\user2,c.pdf,filed,5,CLAIMS\n" +
+        "4/2/2025 8:00,ACME\\user2,d.pdf,filed,1,CLAIMS\n";
 
     [Fact]
     public void LoadingAFolderPopulatesPickListsWithDerivedColumnsAndDefaults()
@@ -114,11 +114,11 @@ public class ProductionViewModelTests : IDisposable
         vm.AddPaths(new[] { _dir });
 
         // default group = [SOURCE-FOLDER, Employee], sorted ordinally:
-        // CLAIMS/jsmith, INVOICES/user1, INVOICES/jsmith
+        // CLAIMS/user2, INVOICES/user1, INVOICES/user2
         WaitFor(() => vm.Rows.Count == 3, "all three (SOURCE-FOLDER, Employee) groups should appear");
 
         Assert.Equal("CLAIMS", Cell(vm, vm.Rows[0], "SOURCE-FOLDER"));
-        Assert.Equal("jsmith", Cell(vm, vm.Rows[0], "Employee"));
+        Assert.Equal("user2", Cell(vm, vm.Rows[0], "Employee"));
         Assert.Equal("2", Cell(vm, vm.Rows[0], "Records"));
         Assert.Equal("6", Cell(vm, vm.Rows[0], "PDF-PAGE-COUNT"));
 
@@ -129,7 +129,7 @@ public class ProductionViewModelTests : IDisposable
         Assert.Equal("5", Cell(vm, vm.Rows[1], "PDF-PAGE-COUNT"));
 
         Assert.Equal("INVOICES", Cell(vm, vm.Rows[2], "SOURCE-FOLDER"));
-        Assert.Equal("jsmith", Cell(vm, vm.Rows[2], "Employee"));
+        Assert.Equal("user2", Cell(vm, vm.Rows[2], "Employee"));
         Assert.Equal("1", Cell(vm, vm.Rows[2], "Records"));
         Assert.Equal("4", Cell(vm, vm.Rows[2], "PDF-PAGE-COUNT"));
     }
@@ -151,7 +151,7 @@ public class ProductionViewModelTests : IDisposable
         Assert.True(saveCfgCalls > 0);
         Assert.DoesNotContain("Employee", vm.ColumnNames);
         // fewer key columns really does mean fewer rows here: INVOICES'
-        // user1 and jsmith rows collapse into one folder-level total
+        // user1 and user2 rows collapse into one folder-level total
         Assert.Equal(2, vm.Rows.Count);
         var sourceFolderIndex = vm.ColumnNames.ToList().IndexOf("SOURCE-FOLDER").ToString(CultureInfo.InvariantCulture);
         var invoices = vm.Rows.Single(r => r[sourceFolderIndex] == "INVOICES");
