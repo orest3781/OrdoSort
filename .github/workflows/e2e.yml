@@ -5,8 +5,14 @@ name: E2E
 # desktop session and runs as its own job rather than folding into CI's fast
 # build-test / smoke gate.
 
+# Bare `push:` meant every push to every branch, and `pull_request:` then ran
+# the whole 20-minute desktop suite a SECOND time for any branch that had a PR
+# open. Gating push on main and tags keeps the release-critical runs and lets
+# the PR trigger cover everything else exactly once.
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
