@@ -551,44 +551,26 @@ public sealed class Config
     /// <see cref="WriteAtomicNew"/>.</summary>
     internal static void WriteAtomic(string fullPath, string content)
     {
-        // GUID-suffixed, not a fixed "<file>.tmp": two stations saving the
-        // same file concurrently used to share one tmp name, so one station
-        // could install the other's bytes, or find its own tmp deleted out
-        // from under it mid-retry (2026-08 audit finding 4a).
-        var tmp = $"{fullPath}.{Guid.NewGuid():N}.tmp";
-        try
-        {
-            // Encoding matches File.WriteAllText's default (UTF-8, no BOM),
-            // so this cannot alter a single byte of what lands on disk. Moved
-            // inside the try (2026-08 audit finding 4b): a disk-full failure
-            // here used to strand a partial tmp outside any cleanup path.
-            File.WriteAllText(tmp, content);
-            // File.Replace preserves the destination's ACLs and is the
-            // strongest primitive Windows offers, but it REQUIRES the
-            // destination to exist — hence the fallback for first creation.
-            // Retry on access errors since the destination might be open for
-            // reading, and the retries allow readers to release the handle.
-            for (var attempt = 0; attempt < 50; attempt++)
-            {
-                try
-                {
-                    if (File.Exists(fullPath))
-                        File.Replace(tmp, fullPath, destinationBackupFileName: null);
-                    else
-                        File.Move(tmp, fullPath);
-                    return;
-                }
-                catch (IOException) when (attempt < 49) { }
-                catch (UnauthorizedAccessException) when (attempt < 49) { }
-                OnRetryForTests?.Invoke(attempt);
-                System.Threading.Thread.Sleep(10);
-            }
-        }
-        catch
-        {
-            try { File.Delete(tmp); } catch { /* best effort */ }
-            throw;
-        }
+        // The temp-sibling naming, the retry loop and the cleanup all live in
+        // AtomicPlace now — see that module (and CONTEXT.md's "atomic
+        // placement") for the two rules this used to re-state. The only thing
+        // left here is what to write and how failure reaches the caller.
+        //
+        // File.WriteAllText's default encoding (UTF-8, no BOM) is unchanged,
+        // so this cannot alter a single byte of what lands on disk.
+        if (AtomicPlace.TryReplace(fullPath, tmp => File.WriteAllText(tmp, content), out var error))
+            return;
+
+        // AtomicPlace reports; this method has always thrown, and TrySave's
+        // Attempt catches by TYPE. IOException is inside that catch's set, so
+        // a failure still lands in the same arm with the same message. It
+        // does narrow the type — an UnauthorizedAccessException now surfaces
+        // as IOException — which is invisible here because Attempt treats
+        // IOException, UnauthorizedAccessException, SecurityException and
+        // DirectoryNotFoundException identically, and ConfigException (the
+        // one it DOES treat differently) is raised by path confinement before
+        // any write, never by this method.
+        throw new IOException(error);
     }
 
     /// <summary>Create-only atomic write, for files whose ownership belongs to
@@ -649,33 +631,14 @@ public sealed class Config
     /// pattern as Theme.ThemeManager.IsHighContrast.</summary>
     internal static Action<string>? BeforeCreateOnlyMove;
 
-    /// <summary>Test seam: invoked once per failed attempt in
-    /// <see cref="WriteAtomic"/>'s retry loop, right after the attempt's own
-    /// catch and immediately before the loop's Thread.Sleep(10), with the
-    /// zero-based attempt index that just failed. Lets a test release a
-    /// destination-holding reader deterministically partway through the
-    /// retry budget — proving the retry loop, not luck, is what makes the
-    /// write succeed — instead of racing an independent wall-clock timer
-    /// against it. AtomicWriteTests.WriteSucceedsOnceAReaderReleasesWithinTheRetryBudget
-    /// used to release its reader from a Task.Run'd Thread.Sleep(100) while
-    /// WriteAtomic retried on a separate real-time budget (up to 500ms via
-    /// Thread.Sleep(10) * 50): two independently-clocked waits that only
-    /// stayed in the right order because 100ms is comfortably under 500ms on
-    /// an unloaded machine. Under thread-pool contention on a shared CI
-    /// runner, the releaser's own Task.Run dispatch is not guaranteed to run
-    /// within any fixed window (the same throttled-injection mechanism
-    /// documented on UnlockViewModel.OffUiThreadDispatchForTests), so the
-    /// race could flip. This hook removes the second clock entirely: the
-    /// test releases its reader from INSIDE the retry loop's own callback,
-    /// on the same thread, with no timer of its own. Real callers never set
-    /// this. Same "settable only by tests, inert in production" shape as
-    /// <see cref="BeforeCreateOnlyMove"/> / Commit.RaceHookForTests. No
-    /// [Collection] coordination needed for the same reason
-    /// BeforeCreateOnlyMove's own doc comment gives for a per-path guard —
-    /// here, more simply, only AtomicWriteTests sets this field at all, and
-    /// its own test methods already run one at a time under xUnit's default
-    /// same-class sequencing.</summary>
-    internal static Action<int>? OnRetryForTests;
+    // OnRetryForTests lived here. The retry loop it hooked moved to
+    // AtomicPlace, and so did the seam: AtomicPlace.BeforeAttempt does the
+    // same job for all three placement call sites instead of one, and carries
+    // the destination path so a test can ignore placements that aren't its
+    // own. The reasoning it documented is preserved there — releasing a held
+    // reader from INSIDE the loop's own callback rather than racing it with a
+    // second, independently-clocked timer, which is what used to flake on a
+    // shared CI runner.
 
     private static void SaveMain(Config cfg, string path)
     {

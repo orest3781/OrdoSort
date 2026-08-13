@@ -10,8 +10,24 @@ namespace OrdoSort.Core.Tests;
 /// The two properties worth protecting, both of which cost real money before
 /// they were fixed: a reader never sees a half-written destination, and a
 /// failed write never destroys what was already there.</summary>
+[Collection(AtomicPlaceTests.Name)]
 public class AtomicPlaceTests : IDisposable
 {
+    /// <summary>Every class that ASSIGNS AtomicPlace.BeforeAttempt shares this
+    /// collection, because the seam is a single process-wide field and xUnit
+    /// runs classes in parallel: two setters clobber each other and the loser
+    /// silently observes nothing.
+    ///
+    /// A path guard is not enough. It stops a hook from acting on a write it
+    /// doesn't own — which is why the field carries the destination — but it
+    /// cannot stop one class's assignment replacing another's. That is a
+    /// distinction the seams this replaced never had to make: each of them
+    /// had exactly one setter class, and Config.OnRetryForTests' own doc
+    /// comment said so. Collapsing them into one shared seam is what created
+    /// the hazard, and it showed up immediately — one class's reader was
+    /// never released, the other counted 48 attempts instead of 50.</summary>
+    public const string Name = "AtomicPlace seam collection";
+
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordo_place_" + Guid.NewGuid());
 
     public AtomicPlaceTests() => Directory.CreateDirectory(_dir);
@@ -207,5 +223,43 @@ public class AtomicPlaceTests : IDisposable
         Assert.True(AtomicPlace.TryReplace(dest, record, out _));
 
         Assert.Equal(2, names.Distinct().Count());
+    }
+}
+
+/// <summary>Declares the collection <see cref="AtomicPlaceTests.Name"/> names.
+/// No ICollectionFixture: each member builds and tears down its own temp root
+/// and nulls the seam in Dispose — nothing needs to be built once and shared.
+/// Same reasoning as UnlockThresholdCollection.</summary>
+[CollectionDefinition(AtomicPlaceTests.Name)]
+public class AtomicPlaceSeamCollection
+{
+}
+
+/// <summary>Pins the mechanism, not the timing. Like
+/// UnlockThresholdTestCollectionMembershipTests: a race on a single field
+/// assignment can't be forced on demand, so a timing-based regression test
+/// would either always pass or be flaky. What CAN be asserted is the thing
+/// the fix actually relies on — that every class assigning
+/// AtomicPlace.BeforeAttempt declares the same [Collection] name.
+///
+/// Add a class to this list when it starts assigning the seam. Config's
+/// create-only write still has its own BeforeCreateOnlyMove hook and its own
+/// setter (ConfigSplitTests); when that migrates to BeforeAttempt too, it
+/// joins here.</summary>
+public class AtomicPlaceSeamMembershipTests
+{
+    private static string? CollectionNameOf(Type t) =>
+        t.GetCustomAttributesData()
+            .FirstOrDefault(a => a.AttributeType.FullName == "Xunit.CollectionAttribute")
+            ?.ConstructorArguments.FirstOrDefault().Value as string;
+
+    [Fact]
+    public void EverySeamSetterSharesOneCollection()
+    {
+        var setters = new[] { typeof(AtomicPlaceTests), typeof(AtomicWriteTests) };
+
+        var names = setters.Select(CollectionNameOf).ToArray();
+
+        Assert.All(names, n => Assert.Equal(AtomicPlaceTests.Name, n));
     }
 }

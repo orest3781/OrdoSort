@@ -13,6 +13,7 @@ namespace OrdoSort.Core.Tests;
 /// temp-file-then-replace actually provides: an observer of the destination
 /// path sees either the complete old content or the complete new content,
 /// never a partial or empty file.</summary>
+[Collection(AtomicPlaceTests.Name)]
 public class AtomicWriteTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(),
@@ -122,17 +123,25 @@ public class AtomicWriteTests : IDisposable
     /// retry budget, release it, and require the write to have succeeded —
     /// not thrown — with the new content landed.
     ///
-    /// The release is gated on Config.OnRetryForTests, fired synchronously
-    /// from inside WriteAtomic's own retry loop, rather than on a
-    /// Task.Run'd Thread.Sleep racing the loop's real 500ms budget on an
-    /// independent clock (2026-08 CI audit: that version flaked on GitHub
-    /// Actions' windows-latest runner because the releaser's own Task.Run
-    /// dispatch has no guaranteed upper bound under shared-runner thread-pool
-    /// contention — see OnRetryForTests's own doc comment). Releasing on
+    /// The release is gated on AtomicPlace.BeforeAttempt, fired synchronously
+    /// from inside the retry loop, rather than on a Task.Run'd Thread.Sleep
+    /// racing the loop's real 500ms budget on an independent clock (2026-08
+    /// CI audit: that version flaked on GitHub Actions' windows-latest runner
+    /// because the releaser's own Task.Run dispatch has no guaranteed upper
+    /// bound under shared-runner thread-pool contention). Releasing on
     /// attempt 2 (not attempt 0) keeps the retry loop's own claim honest:
     /// the first two attempts genuinely fail while the reader still holds
     /// the file, so the eventual success is the loop actually working, not
-    /// a lucky first try.</summary>
+    /// a lucky first try.
+    ///
+    /// The seam moved from Config.OnRetryForTests to AtomicPlace when the
+    /// retry loop did. Two differences, neither of which changes what this
+    /// test proves: it now fires BEFORE each attempt rather than after a
+    /// failed one, so releasing on attempt 2 means attempt 2 is the one that
+    /// lands rather than attempt 3; and it carries the destination path,
+    /// because the hook is process-wide and every other test class's saves
+    /// run through it too — hence the path guard below, which the old
+    /// per-Config seam did not need.</summary>
     [Fact]
     public void WriteSucceedsOnceAReaderReleasesWithinTheRetryBudget()
     {
@@ -142,8 +151,9 @@ public class AtomicWriteTests : IDisposable
         var hold = new FileStream(path, FileMode.Open, FileAccess.Read,
             FileShare.Read, bufferSize: 4096, useAsync: false);
         var releasedAtAttempt = -1;
-        Config.OnRetryForTests = attempt =>
+        AtomicPlace.BeforeAttempt = (destination, attempt) =>
         {
+            if (destination != path) return;   // not our write
             if (attempt == 2)
             {
                 releasedAtAttempt = attempt;
@@ -156,7 +166,7 @@ public class AtomicWriteTests : IDisposable
         }
         finally
         {
-            Config.OnRetryForTests = null;
+            AtomicPlace.BeforeAttempt = null;
             hold.Dispose();   // no-op if the callback above already ran
         }
 
