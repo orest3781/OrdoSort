@@ -32,3 +32,43 @@ behind `PathIdentity` and nothing above it moves.
 Say **path identity** rather than "same path", "duplicate path", or "path
 comparison" — the first two beg the question this term exists to answer, and the
 third names a mechanism instead of the decision.
+
+## Atomic placement
+
+Getting a file to its destination without any reader ever seeing it
+half-written: write to a sibling temp file, then move that into place in one
+filesystem operation.
+
+**Atomic placement lives in `AtomicPlace` in `OrdoSort.Core`.** Two rules a
+caller no longer has to carry:
+
+- The temp file is a **sibling** of the destination, never `%TEMP%` — the move
+  is only atomic within one volume, and these files live on shares.
+- The temp name carries a **GUID**, never a fixed `.tmp` — two stations saving
+  the same file once shared one temp name, and one could install the other's
+  bytes or find its own temp deleted mid-write.
+
+Placement comes in two kinds, and the difference is about **ownership, not
+mechanics**. Where a newer version is always correct — the config and its side
+files — placement replaces what's there. Where the file belongs to whoever
+created it — box labels — placement refuses, and a peer having won the race is
+a *success*: their content is newer truth than the caller's snapshot. Replacing
+in that second case reissued a box number already printed on a physical box.
+
+### Atomic placement is not the created-by-me gate
+
+These two read alike and are constantly confused, including in a review that
+proposed merging them. They are not the same rule and they protect different
+things.
+
+Atomic placement owns a temp file **no other call can name**, so cleanup after
+a failure is unconditional and the destination is never touched.
+
+The **created-by-me gate** — in `Unlock.PlaceAndSwap`, `ZipMerge.MergeZipCore`
+and `Zipper` — guards a *collision-freed* name, which a peer legitimately can
+own. A free name proves only that it was free at check time, so those call
+sites clean up **only what this call actually put on disk**. Deleting on that
+assumption without the gate destroyed files other stations had written.
+
+One is safe because the name is private. The other is careful because the name
+is public. Don't merge them.
