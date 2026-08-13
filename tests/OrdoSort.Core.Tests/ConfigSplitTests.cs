@@ -2,6 +2,12 @@ namespace OrdoSort.Core.Tests;
 
 /// <summary>Split config: side files win, inline is the legacy fallback,
 /// and a broken side file fails naming that file.</summary>
+/// <summary>In the AtomicPlace seam collection because
+/// BootstrapLeavesAPeerCreatedBoxLabelsFileIntact assigns
+/// AtomicPlace.BeforeAttempt — see AtomicPlaceTests.Name for why every
+/// setter of that single process-wide field must be serialised against the
+/// others.</summary>
+[Collection(AtomicPlaceTests.Name)]
 public class ConfigSplitTests : IDisposable
 {
     private readonly string _dir = Directory.CreateTempSubdirectory("ordosplit_").FullName;
@@ -135,7 +141,7 @@ public class ConfigSplitTests : IDisposable
     /// the write landing. The old WriteAtomic re-checked File.Exists inside
     /// its own retry loop and switched to File.Replace the instant it saw the
     /// peer's file — waiting out the peer's lock and then clobbering its
-    /// counters. Config.BeforeCreateOnlyMove simulates the peer landing in
+    /// counters. AtomicPlace.BeforeAttempt simulates the peer landing in
     /// that exact gap, deterministically, instead of racing real threads.
     /// The peer's content must survive; A's stale in-memory snapshot must
     /// not land.</summary>
@@ -154,10 +160,17 @@ public class ConfigSplitTests : IDisposable
         // Filtered by path: xUnit runs other test classes' Config.Save calls
         // concurrently, and this hook is process-wide, so an unrelated
         // bootstrap for some OTHER test's box-labels.json must no-op here
-        // rather than racing to write ours.
-        Config.BeforeCreateOnlyMove = fp =>
+        // rather than racing to write ours. The path guard is why this class
+        // can share the seam; the [Collection] on it is why two classes can't
+        // clobber each other's ASSIGNMENT — a different problem, see
+        // AtomicPlaceTests.Name.
+        //
+        // Attempt 0 because create-only never retries: a peer holding the
+        // destination is the answer, not something to wait out.
+        AtomicPlace.BeforeAttempt = (destination, attempt) =>
         {
-            if (fp == labelsPath) File.WriteAllText(labelsPath, peerContent);
+            if (destination == labelsPath && attempt == 0)
+                File.WriteAllText(labelsPath, peerContent);
         };
         try
         {
@@ -165,7 +178,7 @@ public class ConfigSplitTests : IDisposable
         }
         finally
         {
-            Config.BeforeCreateOnlyMove = null;
+            AtomicPlace.BeforeAttempt = null;
         }
 
         var finalContent = File.ReadAllText(labelsPath);

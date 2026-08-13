@@ -242,10 +242,9 @@ public class AtomicPlaceSeamCollection
 /// the fix actually relies on — that every class assigning
 /// AtomicPlace.BeforeAttempt declares the same [Collection] name.
 ///
-/// Add a class to this list when it starts assigning the seam. Config's
-/// create-only write still has its own BeforeCreateOnlyMove hook and its own
-/// setter (ConfigSplitTests); when that migrates to BeforeAttempt too, it
-/// joins here.</summary>
+/// Add a class to this list when it starts assigning the seam. A grep for
+/// <c>AtomicPlace.BeforeAttempt =</c> across tests/ confirms the list below
+/// is the complete set.</summary>
 public class AtomicPlaceSeamMembershipTests
 {
     private static string? CollectionNameOf(Type t) =>
@@ -256,7 +255,12 @@ public class AtomicPlaceSeamMembershipTests
     [Fact]
     public void EverySeamSetterSharesOneCollection()
     {
-        var setters = new[] { typeof(AtomicPlaceTests), typeof(AtomicWriteTests) };
+        var setters = new[]
+        {
+            typeof(AtomicPlaceTests),
+            typeof(AtomicWriteTests),
+            typeof(ConfigSplitTests),
+        };
 
         var names = setters.Select(CollectionNameOf).ToArray();
 

@@ -596,40 +596,24 @@ public sealed class Config
     /// that failure is exactly the signal this method treats as done.</summary>
     internal static void WriteAtomicNew(string fullPath, string content)
     {
-        var tmp = $"{fullPath}.{Guid.NewGuid():N}.tmp";
-        try
-        {
-            File.WriteAllText(tmp, content);
-            BeforeCreateOnlyMove?.Invoke(fullPath);
-            try
-            {
-                File.Move(tmp, fullPath);
-            }
-            catch (IOException) when (File.Exists(fullPath))
-            {
-                // The destination exists now — someone else won. Their
-                // content stands; ours is discarded. This is success.
-                File.Delete(tmp);
-            }
-        }
-        catch
-        {
-            try { File.Delete(tmp); } catch { /* best effort */ }
-            throw;
-        }
+        // Create-only placement, including the peer-wins-is-success rule this
+        // method's doc comment above describes, now lives in AtomicPlace —
+        // see that module and CONTEXT.md's "atomic placement".
+        if (AtomicPlace.TryCreateNew(fullPath, tmp => File.WriteAllText(tmp, content), out var error))
+            return;
+
+        // Same reasoning as WriteAtomic: this has always thrown, and
+        // TrySave's Attempt catches by type. Note a peer winning the race is
+        // NOT a failure and never reaches here.
+        throw new IOException(error);
     }
 
-    /// <summary>Test seam: invoked immediately before WriteAtomicNew's move
-    /// with the destination path being written, so a test can
-    /// deterministically simulate a peer creating that destination in the
-    /// gap between a caller's own File.Exists guard and this write landing —
-    /// the exact race finding 1 describes. It receives the path (rather than
-    /// firing blind) so that other tests' unrelated WriteAtomicNew calls,
-    /// which run this same process-wide hook when xUnit parallelizes test
-    /// classes, can no-op instead of racing to write a path they don't own.
-    /// Real callers never set this. Same "settable only by tests" seam
-    /// pattern as Theme.ThemeManager.IsHighContrast.</summary>
-    internal static Action<string>? BeforeCreateOnlyMove;
+    // BeforeCreateOnlyMove lived here. Its job — let a test plant a peer's
+    // file in the gap between a caller's File.Exists guard and this write
+    // landing — is now AtomicPlace.BeforeAttempt's, fired on attempt 0. It
+    // still carries the destination path for the reason this seam always
+    // did: the hook is process-wide and xUnit runs other classes' saves
+    // concurrently, so a test must be able to ignore writes it doesn't own.
 
     // OnRetryForTests lived here. The retry loop it hooked moved to
     // AtomicPlace, and so did the seam: AtomicPlace.BeforeAttempt does the

@@ -16,7 +16,7 @@ using PdfSharp.Pdf.IO;
 ///   deleting `target` even when this call never created it.
 ///
 /// These tests force that gap deterministically via Unlock.RaceHookForTests
-/// (same shape as Commit.RaceHookForTests / Config.BeforeCreateOnlyMove): it
+/// (same shape as Commit.RaceHookForTests / AtomicPlace.BeforeAttempt): it
 /// fires with the exact CollisionFree-picked path right before `place` tries
 /// its exclusive create, so a peer file can be planted in the precise window
 /// instead of relying on real thread timing. Both the buffered path (the one

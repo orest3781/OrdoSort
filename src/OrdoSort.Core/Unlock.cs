@@ -460,10 +460,17 @@ public static class Unlock
     /// landing — the exact race a shared folder makes possible (another
     /// station claims that name in that gap). Same "settable only by tests,
     /// inert in production" shape as <see cref="Commit.RaceHookForTests"/>,
-    /// parameterized by path like <see cref="Config.BeforeCreateOnlyMove"/>
-    /// so a test can filter to its own target — this hook is process-wide
-    /// and xUnit runs other test classes' Unlock calls concurrently, so no
-    /// [Collection] coordination is needed, only a path check.</summary>
+    /// parameterized by path like <see cref="AtomicPlace.BeforeAttempt"/> so
+    /// a test can filter to its own target — this hook is process-wide and
+    /// xUnit runs other test classes' Unlock calls concurrently.
+    ///
+    /// The path check is what makes it safe to FIRE on a foreign write. It is
+    /// NOT what makes it safe to ASSIGN: a single field with two setter
+    /// classes clobbers, last writer wins, and no path guard can see that.
+    /// This hook is safe today because exactly one class sets it
+    /// (UnlockNeverOverwritesTests). A second setter needs a [Collection]
+    /// shared between them — see AtomicPlaceTests.Name, where collapsing two
+    /// seams into one field gave it two setters and did exactly that.</summary>
     internal static Action<string>? RaceHookForTests;
 
     /// <summary>The shared tail of both paths: pick a collision-free target,
