@@ -102,14 +102,9 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     /// itself, not a silently unchanged grid).</summary>
     public void AddPaths(IEnumerable<string> paths)
     {
-        var added = 0;
-        foreach (var p in paths)
-        {
-            if (_sources.Contains(p, StringComparer.OrdinalIgnoreCase)) continue;
-            _sources.Add(p);
-            added++;
-        }
-        AddNote = added == 0 ? "nothing new — already listed" : "";
+        var taken = Intake.Add(_sources, paths);
+        _sources.AddRange(taken.Files);
+        AddNote = taken.Note("file");
         Refresh(immediate: true);
     }
 

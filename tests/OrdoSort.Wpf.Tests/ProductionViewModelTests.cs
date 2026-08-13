@@ -136,10 +136,9 @@ public class ProductionViewModelTests : IDisposable
 
     /// <summary>Windows resolves a path case-insensitively, so the same
     /// folder root added twice under two different spellings names one
-    /// location on disk. AddPaths' own dedupe (StringComparer.OrdinalIgnoreCase
-    /// over _sources — the same policy Intake.Add now owns for the tools that
-    /// route their dedupe through it) must keep the second spelling from
-    /// sweeping the fixture a second time and doubling every row.</summary>
+    /// location on disk. The dedupe Intake.Add now owns for this tool must
+    /// keep the second spelling from sweeping the fixture a second time and
+    /// doubling every row.</summary>
     [Fact]
     public void ACaseOnlyDuplicateIsNotAddedTwice()
     {
@@ -152,6 +151,25 @@ public class ProductionViewModelTests : IDisposable
         WaitFor(() => vm.Rows.Count == 3, "all three (SOURCE-FOLDER, Employee) groups should appear exactly once, not doubled");
         // CLAIMS/user2 — would be "4" if the fixture had swept twice
         Assert.Equal("2", Cell(vm, vm.Rows[0], "Records"));
+    }
+
+    /// <summary>The spelling difference that case-insensitivity alone never
+    /// caught: "…\dir" and "…\dir\" compare unequal as raw strings, so before
+    /// canonicalisation both could sit in _sources and the folder was swept
+    /// twice — silently doubling every count in a report someone reads as
+    /// fact. This is the defect that made the three source-root tools worth
+    /// migrating, not just the seven that hold files.</summary>
+    [Fact]
+    public void ATrailingSeparatorDoesNotSweepTheSameFolderTwice()
+    {
+        Write("20250303-1144-swept.csv", SweepHeaders + "\n" + FixtureRows);
+        var vm = MakeVm(new Config(), new FakeDialogs());
+
+        vm.AddPaths(new[] { _dir, _dir + Path.DirectorySeparatorChar });
+
+        WaitFor(() => vm.Rows.Count == 3, "the fixture should sweep exactly once, not twice");
+        Assert.Equal("2", Cell(vm, vm.Rows[0], "Records"));
+        Assert.Contains("already listed", vm.AddNote);
     }
 
     [Fact]

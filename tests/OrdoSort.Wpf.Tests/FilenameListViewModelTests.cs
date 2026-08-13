@@ -201,4 +201,20 @@ public class FilenameListViewModelTests : IDisposable
         vm.AddPaths(new[] { shouty });   // same folder, different spelling
         Assert.Contains("already listed", vm.AddNote);
     }
+
+    /// <summary>"…\dir" and "…\dir\" compare unequal as raw strings, so before
+    /// canonicalisation both could sit in _sources and the folder was listed
+    /// twice. See PathIdentity — trimming the trailing separator is the half
+    /// Path.GetFullPath doesn't do by itself.</summary>
+    [Fact]
+    public void ATrailingSeparatorDoesNotListTheSameFolderTwice()
+    {
+        var vm = MakeVm(new FakeDialogs());
+
+        vm.AddPaths(new[] { _dir });
+        Assert.Equal("", vm.AddNote);
+
+        vm.AddPaths(new[] { _dir + Path.DirectorySeparatorChar });
+        Assert.Contains("already listed", vm.AddNote);
+    }
 }

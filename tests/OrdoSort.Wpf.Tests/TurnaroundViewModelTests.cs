@@ -87,6 +87,25 @@ public class TurnaroundViewModelTests : IDisposable
         Assert.Equal("1 files · 1 rows · 0 without TAT", vm.Status);
     }
 
+    /// <summary>The spelling difference case-insensitivity alone never caught:
+    /// "…\dir" and "…\dir\" compare unequal as raw strings, so both could sit
+    /// in _sources and the folder was swept twice — doubling every count in a
+    /// report someone reads as fact. See PathIdentity: trimming the trailing
+    /// separator is the half GetFullPath doesn't do on its own.</summary>
+    [Fact]
+    public void ATrailingSeparatorDoesNotSweepTheSameFolderTwice()
+    {
+        Write("20250303-1144-PECF Report.csv",
+            PecfHeaders + "\nDRG,1,20250228-HELTON-EMILY-KYPT2024-11-63094.pdf,3\n");
+        var vm = MakeVm(new Config(), new FakeDialogs());
+
+        vm.AddPaths(new[] { _dir, _dir + Path.DirectorySeparatorChar });
+
+        WaitFor(() => vm.Documents.Count == 1, "the fixture should sweep exactly once, not twice");
+        Assert.Equal("1 files · 1 rows · 0 without TAT", vm.Status);
+        Assert.Contains("already listed", vm.AddNote);
+    }
+
     [Fact]
     public void HeadersAutoGuessFilenameAndCategoryColumns()
     {

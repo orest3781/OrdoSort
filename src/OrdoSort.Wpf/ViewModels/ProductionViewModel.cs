@@ -153,13 +153,20 @@ public sealed class ProductionViewModel : ObservableObject, IDisposable
     private string _status = "";
     public string Status { get => _status; private set => Set(ref _status, value); }
 
-    /// <summary>Dedupe by path (OrdinalIgnoreCase, same as
-    /// TurnaroundViewModel.AddPaths) and always rebuild — called by
-    /// BrowseCommand's pick and by the window's drag-drop handler.</summary>
+    private string _addNote = "";
+    /// <summary>Says so when a drop or browse added nothing — see
+    /// TurnaroundViewModel.AddNote, which this mirrors.</summary>
+    public string AddNote { get => _addNote; private set => Set(ref _addNote, value); }
+
+    /// <summary>Dedupe through Intake.Add — see TurnaroundViewModel.AddPaths
+    /// for the reasoning, which applies here identically: a folder listed
+    /// twice under two spellings would be swept twice and double every
+    /// record count in the report.</summary>
     public void AddPaths(IEnumerable<string> paths)
     {
-        foreach (var p in paths)
-            if (!_sources.Contains(p, StringComparer.OrdinalIgnoreCase)) _sources.Add(p);
+        var taken = Intake.Add(_sources, paths);
+        _sources.AddRange(taken.Files);
+        AddNote = taken.Note("file");
         Refresh(immediate: true);
     }
 

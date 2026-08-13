@@ -113,13 +113,28 @@ public sealed class TurnaroundViewModel : ObservableObject, IDisposable
     private string _status = "";
     public string Status { get => _status; private set => Set(ref _status, value); }
 
-    /// <summary>Dedupe by path (OrdinalIgnoreCase, same as
-    /// FilenameListViewModel.AddPaths) and always rebuild — called by
-    /// BrowseCommand's pick and by the window's drag-drop handler.</summary>
+    private string _addNote = "";
+    /// <summary>Says so when a drop or browse added nothing. This tool had no
+    /// such feedback at all — re-adding a folder already listed looked like a
+    /// no-op — while every other intake surface has had one for a while. Same
+    /// role as FilenameListViewModel.AddNote, and now the same wording, since
+    /// both come from Intake.Add.</summary>
+    public string AddNote { get => _addNote; private set => Set(ref _addNote, value); }
+
+    /// <summary>Dedupe through Intake.Add: one policy shared with every other
+    /// intake surface, and canonical storage, so a root added as "C:\jobs"
+    /// and again as "C:\jobs\" is one source rather than two sweeps of the
+    /// same folder — which would have doubled every count in the report.
+    ///
+    /// No existence check and no extension filter at add time, deliberately:
+    /// a source that has gone since it was added is Refresh's to report, and
+    /// the extension filter belongs to the sweep (ReportExtensions), which
+    /// runs over the expanded folder rather than over what was dropped.</summary>
     public void AddPaths(IEnumerable<string> paths)
     {
-        foreach (var p in paths)
-            if (!_sources.Contains(p, StringComparer.OrdinalIgnoreCase)) _sources.Add(p);
+        var taken = Intake.Add(_sources, paths);
+        _sources.AddRange(taken.Files);
+        AddNote = taken.Note("file");
         Refresh(immediate: true);
     }
 

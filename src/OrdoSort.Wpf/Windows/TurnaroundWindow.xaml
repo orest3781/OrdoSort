@@ -34,6 +34,12 @@
                 <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,14,0" />
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
                            Style="{StaticResource StatusText}" MaxWidth="420" />
+                <!-- Add feedback, same placement and style as
+                     FilenameListWindow's: a drop that added nothing otherwise
+                     reads as the window ignoring you. -->
+                <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
+                           VerticalAlignment="Center" Margin="14,0,0,0"
+                           TextTrimming="CharacterEllipsis" />
             </StackPanel>
 
             <!-- mapping row: which loaded header names the document and

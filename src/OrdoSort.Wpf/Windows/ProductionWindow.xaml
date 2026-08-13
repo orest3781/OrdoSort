@@ -32,6 +32,11 @@
                 <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,14,0" />
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
                            Style="{StaticResource StatusText}" MaxWidth="420" />
+                <!-- Add feedback, same placement and style as
+                     FilenameListWindow's — see TurnaroundWindow. -->
+                <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
+                           VerticalAlignment="Center" Margin="14,0,0,0"
+                           TextTrimming="CharacterEllipsis" />
             </StackPanel>
 
             <!-- datetime column: feeds the derived Date/Hour columns
