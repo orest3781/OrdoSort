@@ -136,6 +136,8 @@ public sealed class UnlockViewModel : ObservableObject
     // never a crash.
     private readonly IDialogService? _dialogs;
 
+    private readonly IWorkScheduler _scheduler;
+
     // Test seams, following the fixture pattern the shell uses: the real app
     // passes neither, tests inject a scripted unlocker to make cancellation
     // and the runs-alone bound deterministic instead of timing-hopeful.
@@ -208,11 +210,13 @@ public sealed class UnlockViewModel : ObservableObject
         Func<string, long>? fileSize = null,
         IDialogService? dialogs = null,
         Func<string, string?>? tryReveal = null,
-        Func<string, IReadOnlyList<string>, Unlock.ProbeResult>? probe = null)
+        Func<string, IReadOnlyList<string>, Unlock.ProbeResult>? probe = null,
+        IWorkScheduler? scheduler = null)
     {
         _cfg = cfg;
         _trySaveCfg = trySaveCfg;
         _dialogs = dialogs;
+        _scheduler = scheduler ?? new TaskWorkScheduler();
         _unlock = unlocker ?? ((path, password) => Unlock.UnlockPdf(path, password));
         _fileSize = fileSize ?? (path =>
         {
@@ -610,7 +614,7 @@ public sealed class UnlockViewModel : ObservableObject
         // Intake.Add builds its own set rather than scanning the
         // ObservableCollection per candidate — the quadratic cost this method
         // was already avoiding by hand, now avoided in one place.
-        var offThread = await Task.Run(() => Intake.Add(already, candidates, Pdfs, File.Exists));
+        var offThread = await _scheduler.Run(() => Intake.Add(already, candidates, Pdfs, File.Exists));
 
         // Re-checked against the LIVE list, not the snapshot taken before the
         // await: a second drop can have read the same list and be adding the
@@ -700,8 +704,8 @@ public sealed class UnlockViewModel : ObservableObject
         // unlock tries it FIRST (TryCandidates below), so a probe that used
         // it could label a file ready on a password that was never actually
         // saved (risk 2). Snapshotted here, on the calling thread: Saved is
-        // an ObservableCollection and the probing below runs on pool threads
-        // via Task.Run, so reading it from there would race a concurrent
+        // an ObservableCollection and the probing below runs off-thread via
+        // _scheduler, so reading it from there would race a concurrent
         // AddSavedPassword / RemoveSelectedSaved / save-banner edit.
         var probeCandidates = Saved.Select(sp => PasswordVault.Reveal(sp.Password)).ToList();
 
@@ -712,7 +716,7 @@ public sealed class UnlockViewModel : ObservableObject
             try
             {
                 if (token.IsCancellationRequested) return;
-                var result = await Task.Run(() => _probe(row.Path, probeCandidates));
+                var result = await _scheduler.Run(() => _probe(row.Path, probeCandidates));
                 if (!token.IsCancellationRequested && myGeneration == row.ProbeGeneration)
                     ApplyProbeResult(row, result);
             }
@@ -847,7 +851,7 @@ public sealed class UnlockViewModel : ObservableObject
                     // always in place, under the original name: the locked one
                     // is moved to a dated archive folder, never overwritten
                     (results[i], viaTyped[i]) =
-                        await Task.Run(() => TryCandidates(rows[i].Path, candidates, typedCount));
+                        await _scheduler.Run(() => TryCandidates(rows[i].Path, candidates, typedCount));
                 }
                 finally
                 {
@@ -861,7 +865,7 @@ public sealed class UnlockViewModel : ObservableObject
                 if (ct.IsCancellationRequested) { results[i] = Cancelled(rows[i].Path); continue; }
                 Summary = $"Unlocking {finished + 1} of {rows.Count} (large file — running alone)…";
                 (results[i], viaTyped[i]) =
-                    await Task.Run(() => TryCandidates(rows[i].Path, candidates, typedCount));
+                    await _scheduler.Run(() => TryCandidates(rows[i].Path, candidates, typedCount));
                 finished++;
             }
         }

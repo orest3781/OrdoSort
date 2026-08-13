@@ -46,6 +46,7 @@ public sealed class MatchMergeViewModel : ObservableObject
     private readonly Action<Dictionary<string, string>> _saveHeaders;
     private readonly IDialogService _dialogs;
     private readonly Action? _saveCfg;
+    private readonly IWorkScheduler _scheduler;
 
     /// <summary>Extension set in Intake's shape (dot-less, lowercase) rather
     /// than the EndsWith(".pdf") this used to inline — same rule, one place.</summary>
@@ -61,12 +62,13 @@ public sealed class MatchMergeViewModel : ObservableObject
     public ObservableCollection<MatchRow> Rows { get; } = new();
 
     public MatchMergeViewModel(Config cfg, Action<Dictionary<string, string>> saveHeaders,
-        IDialogService dialogs, Action? saveCfg = null)
+        IDialogService dialogs, Action? saveCfg = null, IWorkScheduler? scheduler = null)
     {
         _cfg = cfg;
         _saveHeaders = saveHeaders;
         _dialogs = dialogs;
         _saveCfg = saveCfg;
+        _scheduler = scheduler ?? new TaskWorkScheduler();
         LoadRosterCommand = new RelayCommand(BrowseRoster);
         MergeCommand = new RelayCommand(DoMerge, () => MergeCount > 0);
         UndoCommand = new RelayCommand(UndoBatch, () => _outcomes.Count > 0);
@@ -340,7 +342,7 @@ public sealed class MatchMergeViewModel : ObservableObject
     {
         var remembered = _cfg.MergeRoster;
         if (remembered.Length == 0 || RosterPath.Length > 0) return;
-        var exists = await Task.Run(() => File.Exists(remembered));
+        var exists = await _scheduler.Run(() => File.Exists(remembered));
         if (RosterPath.Length > 0) return;   // the user got there first
         if (exists) LoadRosterFrom(remembered);
         else Status = $"Last roster wasn't found: {remembered}";
