@@ -1,0 +1,798 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Architecture review — OrdoSort</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose", flowchart: { curve: "basis" } });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 5 5; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .label { font: 600 9px ui-sans-serif, system-ui; letter-spacing: .09em; text-transform: uppercase; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .mermaid { display: flex; justify-content: center; }
+      .rule { background-image: repeating-linear-gradient(90deg,#cbd5e1 0 6px,transparent 6px 12px); height:1px; }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans antialiased">
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-14">
+
+      <!-- ─────────────── HEADER ─────────────── -->
+      <header class="space-y-6">
+        <div class="flex items-baseline justify-between flex-wrap gap-3">
+          <h1 class="font-serif text-4xl tracking-tight">Architecture review — <span class="text-emerald-700">OrdoSort</span></h1>
+          <p class="text-sm text-slate-500 mono">12 Aug 2026 · main @ 08b1328</p>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
+          <div class="bg-white p-4"><div class="text-2xl font-serif">8</div><div class="text-xs uppercase tracking-wider text-slate-500">candidates · 3 shipped</div></div>
+          <div class="bg-white p-4"><div class="text-2xl font-serif">2</div><div class="text-xs uppercase tracking-wider text-slate-500">live defects found</div></div>
+          <div class="bg-white p-4"><div class="text-2xl font-serif">28</div><div class="text-xs uppercase tracking-wider text-slate-500">Core modules, flat</div></div>
+          <div class="bg-white p-4"><div class="text-2xl font-serif">4437</div><div class="text-xs uppercase tracking-wider text-slate-500">lines in 2 ViewModels</div></div>
+        </div>
+
+        <div class="rounded-lg border-2 border-slate-800 bg-white p-5 text-sm">
+          <div class="label text-slate-500 mb-2">Status — read this before the cards</div>
+          <p class="text-slate-700">This is the review as written, kept for the record, with corrections marked <span class="text-red-700 font-semibold">in red</span> where the code disagreed with it. <strong>Candidates 2, 3 and 4 shipped</strong> in <a href="https://github.com/orest3781/OrdoSort/pull/6" class="text-emerald-700 underline underline-offset-2">PR #6</a>; 1, 5, 6, 7 and 8 are open.</p>
+          <p class="text-slate-700 mt-2">Two cards were wrong in ways worth keeping visible rather than editing away. <strong>Candidate 3</strong> fused two different disciplines because I read the doc comments, which cross-reference each other, instead of the code — scope went from five sites to three before anything was built. <strong>Candidate 4</strong> cited three flaky-test commits as proof of what the missing seam had cost; the commits say the race was a time budget, and the one that fixed it deliberately <em>removed</em> a seam. The gap was real, the evidence wasn't.</p>
+          <p class="text-slate-600 mt-2 text-xs">Both errors share a cause: treating a summary of the code as the code. Every claim that survived was one I re-read at the source.</p>
+        </div>
+
+        <div class="flex flex-wrap gap-x-7 gap-y-2 text-xs text-slate-600 border-t border-slate-200 pt-4">
+          <span class="flex items-center gap-2"><svg width="22" height="12"><rect x="1" y="1" width="20" height="10" fill="none" stroke="#475569" stroke-width="1.5"/></svg> module</span>
+          <span class="flex items-center gap-2"><svg width="22" height="12"><line class="seam" x1="1" y1="6" x2="21" y2="6" stroke="#475569" stroke-width="1.5"/></svg> seam</span>
+          <span class="flex items-center gap-2"><svg width="22" height="12"><line x1="1" y1="6" x2="17" y2="6" stroke="#dc2626" stroke-width="1.5"/><path d="M17 3 L21 6 L17 9Z" fill="#dc2626"/></svg> leakage</span>
+          <span class="flex items-center gap-2"><svg width="22" height="12"><rect x="1" y="1" width="20" height="10" fill="#0f172a"/></svg> deep module</span>
+          <span class="text-slate-400">Every claim below is anchored to a <span class="mono">file:line</span> read directly from source.</span>
+        </div>
+      </header>
+
+      <!-- ─────────────── CANDIDATES ─────────────── -->
+      <section id="candidates" class="space-y-16">
+
+        <!-- ══════ 1 ══════ -->
+        <article id="c1" class="space-y-5">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">1 · Collapse the collision counter</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800">Strong</span>
+              <span class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">in-process</span>
+            </div>
+          </div>
+
+          <p class="mono text-sm text-slate-600">Collision.cs:18–43 · Naming.cs:137–146 · BulkRename.cs:159–174 · BulkRename.cs:190–196</p>
+
+          <div class="grid md:grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-white p-5">
+              <div class="label text-slate-400 mb-4">Before — four implementations</div>
+              <svg viewBox="0 0 340 250" class="w-full" style="height:250px">
+                <rect x="8" y="8" width="150" height="52" fill="none" stroke="#475569" stroke-width="1.5"/>
+                <text x="18" y="26" class="label" fill="#475569">Collision.FreeFile</text>
+                <text x="18" y="42" class="mono" font-size="9" fill="#94a3b8">for(n=2;;n++) " (n)"</text>
+                <text x="18" y="54" class="mono" font-size="8" fill="#16a34a">← Unlock, Zipper, ZipMerge</text>
+
+                <rect x="182" y="8" width="150" height="52" fill="none" stroke="#475569" stroke-width="1.5"/>
+                <text x="192" y="26" class="label" fill="#475569">Naming.BuildTarget</text>
+                <text x="192" y="42" class="mono" font-size="9" fill="#94a3b8">counter=2; while(exists)</text>
+                <text x="192" y="54" class="mono" font-size="8" fill="#dc2626">← own loop</text>
+
+                <rect x="8" y="82" width="150" height="52" fill="none" stroke="#475569" stroke-width="1.5"/>
+                <text x="18" y="100" class="label" fill="#475569">BulkRename.Plan</text>
+                <text x="18" y="116" class="mono" font-size="9" fill="#94a3b8">counter=2; while(!Free)</text>
+                <text x="18" y="128" class="mono" font-size="8" fill="#dc2626">← own loop + claimed set</text>
+
+                <rect x="182" y="82" width="150" height="52" fill="none" stroke="#475569" stroke-width="1.5"/>
+                <text x="192" y="100" class="label" fill="#475569">BulkRename.Execute</text>
+                <text x="192" y="116" class="mono" font-size="9" fill="#94a3b8">counter=2; while(Exists)</text>
+                <text x="192" y="128" class="mono" font-size="8" fill="#dc2626">← own loop again</text>
+
+                <line class="seam" x1="8" y1="156" x2="332" y2="156" stroke="#cbd5e1" stroke-width="1"/>
+                <text x="170" y="182" text-anchor="middle" font-size="11" fill="#dc2626" font-weight="600">one rule · four owners</text>
+                <text x="170" y="202" text-anchor="middle" font-size="10" fill="#64748b">change " (2)" → edit 4 files</text>
+                <text x="170" y="220" text-anchor="middle" font-size="10" fill="#64748b">nothing keeps them in sync</text>
+                <text x="170" y="240" text-anchor="middle" font-size="9" fill="#94a3b8" class="mono">Collision.cs is bypassed by the 2 tools that need it most</text>
+              </svg>
+            </div>
+
+            <div class="rounded-lg border border-slate-300 bg-white p-5">
+              <div class="label text-slate-400 mb-4">After — one module, one predicate</div>
+              <svg viewBox="0 0 340 250" class="w-full" style="height:250px">
+                <rect x="60" y="14" width="220" height="30" rx="2" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.5"/>
+                <text x="170" y="33" text-anchor="middle" class="label" fill="#0f172a">interface: (name, isFree) → name</text>
+
+                <rect x="60" y="44" width="220" height="96" rx="2" fill="#0f172a"/>
+                <text x="170" y="70" text-anchor="middle" class="label" fill="#94a3b8">Collision</text>
+                <text x="170" y="90" text-anchor="middle" font-size="10" fill="#cbd5e1" class="mono">counter starts at 2</text>
+                <text x="170" y="106" text-anchor="middle" font-size="10" fill="#cbd5e1" class="mono">" (n)" before the extension</text>
+                <text x="170" y="122" text-anchor="middle" font-size="10" fill="#cbd5e1" class="mono">skips names already taken</text>
+
+                <line class="seam" x1="30" y1="158" x2="310" y2="158" stroke="#475569" stroke-width="1.2"/>
+                <text x="30" y="152" class="label" fill="#94a3b8">seam</text>
+
+                <g font-size="9" fill="#475569" class="mono">
+                  <text x="34" y="180">!File.Exists</text>
+                  <text x="34" y="196">!claimed &amp;&amp; !File.Exists</text>
+                  <text x="34" y="212">injected exists()</text>
+                  <text x="34" y="228">!Directory.Exists</text>
+                </g>
+                <g stroke="#475569" stroke-width="1">
+                  <line x1="150" y1="177" x2="185" y2="177"/><line x1="150" y1="193" x2="185" y2="193"/>
+                  <line x1="150" y1="209" x2="185" y2="209"/><line x1="150" y1="225" x2="185" y2="225"/>
+                </g>
+                <g font-size="9" fill="#94a3b8" class="mono">
+                  <text x="192" y="180">Zipper / ZipMerge</text>
+                  <text x="192" y="196">BulkRename.Plan</text>
+                  <text x="192" y="212">Naming.BuildTarget</text>
+                  <text x="192" y="228">Unlock</text>
+                </g>
+                <text x="170" y="248" text-anchor="middle" font-size="9" fill="#16a34a">adapters differ only in what "free" means</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+            <div><span class="label text-slate-400">Problem</span><p class="mt-1">The <span class="mono">" (2)", " (3)"</span> rule is written four times, against three different notions of "free".</p></div>
+            <div><span class="label text-slate-400">Solution</span><p class="mt-1">One module takes the freeness test as a parameter; the numbering rule lives in exactly one implementation.</p></div>
+          </div>
+
+          <div class="rounded-lg bg-slate-50 border border-slate-200 p-4 text-sm">
+            <span class="label text-slate-400">Deletion test</span>
+            <p class="mt-1">Delete <span class="mono">Collision.cs</span> today and nothing breaks in <span class="mono">BulkRename</span> or <span class="mono">Naming</span> — they never call it. Its own doc comment says it was "promoted here so the utility tools being added alongside it can share the same behavior instead of re-implementing it." Two of those tools re-implement it anyway. Complexity would not vanish; it is already redundant.</p>
+          </div>
+
+          <ul class="grid sm:grid-cols-2 gap-x-8 gap-y-1.5 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>Locality: numbering rule in one place</li>
+            <li>Leverage: one interface, 5 call sites</li>
+            <li>Delete 3 hand-written loops</li>
+            <li>One test suite, not four</li>
+          </ul>
+        </article>
+
+        <div class="rule"></div>
+
+        <!-- ══════ 2 ══════ -->
+        <article id="c2" class="space-y-5">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">2 · Deepen file intake — case-only duplicates reach <span class="mono text-xl">File.Move</span></h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800">Strong</span>
+              <span class="text-xs px-2.5 py-1 rounded-full bg-red-100 text-red-700">live defect</span>
+              <span class="text-xs px-2.5 py-1 rounded-full bg-slate-800 text-white">shipped · da0425c</span>
+            </div>
+          </div>
+
+          <p class="mono text-sm text-slate-600">BulkRenameViewModel.cs:228 · MatchMergeViewModel.cs:351 · vs 7 siblings using OrdinalIgnoreCase</p>
+
+          <div class="grid md:grid-cols-2 gap-5">
+            <div class="rounded-lg border border-red-200 bg-white p-5">
+              <div class="label text-slate-400 mb-4">Before — the dedupe policy drifted</div>
+              <svg viewBox="0 0 340 250" class="w-full" style="height:250px">
+                <text x="8" y="16" class="label" fill="#94a3b8">9 intake modules · 9 copies of the same 6 lines</text>
+
+                <g class="mono" font-size="9">
+                  <text x="8" y="40" fill="#16a34a">✓ ZipViewModel</text><text x="150" y="40" fill="#64748b">OrdinalIgnoreCase</text>
+                  <text x="8" y="56" fill="#16a34a">✓ UnzipViewModel</text><text x="150" y="56" fill="#64748b">OrdinalIgnoreCase</text>
+                  <text x="8" y="72" fill="#16a34a">✓ ZipMergeViewModel</text><text x="150" y="72" fill="#64748b">OrdinalIgnoreCase</text>
+                  <text x="8" y="88" fill="#16a34a">✓ PageCountsViewModel</text><text x="150" y="88" fill="#64748b">OrdinalIgnoreCase</text>
+                  <text x="8" y="104" fill="#16a34a">✓ UnlockViewModel</text><text x="150" y="104" fill="#64748b">OrdinalIgnoreCase</text>
+                  <text x="8" y="120" fill="#16a34a">✓ TurnaroundViewModel</text><text x="150" y="120" fill="#64748b">OrdinalIgnoreCase</text>
+                  <text x="8" y="136" fill="#16a34a">✓ ProductionViewModel</text><text x="150" y="136" fill="#64748b">OrdinalIgnoreCase</text>
+                  <text x="8" y="152" fill="#dc2626">✗ BulkRenameViewModel</text><text x="150" y="152" fill="#dc2626">_files.Contains(p)</text>
+                  <text x="8" y="168" fill="#dc2626">✗ MatchMergeViewModel</text><text x="150" y="168" fill="#dc2626">_files.Contains(p)</text>
+                </g>
+
+                <rect x="8" y="184" width="324" height="58" fill="#fef2f2" stroke="#dc2626" stroke-width="1"/>
+                <text x="18" y="200" class="mono" font-size="9" fill="#7f1d1d">Report.pdf + REPORT.pdf → two rows, one file</text>
+                <text x="18" y="214" class="mono" font-size="9" fill="#7f1d1d">row 1: File.Move ✓   row 2: File.Move ✗ IOException</text>
+                <text x="18" y="232" font-size="10" fill="#dc2626" font-weight="600">surfaces as "Renamed 1; 1 failed" — a phantom failure</text>
+              </svg>
+            </div>
+
+            <div class="rounded-lg border border-slate-300 bg-white p-5">
+              <div class="label text-slate-400 mb-4">After — one intake module owns the policy</div>
+              <svg viewBox="0 0 340 250" class="w-full" style="height:250px">
+                <g class="mono" font-size="9" fill="#94a3b8">
+                  <text x="8" y="30">Zip</text><text x="8" y="46">Unzip</text><text x="8" y="62">ZipMerge</text>
+                  <text x="8" y="78">PageCounts</text><text x="8" y="94">Unlock</text><text x="8" y="110">Turnaround</text>
+                  <text x="8" y="126">Production</text><text x="8" y="142">BulkRename</text><text x="8" y="158">MatchMerge</text>
+                </g>
+                <g stroke="#cbd5e1" stroke-width="1">
+                  <line x1="76" y1="27" x2="120" y2="90"/><line x1="76" y1="43" x2="120" y2="90"/>
+                  <line x1="76" y1="59" x2="120" y2="90"/><line x1="76" y1="75" x2="120" y2="90"/>
+                  <line x1="76" y1="91" x2="120" y2="90"/><line x1="76" y1="107" x2="120" y2="90"/>
+                  <line x1="76" y1="123" x2="120" y2="90"/><line x1="76" y1="139" x2="120" y2="90"/>
+                  <line x1="76" y1="155" x2="120" y2="90"/>
+                </g>
+                <line class="seam" x1="120" y1="14" x2="120" y2="230" stroke="#475569" stroke-width="1.2"/>
+                <text x="126" y="24" class="label" fill="#94a3b8">seam</text>
+
+                <rect x="134" y="34" width="196" height="26" rx="2" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.5"/>
+                <text x="232" y="51" text-anchor="middle" class="label" fill="#0f172a">Add(paths) → (added, ignored)</text>
+                <rect x="134" y="60" width="196" height="92" rx="2" fill="#0f172a"/>
+                <text x="232" y="82" text-anchor="middle" font-size="10" fill="#cbd5e1" class="mono">dedupe: OrdinalIgnoreCase</text>
+                <text x="232" y="100" text-anchor="middle" font-size="10" fill="#cbd5e1" class="mono">filter by extension</text>
+                <text x="232" y="118" text-anchor="middle" font-size="10" fill="#cbd5e1" class="mono">existence check</text>
+                <text x="232" y="136" text-anchor="middle" font-size="10" fill="#cbd5e1" class="mono">one phrasing for the note</text>
+
+                <text x="232" y="180" text-anchor="middle" font-size="10" fill="#16a34a" font-weight="600">policy decided once</text>
+                <text x="232" y="198" text-anchor="middle" font-size="9" fill="#64748b">a 10th tool cannot drift</text>
+                <text x="232" y="220" text-anchor="middle" font-size="9" fill="#64748b" class="mono">one test replaces a 9-way gap</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+            <div><span class="label text-slate-400">Problem</span><p class="mt-1">Two of nine intake modules dedupe case-sensitively — and they are the two that drive <span class="mono">File.Move</span>, so a case-only duplicate becomes a second row racing the first.</p></div>
+            <div><span class="label text-slate-400">Solution</span><p class="mt-1">One intake module owns add-and-dedupe; the comparison rule is decided once, not retyped nine times.</p></div>
+          </div>
+
+          <div class="rounded-lg bg-amber-50 border border-amber-300 p-4 text-sm">
+            <span class="label text-amber-700">Why the tests miss it</span>
+            <p class="mt-1"><span class="mono">ToolViewModelTests.cs:1019</span> does test dedupe — <span class="mono">AddFiles(new[]{ a, b, a })</span> — but with an <em>exact-string</em> duplicate, which the case-sensitive check catches. The case-only duplicate is untested, not accepted.</p>
+          </div>
+
+          <ul class="grid sm:grid-cols-2 gap-x-8 gap-y-1.5 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>Fixes a reachable wrong result</li>
+            <li>Locality: one dedupe policy</li>
+            <li>Kills the drifted "added / ignored" copy</li>
+            <li>One test covers 9 call sites</li>
+          </ul>
+        </article>
+
+        <div class="rule"></div>
+
+        <!-- ══════ 3 ══════ -->
+        <article id="c3" class="space-y-5">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">3 · Deepen the atomic write</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800">Strong</span>
+              <span class="text-xs px-2.5 py-1 rounded-full bg-slate-800 text-white">shipped · ecad300…8d672e5</span>
+            </div>
+          </div>
+
+          <p class="mono text-sm text-slate-600">Config.cs:552–592, 615–638 · Zipper.cs:219–235 · Unlock.cs:350–363, 500–575 · ZipMerge.cs:78–192</p>
+
+          <div class="grid md:grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <div class="label text-slate-400 mb-2">Before — five re-derivations, four test-seam names</div>
+              <pre class="mermaid" style="min-height:300px">
+flowchart TB
+  subgraph one[" "]
+    A["Config.WriteAtomic<br/><small>GUID temp · 50 retries · Replace</small>"]
+    B["Config.WriteAtomicNew<br/><small>create-only variant</small>"]
+    C["Zipper.PlaceAtomically<br/><small>'same shape, same reasoning'</small>"]
+    D["Unlock.PlaceAndSwap<br/><small>markCreated gate</small>"]
+    E["ZipMerge.MergeZipCore<br/><small>'mirroring Unlock.PlaceAndSwap'</small>"]
+  end
+  A -.-> T1[RaceHookForTests]
+  B -.-> T2[BeforeCreateOnlyMove]
+  C -.-> T3[OnRetryForTests]
+  E -.-> T4[pickOutput]
+  classDef dup fill:#fef2f2,stroke:#dc2626,stroke-width:1.5px;
+  classDef hook fill:#fff,stroke:#cbd5e1,stroke-dasharray:4 4,color:#94a3b8;
+  class A,B,C,D,E dup
+  class T1,T2,T3,T4 hook
+  style one fill:transparent,stroke:transparent
+              </pre>
+            </div>
+
+            <div class="rounded-lg border border-slate-300 bg-white p-4">
+              <div class="label text-slate-400 mb-2">After — one module, one race seam</div>
+              <pre class="mermaid" style="min-height:300px">
+flowchart TB
+  A[Config.Save] --> M
+  C[Zipper.CreateZip] --> M
+  D[Unlock.PlaceAndSwap] --> M
+  E[ZipMerge.MergeZip] --> M
+  M["<b>AtomicPlace</b><br/><small>temp sibling · retry on contention<br/>created-by-me callback<br/>replace vs create-only</small>"]
+  M -.one seam.-> T[race hook]
+  classDef deep fill:#0f172a,stroke:#0f172a,color:#fff;
+  classDef thin fill:#fff,stroke:#94a3b8,color:#475569;
+  classDef hook fill:#fff,stroke:#475569,stroke-dasharray:4 4,color:#475569;
+  class M deep
+  class A,C,D,E thin
+  class T hook
+              </pre>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+            <div><span class="label text-slate-400">Problem</span><p class="mt-1">The subtlest safety rule in the codebase — write to a temp sibling, retry on transient lock, and only clean up a partial write if <em>this</em> call created it — is re-derived in five implementations.</p></div>
+            <div><span class="label text-slate-400">Solution</span><p class="mt-1">One module owns temp-sibling placement, the retry budget, and the created-by-me callback. Callers supply only the write action and replace-vs-create semantics.</p></div>
+          </div>
+
+          <div class="rounded-lg bg-red-50 border-2 border-red-400 p-4 text-sm">
+            <span class="label text-red-700">Correction — this card fused two different disciplines</span>
+            <p class="mt-1">It claimed five sites share one idiom. They don't, and the diagram above is wrong about it. <strong><span class="mono">Config</span>'s two have no created-by-me gate at all</strong> — and correctly so: their temp name carries a GUID, so no peer can own it, cleanup is unconditional and the destination is never touched. <strong><span class="mono">Unlock</span>, <span class="mono">ZipMerge</span> and <span class="mono">Zipper</span>'s default branch have no temp sibling</strong> — they write straight to a collision-freed name a peer legitimately can own, which is exactly why <em>they</em> need a gate. <span class="mono">Zipper.ExtractCore</span> writes a directory.</p>
+            <p class="mt-2">Two rules that read alike because their doc comments cross-reference each other — and I read the comments, not the code. Scope was cut from five sites to <strong>three</strong> before anything was built: the ones that genuinely do temp→final placement. The other three keep their gates untouched.</p>
+          </div>
+
+          <div class="rounded-lg bg-slate-50 border border-slate-200 p-4 text-sm">
+            <span class="label text-slate-400">Deletion test, as it actually applies</span>
+            <p class="mt-1">Delete <span class="mono">Zipper.PlaceAtomically</span> and its retry loop does not vanish — it must be retyped, as it already had been from <span class="mono">Config.WriteAtomic</span>, whose own doc comment admitted it: <em>"same shape, same reasoning."</em> That part held. What did not hold was extending the same argument to the created-gate sites, where deleting the gate would delete a real safety property rather than a duplicate.</p>
+          </div>
+
+          <div class="rounded-lg bg-emerald-50 border border-emerald-300 p-4 text-sm">
+            <span class="label text-emerald-700">Outcome</span>
+            <p class="mt-1"><span class="mono">AtomicPlace</span> with two entry points — <span class="mono">TryReplace</span> and <span class="mono">TryCreateNew</span> — over one implementation and one seam. Three call sites migrated one per commit. Zip Save-As gained its first-ever retry test: the loop existed, was byte-identical to a proven one, and nothing anywhere proved it worked. <span class="mono">CONTEXT.md</span> now records why atomic placement and the created-by-me gate must not be merged, so the next reviewer doesn't repeat this card's mistake.</p>
+          </div>
+
+          <ul class="grid sm:grid-cols-2 gap-x-8 gap-y-1.5 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>Locality: the shared-folder race in one module</li>
+            <li>Two seams collapse, not four</li>
+            <li>Retry budget proved once, for three sites</li>
+            <li>The two disciplines now visibly differ</li>
+          </ul>
+        </article>
+
+        <div class="rule"></div>
+
+        <!-- ══════ 4 ══════ -->
+        <article id="c4" class="space-y-5">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">4 · Route the last two ViewModels through the scheduler seam</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">Worth exploring</span>
+              <span class="text-xs px-2.5 py-1 rounded-full bg-slate-800 text-white">shipped · 3bf31b2</span>
+            </div>
+          </div>
+
+          <p class="mono text-sm text-slate-600">UnlockViewModel.cs:202–207 (no scheduler), :606, :729, :864, :878 · MatchMergeViewModel.cs:59–60, :339 · Services/WorkScheduler.cs:7–18</p>
+
+          <div class="grid md:grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <div class="label text-slate-400 mb-2">Before — 12 through the seam, 2 around it</div>
+              <pre class="mermaid" style="min-height:300px">
+flowchart LR
+  V["12 ViewModels"] --> S{{"IWorkScheduler"}}
+  S --> P[TaskWorkScheduler<br/><small>production</small>]
+  S --> I[InlineWorkScheduler<br/><small>tests: synchronous</small>]
+  U["UnlockViewModel<br/><small>4 × Task.Run</small>"] -->|leak| TP[["thread pool"]]
+  M["MatchMergeViewModel<br/><small>1 × Task.Run</small>"] -->|leak| TP
+  TP -.-> F["dispatch not<br/>substitutable"]
+  classDef ok fill:#fff,stroke:#475569;
+  classDef leak fill:#fef2f2,stroke:#dc2626,stroke-width:1.5px,color:#7f1d1d;
+  classDef seam fill:#f1f5f9,stroke:#0f172a,stroke-width:2px;
+  class V,P,I ok
+  class U,M,TP,F leak
+  class S seam
+  linkStyle 3,4 stroke:#dc2626,stroke-width:2px;
+              </pre>
+            </div>
+
+            <div class="rounded-lg border border-slate-300 bg-white p-4">
+              <div class="label text-slate-400 mb-2">After — 14 of 14</div>
+              <pre class="mermaid" style="min-height:300px">
+flowchart LR
+  V["14 ViewModels"] --> S{{"IWorkScheduler"}}
+  S --> P[TaskWorkScheduler<br/><small>production</small>]
+  S --> I[InlineWorkScheduler<br/><small>tests: deterministic</small>]
+  classDef ok fill:#fff,stroke:#475569;
+  classDef seam fill:#f1f5f9,stroke:#0f172a,stroke-width:2px;
+  classDef deep fill:#0f172a,stroke:#0f172a,color:#fff;
+  class V ok
+  class P,I deep
+  class S seam
+              </pre>
+              <p class="text-xs text-slate-500 mt-3">Two adapters already exist. The seam is real — it is just not reached by everyone.</p>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+            <div><span class="label text-slate-400">Problem</span><p class="mt-1">Two ViewModels call <span class="mono">Task.Run</span> directly, so their tests cannot swap in the inline adapter and must synchronise against real threads instead.</p></div>
+            <div><span class="label text-slate-400">Solution</span><p class="mt-1">Take <span class="mono">IWorkScheduler</span> in both constructors and route the five call sites through it, matching the other twelve.</p></div>
+          </div>
+
+          <div class="rounded-lg bg-red-50 border-2 border-red-400 p-4 text-sm">
+            <span class="label text-red-700">Correction — this card originally overstated its case</span>
+            <p class="mt-1">It claimed three 2026-08-10 commits fought flakiness "caused by exactly this gap." Reading <span class="mono">41ae2f7</span> rather than a summary of it, that is wrong: the race was a <strong>2000ms start deadline</strong>, fixed by replacing it with unbounded test-owned gates. The same commit deliberately <em>removed</em> a production seam — <em>"This also removes the <span class="mono">OffUiThreadDispatchForTests</span> production seam the last attempt added, taking the seam count back down."</em> The team was reducing seam count, not missing one.</p>
+            <p class="mt-2">The gap is real — 12 of 14 is a genuine inconsistency — but the commit history is not evidence for it, and treating it as such is the error. Downgraded from <strong>Strong</strong> to <strong>Worth exploring</strong> accordingly.</p>
+          </div>
+
+          <div class="rounded-lg bg-slate-50 border border-slate-200 p-4 text-sm">
+            <span class="label text-slate-400">What shipping it actually showed</span>
+            <p class="mt-1">The <span class="mono">ManualResetEventSlim</span> gating turned out not to be a workaround for the missing seam at all: all four sites exist to observe a probe that is genuinely in flight, which <span class="mono">InlineWorkScheduler</span> would erase rather than simplify. A third double — one that <em>queues</em> work instead of running it — removed the gating without hollowing the tests out, verified by mutating each guard and confirming only the right tests failed. So the seam did pay off in the test surface, just not for the reason this card gave.</p>
+          </div>
+
+          <ul class="grid sm:grid-cols-2 gap-x-8 gap-y-1.5 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>Smallest diff on this page</li>
+            <li>Dispatch becomes substitutable</li>
+            <li>Locality: one dispatch rule, 14 modules</li>
+            <li>Retired 8 blocking gates in tests</li>
+          </ul>
+        </article>
+
+        <div class="rule"></div>
+
+        <!-- ══════ 5 ══════ -->
+        <article id="c5" class="space-y-5">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">5 · One outcome shape for batch operations</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800">Strong</span>
+              <span class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">in-process</span>
+            </div>
+          </div>
+
+          <p class="mono text-sm text-slate-600">Unlock.cs:40–46, :86–95 · ZipMerge.cs:45–46 · Zipper.cs:53–54 · PageCounts.cs:13 · BulkRename.cs:43–46 · MatchMerge.cs:148–151</p>
+
+          <div class="grid md:grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-white p-5">
+              <div class="label text-slate-400 mb-4">Before — nine types, three names per concept</div>
+              <svg viewBox="0 0 340 250" class="w-full" style="height:250px">
+                <text x="8" y="18" class="label" fill="#94a3b8">"which item is this?"</text>
+                <g class="mono" font-size="10">
+                  <rect x="8" y="26" width="72" height="20" fill="#fef2f2" stroke="#fca5a5"/><text x="14" y="40" fill="#7f1d1d">Source ×5</text>
+                  <rect x="86" y="26" width="62" height="20" fill="#fef2f2" stroke="#fca5a5"/><text x="92" y="40" fill="#7f1d1d">Path ×1</text>
+                  <rect x="154" y="26" width="56" height="20" fill="#fef2f2" stroke="#fca5a5"/><text x="160" y="40" fill="#7f1d1d">Zip ×2</text>
+                  <rect x="216" y="26" width="70" height="20" fill="#fef2f2" stroke="#fca5a5"/><text x="222" y="40" fill="#7f1d1d">absent ×1</text>
+                </g>
+
+                <text x="8" y="72" class="label" fill="#94a3b8">"what went wrong?"</text>
+                <g class="mono" font-size="10">
+                  <rect x="8" y="80" width="78" height="20" fill="#fef2f2" stroke="#fca5a5"/><text x="14" y="94" fill="#7f1d1d">Message ×5</text>
+                  <rect x="92" y="80" width="64" height="20" fill="#fef2f2" stroke="#fca5a5"/><text x="98" y="94" fill="#7f1d1d">Error ×2</text>
+                  <rect x="162" y="80" width="60" height="20" fill="#fef2f2" stroke="#fca5a5"/><text x="168" y="94" fill="#7f1d1d">Note ×1</text>
+                  <rect x="228" y="80" width="70" height="20" fill="#fef2f2" stroke="#fca5a5"/><text x="234" y="94" fill="#7f1d1d">absent ×1</text>
+                </g>
+
+                <text x="8" y="126" class="label" fill="#94a3b8">"did it work?"</text>
+                <g class="mono" font-size="10">
+                  <rect x="8" y="134" width="132" height="20" fill="#fef2f2" stroke="#fca5a5"/><text x="14" y="148" fill="#7f1d1d">string Status</text>
+                  <rect x="146" y="134" width="98" height="20" fill="#fef2f2" stroke="#fca5a5"/><text x="152" y="148" fill="#7f1d1d">nullable field</text>
+                  <rect x="250" y="134" width="56" height="20" fill="#fef2f2" stroke="#fca5a5"/><text x="256" y="148" fill="#7f1d1d">bool</text>
+                </g>
+
+                <text x="8" y="180" font-size="10" fill="#64748b">status vocabularies, invented per type:</text>
+                <text x="8" y="198" class="mono" font-size="9" fill="#94a3b8">4 states · 5 · 3 · 2 · 2 · 7 — all magic strings</text>
+                <line class="seam" x1="8" y1="212" x2="332" y2="212" stroke="#cbd5e1"/>
+                <text x="8" y="232" font-size="10" fill="#dc2626" font-weight="600">every row-Apply is the same 3-line switch, written 9 times</text>
+              </svg>
+            </div>
+
+            <div class="rounded-lg border border-slate-300 bg-white p-5">
+              <div class="label text-slate-400 mb-4">After — one shape, per-op extras alongside</div>
+              <svg viewBox="0 0 340 250" class="w-full" style="height:250px">
+                <rect x="50" y="16" width="240" height="28" rx="2" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.5"/>
+                <text x="170" y="35" text-anchor="middle" class="label" fill="#0f172a">Outcome&lt;T&gt;</text>
+
+                <rect x="50" y="44" width="240" height="86" rx="2" fill="#0f172a"/>
+                <g class="mono" font-size="10" fill="#cbd5e1">
+                  <text x="66" y="66">Item      — which one</text>
+                  <text x="66" y="84">Ok        — did it work</text>
+                  <text x="66" y="102">Output    — what came out</text>
+                  <text x="66" y="120">Message   — why not</text>
+                </g>
+
+                <line class="seam" x1="26" y1="150" x2="314" y2="150" stroke="#475569" stroke-width="1.2"/>
+                <text x="26" y="144" class="label" fill="#94a3b8">seam</text>
+
+                <text x="170" y="172" text-anchor="middle" font-size="10" fill="#64748b">per-op extras ride alongside, not instead:</text>
+                <g class="mono" font-size="9" fill="#94a3b8">
+                  <text x="170" y="192" text-anchor="middle">PdfCount · InPlace · MatchedIndex · Pages</text>
+                </g>
+                <text x="170" y="220" text-anchor="middle" font-size="10" fill="#16a34a" font-weight="600">one row-Apply, bound once</text>
+                <text x="170" y="240" text-anchor="middle" font-size="9" fill="#64748b">status becomes a type, not a magic string</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+            <div><span class="label text-slate-400">Problem</span><p class="mt-1">Nine Core operation modules each invented their own per-item outcome type; the same three concepts carry three different names and three different encodings.</p></div>
+            <div><span class="label text-slate-400">Solution</span><p class="mt-1">One outcome shape every batch ViewModel binds against, with each operation's extra fields riding alongside the common three.</p></div>
+          </div>
+
+          <div class="rounded-lg bg-slate-50 border border-slate-200 p-4 text-sm">
+            <span class="label text-slate-400">Deletion test</span>
+            <p class="mt-1">Delete any one of these types and nothing concentrates — its single caller simply invents a tenth shape. That is the tell: there is no behaviour in the type, only bookkeeping that keeps getting re-decided.</p>
+          </div>
+
+          <ul class="grid sm:grid-cols-2 gap-x-8 gap-y-1.5 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>Collapses 9 identical row-Apply switches</li>
+            <li>Magic-string status becomes checkable</li>
+            <li>Leverage: one shape, every tool</li>
+            <li>Enables candidate 6's shared batch module</li>
+          </ul>
+        </article>
+
+        <div class="rule"></div>
+
+        <!-- ══════ 6 ══════ -->
+        <article id="c6" class="space-y-5">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">6 · Split ShellViewModel's seven concerns</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800">Strong</span>
+              <span class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">in-process</span>
+            </div>
+          </div>
+
+          <p class="mono text-sm text-slate-600">ShellViewModel.cs — 2091 lines, 28 commits (highest churn in the repo)</p>
+
+          <div class="grid md:grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-white p-5">
+              <div class="label text-slate-400 mb-4">Before — one module, seven concerns</div>
+              <div class="space-y-1">
+                <div class="border-l-4 border-slate-300 bg-slate-50 pl-3 py-1.5 text-xs flex justify-between"><span>construction / DI wiring</span><span class="mono text-slate-400">66–197</span></div>
+                <div class="border-l-4 border-slate-300 bg-slate-50 pl-3 py-1.5 text-xs flex justify-between"><span>exception → dialog surfacing</span><span class="mono text-slate-400">199–287</span></div>
+                <div class="border-l-4 border-red-400 bg-red-50 pl-3 py-1.5 text-xs flex justify-between"><span>settings conflict snapshot</span><span class="mono text-slate-400">289–360</span></div>
+                <div class="border-l-4 border-amber-400 bg-amber-50 pl-3 py-1.5 text-xs flex justify-between"><span>dashboard tiles + flash alerts</span><span class="mono text-slate-400">496–793</span></div>
+                <div class="border-l-4 border-amber-400 bg-amber-50 pl-3 py-1.5 text-xs flex justify-between"><span>alerts, toast, notification rail</span><span class="mono text-slate-400">795–1027</span></div>
+                <div class="border-l-4 border-emerald-500 bg-emerald-50 pl-3 py-1.5 text-xs flex justify-between"><span><b>filing state machine</b> — the actual job</span><span class="mono text-slate-400">1035–1423</span></div>
+                <div class="border-l-4 border-red-400 bg-red-50 pl-3 py-2.5 text-xs flex justify-between"><span><b>config persistence + peer conflict</b></span><span class="mono text-slate-400">1425–1848</span></div>
+                <div class="border-l-4 border-amber-400 bg-amber-50 pl-3 py-1.5 text-xs flex justify-between"><span>autocomplete + suggestion cycling</span><span class="mono text-slate-400">1914–2044</span></div>
+              </div>
+              <p class="text-xs text-red-700 mt-4 font-semibold">Config persistence is 24% of the file — larger than the filing loop it exists to serve.</p>
+            </div>
+
+            <div class="rounded-lg border border-slate-300 bg-white p-5">
+              <div class="label text-slate-400 mb-4">After — a state machine that composes</div>
+              <div class="space-y-2">
+                <div class="deep rounded px-3 py-3">
+                  <div class="label text-slate-400">ShellViewModel</div>
+                  <div class="text-xs text-slate-300 mt-1">filing state machine · composition point</div>
+                  <div class="text-[10px] text-slate-500 mt-1 mono">what its own doc comment already claims it is</div>
+                </div>
+                <div class="text-center text-slate-400 text-xs">composes ↓</div>
+                <div class="border border-slate-800 rounded px-3 py-2">
+                  <div class="label text-slate-700">SharedConfigStore</div>
+                  <div class="text-xs text-slate-500 mt-0.5">fingerprint · peer-conflict · save with once-per-session suppression</div>
+                </div>
+                <div class="border border-slate-800 rounded px-3 py-2">
+                  <div class="label text-slate-700">NotificationCentre</div>
+                  <div class="text-xs text-slate-500 mt-0.5">deferred · backups · toast → one rail</div>
+                </div>
+                <div class="border border-slate-800 rounded px-3 py-2">
+                  <div class="label text-slate-700">NameCompleter</div>
+                  <div class="text-xs text-slate-500 mt-0.5">seed file + history · cycling · Tab completion</div>
+                </div>
+                <p class="text-xs text-emerald-700 mt-3">Each testable without History, FolderWatchService or Session.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+            <div><span class="label text-slate-400">Problem</span><p class="mt-1">A change to the notification rail and a change to Tab-completion touch the same file, the same constructor and the same <span class="mono">Dispose</span>.</p></div>
+            <div><span class="label text-slate-400">Solution</span><p class="mt-1">Lift the three fully separable concerns into their own modules; the shell composes them.</p></div>
+          </div>
+
+          <div class="rounded-lg bg-slate-50 border border-slate-200 p-4 text-sm">
+            <span class="label text-slate-400">Deletion test</span>
+            <p class="mt-1">Removing the notification rail (795–1027) does not simplify the filing loop at all — it is self-contained state that lives here only because <span class="mono">ShellViewModel</span> was the first module with <span class="mono">_dialogs</span> and <span class="mono">_cfg</span> in scope. Same for autocomplete (1914–2044), which touches only <span class="mono">_history</span>, <span class="mono">_cfg.NamesFile</span> and <span class="mono">TypedName</span>. The config-persistence block is the opposite: deleting it relocates nothing, because nothing else knows the peer-conflict rules — the sign of a concern that never got its own module.</p>
+          </div>
+
+          <div class="rounded-lg bg-amber-50 border border-amber-300 p-4 text-sm">
+            <span class="label text-amber-700">The cost is already recorded in the file</span>
+            <p class="mt-1"><span class="mono">WarnSaveFailure</span>, <span class="mono">SaveSavedPasswordsNow</span> and <span class="mono">ApplySettingsAsync</span> each re-derive "is this a stale confinement refusal or a real I/O error, and have I warned already this session?" The doc comment names the consequence: <em>"this was originally fixed for this method ONLY, leaving those two still calling TrySave unguarded."</em> One bug class, fixed once, left latent twice.</p>
+          </div>
+
+          <ul class="grid sm:grid-cols-2 gap-x-8 gap-y-1.5 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>Locality: peer-conflict rules in one module</li>
+            <li>Highest-churn file stops being a crossroads</li>
+            <li>Autocomplete testable without a shell</li>
+            <li>Shell shrinks to what it claims to be</li>
+          </ul>
+        </article>
+
+        <div class="rule"></div>
+
+        <!-- ══════ 7 ══════ -->
+        <article id="c7" class="space-y-5">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">7 · Give the tests one temp-directory adapter</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">Worth exploring</span>
+              <span class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">ports &amp; adapters</span>
+            </div>
+          </div>
+
+          <p class="mono text-sm text-slate-600">43 of 46 Core.Tests files · 39 of 76 Wpf.Tests files · retry-delete loop copied verbatim in 10</p>
+
+          <div class="grid md:grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-white p-5">
+              <div class="label text-slate-400 mb-4">Before — 82 files, 82 fixtures</div>
+              <svg viewBox="0 0 340 250" class="w-full" style="height:250px">
+                <!-- grid of little file marks -->
+                <g fill="#fca5a5">
+                  <rect x="10" y="12" width="12" height="16"/><rect x="28" y="12" width="12" height="16"/><rect x="46" y="12" width="12" height="16"/>
+                  <rect x="64" y="12" width="12" height="16"/><rect x="82" y="12" width="12" height="16"/><rect x="100" y="12" width="12" height="16"/>
+                  <rect x="118" y="12" width="12" height="16"/><rect x="136" y="12" width="12" height="16"/><rect x="154" y="12" width="12" height="16"/>
+                  <rect x="172" y="12" width="12" height="16"/><rect x="190" y="12" width="12" height="16"/><rect x="208" y="12" width="12" height="16"/>
+                  <rect x="226" y="12" width="12" height="16"/><rect x="244" y="12" width="12" height="16"/><rect x="262" y="12" width="12" height="16"/>
+                  <rect x="280" y="12" width="12" height="16"/><rect x="298" y="12" width="12" height="16"/><rect x="316" y="12" width="12" height="16"/>
+                  <rect x="10" y="34" width="12" height="16"/><rect x="28" y="34" width="12" height="16"/><rect x="46" y="34" width="12" height="16"/>
+                  <rect x="64" y="34" width="12" height="16"/><rect x="82" y="34" width="12" height="16"/><rect x="100" y="34" width="12" height="16"/>
+                  <rect x="118" y="34" width="12" height="16"/><rect x="136" y="34" width="12" height="16"/><rect x="154" y="34" width="12" height="16"/>
+                  <rect x="172" y="34" width="12" height="16"/><rect x="190" y="34" width="12" height="16"/><rect x="208" y="34" width="12" height="16"/>
+                  <rect x="226" y="34" width="12" height="16"/><rect x="244" y="34" width="12" height="16"/><rect x="262" y="34" width="12" height="16"/>
+                  <rect x="280" y="34" width="12" height="16"/><rect x="298" y="34" width="12" height="16"/><rect x="316" y="34" width="12" height="16"/>
+                  <rect x="10" y="56" width="12" height="16"/><rect x="28" y="56" width="12" height="16"/><rect x="46" y="56" width="12" height="16"/>
+                  <rect x="64" y="56" width="12" height="16"/><rect x="82" y="56" width="12" height="16"/><rect x="100" y="56" width="12" height="16"/>
+                  <rect x="118" y="56" width="12" height="16"/><rect x="136" y="56" width="12" height="16"/><rect x="154" y="56" width="12" height="16"/>
+                  <rect x="172" y="56" width="12" height="16"/><rect x="190" y="56" width="12" height="16"/><rect x="208" y="56" width="12" height="16"/>
+                </g>
+                <text x="10" y="88" font-size="10" fill="#7f1d1d">82 test files, each with its own temp-dir field</text>
+                <text x="10" y="104" class="mono" font-size="9" fill="#94a3b8">_dir = Path.Combine(Path.GetTempPath(), "brtest_" + Guid…)</text>
+                <text x="10" y="118" class="mono" font-size="9" fill="#94a3b8">_dir = …"collisiontest_" + Guid…   ← naming drifts per file</text>
+
+                <rect x="10" y="134" width="318" height="72" fill="#fef2f2" stroke="#dc2626"/>
+                <text x="20" y="150" class="label" fill="#7f1d1d">copied verbatim in 10 files</text>
+                <text x="20" y="168" class="mono" font-size="9" fill="#7f1d1d">catch (IOException) when (a&lt;10) {</text>
+                <text x="20" y="182" class="mono" font-size="9" fill="#7f1d1d">  GC.Collect(); GC.WaitForPendingFinalizers();</text>
+                <text x="20" y="196" class="mono" font-size="9" fill="#7f1d1d">  Thread.Sleep(50); }</text>
+                <text x="10" y="226" font-size="10" fill="#dc2626" font-weight="600">SQLite handles outliving Dispose — worked around per file</text>
+                <text x="10" y="244" font-size="9" fill="#64748b">no filesystem seam exists anywhere under src/</text>
+              </svg>
+            </div>
+
+            <div class="rounded-lg border border-slate-300 bg-white p-5">
+              <div class="label text-slate-400 mb-4">After — one adapter, two tiers</div>
+              <svg viewBox="0 0 340 250" class="w-full" style="height:250px">
+                <rect x="60" y="14" width="220" height="26" rx="2" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.5"/>
+                <text x="170" y="32" text-anchor="middle" class="label" fill="#0f172a">TempDirectory : IDisposable</text>
+                <rect x="60" y="40" width="220" height="60" rx="2" fill="#0f172a"/>
+                <text x="170" y="62" text-anchor="middle" font-size="10" fill="#cbd5e1" class="mono">unique path, one convention</text>
+                <text x="170" y="80" text-anchor="middle" font-size="10" fill="#cbd5e1" class="mono">retry-delete, written once</text>
+
+                <g stroke="#cbd5e1" stroke-width="1">
+                  <line x1="170" y1="100" x2="170" y2="116"/>
+                </g>
+                <text x="170" y="132" text-anchor="middle" font-size="10" fill="#16a34a" font-weight="600">82 files stop carrying setup</text>
+
+                <line class="seam" x1="20" y1="152" x2="320" y2="152" stroke="#475569"/>
+                <text x="20" y="146" class="label" fill="#94a3b8">further — the real prize</text>
+
+                <rect x="20" y="164" width="140" height="70" fill="none" stroke="#475569"/>
+                <text x="90" y="182" text-anchor="middle" class="label" fill="#475569">real System.IO</text>
+                <text x="90" y="200" text-anchor="middle" font-size="9" fill="#64748b">locked files, SMB quirks</text>
+                <text x="90" y="216" text-anchor="middle" font-size="9" fill="#64748b">a handful of tests</text>
+
+                <rect x="180" y="164" width="140" height="70" fill="#0f172a"/>
+                <text x="250" y="182" text-anchor="middle" class="label" fill="#94a3b8">in-memory</text>
+                <text x="250" y="200" text-anchor="middle" font-size="9" fill="#cbd5e1">the rest — fast</text>
+                <text x="250" y="216" text-anchor="middle" font-size="9" fill="#cbd5e1">no disk, no flake</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+            <div><span class="label text-slate-400">Problem</span><p class="mt-1">Every module that touches disk is proved by writing real files, so 82 test files each carry their own fixture and 10 carry the same hand-rolled retry-delete.</p></div>
+            <div><span class="label text-slate-400">Solution</span><p class="mt-1">One <span class="mono">TempDirectory</span> adapter first (cheap, mechanical). A filesystem seam behind Config / History / Commit second — only if the flake and runtime justify it.</p></div>
+          </div>
+
+          <div class="rounded-lg bg-amber-50 border border-amber-300 p-4 text-sm">
+            <span class="label text-amber-700">Stated honestly</span>
+            <p class="mt-1">The sociable style here is deliberate — <span class="mono">ShellFixture.cs:7–9</span> says so: <em>"A complete headless shell over real temp folders, a real Session, and a real SQLite history — only the viewer and dialogs are fakes."</em> That is a legitimate choice and it catches wiring bugs isolated tests miss. The shared fixture is the uncontroversial half; the <span class="mono">IFileSystem</span> seam is the half that deserves an argument before anyone writes it.</p>
+          </div>
+
+          <ul class="grid sm:grid-cols-2 gap-x-8 gap-y-1.5 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>Deletes 82 copies of setup / teardown</li>
+            <li>Retry-delete correct in one place</li>
+            <li>Removes an antivirus-flake surface</li>
+            <li>Second step optional, and arguable</li>
+          </ul>
+        </article>
+
+        <div class="rule"></div>
+
+        <!-- ══════ 8 ══════ -->
+        <article id="c8" class="space-y-5">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">8 · Finish <span class="mono text-xl">Csv</span> — the write side stopped one step short</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">Worth exploring</span>
+              <span class="text-xs px-2.5 py-1 rounded-full bg-sky-100 text-sky-800">smallest diff</span>
+            </div>
+          </div>
+
+          <p class="mono text-sm text-slate-600">Csv.cs:97 WriteRow, :104 ReadTable · History.cs:296–311 · ProductionReport.cs:234–248 · TurnaroundTime.cs:204–222</p>
+
+          <div class="grid md:grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-white p-5">
+              <div class="label text-slate-400 mb-4">Before — read side deep, write side shallow</div>
+              <svg viewBox="0 0 340 250" class="w-full" style="height:250px">
+                <text x="82" y="16" text-anchor="middle" class="label" fill="#94a3b8">read</text>
+                <rect x="22" y="24" width="120" height="22" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.5"/>
+                <text x="82" y="39" text-anchor="middle" font-size="9" class="mono" fill="#0f172a">ReadTable(path)</text>
+                <rect x="22" y="46" width="120" height="104" fill="#0f172a"/>
+                <text x="82" y="72" text-anchor="middle" font-size="9" fill="#cbd5e1" class="mono">sniff delimiter</text>
+                <text x="82" y="90" text-anchor="middle" font-size="9" fill="#cbd5e1" class="mono">xlsx vs text</text>
+                <text x="82" y="108" text-anchor="middle" font-size="9" fill="#cbd5e1" class="mono">encoding</text>
+                <text x="82" y="126" text-anchor="middle" font-size="9" fill="#cbd5e1" class="mono">parse + escape</text>
+                <text x="82" y="170" text-anchor="middle" font-size="10" fill="#16a34a" font-weight="600">deep ✓</text>
+
+                <text x="252" y="16" text-anchor="middle" class="label" fill="#94a3b8">write</text>
+                <rect x="192" y="24" width="120" height="70" fill="#fef2f2" stroke="#dc2626" stroke-width="1.5"/>
+                <text x="252" y="46" text-anchor="middle" font-size="9" class="mono" fill="#7f1d1d">WriteRow(fields)</text>
+                <text x="252" y="64" text-anchor="middle" font-size="8" fill="#7f1d1d">one row only</text>
+                <text x="252" y="82" text-anchor="middle" font-size="8" fill="#7f1d1d">no WriteTable</text>
+                <rect x="192" y="94" width="120" height="24" fill="#fff" stroke="#fca5a5"/>
+                <text x="252" y="110" text-anchor="middle" font-size="8" fill="#94a3b8">thin</text>
+                <text x="252" y="170" text-anchor="middle" font-size="10" fill="#dc2626" font-weight="600">shallow ✗</text>
+
+                <line class="seam" x1="22" y1="190" x2="318" y2="190" stroke="#cbd5e1"/>
+                <text x="22" y="210" font-size="10" fill="#64748b">so three callers each retype the ceremony:</text>
+                <text x="22" y="228" class="mono" font-size="9" fill="#7f1d1d">new StreamWriter(dest, false, new UTF8Encoding(true))</text>
+                <text x="22" y="244" class="mono" font-size="9" fill="#94a3b8">History · ProductionReport · TurnaroundTime</text>
+              </svg>
+            </div>
+
+            <div class="rounded-lg border border-slate-300 bg-white p-5">
+              <div class="label text-slate-400 mb-4">After — symmetric</div>
+              <svg viewBox="0 0 340 250" class="w-full" style="height:250px">
+                <text x="82" y="16" text-anchor="middle" class="label" fill="#94a3b8">read</text>
+                <rect x="22" y="24" width="120" height="22" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.5"/>
+                <text x="82" y="39" text-anchor="middle" font-size="9" class="mono" fill="#0f172a">ReadTable</text>
+                <rect x="22" y="46" width="120" height="104" fill="#0f172a"/>
+
+                <text x="252" y="16" text-anchor="middle" class="label" fill="#94a3b8">write</text>
+                <rect x="192" y="24" width="120" height="22" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.5"/>
+                <text x="252" y="39" text-anchor="middle" font-size="9" class="mono" fill="#0f172a">WriteTable</text>
+                <rect x="192" y="46" width="120" height="104" fill="#0f172a"/>
+                <text x="252" y="72" text-anchor="middle" font-size="9" fill="#cbd5e1" class="mono">BOM + encoding</text>
+                <text x="252" y="90" text-anchor="middle" font-size="9" fill="#cbd5e1" class="mono">header row</text>
+                <text x="252" y="108" text-anchor="middle" font-size="9" fill="#cbd5e1" class="mono">escape per field</text>
+                <text x="252" y="126" text-anchor="middle" font-size="9" fill="#cbd5e1" class="mono">returns row count</text>
+
+                <text x="170" y="176" text-anchor="middle" font-size="10" fill="#16a34a" font-weight="600">each ExportCsv keeps only its domain logic</text>
+                <text x="170" y="196" text-anchor="middle" font-size="9" fill="#64748b">group keys · TAT fields · history columns</text>
+                <line class="seam" x1="22" y1="212" x2="318" y2="212" stroke="#475569"/>
+                <text x="170" y="234" text-anchor="middle" font-size="9" fill="#64748b">formula-injection escaping proved once, not three times</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+            <div><span class="label text-slate-400">Problem</span><p class="mt-1"><span class="mono">Csv</span> generalised reading a whole table but stopped at writing a single row, so three exports re-derive the BOM-plus-StreamWriter ceremony.</p></div>
+            <div><span class="label text-slate-400">Solution</span><p class="mt-1">Add <span class="mono">WriteTable</span> beside <span class="mono">ReadTable</span> in the module that is already the stated seam for exactly this.</p></div>
+          </div>
+
+          <ul class="grid sm:grid-cols-2 gap-x-8 gap-y-1.5 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>An hour's work, obvious home</li>
+            <li>BOM correctness in one place</li>
+            <li>Escaping tests collapse 3 → 1</li>
+            <li>Interface shrinks; implementation absorbs it</li>
+          </ul>
+        </article>
+      </section>
+
+      <!-- ─────────────── ALREADY DEEP ─────────────── -->
+      <section class="space-y-4">
+        <h2 class="font-serif text-2xl">What is already deep</h2>
+        <p class="text-sm text-slate-600">Stated because it explains why the candidates above stand out: the friction here is narrow and idiom-specific, not systemic.</p>
+        <div class="grid sm:grid-cols-2 gap-3 text-sm">
+          <div class="border border-slate-200 bg-white rounded-lg p-4"><div class="label text-slate-500">Dialogs and dispatch</div><p class="mt-1 text-slate-600">Zero direct <span class="mono">MessageBox</span> / <span class="mono">OpenFileDialog</span> / <span class="mono">Dispatcher.Invoke</span> in either 2000-line ViewModel — all behind <span class="mono">IDialogService</span> and <span class="mono">SynchronizationContext</span>. Large ≠ shallow.</p></div>
+          <div class="border border-slate-200 bg-white rounded-lg p-4"><div class="label text-slate-500">Coverage</div><p class="mt-1 text-slate-600">All 28 Core modules have direct or clearly attributable tests; 482 facts in Core.Tests. <span class="mono">Scanner</span> and <span class="mono">ConfigDocs</span> looked untested by filename and were verified covered.</p></div>
+          <div class="border border-slate-200 bg-white rounded-lg p-4"><div class="label text-slate-500">The E2E suite</div><p class="mt-1 text-slate-600">Not compensating for untestable modules — it proves real ViewModel-to-Core wiring through a real window, which neither tier covers. Its plan states the rule explicitly.</p></div>
+          <div class="border border-slate-200 bg-white rounded-lg p-4"><div class="label text-slate-500">Naming, Commit, DebouncedProbe</div><p class="mt-1 text-slate-600"><span class="mono">Naming</span> is filesystem-free by design; <span class="mono">Commit</span> absorbs the move-and-retry ordering rather than pushing it onto <span class="mono">Session</span>; <span class="mono">DebouncedProbe</span> is one mechanism reused correctly.</p></div>
+        </div>
+      </section>
+
+      <!-- ─────────────── TOP RECOMMENDATION ─────────────── -->
+      <section id="top-recommendation">
+        <div class="deep rounded-xl p-8 text-slate-100">
+          <div class="label text-emerald-400 mb-3">Start here</div>
+          <h2 class="font-serif text-3xl mb-4">Candidate 2 first, then candidate 4</h2>
+          <p class="text-slate-300 leading-relaxed max-w-3xl">
+            <a href="#c2" class="text-emerald-400 underline decoration-emerald-700 underline-offset-4">Candidate 2</a> is the only one on this page that is producing a wrong result today: two of nine intake modules dedupe case-sensitively, and they are precisely the two that drive <span class="mono">File.Move</span>. A case-only duplicate becomes a second row, and the second <span class="mono">File.Move</span> fails on a file the first already moved — surfacing to the user as a per-file failure that has no per-file cause. Fixing the two call sites is minutes; deepening intake so a tenth tool cannot drift again is the real work.
+          </p>
+          <p class="text-slate-300 leading-relaxed max-w-3xl mt-4">
+            Then <a href="#c4" class="text-emerald-400 underline decoration-emerald-700 underline-offset-4">candidate 4</a> — the cheapest diff here. The seam exists and twelve of fourteen ViewModels use it, so the two that don't are a plain inconsistency. <span class="text-amber-300">Note the correction on that card:</span> I originally cited three flaky-test commits as proof of what the gap had cost, and that reading does not survive contact with the commits themselves. Take it as a small consistency win, not a flake fix.
+          </p>
+          <p class="text-slate-400 text-sm mt-6 border-t border-slate-700 pt-4 max-w-3xl">
+            Candidates 1, 3 and 5 are the same story at three scales — an idiom with no single owner. <span class="text-slate-300">Candidate 3 is the one to take seriously</span>: it is the highest-stakes rule in the codebase and the most re-derived, and every copy carries a doc comment naming the sibling it was copied from.
+          </p>
+        </div>
+      </section>
+
+      <footer class="text-xs text-slate-400 border-t border-slate-200 pt-6">
+        OrdoSort · 28 Core modules, 14 ViewModels, 134 test files · claims verified against source at 08b1328 · no <span class="mono">CONTEXT.md</span> or ADRs present, so domain vocabulary is taken from the code itself
+      </footer>
+    </main>
+  </body>
+</html>
