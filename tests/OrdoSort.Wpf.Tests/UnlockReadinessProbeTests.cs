@@ -85,30 +85,26 @@ public class UnlockReadinessProbeTests : IDisposable
     [Fact]
     public async Task ARowIsPendingWithNoSuffixUntilItsOwnProbeReturns()
     {
-        // Same fix as ASavedPasswordChangeDuringAnInFlightAddProbeDoesNotLetTheStaleResultWin
-        // / ClearingTheListCancelsAnInFlightProbeSoItsLateResultIsDiscarded
-        // below: no elapsed-time budget on either signal. "The probe
-        // started" and "the test released it" are facts the delegate and
-        // this method establish directly, not events raced against a
-        // millisecond guess about ThreadPool/STA-fixture contention.
+        // "In flight" is the scheduler's queue, not a blocked thread: the
+        // probe has been DISPATCHED and not yet run, which is exactly the
+        // state this row is asserted to be in. No elapsed-time budget, no
+        // event to signal, and no ThreadPool item held open for the length
+        // of the assertions.
         var file = Touch("f.pdf");
-        var started = new ManualResetEventSlim(false);
-        var release = new ManualResetEventSlim(false);
-        var vm = new UnlockViewModel(new Config(), () => true, probe: (path, candidates) =>
-        {
-            started.Set();
-            release.Wait();   // no timeout: this test's own gate, not a race against it
-            return new Unlock.ProbeResult("ready", path, MatchedIndex: 0, Message: "ok");
-        });
+        var scheduler = new ControlledWorkScheduler();
+        var vm = new UnlockViewModel(new Config(), () => true,
+            probe: (path, candidates) =>
+                new Unlock.ProbeResult("ready", path, MatchedIndex: 0, Message: "ok"),
+            scheduler: scheduler);
 
         var addTask = vm.AddFilesAsync(new[] { file });
-        started.Wait();   // blocks until the probe itself proves it is running — a fact, not a hope
+        scheduler.ReleaseNext();   // the intake check: the row lands, its probe is queued
 
         var row = Assert.Single(vm.Files);
         Assert.Equal(ReadinessStatus.Pending, row.Status);
         Assert.Equal("f.pdf", row.DisplayText);   // quiet while pending, same as NotEncrypted
 
-        release.Set();
+        scheduler.ReleaseAll();    // now let the probe answer
         await addTask;
         Assert.Equal(ReadinessStatus.Ready, row.Status);
     }
@@ -196,58 +192,51 @@ public class UnlockReadinessProbeTests : IDisposable
     [Fact]
     public async Task ASavedPasswordChangeDuringAnInFlightAddProbeDoesNotLetTheStaleResultWin()
     {
-        // "In flight" here is a fact this test's OWN probe delegate creates
-        // and controls, not an event it hopes to observe within a fixed
-        // real-time budget. The delegate signals firstCallStarted the
-        // instant it begins running, then blocks on releaseFirstCall — a
-        // gate only this test sets. Waiting on either signal below with NO
-        // timeout means there is no elapsed-time budget anywhere in this
-        // test: whatever thread the probe call lands on, and however long
-        // it takes to get scheduled there (Task.Run's dispatch shares a
-        // ThreadPool with every other Wpf.Tests class xUnit runs in
-        // parallel, and this file's WPF tests additionally share an STA
-        // fixture with roughly 1676 others — either can genuinely delay
-        // WHEN the probe starts under a loaded CI runner), the test simply
-        // waits for it rather than racing a guess about how long that
-        // should take. A prior version bounded these waits at 2000ms and
-        // then tried to make dispatch fast enough to fit that budget
-        // (UnlockViewModel.OffUiThreadDispatchForTests, since removed) —
-        // that made the race narrower, not gone: still "wait, then assert",
-        // just less likely to lose. Removing the budget removes the race.
+        // The ordering this test needs — probe #2 lands BEFORE probe #1
+        // finishes — used to be arranged by blocking probe #1 on a thread
+        // and signalling it back to life. It is now stated directly: both
+        // probes sit in the scheduler's queue and the test runs the newer
+        // one first. A prior version bounded the waits at 2000ms and tried
+        // to make dispatch fast enough to fit (UnlockViewModel.OffUiThread
+        // DispatchForTests, since removed); the gates that replaced it
+        // removed the budget but still needed a pool thread held open for
+        // the length of the scenario. Neither is needed to say "run this
+        // one, not that one yet".
         var file = Touch("f.pdf");
-        var firstCallStarted = new ManualResetEventSlim(false);
-        var releaseFirstCall = new ManualResetEventSlim(false);
+        var scheduler = new ControlledWorkScheduler();
         var callCount = 0;
 
         var vm = new UnlockViewModel(new Config(), () => true, probe: (path, candidates) =>
         {
-            var n = Interlocked.Increment(ref callCount);
-            if (n == 1)
-            {
-                // the on-add probe: blocks so the re-probe below can be
-                // requested while this one is still in flight
-                firstCallStarted.Set();
-                releaseFirstCall.Wait();   // no timeout: this test's own gate, not a race against it
-                return new Unlock.ProbeResult("needs_password", path, Message: "STALE — answers the old question");
-            }
-            // the re-probe, triggered by AddSavedPassword below: answers
-            // fast, with the fresh candidate list actually reflected
-            return new Unlock.ProbeResult("ready", path, MatchedIndex: 0, Message: "FRESH");
-        });
+            callCount++;
+            // Discriminated by what the probe was ASKED, never by which call
+            // ordinal happens to run first: this test exists precisely
+            // because the two probes finish out of order, so a counter would
+            // label whichever ran first as the stale one and the test would
+            // be asserting its own arrangement. Candidates are snapshotted
+            // at dispatch, so the on-add probe carries an empty list and the
+            // post-save re-probe carries the new password — the same
+            // discriminator ANewlySavedPasswordReprobesEveryRow uses above.
+            return candidates.Count == 0
+                ? new Unlock.ProbeResult("needs_password", path, Message: "STALE — answers the old question")
+                : new Unlock.ProbeResult("ready", path, MatchedIndex: 0, Message: "FRESH");
+        },
+            scheduler: scheduler);
 
         var addTask = vm.AddFilesAsync(new[] { file });
-        firstCallStarted.Wait();   // blocks until call #1 itself proves it is running — a fact, not a hope
+        scheduler.ReleaseNext();   // the intake check: the row lands, probe #1 is queued
 
         var row = Assert.Single(vm.Files);
-        Assert.Equal(ReadinessStatus.Pending, row.Status);   // still waiting on call #1
+        Assert.Equal(ReadinessStatus.Pending, row.Status);   // still waiting on probe #1
 
-        // Fires while call #1 is still blocked — this is the "in flight"
-        // part of the scenario.
+        // Requested while probe #1 is still outstanding — this is the "in
+        // flight" part of the scenario.
         Assert.True(vm.AddSavedPassword("New", "secret"));
-        await vm.ProbeCompletion;   // call #2 (the re-probe) finishes fast
+        scheduler.ReleaseNewest();   // probe #2 answers while #1 is still queued
+        await vm.ProbeCompletion;
         Assert.Equal(ReadinessStatus.Ready, row.Status);   // the fresh result already landed
 
-        releaseFirstCall.Set();    // now let the stale call #1 finish too
+        scheduler.ReleaseAll();    // now let the stale probe #1 finish too
         await addTask;
 
         // The stale "needs_password" from call #1 must NOT have overwritten
@@ -261,33 +250,27 @@ public class UnlockReadinessProbeTests : IDisposable
     [Fact]
     public async Task ClearingTheListCancelsAnInFlightProbeSoItsLateResultIsDiscarded()
     {
-        // See ASavedPasswordChangeDuringAnInFlightAddProbeDoesNotLetTheStaleResultWin's
-        // comment: started.Wait() below has no timeout, so "the probe is in
-        // flight" is a fact this test's own probe delegate creates (it sets
-        // started, then blocks on a gate only this test controls) rather
-        // than something asserted after racing a fixed millisecond budget
-        // against however busy the shared ThreadPool / STA test fixture
-        // happens to be on a given CI run.
+        // "The probe is in flight" is the scheduler's queue: dispatched,
+        // not yet run. Clear happens while it sits there, and the result is
+        // produced afterwards — a genuinely late answer, with no thread
+        // parked and no millisecond budget raced against a loaded CI runner.
         var file = Touch("f.pdf");
-        var started = new ManualResetEventSlim(false);
-        var release = new ManualResetEventSlim(false);
-        var vm = new UnlockViewModel(new Config(), () => true, probe: (path, candidates) =>
-        {
-            started.Set();
-            release.Wait();   // no timeout: this test's own gate, not a race against it
-            return new Unlock.ProbeResult("ready", path, MatchedIndex: 0, Message: "late");
-        });
+        var scheduler = new ControlledWorkScheduler();
+        var vm = new UnlockViewModel(new Config(), () => true,
+            probe: (path, candidates) =>
+                new Unlock.ProbeResult("ready", path, MatchedIndex: 0, Message: "late"),
+            scheduler: scheduler);
 
         var addTask = vm.AddFilesAsync(new[] { file });
-        started.Wait();   // blocks until the probe itself proves it is running — a fact, not a hope
+        scheduler.ReleaseNext();   // the intake check: the row lands, its probe is queued
         var row = Assert.Single(vm.Files);
         Assert.Equal(ReadinessStatus.Pending, row.Status);
 
         vm.ClearCommand.Execute(null);
         Assert.Empty(vm.Files);
 
-        release.Set();
-        await addTask;   // AddFilesAsync's own await only completes once the blocked call returns
+        scheduler.ReleaseAll();
+        await addTask;   // AddFilesAsync's own await only completes once the late call returns
 
         // the row is gone from Files either way; the point is that the LATE
         // result was never applied to it — proven directly on the row
@@ -298,22 +281,18 @@ public class UnlockReadinessProbeTests : IDisposable
     [Fact]
     public async Task ClosingTheWindowCancelsAnInFlightProbeSoItsLateResultIsDiscarded()
     {
-        // Same no-timeout gate as ClearingTheListCancelsAnInFlightProbeSoItsLateResultIsDiscarded
-        // just above — see that test's comment on
-        // ASavedPasswordChangeDuringAnInFlightAddProbeDoesNotLetTheStaleResultWin
-        // for why a fixed millisecond budget here is a race, not a check.
+        // Same queued-not-run arrangement as ClearingTheListCancelsAnInFlight
+        // ProbeSoItsLateResultIsDiscarded just above; the only difference is
+        // what happens while the probe is outstanding.
         var file = Touch("f.pdf");
-        var started = new ManualResetEventSlim(false);
-        var release = new ManualResetEventSlim(false);
-        var vm = new UnlockViewModel(new Config(), () => true, probe: (path, candidates) =>
-        {
-            started.Set();
-            release.Wait();   // no timeout: this test's own gate, not a race against it
-            return new Unlock.ProbeResult("ready", path, MatchedIndex: 0, Message: "late");
-        });
+        var scheduler = new ControlledWorkScheduler();
+        var vm = new UnlockViewModel(new Config(), () => true,
+            probe: (path, candidates) =>
+                new Unlock.ProbeResult("ready", path, MatchedIndex: 0, Message: "late"),
+            scheduler: scheduler);
 
         var addTask = vm.AddFilesAsync(new[] { file });
-        started.Wait();   // blocks until the probe itself proves it is running — a fact, not a hope
+        scheduler.ReleaseNext();   // the intake check: the row lands, its probe is queued
         var row = Assert.Single(vm.Files);
 
         // Mirrors UnlockWindow.OnClosed calling CancelProbes() alongside
@@ -321,7 +300,7 @@ public class UnlockReadinessProbeTests : IDisposable
         // Clear) Files itself is left alone.
         vm.CancelProbes();
 
-        release.Set();
+        scheduler.ReleaseAll();
         await addTask;
 
         Assert.Equal(ReadinessStatus.Pending, row.Status);   // the late "ready" was never applied
