@@ -289,4 +289,26 @@ public class UnlockThresholdTestCollectionMembershipTests
         Assert.NotNull(neverOverwritesCollection);
         Assert.Equal(neverOverwritesCollection, unlockTestsCollection);
     }
+
+    /// <summary>A third member, joined for a DIFFERENT reason than the other
+    /// two: UnlockProbeWritesNothingTests never touches the threshold, but it
+    /// snapshots "ordosort_*" in Path.GetTempPath(), and the streaming unlock
+    /// path the other two force writes "ordosort_unlock_&lt;guid&gt;.pdf" into
+    /// exactly that directory. Run concurrently, one class's working file
+    /// lands inside the other's before/after window and fails it on a write
+    /// it never made.
+    ///
+    /// This was latent from the moment both classes existed and only surfaced
+    /// when an unrelated new test class shifted the parallel schedule — which
+    /// is precisely why it is pinned here rather than left to be rediscovered
+    /// the next time the schedule moves.</summary>
+    [Fact]
+    public void UnlockProbeWritesNothingTestsSharesTheSameCollection()
+    {
+        var neverOverwritesCollection = CollectionNameOf(typeof(UnlockNeverOverwritesTests));
+        var probeWritesNothingCollection = CollectionNameOf(typeof(UnlockProbeWritesNothingTests));
+
+        Assert.NotNull(neverOverwritesCollection);
+        Assert.Equal(neverOverwritesCollection, probeWritesNothingCollection);
+    }
 }

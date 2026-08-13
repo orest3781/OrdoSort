@@ -18,6 +18,21 @@ namespace OrdoSort.Core.Tests;
 /// the new file listed in the temp-directory diff -- proof this test would
 /// actually catch a probe that writes, not just a probe that happens not
 /// to.</summary>
+/// <summary>Joins the same collection as UnlockNeverOverwritesTests/UnlockTests
+/// — not because this class touches Unlock.LargeFileThresholdBytes (it
+/// doesn't), but because of what those two DO with it. Setting the threshold
+/// to 1 forces the streaming unlock path, and that path writes its working
+/// copy to "ordosort_unlock_&lt;guid&gt;.pdf" in Path.GetTempPath() itself
+/// (Unlock.cs). This class snapshots "ordosort_*" in that same directory
+/// before and after, so a streamed unlock running concurrently lands a file
+/// inside the window and this test fails on someone else's write.
+///
+/// Observed for real: the failure surfaced when an unrelated new test class
+/// shifted xUnit's parallel schedule, not from any change to unlock or to
+/// this test — the interference had been latent since both classes were
+/// written. The [Collection] attribute is the whole fix; see
+/// UnlockThresholdTestCollectionMembershipTests, which pins it.</summary>
+[Collection(UnlockNeverOverwritesTests.Name)]
 public class UnlockProbeWritesNothingTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "unlockprobewrites_" + Guid.NewGuid());
