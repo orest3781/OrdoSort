@@ -20,6 +20,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />   <!-- add feedback, collapsed when silent -->
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
@@ -34,17 +35,26 @@
                 <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,14,0" />
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
                            Style="{StaticResource StatusText}" MaxWidth="420" />
-                <!-- Add feedback, same placement and style as
-                     FilenameListWindow's: a drop that added nothing otherwise
-                     reads as the window ignoring you. -->
-                <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
-                           VerticalAlignment="Center" Margin="14,0,0,0"
-                           TextTrimming="CharacterEllipsis" />
             </StackPanel>
+
+            <!-- Add feedback: a drop or browse that added nothing otherwise
+                 reads as the window ignoring you.
+                 On its OWN row, not beside Status as it first was. The source
+                 row is a horizontal StackPanel, which hands out space
+                 left-to-right and gives the last child whatever is left —
+                 including nothing. Rendered at this window's MinWidth with a
+                 full Status ("23 files · 453 rows · 261 without TAT · 28 over
+                 threshold"), the note was pushed off the row entirely, so the
+                 one case it exists for silently showed nothing. Collapsed
+                 when empty, so it costs no vertical space while silent. -->
+            <TextBlock Grid.Row="1" Text="{Binding AddNote}"
+                       Style="{StaticResource CaptionText}"
+                       Visibility="{Binding AddNote, Converter={StaticResource TextToVis}}"
+                       Margin="0,0,0,10" TextTrimming="CharacterEllipsis" />
 
             <!-- mapping row: which loaded header names the document and
                  (optionally) its category, plus the over-threshold cutoff. -->
-            <Grid Grid.Row="1" Style="{StaticResource FieldRow}">
+            <Grid Grid.Row="2" Style="{StaticResource FieldRow}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -78,7 +88,7 @@
                          Text="{Binding ThresholdDays, UpdateSourceTrigger=PropertyChanged}" />
             </Grid>
 
-            <TabControl Grid.Row="2">
+            <TabControl Grid.Row="3">
                 <!-- Documents: one row per computed document, IsOverThreshold
                      rows picked out in Theme.Warning — the row background is
                      ONLY safe to read against Theme.WarningText, never the

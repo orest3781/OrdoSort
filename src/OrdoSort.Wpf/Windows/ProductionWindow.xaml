@@ -17,6 +17,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />   <!-- add feedback, collapsed when silent -->
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -32,17 +33,23 @@
                 <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,14,0" />
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
                            Style="{StaticResource StatusText}" MaxWidth="420" />
-                <!-- Add feedback, same placement and style as
-                     FilenameListWindow's — see TurnaroundWindow. -->
-                <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
-                           VerticalAlignment="Center" Margin="14,0,0,0"
-                           TextTrimming="CharacterEllipsis" />
             </StackPanel>
+
+            <!-- Add feedback on its own row, collapsed when empty — see
+                 TurnaroundWindow.xaml for why it is not on the source row:
+                 that row's StackPanel gives its last child whatever space is
+                 left, which at MinWidth was none. This window survived only
+                 because its Status line happens to be shorter, which is luck
+                 rather than a design that holds. -->
+            <TextBlock Grid.Row="1" Text="{Binding AddNote}"
+                       Style="{StaticResource CaptionText}"
+                       Visibility="{Binding AddNote, Converter={StaticResource TextToVis}}"
+                       Margin="0,0,0,10" TextTrimming="CharacterEllipsis" />
 
             <!-- datetime column: feeds the derived Date/Hour columns
                  (ProductionReport.WithDerived) that GroupPicks/SumPicks pick
                  up automatically once set. -->
-            <Grid Grid.Row="1" Style="{StaticResource FieldRow}">
+            <Grid Grid.Row="2" Style="{StaticResource FieldRow}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -58,7 +65,7 @@
                  ColumnPicks (Binding Name/IsChosen). Each list scrolls
                  independently rather than growing the window, since a wide
                  sweep can carry a lot of headers. -->
-            <Grid Grid.Row="2" Margin="0,0,0,10">
+            <Grid Grid.Row="3" Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="16" />
@@ -111,7 +118,7 @@
                  DataGridColumn isn't part of the visual/logical tree, so it
                  can't pick up a XAML-declared implicit style the way a
                  regular element would. -->
-            <DataGrid Grid.Row="3" x:Name="ResultsGrid" ItemsSource="{Binding Rows}"
+            <DataGrid Grid.Row="4" x:Name="ResultsGrid" ItemsSource="{Binding Rows}"
                       AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False"
                       HeadersVisibility="Column" SelectionMode="Extended">
                 <DataGrid.RowStyle>

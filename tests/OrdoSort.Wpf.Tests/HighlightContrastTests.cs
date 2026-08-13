@@ -148,6 +148,7 @@ public sealed class HighlightContrastFixture : IDisposable
             AddIfMissing("ColorStringToForeBrush", new OrdoSort.Wpf.Views.ColorStringToForeBrushConverter());
             AddIfMissing("SwatchCheck", new OrdoSort.Wpf.Views.SwatchCheckConverter());
             AddIfMissing("ZeroToVis", new OrdoSort.Wpf.Views.ZeroToVisibilityConverter());
+            AddIfMissing("TextToVis", new OrdoSort.Wpf.Views.TextToVisibilityConverter());
             AddIfMissing("FileName", new OrdoSort.Wpf.Views.FileNameConverter());
             AddIfMissing("PasswordStatus", new OrdoSort.Wpf.Views.PasswordStatusConverter());
             AddIfMissing("FontFamilyString", new OrdoSort.Wpf.Views.FontFamilyStringConverter());
