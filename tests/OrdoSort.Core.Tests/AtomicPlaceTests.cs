@@ -260,6 +260,7 @@ public class AtomicPlaceSeamMembershipTests
             typeof(AtomicPlaceTests),
             typeof(AtomicWriteTests),
             typeof(ConfigSplitTests),
+            typeof(ZipperTests),
         };
 
         var names = setters.Select(CollectionNameOf).ToArray();

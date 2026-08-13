@@ -7,6 +7,10 @@ namespace OrdoSort.Core.Tests;
 /// ZipFile.Open(path, ZipArchiveMode.Create) — the same idiom ZipMergeTests
 /// and XlsxTableTests already use — and plain text-file fixtures for the
 /// files/folders CreateZip reads from disk.</summary>
+/// <summary>In the AtomicPlace seam collection: SaveAsRidesOutADestination
+/// HeldOpenBriefly assigns AtomicPlace.BeforeAttempt, and that field is a
+/// single process-wide one — see AtomicPlaceTests.Name.</summary>
+[Collection(AtomicPlaceTests.Name)]
 public class ZipperTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordozipper_" + Guid.NewGuid());
@@ -358,5 +362,54 @@ public class ZipperTests : IDisposable
         Assert.True(Directory.Exists(peerDir));
         Assert.True(File.Exists(sentinel));
         Assert.Equal("not touched", File.ReadAllText(sentinel));
+    }
+
+    /// <summary>Save-As's retry loop had no test and no seam. It was a
+    /// byte-for-byte copy of Config.WriteAtomic's loop — whose own retry
+    /// behaviour IS proven — and its doc comment said as much ("same shape,
+    /// same reasoning"), but nothing anywhere proved that zipping over a file
+    /// somebody still has open actually succeeds rather than failing outright.
+    /// Sharing one implementation made the seam free, so here it is.
+    ///
+    /// The reader holds the destination WITHOUT FileShare.Delete, which is
+    /// what genuinely blocks File.Replace — the same shape Config.Load uses,
+    /// and the realistic case: another station still has the previous archive
+    /// open. Releasing on attempt 2 rather than 0 keeps the claim honest, so
+    /// the first attempts really do fail and the success is the loop working
+    /// rather than a lucky first try.</summary>
+    [Fact]
+    public void SaveAsRidesOutADestinationHeldOpenBriefly()
+    {
+        var source = Path.Combine(_dir, "doc.txt");
+        File.WriteAllText(source, "contents");
+        var dest = Path.Combine(_dir, "archive.zip");
+        File.WriteAllText(dest, "the previous archive");
+
+        var hold = new FileStream(dest, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var attemptsSeen = new List<int>();
+        AtomicPlace.BeforeAttempt = (destination, attempt) =>
+        {
+            if (destination != dest) return;   // process-wide seam; not our write
+            attemptsSeen.Add(attempt);
+            if (attempt == 2) hold.Dispose();
+        };
+        Zipper.ZipResult r;
+        try
+        {
+            r = Zipper.CreateZip(new[] { source }, dest);
+        }
+        finally
+        {
+            AtomicPlace.BeforeAttempt = null;
+            hold.Dispose();   // no-op if the callback already ran
+        }
+
+        Assert.Equal("ok", r.Status);
+        Assert.Equal(dest, r.Output);
+        Assert.True(attemptsSeen.Count > 1, "it should have taken more than one attempt to land");
+
+        // The archive really is the new one, not the old file left in place.
+        using var archive = System.IO.Compression.ZipFile.OpenRead(dest);
+        Assert.Equal("doc.txt", Assert.Single(archive.Entries).FullName);
     }
 }

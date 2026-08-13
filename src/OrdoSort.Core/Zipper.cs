@@ -99,30 +99,33 @@ public static class Zipper
         if (existing.Count == 0)
             return new ZipResult("error", null, "nothing to zip");
 
-        // finalPath is set only for the Save-As case: `target` is always
-        // where THIS call's ZipFile.Open actually writes bytes (a temp
-        // sibling when Save-As is replacing something), and finalPath is
-        // where those bytes get moved once the build succeeds. See the
-        // class doc comment on CreateZip for why Save-As no longer deletes
-        // the pre-existing file up front.
-        string target;
-        string? finalPath = null;
+        // The two branches below look similar and are governed by DIFFERENT
+        // rules — see CONTEXT.md's "atomic placement" for why they must not
+        // be merged.
+        //
+        // Save-As writes to a temp file whose name carries a GUID, so no peer
+        // can own it: AtomicPlace picks it, hands it to the build, moves it
+        // onto the real path, and deletes it if anything fails. Nothing here
+        // needs a created-gate, because there is no contested name to be
+        // careful about.
+        //
+        // The default branch writes DIRECTLY to a collision-freed name, which
+        // a peer legitimately can own — Collision.FreeFile only proves the
+        // name was free at check time. That branch keeps its created-gate.
         if (outputPath is not null)
         {
-            finalPath = outputPath;
-            // GUID-suffixed, not a fixed "<name>.tmp": two coworkers racing
-            // Zip -> Save-As to the same filename on the same SMB share
-            // must never share one temp name either, or the second one
-            // could install the first one's bytes, or find its own temp
-            // deleted out from under it (same reasoning as
-            // Config.WriteAtomic's own temp naming).
-            target = $"{outputPath}.{Guid.NewGuid():N}.tmp";
+            // finalPath is where the bytes land once the build succeeds. See
+            // the class doc comment on CreateZip for why Save-As no longer
+            // deletes the pre-existing file up front: if the build or the
+            // placement fails, outputPath is left exactly as the user last
+            // saw it, because nothing above ever touched it.
+            if (!AtomicPlace.TryReplace(outputPath, tmp => BuildArchive(tmp, existing), out var placeError))
+                return new ZipResult("error", null, $"couldn't create the zip: {placeError}");
+            return new ZipResult("ok", outputPath);
         }
-        else
-        {
-            var besideDir = BesideDirectory(existing[0]);
-            target = Collision.FreeFile(Path.Combine(besideDir, DefaultName(existing)));
-        }
+
+        var besideDir = BesideDirectory(existing[0]);
+        var target = Collision.FreeFile(Path.Combine(besideDir, DefaultName(existing)));
 
         // See class doc comment for the created-gate discipline this
         // implements: `created` flips to true only once ZipFile.Open has
@@ -132,69 +135,8 @@ public static class Zipper
         var created = false;
         try
         {
-            using (var archive = ZipFile.Open(target, ZipArchiveMode.Create))
-            {
-                created = true;
-                // In-archive dedupe for anything that becomes a ROOT-LEVEL
-                // name in the archive — a loose file's own entry name, OR a
-                // folder's own name (the prefix every file under it
-                // inherits). A tiny local counter, not Collision (which only
-                // ever probes the real filesystem): two files both named
-                // "a.txt" dropped from different folders become "a.txt" and
-                // "a (2).txt"; two DIFFERENT top-level folders both named
-                // "docs" become "docs/..." and "docs (2)/...".
-                //
-                // The folder half of this isn't just cosmetic (2026-08
-                // review finding): ZipArchive.CreateEntry happily writes two
-                // entries sharing the exact same FullName, but
-                // ZipFile.ExtractToDirectory throws IOException the second
-                // time it tries to write that same relative path — so
-                // without this, zipping two same-named folders with
-                // overlapping contents (e.g. "ProjectA\docs" and
-                // "ProjectB\docs", both containing "readme.txt") would
-                // return Status "ok" here for an archive this app's own
-                // Extract could never fully unpack. One shared set covering
-                // both kinds means a root name is claimed the instant either
-                // a loose file or a folder uses it, regardless of order.
-                var usedRootNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var p in existing)
-                {
-                    if (File.Exists(p))
-                    {
-                        var name = UniqueRootName(usedRootNames, Path.GetFileName(p));
-                        archive.CreateEntryFromFile(p, name, CompressionLevel.Optimal);
-                    }
-                    else if (Directory.Exists(p))
-                    {
-                        // every file under the folder becomes
-                        // "<folderName>/<relative path>" — forward slashes
-                        // always, regardless of the OS separator, because a
-                        // zip's own entry-name convention is '/' even on
-                        // Windows (Path.GetRelativePath gives back whatever
-                        // this OS uses, hence the explicit replace).
-                        var folderName = UniqueRootName(usedRootNames, new DirectoryInfo(p).Name);
-                        foreach (var file in Directory.EnumerateFiles(p, "*", SearchOption.AllDirectories))
-                        {
-                            var rel = Path.GetRelativePath(p, file).Replace('\\', '/');
-                            archive.CreateEntryFromFile(file, $"{folderName}/{rel}", CompressionLevel.Optimal);
-                        }
-                    }
-                }
-            }
-
-            if (finalPath is not null)
-            {
-                // The zip is fully and successfully written to the temp
-                // sibling — move it onto the real Save-As path atomically.
-                // `created` deliberately stays true until this succeeds: if
-                // PlaceAtomically itself throws (e.g. the retry loop below
-                // exhausts its attempts), the catch below must still clean
-                // up the temp file, and finalPath — never touched by
-                // anything above — is left exactly as the user last saw it.
-                PlaceAtomically(target, finalPath);
-                created = false;   // ownership of `target`'s bytes has moved to finalPath
-            }
-            return new ZipResult("ok", finalPath ?? target);
+            BuildArchive(target, existing, onCreated: () => created = true);
+            return new ZipResult("ok", target);
         }
         catch (Exception ex)
         {
@@ -203,36 +145,66 @@ public static class Zipper
         }
     }
 
-    /// <summary>Moves the fully-written temp file at <paramref name="tempPath"/>
-    /// onto <paramref name="finalPath"/> in one atomic step: <see cref="File.Replace"/>
-    /// when something is already there (Save-As's confirmed-overwrite intent —
-    /// the existing file is swapped out in a single filesystem operation,
-    /// never deleted first and rebuilt after), <see cref="File.Move"/> when
-    /// nothing is (Replace requires the destination to already exist).
-    /// Retries on the destination being briefly held open (e.g. another
-    /// process still has the previous archive open for reading) — same
-    /// shape, same reasoning, as <see cref="Config.WriteAtomic"/>'s own
-    /// retry loop. <paramref name="tempPath"/> must be a sibling of
-    /// <paramref name="finalPath"/>: File.Replace only works within one
-    /// volume, which callers here guarantee by naming the temp file
-    /// alongside the real target.</summary>
-    private static void PlaceAtomically(string tempPath, string finalPath)
+    /// <summary>Writes the archive for <paramref name="existing"/> at
+    /// <paramref name="path"/>. <paramref name="onCreated"/> fires the instant
+    /// ZipFile.Open has actually made the file — only the collision-freed
+    /// branch needs it, to gate its own cleanup; the Save-As branch's temp is
+    /// GUID-private and AtomicPlace owns its lifetime.</summary>
+    private static void BuildArchive(
+        string path, IReadOnlyList<string> existing, Action? onCreated = null)
     {
-        for (var attempt = 0; attempt < 50; attempt++)
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        onCreated?.Invoke();
+
+        // In-archive dedupe for anything that becomes a ROOT-LEVEL name in
+        // the archive — a loose file's own entry name, OR a folder's own name
+        // (the prefix every file under it inherits). A tiny local counter, not
+        // Collision (which only ever probes the real filesystem): two files
+        // both named "a.txt" dropped from different folders become "a.txt" and
+        // "a (2).txt"; two DIFFERENT top-level folders both named "docs"
+        // become "docs/..." and "docs (2)/...".
+        //
+        // The folder half of this isn't just cosmetic (2026-08 review
+        // finding): ZipArchive.CreateEntry happily writes two entries sharing
+        // the exact same FullName, but ZipFile.ExtractToDirectory throws
+        // IOException the second time it tries to write that same relative
+        // path — so without this, zipping two same-named folders with
+        // overlapping contents (e.g. "ProjectA\docs" and "ProjectB\docs", both
+        // containing "readme.txt") would return Status "ok" here for an
+        // archive this app's own Extract could never fully unpack. One shared
+        // set covering both kinds means a root name is claimed the instant
+        // either a loose file or a folder uses it, regardless of order.
+        var usedRootNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in existing)
         {
-            try
+            if (File.Exists(p))
             {
-                if (File.Exists(finalPath))
-                    File.Replace(tempPath, finalPath, destinationBackupFileName: null);
-                else
-                    File.Move(tempPath, finalPath);
-                return;
+                var name = UniqueRootName(usedRootNames, Path.GetFileName(p));
+                archive.CreateEntryFromFile(p, name, CompressionLevel.Optimal);
             }
-            catch (IOException) when (attempt < 49) { }
-            catch (UnauthorizedAccessException) when (attempt < 49) { }
-            System.Threading.Thread.Sleep(10);
+            else if (Directory.Exists(p))
+            {
+                // every file under the folder becomes
+                // "<folderName>/<relative path>" — forward slashes always,
+                // regardless of the OS separator, because a zip's own
+                // entry-name convention is '/' even on Windows
+                // (Path.GetRelativePath gives back whatever this OS uses,
+                // hence the explicit replace).
+                var folderName = UniqueRootName(usedRootNames, new DirectoryInfo(p).Name);
+                foreach (var file in Directory.EnumerateFiles(p, "*", SearchOption.AllDirectories))
+                {
+                    var rel = Path.GetRelativePath(p, file).Replace('\\', '/');
+                    archive.CreateEntryFromFile(file, $"{folderName}/{rel}", CompressionLevel.Optimal);
+                }
+            }
         }
     }
+
+    // PlaceAtomically lived here — a byte-for-byte copy of
+    // Config.WriteAtomic's retry loop, as its own doc comment admitted
+    // ("same shape, same reasoning"). Both are now AtomicPlace.TryReplace,
+    // which also picks the temp name the Save-As branch used to build by
+    // hand, with the same GUID reasoning restated in a third place.
 
     /// <summary>The default archive name for <paramref name="paths"/> — just
     /// the file name, not a directory (so it doubles as a Save-As dialog's
