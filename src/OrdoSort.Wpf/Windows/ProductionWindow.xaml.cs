@@ -130,7 +130,22 @@ public partial class ProductionWindow : Window
             // variable, most-read value (a folder or employee name) — same
             // reasoning TriageWindow's own leading-roster-column comment
             // gives for its choice.
-            var isFirstGroupColumn = i == 0 && recordsIndex > 0;
+            // "i == 0", not "i == 0 && recordsIndex > 0": with the second
+            // condition, unticking every Group-by box left NO column marked as
+            // the filler, so nothing absorbed the leftover and the grid ended
+            // in dead grey space — the thing decision 2 of the 2026-08-07
+            // autofit brief exists to prevent. Reachable by ordinary use:
+            // OnGroupTick removes from _groupOrder with no floor.
+            //
+            // In that state the filler is a NUMERIC column, whose value is
+            // right-aligned, so it sits at the far edge of a wide column away
+            // from its own header. That is a real cosmetic cost and it is the
+            // reason the guard was probably there. It is still better than a
+            // grid that stops halfway across the window, and the alternative
+            // (a headerless spacer column) would put a column into the grid
+            // that every contrast/colour suite enumerates. Revisit with a
+            // spacer if the look proves worse than the gap.
+            var isFirstGroupColumn = i == 0;
             // Records and every sum column hold short formatted numbers
             // ("0.##" InvariantCulture — ProductionViewModel.RecomputeResults)
             // that need no cap at all, the same reasoning HistoryWindow.xaml

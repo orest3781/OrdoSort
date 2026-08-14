@@ -1153,6 +1153,45 @@ public class AutoFitColumnTests
         finally { CleanupProduction(win, vm, dir); }
     });
 
+    /// <summary>Untick every Group-by box and this grid has no filler at all.
+    ///
+    /// RebuildColumns marks the filler with `i == 0 &amp;&amp; recordsIndex &gt; 0`, so
+    /// with no group columns the condition never fires for any column, every
+    /// column is left Auto, and nothing absorbs the leftover width — the dead
+    /// grey space to the right that decision 2 of the 2026-08-07 autofit brief
+    /// exists to prevent. DataGridColumnCap.Track is skipped in that state
+    /// too, since cappedGroupColumns is empty.
+    ///
+    /// Reachable by ordinary use, not a corner case: OnGroupTick removes from
+    /// _groupOrder with no floor, and RecomputeResults builds its column list
+    /// as _groupOrder + "Records" + sums, so unticking both defaults
+    /// (SOURCE-FOLDER, Employee) lands here. Every other Production fact in
+    /// this file builds a grid WITH group columns, which is why this state
+    /// has never been covered.</summary>
+    [Fact]
+    public void Production_WithNoGroupColumnsStillHasAFillerAbsorbingTheWidth() => _fx.Invoke(() =>
+    {
+        var (win, vm, dir) = BuildProductionWindowWithManyGroupColumns(ShortValue);
+        try
+        {
+            ShowOffscreen(win);
+            foreach (var pick in vm.GroupPicks.Where(p => p.IsChosen).ToList())
+                pick.IsChosen = false;
+            ShowOffscreen(win);
+
+            var grid = FindDescendant<DataGrid>(win)!;
+            Assert.True(grid.Columns.Any(c => c.Width.IsStar),
+                "Production with no Group-by ticked has no star column, so nothing absorbs the "
+                + $"leftover width: {string.Join(", ", grid.Columns.Select(c => $"{c.Header}={c.Width}"))}");
+
+            var covered = grid.Columns.Sum(c => c.ActualWidth);
+            Assert.True(covered > grid.ActualWidth - 40,
+                $"Production columns cover {covered}px of a {grid.ActualWidth}px grid — "
+                + "the remainder is dead space");
+        }
+        finally { CleanupProduction(win, vm, dir); }
+    });
+
     [Fact]
     public void Production_LongGroupValueStopsAtTheCapWithEllipsisAndTooltip() => _fx.Invoke(() =>
     {
