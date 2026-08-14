@@ -68,7 +68,11 @@
                              filename, not the least predictable thing on this
                              row (Result carries that), so it gets whatever
                              width Result doesn't need. -->
-                        <DataGridTextColumn Header="Zip" Binding="{Binding FileName}" Width="*">
+                        <!-- MinWidth is load-bearing — see PageCountsWindow.xaml's
+                             own note: the Result cap is the viewport minus
+                             everyone else's floor, so this is what keeps the zip
+                             name readable when a long error message wants room. -->
+                        <DataGridTextColumn Header="Zip" Binding="{Binding FileName}" Width="*" MinWidth="180">
                             <!-- BasedOn GridCellTextSelectionAware (Theme/
                                  Styles.xaml), not plain GridCellText or the
                                  bare {x:Type TextBlock} style: no status trigger

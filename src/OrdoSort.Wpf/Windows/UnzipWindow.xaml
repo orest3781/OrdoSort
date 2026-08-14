@@ -69,7 +69,12 @@
                              measured 1.26:1-2.14:1 selection-contrast failure
                              as ZipMergeWindow's own Zip column; see that
                              file's doc comment. -->
-                        <DataGridTextColumn Header="Zip" Binding="{Binding FileName}" Width="*">
+                        <!-- MinWidth is load-bearing — see PageCountsWindow.xaml's
+                             own note on this floor: the Result cap is the
+                             viewport minus everyone else's floor, so without one
+                             here a long error message would squeeze the zip name
+                             to WPF's 20px default. -->
+                        <DataGridTextColumn Header="Zip" Binding="{Binding FileName}" Width="*" MinWidth="180">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />

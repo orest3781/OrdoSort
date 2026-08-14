@@ -81,7 +81,13 @@
                              near the 4.5:1 floor — this window shipped with the
                              exact selection-contrast bug GridCellTextSelectionAware
                              exists to prevent, just never switched to it. -->
-                        <DataGridTextColumn Header="File name" Binding="{Binding}" Width="*">
+                        <!-- MinWidth: the only column in this grid, so nothing
+                             competes for width and this floor never binds today.
+                             Stated anyway so every filler in the app declares its
+                             floor — the cap formula reads these, and a filler
+                             without one silently contributes WPF's 20px default.
+                             See PageCountsWindow.xaml. -->
+                        <DataGridTextColumn Header="File name" Binding="{Binding}" Width="*" MinWidth="180">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
