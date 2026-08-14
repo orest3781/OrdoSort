@@ -925,7 +925,25 @@ public class AutoFitColumnTests
                 () => { }, System.Windows.Threading.DispatcherPriority.Background);
             win.UpdateLayout();
 
-            Assert.True(column.ActualWidth >= draggedWidth - 1,
+            // NOT ">= draggedWidth - 1", for the reason the SECOND assertion
+            // in this same fact already gives below and has since it was
+            // written: Triage's uniquely tight panel margin engages WPF's own
+            // independent space-fitting, which shrinks the dragged column by a
+            // few pixels to avoid a scrollbar. That reasoning was applied to
+            // the assertion after the panel resize but not to this one, so
+            // this half kept demanding pixel-exact preservation on the one
+            // grid that cannot grant it — measured 211.5px against a requested
+            // 219px, and failing roughly three runs in four.
+            //
+            // Whether WPF reclaims 5px or 8px depends on the other columns'
+            // realized content, so any fixed tolerance would just be a
+            // narrower race — the same lesson 41ae2f7 recorded when it tore a
+            // millisecond budget out of the probe tests. The contract this
+            // fact actually exists to prove is "a user-dragged column is no
+            // longer clamped by the automatic cap", and capBefore is exactly
+            // that line: if pinning regressed, Recalculate() would restore
+            // MaxWidth to capBefore and ActualWidth could not exceed it.
+            Assert.True(column.ActualWidth > capBefore,
                 $"Triage Control ID column after a simulated drag to {draggedWidth}px is " +
                 $"{column.ActualWidth}px — expected it to survive beyond the old cap {capBefore}px");
 
