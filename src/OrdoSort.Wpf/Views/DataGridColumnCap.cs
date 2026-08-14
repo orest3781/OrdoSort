@@ -1,6 +1,8 @@
+using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Threading;
 
 namespace OrdoSort.Wpf.Views;
 
@@ -173,6 +175,18 @@ internal static class DataGridColumnCap
     /// layout. Matches ProductionWindow's existing Math.Max(20, …).</summary>
     private const double MinimumCap = 20;
 
+    /// <summary>Above this many rows, columns size to the visible rows only —
+    /// the pre-existing behaviour. Below it, they size to ALL of them.
+    ///
+    /// The all-rows pass realizes every row once, which is the whole cost.
+    /// That is nothing for the batches these grids actually hold (the files
+    /// someone added, one folder's sweep) and would be a visible freeze on an
+    /// unbounded one, so the limit is what keeps a HistoryWindow with fifty
+    /// thousand filed documents from paying it. History's genuinely unbounded
+    /// columns are star-shaped anyway and never reach this code; its Auto
+    /// columns hold a timestamp, a name and a route label.</summary>
+    private const int MeasureAllRowLimit = 2000;
+
     /// <summary>Same live tracking as the <c>share</c> overload, but the cap
     /// is computed by an arbitrary <paramref name="computeCap"/> formula
     /// applied to the grid's live column viewport width (already net of the
@@ -216,6 +230,11 @@ internal static class DataGridColumnCap
         DataGrid grid, Func<double, double>? computeCap, DataGridColumn[] columns)
     {
         var pinned = new HashSet<DataGridColumn>();
+        // Whether the all-rows pass has run against a grid that had a
+        // real width and real rows. Reset by any collection change so a
+        // new batch is measured afresh rather than inheriting the last
+        // one's floors.
+        var hasMeasured = false;
 
         void Recalculate()
         {
@@ -247,7 +266,98 @@ internal static class DataGridColumnCap
             // forever. Once the numbers settle, nothing is assigned and the
             // cycle stops on its own.
             foreach (var column in governed)
+            {
                 if (Math.Abs(column.MaxWidth - cap) > 0.5) column.MaxWidth = cap;
+                // A floor set by the all-rows pass must never outrank the cap:
+                // MinWidth beats MaxWidth in WPF's own arbitration, so a
+                // window dragged narrower after that pass would otherwise
+                // overflow — the one thing this class exists to prevent.
+                if (column.MinWidth > cap) column.MinWidth = cap;
+            }
+        }
+
+        /// <summary>Sizes the governed columns to EVERY row's content, not
+        /// just the rows currently on screen.
+        ///
+        /// WPF sizes an Auto column from the realized rows, and under
+        /// virtualization that is only the visible window's worth — so a
+        /// column looks right until a longer value scrolls in, then lurches.
+        /// Measured on MatchMerge with sixty rows, one long filename at the
+        /// bottom: the File column held 56px, then jumped to 319.5px when
+        /// that row realized, and stayed there. HistoryWindow.xaml records
+        /// the same effect measured independently (173px -> 410px) and dealt
+        /// with it by keeping its path columns star-shaped, which is stable
+        /// but not content-sized. This is the other half of that problem, for
+        /// the columns that ARE content-sized.
+        ///
+        /// Rather than measuring text by hand — which would mean owning font,
+        /// DPI and typeface arithmetic and getting it to agree with what WPF
+        /// does — this turns row virtualization off for one layout pass, so
+        /// every row realizes and WPF's own measurement covers all of them.
+        /// The resulting width becomes the column's MinWidth, which is what
+        /// makes it STAY there once virtualization is back on and only the
+        /// short rows are realized.
+        ///
+        /// The floor is re-derived on every collection change rather than
+        /// only growing, so clearing a batch or loading a shorter one lets
+        /// the columns come back in.</summary>
+        var measuring = false;
+        void MeasureAcrossAllRows()
+        {
+            if (measuring) return;
+            // Nothing to measure against yet. Deliberately does NOT mark
+            // itself done: a grid populated BEFORE Show() — which is how
+            // every one of these windows is built — reaches here once with
+            // no width, and the retry from the layout pass below is what
+            // actually gets it measured. Missing that retry was why the
+            // first version of this changed nothing at all.
+            if (grid.ActualWidth <= 0) return;
+            var governed = columns.Where(c => !pinned.Contains(c)).ToArray();
+            if (governed.Length == 0) return;
+            hasMeasured = true;
+
+            // Re-derive from scratch: an existing floor would otherwise be
+            // the very thing the measurement measures, and the column could
+            // then only ever get wider.
+            foreach (var column in governed) column.MinWidth = 0;
+
+            if (grid.Items.Count is 0 or > MeasureAllRowLimit)
+            {
+                Recalculate();
+                return;
+            }
+
+            var wasVirtualizing = grid.EnableRowVirtualization;
+            measuring = true;
+            grid.EnableRowVirtualization = false;
+            try
+            {
+                grid.UpdateLayout();
+                foreach (var column in governed)
+                    column.MinWidth = column.ActualWidth;
+            }
+            finally
+            {
+                grid.EnableRowVirtualization = wasVirtualizing;
+                measuring = false;
+            }
+
+            Recalculate();   // re-clamps any floor that lands above the cap
+        }
+
+        // Re-measure across all rows whenever the data changes, once per
+        // burst. Rows arrive one Add at a time (every AddFiles loop in the
+        // app appends individually), so measuring per notification would
+        // realize the whole grid once PER ROW; coalescing to a single
+        // Background-priority pass makes it once per batch instead.
+        var measureQueued = false;
+        void QueueMeasure()
+        {
+            if (measureQueued) return;
+            measureQueued = true;
+            grid.Dispatcher.BeginInvoke(
+                new Action(() => { measureQueued = false; MeasureAcrossAllRows(); }),
+                DispatcherPriority.Background);
         }
 
         grid.SizeChanged += (_, _) => Recalculate();
@@ -279,9 +389,25 @@ internal static class DataGridColumnCap
             recomputing = true;
             try { Recalculate(); }
             finally { recomputing = false; }
+
+            // The retry MeasureAcrossAllRows depends on: these grids are
+            // populated before Show(), so the first measure attempt runs with
+            // no width and bows out. This is the first moment there is one.
+            //
+            // Called straight through rather than queued, and that matters:
+            // a Background-priority post does not run before the grid is
+            // first painted, so the column would show its visible-rows width,
+            // then visibly jump the moment the dispatcher went idle. Measured
+            // during this layout pass, the first painted frame is already the
+            // right width. The `measuring` guard is what keeps the
+            // UpdateLayout inside it from re-entering this handler.
+            if (!hasMeasured && grid.ActualWidth > 0 && grid.Items.Count > 0) MeasureAcrossAllRows();
         };
 
+        ((INotifyCollectionChanged)grid.Items).CollectionChanged += (_, _) => { hasMeasured = false; QueueMeasure(); };
+
         Recalculate();
+        QueueMeasure();
 
         // handledEventsToo: true — defensively; nothing in this app's own
         // column templates currently marks these handled, but a future

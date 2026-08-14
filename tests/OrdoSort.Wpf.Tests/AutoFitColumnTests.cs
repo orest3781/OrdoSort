@@ -390,6 +390,83 @@ public class AutoFitColumnTests
         return new MatchMergeWindow(vm);
     }
 
+    /// <summary>Measures the reported symptom nothing in this suite covers:
+    /// a column changing width as you scroll.
+    ///
+    /// Every other many-row fact here feeds EVERY row the same value, so
+    /// whichever rows happen to be realized measure the same as any other
+    /// would and nothing can move. That is why sixty-row facts pass while a
+    /// person watching a real grid sees columns jump. WPF sizes an Auto
+    /// column from the rows currently REALIZED, and virtualization means that
+    /// is only the visible window's worth — so a long value further down does
+    /// not exist, as far as the column is concerned, until it scrolls in.
+    ///
+    /// Heterogeneous on purpose: short rows at the top, one very long value
+    /// at the bottom. Returns (widthBeforeScroll, widthAfterScroll).</summary>
+    private (double before, double after) MeasureFileColumnAcrossAScroll(int rowCount, string longValue)
+    {
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
+        for (var i = 0; i < rowCount - 1; i++)
+            vm.Rows.Add(new MatchRow($"src{i}.pdf", "short.pdf", "SOMETHING-SHORT.pdf", "", "merge"));
+        var last = new MatchRow($"src{rowCount - 1}.pdf", longValue, "SOMETHING-SHORT.pdf", "", "merge");
+        vm.Rows.Add(last);
+
+        var win = new MatchMergeWindow(vm);
+        try
+        {
+            ShowOffscreen(win);
+            var grid = FindDescendant<DataGrid>(win)!;
+            var column = FindColumnByHeader(win, "File");
+            var before = column.ActualWidth;
+
+            grid.ScrollIntoView(last);
+            win.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                () => { }, System.Windows.Threading.DispatcherPriority.Background);
+            win.UpdateLayout();
+
+            return (before, column.ActualWidth);
+        }
+        finally { win.Close(); }
+    }
+
+    /// <summary>The third symptom in the "autofit is not working" report:
+    /// columns move while you scroll.
+    ///
+    /// WPF sizes an Auto column from the REALIZED rows, so under
+    /// virtualization a value further down the list does not exist as far as
+    /// the column is concerned until it scrolls in. Measured here before the
+    /// fix: MatchMerge's File column held 56px over the short rows, then
+    /// jumped to 319.5px when one long filename realized — a 5.7x lurch.
+    /// HistoryWindow.xaml records the same effect measured independently
+    /// (173px -> 410px, never shrinking back), and dealt with it by keeping
+    /// its path columns star-shaped: stable, but no longer content-sized.
+    ///
+    /// DataGridColumnCap now measures across ALL rows once at load (row
+    /// virtualization off for a single layout pass) and makes the result the
+    /// column's floor, so the width accounts for every value before the grid
+    /// is first painted.
+    ///
+    /// Both halves are asserted, because either alone is satisfiable by
+    /// something broken: a column frozen at the wrong width never moves
+    /// either, and a column sized correctly could still lurch. So — it does
+    /// not move when the long value arrives, AND it is genuinely wider than
+    /// the same grid holding only short values.</summary>
+    [Fact]
+    public void AnAutoColumnIsSizedForRowsItHasNotScrolledToYet() => _fx.Invoke(() =>
+    {
+        var (before, after) = MeasureFileColumnAcrossAScroll(rowCount: 60, longValue: VeryLongValue);
+
+        Assert.True(Math.Abs(after - before) < 1,
+            $"File column measured {before}px before scrolling and {after}px after a long value "
+            + "scrolled in — it should already have been sized for that row");
+
+        var (shortOnly, _) = MeasureFileColumnAcrossAScroll(rowCount: 60, longValue: "short.pdf");
+        Assert.True(before > shortOnly + 50,
+            $"File column is {before}px with a long value present and {shortOnly}px without one — "
+            + "it should be sized to the content it holds, not merely stable at some fixed width");
+    });
+
     // -------------------------------------------------------- BulkRename
 
     [Fact]
