@@ -4,10 +4,21 @@ using System.Windows.Controls.Primitives;
 
 namespace OrdoSort.Wpf.Views;
 
-/// <summary>Keeps a set of DataGridColumns' <c>MaxWidth</c> at a share of the
-/// space the columns can actually occupy — not the grid's raw outer
-/// <c>ActualWidth</c>, and not a value computed once from a declared
-/// <c>Window.Width</c> and then left alone.
+/// <summary>Keeps a set of DataGridColumns' <c>MaxWidth</c> at what the grid
+/// can actually spare — not the grid's raw outer <c>ActualWidth</c>, and not
+/// a value computed once from a declared <c>Window.Width</c> and then left
+/// alone.
+///
+/// It was "a SHARE of that space" until fix round 6, at the bottom of this
+/// comment — start there for the rule as it stands rather than how it got
+/// here.
+///
+/// NINE windows depend on this class, not the four an earlier version of this
+/// comment named: History, MatchMerge, BulkRename, ZipMerge, Unzip,
+/// PageCounts and Turnaround take the remainder rule; Triage and Production
+/// supply their own <see cref="Func{Double,Double}"/> budget. Only ZipWindow
+/// and FilenameListWindow never call it, correctly — neither has a capped
+/// column to govern.
 ///
 /// The "declared Width, computed once" shape was this class's first design
 /// (2026-08-07 autofit-columns Task 1) and it undercounted a real, ordinary
@@ -105,19 +116,62 @@ namespace OrdoSort.Wpf.Views;
 /// DataGridColumn[])"/> below.</summary>
 internal static class DataGridColumnCap
 {
-    /// <summary>Registers live tracking: recomputes every column's
-    /// <c>MaxWidth</c> as <paramref name="share"/> of <paramref name="grid"/>'s
-    /// current ActualWidth minus a reserved vertical-scrollbar allowance,
-    /// immediately and again on every subsequent <c>SizeChanged</c> —
-    /// covering a window shown small from the start, one dragged smaller
-    /// afterward, and a grid that gains enough rows to need a vertical
-    /// scrollbar it didn't have when this last ran. A thin wrapper over the
-    /// <see cref="Func{Double,Double}"/> overload below for the common case
-    /// (a flat share of the viewport) — MatchMergeWindow, BulkRenameWindow
-    /// and HistoryWindow all use this one; TriageWindow's own per-column-count
-    /// formula needs the other.</summary>
-    public static void Track(DataGrid grid, double share, params DataGridColumn[] columns) =>
-        Track(grid, viewportWidth => viewportWidth * share, columns);
+    /// <summary>Caps every column in <paramref name="columns"/> at what is
+    /// actually LEFT — the grid's live viewport minus the width every other
+    /// column is entitled to — shared equally among them.
+    ///
+    /// This replaced a flat share of the viewport (0.15/0.25/0.35/0.45,
+    /// depending on the window), and the difference is the whole point. A
+    /// fixed fraction is a ceiling that binds whether or not anything else
+    /// needs the room, so a capped column truncated its content while the
+    /// star column beside it sat on space nobody was using. Measured, every
+    /// window at its own MinWidth, before this change:
+    ///
+    ///   MatchMerge   File   231px, cap 231 — pinned AT the cap; Becomes 213
+    ///   ZipMerge     Result 234px, cap 234 — pinned AT the cap; Zip     300
+    ///   Unzip        Result 198px, cap 198 — pinned AT the cap; Zip     256
+    ///   PageCounts   Note   234px, cap 234 — pinned AT the cap; File    246
+    ///
+    /// In the three tools windows that meant the ERROR MESSAGE was the thing
+    /// being cut off so the filename could be wide — backwards, since the
+    /// message is what the window is for. No dead space was involved: the
+    /// columns filled the viewport exactly. The space was going to the wrong
+    /// column, which is a different complaint and needs a different fix.
+    ///
+    /// What every other column is "entitled to":
+    ///   absolute width  -> that width (it is not negotiable)
+    ///   pinned          -> its current width (the user chose it — fix round 5)
+    ///   star / filler   -> its MinWidth, because a star column's whole job is
+    ///                      to give way; this is why every filler in the app
+    ///                      now declares one rather than inheriting WPF's 20px
+    ///                      default, which would have let a filename collapse
+    ///   untracked Auto  -> its current width; these are the deliberately
+    ///                      uncapped short columns (a date, a count, a page
+    ///                      total), so what they measure now is what they need
+    ///
+    /// The residual risk, stated plainly rather than left for someone to find:
+    /// an untracked Auto column's width is read LIVE, and this only recomputes
+    /// on SizeChanged. If such a column grew after the last recompute — new
+    /// rows realizing longer content — the cap would be that much too
+    /// generous. <see cref="SafetyMargin"/> absorbs it, and the exposure is
+    /// small by construction because a column is left untracked precisely
+    /// when its content is bounded. It is not zero, and a future column that
+    /// is untracked but NOT bounded would make it real.</summary>
+    public static void Track(DataGrid grid, params DataGridColumn[] columns) =>
+        TrackCore(grid, computeCap: null, columns);
+
+    /// <summary>Absorbs the small drift the doc comment above describes, and
+    /// keeps the arithmetic off the exact viewport edge where a rounding
+    /// difference decides whether a scrollbar appears. 20px matches the
+    /// margin TriageWindow and ProductionWindow already chose for their own
+    /// budgets.</summary>
+    private const double SafetyMargin = 20;
+
+    /// <summary>Floor for the computed cap: only reached when a window is so
+    /// narrow that the other columns' floors already consume the viewport, in
+    /// which case WPF's own space-fitting is what actually resolves the
+    /// layout. Matches ProductionWindow's existing Math.Max(20, …).</summary>
+    private const double MinimumCap = 20;
 
     /// <summary>Same live tracking as the <c>share</c> overload, but the cap
     /// is computed by an arbitrary <paramref name="computeCap"/> formula
@@ -155,7 +209,11 @@ internal static class DataGridColumnCap
     /// skips it forever after); every other, still-Auto column gets its
     /// MaxWidth restored to the live computed cap via the same Recalculate
     /// the SizeChanged handler already uses.</summary>
-    public static void Track(DataGrid grid, Func<double, double> computeCap, params DataGridColumn[] columns)
+    public static void Track(DataGrid grid, Func<double, double> computeCap, params DataGridColumn[] columns) =>
+        TrackCore(grid, computeCap, columns);
+
+    private static void TrackCore(
+        DataGrid grid, Func<double, double>? computeCap, DataGridColumn[] columns)
     {
         var pinned = new HashSet<DataGridColumn>();
 
@@ -171,12 +229,58 @@ internal static class DataGridColumnCap
             // under its viewport.
             var columnViewportWidth = Math.Max(0,
                 grid.ActualWidth - SystemParameters.VerticalScrollBarWidth);
-            var cap = computeCap(columnViewportWidth);
-            foreach (var column in columns)
-                if (!pinned.Contains(column)) column.MaxWidth = cap;
+
+            // A pinned column is no longer governed by any cap, so it is not
+            // in the set the cap is divided among — it is one of the columns
+            // the remainder is measured AGAINST instead.
+            var governed = columns.Where(c => !pinned.Contains(c)).ToArray();
+            if (governed.Length == 0) return;
+
+            var cap = computeCap is not null
+                ? computeCap(columnViewportWidth)
+                : RemainderCap(grid, columnViewportWidth, governed, pinned);
+
+            // Only assign when it actually moves. This is what makes the
+            // LayoutUpdated subscription below terminate: an assignment
+            // invalidates layout, which raises LayoutUpdated, which recomputes
+            // — so an unconditional assignment would keep the cycle alive
+            // forever. Once the numbers settle, nothing is assigned and the
+            // cycle stops on its own.
+            foreach (var column in governed)
+                if (Math.Abs(column.MaxWidth - cap) > 0.5) column.MaxWidth = cap;
         }
 
         grid.SizeChanged += (_, _) => Recalculate();
+
+        // SizeChanged alone is not enough for the remainder formula, and this
+        // was measured rather than reasoned: the formula reads the OTHER
+        // columns' ActualWidth to decide what is left over, and at
+        // SizeChanged time those columns have not finished laying out. In
+        // PageCounts the Pages column measured 35px there and rendered at
+        // 54px, so the cap came out 19px too generous — absorbed by
+        // SafetyMargin with one row, but not with sixty rows of long content,
+        // where it produced exactly the horizontal scrollbar this class
+        // exists to prevent. Three grids' no-scrollbar facts caught it.
+        //
+        // LayoutUpdated fires after layout has settled, so the widths read
+        // there are the real ones. It converges in a pass or two: the first
+        // recompute uses stale numbers, the next uses settled ones, and the
+        // one after that finds nothing to change and assigns nothing —
+        // which, with the epsilon guard in Recalculate, is what ends it.
+        //
+        // The re-entrancy guard is belt and braces: assigning MaxWidth inside
+        // a LayoutUpdated handler can raise the event again synchronously,
+        // and one recompute at a time is easier to reason about than relying
+        // on the epsilon alone.
+        var recomputing = false;
+        grid.LayoutUpdated += (_, _) =>
+        {
+            if (recomputing) return;
+            recomputing = true;
+            try { Recalculate(); }
+            finally { recomputing = false; }
+        };
+
         Recalculate();
 
         // handledEventsToo: true — defensively; nothing in this app's own
@@ -202,4 +306,43 @@ internal static class DataGridColumnCap
             Recalculate();
         }), true);
     }
+
+    /// <summary>The viewport minus what every OTHER column is entitled to,
+    /// split equally among the governed ones — see <see cref="Track(DataGrid,
+    /// DataGridColumn[])"/>'s doc comment for what "entitled to" means per
+    /// column kind and why.
+    ///
+    /// Equally, not by demand: distributing by demand needs each column's
+    /// natural (uncapped) width, which is only knowable by laying the grid
+    /// out uncapped first and measuring — a second layout pass on every
+    /// resize, and a visible flash of a wider column while it happens. An
+    /// even split is the conservative version: it never over-allocates, so
+    /// the no-scrollbar guarantee holds by arithmetic rather than by
+    /// measurement, and a column that wants less than its share simply takes
+    /// less (Auto sizes to content; the cap is only a ceiling).</summary>
+    private static double RemainderCap(
+        DataGrid grid, double viewportWidth, DataGridColumn[] governed, HashSet<DataGridColumn> pinned)
+    {
+        var governedSet = new HashSet<DataGridColumn>(governed);
+        var claimed = 0.0;
+        foreach (var column in grid.Columns)
+        {
+            if (governedSet.Contains(column)) continue;
+            claimed += EntitlementOf(column, pinned);
+        }
+
+        var available = viewportWidth - claimed - SafetyMargin;
+        return Math.Max(MinimumCap, available / governed.Length);
+    }
+
+    private static double EntitlementOf(DataGridColumn column, HashSet<DataGridColumn> pinned) =>
+        column.Width.IsAbsolute ? column.Width.Value
+        // The user dragged this one; its width is theirs, not ours to reclaim.
+        : pinned.Contains(column) ? column.ActualWidth
+        // A star column's job is to absorb slack, so it is the one that gives
+        // way when a governed column needs room — down to its declared floor.
+        : column.Width.IsStar ? column.MinWidth
+        // An untracked Auto column: deliberately uncapped because its content
+        // is bounded, so what it currently measures is what it needs.
+        : column.ActualWidth;
 }

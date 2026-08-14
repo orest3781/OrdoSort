@@ -7,11 +7,12 @@ namespace OrdoSort.Wpf.Windows;
 
 public partial class MatchMergeWindow : Window
 {
-    /// <summary>Share of MatchGrid's own LIVE ActualWidth that File/Note may
-    /// grow to before ellipsizing — tracked continuously (not baked in once
-    /// from a declared Width), so it stays correct as the window is resized;
-    /// see DataGridColumnCap's class doc.</summary>
-    private const double ContentColumnShare = 0.35;
+    // ContentColumnShare lived here — a flat fraction of the viewport
+    // that this column's cap was set to. DataGridColumnCap now computes
+    // the cap as what is actually left over instead, so there is no
+    // share to tune: see that class's Track doc comment for the measured
+    // reason a fixed fraction truncated content while the filler column
+    // beside it held space nobody was using.
 
     private readonly MatchMergeViewModel _vm;
 
@@ -20,7 +21,7 @@ public partial class MatchMergeWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
-        DataGridColumnCap.Track(MatchGrid, ContentColumnShare, FileColumn, NoteColumn);
+        DataGridColumnCap.Track(MatchGrid, FileColumn, NoteColumn);
         Loaded += async (_, _) => await _vm.AutoLoadRosterAsync();
     }
 

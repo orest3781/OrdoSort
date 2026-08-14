@@ -8,11 +8,12 @@ namespace OrdoSort.Wpf.Windows;
 
 public partial class BulkRenameWindow : Window
 {
-    /// <summary>Share of PreviewGrid's own LIVE ActualWidth that Current
-    /// name/Note may grow to before ellipsizing — tracked continuously, same
-    /// as MatchMergeWindow's identical constant; see DataGridColumnCap's
-    /// class doc.</summary>
-    private const double ContentColumnShare = 0.35;
+    // ContentColumnShare lived here — a flat fraction of the viewport
+    // that this column's cap was set to. DataGridColumnCap now computes
+    // the cap as what is actually left over instead, so there is no
+    // share to tune: see that class's Track doc comment for the measured
+    // reason a fixed fraction truncated content while the filler column
+    // beside it held space nobody was using.
 
     private readonly BulkRenameViewModel _vm;
 
@@ -21,7 +22,7 @@ public partial class BulkRenameWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
-        DataGridColumnCap.Track(PreviewGrid, ContentColumnShare, CurrentColumn, NoteColumn);
+        DataGridColumnCap.Track(PreviewGrid, CurrentColumn, NoteColumn);
     }
 
     private void OnAddFiles(object sender, RoutedEventArgs e)

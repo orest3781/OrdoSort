@@ -216,10 +216,7 @@ public class AutoFitColumnTests
             // the grid live (DataGridColumnCap.Track), and since fix round 3
             // it also reserves room for a vertical scrollbar — see
             // ExpectedColumnCap.
-            var expectedCap = ExpectedColumnCap(win, 0.35);
-            Assert.True(column.ActualWidth == expectedCap,
-                $"MatchMerge File column with long content is {column.ActualWidth}px, " +
-                $"expected exactly its cap {expectedCap}px");
+            AssertStoppedAtItsCap(win, column, "MatchMerge File");
             AssertTrimmingAndTooltip((DataGridBoundColumn)column, "File");
         }
         finally { win.Close(); }
@@ -423,10 +420,7 @@ public class AutoFitColumnTests
             var column = FindColumnByHeader(win, "Current name");
             // Against the GRID's own live viewport — see MatchMerge's
             // identical comment above.
-            var expectedCap = ExpectedColumnCap(win, 0.35);
-            Assert.True(column.ActualWidth == expectedCap,
-                $"BulkRename Current name column with long content is {column.ActualWidth}px, " +
-                $"expected exactly its cap {expectedCap}px");
+            AssertStoppedAtItsCap(win, column, "BulkRename Current name");
             AssertTrimmingAndTooltip((DataGridBoundColumn)column, "Current");
         }
         finally { win.Close(); }
@@ -1500,10 +1494,7 @@ public class AutoFitColumnTests
         {
             ShowOffscreen(win);
             var column = FindColumnByHeader(win, "Note");
-            var expectedCap = ExpectedColumnCap(win, PageCountsNoteShare);
-            Assert.True(column.ActualWidth == expectedCap,
-                $"PageCounts Note column with long content is {column.ActualWidth}px, " +
-                $"expected exactly its cap {expectedCap}px");
+            AssertStoppedAtItsCap(win, column, "PageCounts Note");
             AssertTrimmingAndTooltip((DataGridBoundColumn)column, "Note");
         }
         finally { win.Close(); }
@@ -1551,10 +1542,7 @@ public class AutoFitColumnTests
         {
             ShowOffscreen(win);
             var column = FindColumnByHeader(win, "Result");
-            var expectedCap = ExpectedColumnCap(win, ZipMergeResultShare);
-            Assert.True(column.ActualWidth == expectedCap,
-                $"ZipMerge Result column with long content is {column.ActualWidth}px, " +
-                $"expected exactly its cap {expectedCap}px");
+            AssertStoppedAtItsCap(win, column, "ZipMerge Result");
             AssertTrimmingAndTooltip((DataGridBoundColumn)column, "Note");
         }
         finally { win.Close(); }
@@ -1598,10 +1586,7 @@ public class AutoFitColumnTests
         {
             ShowOffscreen(win);
             var column = FindColumnByHeader(win, "Result");
-            var expectedCap = ExpectedColumnCap(win, UnzipResultShare);
-            Assert.True(column.ActualWidth == expectedCap,
-                $"Unzip Result column with long content is {column.ActualWidth}px, " +
-                $"expected exactly its cap {expectedCap}px");
+            AssertStoppedAtItsCap(win, column, "Unzip Result");
             AssertTrimmingAndTooltip((DataGridBoundColumn)column, "Note");
         }
         finally { win.Close(); }
@@ -1715,11 +1700,34 @@ public class AutoFitColumnTests
     /// these tests double as a live check that the production formula and
     /// this test's expectation can't silently drift apart — same pattern as
     /// ExpectedTriageColumnCap below for Triage's own budget.</summary>
-    private static double ExpectedColumnCap(Window win, double share)
+    /// <summary>Asserts a long value was stopped BY the cap, rather than
+    /// growing to whatever its content wanted.
+    ///
+    /// This replaced ExpectedColumnCap(win, share), which recomputed
+    /// "viewport × share" and asserted the column matched it exactly. That
+    /// worked while the cap WAS a flat share; it can't survive the cap
+    /// becoming "whatever is left over after the other columns' floors",
+    /// because the test would have to re-derive that arithmetic — and a test
+    /// that recomputes the production formula and compares it to the
+    /// production result passes no matter what either one says. This suite's
+    /// own class doc calls out that failure mode for column colours; the same
+    /// trap applies here.
+    ///
+    /// So: assert the PROPERTY, not the number. A capped column that met its
+    /// ceiling sits exactly at it; the ceiling is meaningfully below the
+    /// viewport, so it is genuinely capping something. Both survive any
+    /// future change to how the cap is computed, and both still fail if the
+    /// cap is removed — an uncapped column renders at its natural width,
+    /// which is not its (then infinite) MaxWidth.</summary>
+    private static void AssertStoppedAtItsCap(Window win, DataGridColumn column, string name)
     {
         var grid = FindDescendant<DataGrid>(win)!;
-        var viewportWidth = Math.Max(0, grid.ActualWidth - SystemParameters.VerticalScrollBarWidth);
-        return viewportWidth * share;
+        Assert.True(Math.Abs(column.ActualWidth - column.MaxWidth) < 1,
+            $"{name} column with long content rendered {column.ActualWidth}px against a cap of " +
+            $"{column.MaxWidth}px — expected the content to be stopped BY the cap, not to fit inside it");
+        Assert.True(column.MaxWidth < grid.ActualWidth,
+            $"{name} column's cap is {column.MaxWidth}px against a {grid.ActualWidth}px grid — " +
+            "a cap at or beyond the viewport is not capping anything");
     }
 
     private static void AssertTrimmingAndTooltip(DataGridBoundColumn column, string bindingPathContains)

@@ -7,17 +7,12 @@ namespace OrdoSort.Wpf.Windows;
 
 public partial class UnzipWindow : Window
 {
-    /// <summary>Share of ZipsGrid's own LIVE ActualWidth that Result may grow
-    /// to before ellipsizing — same mechanism and same reasoning as
-    /// ZipMergeWindow's identical constant (see its own doc comment): one
-    /// capped column here (Zip is the star filler), so this runs higher than
-    /// BulkRename/MatchMerge's 0.35-per-of-two-columns share. Result carries
-    /// the extract's own error message on Error (UnzipRow's own doc
-    /// comment) — an unreadable zip's exception text was growing this
-    /// column unbounded before this fix, producing the exact horizontal
-    /// scrollbar every other grid's Auto content columns are capped to
-    /// prevent.</summary>
-    private const double ContentColumnShare = 0.45;
+    // ContentColumnShare lived here — a flat fraction of the viewport
+    // that this column's cap was set to. DataGridColumnCap now computes
+    // the cap as what is actually left over instead, so there is no
+    // share to tune: see that class's Track doc comment for the measured
+    // reason a fixed fraction truncated content while the filler column
+    // beside it held space nobody was using.
 
     private readonly UnzipViewModel _vm;
 
@@ -26,7 +21,7 @@ public partial class UnzipWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
-        DataGridColumnCap.Track(ZipsGrid, ContentColumnShare, ResultColumn);
+        DataGridColumnCap.Track(ZipsGrid, ResultColumn);
     }
 
     private void OnAddFiles(object sender, RoutedEventArgs e)
