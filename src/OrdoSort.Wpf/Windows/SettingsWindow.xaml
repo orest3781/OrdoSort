@@ -863,6 +863,38 @@
                                                                    Foreground="{Binding Foreground,
                                                                        RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
                                                     </Button>
+                                                    <!-- ✕ remove: the ONLY way to get rid of a
+                                                         section. The toolbar's Remove button acts
+                                                         on the SELECTED row and SelectedWatchRow
+                                                         refuses headers outright, so without this
+                                                         a section could be created and renamed but
+                                                         never deleted — the reported gap. Drops
+                                                         the grouping only; RemoveSection keeps
+                                                         every folder, so there is nothing to
+                                                         confirm and no toolbar equivalent needed. -->
+                                                    <Button Margin="2,0,0,0" Padding="3,0"
+                                                            Background="Transparent" BorderThickness="0"
+                                                            Click="OnSectionRemoveClick"
+                                                            ToolTip="{Binding DataContext.RemoveSectionHint,
+                                                                RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            AutomationProperties.Name="{Binding Header, StringFormat=Remove section {0}}">
+                                                        <!-- never on the default group: it IS the
+                                                             "no section" bucket, so its folders
+                                                             have nowhere to be moved to.
+                                                             RemoveSection ignores it too. -->
+                                                        <Button.Style>
+                                                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsDefault}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Button.Style>
+                                                        <TextBlock Text="✕"
+                                                                   Foreground="{Binding Foreground,
+                                                                       RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                                                    </Button>
                                                 </StackPanel>
                                                 <TextBox Text="{Binding EditText, UpdateSourceTrigger=PropertyChanged}"
                                                          LostFocus="OnSectionEditLostFocus"

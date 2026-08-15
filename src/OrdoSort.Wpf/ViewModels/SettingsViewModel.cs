@@ -1316,7 +1316,12 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     public string MonitorTitle
     {
         get => _monitorTitle;
-        set { if (Set(ref _monitorTitle, value)) RebuildWatchRows(); }
+        set
+        {
+            if (!Set(ref _monitorTitle, value)) return;
+            RebuildWatchRows();
+            Raise(nameof(RemoveSectionHint));   // the ✕ tooltip names this title
+        }
     }
 
     private string _filingMode = Naming.ModeInsert;
@@ -1579,6 +1584,18 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             _stickySections.Add(t);
     }
 
+    /// <summary>Retires a session-sticky entry outright, so an emptied section
+    /// stops being resurrected by <see cref="InsertOrphanedStickyHeaders"/>.
+    /// The one deliberate exception to "append-only, NEVER pruned" above:
+    /// stickiness exists so a section you emptied by ACCIDENT survives, and
+    /// <see cref="RemoveSection"/> is the user saying otherwise.</summary>
+    private void ForgetSticky(string name)
+    {
+        var i = _stickySections.FindIndex(s =>
+            string.Equals(s, name, StringComparison.CurrentCultureIgnoreCase));
+        if (i >= 0) _stickySections.RemoveAt(i);
+    }
+
     /// <summary>Renames a session-sticky entry in place — keeping its
     /// remembered slot in <see cref="InsertOrphanedStickyHeaders"/>'s
     /// ordering — unless the new name is blank (nothing left to be sticky
@@ -1722,6 +1739,21 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private string DefaultSectionHeader =>
         MonitorTitle.Trim().Length == 0 ? "(untitled)" : MonitorTitle;
 
+    /// <summary>Tooltip for a section header's ✕ — it names the group the
+    /// folders will land in rather than saying "the default group", so the
+    /// button reads as "regroup", not "delete".
+    ///
+    /// Composed HERE rather than with a StringFormat in the XAML because
+    /// Binding.StringFormat is silently IGNORED when the target property is
+    /// object-typed, and ToolTip is: the format string was dropped outright
+    /// and the tooltip rendered as the bare title. Caught by
+    /// WatchListRowTemplateTests.SectionHeaderRowHasItsRenameAddFolderAndRemoveButtons,
+    /// which asserts the whole resolved string for exactly that reason.
+    /// Reads DefaultSectionHeader, so a blank MonitorTitle says "(untitled)"
+    /// here and on the header row alike.</summary>
+    public string RemoveSectionHint =>
+        $"Remove this section — its folders move to {DefaultSectionHeader}";
+
     public void BeginSectionRename(WatchSectionVm h)
     {
         h.EditText = h.IsDefault ? MonitorTitle : h.Header;
@@ -1779,6 +1811,38 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         var at = last is null ? WatchFolders.Count : WatchFolders.IndexOf(last) + 1;
         WatchFolders.Insert(at, vm);
         SelectedWatch = vm;
+    }
+
+    /// <summary>Per-header ✕: drop the GROUP, keep its folders. Every member's
+    /// Section is cleared, so they land in the default group with everything
+    /// else about them (path, colour, label, alerts) intact — nothing a user
+    /// configured is destroyed, which is why this asks for no confirmation.
+    /// Same end state as renaming the header to blank, which was until now the
+    /// only — and entirely undiscoverable — way to get rid of a section.
+    ///
+    /// Forgetting the sticky entry FIRST is the load-bearing half. An emptied
+    /// section deliberately survives as a zero-member header for the rest of
+    /// the session (see <see cref="_stickySections"/>), so without this the row
+    /// would just be spliced straight back in by
+    /// <see cref="InsertOrphanedStickyHeaders"/> — on the rebuild each
+    /// assignment below triggers, never mind the next keystroke. Doing it
+    /// before the loop also means no rebuild in between ever sees a
+    /// half-removed section. The trailing rebuild is not redundant: removing an
+    /// ALREADY-empty section assigns nothing, so it is the only thing that
+    /// redraws the list in exactly the case this was reported for.
+    ///
+    /// The default group is never removable — it IS the empty-Section bucket,
+    /// so its members have nowhere to go. SettingsWindow.xaml collapses its ✕;
+    /// this guard keeps the model honest if that ever slips.</summary>
+    public void RemoveSection(WatchSectionVm h)
+    {
+        if (h.IsDefault) return;
+        ForgetSticky(h.Header);
+        foreach (var w in WatchFolders)
+            if (string.Equals(w.Section.Trim(), h.Header, StringComparison.CurrentCultureIgnoreCase))
+                w.Section = "";
+        RebuildWatchRows();
+        Raise(nameof(SectionChoices));
     }
 
     /// <summary>"Add section": a uniquely named section born with one folder

@@ -1450,6 +1450,136 @@ public class SettingsViewModelTests : IDisposable
         Assert.Equal("New folder", vm.SelectedWatch.Label);
     }
 
+    // ---- removing a section (2026-08-15) --------------------------------
+    // Reported as "there is no way to remove sections in the monitored
+    // folders tab": headers carried ✎ and ＋ but nothing to delete one, and
+    // the toolbar Remove button can only ever target a folder (SelectedWatchRow
+    // refuses header rows). Removing a section drops the GROUPING only —
+    // its folders keep every setting and land in the default group.
+
+    [Fact]
+    public void RemoveSectionKeepsItsFoldersAndMovesThemIntoTheDefault()
+    {
+        var vm = new SettingsViewModel(
+            WatchCfg(("A", "Night"), ("B", "Day"), ("C", "night")), _dialogs);
+
+        var night = vm.WatchRows.OfType<WatchSectionVm>().Single(x => x.Header == "Night");
+        vm.RemoveSection(night);
+
+        // nothing deleted — "C" proves members are matched the same
+        // case-insensitively as everywhere else, "B" that non-members are untouched
+        Assert.Equal(new[] { "A", "B", "C" }, vm.WatchFolders.Select(w => w.Label).ToArray());
+        Assert.Equal("", vm.WatchFolders.Single(w => w.Label == "A").Section);
+        Assert.Equal("", vm.WatchFolders.Single(w => w.Label == "C").Section);
+        Assert.Equal("Day", vm.WatchFolders.Single(w => w.Label == "B").Section);
+        Assert.DoesNotContain(vm.WatchRows.OfType<WatchSectionVm>(), x => x.Header == "Night");
+    }
+
+    /// <summary>The half that made this "no way to remove": an emptied section
+    /// is session-sticky, so InsertOrphanedStickyHeaders splices its header
+    /// back in on EVERY rebuild. Removing it has to forget the sticky entry
+    /// too, or the row simply reappears on the next keystroke.</summary>
+    [Fact]
+    public void RemovingAnAlreadyEmptiedSectionKeepsItGoneAcrossRebuilds()
+    {
+        var vm = new SettingsViewModel(WatchCfg(("A", "Night"), ("B", "")), _dialogs);
+
+        // empty it the way a user does — drag its only folder into the
+        // default group, which leaves the header behind as a sticky row
+        var def = vm.WatchRows.OfType<WatchSectionVm>().Single(x => x.IsDefault);
+        vm.DropWatch(vm.WatchFolders.Single(w => w.Label == "A"), def);
+        var night = vm.WatchRows.OfType<WatchSectionVm>().Single(x => !x.IsDefault);
+
+        vm.RemoveSection(night);
+        vm.AddWatchCommand.Execute(null);   // any rebuild would resurrect a sticky header
+
+        Assert.DoesNotContain(vm.WatchRows.OfType<WatchSectionVm>(), x => !x.IsDefault);
+        Assert.DoesNotContain("Night", vm.SectionChoices);
+    }
+
+    [Fact]
+    public void RemoveSectionDropsItFromTheSectionChoices()
+    {
+        var vm = new SettingsViewModel(
+            WatchCfg(("A", "Night"), ("B", "Day")), _dialogs);
+
+        var night = vm.WatchRows.OfType<WatchSectionVm>().Single(x => x.Header == "Night");
+        vm.RemoveSection(night);
+
+        Assert.DoesNotContain("Night", vm.SectionChoices);
+        Assert.Contains("Day", vm.SectionChoices);
+    }
+
+    /// <summary>The removal is real, not just visual: nothing in the saved
+    /// config still carries the section name.</summary>
+    [Fact]
+    public void ARemovedSectionIsGoneFromTheSavedConfig()
+    {
+        var vm = new SettingsViewModel(WatchCfg(("A", "Night"), ("B", "Night")), _dialogs);
+
+        var night = vm.WatchRows.OfType<WatchSectionVm>().Single(x => !x.IsDefault);
+        vm.RemoveSection(night);
+
+        Assert.True(vm.TryBuildResult());
+        Assert.Equal(new[] { "A", "B" }, vm.Result!.WatchFolders.Select(w => w.Label).ToArray());
+        Assert.All(vm.Result.WatchFolders, w => Assert.Equal("", w.Section));
+    }
+
+    /// <summary>Once removed, the name is genuinely free again — SectionKeyExists
+    /// no longer sees it, so "Add section" reuses it instead of stepping to
+    /// "New section 2" past a section that no longer exists.</summary>
+    [Fact]
+    public void RemoveSectionFreesItsNameForAddSectionToUseAgain()
+    {
+        var vm = new SettingsViewModel(new Config(), _dialogs);
+
+        var first = vm.AddSection();
+        Assert.Equal("New section", first!.Header);
+        vm.RemoveSection(first);
+
+        var second = vm.AddSection();
+        Assert.Equal("New section", second!.Header);
+    }
+
+    /// <summary>The default group is the implicit "no section" bucket — there
+    /// is nowhere to move its folders to, so it has no remove at all (the ✕
+    /// is collapsed on its row) and the call is inert if reached anyway.</summary>
+    [Fact]
+    public void RemovingTheDefaultHeaderIsANoOp()
+    {
+        var vm = new SettingsViewModel(WatchCfg(("A", ""), ("B", "Night")), _dialogs);
+
+        var def = vm.WatchRows.OfType<WatchSectionVm>().Single(x => x.IsDefault);
+        vm.RemoveSection(def);
+
+        Assert.Equal("Monitored folders", vm.MonitorTitle);
+        Assert.Equal(new[] { "A", "B" }, vm.WatchFolders.Select(w => w.Label).ToArray());
+        Assert.Equal("Night", vm.WatchFolders.Single(w => w.Label == "B").Section);
+        Assert.Contains(vm.WatchRows.OfType<WatchSectionVm>(), x => x.IsDefault);
+    }
+
+    /// <summary>The ✕ tooltip names the group the folders will move to, so it
+    /// has to follow a renamed default header — including through the header's
+    /// own rename box, which is what edits MonitorTitle.</summary>
+    [Fact]
+    public void TheRemoveSectionHintFollowsTheDefaultGroupsName()
+    {
+        var vm = new SettingsViewModel(WatchCfg(("A", "Night")), _dialogs);
+        Assert.Equal("Remove this section — its folders move to Monitored folders",
+            vm.RemoveSectionHint);
+
+        var raised = 0;
+        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.RemoveSectionHint)) raised++; };
+
+        var def = vm.WatchRows.OfType<WatchSectionVm>().Single(x => x.IsDefault);
+        vm.BeginSectionRename(def);
+        def.EditText = "Work queues";
+        vm.CommitSectionRename(def);
+
+        Assert.Equal("Remove this section — its folders move to Work queues", vm.RemoveSectionHint);
+        Assert.True(raised > 0, "renaming the default group must notify the ✕ tooltip's binding");
+    }
+
     // ---- Task 2: path checks must never block the UI thread -------------
 
     [Fact]
