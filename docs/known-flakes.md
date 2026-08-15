@@ -25,15 +25,6 @@ dotnet test OrdoSort.sln --no-build -v minimal
 
 ## Live
 
-### `SettingsViewModelTests.ValidateRouteProbeRunsOncePerPauseNotPerKeystroke`
-`tests/OrdoSort.Wpf.Tests/SettingsViewModelTests.cs:1646` · observed 2026-08-15
-
-Sleeps 350ms and then asserts an **exact** debounce call count, so a loaded parallel run can straddle the debounce window and see 2 calls instead of 1. Two independent clocks, which is the same shape PR #3 fixed elsewhere.
-
-Failed once in a full-solution run, then passed 3/3 in isolation and 1739/1739 on a re-run of the identical binary.
-
-Precisely the wall-clock-assertion trap `docs/superpowers/plans/2026-08-05-history-indexes.md:23` warns against. The durable fix is a seam that reports the probe firing, so the loop's own counter is the only signal — a change to the test, not to the code under it. `Config.OnRetryForTests` (PR #3) is the pattern to copy.
-
 ### `FocusRingCoverageTests.TabItemShowsTheBronzeFocusRing`
 `tests/OrdoSort.Wpf.Tests/FocusRingCoverageTests.cs:403` · listed 2026-08-09, **unconfirmed**
 
@@ -55,6 +46,15 @@ They passed in all four runs on 2026-08-15, so the runtime is registered on this
 ---
 
 ## Fixed — do not re-add
+
+### `SettingsViewModelTests.ValidateRouteProbeRunsOncePerPauseNotPerKeystroke`
+`tests/OrdoSort.Wpf.Tests/SettingsViewModelTests.cs:1646` · observed 2026-08-15, fixed same day
+
+It typed a ~70-character burst at the **production** 300ms debounce and then asserted an exact call count after a `Thread.Sleep(350)` — two independent clocks. `DebouncedProbe.Trigger` re-arms one shared Timer per keystroke, so `calls == 1` held only if every assignment landed within 300ms of the previous one; one gap over 300ms on a loaded parallel run fired the timer mid-burst and the count became 2.
+
+Fixed by giving the test both clocks instead of racing them, with **no production change**: `probeDelayMs` (already a ctor param threaded into every `RouteEditVm`) widens the debounce window past any possible burst, so the burst asserts **zero** probes — strictly tighter than the old total-only check, which tolerated a mid-burst fire — and the pause is then caused explicitly via the existing `RefreshProblem(immediate: true)` rather than waited out. No `Thread.Sleep` remains.
+
+Revert-proof: with `DebouncedProbe.Trigger` mutated to run `compute` inline on every call, it fails the burst assertion with **78** calls instead of 0. 25/25 in a loop, plus a clean full-solution run.
 
 ### `UnlockProbeWritesNothingTests.NothingChangesInTheFixtureDirectoryOrTemp`
 `tests/OrdoSort.Core.Tests/UnlockProbeWritesNothingTests.cs:83` · fixed `cd331ef`, 2026-08-12

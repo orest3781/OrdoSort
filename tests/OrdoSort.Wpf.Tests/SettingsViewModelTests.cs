@@ -1642,26 +1642,60 @@ public class SettingsViewModelTests : IDisposable
             $"setting a route's Path blocked for {sw.ElapsedMilliseconds}ms on the UI thread");
     }
 
+    /// <summary>The probe file is created/deleted once per PAUSE, not once per
+    /// character typed into the destination box.
+    ///
+    /// Rewritten 2026-08-15, after this test flaked (it was on the known-flakes
+    /// list). It used to type the burst at the PRODUCTION 300ms debounce and
+    /// then assert an exact call count after a `Thread.Sleep(350)` — two
+    /// independent clocks. `DebouncedProbe.Trigger` re-arms one shared Timer
+    /// per keystroke, so `calls == 1` held only if every one of the ~70
+    /// assignments below landed within 300ms of the previous one. One gap over
+    /// 300ms on a loaded parallel run fired the timer mid-burst and the count
+    /// became 2 — a scheduling artifact, never a product defect.
+    ///
+    /// Now the test owns both clocks instead of racing them. The debounce
+    /// window is set far wider than any burst (`probeDelayMs`, already a ctor
+    /// param threaded into every RouteEditVm), so the burst can assert **zero**
+    /// probes — strictly TIGHTER than the old total-only check, which tolerated
+    /// a mid-burst fire. Then the pause is made explicit via the existing
+    /// `RefreshProblem(immediate: true)` rather than waited out, so the single
+    /// probe is caused, not hoped for. Nothing sleeps.
+    ///
+    /// Teeth, verified by hand and reverted: with DebouncedProbe.Trigger
+    /// changed to run `compute` inline on every call (i.e. no debounce at all),
+    /// this fails on the burst assertion with 70-odd calls instead of 0.</summary>
     [Fact]
     public void ValidateRouteProbeRunsOncePerPauseNotPerKeystroke()
     {
         var calls = 0;
+        // A debounce window no burst can outrun: breaking the assertion below
+        // now needs a 60-SECOND stall between two consecutive statements, which
+        // would fail this suite for louder reasons long first.
         var vm = new SettingsViewModel(new Config(), _dialogs,
-            validateRoute: r => { Interlocked.Increment(ref calls); return Config.ValidateRoute(r); });
+            validateRoute: r => { Interlocked.Increment(ref calls); return Config.ValidateRoute(r); },
+            probeDelayMs: 60_000);
         vm.AddRouteCommand.Execute(null);   // blank Path: the ctor's own priming check is synchronous, no I/O
         var route = vm.Routes[0];
         Assert.Equal(0, calls);
 
-        // simulate typing a destination character by character, faster than
-        // the debounce window — exactly the keystroke burst the audit flagged
+        // simulate typing a destination character by character — exactly the
+        // keystroke burst the audit flagged
         var target = _dir;
         for (var i = 1; i <= target.Length; i++)
             route.Path = target.Substring(0, i);
 
-        WaitFor(() => route.Problem == "", "the route's Problem should eventually resolve for the real folder");
-        Thread.Sleep(350);   // no more keystrokes coming; let the debounce fully settle
+        // The real claim, and the one the old version could not make: while
+        // typing continues, the probe has not run AT ALL.
+        Assert.Equal(0, calls);
 
-        Assert.Equal(1, calls);   // the probe file was created/deleted once, not once per character
+        // The pause, caused rather than waited for. A second probe is
+        // impossible from here by construction: Fire() consumes _pendingCompute
+        // and nulls it under the lock, and nothing re-triggers.
+        route.RefreshProblem(immediate: true);
+
+        WaitFor(() => calls == 1, "the whole burst should resolve to exactly one probe");
+        WaitFor(() => route.Problem == "", "the route's Problem should resolve for the real folder");
     }
 
     [Fact]
