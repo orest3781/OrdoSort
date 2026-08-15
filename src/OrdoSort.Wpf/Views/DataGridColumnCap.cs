@@ -167,10 +167,14 @@ internal static class DataGridColumnCap
     /// budgets.</summary>
     private const double SafetyMargin = 20;
 
-    /// <summary>Floor for the computed cap: only reached when a window is so
-    /// narrow that the other columns' floors already consume the viewport, in
-    /// which case WPF's own space-fitting is what actually resolves the
-    /// layout. Matches ProductionWindow's existing Math.Max(20, …).</summary>
+    /// <summary>Floor for the computed cap. Two ways to reach it: a window so
+    /// narrow that the other columns' floors already consume the viewport
+    /// (which every window's own MinWidth makes unlikely — measured margins
+    /// run 335-535px), or a column the user has dragged wide, whose claim is
+    /// fixed and unshrinkable. In both cases WPF's own space-fitting is what
+    /// actually resolves the layout, and in the second a horizontal scrollbar
+    /// can appear — see RemainderCap's own note on the scope of the
+    /// guarantee. Matches ProductionWindow's existing Math.Max(20, …).</summary>
     private const double MinimumCap = 20;
 
     /// <summary>Same live tracking as the <c>share</c> overload, but the cap
@@ -250,7 +254,26 @@ internal static class DataGridColumnCap
                 if (Math.Abs(column.MaxWidth - cap) > 0.5) column.MaxWidth = cap;
         }
 
-        grid.SizeChanged += (_, _) => Recalculate();
+        // Detach whatever a PREVIOUS Track call on this same grid left behind.
+        //
+        // ProductionWindow.RebuildColumns() calls Track afresh on every
+        // pick-list tick and every reload, against the same long-lived
+        // ResultsGrid — its own comment accepted the resulting leftover
+        // handlers as "harmless, bounded, cosmetic", which was fair when they
+        // only ever wrote MaxWidth onto orphaned DataGridColumn objects.
+        // It stopped being fair when LayoutUpdated joined them: that event
+        // fires after EVERY layout pass the dispatcher runs, anywhere in the
+        // app, not just on this grid — so N accumulated closures tax every
+        // hover, tooltip and animation tick for as long as the window is
+        // open, and N grows for as long as someone keeps ticking boxes.
+        //
+        // Rather than ask each caller to remember, Track is now idempotent per
+        // grid: at most one live subscription set exists no matter how many
+        // times it is called.
+        (grid.GetValue(DetachProperty) as Action)?.Invoke();
+
+        void OnSizeChanged(object? sender, SizeChangedEventArgs e) => Recalculate();
+        grid.SizeChanged += OnSizeChanged;
 
         // SizeChanged alone is not enough for the remainder formula, and this
         // was measured rather than reasoned: the formula reads the OTHER
@@ -273,13 +296,14 @@ internal static class DataGridColumnCap
         // and one recompute at a time is easier to reason about than relying
         // on the epsilon alone.
         var recomputing = false;
-        grid.LayoutUpdated += (_, _) =>
+        void OnLayoutUpdated(object? sender, EventArgs e)
         {
             if (recomputing) return;
             recomputing = true;
             try { Recalculate(); }
             finally { recomputing = false; }
-        };
+        }
+        grid.LayoutUpdated += OnLayoutUpdated;
 
         Recalculate();
 
@@ -288,13 +312,14 @@ internal static class DataGridColumnCap
         // template change silently breaking this fix (by marking the event
         // handled before it bubbles here) is exactly the kind of thing this
         // repo has been bitten by before.
-        grid.AddHandler(Thumb.DragStartedEvent, new DragStartedEventHandler((_, _) =>
+        var dragStarted = new DragStartedEventHandler((_, _) =>
         {
             foreach (var column in columns)
                 if (!pinned.Contains(column)) column.MaxWidth = double.PositiveInfinity;
-        }), true);
+        });
+        grid.AddHandler(Thumb.DragStartedEvent, dragStarted, true);
 
-        grid.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((_, _) =>
+        var dragCompleted = new DragCompletedEventHandler((_, _) =>
         {
             foreach (var column in columns)
                 if (!pinned.Contains(column) && column.Width.IsAbsolute) pinned.Add(column);
@@ -304,8 +329,25 @@ internal static class DataGridColumnCap
             // columns, so this is the single source of truth for "what's the
             // cap right now," not a second copy of computeCap's call site.
             Recalculate();
-        }), true);
+        });
+        grid.AddHandler(Thumb.DragCompletedEvent, dragCompleted, true);
+
+        grid.SetValue(DetachProperty, new Action(() =>
+        {
+            grid.SizeChanged -= OnSizeChanged;
+            grid.LayoutUpdated -= OnLayoutUpdated;
+            grid.RemoveHandler(Thumb.DragStartedEvent, dragStarted);
+            grid.RemoveHandler(Thumb.DragCompletedEvent, dragCompleted);
+        }));
     }
+
+    /// <summary>Holds the Action that detaches the current Track call's
+    /// handlers, so the next Track call on the same grid can run it first. An
+    /// attached property rather than a static table because it lives and dies
+    /// with the grid — no separate lifetime to get wrong.</summary>
+    private static readonly DependencyProperty DetachProperty =
+        DependencyProperty.RegisterAttached(
+            "Detach", typeof(Action), typeof(DataGridColumnCap), new PropertyMetadata(null));
 
     /// <summary>The viewport minus what every OTHER column is entitled to,
     /// split equally among the governed ones — see <see cref="Track(DataGrid,
@@ -316,10 +358,29 @@ internal static class DataGridColumnCap
     /// natural (uncapped) width, which is only knowable by laying the grid
     /// out uncapped first and measuring — a second layout pass on every
     /// resize, and a visible flash of a wider column while it happens. An
-    /// even split is the conservative version: it never over-allocates, so
-    /// the no-scrollbar guarantee holds by arithmetic rather than by
-    /// measurement, and a column that wants less than its share simply takes
-    /// less (Auto sizes to content; the cap is only a ceiling).</summary>
+    /// even split is the conservative version: it never over-allocates, and a
+    /// column that wants less than its share simply takes less (Auto sizes to
+    /// content; the cap is only a ceiling).
+    ///
+    /// SCOPE OF THE GUARANTEE, corrected after review flagged this comment as
+    /// overclaiming — it used to say the no-scrollbar guarantee "holds by
+    /// arithmetic rather than by measurement", full stop, which is not true.
+    /// It holds for AUTOMATIC sizing, which is the only thing this class
+    /// governs.
+    ///
+    /// It does not survive a user-pinned column. A column the user has
+    /// dragged is deliberately exempt from the cap (fix round 5: "their width
+    /// wins permanently afterward"), so it becomes a fixed claim with no
+    /// upper bound, counted in <c>claimed</c> but never shrinkable. Drag one
+    /// wide enough and then shrink the window and <c>available</c> goes
+    /// negative; <see cref="MinimumCap"/> then floors every remaining column
+    /// unconditionally, and floor-plus-pinned can exceed the viewport. WPF's
+    /// own space-fitting is what resolves the layout at that point, and a
+    /// horizontal scrollbar can appear.
+    ///
+    /// That is the accepted consequence of letting a hand-drag win, not a
+    /// defect to fix here — but it is the boundary of the claim, and saying
+    /// so is the difference between a guarantee and a slogan.</summary>
     private static double RemainderCap(
         DataGrid grid, double viewportWidth, DataGridColumn[] governed, HashSet<DataGridColumn> pinned)
     {

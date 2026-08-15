@@ -7,6 +7,7 @@ using System.Windows.Data;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Theme;
 using OrdoSort.Wpf.ViewModels;
+using OrdoSort.Wpf.Views;
 using OrdoSort.Wpf.Windows;
 
 namespace OrdoSort.Wpf.Tests;
@@ -389,6 +390,50 @@ public class AutoFitColumnTests
             vm.Rows.Add(new MatchRow($"src{i}.pdf", fileValue, "SOMETHING-SHORT.pdf", noteValue, "merge"));
         return new MatchMergeWindow(vm);
     }
+
+    /// <summary>Calling Track twice on one grid must leave ONE live
+    /// subscription set, not two.
+    ///
+    /// ProductionWindow.RebuildColumns() calls Track afresh on every
+    /// pick-list tick and every reload, against the same long-lived grid. Its
+    /// own comment accepted the leftover handlers as "harmless, bounded,
+    /// cosmetic", which held while they only wrote MaxWidth onto orphaned
+    /// DataGridColumn objects nobody renders. It stopped holding when
+    /// LayoutUpdated joined them: that event fires after EVERY layout pass the
+    /// dispatcher runs, anywhere in the app — so each accumulated closure
+    /// taxes every hover, tooltip and animation tick for as long as the window
+    /// is open, and the count grows with how long someone keeps ticking boxes.
+    ///
+    /// Asserted through the observable consequence rather than by counting
+    /// handlers, which WPF does not expose: a column the FIRST call governed
+    /// but the second does not must stop being written to. If the first call's
+    /// closure is still subscribed it will keep clamping that orphan on every
+    /// layout pass, and the assertion below catches it.</summary>
+    [Fact]
+    public void TrackingAGridTwiceReplacesTheFirstSubscriptionRatherThanAddingToIt() => _fx.Invoke(() =>
+    {
+        var win = BuildMatchMergeWindow(fileValue: VeryLongValue, noteValue: VeryLongValue);
+        try
+        {
+            ShowOffscreen(win);
+            var grid = FindDescendant<DataGrid>(win)!;
+            var orphan = FindColumnByHeader(win, "File");
+            var kept = FindColumnByHeader(win, "Note");
+
+            // Re-track governing ONLY "Note" — "File" becomes the orphan a
+            // stale closure would still be clamping.
+            DataGridColumnCap.Track(grid, kept);
+            orphan.MaxWidth = 9999;
+
+            win.Width = win.MinWidth;    // force a resize, and so a recompute
+            ShowOffscreen(win);
+
+            Assert.Equal(9999, orphan.MaxWidth);
+            Assert.True(kept.MaxWidth < 9999,
+                $"the re-tracked column should still be governed, but its cap is {kept.MaxWidth}px");
+        }
+        finally { win.Close(); }
+    });
 
     // -------------------------------------------------------- BulkRename
 
