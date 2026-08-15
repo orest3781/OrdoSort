@@ -13,6 +13,10 @@
         <KeyBinding Key="Escape" Command="{Binding StopCommand}" />
     </Window.InputBindings>
     <Window.Resources>
+        <!-- Header degradation ladder: see the converter's own doc for why the
+             toolbar's captions yield before the menu is ever squeezed. -->
+        <views:WidthAtLeastToVisibilityConverter x:Key="WidthAtLeast" />
+
         <!-- The notification-rail item (Phase 3, Task 3.3 — approved
              mockup): icon · message (+ smaller detail run) · action link ·
              dismiss, one row per live notice in ShellViewModel.Notices. Kept
@@ -194,29 +198,48 @@
     </Window.Resources>
     <DockPanel>
         <Grid DockPanel.Dock="Top" Background="{DynamicResource Theme.WindowBg}">
+            <!-- Column priority is the whole fix for the header reflowing onto
+                 a second row when the window narrows (it did so at EnterCompact's
+                 own 470px parked width, never mind its 400px MinWidth).
+                 These used to be reversed — Menu in the "*" column, toolbar in
+                 "Auto" — which meant the toolbar kept every pixel it wanted and
+                 the MENU absorbed the entire squeeze. Exactly backwards: a WPF
+                 Menu hosts its items in a WrapPanel, so squeezing it reflows
+                 rather than narrows, while the toolbar's captions are redundant
+                 and can simply go (see WidthAtLeastToVisibilityConverter).
+                 Auto first, so the menu always gets its natural single-row
+                 width; the toolbar takes what is left and yields first. -->
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
             <!-- rescan lives in the header, top-right — always in the same
                  spot, hidden while filing (Stop/Esc is the deliberate way
                  out of a session; a stray refresh must not end it) -->
-            <StackPanel Grid.Column="1" Orientation="Horizontal">
+            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                        HorizontalAlignment="Right">
             <!-- one mode instead of stacked toggles: Active only (default),
                  All (tiles stay at zero), Hidden (section gone, sweep skipped) -->
+            <!-- Label and combo share one TileControlsVisible gate now (they
+                 always appeared and disappeared together anyway), which frees
+                 the LABEL to carry the width rung of the ladder on its own. -->
+            <StackPanel Orientation="Horizontal"
+                        Visibility="{Binding TileControlsVisible,
+                                     Converter={StaticResource BoolToVis}}">
             <TextBlock Text="Folders:" VerticalAlignment="Center" Margin="0,0,6,0"
-                       Visibility="{Binding TileControlsVisible,
-                                    Converter={StaticResource BoolToVis}}" />
+                       Visibility="{Binding ActualWidth,
+                                    RelativeSource={RelativeSource AncestorType=Window},
+                                    Converter={StaticResource WidthAtLeast},
+                                    ConverterParameter=620}" />
             <ComboBox SelectedIndex="{Binding TileVisibilityIndex}"
-                      Visibility="{Binding TileControlsVisible,
-                                   Converter={StaticResource BoolToVis}}"
                       VerticalAlignment="Center" Margin="0,0,12,0" MinWidth="104"
                       ToolTip="Monitored-folder tiles: only folders holding files, every folder even at zero, or none at all">
                 <ComboBoxItem Content="Active only" />
                 <ComboBoxItem Content="All" />
                 <ComboBoxItem Content="Hidden" />
             </ComboBox>
+            </StackPanel>
             <Button Command="{Binding RescanCommand}"
                     Height="26" Padding="10,0" Margin="0,2,6,2"
                     ToolTip="Rescan the inbox now">
@@ -240,12 +263,34 @@
                          FontFamily; converting would drop it. -->
                     <TextBlock Style="{StaticResource Icon}" Text="&#xE72C;"
                                FontSize="12" Margin="0,0,6,0" />
-                    <TextBlock Text="Refresh" />
+                    <!-- second rung: below the compact dashboard's own parked
+                         width the caption goes and the button is icon-only. The
+                         icon stays, and so does the button's "Rescan the inbox
+                         now" tooltip, so nothing becomes unidentifiable. -->
+                    <TextBlock Text="Refresh"
+                               Visibility="{Binding ActualWidth,
+                                            RelativeSource={RelativeSource AncestorType=Window},
+                                            Converter={StaticResource WidthAtLeast},
+                                            ConverterParameter=470}" />
                 </StackPanel>
             </Button>
             </StackPanel>
 
             <Menu Padding="4,2">
+                <!-- A WPF Menu's DEFAULT ItemsPanel is a WrapPanel, which is
+                     what put File/Tools/Reports/Help onto a second row and
+                     doubled the header's height on a narrow window. The Auto
+                     column above should keep that from ever being reached; this
+                     makes it impossible rather than merely unlikely, and states
+                     the intent where the next reader will look. Below the
+                     menu's own width the tail clips — mnemonics (Alt+F, Alt+T…)
+                     keep working regardless, which a wrapped row bought nothing
+                     extra for. -->
+                <Menu.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </Menu.ItemsPanel>
             <MenuItem Header="_File">
                 <MenuItem Header="_Settings…" Click="OnSettings" InputGestureText="Ctrl+,">
                     <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE713;" /></MenuItem.Icon>
