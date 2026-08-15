@@ -44,6 +44,24 @@ crash.log
 # stays as a safety net for the day someone drops a sample folder back in here.
 .realSamples/
 
+# The same thing, in the place it actually landed. On 2026-08-14 a folder of
+# live exports — production dashboard.xlsx, TAT.xlsx, scan/mailroom/email
+# report folders, ~15MB — was assembled under docs/ while putting a report
+# fix together, and NONE of it matched any rule here: git check-ignore
+# returned nothing for it. Nothing was committed, but only because the
+# working tree happened to be inspected before the next `git add -A`.
+#
+# Same caveat as above, and it matters: an ignore rule only stops a commit.
+# It does nothing about a tool that copies, greps, or uploads the working
+# tree, and this repo has already had real patient data public for ~15 hours
+# once. The data belongs outside the tree; this is the safety net, not the
+# policy.
+#
+# That drop also produced loose archives at docs/*.zip (PAPER, c, i, sl).
+# Not ignored here, deliberately — narrow rule, asked for narrowly. Widen it
+# if that shape recurs.
+docs/sample/
+
 # Agent/skill tooling state dropped into the repo by installers and the
 # brainstorming visual companion — local scratch, never reviewed.
 .agents/
