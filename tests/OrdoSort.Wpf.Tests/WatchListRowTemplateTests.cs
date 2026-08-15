@@ -201,11 +201,14 @@ public class WatchListRowTemplateTests
         finally { window.Close(); vm.Dispose(); }
     });
 
-    /// <summary>The two per-section buttons (✎ rename, ＋ add folder). Both
-    /// vanished with the template, taking two of the Dashboard tab's five
-    /// affordances with them — and neither has any other entry point.</summary>
+    /// <summary>The three per-section buttons (✎ rename, ＋ add folder,
+    /// ✕ remove). The first two vanished with the template, taking two of the
+    /// Dashboard tab's five affordances with them — and none of the three has
+    /// any other entry point: the toolbar Remove button targets the SELECTED
+    /// row, and SettingsViewModel.SelectedWatchRow refuses header rows, so ✕
+    /// is the only way a section can be removed at all.</summary>
     [Fact]
-    public void SectionHeaderRowHasItsRenameAndAddFolderButtons() => _fx.Invoke(() =>
+    public void SectionHeaderRowHasItsRenameAddFolderAndRemoveButtons() => _fx.Invoke(() =>
     {
         var (vm, window, list) = OpenDashboard();
         try
@@ -216,13 +219,49 @@ public class WatchListRowTemplateTests
                 .Select(b => (string?)b.GetValue(AutomationProperties.NameProperty) ?? "")
                 .ToList();
 
-            Assert.Equal(2, buttons.Count);
+            Assert.Equal(3, buttons.Count);
             Assert.Contains($"Rename section {SectionA}", names);
             Assert.Contains($"Add folder to section {SectionA}", names);
+            Assert.Contains($"Remove section {SectionA}", names);
 
             var texts = TextsIn(container);
             Assert.Contains("✎", texts);
             Assert.Contains("＋", texts);
+            Assert.Contains("✕", texts);
+
+            // ✕ is the one button here whose meaning isn't self-evident, so its
+            // tooltip has to say where the folders go — and it names the real
+            // group by BINDING to MonitorTitle. Asserting the whole resolved
+            // string is what proves the binding evaluated: a broken one leaves
+            // the tooltip null, which no "contains ✕" check would ever notice.
+            var remove = buttons.Single(b =>
+                (string?)b.GetValue(AutomationProperties.NameProperty) == $"Remove section {SectionA}");
+            Assert.Equal("Remove this section — its folders move to Monitored folders", remove.ToolTip);
+        }
+        finally { window.Close(); vm.Dispose(); }
+    });
+
+    /// <summary>The default group is the implicit "no section" bucket: its
+    /// folders have nowhere to move to, so its header must NOT offer ✕ — only
+    /// ✎ (which edits MonitorTitle) and ＋. Asserted on the rendered row
+    /// because the guard is a Visibility DataTrigger in the template, not
+    /// anything the view model would catch.</summary>
+    [Fact]
+    public void TheDefaultSectionHeaderRowHasNoRemoveButton() => _fx.Invoke(() =>
+    {
+        var (vm, window, list) = OpenDashboard();
+        try
+        {
+            var def = vm.WatchRows.OfType<WatchSectionVm>().Single(h => h.IsDefault);
+            var container = Row(list, vm.WatchRows.ToList().IndexOf(def));
+
+            var visible = FindAllDescendants<Button>(container).Where(b => b.IsVisible).ToList();
+            var names = visible
+                .Select(b => (string?)b.GetValue(AutomationProperties.NameProperty) ?? "")
+                .ToList();
+
+            Assert.Equal(2, visible.Count);
+            Assert.DoesNotContain(names, n => n.StartsWith("Remove section", StringComparison.Ordinal));
         }
         finally { window.Close(); vm.Dispose(); }
     });

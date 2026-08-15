@@ -116,6 +116,11 @@ public partial class SettingsWindow : Window
         if (sender is Button { DataContext: WatchSectionVm h }) _vm.AddFolderToSection(h);
     }
 
+    private void OnSectionRemoveClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: WatchSectionVm h }) _vm.RemoveSection(h);
+    }
+
     private void OnAddSectionClick(object sender, RoutedEventArgs e)
     {
         if (_vm.AddSection() is not { } header) return;
