@@ -68,7 +68,7 @@ public static class TurnaroundExport
             new object?[] { "Files skipped", report.Skipped.Count },
             new object?[] { "Rows", report.RowCount },
             new object?[] { "Upload span",
-                $"{report.FirstUpload:yyyy-MM-dd} to {report.LastUpload:yyyy-MM-dd}" },
+                $"{report.FirstUpload?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)} to {report.LastUpload?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}" },
             Array.Empty<object?>(),
             new object?[] { "Bucket", "Documents", "Percent" },
             new object?[] { "Same day", o.SameDay, Math.Round(o.Total == 0 ? 0 : 100.0 * o.SameDay / o.Total, 2) },

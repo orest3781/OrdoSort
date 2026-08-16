@@ -74,6 +74,7 @@ public class TurnaroundExportTests : IDisposable
         Assert.Contains(summarySheet, r => r.Count >= 3 && r[0] == "0-1 business days" && r[1] == "2" && r[2] == "50");
         Assert.Contains(summarySheet, r => r.Count >= 2 && r[0] == "Future-dated" && r[1] == "1");
         Assert.Contains(summarySheet, r => r.Count >= 2 && r[0] == "Ignored: ECAA" && r[1] == "1");
+        Assert.Contains(summarySheet, r => r.Count >= 2 && r[0] == "Upload span" && r[1] == "2026-07-06 to 2026-07-06");
 
         // Sheet 2: header + one row per measurable doc, dates pre-formatted.
         using var zip = System.IO.Compression.ZipFile.OpenRead(path);
