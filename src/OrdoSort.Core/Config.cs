@@ -114,18 +114,6 @@ public sealed class Config
     [JsonPropertyName("merge_roster")] public string MergeRoster { get; set; } = "";
     [JsonPropertyName("merge_columns")] public List<string> MergeColumns { get; set; } = new();
 
-    // Turn-around time report: folder containing TAT data, header mappings, and threshold
-    [JsonPropertyName("tat_report_folder")] public string TatReportFolder { get; set; } = "";
-    [JsonPropertyName("tat_headers")] public Dictionary<string, string> TatHeaders { get; set; } = new();
-    [JsonPropertyName("tat_threshold_days")] public int TatThresholdDays { get; set; } = 5;
-    [JsonPropertyName("tat_ignored_sources")] public List<string> TatIgnoredSources { get; set; } = new();
-
-    // Production report: CSV folder and column selection preferences
-    [JsonPropertyName("production_csv_folder")] public string ProductionCsvFolder { get; set; } = "";
-    [JsonPropertyName("production_group_columns")] public List<string> ProductionGroupColumns { get; set; } = new();
-    [JsonPropertyName("production_sum_columns")] public List<string> ProductionSumColumns { get; set; } = new();
-    [JsonPropertyName("production_datetime_column")] public string ProductionDatetimeColumn { get; set; } = "";
-
     // Ready dashboard: monitored-folder tiles + filename alerts
     [JsonPropertyName("watch_folders")] public List<WatchFolder> WatchFolders { get; set; } = new();
     [JsonPropertyName("alert_texts")] public List<string> AlertTexts { get; set; } = new();
@@ -277,9 +265,6 @@ public sealed class Config
             throw new ConfigException(
                 $"poll_seconds must be {MinPollSeconds}-{MaxPollSeconds}, " +
                 $"got {cfg.PollSeconds}");
-        if (cfg.TatThresholdDays < 0)
-            cfg.TatThresholdDays = 5;
-
         // ---- split sections: a side file wins; inline (legacy) is the fallback
         if (ReadDoc<DestinationsDoc>(path, cfg.DestinationsFile, "destinations_file") is { } dd)
         {
@@ -452,13 +437,6 @@ public sealed class Config
         MergeHeaders ??= new();
         MergeRoster ??= "";
         MergeColumns ??= new();
-        TatReportFolder ??= "";
-        TatHeaders ??= new();
-        ProductionCsvFolder ??= "";
-        ProductionGroupColumns ??= new();
-        ProductionSumColumns ??= new();
-        ProductionDatetimeColumn ??= "";
-        TatIgnoredSources = Clean(TatIgnoredSources);
         Extras ??= new();
 
         Sounds ??= new();

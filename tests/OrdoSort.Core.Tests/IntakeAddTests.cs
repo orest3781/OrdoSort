@@ -81,8 +81,8 @@ public class IntakeAddTests
         Assert.Equal(4, r.Ignored);
     }
 
-    /// <summary>Null means "don't check" — FilenameList, Turnaround and
-    /// Production add source roots without an existence check on purpose.</summary>
+    /// <summary>Null means "don't check" — FilenameList adds source roots
+    /// without an existence check on purpose.</summary>
     [Fact]
     public void ANullPredicateSkipsTheExistenceCheckEntirely()
     {

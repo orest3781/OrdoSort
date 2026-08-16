@@ -30,10 +30,7 @@ public class ConfigNullKeysTests : IDisposable
             {
               "routes": null, "watch_folders": null, "alert_texts": null,
               "saved_passwords": null, "label_clients": null, "merge_headers": null,
-              "merge_roster": null, "merge_columns": null,
-              "tat_report_folder": null, "tat_headers": null, "tat_ignored_sources": null,
-              "production_csv_folder": null, "production_group_columns": null,
-              "production_sum_columns": null, "production_datetime_column": null
+              "merge_roster": null, "merge_columns": null
             }
             """);
         Assert.Empty(cfg.Routes);
@@ -44,13 +41,31 @@ public class ConfigNullKeysTests : IDisposable
         Assert.Empty(cfg.MergeHeaders);
         Assert.Equal("", cfg.MergeRoster);
         Assert.Empty(cfg.MergeColumns);
-        Assert.Equal("", cfg.TatReportFolder);
-        Assert.Empty(cfg.TatHeaders);
-        Assert.Empty(cfg.TatIgnoredSources);
-        Assert.Equal("", cfg.ProductionCsvFolder);
-        Assert.Empty(cfg.ProductionGroupColumns);
-        Assert.Empty(cfg.ProductionSumColumns);
-        Assert.Equal("", cfg.ProductionDatetimeColumn);
+    }
+
+    [Fact]
+    public void RetiredReportsKeysLoadWithoutCrashingEvenWhenNull()
+    {
+        // The reports feature's nine config keys (tat_report_folder,
+        // tat_headers, tat_threshold_days, tat_ignored_sources,
+        // reports_upload_folder, production_csv_folder,
+        // production_group_columns, production_sum_columns,
+        // production_datetime_column) were retired when the Turn-around time
+        // / Production report windows and engines were removed. An existing
+        // config still carrying any of them (null or otherwise) must load
+        // without complaint — landing in Extras via [JsonExtensionData]
+        // rather than tripping over an unknown field — the same contract
+        // "unlock_suffix" already established for a retired key.
+        var cfg = LoadJson("""
+            {
+              "tat_report_folder": null, "tat_headers": null,
+              "tat_threshold_days": null, "tat_ignored_sources": null,
+              "reports_upload_folder": null, "production_csv_folder": null,
+              "production_group_columns": null, "production_sum_columns": null,
+              "production_datetime_column": null
+            }
+            """);
+        Assert.NotNull(cfg);
     }
 
     [Fact]

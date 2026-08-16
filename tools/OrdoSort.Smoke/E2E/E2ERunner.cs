@@ -23,7 +23,6 @@ public static class E2ERunner
             .Concat(BulkRenameScenarios.All())
             .Concat(MatchMergeScenarios.All())
             .Concat(SmallToolScenarios.All())
-            .Concat(ReportScenarios.All())
             .Concat(HistoryScenarios.All())
             .Concat(RoutingScenarios.All())
             .ToList();

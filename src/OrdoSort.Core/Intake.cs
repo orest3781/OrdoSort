@@ -118,9 +118,9 @@ public static class Intake
     /// Naming.BuildTarget takes one: it keeps this whole module sync and
     /// disk-free, so its tests need no temp directory and the tools that
     /// already run their intake off-thread keep scheduling it themselves.
-    /// Null means "don't check" — which is FilenameList's, Turnaround's and
-    /// Production's deliberate behaviour, since a source that has gone since
-    /// it was added is theirs to report later, not intake's to reject now.
+    /// Null means "don't check" — which is FilenameList's deliberate
+    /// behaviour, since a source that has gone since it was added is its to
+    /// report later, not intake's to reject now.
     ///
     /// Order of judgement is fixed so the reported reason is deterministic:
     /// unusable, then wrong type, then missing, then already listed. A

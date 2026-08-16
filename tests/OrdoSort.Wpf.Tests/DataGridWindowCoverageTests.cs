@@ -68,7 +68,6 @@ public class DataGridWindowCoverageTests
     private static readonly HashSet<string> CoveredWindows = new(StringComparer.Ordinal)
     {
         "MatchMergeWindow", "BulkRenameWindow", "HistoryWindow", "TriageWindow",
-        "TurnaroundWindow", "ProductionWindow",
         // Tools windows added 2026-08-09 ("five Tools-menu utilities") —
         // this task's own coverage-gap fix.
         "FilenameListWindow", "ZipWindow", "ZipMergeWindow", "UnzipWindow", "PageCountsWindow",
@@ -130,15 +129,16 @@ public class DataGridWindowCoverageTests
         // rename, a build config that hides types), an empty or tiny list
         // would make every fact below vacuously pass — proving nothing,
         // exactly the trap this whole task exists to close on the OTHER
-        // suites. Eleven is the actual count at the time this suite was
-        // written (BulkRename/FilenameList/History/MatchMerge/PageCounts/
-        // Production/Triage/Turnaround/Unzip/ZipMerge/Zip all declare a
-        // DataGrid — AboutWindow/LabelMakerWindow/ListReformatWindow/
-        // ManageSavedWindow/PrintPreviewWindow/SettingsWindow/UnlockWindow
-        // don't), so ten is a safe floor that still catches enumeration
-        // silently degrading without being so tight it breaks on every
-        // ordinary new window.
-        Assert.True(windowTypes.Count >= 10,
+        // suites. Nine is the actual count at the time this suite was last
+        // updated (BulkRename/FilenameList/History/MatchMerge/PageCounts/
+        // Triage/Unzip/ZipMerge/Zip all declare a DataGrid —
+        // AboutWindow/LabelMakerWindow/ListReformatWindow/ManageSavedWindow/
+        // PrintPreviewWindow/SettingsWindow/UnlockWindow don't; Turnaround
+        // and Production, which also used to, were removed along with the
+        // reports feature), so eight is a safe floor that still catches
+        // enumeration silently degrading without being so tight it breaks on
+        // every ordinary new window.
+        Assert.True(windowTypes.Count >= 8,
             $"only found {windowTypes.Count} Window types under OrdoSort.Wpf.Windows via reflection " +
             "— enumeration looks broken (namespace/assembly mismatch?), not that the app genuinely " +
             "shrank to that few windows");

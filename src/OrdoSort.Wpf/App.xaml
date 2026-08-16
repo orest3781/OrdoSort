@@ -21,7 +21,6 @@
             <views:PasswordStatusConverter x:Key="PasswordStatus" />
             <views:FontFamilyStringConverter x:Key="FontFamilyString" />
             <views:FontSizeTextConverter x:Key="FontSizeText" />
-            <views:NoneSentinelConverter x:Key="NoneSentinel" />
             <FontFamily x:Key="AppFontFamily">Segoe UI Variable Text, Segoe UI</FontFamily>
             <sys:Double x:Key="AppFontSize" xmlns:sys="clr-namespace:System;assembly=mscorlib">14</sys:Double>
         </ResourceDictionary>

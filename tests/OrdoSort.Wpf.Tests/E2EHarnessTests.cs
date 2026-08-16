@@ -120,26 +120,6 @@ public class E2EHarnessTests
         Assert.Contains(archive.Entries, e => e.FullName.Contains("..", StringComparison.Ordinal));
     }
 
-    /// <summary>The hand-written xlsx must be readable by the app's OWN
-    /// reader (SweptTable.Load → XlsxTable.Read). Without this, a malformed
-    /// fixture would surface later as a Reports scenario finding zero rows —
-    /// a product bug that isn't one.</summary>
-    [Fact]
-    public void XlsxFixtureRoundTripsThroughSweptTable()
-    {
-        using var fx = Fixture.Create("xlsx-check");
-        var path = fx.Xlsx("report.xlsx",
-            new[] { "Document", "Category" },
-            new[] { new[] { "20240101--1111.pdf", "INVOICE" } });
-
-        var table = OrdoSort.Core.SweptTable.Load(new[] { path });
-
-        Assert.Contains("Document", table.Headers);
-        Assert.Contains("Category", table.Headers);
-        Assert.Single(table.Rows);
-        Assert.Equal("INVOICE", table.Rows[0].Cells["Category"]);
-    }
-
     /// <summary>Queued answers come back in order — a scenario that queues
     /// two save paths is describing two saves, and getting them swapped
     /// would file evidence under the wrong name.</summary>

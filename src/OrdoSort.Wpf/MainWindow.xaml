@@ -278,7 +278,7 @@
 
             <Menu Padding="4,2">
                 <!-- A WPF Menu's DEFAULT ItemsPanel is a WrapPanel, which is
-                     what put File/Tools/Reports/Help onto a second row and
+                     what put File/Tools/Help onto a second row and
                      doubled the header's height on a narrow window. The Auto
                      column above should keep that from ever being reached; this
                      makes it impossible rather than merely unlikely, and states
@@ -341,14 +341,6 @@
                 </MenuItem>
                 <MenuItem Header="U_nzip…" Click="OnUnzip">
                     <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xED25;" /></MenuItem.Icon>
-                </MenuItem>
-            </MenuItem>
-            <MenuItem Header="_Reports">
-                <MenuItem Header="_Turn-around time…" Click="OnTurnaroundReport">
-                    <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE916;" /></MenuItem.Icon>
-                </MenuItem>
-                <MenuItem Header="_Production reports…" Click="OnProductionReport">
-                    <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE9D9;" /></MenuItem.Icon>
                 </MenuItem>
             </MenuItem>
             <MenuItem Header="_Help">

@@ -74,9 +74,8 @@
                              Note is computed as "the viewport minus everyone
                              else's floor" (DataGridColumnCap), so this floor is
                              exactly what stops a long error message squeezing
-                             the filename down to WPF's 20px default. 180 matches
-                             TurnaroundWindow's File name filler, the app's
-                             existing floor for a filename column. -->
+                             the filename down to WPF's 20px default. 180 is the
+                             app's existing floor for a filename column. -->
                         <DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="*" MinWidth="180">
                             <!-- BasedOn GridCellTextSelectionAware (Theme/
                                  Styles.xaml), not plain GridCellText or the

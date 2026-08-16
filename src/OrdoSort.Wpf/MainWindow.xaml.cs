@@ -352,22 +352,6 @@ public partial class MainWindow : Window
         new Windows.UnzipWindow(new UnzipViewModel(Dialogs, uiContext: SynchronizationContext.Current))
         { Owner = this }.ShowDialog();
 
-    private void OnTurnaroundReport(object sender, RoutedEventArgs e)
-    {
-        var vm = new TurnaroundViewModel(Shell.Cfg, Dialogs, Shell.SaveConfigNow,
-            uiContext: SynchronizationContext.Current);
-        new Windows.TurnaroundWindow(vm) { Owner = this }.ShowDialog();
-        vm.Dispose();
-    }
-
-    private void OnProductionReport(object sender, RoutedEventArgs e)
-    {
-        var vm = new ProductionViewModel(Shell.Cfg, Dialogs, Shell.SaveConfigNow,
-            uiContext: SynchronizationContext.Current);
-        new Windows.ProductionWindow(vm) { Owner = this }.ShowDialog();
-        vm.Dispose();
-    }
-
     private void OnAbout(object sender, RoutedEventArgs e) =>
         new Windows.AboutWindow { Owner = this }.ShowDialog();
 

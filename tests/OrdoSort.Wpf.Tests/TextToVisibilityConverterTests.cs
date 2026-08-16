@@ -4,12 +4,10 @@ using OrdoSort.Wpf.Views;
 
 namespace OrdoSort.Wpf.Tests;
 
-/// <summary>Turnaround's and Production's add-feedback line is on its own grid
-/// row, and this converter is what stops that row taking vertical space when
-/// there is nothing to say. The note moved off the source row after a
-/// minimum-width render showed the row's StackPanel giving its last child
-/// whatever space was left — which, behind a long status line, was none, so
-/// the feedback silently vanished in exactly the case it exists for.</summary>
+/// <summary>An add-feedback line that lives on its own grid row, and this
+/// converter is what stops that row taking vertical space when there is
+/// nothing to say — a StackPanel giving its last child whatever space is
+/// left silently loses a long status line's feedback otherwise.</summary>
 public class TextToVisibilityConverterTests
 {
     private static object Convert(object? value) =>

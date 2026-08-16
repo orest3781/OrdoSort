@@ -9,13 +9,11 @@ namespace OrdoSort.Wpf.Tests;
 ///
 /// That suite makes a missing CONTRAST builder loud and specific. Nothing did
 /// the same for column SIZING, and the consequences are on the record rather
-/// than hypothetical: Turnaround's Category column shipped with no cap at all,
-/// PageCounts/ZipMerge/Unzip's Note and Result columns shipped with no cap,
-/// five grids shipped a star filler with no MinWidth so it silently carried
-/// WPF's 20px default, and ProductionWindow shipped a state (untick every
-/// Group-by) with no filler at all and therefore dead space. Every one of
-/// those was found by a person reading code or looking at a window — none by
-/// a test going red.
+/// than hypothetical: PageCounts/ZipMerge/Unzip's Note and Result columns
+/// shipped with no cap, and five grids shipped a star filler with no
+/// MinWidth so it silently carried WPF's 20px default. Every one of those
+/// was found by a person reading code or looking at a window — none by a
+/// test going red.
 ///
 /// AutoFitColumnTests measures real widths, and measures them well, but it is
 /// a hand-maintained list of per-window facts: it only ever proves the windows
@@ -59,7 +57,6 @@ public class DataGridSizingCoverageTests
     private static readonly HashSet<string> SizingCovered = new(StringComparer.Ordinal)
     {
         "MatchMergeWindow", "BulkRenameWindow", "HistoryWindow", "TriageWindow",
-        "TurnaroundWindow", "ProductionWindow",
         "PageCountsWindow", "ZipMergeWindow", "UnzipWindow",
     };
 

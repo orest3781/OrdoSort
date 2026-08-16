@@ -104,7 +104,7 @@ public class HeaderLayoutTests : IDisposable
         try
         {
             var menu = HeaderMenu(window);
-            Assert.Equal(4, menu.Items.OfType<MenuItem>().Count());   // File, Tools, Reports, Help
+            Assert.Equal(3, menu.Items.OfType<MenuItem>().Count());   // File, Tools, Help
 
             var rows = MenuItemRows(menu);
             Assert.True(rows.Count == 1,

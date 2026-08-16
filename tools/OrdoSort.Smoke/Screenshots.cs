@@ -120,43 +120,6 @@ public static class Screenshots
             Capture(notes, outdir, theme, "MatchMerge", () =>
                 new MatchMergeWindow(new MatchMergeViewModel(Config.Load(cfgPath), _ => { }, dialogs)));
 
-            // Turnaround and Production were added after this tool was written
-            // and had never been captured, despite the class doc above
-            // claiming every window. Both are shown with a source root already
-            // listed and a SECOND add refused, so the AddNote they gained is
-            // actually on screen — an empty note would prove nothing about how
-            // that row lays out next to Browse/Include subfolders/Clear/Status.
-            // Default width, added ONCE: no note, so its row must collapse to
-            // nothing. Compare against the -narrow pair below, which add twice
-            // and therefore show it. Between them the two states are covered.
-            Capture(notes, outdir, theme, "Turnaround", () =>
-            {
-                var vm = new TurnaroundViewModel(Config.Load(cfgPath), dialogs, null);
-                vm.AddPaths(new[] { demoRoot });
-                return new TurnaroundWindow(vm);
-            });
-            Capture(notes, outdir, theme, "Production", () =>
-            {
-                var vm = new ProductionViewModel(Config.Load(cfgPath), dialogs, null);
-                vm.AddPaths(new[] { demoRoot });
-                return new ProductionWindow(vm);
-            });
-            Capture(notes, outdir, theme, "Production-narrow", () =>
-            {
-                var vm = new ProductionViewModel(Config.Load(cfgPath), dialogs, null);
-                vm.AddPaths(new[] { demoRoot });
-                vm.AddPaths(new[] { demoRoot });
-                var w = new ProductionWindow(vm) { Width = 760 };   // MinWidth
-                return w;
-            });
-            Capture(notes, outdir, theme, "Turnaround-narrow", () =>
-            {
-                var vm = new TurnaroundViewModel(Config.Load(cfgPath), dialogs, null);
-                vm.AddPaths(new[] { demoRoot });
-                vm.AddPaths(new[] { demoRoot });
-                return new TurnaroundWindow(vm) { Width = 740 };    // MinWidth
-            });
-
             CaptureTriage(notes, outdir, theme);
             Capture(notes, outdir, theme, "Settings", () =>
                 new SettingsWindow(new SettingsViewModel(Config.Load(cfgPath), dialogs,

@@ -20,9 +20,10 @@ public class PathIdentityTests
         Assert.Equal(@"C:\jobs\a.pdf", PathIdentity.Canonical(@"C:\jobs\\a.pdf"));
     }
 
-    /// <summary>The one GetFullPath won't do on its own, and the reason
-    /// Turnaround/Production can hold one folder twice: a source root added
-    /// as "C:\jobs" and again as "C:\jobs\" compares unequal without this.</summary>
+    /// <summary>The one GetFullPath won't do on its own, and the reason a
+    /// source-root list can otherwise hold one folder twice: a source root
+    /// added as "C:\jobs" and again as "C:\jobs\" compares unequal without
+    /// this.</summary>
     [Fact]
     public void CanonicalDropsATrailingSeparatorButLeavesARootAlone()
     {

@@ -113,11 +113,7 @@ public sealed class ZeroToVisibilityConverter : IValueConverter
 /// <summary>Text → Visible when it says something, Collapsed when it's empty.
 ///
 /// For a line that only exists when there's something to report, so it takes
-/// no vertical space the rest of the time. Turnaround and Production use it
-/// for their add-feedback note: that note lived on the source row until a
-/// minimum-width render showed the row's long status line pushing it off the
-/// edge entirely, which silently removed the only feedback a re-added folder
-/// produces — the exact thing the note was added for.</summary>
+/// no vertical space the rest of the time.</summary>
 public sealed class TextToVisibilityConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
