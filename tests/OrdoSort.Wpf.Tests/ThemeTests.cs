@@ -55,6 +55,29 @@ public class ThemeTests
         Assert.True(ThemePalette.ContrastRatio(fg, bg) >= 4.5,
             $"{fg} on {bg} = {ThemePalette.ContrastRatio(fg, bg):F2}");
 
+    /// <summary>C1 fix (reports-hub-phase2 final fix wave, 2026-08-16):
+    /// TurnaroundPageView.xaml's hero tile renders HeroPercentText on
+    /// Theme.SurfaceRaised, and used to bind Foreground to Theme.AccentText —
+    /// which means "text ON Accent" (see ThemePalette.cs's own field
+    /// comment), not "text on a card with an Accent border". In Light,
+    /// AccentText is white and SurfaceRaised is near-white too, so the hero
+    /// percentage rendered white-on-white. Fixed to Theme.Accent, which the
+    /// reviewer verified clears 4.5:1 against SurfaceRaised in every scheme —
+    /// pinned here per scheme, separately from the generic TextPairs() wall
+    /// above, so this test reads as guarding that one real call site rather
+    /// than blending into the general pairing sweep.</summary>
+    [Fact]
+    public void ReportsHubHeroTileAccentOnSurfaceRaisedMeetsWcagAaInEveryScheme()
+    {
+        foreach (var scheme in ThemePalette.Schemes)
+        {
+            var p = scheme.Palette;
+            var ratio = ThemePalette.ContrastRatio(p.Accent, p.SurfaceRaised);
+            Assert.True(ratio >= 4.5,
+                $"{scheme.Key}: Theme.Accent on Theme.SurfaceRaised = {ratio:F2}");
+        }
+    }
+
     [Theory]
     [InlineData(46, 125, 50)]    // demo green route
     [InlineData(21, 101, 192)]   // demo blue route

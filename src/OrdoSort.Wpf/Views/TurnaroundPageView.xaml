@@ -33,8 +33,12 @@
                                     CornerRadius="8" Padding="14,10" Margin="0,0,8,0">
                                 <StackPanel>
                                     <TextBlock Text="0–1 BUSINESS DAYS" Style="{StaticResource CaptionText}" />
+                                    <!-- C1 fix: Foreground was Theme.AccentText ("text ON Accent") on a
+                                         Theme.SurfaceRaised background: white on white in Light. Fixed
+                                         to Theme.Accent, verified clears 4.5:1 on SurfaceRaised in every
+                                         scheme (ThemeTests.ReportsHubHeroTileAccentOnSurfaceRaisedMeetsWcagAaInEveryScheme). -->
                                     <TextBlock Text="{Binding HeroPercentText}" FontSize="36" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource Theme.AccentText}" />
+                                               Foreground="{DynamicResource Theme.Accent}" />
                                     <Border Background="{DynamicResource Theme.Surface}" CornerRadius="10"
                                             Padding="8,2" HorizontalAlignment="Left"
                                             Visibility="{Binding HasDelta, Converter={StaticResource BoolToVis}}">
