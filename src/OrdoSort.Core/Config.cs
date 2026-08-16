@@ -119,6 +119,9 @@ public sealed class Config
     [JsonPropertyName("tat_headers")] public Dictionary<string, string> TatHeaders { get; set; } = new();
     [JsonPropertyName("tat_threshold_days")] public int TatThresholdDays { get; set; } = 5;
     [JsonPropertyName("tat_ignored_sources")] public List<string> TatIgnoredSources { get; set; } = new();
+    // The Reports hub's own feed folder (Phase 2+) -- distinct from
+    // tat_report_folder above, which belongs to the old Turn-around window
+    // and stays separate until Phase 4 retires it.
     [JsonPropertyName("reports_upload_folder")] public string ReportsUploadFolder { get; set; } = "";
 
     // Production report: CSV folder and column selection preferences

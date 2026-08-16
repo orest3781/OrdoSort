@@ -51,6 +51,13 @@ public sealed class TurnaroundPageViewModel : ObservableObject
     private string _deltaChipText = "";
     public string DeltaChipText { get => _deltaChipText; private set => Set(ref _deltaChipText, value); }
 
+    /// <summary>I4 fix: whether the delta chip's arrow is ▲ (improving) or ▼
+    /// (worsening) — TurnaroundPageView.xaml's chip used to hard-code
+    /// Theme.StatusGreen regardless of direction, so a worsening ▼ delta
+    /// still rendered green. Set alongside DeltaChipText.</summary>
+    private bool _deltaIsPositive;
+    public bool DeltaIsPositive { get => _deltaIsPositive; private set => Set(ref _deltaIsPositive, value); }
+
     private bool _hasDelta;
     public bool HasDelta { get => _hasDelta; private set => Set(ref _hasDelta, value); }
 
@@ -74,9 +81,14 @@ public sealed class TurnaroundPageViewModel : ObservableObject
     private int _selectedTabIndex;
     public int SelectedTabIndex { get => _selectedTabIndex; set => Set(ref _selectedTabIndex, value); }
 
-    /// <summary>Chip click: land on Detail with that set-aside selected.</summary>
+    /// <summary>Chip click: land on Detail with that set-aside selected.
+    /// Directed fold (b): a filter typed on a PREVIOUS visit to Detail must
+    /// not silently narrow the rows a chip click promised — clearing it
+    /// first keeps the chip's own count and the rows actually shown in
+    /// agreement.</summary>
     public void InspectSetAside(string key)
     {
+        DetailFilter = "";
         SelectedDetailSource = key;
         SelectedTabIndex = 1;
     }
@@ -136,9 +148,10 @@ public sealed class TurnaroundPageViewModel : ObservableObject
             var delta = last.Counts.ZeroToOnePercent - prev.Counts.ZeroToOnePercent;
             var arrow = delta >= 0 ? "▲" : "▼";
             DeltaChipText = $"{arrow} {(delta >= 0 ? "+" : "−")}{Math.Abs(delta).ToString("F1", CultureInfo.InvariantCulture)} pt vs {TurnaroundExport.MonthName(prev.Month)}";
+            DeltaIsPositive = delta >= 0;
             HasDelta = true;
         }
-        else { DeltaChipText = ""; HasDelta = false; }
+        else { DeltaChipText = ""; DeltaIsPositive = false; HasDelta = false; }
 
         MonthRows.Clear();
         foreach (var m in s.ByMonth)
@@ -221,13 +234,26 @@ public sealed class TurnaroundPageViewModel : ObservableObject
         DetailCountText = $"{DetailRows.Count.ToString("N0", CultureInfo.InvariantCulture)} rows · {SelectedDetailSource.ToLowerInvariant()}";
     }
 
+    /// <summary>Directed fold (d): a set-aside row (duplicate/future-dated/
+    /// no-date/ignored) still knows its own doc date and upload date — only
+    /// TAT and Bucket genuinely depend on the computed-Docs pipeline this raw
+    /// row was set aside FROM, so only those two stay "—". DocDate comes
+    /// from the same DocumentDate.Parse the hub's own pipeline uses;
+    /// UploadDate from the source report's own filename, same as every
+    /// measurable row's UploadDate. Both render yyyy-MM-dd invariant, "—"
+    /// only when the row's own filename genuinely doesn't parse.</summary>
     private static DetailRowVm FromRawRow(SweptTable.Row row)
     {
         string Cell(string column) => row.Cells.TryGetValue(column, out var v) ? v : "";
+        var fileName = Cell(TurnaroundSummary.FileNameColumn);
+        var docDate = DocumentDate.Parse(fileName);
+        var uploadDate = TurnaroundTime.UploadTimeFromReportName(row.SourceFile);
         return new DetailRowVm(
-            Cell(TurnaroundSummary.FileNameColumn), Cell(TurnaroundSummary.SourceTypeColumn),
+            fileName, Cell(TurnaroundSummary.SourceTypeColumn),
             Cell(TurnaroundSummary.PagecountColumn), Cell(TurnaroundSummary.DestinationColumn),
-            "—", "—", "—", "—");
+            docDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "—",
+            uploadDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "—",
+            "—", "—");
     }
 
     // ------------------------------------------------------------- commands

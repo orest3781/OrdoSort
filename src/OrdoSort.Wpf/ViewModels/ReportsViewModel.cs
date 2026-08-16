@@ -8,13 +8,26 @@ namespace OrdoSort.Wpf.ViewModels;
 /// <summary>The Reports hub's coordinator: owns the upload feed's loaded
 /// table, the ignore set, and the computed summary; the two page view models
 /// are display slices over state that lives here. One DebouncedProbe runs
-/// both the full reload (folder walk + parse + compute) and the cheap
-/// ignore-toggle recompute (compute only, over the cached table) — the same
-/// off-thread/apply-on-UI shape TurnaroundViewModel uses, and the same
-/// stale-probe protection: a slow load can never overwrite a newer one.</summary>
+/// every reload — the initial load, a folder change, and an ignore toggle
+/// (see <see cref="SetIgnored"/>'s own doc comment for why that one is a
+/// full walk too, not a cheap recompute) — the same off-thread/apply-on-UI
+/// shape TurnaroundViewModel uses, and the same stale-probe protection: a
+/// slow load can never overwrite a newer one.</summary>
 public sealed class ReportsViewModel : ObservableObject, IDisposable
 {
-    private readonly Config _cfg;
+    // Func<Config>, not a captured Config (I1 fix, 2026-08-16 fix wave):
+    // ShellViewModel.ApplySettingsAsync replaces its own `_cfg` field
+    // wholesale on every settings save (see that method's own `_cfg = cfg;`)
+    // rather than mutating the object in place. The hub is a non-modal
+    // singleton (MainWindow.OpenReportsHub's own doc comment) that can sit
+    // open across a settings save, so a Config captured once at construction
+    // goes stale the moment Settings saves -- every Folder/TatIgnoredSources
+    // read after that point sees the OLD object, and every write this class
+    // makes lands on it too, silently discarded once the shell moves on to
+    // the new one. Reading through _getCfg() at the point of use instead
+    // means every access always sees whichever Config the shell currently
+    // owns. MainWindow.OpenReportsHub passes `() => Shell.Cfg`.
+    private readonly Func<Config> _getCfg;
     private readonly Action? _saveCfg;
     internal readonly IDialogService Dialogs;
     internal readonly IWorkScheduler Scheduler;
@@ -31,11 +44,11 @@ public sealed class ReportsViewModel : ObservableObject, IDisposable
     public SourcesPageViewModel Sources { get; }
     public TurnaroundPageViewModel Turnaround { get; }
 
-    public ReportsViewModel(Config cfg, IDialogService dialogs, Action? saveCfg,
+    public ReportsViewModel(Func<Config> getCfg, IDialogService dialogs, Action? saveCfg,
         IWorkScheduler? scheduler = null, SynchronizationContext? uiContext = null,
         int probeDelayMs = 300)
     {
-        _cfg = cfg;
+        _getCfg = getCfg;
         Dialogs = dialogs;
         _saveCfg = saveCfg;
         Scheduler = scheduler ?? new TaskWorkScheduler();
@@ -73,11 +86,12 @@ public sealed class ReportsViewModel : ObservableObject, IDisposable
     // ------------------------------------------------------------- loading
     internal string Folder
     {
-        get => _cfg.ReportsUploadFolder;
+        get => _getCfg().ReportsUploadFolder;
         set
         {
-            if (_cfg.ReportsUploadFolder == value) return;
-            _cfg.ReportsUploadFolder = value;
+            var cfg = _getCfg();
+            if (cfg.ReportsUploadFolder == value) return;
+            cfg.ReportsUploadFolder = value;
             _saveCfg?.Invoke();
             Reload(immediate: true);
         }
@@ -89,8 +103,9 @@ public sealed class ReportsViewModel : ObservableObject, IDisposable
     /// contract) so a slow stale load can't repopulate the hub afterwards.</summary>
     internal void Reload(bool immediate = false)
     {
-        var folder = _cfg.ReportsUploadFolder;
-        var ignored = _cfg.TatIgnoredSources.ToArray();
+        var cfg = _getCfg();
+        var folder = cfg.ReportsUploadFolder;
+        var ignored = cfg.TatIgnoredSources.ToArray();
 
         if (folder.Length == 0)
         {
@@ -101,20 +116,31 @@ public sealed class ReportsViewModel : ObservableObject, IDisposable
         _probe.Trigger(() => Build(UploadReportFeed.Load(folder), ignored), immediate);
     }
 
-    /// <summary>Ignore-toggle path: recompute over the cached table without
-    /// re-walking the share. Falls back to a full reload when nothing is
-    /// cached yet.</summary>
+    /// <summary>Ignore-toggle path (I2 fix, 2026-08-16 fix wave): persists the
+    /// list change, then runs a full <see cref="Reload"/> — the same single
+    /// code path every other change to the hub's state goes through. The
+    /// previous shape recomputed over the CACHED table (<c>Current.Feed</c>)
+    /// through the same shared <see cref="DebouncedProbe{T}"/> — cheap, but
+    /// racy by construction: a toggle fired while a fresh folder walk was
+    /// already in flight got a NEWER probe generation than that walk (the
+    /// probe's own "newest trigger wins" rule, see DebouncedProbe's class
+    /// doc), so the toggle's stale-cache recompute would win the race and
+    /// silently bury the fresher walk's result once it landed. Routing
+    /// through Reload closes that: both the in-flight walk AND the toggle's
+    /// own reload are now full walks of the CURRENT folder, so whichever one
+    /// the probe's generation guard lets through is never stale data —
+    /// accepted cost is a folder walk per toggle instead of a cheap
+    /// recompute. See ReportsHubCoordinatorTests' own regression test next
+    /// to ClearingTheFolderCancelsAnInFlightLoad for the race this
+    /// closes.</summary>
     internal void SetIgnored(string value, bool ignored)
     {
-        var list = _cfg.TatIgnoredSources;
+        var list = _getCfg().TatIgnoredSources;
         if (ignored && !list.Contains(value, StringComparer.Ordinal)) list.Add(value);
         if (!ignored) list.RemoveAll(v => string.Equals(v, value, StringComparison.Ordinal));
         _saveCfg?.Invoke();
 
-        if (Current is not { } current) { Reload(immediate: true); return; }
-        var feed = current.Feed;
-        var ignoredNow = list.ToArray();
-        _probe.Trigger(() => Build(feed, ignoredNow), immediate: true);
+        Reload(immediate: true);
     }
 
     private static Snapshot Build(UploadReportFeed.Result feed, IReadOnlyList<string> ignoredValues)

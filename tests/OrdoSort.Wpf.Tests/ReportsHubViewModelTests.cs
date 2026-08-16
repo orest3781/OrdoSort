@@ -12,9 +12,11 @@ namespace OrdoSort.Wpf.Tests;
 /// here, matching what each class actually needs to prove:
 ///
 /// <see cref="ReportsHubCoordinatorTests"/> exercises the coordinator's own job —
-/// the folder walk, the debounced/off-thread reload, SetIgnored's
-/// cheap-recompute path, and navigation — so it drives real, synthetic PECF
-/// .xlsx fixtures through <see cref="ReportsViewModel.Reload"/> exactly the
+/// the folder walk, the debounced/off-thread reload, SetIgnored's own reload
+/// (I2 fix, 2026-08-16: SetIgnored no longer recomputes over a cached table —
+/// see ReportsViewModel.SetIgnored's own doc comment), and navigation — so it
+/// drives real, synthetic PECF .xlsx fixtures through
+/// <see cref="ReportsViewModel.Reload"/> exactly the
 /// way <c>TurnaroundViewModelTests</c>/<c>ProductionViewModelTests</c> drive
 /// their own loads: InlineWorkScheduler + probeDelayMs: 0 + WaitFor polling
 /// (the underlying System.Threading.Timer still fires on a threadpool
@@ -32,10 +34,10 @@ namespace OrdoSort.Wpf.Tests;
 /// <c>ReportsViewModel.Snapshot</c> and both Apply methods reachable here.
 /// The one SourcesPageViewModel behavior that genuinely needs a live
 /// coordinator (toggling IsIncluded must round-trip through
-/// ReportsViewModel.SetIgnored's cached-table recompute, which needs
-/// ReportsViewModel.Current already populated — only a real Reload sets
-/// that, since ReportsViewModel.Apply itself is private) goes through the
-/// same real-fixture path as ReportsHubCoordinatorTests.</summary>
+/// ReportsViewModel.SetIgnored's own reload, which needs a real folder to
+/// walk — only a real Reload populates ReportsViewModel.Current, since
+/// ReportsViewModel.Apply itself is private) goes through the same
+/// real-fixture path as ReportsHubCoordinatorTests.</summary>
 internal static class Fx
 {
     internal static SweptTable.Row Row(string fileName, string sourceType, string sourceFile,
@@ -131,7 +133,7 @@ public class ReportsHubCoordinatorTests : IDisposable
         // Reload(immediate: true) must resolve this on the calling thread,
         // no probe/timer/scheduler involved, so the assertion right after
         // construction — no WaitFor — is itself part of what's being proven.
-        var vm = new ReportsViewModel(new Config(), new FakeDialogs(), null,
+        var vm = new ReportsViewModel(() => new Config(), new FakeDialogs(), null,
             new InlineWorkScheduler(), uiContext: null, probeDelayMs: 0);
 
         Assert.Equal("0 files · 0 rows", vm.FooterText);
@@ -153,7 +155,7 @@ public class ReportsHubCoordinatorTests : IDisposable
         Fx.WriteXlsx(_dir, "20260706-0900-PECF Report.xlsx", Rows(("20260706-A.pdf", "Email")));
         var cfg = new Config { ReportsUploadFolder = _dir };
         var scheduler = new ControlledWorkScheduler();
-        var vm = new ReportsViewModel(cfg, new FakeDialogs(), null, scheduler, uiContext: null, probeDelayMs: 0);
+        var vm = new ReportsViewModel(() => cfg, new FakeDialogs(), null, scheduler, uiContext: null, probeDelayMs: 0);
 
         WaitFor(() => scheduler.Queued == 1, "the constructor's own load should reach the scheduler, not run yet");
 
@@ -168,6 +170,90 @@ public class ReportsHubCoordinatorTests : IDisposable
         Assert.False(vm.Turnaround.HasData);
     }
 
+    /// <summary>I2's ruling, proven directly: SetIgnored no longer recomputes
+    /// over the coordinator's CACHED table (Current.Feed) — it always calls
+    /// Reload(immediate: true), a full walk of whatever folder the config
+    /// currently names. Under the old cached-table recompute, a toggle fired
+    /// while a fresher reload was already queued got a NEWER probe
+    /// generation than that reload (DebouncedProbe's own "newest trigger
+    /// wins" rule) while still computing over the OLD, pre-reload Feed — so
+    /// the toggle's stale result would win the race and silently bury the
+    /// fresher walk once it landed.
+    ///
+    /// Both folders below are written in full BEFORE the coordinator or its
+    /// scheduler even exist — deliberately, so nothing during the race
+    /// itself depends on filesystem-write visibility timing. The only thing
+    /// that changes mid-race is an in-memory <c>cfg.ReportsUploadFolder</c>
+    /// assignment — instantaneous, and set directly rather than through
+    /// <c>vm.Folder</c>'s own setter so this test keeps explicit control over
+    /// exactly when each reload fires.
+    ///
+    /// The final assertions poll (WaitFor) rather than reading straight after
+    /// <c>ReleaseAll()</c> — traced directly (2026-08-16): even though this
+    /// scheduler's own doc comment says a Release's continuation "runs
+    /// synchronously inside that call", .NET does not actually guarantee
+    /// that for an `await`ed `Task` when TWO of this probe's async chains are
+    /// in flight at once (as they are here, deliberately) — the runtime can
+    /// defer the second one's post-await continuation onto the ThreadPool
+    /// instead of inlining it on the thread that called SetResult, so
+    /// ReleaseAll() can return before SetIgnored's own reload has actually
+    /// applied. Every OTHER caller of this scheduler only ever has ONE
+    /// dispatch in flight, where that distinction can't surface — this test
+    /// is the first to need two, so it's the first to need the poll.
+    ///
+    /// If SetIgnored still recomputed over the cache, WaitFor below would
+    /// time out: the final applied snapshot would sit forever at RowCount 1
+    /// (the pre-reload table) with "Fax" ignored, never advancing to
+    /// RowCount 2, because SetIgnored's own reload is what the fix makes into
+    /// a fresh walk carrying the newest, winning generation.</summary>
+    [Fact]
+    public void TogglingWhileAFreshReloadIsInFlightAppliesTheCurrentFolderNotTheStaleCachedTable()
+    {
+        var dirInitial = Path.Combine(Path.GetTempPath(), "ordoreports_initial_" + Guid.NewGuid());
+        Directory.CreateDirectory(dirInitial);
+        try
+        {
+            // dirInitial: what the coordinator's cache starts from (1 row).
+            // _dir (this class's own fixture dir): the fuller, "current"
+            // folder both the fresh reload and the toggle's own reload walk
+            // — a strict superset (2 rows), so whichever one actually reads
+            // it is provably reflecting NEWER data, not the cache.
+            Fx.WriteXlsx(dirInitial, "20260706-0900-PECF Report.xlsx", Rows(("20260706-A.pdf", "Email")));
+            Fx.WriteXlsx(_dir, "20260706-0900-PECF Report.xlsx", Rows(("20260706-A.pdf", "Email")));
+            Fx.WriteXlsx(_dir, "20260706-0901-PECF Report.xlsx", Rows(("20260706-B.pdf", "Fax")));
+
+            var cfg = new Config { ReportsUploadFolder = dirInitial };
+            var scheduler = new ControlledWorkScheduler();
+            var vm = new ReportsViewModel(() => cfg, new FakeDialogs(), null, scheduler, uiContext: null, probeDelayMs: 0);
+
+            WaitFor(() => scheduler.Queued == 1, "the constructor's own load should reach the scheduler, not run yet");
+            scheduler.ReleaseNext();
+            WaitFor(() => vm.Current?.Feed.Report.RowCount == 1, "the initial load should populate a real cached table");
+
+            cfg.ReportsUploadFolder = _dir;   // in-memory only — no disk I/O, no timing to race
+
+            vm.Reload(immediate: true);
+            WaitFor(() => scheduler.Queued == 1, "the fresh reload should reach the scheduler, not run yet");
+
+            vm.SetIgnored("Fax", ignored: true);   // fired mid-flight, while the walk above is still queued
+            WaitFor(() => scheduler.Queued == 2,
+                "SetIgnored must dispatch its OWN full reload rather than recomputing over the pre-reload cache");
+
+            scheduler.ReleaseAll();   // oldest first: the pre-toggle reload, then SetIgnored's own reload
+
+            WaitFor(() => vm.Current?.Feed.Report.RowCount == 2,
+                "the applied snapshot must eventually reflect the fuller CURRENT folder, not the stale one-row cache");
+            Assert.Contains("Fax", cfg.TatIgnoredSources);
+            var ignored = Assert.Single(vm.Current!.Summary.Ignored);
+            Assert.Equal("Fax", ignored.Value);
+            Assert.Equal(1, ignored.Count);
+        }
+        finally
+        {
+            try { Directory.Delete(dirInitial, true); } catch { /* best effort */ }
+        }
+    }
+
     [Fact]
     public void ReloadOverARealFolderOfFixturesPopulatesTheSnapshot()
     {
@@ -175,7 +261,7 @@ public class ReportsHubCoordinatorTests : IDisposable
             ("20260706-A.pdf", "Email"),
             ("20260701-B.pdf", "FAX")));
         var cfg = new Config { ReportsUploadFolder = _dir };
-        var vm = new ReportsViewModel(cfg, new FakeDialogs(), null,
+        var vm = new ReportsViewModel(() => cfg, new FakeDialogs(), null,
             new InlineWorkScheduler(), uiContext: null, probeDelayMs: 0);
 
         WaitFor(() => vm.Turnaround.HasData, "the real fixture should load and populate the snapshot");
@@ -193,7 +279,7 @@ public class ReportsHubCoordinatorTests : IDisposable
             ("20260706-A.pdf", "Email"),    // measurable, same day
             ("20260706-B.pdf", "ECAA")));   // same day too, until ignored
         var cfg = new Config { ReportsUploadFolder = _dir };
-        var vm = new ReportsViewModel(cfg, new FakeDialogs(), null,
+        var vm = new ReportsViewModel(() => cfg, new FakeDialogs(), null,
             new InlineWorkScheduler(), uiContext: null, probeDelayMs: 0);
         WaitFor(() => vm.Current?.Summary.Overall.Total == 2, "both rows should be measurable before ignoring");
 
@@ -210,7 +296,7 @@ public class ReportsHubCoordinatorTests : IDisposable
     [Fact]
     public void ShowPageAndSelectedPageIndexSwitchCurrentPageBetweenTurnaroundAndSources()
     {
-        var vm = new ReportsViewModel(new Config(), new FakeDialogs(), null,
+        var vm = new ReportsViewModel(() => new Config(), new FakeDialogs(), null,
             new InlineWorkScheduler(), uiContext: null, probeDelayMs: 0);
         Assert.Same(vm.Turnaround, vm.CurrentPage);   // default: Turn-around
         Assert.Equal(0, vm.SelectedPageIndex);
@@ -230,7 +316,7 @@ public class ReportsHubCoordinatorTests : IDisposable
     {
         Fx.WriteXlsx(_dir, "20260706-0900-PECF Report.xlsx", Rows(("20260706-A.pdf", "Email")));
         var cfg = new Config { ReportsUploadFolder = _dir };
-        var vm = new ReportsViewModel(cfg, new FakeDialogs(), null,
+        var vm = new ReportsViewModel(() => cfg, new FakeDialogs(), null,
             new InlineWorkScheduler(), uiContext: null, probeDelayMs: 300);   // real delay: probe still armed
 
         var ex = Record.Exception(() => vm.Dispose());
@@ -247,7 +333,7 @@ public class ReportsHubTurnaroundPageTests
     private const string R1 = "20260706-0900-PECF Report.xlsx";   // upload 2026-07-06, a Monday
 
     private static ReportsViewModel MakeVm(FakeDialogs? dialogs = null) =>
-        new(new Config(), dialogs ?? new FakeDialogs(), null,
+        new(() => new Config(), dialogs ?? new FakeDialogs(), null,
             new InlineWorkScheduler(), uiContext: null, probeDelayMs: 0);
 
     /// <summary>Same fixture TurnaroundExportTests pins: SameDay, 1-day,
@@ -303,6 +389,7 @@ public class ReportsHubTurnaroundPageTests
 
         Assert.False(vm.Turnaround.HasDelta);
         Assert.Equal("", vm.Turnaround.DeltaChipText);
+        Assert.False(vm.Turnaround.DeltaIsPositive);
     }
 
     [Fact]
@@ -322,6 +409,7 @@ public class ReportsHubTurnaroundPageTests
 
         Assert.True(vm.Turnaround.HasDelta);
         Assert.StartsWith("▲ +50.0 pt vs Jun", vm.Turnaround.DeltaChipText);
+        Assert.True(vm.Turnaround.DeltaIsPositive);   // I4: drives the chip's green vs amber DataTrigger
         Assert.Equal(2, vm.Turnaround.MonthRows.Count);
         Assert.Equal("Jun", vm.Turnaround.MonthRows[0].Month);
         Assert.Equal("50.0%", vm.Turnaround.MonthRows[0].ZeroToOne);
@@ -346,6 +434,7 @@ public class ReportsHubTurnaroundPageTests
 
         Assert.True(vm.Turnaround.HasDelta);
         Assert.StartsWith("▼ −50.0 pt vs Jun", vm.Turnaround.DeltaChipText);
+        Assert.False(vm.Turnaround.DeltaIsPositive);   // I4: drives the chip's green vs amber DataTrigger
     }
 
     [Fact]
@@ -422,6 +511,30 @@ public class ReportsHubTurnaroundPageTests
         Assert.Equal(TurnaroundPageViewModel.SourceFutureDated, vm.Turnaround.SelectedDetailSource);
         var row = Assert.Single(vm.Turnaround.DetailRows);
         Assert.Equal("20260707-F.pdf", row.FileName);
+        // Directed fold (d): FromRawRow now recovers what the row actually
+        // knows -- its own future doc date and the report's real upload
+        // date -- rather than always showing "—".
+        Assert.Equal("2026-07-07", row.DocDate);
+        Assert.Equal("2026-07-06", row.UploadDate);
+        Assert.Equal("—", row.Tat);      // TAT/Bucket are unaffected by (d)
+        Assert.Equal("—", row.Bucket);
+    }
+
+    /// <summary>Directed fold (b): a stale DetailFilter from a prior visit
+    /// to the Detail tab must not survive a chip click — otherwise the
+    /// chip's own count and the rows actually shown can disagree.</summary>
+    [Fact]
+    public void InspectSetAsideClearsAnyStaleDetailFilterSoTheChipsCountMatchesWhatShows()
+    {
+        var vm = MakeVm();
+        vm.Turnaround.Apply(FixtureA());
+        vm.Turnaround.DetailFilter = "nothing-matches-this";
+
+        vm.Turnaround.InspectSetAside(TurnaroundPageViewModel.SourceFutureDated);
+
+        Assert.Equal("", vm.Turnaround.DetailFilter);
+        var row = Assert.Single(vm.Turnaround.DetailRows);
+        Assert.Equal("20260707-F.pdf", row.FileName);
     }
 
     [Fact]
@@ -446,7 +559,12 @@ public class ReportsHubTurnaroundPageTests
         vm.Turnaround.SelectedDetailSource = TurnaroundPageViewModel.SourceDuplicates;
         var duplicate = Assert.Single(vm.Turnaround.DetailRows);
         Assert.Equal("20260706-A.pdf", duplicate.FileName);
-        Assert.Equal("—", duplicate.DocDate);   // raw-row detail: no computed date, per FromRawRow
+        // Directed fold (d): FromRawRow recovers the real doc/upload dates
+        // from what the row actually knows; TAT/Bucket still stay "—".
+        Assert.Equal("2026-07-06", duplicate.DocDate);
+        Assert.Equal("2026-07-06", duplicate.UploadDate);
+        Assert.Equal("—", duplicate.Tat);
+        Assert.Equal("—", duplicate.Bucket);
 
         vm.Turnaround.SelectedDetailSource = TurnaroundPageViewModel.SourceIgnored;
         var ignored = Assert.Single(vm.Turnaround.DetailRows);
@@ -537,9 +655,12 @@ public class ReportsHubSourcesPageTests : IDisposable
     }
 
     private static ReportsViewModel MakeVm(Config? cfg = null, FakeDialogs? dialogs = null,
-        Action? saveCfg = null, IWorkScheduler? scheduler = null) =>
-        new(cfg ?? new Config(), dialogs ?? new FakeDialogs(), saveCfg,
+        Action? saveCfg = null, IWorkScheduler? scheduler = null)
+    {
+        var c = cfg ?? new Config();
+        return new(() => c, dialogs ?? new FakeDialogs(), saveCfg,
             scheduler ?? new InlineWorkScheduler(), uiContext: null, probeDelayMs: 0);
+    }
 
     [Fact]
     public void StatusTextIsTheNoFolderMessageBeforeAnyFolderIsChosen()
@@ -586,7 +707,51 @@ public class ReportsHubSourcesPageTests : IDisposable
         vm.Sources.Apply(snapshot);
 
         Assert.True(vm.Sources.HasSkipped);
-        Assert.Equal("1 skipped — 20260701-0900-PECF Report.xlsx: corrupt zip", vm.Sources.SkippedText);
+        // I3 fix: no more bare "N skipped — first entry" — the one entry IS
+        // the whole (single-line) text.
+        Assert.Equal("20260701-0900-PECF Report.xlsx: corrupt zip", vm.Sources.SkippedText);
+    }
+
+    /// <summary>I3 fix: skipped files are LISTED, never silently dropped
+    /// (spec decision 6) — every entry must appear, not just the first.</summary>
+    [Fact]
+    public void SkippedTextListsEveryEntryOnItsOwnLine()
+    {
+        var cfg = new Config { ReportsUploadFolder = @"S:\reports" };
+        var vm = MakeVm(cfg, scheduler: new ControlledWorkScheduler());
+        var snapshot = Fx.Snapshot(Array.Empty<SweptTable.Row>(), skipped: new[]
+        {
+            "20260701-0900-PECF Report.xlsx: corrupt zip",
+            "20260702-0900-PECF Report.xlsx: access denied",
+            "20260703-0900-PECF Report.xlsx: bad header",
+        });
+
+        vm.Sources.Apply(snapshot);
+
+        Assert.True(vm.Sources.HasSkipped);
+        Assert.Equal(
+            "20260701-0900-PECF Report.xlsx: corrupt zip\n" +
+            "20260702-0900-PECF Report.xlsx: access denied\n" +
+            "20260703-0900-PECF Report.xlsx: bad header",
+            vm.Sources.SkippedText);
+    }
+
+    /// <summary>I3 fix: capped at the first 10, with a trailing "… and N
+    /// more" line, so one share full of bad files can't blow the card up.</summary>
+    [Fact]
+    public void SkippedTextCapsAtTenEntriesWithATrailingMoreCountLine()
+    {
+        var cfg = new Config { ReportsUploadFolder = @"S:\reports" };
+        var vm = MakeVm(cfg, scheduler: new ControlledWorkScheduler());
+        var skipped = Enumerable.Range(1, 13).Select(i => $"report-{i}.xlsx: corrupt zip").ToArray();
+        var snapshot = Fx.Snapshot(Array.Empty<SweptTable.Row>(), skipped: skipped);
+
+        vm.Sources.Apply(snapshot);
+
+        var lines = vm.Sources.SkippedText.Split('\n');
+        Assert.Equal(11, lines.Length);   // 10 entries + the "… and N more" line
+        Assert.Equal(skipped.Take(10), lines.Take(10));
+        Assert.Equal("… and 3 more", lines[10]);
     }
 
     [Fact]

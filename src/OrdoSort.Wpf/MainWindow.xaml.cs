@@ -366,7 +366,7 @@ public partial class MainWindow : Window
             _reportsWindow.Activate();
             return;
         }
-        var vm = new ReportsViewModel(Shell.Cfg, Dialogs, Shell.SaveConfigNow,
+        var vm = new ReportsViewModel(() => Shell.Cfg, Dialogs, Shell.SaveConfigNow,
             uiContext: SynchronizationContext.Current);
         var window = new Windows.ReportsWindow(vm) { Owner = this };
         window.Closed += (_, _) => { vm.Dispose(); _reportsWindow = null; };

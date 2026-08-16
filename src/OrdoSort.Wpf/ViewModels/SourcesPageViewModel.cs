@@ -85,11 +85,26 @@ public sealed class SourcesPageViewModel : ObservableObject
                   ? $"{f.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)} to {l.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}"
                   : "no dated reports found");
         HasSkipped = r.Skipped.Count > 0;
-        SkippedText = HasSkipped
-            ? $"{r.Skipped.Count} skipped — {r.Skipped[0]}" : "";
+        SkippedText = HasSkipped ? BuildSkippedText(r.Skipped) : "";
 
         IgnoreEntries.Clear();
         foreach (var entry in snapshot.IgnoreEntries)
             IgnoreEntries.Add(new IgnoreEntryVm(_owner, entry));
+    }
+
+    /// <summary>I3 fix: skipped files are LISTED, never silently dropped
+    /// (spec decision 6) — the old text showed only the first skipped entry
+    /// plus a bare count. Every entry gets its own line now (the card's
+    /// TextBlock already wraps), capped at the first 10 with a trailing
+    /// "… and N more" summary line so one bad share full of corrupt files
+    /// can't blow the card up past readability.</summary>
+    private const int SkippedCap = 10;
+
+    private static string BuildSkippedText(IReadOnlyList<string> skipped)
+    {
+        var lines = skipped.Take(SkippedCap).ToList();
+        if (skipped.Count > SkippedCap)
+            lines.Add($"… and {skipped.Count - SkippedCap} more");
+        return string.Join("\n", lines);
     }
 }
