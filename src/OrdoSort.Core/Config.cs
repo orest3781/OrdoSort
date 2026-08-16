@@ -458,6 +458,7 @@ public sealed class Config
         ProductionGroupColumns ??= new();
         ProductionSumColumns ??= new();
         ProductionDatetimeColumn ??= "";
+        TatIgnoredSources = Clean(TatIgnoredSources);
         Extras ??= new();
 
         Sounds ??= new();

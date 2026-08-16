@@ -31,7 +31,7 @@ public class ConfigNullKeysTests : IDisposable
               "routes": null, "watch_folders": null, "alert_texts": null,
               "saved_passwords": null, "label_clients": null, "merge_headers": null,
               "merge_roster": null, "merge_columns": null,
-              "tat_report_folder": null, "tat_headers": null,
+              "tat_report_folder": null, "tat_headers": null, "tat_ignored_sources": null,
               "production_csv_folder": null, "production_group_columns": null,
               "production_sum_columns": null, "production_datetime_column": null
             }
@@ -46,6 +46,7 @@ public class ConfigNullKeysTests : IDisposable
         Assert.Empty(cfg.MergeColumns);
         Assert.Equal("", cfg.TatReportFolder);
         Assert.Empty(cfg.TatHeaders);
+        Assert.Empty(cfg.TatIgnoredSources);
         Assert.Equal("", cfg.ProductionCsvFolder);
         Assert.Empty(cfg.ProductionGroupColumns);
         Assert.Empty(cfg.ProductionSumColumns);
