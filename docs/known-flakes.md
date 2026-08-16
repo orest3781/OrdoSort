@@ -28,9 +28,22 @@ dotnet test OrdoSort.sln --no-build -v minimal
 ### `FocusRingCoverageTests.TabItemShowsTheBronzeFocusRing`
 `tests/OrdoSort.Wpf.Tests/FocusRingCoverageTests.cs:403` · listed 2026-08-09, **unconfirmed**
 
-Carried on the 2026-08-09 list with **no mechanism ever recorded**, and it is not obvious from the test: it renders a real TabControl and compares a before/after pixel differential on the second, unselected tab.
+Carried on the 2026-08-09 list with **no mechanism ever recorded**. Did not reproduce in nine full-suite runs on 2026-08-15.
 
-Did not reproduce in four full-suite runs on 2026-08-15. Kept here rather than dropped because absence over four runs is not proof, but treat the entry as unverified — if you see it fail, **record the actual failure message**, which is what this entry has always been missing.
+**Ruled out — the theme race.** The obvious suspicion was this repo's recurring defect shape: process-wide mutable state plus xUnit's parallel classes (three instances are described in PR #6). The test does mutate app-wide state — `ThemeManager.Apply` on the shared `App`, and `KeyboardNavigation.AlwaysShowFocusVisual` via the `FocusVisualsEnabled` helper. But **every** test class that mutates the theme was checked: all 19 that call `ThemeManager.Apply`, plus `ThemeManagerSetModeTests` which goes through `SetMode`, are in the `HighlightContrastTests` collection and therefore serialized. They cannot interleave, so this is not the mechanism.
+
+**Leading hypothesis — a foreground steal, not the test suite.** What remains environmental in the assertion chain is real keyboard focus: `target.Focus()` and `IsKeyboardFocused`. Those depend on OS focus state, which anything on the desktop can take — a notification, another window activating, someone launching the app under test. That fits a failure which is rare, unreproducible in isolation, and indifferent to parallel load.
+
+**So when it fails, the failure message decides it.** The assertions carry distinct text:
+
+| message | meaning |
+|---|---|
+| `never accepted keyboard focus` / `IsKeyboardFocused is false after Focus()` | focus was stolen — the hypothesis above |
+| `pixels already in the band BEFORE it was focused` | the tab under test became selected; selected tabs paint a 2px AccentBronze underline, which is why this case deliberately focuses the second, UNSELECTED tab |
+| `NO AccentBronze pixel appears in the ring band` | a real theme/style regression, not a flake — do not dismiss it |
+| `WPF added no focus-visual adorner at all` | the `AlwaysShowFocusVisual` plumbing broke |
+
+Kept rather than dropped: nine clean runs are not proof. But it is no longer an entry with nothing in it — the next failure has somewhere to land.
 
 ---
 
