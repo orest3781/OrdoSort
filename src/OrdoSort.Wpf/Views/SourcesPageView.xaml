@@ -8,9 +8,22 @@
                        Style="{StaticResource StatusText}" Margin="0,0,0,14" />
 
             <!-- the upload-feed card; Phase 4 adds the other three -->
-            <Border Background="{DynamicResource Theme.Surface}"
-                    BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
-                    CornerRadius="8" Padding="16,12">
+            <Border BorderThickness="1" CornerRadius="8" Padding="16,12">
+                <!-- I3 fix: BorderBrush carries a Style+DataTrigger (Border
+                     has no triggers of its own without one) so the card
+                     turns amber when HasSkipped is true, instead of staying
+                     the plain, un-alarmed Theme.Border it always rendered. -->
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Background" Value="{DynamicResource Theme.Surface}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasSkipped}" Value="True">
+                                <Setter Property="BorderBrush" Value="{DynamicResource Theme.StatusAmber}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
                 <StackPanel>
                     <DockPanel Margin="0,0,0,8">
                         <TextBlock DockPanel.Dock="Right" Text="feeds Turn-around"

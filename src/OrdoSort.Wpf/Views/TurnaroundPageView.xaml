@@ -6,8 +6,10 @@
         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" Margin="0,0,8,0" />
-                <Button Content="Copy summary" Command="{Binding CopySummaryCommand}" Margin="0,0,8,0" />
-                <Button Content="Export to spreadsheet…" Command="{Binding ExportCommand}" />
+                <Button Content="Copy summary" Command="{Binding CopySummaryCommand}"
+                        IsEnabled="{Binding HasData}" Margin="0,0,8,0" />
+                <Button Content="Export to spreadsheet…" Command="{Binding ExportCommand}"
+                        IsEnabled="{Binding HasData}" />
             </StackPanel>
             <StackPanel>
                 <TextBlock Text="Turn-around time" FontSize="19" FontWeight="SemiBold" />
@@ -42,8 +44,21 @@
                                     <Border Background="{DynamicResource Theme.Surface}" CornerRadius="10"
                                             Padding="8,2" HorizontalAlignment="Left"
                                             Visibility="{Binding HasDelta, Converter={StaticResource BoolToVis}}">
-                                        <TextBlock Text="{Binding DeltaChipText}" Style="{StaticResource CaptionText}"
-                                                   Foreground="{DynamicResource Theme.StatusGreen}" />
+                                        <!-- I4 fix: Foreground carries a Style+DataTrigger instead of a
+                                             hardcoded Theme.StatusGreen, so a worsening (▼) delta reads
+                                             amber rather than green. -->
+                                        <TextBlock Text="{Binding DeltaChipText}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Theme.StatusAmber}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding DeltaIsPositive}" Value="True">
+                                                            <Setter Property="Foreground" Value="{DynamicResource Theme.StatusGreen}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                     </Border>
                                 </StackPanel>
                             </Border>
