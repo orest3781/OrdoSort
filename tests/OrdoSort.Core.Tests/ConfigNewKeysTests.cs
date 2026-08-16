@@ -46,6 +46,7 @@ public class ConfigNewKeysTests : IDisposable
             ProductionGroupColumns = { "Region", "Product" },
             ProductionSumColumns = { "Revenue", "Units" },
             ProductionDatetimeColumn = "Date",
+            ReportsUploadFolder = @"\\server\share\CAVO_REPORTS",
         };
         var path = Path.Combine(_dir, "t.json");
         Config.Save(cfg, path);
@@ -63,6 +64,7 @@ public class ConfigNewKeysTests : IDisposable
         Assert.Contains("\"production_group_columns\"", json);
         Assert.Contains("\"production_sum_columns\"", json);
         Assert.Contains("\"production_datetime_column\"", json);
+        Assert.Contains("\"reports_upload_folder\"", json);
         // "unlock_suffix" was retired when the unlock tool stopped having a
         // setting; it must not come back as a key the app writes
         Assert.DoesNotContain("\"unlock_suffix\"", json);
@@ -85,6 +87,7 @@ public class ConfigNewKeysTests : IDisposable
         Assert.Equal(new[] { "Region", "Product" }, back.ProductionGroupColumns);
         Assert.Equal(new[] { "Revenue", "Units" }, back.ProductionSumColumns);
         Assert.Equal("Date", back.ProductionDatetimeColumn);
+        Assert.Equal(@"\\server\share\CAVO_REPORTS", back.ReportsUploadFolder);
     }
 
     [Fact]

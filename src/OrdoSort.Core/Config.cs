@@ -119,6 +119,7 @@ public sealed class Config
     [JsonPropertyName("tat_headers")] public Dictionary<string, string> TatHeaders { get; set; } = new();
     [JsonPropertyName("tat_threshold_days")] public int TatThresholdDays { get; set; } = 5;
     [JsonPropertyName("tat_ignored_sources")] public List<string> TatIgnoredSources { get; set; } = new();
+    [JsonPropertyName("reports_upload_folder")] public string ReportsUploadFolder { get; set; } = "";
 
     // Production report: CSV folder and column selection preferences
     [JsonPropertyName("production_csv_folder")] public string ProductionCsvFolder { get; set; } = "";
@@ -459,6 +460,7 @@ public sealed class Config
         ProductionSumColumns ??= new();
         ProductionDatetimeColumn ??= "";
         TatIgnoredSources = Clean(TatIgnoredSources);
+        ReportsUploadFolder ??= "";
         Extras ??= new();
 
         Sounds ??= new();

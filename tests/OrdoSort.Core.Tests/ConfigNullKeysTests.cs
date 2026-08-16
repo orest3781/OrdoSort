@@ -33,7 +33,8 @@ public class ConfigNullKeysTests : IDisposable
               "merge_roster": null, "merge_columns": null,
               "tat_report_folder": null, "tat_headers": null, "tat_ignored_sources": null,
               "production_csv_folder": null, "production_group_columns": null,
-              "production_sum_columns": null, "production_datetime_column": null
+              "production_sum_columns": null, "production_datetime_column": null,
+              "reports_upload_folder": null
             }
             """);
         Assert.Empty(cfg.Routes);
@@ -51,6 +52,7 @@ public class ConfigNullKeysTests : IDisposable
         Assert.Empty(cfg.ProductionGroupColumns);
         Assert.Empty(cfg.ProductionSumColumns);
         Assert.Equal("", cfg.ProductionDatetimeColumn);
+        Assert.Equal("", cfg.ReportsUploadFolder);
     }
 
     [Fact]
