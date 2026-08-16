@@ -70,5 +70,7 @@ public class TurnaroundSummaryTests
         var counts = new TurnaroundSummary.BucketCounts(0, 0, 0, 0);
         Assert.Equal(0, counts.Total);
         Assert.Equal(0.0, counts.ZeroToOnePercent);
+        Assert.Equal(0.0, counts.TwoPercent);
+        Assert.Equal(0.0, counts.ThreePlusPercent);
     }
 }

@@ -36,6 +36,8 @@ public class TurnaroundSummaryComputeTests
             Row(R1, "20260706-A.pdf")), NoIgnores);
 
         Assert.Equal(1, summary.DuplicateRows);
+        var duplicate = Assert.Single(summary.DuplicateRowsDetail);
+        Assert.Equal("20260706-A.pdf", duplicate.Cells[TurnaroundSummary.FileNameColumn]);
         var doc = Assert.Single(summary.Docs);
         Assert.Equal(new DateOnly(2026, 7, 6), doc.UploadDate);   // R1, the earlier report
         Assert.Equal(TurnaroundSummary.Bucket.SameDay, doc.Bucket);
@@ -61,6 +63,7 @@ public class TurnaroundSummaryComputeTests
 
         var ignored = Assert.Single(summary.Ignored);
         Assert.Equal(new TurnaroundSummary.IgnoredSource("ECAA", 2), ignored);
+        Assert.Equal(2, summary.IgnoredDetail.Count);
         Assert.Single(summary.Docs);                       // only the Email doc measures
         Assert.Equal(100.0, summary.Overall.ZeroToOnePercent);   // percentages over the remainder
     }
@@ -85,6 +88,8 @@ public class TurnaroundSummaryComputeTests
             Row(R1, "20260706-B.pdf")), NoIgnores);
 
         Assert.Equal(1, summary.FutureDated);
+        var futureDated = Assert.Single(summary.FutureDatedDetail);
+        Assert.Equal("20260707-A.pdf", futureDated.Cells[TurnaroundSummary.FileNameColumn]);
         Assert.Single(summary.Docs);
     }
 
@@ -96,6 +101,7 @@ public class TurnaroundSummaryComputeTests
             Row(R1, "20260706-B.pdf")), NoIgnores);
 
         Assert.Equal(1, summary.NoDate);
+        Assert.Single(summary.NoDateDetail);
         Assert.Single(summary.Docs);
     }
 

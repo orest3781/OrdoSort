@@ -43,6 +43,13 @@ public static class TurnaroundSummary
     public sealed record SourceLine(string SourceType, BucketCounts Counts);
     public sealed record WeekLine(string Week, BucketCounts Counts);       // "2026-W28"
 
+    /// <summary>Every set-aside count is derived from its matching detail
+    /// list below (DuplicateRows.Count, etc.) rather than tracked
+    /// separately, so a count and the rows a click-through would show for it
+    /// can never disagree (spec decision 2: each count is clickable to
+    /// inspect the rows behind it). Ignored (per-value, post-dedupe) is the
+    /// figure every summary card renders; IgnoreList.Discover's counts are
+    /// raw pre-dedupe totals and must not be mixed with these on one card.</summary>
     public sealed record Summary(
         IReadOnlyList<Doc> Docs,
         BucketCounts Overall,
@@ -50,9 +57,15 @@ public static class TurnaroundSummary
         IReadOnlyList<SourceLine> BySource,
         IReadOnlyList<WeekLine> ByWeek,
         IReadOnlyList<IgnoredSource> Ignored,
-        int DuplicateRows,
-        int FutureDated,
-        int NoDate);
+        IReadOnlyList<SweptTable.Row> DuplicateRowsDetail,
+        IReadOnlyList<SweptTable.Row> FutureDatedDetail,
+        IReadOnlyList<SweptTable.Row> NoDateDetail,
+        IReadOnlyList<SweptTable.Row> IgnoredDetail)
+    {
+        public int DuplicateRows => DuplicateRowsDetail.Count;
+        public int FutureDated => FutureDatedDetail.Count;
+        public int NoDate => NoDateDetail.Count;
+    }
 
     /// <summary>Weekdays in [from, to) — numpy busday_count semantics, which
     /// is what the workbook's TAT column is. Saturday-dated work uploaded
@@ -99,38 +112,42 @@ public static class TurnaroundSummary
 
         // 2. Dedupe by FileName cell, ordinal. Blank names are not identities.
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var duplicateRows = 0;
+        var duplicateRowsDetail = new List<SweptTable.Row>();
         var kept = new List<(SweptTable.Row Row, DateTime? Upload)>();
         foreach (var (row, upload, _) in ordered)
         {
             var name = Cell(row, FileNameColumn);
-            if (name.Length > 0 && !seen.Add(name)) { duplicateRows++; continue; }
+            if (name.Length > 0 && !seen.Add(name)) { duplicateRowsDetail.Add(row); continue; }
             kept.Add((row, upload));
         }
 
         // 3. Ignored sources: set aside whole, counted per value.
         var ignoredCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        var ignoredDetail = new List<SweptTable.Row>();
         var live = new List<(SweptTable.Row Row, DateTime? Upload)>();
         foreach (var item in kept)
         {
             var source = Cell(item.Row, SourceTypeColumn);
             if (ignoredSources.IsIgnored(source))
+            {
                 ignoredCounts[source] = ignoredCounts.GetValueOrDefault(source) + 1;
+                ignoredDetail.Add(item.Row);
+            }
             else live.Add(item);
         }
 
         // 4–6. Dates, exclusions, classification.
         var docs = new List<Doc>();
-        var noDate = 0;
-        var futureDated = 0;
+        var noDateDetail = new List<SweptTable.Row>();
+        var futureDatedDetail = new List<SweptTable.Row>();
         foreach (var (row, upload) in live)
         {
             var fileName = Cell(row, FileNameColumn);
             var docDate = DocumentDate.Parse(fileName);
-            if (docDate is null || upload is null) { noDate++; continue; }
+            if (docDate is null || upload is null) { noDateDetail.Add(row); continue; }
 
             var uploadDate = DateOnly.FromDateTime(upload.Value);
-            if (uploadDate < docDate.Value) { futureDated++; continue; }
+            if (uploadDate < docDate.Value) { futureDatedDetail.Add(row); continue; }
 
             var busDays = BusinessDaysBetween(docDate.Value, uploadDate);
             docs.Add(new Doc(fileName, Cell(row, SourceTypeColumn),
@@ -165,7 +182,7 @@ public static class TurnaroundSummary
                 .ThenBy(kv => kv.Key, StringComparer.Ordinal)
                 .Select(kv => new IgnoredSource(kv.Key, kv.Value))
                 .ToList(),
-            duplicateRows, futureDated, noDate);
+            duplicateRowsDetail, futureDatedDetail, noDateDetail, ignoredDetail);
     }
 
     private static string Cell(SweptTable.Row row, string column) =>
