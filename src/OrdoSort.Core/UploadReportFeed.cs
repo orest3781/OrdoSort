@@ -7,9 +7,11 @@ namespace OrdoSort.Core;
 /// scanning is always recursive (spec feed 1). Load never throws: a missing
 /// root or an unreadable file becomes a Skipped entry in the LoadReport, the
 /// SweptTable.FileErrors pattern, because a batch of report files is exactly
-/// the place one bad file must not take the rest down. The name filter is
-/// deliberately exact — a folder full of hand-saved copies ("… - Copy.xlsx")
-/// and unrelated workbooks must not leak rows into the SLA numbers.</summary>
+/// the place one bad file must not take the rest down. An inaccessible
+/// subfolder is skipped the same way, not fatal to the whole walk (see
+/// FindFiles). The name filter is deliberately exact — a folder full of
+/// hand-saved copies ("… - Copy.xlsx") and unrelated workbooks must not leak
+/// rows into the SLA numbers.</summary>
 public static partial class UploadReportFeed
 {
     // The full report-name shape, anchored both ends: date, time, the fixed
@@ -18,7 +20,13 @@ public static partial class UploadReportFeed
     private static partial Regex ReportNameRegex();
 
     /// <summary>What the Sources page shows for this feed: how much was
-    /// found, what was skipped and why, the upload-date span, the row count.</summary>
+    /// found, what was skipped and why, the upload-date span, the row count.
+    /// FirstUpload/LastUpload span every report FindFiles found — including
+    /// ones that then failed to load into SweptTable (a FileErrors entry) —
+    /// because the upload date comes from the filename, not the file's
+    /// contents. RowCount, in contrast, counts only rows that actually
+    /// loaded: a report that failed to parse contributes to the date span
+    /// but zero rows.</summary>
     public sealed record LoadReport(int FilesFound, IReadOnlyList<string> Skipped,
         DateOnly? FirstUpload, DateOnly? LastUpload, int RowCount);
 
@@ -31,9 +39,13 @@ public static partial class UploadReportFeed
     /// filename ordinal (the YYYYMMDD-HHMM prefix makes that chronological)
     /// with the full path as tiebreak, so load order — and therefore
     /// "earliest report wins" dedupe downstream — never depends on
-    /// filesystem enumeration order.</summary>
+    /// filesystem enumeration order. IgnoreInaccessible means one unreadable
+    /// subfolder (permissions, a race with something deleting it) is skipped
+    /// rather than fatal — SearchOption.AllDirectories would otherwise abort
+    /// the whole walk and zero the feed over a single bad subfolder.</summary>
     public static IReadOnlyList<string> FindFiles(string root) =>
-        Directory.EnumerateFiles(root, "*.xlsx", SearchOption.AllDirectories)
+        Directory.EnumerateFiles(root, "*.xlsx",
+            new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true })
             .Where(IsReportFile)
             .OrderBy(Path.GetFileName, StringComparer.Ordinal)
             .ThenBy(p => p, StringComparer.Ordinal)
