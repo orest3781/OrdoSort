@@ -78,4 +78,102 @@ public static class TurnaroundSummary
         2 => Bucket.TwoDays,
         _ => Bucket.ThreePlus,
     };
+
+    /// <summary>The whole pipeline, in the order the spec's verified
+    /// reference figures were derived: sort by upload time so the earliest
+    /// report wins dedupe; dedupe by FileName (blank names never merge —
+    /// each blank row still counts, under NoDate); set ignored sources
+    /// aside whole, counted per value; then dates — a row missing either
+    /// date is NoDate, a document dated after its upload is FutureDated
+    /// (calendar comparison, spec rule 4 — never coerced, never classified);
+    /// everything left is measurable and aggregates four ways.</summary>
+    public static Summary Compute(SweptTable.Table table, IgnoreList ignoredSources)
+    {
+        // 1. Earliest report first; original index as tiebreak keeps this stable.
+        var ordered = table.Rows
+            .Select((row, i) => (Row: row,
+                Upload: TurnaroundTime.UploadTimeFromReportName(row.SourceFile), Index: i))
+            .OrderBy(r => r.Upload ?? DateTime.MaxValue)
+            .ThenBy(r => r.Index)
+            .ToList();
+
+        // 2. Dedupe by FileName cell, ordinal. Blank names are not identities.
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var duplicateRows = 0;
+        var kept = new List<(SweptTable.Row Row, DateTime? Upload)>();
+        foreach (var (row, upload, _) in ordered)
+        {
+            var name = Cell(row, FileNameColumn);
+            if (name.Length > 0 && !seen.Add(name)) { duplicateRows++; continue; }
+            kept.Add((row, upload));
+        }
+
+        // 3. Ignored sources: set aside whole, counted per value.
+        var ignoredCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        var live = new List<(SweptTable.Row Row, DateTime? Upload)>();
+        foreach (var item in kept)
+        {
+            var source = Cell(item.Row, SourceTypeColumn);
+            if (ignoredSources.IsIgnored(source))
+                ignoredCounts[source] = ignoredCounts.GetValueOrDefault(source) + 1;
+            else live.Add(item);
+        }
+
+        // 4–6. Dates, exclusions, classification.
+        var docs = new List<Doc>();
+        var noDate = 0;
+        var futureDated = 0;
+        foreach (var (row, upload) in live)
+        {
+            var fileName = Cell(row, FileNameColumn);
+            var docDate = DocumentDate.Parse(fileName);
+            if (docDate is null || upload is null) { noDate++; continue; }
+
+            var uploadDate = DateOnly.FromDateTime(upload.Value);
+            if (uploadDate < docDate.Value) { futureDated++; continue; }
+
+            var busDays = BusinessDaysBetween(docDate.Value, uploadDate);
+            docs.Add(new Doc(fileName, Cell(row, SourceTypeColumn),
+                Cell(row, PagecountColumn), Cell(row, DestinationColumn),
+                docDate.Value, uploadDate, busDays, Classify(busDays), row.SourceFile));
+        }
+
+        return new Summary(
+            docs,
+            CountBuckets(docs),
+            docs.GroupBy(d => d.UploadDate.ToString("yyyy-MM", CultureInfo.InvariantCulture))
+                .OrderBy(g => g.Key, StringComparer.Ordinal)
+                .Select(g => new MonthLine(g.Key, CountBuckets(g.ToList())))
+                .ToList(),
+            docs.GroupBy(d => d.SourceType, StringComparer.Ordinal)
+                .Select(g => new SourceLine(g.Key, CountBuckets(g.ToList())))
+                .OrderByDescending(s => s.Counts.Total)
+                .ThenBy(s => s.SourceType, StringComparer.Ordinal)
+                .ToList(),
+            docs.GroupBy(d =>
+                {
+                    var date = d.UploadDate.ToDateTime(TimeOnly.MinValue);
+                    return (Year: ISOWeek.GetYear(date), Week: ISOWeek.GetWeekOfYear(date));
+                })
+                .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Week)
+                .Select(g => new WeekLine(
+                    $"{g.Key.Year.ToString(CultureInfo.InvariantCulture)}-W{g.Key.Week.ToString("00", CultureInfo.InvariantCulture)}",
+                    CountBuckets(g.ToList())))
+                .ToList(),
+            ignoredCounts
+                .OrderByDescending(kv => kv.Value)
+                .ThenBy(kv => kv.Key, StringComparer.Ordinal)
+                .Select(kv => new IgnoredSource(kv.Key, kv.Value))
+                .ToList(),
+            duplicateRows, futureDated, noDate);
+    }
+
+    private static string Cell(SweptTable.Row row, string column) =>
+        row.Cells.TryGetValue(column, out var value) ? value : "";
+
+    private static BucketCounts CountBuckets(IReadOnlyList<Doc> docs) => new(
+        docs.Count(d => d.Bucket == Bucket.SameDay),
+        docs.Count(d => d.Bucket == Bucket.OneDay),
+        docs.Count(d => d.Bucket == Bucket.TwoDays),
+        docs.Count(d => d.Bucket == Bucket.ThreePlus));
 }
