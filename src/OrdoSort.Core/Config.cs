@@ -118,6 +118,7 @@ public sealed class Config
     [JsonPropertyName("tat_report_folder")] public string TatReportFolder { get; set; } = "";
     [JsonPropertyName("tat_headers")] public Dictionary<string, string> TatHeaders { get; set; } = new();
     [JsonPropertyName("tat_threshold_days")] public int TatThresholdDays { get; set; } = 5;
+    [JsonPropertyName("tat_ignored_sources")] public List<string> TatIgnoredSources { get; set; } = new();
 
     // Production report: CSV folder and column selection preferences
     [JsonPropertyName("production_csv_folder")] public string ProductionCsvFolder { get; set; } = "";
