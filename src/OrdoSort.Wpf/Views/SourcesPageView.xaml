@@ -1,0 +1,55 @@
+<UserControl x:Class="OrdoSort.Wpf.Views.SourcesPageView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="680" HorizontalAlignment="Left">
+            <TextBlock Text="Sources" FontSize="19" FontWeight="SemiBold" />
+            <TextBlock Text="Folders are scanned recursively · choices persist in config"
+                       Style="{StaticResource StatusText}" Margin="0,0,0,14" />
+
+            <!-- the upload-feed card; Phase 4 adds the other three -->
+            <Border Background="{DynamicResource Theme.Surface}"
+                    BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
+                    CornerRadius="8" Padding="16,12">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,8">
+                        <TextBlock DockPanel.Dock="Right" Text="feeds Turn-around"
+                                   Style="{StaticResource CaptionText}" VerticalAlignment="Center" />
+                        <TextBlock Text="Upload reports" FontWeight="SemiBold" />
+                    </DockPanel>
+                    <DockPanel Margin="0,0,0,8">
+                        <Button DockPanel.Dock="Right" Content="Refresh"
+                                Command="{Binding RefreshCommand}" Margin="6,0,0,0" />
+                        <Button DockPanel.Dock="Right" Content="Browse…"
+                                Command="{Binding BrowseCommand}" Margin="6,0,0,0" />
+                        <TextBox Text="{Binding FolderPath, UpdateSourceTrigger=LostFocus}" />
+                    </DockPanel>
+                    <TextBlock Text="{Binding StatusText}" Style="{StaticResource StatusText}"
+                               Margin="0,0,0,6" />
+                    <TextBlock Text="{Binding SkippedText}"
+                               Foreground="{DynamicResource Theme.StatusAmber}"
+                               Visibility="{Binding HasSkipped, Converter={StaticResource BoolToVis}}"
+                               TextWrapping="Wrap" Margin="0,0,0,6" />
+                    <TextBlock Text="SOURCE TYPES — UNCHECK TO SET ASIDE"
+                               Style="{StaticResource CaptionText}" Margin="0,6,0,6" />
+                    <ItemsControl ItemsSource="{Binding IgnoreEntries}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding IsIncluded}" Margin="0,0,16,6">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Display}" Margin="0,0,5,0" />
+                                        <TextBlock Text="{Binding CountText}"
+                                                   Style="{StaticResource CaptionText}" />
+                                    </StackPanel>
+                                </CheckBox>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,193 @@
+<UserControl x:Class="OrdoSort.Wpf.Views.TurnaroundPageView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel>
+        <!-- header: title + context, actions right -->
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                <Button Content="Refresh" Command="{Binding RefreshCommand}" Margin="0,0,8,0" />
+                <Button Content="Copy summary" Command="{Binding CopySummaryCommand}" Margin="0,0,8,0" />
+                <Button Content="Export to spreadsheet…" Command="{Binding ExportCommand}" />
+            </StackPanel>
+            <StackPanel>
+                <TextBlock Text="Turn-around time" FontSize="19" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding ContextText}" Style="{StaticResource StatusText}" />
+            </StackPanel>
+        </DockPanel>
+
+        <TabControl SelectedIndex="{Binding SelectedTabIndex}">
+            <TabItem Header="Summary">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="0,10,0,0">
+                        <!-- hero + bucket tiles -->
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="1.6*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Background="{DynamicResource Theme.SurfaceRaised}"
+                                    BorderBrush="{DynamicResource Theme.Accent}" BorderThickness="1"
+                                    CornerRadius="8" Padding="14,10" Margin="0,0,8,0">
+                                <StackPanel>
+                                    <TextBlock Text="0–1 BUSINESS DAYS" Style="{StaticResource CaptionText}" />
+                                    <TextBlock Text="{Binding HeroPercentText}" FontSize="36" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Theme.AccentText}" />
+                                    <Border Background="{DynamicResource Theme.Surface}" CornerRadius="10"
+                                            Padding="8,2" HorizontalAlignment="Left"
+                                            Visibility="{Binding HasDelta, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="{Binding DeltaChipText}" Style="{StaticResource CaptionText}"
+                                                   Foreground="{DynamicResource Theme.StatusGreen}" />
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="1" Style="{StaticResource ReportTile}">
+                                <StackPanel>
+                                    <TextBlock Text="SAME DAY" Style="{StaticResource CaptionText}" />
+                                    <TextBlock Text="{Binding SameDayText}" FontSize="20" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="2" Style="{StaticResource ReportTile}">
+                                <StackPanel>
+                                    <TextBlock Text="1 DAY" Style="{StaticResource CaptionText}" />
+                                    <TextBlock Text="{Binding OneDayText}" FontSize="20" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="3" Style="{StaticResource ReportTile}">
+                                <StackPanel>
+                                    <TextBlock Text="2 DAYS" Style="{StaticResource CaptionText}" />
+                                    <TextBlock Text="{Binding TwoDaysText}" FontSize="20" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="4" Style="{StaticResource ReportTile}" Margin="8,0,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="3+ DAYS" Style="{StaticResource CaptionText}" />
+                                    <TextBlock Text="{Binding ThreePlusText}" FontSize="20" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Theme.WarningText}" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- month grid + by-source, side by side -->
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="1.25*" />
+                            </Grid.ColumnDefinitions>
+                            <GroupBox Header="By month" Margin="0,0,8,0">
+                                <DataGrid ItemsSource="{Binding MonthRows}" AutoGenerateColumns="False"
+                                          IsReadOnly="True" HeadersVisibility="Column">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Month" Binding="{Binding Month}" Width="*" />
+                                        <DataGridTextColumn Header="0–1 days" Binding="{Binding ZeroToOne}" Width="Auto" />
+                                        <DataGridTextColumn Header="docs" Binding="{Binding CountNote}" Width="Auto" />
+                                        <DataGridTextColumn Header="2" Binding="{Binding Two}" Width="Auto" />
+                                        <DataGridTextColumn Header="3+" Binding="{Binding ThreePlus}" Width="Auto" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </GroupBox>
+                            <GroupBox Grid.Column="1" Header="By source">
+                                <DataGrid ItemsSource="{Binding SourceRows}" AutoGenerateColumns="False"
+                                          IsReadOnly="True" HeadersVisibility="Column">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="*" />
+                                        <DataGridTextColumn Header="Docs" Binding="{Binding Docs}" Width="Auto" />
+                                        <DataGridTextColumn Header="0–1" Binding="{Binding ZeroToOne}" Width="Auto" />
+                                        <DataGridTextColumn Header="2" Binding="{Binding Two}" Width="Auto" />
+                                        <DataGridTextColumn Header="3+" Binding="{Binding ThreePlus}" Width="Auto" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </GroupBox>
+                        </Grid>
+
+                        <!-- weekly spark + set-aside chips -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="1.6*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <GroupBox Header="Weekly · % in 0–1 days" Margin="0,0,8,0">
+                                <ItemsControl ItemsSource="{Binding SparkBars}" Height="64" Margin="4">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <UniformGrid Rows="1" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <!-- a drawn bar, no chart library: height is the
+                                                 VM's precomputed fraction of the 60px strip -->
+                                            <Border Background="{DynamicResource Theme.Accent}"
+                                                    VerticalAlignment="Bottom" Margin="2,0"
+                                                    CornerRadius="2,2,0,0"
+                                                    Height="{Binding HeightFraction, Converter={StaticResource FractionToHeight}}"
+                                                    ToolTip="{Binding Tooltip}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </GroupBox>
+                            <GroupBox Grid.Column="1" Header="Set aside — click to inspect">
+                                <ItemsControl ItemsSource="{Binding SetAsideChips}" Margin="4">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Margin="0,0,6,6" Padding="10,4"
+                                                    Click="OnSetAsideChipClick" Tag="{Binding Key}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Label}" Margin="0,0,6,0" />
+                                                    <TextBlock Text="{Binding CountText}" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource Theme.StatusAmber}" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </GroupBox>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Detail">
+                <DockPanel Margin="0,10,0,0">
+                    <Grid DockPanel.Dock="Top" Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Rows:" Style="{StaticResource FieldLabel}" />
+                        <ComboBox Grid.Column="1" MinWidth="180" Margin="0,0,20,0"
+                                  ItemsSource="{Binding DetailSources}"
+                                  SelectedItem="{Binding SelectedDetailSource}" />
+                        <TextBlock Grid.Column="2" Text="Filter:" Style="{StaticResource FieldLabel}" />
+                        <TextBox Grid.Column="3"
+                                 Text="{Binding DetailFilter, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Grid.Column="4" Text="{Binding DetailCountText}"
+                                   Style="{StaticResource StatusText}" HorizontalAlignment="Right"
+                                   VerticalAlignment="Center" />
+                    </Grid>
+                    <DataGrid ItemsSource="{Binding DetailRows}" AutoGenerateColumns="False"
+                              IsReadOnly="True" Margin="0,8,0,0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="File name" Binding="{Binding FileName}" Width="2*" />
+                            <DataGridTextColumn Header="Source" Binding="{Binding SourceType}" Width="Auto" />
+                            <DataGridTextColumn Header="Pages" Binding="{Binding Pagecount}" Width="Auto" />
+                            <DataGridTextColumn Header="Destination" Binding="{Binding Destination}" Width="Auto" />
+                            <DataGridTextColumn Header="Doc date" Binding="{Binding DocDate}" Width="Auto" />
+                            <DataGridTextColumn Header="Uploaded" Binding="{Binding UploadDate}" Width="Auto" />
+                            <DataGridTextColumn Header="Bus. days" Binding="{Binding Tat}" Width="Auto" />
+                            <DataGridTextColumn Header="Bucket" Binding="{Binding Bucket}" Width="Auto" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</UserControl>

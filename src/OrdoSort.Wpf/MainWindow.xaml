@@ -344,6 +344,10 @@
                 </MenuItem>
             </MenuItem>
             <MenuItem Header="_Reports">
+                <MenuItem Header="_Reports hub…" Click="OnReportsHub">
+                    <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE9D2;" /></MenuItem.Icon>
+                </MenuItem>
+                <Separator />
                 <MenuItem Header="_Turn-around time…" Click="OnTurnaroundReport">
                     <MenuItem.Icon><TextBlock Style="{StaticResource Icon}" Text="&#xE916;" /></MenuItem.Icon>
                 </MenuItem>

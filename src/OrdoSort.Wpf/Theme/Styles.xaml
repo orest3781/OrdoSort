@@ -1961,4 +1961,16 @@
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
+    <!-- ReportTile: the Reports hub's small stat tiles (Turn-around page's
+         Same day / 1 day / 2 days / 3+ days row, sitting beside the hero
+         tile). -->
+    <Style x:Key="ReportTile" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource Theme.Surface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="14,10" />
+        <Setter Property="Margin" Value="0,0,8,0" />
+    </Style>
+
 </ResourceDictionary>

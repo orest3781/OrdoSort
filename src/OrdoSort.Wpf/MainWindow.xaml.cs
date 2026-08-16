@@ -352,13 +352,32 @@ public partial class MainWindow : Window
         new Windows.UnzipWindow(new UnzipViewModel(Dialogs, uiContext: SynchronizationContext.Current))
         { Owner = this }.ShowDialog();
 
-    private void OnTurnaroundReport(object sender, RoutedEventArgs e)
+    // The hub is a non-modal singleton: a dashboard someone keeps open
+    // beside their work, not a modal utility. Re-invoking focuses the
+    // existing window on the requested page rather than opening a second
+    // copy with a second feed load.
+    private Windows.ReportsWindow? _reportsWindow;
+
+    private void OpenReportsHub(int pageIndex)
     {
-        var vm = new TurnaroundViewModel(Shell.Cfg, Dialogs, Shell.SaveConfigNow,
+        if (_reportsWindow is { IsLoaded: true })
+        {
+            _reportsWindow.ShowPage(pageIndex);
+            _reportsWindow.Activate();
+            return;
+        }
+        var vm = new ReportsViewModel(Shell.Cfg, Dialogs, Shell.SaveConfigNow,
             uiContext: SynchronizationContext.Current);
-        new Windows.TurnaroundWindow(vm) { Owner = this }.ShowDialog();
-        vm.Dispose();
+        var window = new Windows.ReportsWindow(vm) { Owner = this };
+        window.Closed += (_, _) => { vm.Dispose(); _reportsWindow = null; };
+        _reportsWindow = window;
+        window.ShowPage(pageIndex);
+        window.Show();
     }
+
+    private void OnReportsHub(object sender, RoutedEventArgs e) => OpenReportsHub(0);
+
+    private void OnTurnaroundReport(object sender, RoutedEventArgs e) => OpenReportsHub(0);
 
     private void OnProductionReport(object sender, RoutedEventArgs e)
     {
