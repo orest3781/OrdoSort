@@ -1,3 +1,4 @@
+using System.Globalization;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Mvvm;
 using OrdoSort.Wpf.Services;
@@ -140,6 +141,7 @@ public sealed class ReportsViewModel : ObservableObject, IDisposable
         Current = snapshot;
         Sources.Apply(snapshot);
         Turnaround.Apply(snapshot);
-        FooterText = $"{snapshot.Feed.Report.FilesFound} files · {snapshot.Feed.Report.RowCount} rows";
+        FooterText = $"{snapshot.Feed.Report.FilesFound.ToString("N0", CultureInfo.InvariantCulture)} files · " +
+            $"{snapshot.Feed.Report.RowCount.ToString("N0", CultureInfo.InvariantCulture)} rows";
     }
 }
