@@ -76,7 +76,7 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="1.25*" />
                             </Grid.ColumnDefinitions>
-                            <GroupBox Header="By month" Margin="0,0,8,0">
+                            <GroupBox Header="By month" Style="{StaticResource ReportPanel}" Margin="0,0,8,0">
                                 <DataGrid ItemsSource="{Binding MonthRows}" AutoGenerateColumns="False"
                                           IsReadOnly="True" HeadersVisibility="Column">
                                     <DataGrid.Columns>
@@ -88,7 +88,7 @@
                                     </DataGrid.Columns>
                                 </DataGrid>
                             </GroupBox>
-                            <GroupBox Grid.Column="1" Header="By source">
+                            <GroupBox Grid.Column="1" Header="By source" Style="{StaticResource ReportPanel}">
                                 <DataGrid ItemsSource="{Binding SourceRows}" AutoGenerateColumns="False"
                                           IsReadOnly="True" HeadersVisibility="Column">
                                     <DataGrid.Columns>
@@ -108,7 +108,7 @@
                                 <ColumnDefinition Width="1.6*" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <GroupBox Header="Weekly · % in 0–1 days" Margin="0,0,8,0">
+                            <GroupBox Header="Weekly · % in 0–1 days" Style="{StaticResource ReportPanel}" Margin="0,0,8,0">
                                 <ItemsControl ItemsSource="{Binding SparkBars}" Height="64" Margin="4">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
@@ -128,7 +128,7 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </GroupBox>
-                            <GroupBox Grid.Column="1" Header="Set aside — click to inspect">
+                            <GroupBox Grid.Column="1" Header="Set aside — click to inspect" Style="{StaticResource ReportPanel}">
                                 <ItemsControl ItemsSource="{Binding SetAsideChips}" Margin="4">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>

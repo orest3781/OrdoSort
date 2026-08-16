@@ -1973,4 +1973,45 @@
         <Setter Property="Margin" Value="0,0,8,0" />
     </Style>
 
+    <!-- ReportPanel: GroupBox had ZERO style anywhere in Styles.xaml before
+         this (grep-confirmed: zero <GroupBox usages exist outside the
+         Reports hub's Turn-around Summary tab — By month / By source /
+         Weekly / Set aside), so the hub's four section panels rendered
+         stock Windows chrome (a light native header bar) inside an
+         otherwise fully themed dark/light window — the same "control this
+         app never used before" gap ListBoxItem/DataGridRow/CheckBox each
+         hit their own audit for (see those styles' comments above). Named
+         rather than implicit (TargetType="GroupBox" with no x:Key), unlike
+         this file's native-control retemplates further up (ComboBox,
+         TabControl, DataGrid, …) — every other entry in this "Named
+         styles" section is keyed, and GroupBox is used by exactly one
+         window, so a keyed style scopes the retemplate to the hub instead
+         of silently reskinning any future GroupBox nobody has reviewed for
+         this shape. Mirrors ReportTile's card look (Theme.Surface fill,
+         Theme.Border stroke, 8px radius) so the panel and the tiles above
+         it read as the same design language. Header is rendered as a
+         CaptionText-styled TextBlock via TemplateBinding rather than
+         GroupBox's own stock header inset (which paints unthemed
+         regardless of palette) — every call site passes a plain string
+         Header, so TemplateBinding straight into TextBlock.Text needs no
+         converter. -->
+    <Style x:Key="ReportPanel" TargetType="GroupBox">
+        <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="GroupBox">
+                    <Border Background="{DynamicResource Theme.Surface}"
+                            BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
+                            CornerRadius="8" Padding="10">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="{TemplateBinding Header}"
+                                       Style="{StaticResource CaptionText}" Margin="2,0,0,8" />
+                            <ContentPresenter />
+                        </DockPanel>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>
