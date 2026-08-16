@@ -18,9 +18,40 @@ public static class XlsxWriter
 {
     public sealed record Sheet(string Name, IReadOnlyList<IReadOnlyList<object?>> Rows);
 
+    /// <summary>C2 fix (reports-hub-phase2 final fix wave, 2026-08-16):
+    /// previously opened the destination directly via
+    /// <c>ZipFile.Open(path, ZipArchiveMode.Create)</c>, which maps to
+    /// <c>FileMode.CreateNew</c> — atomic, but it throws "file already
+    /// exists" the moment a caller writes to the same path twice, which is
+    /// exactly what happens exporting to the suggested
+    /// <c>turnaround-&lt;yyyyMMdd&gt;.xlsx</c> name a second time in one day
+    /// (TurnaroundPageViewModel.ExportAsync). Routed through
+    /// <see cref="AtomicPlace.TryReplace"/> instead — the same temp-sibling
+    /// + swap-in idiom Zipper.cs's own Save-As branch already uses for the
+    /// identical reason (see that class's CreateZip doc comment) — rather
+    /// than re-deriving a second FileMode.Create-based overwrite by hand:
+    /// overwrite now succeeds, AND a failure partway through leaves whatever
+    /// was previously at <paramref name="path"/> untouched instead of a
+    /// half-written file, which the old direct-open version did not
+    /// guarantee either. Throws IOException on failure, same as the old
+    /// ZipFile.Open path did — every caller already catches
+    /// IOException/UnauthorizedAccessException around this call
+    /// (TurnaroundPageViewModel.ExportAsync).</summary>
     public static void Write(string path, IReadOnlyList<Sheet> sheets)
     {
-        using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
+        if (!AtomicPlace.TryReplace(path, tmp => WriteCore(tmp, sheets), out var error))
+            throw new IOException($"couldn't write the workbook: {error}");
+    }
+
+    private static void WriteCore(string path, IReadOnlyList<Sheet> sheets)
+    {
+        // tmp is a GUID-named sibling AtomicPlace itself picked (never a
+        // contested name), so FileMode.Create vs .CreateNew makes no
+        // difference here — Create is used because it's the natural
+        // "open for writing a fresh file" primitive once atomicity is
+        // AtomicPlace's job, not this method's.
+        using var stream = new FileStream(path, FileMode.Create, FileAccess.Write);
+        using var zip = new ZipArchive(stream, ZipArchiveMode.Create);
 
         var contentTypes = new StringBuilder(
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +

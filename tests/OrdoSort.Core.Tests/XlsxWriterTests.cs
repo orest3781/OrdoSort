@@ -122,4 +122,30 @@ public class XlsxWriterTests : IDisposable
         var path = Write(new XlsxWriter.Sheet("S", new[] { row }));
         Assert.Equal(row.Select(v => (string)v!), XlsxTable.Read(path)[0]);
     }
+
+    /// <summary>C2 fix: Write used to open the destination via
+    /// ZipFile.Open(path, ZipArchiveMode.Create), which is FileMode.CreateNew
+    /// under the hood — the second export to the same suggested filename
+    /// (e.g. turnaround-20260816.xlsx, exported twice in one day) threw "file
+    /// already exists" instead of overwriting. Now routed through
+    /// AtomicPlace.TryReplace (temp sibling + swap-in, same idiom Zipper.cs's
+    /// Save-As branch already uses), so writing twice to the same path must
+    /// succeed both times and the second write's content must win.</summary>
+    [Fact]
+    public void WritingTwiceToTheSamePathOverwritesInsteadOfThrowing()
+    {
+        var path = Path.Combine(_dir, "turnaround.xlsx");
+
+        XlsxWriter.Write(path, new[]
+        {
+            new XlsxWriter.Sheet("S", new object?[][] { new object?[] { "first" } }),
+        });
+        var ex = Record.Exception(() => XlsxWriter.Write(path, new[]
+        {
+            new XlsxWriter.Sheet("S", new object?[][] { new object?[] { "second" } }),
+        }));
+
+        Assert.Null(ex);
+        Assert.Equal("second", XlsxTable.Read(path)[0][0]);
+    }
 }
