@@ -44,7 +44,7 @@
             <!-- client list -->
             <DockPanel>
                 <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
-                    <Button Content="Add" Command="{Binding AddClientCommand}" MinWidth="48" Margin="0,0,4,0" />
+                    <Button Content="Add" Command="{Binding AddClientCommand}" MinWidth="48" Margin="0,0,4,4" />
                     <Button Content="Remove" Command="{Binding RemoveClientCommand}" />
                 </WrapPanel>
                 <Grid>
@@ -150,7 +150,8 @@
                              AutomationProperties.Name="Client id" />
                     <TextBlock Grid.Column="2" Text="2-8 letters or digits"
                                Style="{StaticResource CaptionText}"
-                               VerticalAlignment="Center" Margin="8,0,0,0" />
+                               VerticalAlignment="Center" Margin="8,0,0,0"
+                               TextTrimming="CharacterEllipsis" />
                 </Grid>
 
                 <Grid Style="{StaticResource FieldRow}">
@@ -165,7 +166,8 @@
                              AutomationProperties.Name="Keep boxes days" />
                     <TextBlock Grid.Column="2" Text="sets the destruction date"
                                Style="{StaticResource CaptionText}"
-                               VerticalAlignment="Center" Margin="8,0,0,0" />
+                               VerticalAlignment="Center" Margin="8,0,0,0"
+                               TextTrimming="CharacterEllipsis" />
                 </Grid>
 
                 <Grid Style="{StaticResource FieldRow}">
@@ -188,7 +190,7 @@
                     </Button>
                 </Grid>
 
-                <Grid Style="{StaticResource FieldRow}" Margin="0,0,0,4">
+                <Grid Style="{StaticResource FieldRow}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                         <ColumnDefinition Width="60" />
@@ -223,22 +225,27 @@
                                TextTrimming="CharacterEllipsis" />
                 </Grid>
 
-                <Grid Style="{StaticResource FieldRow}" Margin="0,0,0,4">
+                <Grid Style="{StaticResource FieldRow}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="Date bars:" Style="{StaticResource FieldLabel}" />
-                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <!-- WrapPanel, not a horizontal StackPanel: at the window's
+                         MinWidth (or a larger configured app font) the second
+                         option used to march off the window edge — wrapping to
+                         a second line keeps both choices on screen
+                         (LabelMakerOverflowTests) -->
+                    <WrapPanel Grid.Column="1">
                         <RadioButton GroupName="DateStyle" Content="black bars (white text)"
                                      IsChecked="{Binding DataContext.DateStyleBars,
                                                  RelativeSource={RelativeSource AncestorType=Window}}"
-                                     VerticalAlignment="Center" Margin="0,0,16,0" />
+                                     VerticalAlignment="Center" Margin="0,4,14,4" />
                         <RadioButton GroupName="DateStyle" Content="plain (black text)"
                                      IsChecked="{Binding DataContext.DateStylePlain,
                                                  RelativeSource={RelativeSource AncestorType=Window}}"
-                                     VerticalAlignment="Center" />
-                    </StackPanel>
+                                     VerticalAlignment="Center" Margin="0,4" />
+                    </WrapPanel>
                 </Grid>
             </StackPanel>
 

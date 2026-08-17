@@ -149,9 +149,9 @@
         </Style>
     </Window.Resources>
 
-    <DockPanel Margin="12">
+    <DockPanel Margin="14">
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right"
-                    Margin="0,12,0,0">
+                    Margin="0,10,0,0">
             <Button Click="OnOk" Style="{StaticResource PrimaryButton}"
                     Width="96" IsDefault="True" Margin="0,0,8,0"
                     AutomationProperties.Name="OK">
@@ -225,7 +225,7 @@
                          for e.g. "History database:" to force "App font:"
                          wider on a different tab. -->
                     <StackPanel Margin="16,8" Grid.IsSharedSizeScope="True">
-                        <TextBlock Text="Folders" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
+                        <TextBlock Text="Folders" Style="{StaticResource SectionHeaderFirst}" />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
@@ -265,7 +265,7 @@
                                        Style="{StaticResource NoteText}" />
                         </Grid>
 
-                        <TextBlock Text="Files" Style="{StaticResource SectionText}" Margin="0,10,0,10" />
+                        <TextBlock Text="Files" Style="{StaticResource SectionHeader}" />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
@@ -322,15 +322,25 @@
                          comment above — same per-tab LabelCol pattern,
                          scoped independently of the other five tabs. -->
                     <StackPanel Margin="16,8" Grid.IsSharedSizeScope="True">
-                        <TextBlock Text="Naming" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
+                        <TextBlock Text="Naming" Style="{StaticResource SectionHeaderFirst}" />
                         <!-- before → after beats prose: name each mode by its
-                             transformation, not by an abstract label -->
-                        <RadioButton GroupName="NamingMode" IsChecked="{Binding ModeInsert}"
-                                     Content='Insert at the "--"   ·   20240115--12345.pdf  →  20240115-Smith John-12345.pdf' />
-                        <RadioButton GroupName="NamingMode" IsChecked="{Binding ModeReplace}"
-                                     Content='Full replace   ·   20240115--12345.pdf  →  Smith John.pdf' />
-                        <RadioButton GroupName="NamingMode" IsChecked="{Binding ModePrefix}"
-                                     Content='Prefix   ·   scan001.pdf  →  Smith John-scan001.pdf' />
+                             transformation, not by an abstract label. Explicit
+                             wrapping TextBlocks: the before→after examples are
+                             the longest lines on this tab, and a plain-string
+                             Content never wraps — at larger app fonts the tail
+                             ran off the window edge (WindowOverflowTests). -->
+                        <RadioButton GroupName="NamingMode" IsChecked="{Binding ModeInsert}">
+                            <TextBlock Text='Insert at the "--"   ·   20240115--12345.pdf  →  20240115-Smith John-12345.pdf'
+                                       TextWrapping="Wrap" />
+                        </RadioButton>
+                        <RadioButton GroupName="NamingMode" IsChecked="{Binding ModeReplace}">
+                            <TextBlock Text='Full replace   ·   20240115--12345.pdf  →  Smith John.pdf'
+                                       TextWrapping="Wrap" />
+                        </RadioButton>
+                        <RadioButton GroupName="NamingMode" IsChecked="{Binding ModePrefix}">
+                            <TextBlock Text='Prefix   ·   scan001.pdf  →  Smith John-scan001.pdf'
+                                       TextWrapping="Wrap" />
+                        </RadioButton>
                         <RadioButton GroupName="NamingMode" IsChecked="{Binding ModeAppend}"
                                      Content='Append   ·   scan001.pdf  →  scan001-Smith John.pdf' />
                         <!-- Margin left at 22, off-rhythm: it aligns this
@@ -345,12 +355,12 @@
                         <!-- one live example tying mode + UPPERCASE + separator together -->
                         <Border Background="{DynamicResource Theme.Surface}"
                                 BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
-                                CornerRadius="4" Padding="10,7" Margin="0,8,0,0">
+                                CornerRadius="4" Padding="10,8" Margin="0,8,0,0">
                             <TextBlock Text="{Binding FilingExample}" TextWrapping="Wrap"
                                        FontWeight="SemiBold" />
                         </Border>
 
-                        <Grid Style="{StaticResource FieldRow}" Margin="0,14,0,10">
+                        <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                 <ColumnDefinition Width="220" />
@@ -363,18 +373,18 @@
                                       ItemTemplate="{StaticResource KvpValueTemplate}" />
                         </Grid>
 
-                        <TextBlock Text="Typing" Style="{StaticResource SectionText}" Margin="0,10,0,10" />
+                        <TextBlock Text="Typing" Style="{StaticResource SectionHeader}" />
                         <CheckBox Content="UPPERCASE names as they're typed"
                                   IsChecked="{Binding UppercaseNames}" />
-                        <TextBlock Text="Enter files to:" Margin="0,4,0,2" />
+                        <TextBlock Text="Enter files to:" Margin="0,4,0,4" />
                         <RadioButton GroupName="EnterMode"
                                      Content="the last-used destination (starts at the first)"
-                                     IsChecked="{Binding EnterCommits}" Margin="12,0,0,2" />
+                                     IsChecked="{Binding EnterCommits}" Margin="12,0,0,4" />
                         <RadioButton GroupName="EnterMode"
                                      Content="always the first destination"
                                      IsChecked="{Binding EnterCommits, Converter={StaticResource InvertBool}}"
                                      Margin="12,0,0,0" />
-                        <Grid Style="{StaticResource FieldRow}" Margin="0,8,0,10">
+                        <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                 <ColumnDefinition Width="80" />
@@ -384,7 +394,7 @@
                             <TextBox Grid.Column="1" Text="{Binding WordSeparator, UpdateSourceTrigger=PropertyChanged}"
                                      MaxLength="3" />
                             <TextBlock Grid.Column="2" Style="{StaticResource SubtleText}"
-                                       VerticalAlignment="Center" Margin="8,0,0,0"
+                                       VerticalAlignment="Center" Margin="8,0,0,0" TextWrapping="Wrap"
                                        Text="typed spaces become this (blank = keep spaces)" />
                         </Grid>
                     </StackPanel>
@@ -553,19 +563,20 @@
                                         ToolTip="Show this folder in Explorer"
                                         Command="{Binding DataContext.OpenRouteFolderCommand,
                                                   RelativeSource={RelativeSource AncestorType=Window}}" />
-                                <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Orientation="Horizontal">
-                                    <StackPanel.Style>
-                                        <Style TargetType="StackPanel">
+                                <!-- DockPanel, not a horizontal StackPanel: the Problem text
+                                     is a full filesystem path, and StatusText's Wrap only
+                                     engages at a finite width (TextWrapCoverageTests) -->
+                                <DockPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3">
+                                    <DockPanel.Style>
+                                        <Style TargetType="DockPanel">
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding Problem}" Value="">
                                                     <Setter Property="Visibility" Value="Collapsed" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
-                                    </StackPanel.Style>
-                                    <TextBlock Text="{Binding Problem}" Style="{StaticResource StatusText}"
-                                               VerticalAlignment="Center" />
-                                    <Button Content="Create it" Margin="8,0,0,0" Padding="8,3"
+                                    </DockPanel.Style>
+                                    <Button DockPanel.Dock="Right" Content="Create it" Margin="8,0,0,0" Padding="8,4"
                                             Command="{Binding DataContext.CreateRouteFolderCommand,
                                                       RelativeSource={RelativeSource AncestorType=Window}}">
                                         <Button.Style>
@@ -578,7 +589,9 @@
                                             </Style>
                                         </Button.Style>
                                     </Button>
-                                </StackPanel>
+                                    <TextBlock Text="{Binding Problem}" Style="{StaticResource StatusText}"
+                                               VerticalAlignment="Center" />
+                                </DockPanel>
                             </Grid>
 
                             <Grid Style="{StaticResource FieldRow}">
@@ -610,7 +623,7 @@
                                          position in the list -->
                                     <TextBlock Text="{Binding HotkeyPlaceholder}"
                                                Style="{StaticResource SubtleText}"
-                                               VerticalAlignment="Center" Margin="7,0,0,0"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"
                                                IsHitTestVisible="False" />
                                 </Grid>
                                 <TextBlock Grid.Column="2" Style="{StaticResource SubtleText}"
@@ -631,14 +644,22 @@
                                 <TextBlock Text="Filename suffix:" Style="{StaticResource FieldLabel}" />
                                 <TextBox Grid.Column="1" Text="{Binding Suffix, UpdateSourceTrigger=PropertyChanged}"
                                          IsEnabled="{Binding AppendSuffix}" />
-                                <CheckBox Grid.Column="2" Content="append it" Margin="8,0,0,0"
-                                          VerticalAlignment="Center" IsChecked="{Binding AppendSuffix}" />
+                                <CheckBox Grid.Column="2" Margin="8,0,0,0"
+                                          VerticalAlignment="Center" IsChecked="{Binding AppendSuffix}">
+                                    <!-- wrapping content: the star column squeezes to
+                                         nothing at the window's MinWidth and a plain-string
+                                         label would render off screen (WindowOverflowTests) -->
+                                    <TextBlock Text="append it" TextWrapping="Wrap" />
+                                </CheckBox>
                             </Grid>
 
                             <Grid Style="{StaticResource FieldRow}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
-                                    <ColumnDefinition Width="220" />
+                                    <!-- star capped at 220, not a fixed 220: the fixed
+                                         column overflowed the detail panel at the
+                                         window's MinWidth (WindowOverflowTests) -->
+                                    <ColumnDefinition Width="*" MaxWidth="220" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Naming mode:" Style="{StaticResource FieldLabel}" />
                                 <ComboBox Grid.Column="1"
@@ -758,7 +779,7 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock Text="Monitored folders" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
+                    <TextBlock Text="Monitored folders" Style="{StaticResource SectionHeaderFirst}" />
                     <!-- the folder editor takes all remaining height — a long
                          folder list gets the space, not a cramped fixed strip -->
                     <Grid Grid.Row="1">
@@ -782,20 +803,110 @@
                                          SelectedItem="{Binding SelectedWatchRow}" AllowDrop="True"
                                          PreviewMouseLeftButtonDown="List_DragArm"
                                          PreviewMouseMove="List_DragMove"
-                                         Drop="List_Drop" DragOver="List_DragOver">
+                                         Drop="List_Drop" DragOver="List_DragOver"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                    <!-- Stretch + h-scroll Disabled: the row templates below are
+                                         DockPanels whose trailing ellipsis only engages when the
+                                         item is pinned to the viewport width (RouteList's
+                                         ItemContainerStyle comment explains the BasedOn). -->
+                                    <ListBox.ItemContainerStyle>
+                                        <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        </Style>
+                                    </ListBox.ItemContainerStyle>
                                     <ListBox.Resources>
                                         <DataTemplate DataType="{x:Type vm:WatchSectionVm}">
                                             <Grid Margin="0,6,0,2">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <StackPanel.Style>
-                                                        <Style TargetType="StackPanel">
+                                                <!-- DockPanel, not a horizontal StackPanel: the
+                                                     Header ellipsis only engages at a finite width
+                                                     (TextWrapCoverageTests). Buttons dock Right —
+                                                     first declared lands rightmost, so ✕, ＋, ✎
+                                                     below reads ✎ ＋ ✕ on screen — and the Header
+                                                     is the last/fill child. -->
+                                                <DockPanel>
+                                                    <DockPanel.Style>
+                                                        <Style TargetType="DockPanel">
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding IsEditing}" Value="True">
                                                                     <Setter Property="Visibility" Value="Collapsed" />
                                                                 </DataTrigger>
                                                             </Style.Triggers>
                                                         </Style>
-                                                    </StackPanel.Style>
+                                                    </DockPanel.Style>
+                                                    <!-- ✕ remove: the ONLY way to get rid of a
+                                                         section. The toolbar's Remove button acts
+                                                         on the SELECTED row and SelectedWatchRow
+                                                         refuses headers outright, so without this
+                                                         a section could be created and renamed but
+                                                         never deleted — the reported gap. Drops
+                                                         the grouping only; RemoveSection keeps
+                                                         every folder, so there is nothing to
+                                                         confirm and no toolbar equivalent needed. -->
+                                                    <Button DockPanel.Dock="Right" Margin="2,0,0,0" Padding="4,2"
+                                                            Background="Transparent" BorderThickness="0"
+                                                            Click="OnSectionRemoveClick"
+                                                            ToolTip="{Binding DataContext.RemoveSectionHint,
+                                                                RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            AutomationProperties.Name="{Binding Header, StringFormat=Remove section {0}}">
+                                                        <!-- never on the default group: it IS the
+                                                             "no section" bucket, so its folders
+                                                             have nowhere to be moved to.
+                                                             RemoveSection ignores it too. -->
+                                                        <Button.Style>
+                                                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsDefault}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Button.Style>
+                                                        <TextBlock Text="✕"
+                                                                   Foreground="{Binding Foreground,
+                                                                       RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                                                    </Button>
+                                                    <Button DockPanel.Dock="Right" Margin="2,0,0,0" Padding="4,2"
+                                                            Background="Transparent" BorderThickness="0"
+                                                            Click="OnSectionAddFolderClick"
+                                                            ToolTip="Add a folder to this section"
+                                                            AutomationProperties.Name="{Binding Header, StringFormat=Add folder to section {0}}">
+                                                        <TextBlock Text="＋"
+                                                                   Foreground="{Binding Foreground,
+                                                                       RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                                                    </Button>
+                                                    <!-- Defensive fix (2026-08-02 theme-coverage
+                                                         final review, Finding 2): a plain-string
+                                                         Button.Content auto-wraps into a TextBlock
+                                                         that resolves the APPLICATION-level
+                                                         implicit TextBlock style (Theme.Text)
+                                                         instead of inheriting this Button's own
+                                                         Foreground — the same "Style Setter
+                                                         outranks inheritance" trap as
+                                                         ComboBoxItem/PrimaryButton/ChipButton
+                                                         elsewhere in this app. An explicit
+                                                         TextBlock with the sibling Header label's
+                                                         own LOCAL Foreground binding sidesteps the
+                                                         auto-wrap entirely, matching Header's
+                                                         unselected-Theme.Text/selected-
+                                                         Theme.AccentText behaviour exactly.
+                                                         Currently UNREACHABLE:
+                                                         SettingsViewModel.SelectedWatchRow rejects
+                                                         header-row selection outright, so this
+                                                         row's ListBoxItem never actually reports
+                                                         IsSelected=True — see that property's own
+                                                         doc comment. Fixed anyway, cheaply, so a
+                                                         future relaxation of that guard doesn't
+                                                         silently reintroduce the ComboBoxItem-style
+                                                         1.27-1.35:1 contrast failure here. -->
+                                                    <Button DockPanel.Dock="Right" Margin="6,0,0,0" Padding="4,2"
+                                                            Background="Transparent" BorderThickness="0"
+                                                            Click="OnSectionRenameClick"
+                                                            ToolTip="Rename this section — updates every folder in it"
+                                                            AutomationProperties.Name="{Binding Header, StringFormat=Rename section {0}}">
+                                                        <TextBlock Text="✎"
+                                                                   Foreground="{Binding Foreground,
+                                                                       RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                                                    </Button>
                                                     <!-- LOCAL Foreground bound back to the
                                                          generated ListBoxItem: without it this
                                                          TextBlock resolves the APPLICATION-level
@@ -821,81 +932,7 @@
                                                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                                                Foreground="{Binding Foreground,
                                                                    RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
-                                                    <!-- Defensive fix (2026-08-02 theme-coverage
-                                                         final review, Finding 2): a plain-string
-                                                         Button.Content auto-wraps into a TextBlock
-                                                         that resolves the APPLICATION-level
-                                                         implicit TextBlock style (Theme.Text)
-                                                         instead of inheriting this Button's own
-                                                         Foreground — the same "Style Setter
-                                                         outranks inheritance" trap as
-                                                         ComboBoxItem/PrimaryButton/ChipButton
-                                                         elsewhere in this app. An explicit
-                                                         TextBlock with the sibling Header label's
-                                                         own LOCAL Foreground binding sidesteps the
-                                                         auto-wrap entirely, matching Header's
-                                                         unselected-Theme.Text/selected-
-                                                         Theme.AccentText behaviour exactly.
-                                                         Currently UNREACHABLE:
-                                                         SettingsViewModel.SelectedWatchRow rejects
-                                                         header-row selection outright, so this
-                                                         row's ListBoxItem never actually reports
-                                                         IsSelected=True — see that property's own
-                                                         doc comment. Fixed anyway, cheaply, so a
-                                                         future relaxation of that guard doesn't
-                                                         silently reintroduce the ComboBoxItem-style
-                                                         1.27-1.35:1 contrast failure here. -->
-                                                    <Button Margin="6,0,0,0" Padding="3,0"
-                                                            Background="Transparent" BorderThickness="0"
-                                                            Click="OnSectionRenameClick"
-                                                            ToolTip="Rename this section — updates every folder in it"
-                                                            AutomationProperties.Name="{Binding Header, StringFormat=Rename section {0}}">
-                                                        <TextBlock Text="✎"
-                                                                   Foreground="{Binding Foreground,
-                                                                       RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
-                                                    </Button>
-                                                    <Button Margin="2,0,0,0" Padding="3,0"
-                                                            Background="Transparent" BorderThickness="0"
-                                                            Click="OnSectionAddFolderClick"
-                                                            ToolTip="Add a folder to this section"
-                                                            AutomationProperties.Name="{Binding Header, StringFormat=Add folder to section {0}}">
-                                                        <TextBlock Text="＋"
-                                                                   Foreground="{Binding Foreground,
-                                                                       RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
-                                                    </Button>
-                                                    <!-- ✕ remove: the ONLY way to get rid of a
-                                                         section. The toolbar's Remove button acts
-                                                         on the SELECTED row and SelectedWatchRow
-                                                         refuses headers outright, so without this
-                                                         a section could be created and renamed but
-                                                         never deleted — the reported gap. Drops
-                                                         the grouping only; RemoveSection keeps
-                                                         every folder, so there is nothing to
-                                                         confirm and no toolbar equivalent needed. -->
-                                                    <Button Margin="2,0,0,0" Padding="3,0"
-                                                            Background="Transparent" BorderThickness="0"
-                                                            Click="OnSectionRemoveClick"
-                                                            ToolTip="{Binding DataContext.RemoveSectionHint,
-                                                                RelativeSource={RelativeSource AncestorType=Window}}"
-                                                            AutomationProperties.Name="{Binding Header, StringFormat=Remove section {0}}">
-                                                        <!-- never on the default group: it IS the
-                                                             "no section" bucket, so its folders
-                                                             have nowhere to be moved to.
-                                                             RemoveSection ignores it too. -->
-                                                        <Button.Style>
-                                                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsDefault}" Value="True">
-                                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Button.Style>
-                                                        <TextBlock Text="✕"
-                                                                   Foreground="{Binding Foreground,
-                                                                       RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
-                                                    </Button>
-                                                </StackPanel>
+                                                </DockPanel>
                                                 <TextBox Text="{Binding EditText, UpdateSourceTrigger=PropertyChanged}"
                                                          LostFocus="OnSectionEditLostFocus"
                                                          PreviewKeyDown="OnSectionEditKeyDown"
@@ -914,7 +951,10 @@
                                             </Grid>
                                         </DataTemplate>
                                         <DataTemplate DataType="{x:Type vm:WatchEditVm}">
-                                            <StackPanel Orientation="Horizontal" Margin="12,0,0,0">
+                                            <!-- DockPanel, not a horizontal StackPanel: the Label
+                                                 ellipsis only engages at a finite width
+                                                 (TextWrapCoverageTests) -->
+                                            <DockPanel Margin="12,0,0,0">
                                                 <Rectangle Width="12" Height="12" RadiusX="2" RadiusY="2"
                                                            VerticalAlignment="Center" Margin="0,0,6,0"
                                                            Fill="{Binding Color, Converter={StaticResource ColorStringToBrush}}"
@@ -931,7 +971,7 @@
                                                 <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"
                                                            Foreground="{Binding Foreground,
                                                                RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
-                                            </StackPanel>
+                                            </DockPanel>
                                         </DataTemplate>
                                     </ListBox.Resources>
                                 </ListBox>
@@ -962,7 +1002,7 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="Label:" Style="{StaticResource FieldLabel}" />
                                     <TextBox Grid.Column="1" Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock Grid.Column="2" Text="Section:" Style="{StaticResource FieldLabel}" Margin="8,0,10,0" />
+                                    <TextBlock Grid.Column="2" Text="Section:" Style="{StaticResource FieldLabel}" Margin="8,0,8,0" />
                                     <!-- IsTextSearchEnabled=False: an editable ComboBox's built-in
                                          text search otherwise (a) auto-completes a typed prefix into
                                          a full matching choice mid-keystroke, hijacking what was typed,
@@ -1010,19 +1050,20 @@
                                             ToolTip="Show this folder in Explorer"
                                             Command="{Binding DataContext.OpenWatchFolderCommand,
                                                       RelativeSource={RelativeSource AncestorType=Window}}" />
-                                    <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Orientation="Horizontal">
-                                        <StackPanel.Style>
-                                            <Style TargetType="StackPanel">
+                                    <!-- DockPanel, not a horizontal StackPanel: the Problem text
+                                         is a full filesystem path, and StatusText's Wrap only
+                                         engages at a finite width (TextWrapCoverageTests) -->
+                                    <DockPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3">
+                                        <DockPanel.Style>
+                                            <Style TargetType="DockPanel">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding Problem}" Value="">
                                                         <Setter Property="Visibility" Value="Collapsed" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
-                                        </StackPanel.Style>
-                                        <TextBlock Text="{Binding Problem}" Style="{StaticResource StatusText}"
-                                                   VerticalAlignment="Center" />
-                                        <Button Content="Create it" Margin="8,0,0,0" Padding="8,3"
+                                        </DockPanel.Style>
+                                        <Button DockPanel.Dock="Right" Content="Create it" Margin="8,0,0,0" Padding="8,4"
                                                 Command="{Binding DataContext.CreateWatchFolderCommand,
                                                           RelativeSource={RelativeSource AncestorType=Window}}">
                                             <Button.Style>
@@ -1035,7 +1076,9 @@
                                                 </Style>
                                             </Button.Style>
                                         </Button>
-                                    </StackPanel>
+                                        <TextBlock Text="{Binding Problem}" Style="{StaticResource StatusText}"
+                                                   VerticalAlignment="Center" />
+                                    </DockPanel>
                                 </Grid>
                                 <Grid Style="{StaticResource FieldRow}">
                                     <Grid.ColumnDefinitions>
@@ -1053,18 +1096,18 @@
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <TextBlock Text="File types:" Style="{StaticResource FieldLabel}"
-                                               VerticalAlignment="Top" Margin="0,4,10,0" />
+                                               VerticalAlignment="Top" Margin="0,4,8,0" />
                                     <StackPanel Grid.Column="1">
                                         <WrapPanel>
                                             <CheckBox Content="Any file" IsChecked="{Binding AnyType}"
-                                                      Margin="0,2,10,2" />
-                                            <CheckBox Content="PDF" IsChecked="{Binding TypePdf}" Margin="0,2,10,2"
+                                                      Margin="0,4,14,4" />
+                                            <CheckBox Content="PDF" IsChecked="{Binding TypePdf}" Margin="0,4,14,4"
                                                       IsEnabled="{Binding AnyType, Converter={StaticResource InvertBool}}" />
-                                            <CheckBox Content="TIFF" IsChecked="{Binding TypeTiff}" Margin="0,2,10,2"
+                                            <CheckBox Content="TIFF" IsChecked="{Binding TypeTiff}" Margin="0,4,14,4"
                                                       IsEnabled="{Binding AnyType, Converter={StaticResource InvertBool}}" />
-                                            <CheckBox Content="JPEG" IsChecked="{Binding TypeJpeg}" Margin="0,2,10,2"
+                                            <CheckBox Content="JPEG" IsChecked="{Binding TypeJpeg}" Margin="0,4,14,4"
                                                       IsEnabled="{Binding AnyType, Converter={StaticResource InvertBool}}" />
-                                            <CheckBox Content="PNG" IsChecked="{Binding TypePng}" Margin="0,2,10,2"
+                                            <CheckBox Content="PNG" IsChecked="{Binding TypePng}" Margin="0,4"
                                                       IsEnabled="{Binding AnyType, Converter={StaticResource InvertBool}}" />
                                         </WrapPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,2,0,0"
@@ -1089,7 +1132,7 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="Tile color:" Style="{StaticResource FieldLabel}"
-                                               VerticalAlignment="Top" Margin="0,4,10,0" />
+                                               VerticalAlignment="Top" Margin="0,4,8,0" />
                                     <TextBox Grid.Column="1" VerticalAlignment="Top"
                                              Text="{Binding Color, UpdateSourceTrigger=PropertyChanged}" />
                                     <ItemsControl Grid.Column="2" Margin="8,0,0,0"
@@ -1176,7 +1219,7 @@
             <TabItem Header="Alerts &amp; _polling" AutomationProperties.Name="Alerts &amp; polling">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="16,8">
-                        <TextBlock Text="Alerts" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
+                        <TextBlock Text="Alerts" Style="{StaticResource SectionHeaderFirst}" />
                         <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap"
                                    Text="Filenames containing these terms flash the tile and the inbox count red (ignores case):" />
                         <ScrollViewer MaxHeight="60" VerticalScrollBarVisibility="Auto"
@@ -1194,7 +1237,7 @@
                                                 CornerRadius="4" Padding="8,2" Margin="0,0,6,6">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="{Binding}" VerticalAlignment="Center" />
-                                                <Button Content="✕" Margin="6,0,0,0" Padding="2,0"
+                                                <Button Content="✕" Margin="6,0,0,0" Padding="4,2"
                                                         Background="Transparent" BorderThickness="0"
                                                         AutomationProperties.Name="{Binding StringFormat=Remove alert term {0}}"
                                                         Command="{Binding DataContext.RemoveAlertCommand,
@@ -1219,7 +1262,7 @@
                         <CheckBox Content="Flash alerts (uncheck for a steady highlight)"
                                   IsChecked="{Binding FlashAlerts}" />
 
-                        <TextBlock Text="Polling" Style="{StaticResource SectionText}" Margin="0,16,0,6" />
+                        <TextBlock Text="Polling" Style="{StaticResource SectionHeader}" />
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="Check folders every" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <TextBox Width="52"
@@ -1264,7 +1307,7 @@
                      fixed while its siblings became Auto would just move the
                      inconsistency instead of fixing it. -->
                 <StackPanel Margin="16,8" Grid.IsSharedSizeScope="True">
-                    <TextBlock Text="Colors" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
+                    <TextBlock Text="Colors" Style="{StaticResource SectionHeaderFirst}" />
                     <!-- WrapPanel, not the StackPanel this row used to be:
                          with 7 registry schemes (was 2) the row is wider than
                          the window and MUST wrap. A horizontal StackPanel
@@ -1296,7 +1339,7 @@
                                         <Border Height="16" CornerRadius="4" Background="{DynamicResource Light.Surface}"
                                                 BorderBrush="{DynamicResource Light.Border}" BorderThickness="1" />
                                         <Rectangle Height="4" RadiusX="2" RadiusY="2" Fill="{DynamicResource Light.SubtleText}"
-                                                   Margin="0,7,8,0" />
+                                                   Margin="0,8,8,0" />
                                         <!-- pill scale is 12 (see declared radius scale); WPF clamps
                                              CornerRadius to half the shorter side, so 12 renders
                                              identically to 5.5 on this 11px-tall pill -->
@@ -1311,7 +1354,7 @@
                                         <Border Height="16" CornerRadius="4" Background="{DynamicResource Dark.Surface}"
                                                 BorderBrush="{DynamicResource Dark.Border}" BorderThickness="1" />
                                         <Rectangle Height="4" RadiusX="2" RadiusY="2" Fill="{DynamicResource Dark.SubtleText}"
-                                                   Margin="0,7,8,0" />
+                                                   Margin="0,8,8,0" />
                                         <!-- pill scale is 12 (see declared radius scale); WPF clamps
                                              CornerRadius to half the shorter side, so 12 renders
                                              identically to 5.5 on this 11px-tall pill -->
@@ -1347,14 +1390,14 @@
                                                 Background="{Binding PreviewWindowBg, Converter={StaticResource RgbToBrush}}"
                                                 BorderBrush="{Binding PreviewBorder, Converter={StaticResource RgbToBrush}}"
                                                 BorderThickness="1">
-                                            <StackPanel Margin="10,9">
+                                            <StackPanel Margin="10,8">
                                                 <Border Height="16" CornerRadius="4"
                                                         Background="{Binding PreviewSurface, Converter={StaticResource RgbToBrush}}"
                                                         BorderBrush="{Binding PreviewBorder, Converter={StaticResource RgbToBrush}}"
                                                         BorderThickness="1" />
                                                 <Rectangle Height="4" RadiusX="2" RadiusY="2"
                                                            Fill="{Binding PreviewSubtleText, Converter={StaticResource RgbToBrush}}"
-                                                           Margin="0,7,26,0" />
+                                                           Margin="0,8,8,0" />
                                                 <!-- pill scale is 12 (see declared radius scale); WPF clamps
                                                      CornerRadius to half the shorter side, so 12 renders
                                                      identically to 5.5 on this 11px-tall pill -->
@@ -1368,10 +1411,10 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </WrapPanel>
-                    <TextBlock Style="{StaticResource CaptionText}" Margin="4,6,0,0"
+                    <TextBlock Style="{StaticResource CaptionText}" Margin="0,6,0,0" TextWrapping="Wrap"
                                Text="Every text pairing in every scheme meets WCAG AA contrast — enforced by the test suite." />
 
-                    <TextBlock Text="Text" Style="{StaticResource SectionText}" Margin="0,16,0,10" />
+                    <TextBlock Text="Text" Style="{StaticResource SectionHeader}" />
                     <Grid Style="{StaticResource FieldRow}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
@@ -1422,7 +1465,7 @@
                     </Grid>
 
                     <!-- what the choices actually look like, live -->
-                    <TextBlock Text="Sample" Style="{StaticResource SectionText}" Margin="0,14,0,6" />
+                    <TextBlock Text="Sample" Style="{StaticResource SectionHeader}" />
                     <Border Background="{DynamicResource Theme.Surface}"
                             BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
                             CornerRadius="4" Padding="12,10">
@@ -1439,7 +1482,7 @@
                         </StackPanel>
                     </Border>
 
-                    <TextBlock Text="Sounds" Style="{StaticResource SectionText}" Margin="0,18,0,8" />
+                    <TextBlock Text="Sounds" Style="{StaticResource SectionHeader}" />
                     <CheckBox Content="Play sounds" IsChecked="{Binding SoundsEnabled}"
                               Margin="0,0,0,8" />
                     <StackPanel IsEnabled="{Binding SoundsEnabled}">
@@ -1467,9 +1510,12 @@
                                             VerticalAlignment="Center" AutomationProperties.Name="Test">
                                         <TextBlock Text="▶ Test" Style="{StaticResource ChipButtonLabel}" />
                                     </Button>
-                                    <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="8,0,0,0"
-                                                VerticalAlignment="Center"
-                                                Visibility="{Binding ShowCustom, Converter={StaticResource BoolToVis}}">
+                                    <!-- DockPanel, not a horizontal StackPanel: the file-name
+                                         ellipsis only engages at a finite width
+                                         (TextWrapCoverageTests) -->
+                                    <DockPanel Grid.Column="3" Margin="8,0,0,0"
+                                               VerticalAlignment="Center"
+                                               Visibility="{Binding ShowCustom, Converter={StaticResource BoolToVis}}">
                                         <Button Command="{Binding BrowseCommand}"
                                                 Style="{StaticResource ChipButton}" AutomationProperties.Name="Browse">
                                             <TextBlock Text="Browse…" Style="{StaticResource ChipButtonLabel}" />
@@ -1477,7 +1523,7 @@
                                         <TextBlock Text="{Binding CustomLabel}" Style="{StaticResource CaptionText}"
                                                    VerticalAlignment="Center" Margin="8,0,0,0"
                                                    TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
+                                    </DockPanel>
                                 </Grid>
                             </DataTemplate>
                         </StackPanel.Resources>
@@ -1502,7 +1548,7 @@
                     <!-- IsSharedSizeScope: see the General tab's identical
                          comment above — same per-tab LabelCol pattern. -->
                     <StackPanel Margin="16,8" Grid.IsSharedSizeScope="True">
-                        <TextBlock Text="Data files" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
+                        <TextBlock Text="Data files" Style="{StaticResource SectionHeaderFirst}" />
                         <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap" Margin="0,0,0,8"
                                    Text="Changing a path re-points the app at that file — it does not move the current contents. A missing file is created on save from the current list." />
 

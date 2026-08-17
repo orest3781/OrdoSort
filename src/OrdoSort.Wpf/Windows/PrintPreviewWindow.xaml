@@ -23,10 +23,10 @@
                     <TextBlock Text="Print" Foreground="{DynamicResource Theme.AccentText}" />
                 </StackPanel>
             </Button>
-            <TextBlock Text="Printer:" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <TextBlock Text="Printer:" VerticalAlignment="Center" Margin="0,0,8,0" />
             <ComboBox x:Name="Printers" MinWidth="220" VerticalAlignment="Center"
                       AutomationProperties.Name="Printer" />
-            <TextBlock Text="Copies:" VerticalAlignment="Center" Margin="14,0,6,0" />
+            <TextBlock Text="Copies:" VerticalAlignment="Center" Margin="14,0,8,0" />
             <TextBox x:Name="Copies" Width="44" Text="1" VerticalAlignment="Center"
                      AutomationProperties.Name="Copies" />
             <TextBlock x:Name="PrintNote" VerticalAlignment="Center" Margin="10,0,0,0"

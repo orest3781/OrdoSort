@@ -34,15 +34,15 @@
             </Grid.RowDefinitions>
 
             <DockPanel Margin="0,0,0,10">
-                <StackPanel Orientation="Horizontal">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
                     <Button Content="Add PDFs…" Click="OnAddFiles" Margin="0,0,6,0" />
                     <Button Content="Add a folder's PDFs…" Click="OnAddFolder" Margin="0,0,6,0" />
                     <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,0" />
                     <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,0" />
-                    <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
-                               VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis" />
                 </StackPanel>
+                <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
             </DockPanel>
 
             <Grid Grid.Row="1">
@@ -160,7 +160,7 @@
                     </DataGrid.Columns>
                 </DataGrid>
                 <TextBlock Text="Drag PDFs anywhere on this window, or press Add PDFs…"
-                           Style="{StaticResource SubtleText}" Margin="10,36,10,10"
+                           Style="{StaticResource EmptyStateText}"
                            IsHitTestVisible="False">
                     <TextBlock.Visibility>
                         <Binding Path="Rows.Count" Converter="{StaticResource ZeroToVis}" />

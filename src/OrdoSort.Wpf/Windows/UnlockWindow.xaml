@@ -26,7 +26,7 @@
             <Button Content="Cancel" Command="{Binding CancelCommand}" Width="96"
                     Margin="0,0,8,0"
                     Visibility="{Binding IsUnlocking, Converter={StaticResource BoolToVis}}" />
-            <Button Content="Manage saved…" Click="OnManageSaved" Padding="10,0" Margin="0,0,8,0" />
+            <Button Content="Manage saved…" Click="OnManageSaved" Padding="8,4" Margin="0,0,8,0" />
             <Button Content="Close" Width="96" IsCancel="True" />
         </StackPanel>
 
@@ -48,11 +48,21 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <TextBlock Text="PDFs to unlock:" Margin="0,0,0,6" Style="{StaticResource SectionText}" />
+            <TextBlock Text="PDFs to unlock:" Style="{StaticResource SectionHeaderFirst}" />
             <Grid Grid.Row="1">
                 <ListBox x:Name="FileList" ItemsSource="{Binding Files}"
                          SelectionMode="Extended" MinHeight="120"
-                         AutomationProperties.Name="PDFs to unlock">
+                         AutomationProperties.Name="PDFs to unlock"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <!-- Stretch + h-scroll Disabled: the row template below is a
+                         DockPanel whose FileName ellipsis only engages when the
+                         item is pinned to the viewport width (see RouteList's
+                         ItemContainerStyle comment for the BasedOn). -->
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <!-- The row is an UnlockFileRow (path + readiness-
@@ -114,12 +124,12 @@
                                  the exact Success-shaped problem Step 1 already
                                  fixed once, on a different token. See
                                  ThemePalette.cs's StatusRed field comment. -->
-                            <StackPanel Orientation="Horizontal"
-                                        ToolTip="{Binding ToolTipText}">
-                                <TextBlock Text="{Binding FileName}"
-                                           Foreground="{Binding Foreground,
-                                               RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
-                                <TextBlock Text="{Binding Note}">
+                            <!-- DockPanel, not a horizontal StackPanel: FileName's
+                                 ellipsis only engages at a finite width
+                                 (TextWrapCoverageTests); the tooltip carries the
+                                 full path, and the status Note docks right. -->
+                            <DockPanel ToolTip="{Binding ToolTipText}">
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding Note}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                             <Style.Triggers>
@@ -151,7 +161,10 @@
                                         </Style>
                                     </TextBlock.Style>
                                 </TextBlock>
-                            </StackPanel>
+                                <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground,
+                                               RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                            </DockPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
@@ -166,7 +179,8 @@
                         <ContentControl Template="{StaticResource Illustration.Unlock}"
                                          Height="80" Margin="0,0,0,8" />
                         <TextBlock Text="Drag PDFs anywhere on this window, or press Add files…"
-                                   Style="{StaticResource SubtleText}" HorizontalAlignment="Center" />
+                                   Style="{StaticResource SubtleText}" HorizontalAlignment="Center"
+                                   TextWrapping="Wrap" TextAlignment="Center" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -180,14 +194,14 @@
                            TextTrimming="CharacterEllipsis" />
             </DockPanel>
 
-            <Grid Grid.Row="3" Style="{StaticResource FieldRow}" Margin="0,0,0,8">
+            <Grid Grid.Row="3" Style="{StaticResource FieldRow}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                     <ColumnDefinition Width="220" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="Password:" Style="{StaticResource FieldLabel}" Margin="0,0,8,0" />
+                <TextBlock Text="Password:" Style="{StaticResource FieldLabel}" />
                 <PasswordBox Grid.Column="1" x:Name="PwBox" PasswordChanged="OnPasswordChanged"
                              AutomationProperties.Name="Password" />
                 <TextBox Grid.Column="1" x:Name="PwPlain" Visibility="Collapsed"
@@ -197,11 +211,12 @@
                           VerticalAlignment="Center" Checked="OnShowPw" Unchecked="OnShowPw" />
             </Grid>
 
-            <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,0,0,6">
-                <TextBlock Style="{StaticResource CaptionText}"
-                           VerticalAlignment="Center" TextWrapping="Wrap"
-                           Text="Every saved password is tried automatically, in addition to whatever's typed above. The unlocked file keeps its name and place — the locked original is moved to a dated locked_archive folder beside it, nothing is overwritten." />
-            </StackPanel>
+            <!-- direct Grid child on purpose: this used to sit in a horizontal
+                 StackPanel, whose infinite-width measure silently defeated the
+                 Wrap and ran the sentence off screen (TextWrapCoverageTests) -->
+            <TextBlock Grid.Row="4" Style="{StaticResource CaptionText}"
+                       TextWrapping="Wrap" Margin="0,0,0,6"
+                       Text="Every saved password is tried automatically, in addition to whatever's typed above. The unlocked file keeps its name and place — the locked original is moved to a dated locked_archive folder beside it, nothing is overwritten." />
 
             <!-- appears only after a run where the TYPED password (not a
                  saved one) unlocked something new — the one-click offer to
@@ -211,23 +226,28 @@
                     CornerRadius="4" Padding="10,8" Margin="0,0,0,10"
                     IsVisibleChanged="OnSaveBannerVisibilityChanged"
                     Visibility="{Binding SaveBannerVisible, Converter={StaticResource BoolToVis}}">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="{Binding SaveBannerText}" VerticalAlignment="Center"
-                               Margin="0,0,10,0" />
+                <!-- DockPanel, not a horizontal StackPanel: the banner prompt
+                     wraps at a finite width instead of pushing the name box and
+                     Save off screen (TextWrapCoverageTests) -->
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Save"
+                            Command="{Binding SaveBannerCommand}" Margin="8,0,0,0" />
                     <!-- Enter here means Save, never "run the batch again":
                          the Unlock button is IsDefault, and UnlockAsync calls
                          ResetBanner at the start of every run, so falling
                          through would restart the whole batch AND wipe the
                          offer being answered. See OnSaveNameKeyDown. -->
-                    <TextBox Width="150" Text="{Binding SaveBannerName, UpdateSourceTrigger=PropertyChanged}"
+                    <TextBox DockPanel.Dock="Right" Width="150"
+                             Text="{Binding SaveBannerName, UpdateSourceTrigger=PropertyChanged}"
                              AutomationProperties.Name="Save password as" VerticalAlignment="Center"
                              PreviewKeyDown="OnSaveNameKeyDown" />
-                    <Button Content="Save" Command="{Binding SaveBannerCommand}" Margin="8,0,0,0" />
-                </StackPanel>
+                    <TextBlock Text="{Binding SaveBannerText}" VerticalAlignment="Center"
+                               TextWrapping="Wrap" Margin="0,0,10,0" />
+                </DockPanel>
             </Border>
 
             <TextBlock Grid.Row="6" Text="{Binding Summary}" FontWeight="SemiBold"
-                       Margin="0,0,0,4" />
+                       TextWrapping="Wrap" Margin="0,0,0,4" />
             <Border Grid.Row="7" Background="{DynamicResource Theme.Surface}"
                     BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
                     CornerRadius="4">
@@ -257,7 +277,7 @@
                                   AutomationProperties.Name="Results">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,1">
+                                <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,2">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                             <Style.Triggers>

@@ -1931,13 +1931,42 @@
         <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
     </Style>
 
+    <!-- Spacing canon (fix pass 2026-08-16): dialog root gutter 14; form
+         row bottom gap 10 (FieldRow); label→control gap 8 (FieldLabel);
+         section header 0,16,0,6 (0,0,0,6 for the first header in a
+         container); dialog footer top gap 10; footer button→button gap 8;
+         content toolbar button→button gap 6; icon glyph→label gap 8;
+         horizontal checkbox/radio row gap 14. The styles below hold this
+         rhythm so windows stop hand-rolling their own margins. -->
+    <Style x:Key="SectionHeader" TargetType="TextBlock" BasedOn="{StaticResource SectionText}">
+        <Setter Property="Margin" Value="0,16,0,6" />
+    </Style>
+
+    <!-- Same as SectionHeader but no top gap, for the first section header
+         in a container where the container's own inset already separates
+         it from whatever sits above. -->
+    <Style x:Key="SectionHeaderFirst" TargetType="TextBlock" BasedOn="{StaticResource SectionText}">
+        <Setter Property="Margin" Value="0,0,0,6" />
+    </Style>
+
+    <!-- The empty-state message shape shared by History and the tool
+         windows' "nothing here yet" TextBlocks. Top margin is 36, not the
+         canon 10 — it exists to clear a DataGrid's column-header row
+         sitting above it, not to express section rhythm. -->
+    <Style x:Key="EmptyStateText" TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="10,36,10,10" />
+        <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
+
     <!-- The label+control row shape. Lived privately in SettingsWindow until
          2026-08-03; BulkRename, LabelMaker, MatchMerge and Unlock hand-rolled
          it with their own margins and drifted apart. Settings' values win
          because it has 19 rows to the others' handful. -->
     <Style x:Key="FieldLabel" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="VerticalAlignment" Value="Center" />
-        <Setter Property="Margin" Value="0,0,10,0" />
+        <Setter Property="Margin" Value="0,0,8,0" />
     </Style>
     <Style x:Key="FieldRow" TargetType="Grid">
         <Setter Property="Margin" Value="0,0,0,10" />

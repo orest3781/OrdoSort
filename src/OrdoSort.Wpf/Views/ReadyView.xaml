@@ -192,7 +192,7 @@
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
                     <StackPanel>
-                        <TextBlock Text="{Binding Title}" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
+                        <TextBlock Text="{Binding Title}" Style="{StaticResource SectionHeaderFirst}" />
                         <ItemsControl ItemsSource="{Binding Tiles}" Focusable="False"
                                       AlternationCount="8">
                             <ItemsControl.ItemsPanel>
@@ -228,17 +228,17 @@
                                             VerticalContentAlignment="Top"
                                             BorderThickness="0" Cursor="Hand">
                                         <StackPanel>
-                                            <StackPanel Orientation="Horizontal">
+                                            <DockPanel>
                                                 <!-- EmphasisText/BodySmallText size — Icon style already sets
                                                      FontFamily+VerticalAlignment; converting to a size-only
                                                      style would drop the glyph font. -->
                                                 <TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;"
-                                                           FontSize="12" Margin="0,0,6,0"
+                                                           FontSize="12" Margin="0,0,8,0"
                                                            Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}" />
                                                 <TextBlock Text="{Binding Label}" Style="{StaticResource BodySmallText}"
                                                            FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                                                            Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}" />
-                                            </StackPanel>
+                                            </DockPanel>
                                             <TextBlock Text="{Binding CountText}" Style="{StaticResource TileCountText}"
                                                        Margin="0,2,0,0" Typography.NumeralAlignment="Tabular"
                                                        Foreground="{Binding Fore, Converter={StaticResource RgbToBrush}}" />
@@ -270,7 +270,7 @@
             <!-- BodySmallText size — Icon style already sets FontFamily;
                  converting would drop it. -->
             <TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" FontSize="12"
-                       Foreground="{DynamicResource Theme.Success}" Margin="0,0,6,0" />
+                       Foreground="{DynamicResource Theme.Success}" Margin="0,0,8,0" />
             <TextBlock Text="All monitored folders are quiet"
                        Style="{StaticResource SubtleText}" />
         </StackPanel>
@@ -286,7 +286,7 @@
             <Button.Template>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Bg" Background="Transparent"
-                            CornerRadius="4" Padding="18,0,18,4">
+                            CornerRadius="4" Padding="16,0,16,4">
                         <ContentPresenter />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -376,7 +376,7 @@
                 <!-- EmphasisText size — Icon style already sets FontFamily;
                      converting would drop it. -->
                 <TextBlock Style="{StaticResource Icon}" Text="&#xE768;" FontSize="15"
-                           Margin="0,0,9,0" Foreground="{DynamicResource Theme.AccentText}" />
+                           Margin="0,0,8,0" Foreground="{DynamicResource Theme.AccentText}" />
                 <!-- sentence case, like every other button in the app
                      (2026-08-02 audit M4 — this was the only Title-Case one).
                      The AutomationProperties.Name above must match what is

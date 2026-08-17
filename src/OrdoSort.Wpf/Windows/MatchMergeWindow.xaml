@@ -53,17 +53,18 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <Grid Style="{StaticResource FieldRow}" Margin="0,0,0,8">
+            <Grid Style="{StaticResource FieldRow}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="Roster:" Style="{StaticResource FieldLabel}" Margin="0,0,8,0" />
+                <TextBlock Text="Roster:" Style="{StaticResource FieldLabel}" />
                 <Grid Grid.Column="1">
                     <TextBox Text="{Binding RosterPath, Mode=OneWay}" IsReadOnly="True" />
                     <TextBlock Text="no roster loaded yet — pick the spreadsheet (CSV or Excel) with names and Control IDs"
-                               VerticalAlignment="Center" Margin="8,0" IsHitTestVisible="False">
+                               VerticalAlignment="Center" Margin="8,0" IsHitTestVisible="False"
+                               TextTrimming="CharacterEllipsis">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
                                 <Setter Property="Visibility" Value="Collapsed" />
@@ -76,26 +77,26 @@
                         </TextBlock.Style>
                     </TextBlock>
                 </Grid>
-                <Button Grid.Column="2" Content="Load spreadsheet…" Margin="6,0,0,0"
+                <Button Grid.Column="2" Content="Load spreadsheet…" Margin="8,0,0,0"
                         Command="{Binding LoadRosterCommand}" />
             </Grid>
 
             <!-- header mapping means nothing until a roster is in -->
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8"
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10"
                         Visibility="{Binding HasRoster, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="First name:" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <TextBlock Text="First name:" VerticalAlignment="Center" Margin="0,0,8,0" />
                 <ComboBox MinWidth="140" ItemsSource="{Binding Headers}"
                           SelectedItem="{Binding FirstHeader}" Margin="0,0,12,0" />
-                <TextBlock Text="Last name:" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <TextBlock Text="Last name:" VerticalAlignment="Center" Margin="0,0,8,0" />
                 <ComboBox MinWidth="140" ItemsSource="{Binding Headers}"
                           SelectedItem="{Binding LastHeader}" Margin="0,0,12,0" />
-                <TextBlock Text="Control ID:" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <TextBlock Text="Control ID:" VerticalAlignment="Center" Margin="0,0,8,0" />
                 <ComboBox MinWidth="140" ItemsSource="{Binding Headers}"
                           SelectedItem="{Binding ControlHeader}" />
             </StackPanel>
 
-            <DockPanel Grid.Row="2" Margin="0,0,0,8">
-                <StackPanel Orientation="Horizontal">
+            <DockPanel Grid.Row="2" Margin="0,0,0,10">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
                     <Button Content="Add PDFs…" Click="OnAddFiles" Margin="0,0,6,0" />
                     <Button Content="Add a folder's PDFs…" Click="OnAddFolder" Margin="0,0,6,0" />
                     <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,0" />
@@ -115,7 +116,7 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
                                             <CheckBox Content="{Binding Name}"
-                                                      IsChecked="{Binding IsChosen}" Margin="0,2" />
+                                                      IsChecked="{Binding IsChosen}" />
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
@@ -125,10 +126,10 @@
                             </StackPanel>
                         </Border>
                     </Popup>
-                    <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
-                               VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis" />
                 </StackPanel>
+                <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
             </DockPanel>
 
             <Grid Grid.Row="3">
@@ -300,8 +301,8 @@
                         </DataGridTextColumn>
                     </DataGrid.Columns>
                 </DataGrid>
-                <TextBlock Style="{StaticResource SubtleText}" Margin="10,36,10,10"
-                           IsHitTestVisible="False" TextWrapping="Wrap"
+                <TextBlock Style="{StaticResource EmptyStateText}"
+                           IsHitTestVisible="False"
                            Text="1)  Load the roster above (CSV or Excel)    2)  Add or drag PDFs anywhere on this window    3)  Merge the matches; Review the rest">
                     <TextBlock.Visibility>
                         <Binding Path="Rows.Count" Converter="{StaticResource ZeroToVis}" />
@@ -310,7 +311,7 @@
             </Grid>
 
             <TextBlock Grid.Row="4" Text="{Binding BucketsLine}" FontWeight="SemiBold"
-                       Margin="0,6,0,0" />
+                       TextWrapping="Wrap" Margin="0,6,0,0" />
         </Grid>
     </DockPanel>
 </Window>

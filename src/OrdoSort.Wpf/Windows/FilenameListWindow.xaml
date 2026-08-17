@@ -25,29 +25,37 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                <Button Content="Browse folder…" Command="{Binding BrowseFolderCommand}" Margin="0,0,6,0" />
-                <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,14,0" />
-                <CheckBox Content="Include subfolders" IsChecked="{Binding IncludeSubfolders}"
-                          VerticalAlignment="Center" Margin="0,0,14,0" />
-                <CheckBox Content="Include extension" IsChecked="{Binding IncludeExtension}"
-                          VerticalAlignment="Center" Margin="0,0,14,0" />
-                <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
-                           VerticalAlignment="Center"
+            <!-- AddNote docks Right with a MaxWidth cap (the cap keeps its
+                 ellipsis working in the infinite-width dock measure), and the
+                 button/checkbox group is the WrapPanel fill child so it breaks
+                 to a second line at the window's MinWidth instead of marching
+                 off screen (WindowOverflowTests) -->
+            <DockPanel Margin="0,0,0,10">
+                <TextBlock DockPanel.Dock="Right" Text="{Binding AddNote}"
+                           Style="{StaticResource CaptionText}"
+                           VerticalAlignment="Center" MaxWidth="240"
                            TextTrimming="CharacterEllipsis" />
-            </StackPanel>
+                <WrapPanel>
+                    <Button Content="Browse folder…" Command="{Binding BrowseFolderCommand}" Margin="0,0,6,4" />
+                    <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,14,4" />
+                    <CheckBox Content="Include subfolders" IsChecked="{Binding IncludeSubfolders}"
+                              VerticalAlignment="Center" Margin="0,4,14,4" />
+                    <CheckBox Content="Include extension" IsChecked="{Binding IncludeExtension}"
+                              VerticalAlignment="Center" Margin="0,4" />
+                </WrapPanel>
+            </DockPanel>
 
             <Grid Grid.Row="1" Style="{StaticResource FieldRow}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="180" />
-                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="Only these types:" Style="{StaticResource FieldLabel}" />
                 <TextBox Grid.Column="1" Margin="0,0,10,0"
                          Text="{Binding ExtensionFilter, UpdateSourceTrigger=PropertyChanged}" />
                 <TextBlock Grid.Column="2" Text="pdf, docx — blank = all" VerticalAlignment="Center"
-                           Style="{StaticResource SubtleText}" />
+                           Style="{StaticResource SubtleText}" TextTrimming="CharacterEllipsis" />
             </Grid>
 
             <Grid Grid.Row="2">
@@ -98,7 +106,7 @@
                     </DataGrid.Columns>
                 </DataGrid>
                 <TextBlock Text="Drag files or folders here, or browse…"
-                           Style="{StaticResource SubtleText}" Margin="10,36,10,10"
+                           Style="{StaticResource EmptyStateText}"
                            IsHitTestVisible="False">
                     <TextBlock.Visibility>
                         <Binding Path="Rows.Count" Converter="{StaticResource ZeroToVis}" />

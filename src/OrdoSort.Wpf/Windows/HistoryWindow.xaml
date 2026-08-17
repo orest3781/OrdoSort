@@ -307,16 +307,14 @@
                  that just came up empty. -->
             <TextBlock x:Name="EmptyHistoryText"
                        Text="No filings recorded yet. Documents you file will appear here."
-                       Style="{StaticResource SubtleText}" TextWrapping="Wrap"
-                       HorizontalAlignment="Center" Margin="10,36,10,10" IsHitTestVisible="False">
+                       Style="{StaticResource EmptyStateText}">
                 <TextBlock.Visibility>
                     <Binding Path="IsEmpty" Converter="{StaticResource BoolToVis}" />
                 </TextBlock.Visibility>
             </TextBlock>
             <TextBlock x:Name="NoMatchesText"
                        Text="No filings match your search."
-                       Style="{StaticResource SubtleText}" TextWrapping="Wrap"
-                       HorizontalAlignment="Center" Margin="10,36,10,10" IsHitTestVisible="False">
+                       Style="{StaticResource EmptyStateText}">
                 <TextBlock.Visibility>
                     <Binding Path="NoMatches" Converter="{StaticResource BoolToVis}" />
                 </TextBlock.Visibility>

@@ -52,7 +52,7 @@
             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                 <CheckBox Content="Review files: rename to  &lt;received date&gt;-LAST-FIRST"
                           IsChecked="{Binding ReviewMode}" VerticalAlignment="Center" />
-                <TextBlock Text="received:" VerticalAlignment="Center" Margin="12,0,6,0" />
+                <TextBlock Text="received:" VerticalAlignment="Center" Margin="12,0,8,0" />
                 <DatePicker SelectedDate="{Binding ReceivedDate}"
                             IsEnabled="{Binding ReviewMode}" Width="130" />
             </StackPanel>
@@ -79,10 +79,10 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,0,6,6" />
+                            <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,0,8,6" />
                             <TextBox Grid.Column="1" Width="150" Margin="0,0,0,6"
                                      Text="{Binding Find, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBlock Grid.Row="1" Text="Replace with:" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBlock Grid.Row="1" Text="Replace with:" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <TextBox Grid.Row="1" Grid.Column="1" Width="150"
                                      Text="{Binding Replace, UpdateSourceTrigger=PropertyChanged}" />
                         </Grid>
@@ -105,10 +105,10 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <TextBlock Text="At start:" VerticalAlignment="Center" Margin="0,0,6,6" />
+                            <TextBlock Text="At start:" VerticalAlignment="Center" Margin="0,0,8,6" />
                             <TextBox Grid.Column="1" Width="130" Margin="0,0,0,6"
                                      Text="{Binding Prefix, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBlock Grid.Row="1" Text="At end:" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBlock Grid.Row="1" Text="At end:" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <TextBox Grid.Row="1" Grid.Column="1" Width="130"
                                      Text="{Binding Suffix, UpdateSourceTrigger=PropertyChanged}" />
                         </Grid>
@@ -119,10 +119,10 @@
                     <StackPanel>
                         <TextBlock Text="Delete segments" Style="{StaticResource SectionText}" Margin="0,0,0,8" />
                         <StackPanel Orientation="Horizontal">
-                            <CheckBox Content="1" IsChecked="{Binding DeleteSeg1}" Margin="0,0,8,0" />
-                            <CheckBox Content="2" IsChecked="{Binding DeleteSeg2}" Margin="0,0,8,0" />
-                            <CheckBox Content="3" IsChecked="{Binding DeleteSeg3}" Margin="0,0,8,0" />
-                            <CheckBox Content="4" IsChecked="{Binding DeleteSeg4}" Margin="0,0,8,0" />
+                            <CheckBox Content="1" IsChecked="{Binding DeleteSeg1}" Margin="0,4,14,4" />
+                            <CheckBox Content="2" IsChecked="{Binding DeleteSeg2}" Margin="0,4,14,4" />
+                            <CheckBox Content="3" IsChecked="{Binding DeleteSeg3}" Margin="0,4,14,4" />
+                            <CheckBox Content="4" IsChecked="{Binding DeleteSeg4}" Margin="0,4,14,4" />
                             <CheckBox Content="last" IsChecked="{Binding DeleteSegLast}" />
                         </StackPanel>
                     </StackPanel>
@@ -145,20 +145,20 @@
                      name, this jumps to the first one and opens it for typing -->
                 <Button DockPanel.Dock="Right" Click="OnJumpToNextStray"
                         Cursor="Hand" BorderThickness="0" Background="Transparent"
-                        Padding="6,2" VerticalAlignment="Center"
+                        Padding="8,4" VerticalAlignment="Center"
                         ToolTip="Go to the next file that still needs a name"
                         AutomationProperties.Name="Go to the next file needing a name">
                     <TextBlock Text="{Binding CountsLine}" Style="{StaticResource SubtleText}" />
                 </Button>
-                <StackPanel Orientation="Horizontal">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
                     <Button Content="Add files…" Click="OnAddFiles" Margin="0,0,6,0" />
                     <Button Content="Add a folder's files…" Click="OnAddFolder" Margin="0,0,6,0" />
                     <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,0" />
                     <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,0" />
-                    <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
-                               VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis" />
                 </StackPanel>
+                <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
             </DockPanel>
 
             <Grid Grid.Row="3">
@@ -355,7 +355,7 @@
                     </DataGrid.Columns>
                 </DataGrid>
                 <TextBlock Text="Drag files anywhere on this window, or press Add files…"
-                           Style="{StaticResource SubtleText}" Margin="10,36,10,10"
+                           Style="{StaticResource EmptyStateText}"
                            IsHitTestVisible="False">
                     <TextBlock.Visibility>
                         <Binding Path="Preview.Count" Converter="{StaticResource ZeroToVis}" />

@@ -81,7 +81,7 @@
                     </Grid.ColumnDefinitions>
 
                     <TextBlock x:Name="KindIcon" Grid.Column="0" Text="⚠" FontSize="16"
-                               VerticalAlignment="Top" Margin="0,1,10,0"
+                               VerticalAlignment="Top" Margin="0,2,8,0"
                                Foreground="{DynamicResource Theme.WarningText}" />
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -227,7 +227,7 @@
             <StackPanel Orientation="Horizontal"
                         Visibility="{Binding TileControlsVisible,
                                      Converter={StaticResource BoolToVis}}">
-            <TextBlock Text="Folders:" VerticalAlignment="Center" Margin="0,0,6,0"
+            <TextBlock Text="Folders:" VerticalAlignment="Center" Margin="0,0,8,0"
                        Visibility="{Binding ActualWidth,
                                     RelativeSource={RelativeSource AncestorType=Window},
                                     Converter={StaticResource WidthAtLeast},
@@ -262,7 +262,7 @@
                     <!-- BodySmallText size — Icon style already sets
                          FontFamily; converting would drop it. -->
                     <TextBlock Style="{StaticResource Icon}" Text="&#xE72C;"
-                               FontSize="12" Margin="0,0,6,0" />
+                               FontSize="12" Margin="0,0,8,0" />
                     <!-- second rung: below the compact dashboard's own parked
                          width the caption goes and the button is icon-only. The
                          icon stays, and so does the button's "Rescan the inbox
@@ -364,7 +364,7 @@
         <Border DockPanel.Dock="Bottom"
                 Background="{DynamicResource Theme.WindowBg}"
                 BorderBrush="{DynamicResource Theme.Border}" BorderThickness="0,1,0,0"
-                Padding="8,12"
+                Padding="16,8"
                 Visibility="{Binding HasNotices, Converter={StaticResource BoolToVis}}">
             <ItemsControl x:Name="NoticeRail" ItemsSource="{Binding Notices}"
                           ItemTemplate="{StaticResource NoticeItemTemplate}"

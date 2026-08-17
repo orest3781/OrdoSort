@@ -6,9 +6,12 @@ namespace OrdoSort.Wpf.Tests;
 /// <summary>FieldRow/FieldLabel used to live privately inside
 /// SettingsWindow.xaml while four other windows hand-rolled the same shape,
 /// so the label gap and row rhythm drifted per window. These assert the
-/// styles are resolvable app-wide and carry the metrics Settings established
-/// — the values are pinned deliberately: a later "tidy-up" that nudges them
-/// silently re-lays-out five windows at once.</summary>
+/// styles are resolvable app-wide and carry the canonical metrics — the
+/// values are pinned deliberately: a later "tidy-up" that nudges them
+/// silently re-lays-out five windows at once. Label gap re-pinned 10 → 8 in
+/// the 2026-08 spacing-canon pass: 8 was the majority value at hand-rolled
+/// call sites, so the app standardized on it (see the canon comment above
+/// FieldRow in Theme\Styles.xaml).</summary>
 [Collection(HighlightContrastTests.Name)]
 public class SharedFieldRowTests
 {
@@ -25,7 +28,7 @@ public class SharedFieldRowTests
         host.Measure(new Size(400, 200));
         host.Arrange(new Rect(0, 0, 400, 200));
         Assert.Equal(VerticalAlignment.Center, label.VerticalAlignment);
-        Assert.Equal(new Thickness(0, 0, 10, 0), label.Margin);
+        Assert.Equal(new Thickness(0, 0, 8, 0), label.Margin);
     });
 
     [Fact]

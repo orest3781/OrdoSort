@@ -29,23 +29,26 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <TextBlock Grid.Row="0" Text="Paste your list:" Margin="0,0,0,6" />
+            <TextBlock Grid.Row="0" Text="Paste your list:" Margin="0,0,0,10" />
             <TextBox Grid.Row="1" Margin="0,0,0,10"
                      Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}"
                      AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
                      HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" />
 
-            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,10">
+            <!-- WrapPanel, not a horizontal StackPanel: at the window's
+                 MinWidth the Clear button used to march off the window edge —
+                 wrapping keeps every control on screen (WindowOverflowTests) -->
+            <WrapPanel Grid.Row="2" Margin="0,0,0,10">
                 <CheckBox Content="Quote each item" IsChecked="{Binding Quote}"
-                          VerticalAlignment="Center" Margin="0,0,14,0" />
+                          VerticalAlignment="Center" Margin="0,4,14,4" />
                 <CheckBox Content="Space after comma" IsChecked="{Binding SpaceAfterComma}"
-                          VerticalAlignment="Center" Margin="0,0,14,0" />
+                          VerticalAlignment="Center" Margin="0,4,14,4" />
                 <CheckBox Content="Drop duplicates" IsChecked="{Binding Dedupe}"
-                          VerticalAlignment="Center" Margin="0,0,14,0" />
-                <Button Content="Clear" Command="{Binding ClearCommand}" />
-            </StackPanel>
+                          VerticalAlignment="Center" Margin="0,4,14,4" />
+                <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,4" />
+            </WrapPanel>
 
-            <TextBlock Grid.Row="3" Text="Comma-delimited:" Margin="0,0,0,6" />
+            <TextBlock Grid.Row="3" Text="Comma-delimited:" Margin="0,0,0,10" />
             <TextBox Grid.Row="4"
                      Text="{Binding OutputText, Mode=OneWay}"
                      IsReadOnly="True" IsReadOnlyCaretVisible="True" TextWrapping="NoWrap"

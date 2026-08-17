@@ -10,18 +10,49 @@
             <Button Content="Close" Width="96" IsCancel="True" IsDefault="True" />
         </StackPanel>
 
-        <StackPanel>
-            <TextBlock Text="Saved passwords" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
+        <!-- DockPanel, not a vertical StackPanel: with everything stacked and
+             the list at a FIXED height, the Add/Remove row and hint were the
+             overflow — clipped off the window bottom at MinHeight and at
+             larger app fonts (WindowOverflowTests). The list is the one
+             element that scrolls internally, so IT takes the squeeze: entry
+             row + hint dock to the bottom and the list fills what's left. -->
+        <DockPanel>
+            <TextBlock DockPanel.Dock="Top" Text="Saved passwords" Style="{StaticResource SectionText}" Margin="0,0,0,6" />
             <!-- x:Name'd so ManageSavedWindowCopyTests can measure it
                  directly off-screen and prove it actually wraps instead of
-                 clipping — this window's own vertical StackPanel gives it
+                 clipping — this window's own vertical panel gives it
                  constrained width, unlike the horizontal-StackPanel trap
                  UnlockWindow.xaml has a documented history of (see that
                  test's own doc comment). -->
-            <TextBlock x:Name="StorageNote" Style="{StaticResource SubtleText}" TextWrapping="Wrap" Margin="0,0,0,8"
+            <TextBlock DockPanel.Dock="Top" x:Name="StorageNote" Style="{StaticResource SubtleText}" TextWrapping="Wrap" Margin="0,0,0,8"
                        Text="Tried automatically on Unlock. Stored as plain text in the shared config.json — anyone who can open that file can read them." />
+            <TextBlock DockPanel.Dock="Bottom" x:Name="PwHint" Style="{StaticResource StatusText}" Margin="0,6,0,0" />
+            <Grid DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="Name (e.g. the sender):" Style="{StaticResource CaptionText}"
+                           Margin="0,0,0,6" />
+                <TextBlock Grid.Column="1" Text="Password:" Style="{StaticResource CaptionText}"
+                           Margin="0,0,0,6" />
+                <TextBox x:Name="NewPwLabel" Grid.Row="1" Margin="0,0,6,0"
+                         AutomationProperties.Name="New password label" />
+                <PasswordBox x:Name="NewPwValue" Grid.Row="1" Grid.Column="1" Margin="0,0,6,0"
+                             AutomationProperties.Name="New password" />
+                <Button Grid.Row="1" Grid.Column="2" Content="Add" Click="OnAddPassword"
+                        MinWidth="52" Margin="0,0,6,0" />
+                <Button Grid.Row="1" Grid.Column="3" Content="Remove"
+                        Command="{Binding RemoveSavedCommand}" />
+            </Grid>
             <ListBox ItemsSource="{Binding Saved}" SelectedItem="{Binding SelectedSavedEntry}"
-                     Height="150">
+                     MinHeight="60">
                 <!-- Label gets a LOCAL Foreground bound back to the generated
                      ListBoxItem — see Styles.xaml's ListBoxItem style
                      comment: an ItemTemplate's LOCAL ContentTemplate
@@ -63,31 +94,6 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
-            <Grid Margin="0,8,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <TextBlock Text="Name (e.g. the sender):" Style="{StaticResource CaptionText}"
-                           Margin="0,0,0,6" />
-                <TextBlock Grid.Column="1" Text="Password:" Style="{StaticResource CaptionText}"
-                           Margin="0,0,0,6" />
-                <TextBox x:Name="NewPwLabel" Grid.Row="1" Margin="0,0,6,0"
-                         AutomationProperties.Name="New password label" />
-                <PasswordBox x:Name="NewPwValue" Grid.Row="1" Grid.Column="1" Margin="0,0,6,0"
-                             AutomationProperties.Name="New password" />
-                <Button Grid.Row="1" Grid.Column="2" Content="Add" Click="OnAddPassword"
-                        MinWidth="52" Margin="0,0,6,0" />
-                <Button Grid.Row="1" Grid.Column="3" Content="Remove"
-                        Command="{Binding RemoveSavedCommand}" />
-            </Grid>
-            <TextBlock x:Name="PwHint" Style="{StaticResource StatusText}" Margin="0,6,0,0" />
-        </StackPanel>
+        </DockPanel>
     </DockPanel>
 </Window>

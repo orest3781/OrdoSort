@@ -6,7 +6,7 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Style="{StaticResource {x:Type Window}}"
         PreviewKeyDown="OnWindowKeyDown">
-    <Grid>
+    <Grid Margin="14">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" MinWidth="320" />
             <ColumnDefinition Width="5" />
@@ -28,7 +28,7 @@
         <wv2:WebView2 x:Name="Viewer" Focusable="False" />
         <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                       ResizeBehavior="PreviousAndNext" IsTabStop="False" />
-        <DockPanel Grid.Column="2" Margin="12">
+        <DockPanel Grid.Column="2" Margin="12,0,0,0">
             <StackPanel DockPanel.Dock="Top">
                 <TextBlock x:Name="Progress" Style="{StaticResource HeadlineCompactText}" />
                 <TextBlock x:Name="FileName" Style="{StaticResource SubtleText}"
@@ -37,7 +37,7 @@
                            Margin="0,0,0,6" TextWrapping="Wrap" />
             </StackPanel>
             <StackPanel DockPanel.Dock="Bottom">
-                <TextBlock x:Name="Note" Style="{StaticResource StatusText}" Margin="0,8,0,8" />
+                <TextBlock x:Name="Note" Style="{StaticResource StatusText}" Margin="0,10,0,0" />
                 <Button x:Name="UseButton" Click="OnUseSelected"
                         Style="{StaticResource PrimaryButton}" Height="40" IsEnabled="False"
                         AutomationProperties.Name="Use selected id">
@@ -47,9 +47,9 @@
                         <TextBlock Text="Use selected id" Style="{StaticResource PrimaryButtonLabel}" />
                     </StackPanel>
                 </Button>
-                <Button Content="Skip this file" Click="OnSkip" Height="34" Margin="0,6,0,0" />
+                <Button Content="Skip this file" Click="OnSkip" Height="34" Margin="0,8,0,0" />
                 <!-- IsCancel: click or Esc — merges already done stay done -->
-                <Button Content="Stop reviewing" IsCancel="True" Height="34" Margin="0,6,0,0" />
+                <Button Content="Stop reviewing" IsCancel="True" Height="34" Margin="0,8,0,0" />
             </StackPanel>
             <!-- Enter or double-click accepts the selected row — a long review
                  run shouldn't mean reaching for the button every time -->

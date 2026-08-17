@@ -141,8 +141,14 @@ public class CopyAndTerminologyTests
             window.UpdateLayout();
             PumpRender();
             window.UpdateLayout();
+            // section headings may carry SectionText or its spacing-canon
+            // derivatives (SectionHeader / SectionHeaderFirst, BasedOn it)
+            var headingStyles = new[] { "SectionText", "SectionHeader", "SectionHeaderFirst" }
+                .Select(window.TryFindResource)
+                .Where(s => s is not null)
+                .ToList();
             var headings = Descendants<TextBlock>(window)
-                .Where(t => ReferenceEquals(t.Style, window.TryFindResource("SectionText")))
+                .Where(t => headingStyles.Any(s => ReferenceEquals(t.Style, s)))
                 .Select(t => t.Text)
                 .ToList();
             Assert.Contains("Monitored folders", headings);

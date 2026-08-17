@@ -592,11 +592,18 @@ public class HighlightContrastTests
             var container = listBox.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem
                 ?? throw new InvalidOperationException("FileList row 0 never realized a container");
 
+            // located by rendered text, not tree position: the row template
+            // docks the Note right, so DECLARATION order is Note-then-FileName
+            // while the on-screen order stays FileName-then-Note (the
+            // TextWrapCoverageTests restructure) — positional [0]/[1] indexing
+            // silently swapped the two after that change
             var textBlocks = FindAllDescendants<TextBlock>(container);
-            Assert.True(textBlocks.Count >= 2,
-                $"expected FileName + Note TextBlocks, found {textBlocks.Count}");
-            var fileNameFg = ToRgb(textBlocks[0].Foreground);
-            var noteFg = ToRgb(textBlocks[1].Foreground);
+            var fileNameBlock = textBlocks.FirstOrDefault(t => t.Text == row.FileName)
+                ?? throw new InvalidOperationException("no TextBlock renders row.FileName");
+            var noteBlock = textBlocks.FirstOrDefault(t => t.Text == row.Note)
+                ?? throw new InvalidOperationException("no TextBlock renders row.Note");
+            var fileNameFg = ToRgb(fileNameBlock.Foreground);
+            var noteFg = ToRgb(noteBlock.Foreground);
 
             if (selected)
             {
@@ -2145,10 +2152,13 @@ public class HighlightContrastTests
             var rowBg = ToRgb(bd.Background);
             Assert.Equal(ToRgb((Brush)_fx.App.Resources["Theme.RowHover"]), rowBg);
 
-            var textBlocks = FindAllDescendants<TextBlock>(container);
-            Assert.True(textBlocks.Count >= 2,
-                $"expected FileName + Note TextBlocks, found {textBlocks.Count}");
-            var noteFg = ToRgb(textBlocks[1].Foreground);
+            // by rendered text, not tree position — the row template docks the
+            // Note right, so declaration order is Note-then-FileName (see
+            // AssertUnlockFileListNoteContrast's identical locator)
+            var noteBlock = FindAllDescendants<TextBlock>(container)
+                    .FirstOrDefault(t => t.Text == row.Note)
+                ?? throw new InvalidOperationException("no TextBlock renders row.Note");
+            var noteFg = ToRgb(noteBlock.Foreground);
             Assert.Equal(expectedColor(p), noteFg);
             var ratio = ThemePalette.ContrastRatio(noteFg, rowBg);
 
