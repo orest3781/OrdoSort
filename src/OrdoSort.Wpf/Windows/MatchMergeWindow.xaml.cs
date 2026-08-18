@@ -1,5 +1,6 @@
 using System.Windows;
 using Microsoft.Win32;
+using OrdoSort.Core;
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Views;
 
@@ -34,8 +35,7 @@ public partial class MatchMergeWindow : Window
     private void OnAddFolder(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFolderDialog();
-        if (dlg.ShowDialog(this) == true)
-            _vm.AddFiles(Directory.GetFiles(dlg.FolderName, "*.pdf"));
+        if (dlg.ShowDialog(this) == true) AddExpanded(new[] { dlg.FolderName });
     }
 
     private void OnRemoveSelected(object sender, RoutedEventArgs e) =>
@@ -64,6 +64,17 @@ public partial class MatchMergeWindow : Window
 
     private void OnDrop(object sender, DragEventArgs e)
     {
-        if (e.Data.GetData(DataFormats.FileDrop) is string[] paths) _vm.AddFiles(paths);
+        if (e.Data.GetData(DataFormats.FileDrop) is string[] paths) AddExpanded(paths);
     }
+
+    /// <summary>Shared by OnAddFolder and OnDrop: a bare Directory.GetFiles
+    /// throws UnauthorizedAccessException into the global crash dialog the
+    /// moment one subfolder denies access, and neither call site expanded
+    /// dropped folders at all. Intake.Expand (IgnoreInaccessible — the same
+    /// unreadable-subfolder precedent PageCountsViewModel.AddFilesAsync
+    /// relies on) walks files and folders alike without throwing; AddFiles
+    /// then runs its own Intake.Add dedupe over the flat result exactly as
+    /// it already does for files picked one at a time.</summary>
+    private void AddExpanded(IEnumerable<string> paths) =>
+        _vm.AddFiles(Intake.Expand(paths, recursive: true, new HashSet<string> { "pdf" }).Files);
 }

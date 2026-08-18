@@ -101,7 +101,19 @@
                     <Button Content="Add a folder's PDFs…" Click="OnAddFolder" Margin="0,0,6,0" />
                     <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,0" />
                     <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,0" />
+                    <!-- ClickMode="Press": the app's own ComboBox template
+                         (Theme/Styles.xaml, its Toggle ToggleButton) sets
+                         this on every dropdown toggle it owns for the same
+                         reason — with the default Release, the Popup below
+                         (StaysOpen="False") sees the outside MouseDown and
+                         closes itself BEFORE this button's own Click (fired
+                         on MouseUp) flips IsChecked back on, so a click on
+                         the toggle while the popup is open closes it and
+                         immediately reopens it instead of just closing it.
+                         Press fires the toggle on the same MouseDown the
+                         Popup dismisses on, so the two agree. -->
                     <ToggleButton x:Name="ColumnsToggle" Content="Columns…" Margin="0,0,10,0"
+                                  ClickMode="Press"
                                   Visibility="{Binding HasRoster, Converter={StaticResource BoolToVis}}" />
                     <Popup IsOpen="{Binding IsChecked, ElementName=ColumnsToggle, Mode=TwoWay}"
                            PlacementTarget="{Binding ElementName=ColumnsToggle}"

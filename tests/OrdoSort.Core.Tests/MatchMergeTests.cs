@@ -426,6 +426,86 @@ public class MatchMergeTests : IDisposable
         Assert.Equal("111", hit.Candidate.ControlId);
     }
 
+    // -------------------------------------------- cross-reading collision
+
+    [Fact]
+    public void CrossReadingCollisionIsAmbiguousNotASilentAutoMerge()
+    {
+        // Two different hyphen splits of the SAME stem each resolve to a
+        // different roster person: "Garcia-Lopez-Maria, Jose" under the
+        // first (most-likely) split, "Garcia-Lopez, Maria-Jose" under the
+        // second. The old code stopped scanning readings at the first hit
+        // and merged onto whichever person happened to read first — one
+        // click, silently, onto the wrong file. Both are live candidates;
+        // this is a human call.
+        var roster = TokenRoster(
+            ("GARCIA-LOPEZ-MARIA", "JOSE", "A"),
+            ("GARCIA-LOPEZ", "MARIA-JOSE", "B"));
+        var r = Assert.Single(MatchFiles(
+            new[] { Touch("20240101-GARCIA-LOPEZ-MARIA-JOSE.pdf") }, roster));
+        Assert.Equal("ambiguous", r.Status);
+        Assert.Equal(new[] { "A", "B" },
+            r.Candidates!.Select(c => c.ControlId).OrderBy(x => x));
+    }
+
+    [Fact]
+    public void SingleReadingHitStillMergesUnchanged()
+    {
+        // Guard against over-correction: when only ONE reading hits the
+        // roster and resolves to exactly one person, that's still a clean
+        // auto-merge — the cross-reading union must not turn every ordinary
+        // match into a review.
+        var roster = TokenRoster(("EVANS", "FRANK", "111"));
+        var r = Assert.Single(MatchFiles(new[] { Touch("20240126-EVANS-FRANK.pdf") }, roster));
+        Assert.Equal("merge", r.Status);
+    }
+
+    // ------------------------------------------- "already merged" mitigation
+
+    [Fact]
+    public void AlreadyMergedNoteInvitesVerificationRatherThanAssertingFact()
+    {
+        // (a) of the mitigation: the suffix test can never prove a genuine
+        // merge (see AlreadyCarries's doc comment) — pinning the wording so
+        // the UI can't drift back to stating it as settled fact.
+        Assert.Equal("already carries this id — verify it was filed, not a coincidence",
+            MatchMerge.AlreadyMergedNote);
+        var r = MatchFiles(new[] { Touch("20240126-EVANS-FRANK-176797656.pdf") }, LoadRoster())[0];
+        Assert.Equal(MatchMerge.AlreadyMergedNote, r.Note);
+    }
+
+    [Fact]
+    public void TooShortAnIdNeverCountsAsAlreadyMerged()
+    {
+        // (b) of the mitigation: a one- or two-character id is common enough
+        // that an unrelated trailing number (a page count, a version, a
+        // stray digit) can coincidentally equal it. Reverting the length
+        // floor turns that coincidence into a false "already", silently
+        // dropping the file from both merge and review — exactly the
+        // failure this finding is about. Below the floor, the file falls
+        // through to ordinary classification instead of being swallowed.
+        var roster = TokenRoster(("EVANS", "FRANK", "1"));
+        var r = Assert.Single(MatchFiles(new[] { Touch("20240126-EVANS-FRANK-1.pdf") }, roster));
+        Assert.NotEqual("already", r.Status);
+    }
+
+    [Fact]
+    public void IdAtTheLengthFloorIsTheIrreducibleCoincidenceCase()
+    {
+        // The boundary this mitigation admits it cannot close: an id right
+        // at MinTrustworthyIdLength clears the floor, so a file that merely
+        // HAPPENS to end that way — never touched by MergeOne or
+        // ExecuteMerges, just Touch()'d fresh below — still reads as
+        // "already". No structural check can do better: the same-person
+        // name match that got the file here is identical whether the id
+        // arrived via a real merge or by coincidence, and the bytes on disk
+        // are the same either way. This is why AlreadyMergedNote asks a
+        // human to verify instead of asserting it.
+        var roster = TokenRoster(("EVANS", "FRANK", "111"));
+        var r = Assert.Single(MatchFiles(new[] { Touch("20240126-EVANS-FRANK-111.pdf") }, roster));
+        Assert.Equal("already", r.Status);
+    }
+
     [Fact]
     public void MatchFilesEmitsSuggestedOnlyWhenExactMisses()
     {

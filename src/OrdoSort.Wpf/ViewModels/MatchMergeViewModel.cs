@@ -58,6 +58,15 @@ public sealed class MatchMergeViewModel : ObservableObject
     private List<BulkRename.RenameOutcome> _outcomes = new();
     private bool _fillingHeaders;
 
+    /// <summary>Sources whose last DoMerge attempt was rejected by
+    /// Naming.RejectIllegal (Execute silently drops those plans — see
+    /// DoMerge), keyed by source and valued by the NewStem that was
+    /// rejected plus why. A row stays flagged only while its CURRENT
+    /// proposed NewStem still matches what was rejected — a roster
+    /// reload/re-match that retargets the row to a different candidate is
+    /// never shown a stale rejection (checked in Refresh).</summary>
+    private readonly Dictionary<string, (string NewStem, string Note)> _mergeRejectNotes = new();
+
     public ObservableCollection<string> Headers { get; } = new();
     public ObservableCollection<MatchRow> Rows { get; } = new();
 
@@ -72,20 +81,36 @@ public sealed class MatchMergeViewModel : ObservableObject
         LoadRosterCommand = new RelayCommand(BrowseRoster);
         MergeCommand = new RelayCommand(DoMerge, () => MergeCount > 0);
         UndoCommand = new RelayCommand(UndoBatch, () => _outcomes.Count > 0);
-        ClearCommand = new RelayCommand(() => { _files.Clear(); Refresh(); });
+        ClearCommand = new RelayCommand(() => { _files.Clear(); _mergeRejectNotes.Clear(); Refresh(); });
     }
 
     private string _rosterPath = "";
     public string RosterPath { get => _rosterPath; private set => Set(ref _rosterPath, value); }
 
+    // RebuildColumnPicks alongside ReloadRoster on every combo change (not
+    // just the initial LoadRosterFrom guess) — otherwise a user CORRECTING
+    // a wrong auto-guess leaves ColumnPicks pre-ticking the stale column
+    // the picker never gets told to drop.
     private string? _firstHeader;
-    public string? FirstHeader { get => _firstHeader; set { if (Set(ref _firstHeader, value)) ReloadRoster(); } }
+    public string? FirstHeader
+    {
+        get => _firstHeader;
+        set { if (Set(ref _firstHeader, value)) { ReloadRoster(); RebuildColumnPicks(); } }
+    }
 
     private string? _lastHeader;
-    public string? LastHeader { get => _lastHeader; set { if (Set(ref _lastHeader, value)) ReloadRoster(); } }
+    public string? LastHeader
+    {
+        get => _lastHeader;
+        set { if (Set(ref _lastHeader, value)) { ReloadRoster(); RebuildColumnPicks(); } }
+    }
 
     private string? _controlHeader;
-    public string? ControlHeader { get => _controlHeader; set { if (Set(ref _controlHeader, value)) ReloadRoster(); } }
+    public string? ControlHeader
+    {
+        get => _controlHeader;
+        set { if (Set(ref _controlHeader, value)) { ReloadRoster(); RebuildColumnPicks(); } }
+    }
 
     private string _status = "";
     public string Status { get => _status; private set => Set(ref _status, value); }
@@ -126,20 +151,26 @@ public sealed class MatchMergeViewModel : ObservableObject
 
     public ObservableCollection<HeaderPick> ColumnPicks { get; } = new();
 
-    /// <summary>The headers Review matches shows. Picked columns come back in
-    /// roster order (ColumnPicks is built by walking Headers); the fallback —
-    /// nothing picked — returns the mapped name and id columns in MAPPED
-    /// order (Last, First, Control), not roster order. Either way the result
-    /// is de-duplicated: a roster with a repeated column name must never hand
-    /// Review matches (and its per-row dictionary) a duplicate header.</summary>
+    /// <summary>The headers Review matches shows. ALWAYS includes whichever
+    /// headers are currently mapped to First/Last/Control — a saved pick
+    /// list left over from a differently-headed roster can fail to mention
+    /// this roster's mapped headers at all (its old spellings just aren't
+    /// among this roster's columns), and Review matches (and its per-row
+    /// identity) must never be handed a column set with no name/id field to
+    /// file against. Any additionally-picked columns follow, in roster order
+    /// (ColumnPicks is built by walking Headers); with nothing extra picked,
+    /// the identity headers alone come back in MAPPED order (Last, First,
+    /// Control). Either way the result is de-duplicated: a roster with a
+    /// repeated column name must never hand Review matches (and its per-row
+    /// dictionary) a duplicate header.</summary>
     public IReadOnlyList<string> ChosenColumns
     {
         get
         {
-            var picked = ColumnPicks.Where(p => p.IsChosen).Select(p => p.Name).Distinct().ToList();
-            if (picked.Count > 0) return picked;
-            return new[] { LastHeader, FirstHeader, ControlHeader }
-                .Where(h => h is not null).Cast<string>().Distinct().ToList();
+            var identity = new[] { LastHeader, FirstHeader, ControlHeader }
+                .Where(h => h is not null).Cast<string>();
+            var picked = ColumnPicks.Where(p => p.IsChosen).Select(p => p.Name);
+            return identity.Concat(picked).Distinct().ToList();
         }
     }
 
@@ -315,8 +346,16 @@ public sealed class MatchMergeViewModel : ObservableObject
         }
         catch (RosterException ex)
         {
+            // Reaching here at all means Headers is already populated (the
+            // guard above returns before this point otherwise) — this is a
+            // RE-load with real, current headers the combos can still fix,
+            // same class of problem as the unmapped/collision branch above,
+            // which keeps the pickers visible for exactly that reason. Only
+            // a failed READ of a brand-new file (LoadRosterFrom's own catch,
+            // before Headers is ever touched) is unrecoverable enough to
+            // leave the picker hidden.
             _roster = null;
-            HasRoster = false;
+            HasRoster = true;
             Status = ex.Message;
             Refresh();
             return;
@@ -361,7 +400,11 @@ public sealed class MatchMergeViewModel : ObservableObject
 
     public void RemoveFiles(IEnumerable<string> sources)
     {
-        foreach (var s in sources.ToList()) _files.Remove(s);
+        foreach (var s in sources.ToList())
+        {
+            _files.Remove(s);
+            _mergeRejectNotes.Remove(s);
+        }
         AddNote = "";
         Refresh();
     }
@@ -374,20 +417,39 @@ public sealed class MatchMergeViewModel : ObservableObject
         var display = _roster is null
             ? _files.Select(f => new MatchMerge.MatchResult(f, "no_roster")).ToList()
             : _results;
-        int already = 0, noMatch = 0, noName = 0;
+        int already = 0, noMatch = 0, noName = 0, rejected = 0;
         foreach (var r in display)
         {
             string becomes = "", note = "";
             switch (r.Status)
             {
-                case "merge": becomes = r.NewStem + Path.GetExtension(r.Source); merges++; break;
+                case "merge":
+                    // A row a previous DoMerge tried and Naming.RejectIllegal
+                    // rejected stays flagged only while the CURRENTLY
+                    // proposed NewStem still matches what was rejected — a
+                    // roster reload/re-match that retargets this file to a
+                    // different candidate is never shown a stale rejection.
+                    if (_mergeRejectNotes.TryGetValue(r.Source, out var reject)
+                        && reject.NewStem == r.NewStem)
+                    {
+                        note = reject.Note;
+                        rejected++;
+                    }
+                    else
+                    {
+                        becomes = r.NewStem + Path.GetExtension(r.Source);
+                        merges++;
+                    }
+                    break;
                 case "ambiguous":
                     note = $"{r.Candidates!.Count} candidates — decide in Review matches";
                     review++; break;
                 case "suggested":
                     note = $"{r.Suggestions!.Count} suggested — confirm in Review matches";
                     suggested++; review++; break;
-                case "already": note = "already has the id"; already++; break;
+                case "already":
+                    note = r.Note.Length > 0 ? r.Note : "already has the id";
+                    already++; break;
                 case "no_match": note = "no roster match"; noMatch++; break;
                 case "no_name": note = "no name found in the filename"; noName++; break;
                 case "no_roster": note = "load a roster first"; break;
@@ -401,6 +463,7 @@ public sealed class MatchMergeViewModel : ObservableObject
         if (merges > 0) parts.Add($"{merges} ready to merge");
         if (suggested > 0) parts.Add($"{suggested} suggested");
         if (review > 0) parts.Add($"{review} to review");
+        if (rejected > 0) parts.Add($"{rejected} couldn't be renamed");
         if (already > 0) parts.Add($"{already} already merged");
         if (noMatch > 0) parts.Add($"{noMatch} no match");
         if (noName > 0) parts.Add($"{noName} no name in the filename");
@@ -412,21 +475,46 @@ public sealed class MatchMergeViewModel : ObservableObject
         MergeCommand.RaiseCanExecuteChanged();
     }
 
-    private void DoMerge() => Absorb(MatchMerge.ExecuteMerges(_results));
+    private void DoMerge()
+    {
+        // MatchMerge.ExecuteMerges plans then Executes, and Execute silently
+        // skips every Changed=false plan. For a "merge" row that's the ONLY
+        // way Changed can come back false — Naming.RejectIllegal fired
+        // inside Plan (a merge NewStem is always non-empty and never already
+        // the current name) — so without inspecting the plans directly the
+        // row would vanish from both the merged and the failed count, and
+        // keep re-offering "ready to merge" forever. Plan the exact batch
+        // ExecuteMerges would, so the rejected ones are visible.
+        var toDo = _results.Where(r => r.Status == "merge").ToList();
+        var overrides = toDo.ToDictionary(r => r.Source, r => r.NewStem);
+        var plans = BulkRename.Plan(toDo.Select(r => r.Source), new BulkRename.RenameOp(), overrides);
+        var rejected = plans.Where(p => p.Manual && !p.Changed).ToList();
+        foreach (var p in rejected) _mergeRejectNotes[p.Source] = (overrides[p.Source], p.Note);
+        var outcomes = BulkRename.Execute(plans)
+            .Concat(rejected.Select(p => new BulkRename.RenameOutcome(p.Source, null, p.Note)))
+            .ToList();
+        Absorb(outcomes);
+    }
 
     /// <summary>Adopt a batch of rename outcomes (one-click merges or review
-    /// picks): follow renamed files, extend the undo batch, re-match.</summary>
+    /// picks): follow renamed files, re-match, and REPLACE _outcomes — this
+    /// call's outcomes become the new "last merge" batch, the same replace
+    /// (not accumulate) rule BulkRenameViewModel.Apply follows, so "Undo
+    /// last merge" only ever undoes the last DoMerge or the last review
+    /// batch, never everything since the tool was opened.</summary>
     public void Absorb(List<BulkRename.RenameOutcome> outcomes)
     {
         var renamed = outcomes.Where(o => o.Final != null).ToList();
         var finals = renamed.ToDictionary(o => o.Source, o => o.Final!);
         for (var i = 0; i < _files.Count; i++)
             if (finals.TryGetValue(_files[i], out var f)) _files[i] = f;
-        _outcomes.AddRange(renamed);
+        _outcomes = renamed;
         UndoCommand.RaiseCanExecuteChanged();
         Refresh();
-        var failed = outcomes.Count(o => o.Final == null);
-        if (failed > 0) Status = $"Merged {renamed.Count}; {failed} failed.";
+        var failed = outcomes.Where(o => o.Final == null).ToList();
+        if (failed.Count > 0)
+            Status = $"Merged {renamed.Count}; {failed.Count} failed — e.g. " +
+                     $"{Path.GetFileName(failed[0].Source)}: {failed[0].Error}";
         else if (renamed.Count > 0)
             Status = $"Merged {renamed.Count} file{(renamed.Count == 1 ? "" : "s")}.";
     }
@@ -434,13 +522,26 @@ public sealed class MatchMergeViewModel : ObservableObject
     private void UndoBatch()
     {
         var problems = BulkRename.Revert(_outcomes);
-        var restored = _outcomes.Where(o => o.Final != null)
-            .ToDictionary(o => o.Final!, o => o.Source);
+        // Revert is per-file fail-soft and doesn't say WHICH outcome
+        // failed — but a successful restore always makes the merged file's
+        // name vanish (moved back to Source), while every failure path in
+        // Revert leaves it exactly where it was. That's enough to relabel
+        // only the rows that actually came back, and keep the rest in
+        // _outcomes (replacing the batch, per Absorb's rule) so Undo can be
+        // retried on just what's still stuck.
+        var succeeded = _outcomes.Where(o => o.Final != null && !File.Exists(o.Final)).ToList();
+        var stillFailed = _outcomes.Where(o => o.Final != null && File.Exists(o.Final)).ToList();
+
+        var restored = succeeded.ToDictionary(o => o.Final!, o => o.Source);
         for (var i = 0; i < _files.Count; i++)
             if (restored.TryGetValue(_files[i], out var s)) _files[i] = s;
-        _outcomes = new List<BulkRename.RenameOutcome>();
+
+        _outcomes = stillFailed;
         UndoCommand.RaiseCanExecuteChanged();
         Refresh();
-        Status = problems.Count > 0 ? string.Join("; ", problems) : "Original names restored.";
+        Status = stillFailed.Count == 0
+            ? "Original names restored."
+            : $"{succeeded.Count} restored, {stillFailed.Count} failed" +
+              (problems.Count > 0 ? $" ({string.Join("; ", problems)})" : "") + ".";
     }
 }

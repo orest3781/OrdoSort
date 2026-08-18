@@ -1,6 +1,10 @@
+using System.ComponentModel;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
+using System.Windows.Input;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.Views;
@@ -96,12 +100,36 @@ public partial class TriageWindow : Window
     private static Style GridCellTextSelectionAwareStyle =>
         (Style)Application.Current.FindResource("GridCellTextSelectionAware");
 
+    /// <summary>Row key the "Why" column reads. A sentinel rather than a
+    /// roster header: a spreadsheet could genuinely be headed "Why", and the
+    /// double underscore is the same convention the rest of this file's row
+    /// dictionaries already used for it.</summary>
+    private const string WhyKey = "__why";
+
+    /// <summary>Characters that a property path's indexer cannot survive:
+    /// ',' opens a second indexer argument, '[' and ']' nest and terminate
+    /// one, '^' escapes the next character. Only sorting still goes through a
+    /// path (see <see cref="ApplySortPath"/>) — the cell text itself no
+    /// longer does.</summary>
+    private static readonly char[] PathBreakers = { ',', '[', ']', '^' };
+
     private readonly List<MatchMerge.MatchResult> _items;
     private readonly IReadOnlyList<string> _headers;
     private readonly WebViewPdfViewer _pdf;
     private readonly Func<System.Windows.Rect?> _panZone;
     private int _index;
     private bool _whyColumnShown;
+
+    /// <summary>Which candidate each grid row stands for, keyed by the row
+    /// object itself. The grid is sortable, so a row's DISPLAYED position is
+    /// not its position in <see cref="CandidatesOf"/>'s list — and resolving a
+    /// decision by <c>SelectedIndex</c> against that list filed the document
+    /// under whoever happened to occupy that index in the UNSORTED order.
+    /// Silently: the merged name looked perfectly plausible, just for the
+    /// wrong person. Reference-keyed on purpose (two candidates can render
+    /// identical roster values), and rebuilt for every item.</summary>
+    private readonly Dictionary<object, MatchMerge.Candidate> _rowCandidates =
+        new(ReferenceEqualityComparer.Instance);
 
     /// <summary>Swappable so the smoke harness can record instead of block —
     /// same pattern as MainWindow's own <c>Dialogs</c> property.</summary>
@@ -130,6 +158,23 @@ public partial class TriageWindow : Window
     /// could act twice on one file. Same contract as the shell's commit
     /// guard: while one decision is in flight, further ones are no-ops.</summary>
     private bool _busy;
+
+    /// <summary>The decision currently in flight, if any — the task
+    /// <see cref="UseSelectedAsync"/> returns. <see cref="OnClosing"/> waits
+    /// on it: the rename is decided BEFORE the viewer release it has to wait
+    /// for, so Escape landing in that gap used to let ShowDialog return — and
+    /// the parent read <see cref="Outcomes"/> — while the rename was still
+    /// pending, leaving the disk ahead of the UI and the merge invisible to
+    /// Undo. Distinct from <see cref="_busy"/>, which answers "may another
+    /// decision start"; this one answers "may this window finish closing".</summary>
+    private Task? _decision;
+
+    /// <summary>A close request is already waiting on <see cref="_decision"/>,
+    /// so further ones (a second Escape, the Stop button, the title bar) need
+    /// no second wait. Cleared when that wait retries the close — if a NEW
+    /// decision is in flight by then, the retry defers again against that
+    /// one, rather than the window being left permanently un-closable.</summary>
+    private bool _closeDeferred;
 
     public List<BulkRename.RenameOutcome> Outcomes { get; } = new();
 
@@ -239,7 +284,7 @@ public partial class TriageWindow : Window
             var column = new DataGridTextColumn
             {
                 Header = h,
-                Binding = new Binding($"[{h}]"),
+                Binding = RosterCellBinding(h),
                 Width = isFiller
                     ? new DataGridLength(1, DataGridLengthUnitType.Star)
                     : DataGridLength.Auto,
@@ -263,10 +308,11 @@ public partial class TriageWindow : Window
                     Setters =
                     {
                         new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis),
-                        new Setter(FrameworkElement.ToolTipProperty, new Binding($"[{h}]")),
+                        new Setter(FrameworkElement.ToolTipProperty, RosterCellBinding(h)),
                     },
                 },
             };
+            ApplySortPath(column, h);
             if (isFiller) column.MinWidth = FillerMinWidth;
             else cappedRosterColumns.Add(column);
             Candidates.Columns.Add(column);
@@ -277,6 +323,38 @@ public partial class TriageWindow : Window
         // (DataGridColumnCap's own doc comment).
         DataGridColumnCap.Track(Candidates, ComputeRosterColumnCap, cappedRosterColumns.ToArray());
         Loaded += async (_, _) => await InitAndShowAsync(_pdf.InitAsync);
+    }
+
+    /// <summary>One roster cell's binding: bound to the ROW, with the header
+    /// carried as a ConverterParameter (see <see cref="RosterCellLookup"/>)
+    /// instead of interpolated into a <c>Binding("[header]")</c> indexer path.
+    /// A header is arbitrary spreadsheet text and that path is PARSED: ','
+    /// reads as a second indexer argument, ']' ends the indexer early and '^'
+    /// escapes whatever follows — so a roster column genuinely headed
+    /// "Name, Last" bound to nothing at all and rendered empty for every
+    /// candidate, in the one window whose whole job is showing a person
+    /// enough of the roster row to recognise them by. A ConverterParameter is
+    /// never parsed, so no header text can break it.</summary>
+    private static Binding RosterCellBinding(string header) => new()
+    {
+        Converter = RosterCellLookup.Instance,
+        ConverterParameter = header,
+        Mode = BindingMode.OneWay,
+    };
+
+    /// <summary>Header-click sorting is the one thing still reached by a
+    /// property path — WPF's own sort has no converter seam — so it keeps the
+    /// exact path the cell binding used to carry, over the exact same
+    /// dictionary rows, and sorts as it always did. A header the path parser
+    /// can't read (see <see cref="PathBreakers"/>) instead advertises no sort
+    /// at all: an unreadable path sorts nothing, and a column header that
+    /// silently does nothing when clicked is worse than one that doesn't
+    /// offer. Its VALUES still show, which is the half that matters.</summary>
+    private static void ApplySortPath(DataGridColumn column, string header)
+    {
+        // an empty header is in the same boat: "[]" is not a path either
+        if (header.Length == 0 || header.IndexOfAny(PathBreakers) >= 0) column.CanUserSort = false;
+        else column.SortMemberPath = $"[{header}]";
     }
 
     /// <summary>The Loaded flow: init the viewer, warn on failure, show the
@@ -323,7 +401,10 @@ public partial class TriageWindow : Window
             if (why) Candidates.Columns.Insert(0, new DataGridTextColumn
             {
                 Header = "Why",
-                Binding = new Binding("[__why]"),
+                // same lookup as the roster columns — one mechanism, even
+                // though this column's own key is a fixed, safe sentinel
+                Binding = RosterCellBinding(WhyKey),
+                SortMemberPath = $"[{WhyKey}]",
                 Width = new DataGridLength(WhyColumnWidth),
                 // BasedOn plain GridCellText, NOT GridCellTextSelectionAware,
                 // for the shared Theme.Text default and TextTrimming/ToolTip
@@ -382,6 +463,7 @@ public partial class TriageWindow : Window
             _whyColumnShown = why;
         }
         var candidates = CandidatesOf(r);
+        _rowCandidates.Clear();
         Candidates.ItemsSource = candidates
             .Select((c, i) =>
             {
@@ -392,7 +474,11 @@ public partial class TriageWindow : Window
                 var row = new Dictionary<string, string>();
                 foreach (var h in _headers)
                     row[h] = c.Row.TryGetValue(h, out var v) ? v : "";
-                if (why) row["__why"] = r.Suggestions![i].Reason;
+                if (why) row[WhyKey] = r.Suggestions![i].Reason;
+                // from here on the ROW is this candidate's identity — nothing
+                // downstream may go back to indexing `candidates`, which the
+                // grid is free to display in any order it likes
+                _rowCandidates[row] = c;
                 return row;
             })
             .ToList();
@@ -409,43 +495,121 @@ public partial class TriageWindow : Window
     private void OnCandidateSelected(object sender, SelectionChangedEventArgs e) =>
         UseButton.IsEnabled = Candidates.SelectedIndex >= 0;
 
-    private void OnCandidateAccept(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    /// <summary>The candidate the person is actually pointing at: the SELECTED
+    /// ROW, resolved back through <see cref="_rowCandidates"/> — never an
+    /// index into <see cref="CandidatesOf"/>'s list, which the grid's own sort
+    /// order need not agree with. Every accept path (digit, Enter,
+    /// double-click, the button) comes through here.</summary>
+    private MatchMerge.Candidate? SelectedCandidate() =>
+        Candidates.SelectedItem is { } row && _rowCandidates.TryGetValue(row, out var candidate)
+            ? candidate
+            : null;
+
+    /// <summary>Double-click accepts — but the handler is on the whole grid
+    /// (TriageWindow.xaml), so it also hears double-clicks on the column
+    /// headers, a header gripper, the scrollbar and the empty area under the
+    /// last row. None of those is a decision about a document; only a click
+    /// that started inside a row is.</summary>
+    private void OnCandidateAccept(object sender, MouseButtonEventArgs e)
     {
-        if (Candidates.SelectedIndex >= 0) OnUseSelected(sender, e);
+        if (IsRowClick(e.OriginalSource) && SelectedCandidate() is not null)
+            OnUseSelected(sender, e);
+    }
+
+    /// <summary>Whether <paramref name="clicked"/> sits inside a
+    /// <see cref="DataGridRow"/>. Walks the visual tree, falling back to the
+    /// logical parent for the parts of a cell that aren't visuals.</summary>
+    internal static bool IsRowClick(object? clicked)
+    {
+        var node = clicked as DependencyObject;
+        while (node is not null)
+        {
+            if (node is DataGridRow) return true;
+            node = node is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+                ? System.Windows.Media.VisualTreeHelper.GetParent(node)
+                : LogicalTreeHelper.GetParent(node);
+        }
+        return false;
     }
 
     /// <summary>The whole window is the keyboard surface — there is nothing to
     /// type here, so keys can be verbs: a digit picks a candidate row, Enter
     /// confirms it, S skips the file. A long review run should never need the
     /// mouse.</summary>
-    private void OnWindowKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private void OnWindowKeyDown(object sender, KeyEventArgs e)
+    {
+        if (DispatchVerb(e.Key, Keyboard.Modifiers, Keyboard.FocusedElement)) e.Handled = true;
+    }
+
+    /// <summary>This window's entire verb vocabulary, in one place: 1-9 picks
+    /// the row at that DISPLAYED position, Enter confirms it, S skips the
+    /// file, Escape stops the review. Returns whether the key was a verb — the
+    /// caller marks it handled.
+    ///
+    /// Split out of <see cref="OnWindowKeyDown"/> because that is not the only
+    /// door these keys come through. Once the pointer has been in the PDF
+    /// pane, Windows sends keystrokes straight to Chromium's own HWND and WPF
+    /// never sees them — except that the WebView2 control re-raises the ones
+    /// CoreWebView2 classes as ACCELERATORS (Escape, Enter, the function keys;
+    /// NOT plain digits or letters, which map to characters) as a
+    /// PreviewKeyDown on itself, which tunnels from the window root and so
+    /// reaches the handler above. Escape is answered here rather than left to
+    /// the "Stop reviewing" button's <c>IsCancel</c>, because that route runs
+    /// through AccessKeyManager, which only ever sees a key in InputManager's
+    /// post-process stage — a re-raised routed event never gets there (see
+    /// SettingsKeyboardAccessTests' own account of the same trap). Closing and
+    /// that button do the same thing anyway: the parent reads
+    /// <see cref="Outcomes"/>, never DialogResult, and merges already made
+    /// stay made.
+    ///
+    /// The digits and S genuinely cannot be recovered while the pane holds
+    /// focus — CoreWebView2 never reports them at all, so there is nothing for
+    /// this window to hook. Clicking back onto the grid restores them.
+    ///
+    /// <paramref name="focused"/> is passed in rather than read from
+    /// <see cref="Keyboard"/> so the mapping is testable without a shown
+    /// window (a shown TriageWindow starts a real WebView2).</summary>
+    internal bool DispatchVerb(Key key, ModifierKeys modifiers, IInputElement? focused)
     {
         // bare keys only — Ctrl+S (save-as-muscle-memory) must not read as
         // "skip", and Alt/Shift combos aren't verbs here either
-        if (System.Windows.Input.Keyboard.Modifiers != System.Windows.Input.ModifierKeys.None) return;
+        if (modifiers != ModifierKeys.None) return false;
 
-        var key = e.Key;
-        var digit = key >= System.Windows.Input.Key.D1 && key <= System.Windows.Input.Key.D9
-            ? key - System.Windows.Input.Key.D1
-            : key >= System.Windows.Input.Key.NumPad1 && key <= System.Windows.Input.Key.NumPad9
-                ? key - System.Windows.Input.Key.NumPad1
+        var digit = key >= Key.D1 && key <= Key.D9
+            ? key - Key.D1
+            : key >= Key.NumPad1 && key <= Key.NumPad9
+                ? key - Key.NumPad1
                 : -1;
         if (digit >= 0 && digit < Candidates.Items.Count)
         {
-            Candidates.SelectedIndex = digit;
-            Candidates.ScrollIntoView(Candidates.SelectedItem);
-            e.Handled = true;
+            // Items, not the candidate list: a digit means the row you can SEE
+            // at that position, and a sorted grid shows them in an order of
+            // its own
+            var row = Candidates.Items[digit];
+            Candidates.SelectedItem = row;
+            Candidates.ScrollIntoView(row);
+            return true;
         }
-        else if (key == System.Windows.Input.Key.Enter && Candidates.SelectedIndex >= 0)
+        if (key == Key.Enter)
         {
-            e.Handled = true;
-            OnUseSelected(sender, e);
+            // a focused button owns Enter: "Skip this file" and "Stop
+            // reviewing" are one Tab away, and Enter on one of them must press
+            // THAT button rather than merge the row still selected behind it
+            if (focused is ButtonBase || SelectedCandidate() is null) return false;
+            OnUseSelected(this, new RoutedEventArgs());
+            return true;
         }
-        else if (key == System.Windows.Input.Key.S)
+        if (key == Key.S)
         {
-            e.Handled = true;
-            OnSkip(sender, e);
+            OnSkip(this, new RoutedEventArgs());
+            return true;
         }
+        if (key == Key.Escape)
+        {
+            Close();
+            return true;
+        }
+        return false;
     }
 
     private async void OnUseSelected(object sender, RoutedEventArgs e) =>
@@ -455,30 +619,54 @@ public partial class TriageWindow : Window
     /// delegate — same reason as <see cref="InitAndShowAsync"/>'s
     /// <c>initAsync</c> parameter — so a test can hold it open across a
     /// Close() without a real, untimeable WebView2 release. <c>ReleaseAsync</c>
-    /// is the one await here with genuine (up to 2s) latency, so it's the
-    /// only point where "Stop reviewing" (Escape, IsCancel="True") can land
-    /// mid-flight; MergeOne still runs when it resumes — the rename is
-    /// correct and must complete either way, window open or not — and only
-    /// <see cref="ShowCurrentAsync"/>'s own <see cref="IsClosed"/> guard
+    /// is the one await here with genuine (up to 2s) latency, so it's the only
+    /// point where "Stop reviewing" (Escape, IsCancel="True") can land
+    /// mid-flight — and <see cref="OnClosing"/> now holds the window open
+    /// until this task completes, so the rename is in <see cref="Outcomes"/>
+    /// before ShowDialog can return. MergeOne runs either way: the rename is
+    /// correct whether the window survives it or not, and
+    /// <see cref="ShowCurrentAsync"/>'s own <see cref="IsClosed"/> guard still
     /// decides whether to touch the (by then possibly disposed) Viewer
     /// afterward.</summary>
-    internal async Task UseSelectedAsync(Func<Task> releaseAsync)
+    internal Task UseSelectedAsync(Func<Task> releaseAsync)
     {
+        // Both guards resolved HERE, synchronously, rather than inside the
+        // async body: the returned task is what OnClosing waits on, and it may
+        // only be recorded for a decision that is genuinely going to run. A
+        // second Enter arriving mid-release is a no-op (_busy), and recording
+        // ITS already-completed task as "the decision" would tell the next
+        // close request there was nothing left to wait for — re-opening the
+        // very race this tracking exists to close.
         var r = Current;
-        if (_busy || r is null || Candidates.SelectedIndex < 0) return;
+        var candidate = SelectedCandidate();
+        if (_busy || r is null || candidate is null) return Task.CompletedTask;
         _busy = true;
+        var decision = DecideAsync(r, candidate, releaseAsync);
+        _decision = decision;
+        return decision;
+    }
+
+    private async Task DecideAsync(
+        MatchMerge.MatchResult r, MatchMerge.Candidate candidate, Func<Task> releaseAsync)
+    {
         try
         {
-            var candidate = CandidatesOf(r)[Candidates.SelectedIndex];
-
             await releaseAsync();   // Edge lets go of the file before the rename
             var outcomes = MatchMerge.MergeOne(r.Source, candidate.ControlId);
-            if (outcomes[0].Final is null)
+            // An EMPTY list, not a failed outcome, is what a REFUSED merge
+            // looks like: MergeOne plans before it renames, and a plan it won't
+            // execute (a control id carrying ':' or anything else a filename
+            // can't hold) is dropped rather than attempted. Indexing [0]
+            // regardless threw out of an async void handler and into the
+            // global crash dialog, over a file nothing had touched.
+            if (outcomes.Count == 0 || outcomes[0].Final is null)
             {
                 // ShowCurrentAsync clears Note.Text as part of showing the
                 // (unchanged) current file — set the message AFTER it runs,
                 // or it never survives to be seen
-                var message = "Couldn't rename: " + outcomes[0].Error;
+                var message = "Couldn't rename: " + (outcomes.Count == 0
+                    ? RefusalReason(r.Source, candidate.ControlId)
+                    : outcomes[0].Error);
                 await ShowCurrentAsync();
                 Note.Text = message;
                 return;
@@ -491,6 +679,53 @@ public partial class TriageWindow : Window
         {
             _busy = false;
         }
+    }
+
+    /// <summary>Why a merge was refused before it ever reached the disk.
+    /// MergeOne returns nothing at all in that case, so the reason is
+    /// re-derived by running its planner's own check
+    /// (<see cref="Naming.RejectIllegal"/>) over the same merged stem, rather
+    /// than guessed at in different words: the person reading this note needs
+    /// to know WHICH character in the id their spreadsheet can't be filed
+    /// under.</summary>
+    private static string RefusalReason(string source, string controlId)
+    {
+        try
+        {
+            Naming.RejectIllegal(
+                MatchMerge.MergedStem(Path.GetFileNameWithoutExtension(source), controlId));
+        }
+        catch (ArgumentException ex)
+        {
+            return ex.Message;
+        }
+        return $"\"{controlId}\" can't be added to this file's name.";
+    }
+
+    /// <summary>Closing waits for a decision that is already in flight. The id
+    /// is chosen before <see cref="UseSelectedAsync"/>'s viewer release (up to
+    /// 2s), so "Stop reviewing" landing in that gap used to end the dialog
+    /// first: MatchMergeWindow read <see cref="Outcomes"/> the instant
+    /// ShowDialog returned, the rename completed afterwards, and the merge was
+    /// on disk but invisible to the grid and to Undo. Cancelling the close and
+    /// retrying it when the decision lands costs a dispatcher turn and makes
+    /// that gap unreachable.
+    ///
+    /// This does NOT replace <see cref="ShowCurrentAsync"/>'s own
+    /// <see cref="IsClosed"/> guard: an application shutdown closes windows
+    /// with cancellation IGNORED (Window.ShouldCloseWindow), so a continuation
+    /// resuming into a disposed Viewer is still reachable that way.</summary>
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        base.OnClosing(e);
+        var decision = _decision;
+        if (e.Cancel || decision is null || decision.IsCompleted) return;
+        e.Cancel = true;
+        if (_closeDeferred) return;   // an earlier request is already waiting
+        _closeDeferred = true;
+        decision.ContinueWith(
+            _ => { _closeDeferred = false; Close(); },
+            TaskScheduler.FromCurrentSynchronizationContext());
     }
 
     private async void OnSkip(object sender, RoutedEventArgs e)
@@ -507,4 +742,32 @@ public partial class TriageWindow : Window
             _busy = false;
         }
     }
+}
+
+/// <summary>Reads one column's value out of a candidate row: the bound value
+/// is the row dictionary itself and the ConverterParameter is the header to
+/// look up. Exists so <see cref="TriageWindow"/>'s roster columns — the only
+/// columns in this app whose names come from a stranger's spreadsheet rather
+/// than from its own schema — can be bound WITHOUT putting that name inside a
+/// property path, which is parsed and therefore breakable (see
+/// <c>TriageWindow.RosterCellBinding</c> for the characters that break it).
+/// A missing key reads as empty, exactly as the row-building loop already
+/// treats a candidate missing that column.
+///
+/// Lives here rather than beside the app's other converters in Views/ because
+/// it is reached only from this window's code-built columns, never from XAML;
+/// it belongs there the moment a second window needs the same lookup.</summary>
+internal sealed class RosterCellLookup : IValueConverter
+{
+    internal static readonly RosterCellLookup Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is IReadOnlyDictionary<string, string> row
+        && parameter is string header
+        && row.TryGetValue(header, out var text)
+            ? text
+            : "";
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException("the candidate grid is read-only");
 }

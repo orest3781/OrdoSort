@@ -1491,7 +1491,11 @@ public class MatchMergeViewModelTests : IDisposable
         Assert.Equal("Merge 1 matched", vm.MergeButtonText);
         Assert.True(vm.CanReview);
         Assert.Single(vm.ReviewItems);
-        Assert.Contains(vm.Rows, r => r.Note == "already has the id");
+        // MatchMerge.MatchFiles now carries the verification-inviting wording
+        // on every "already" MatchResult (AlreadyMergedNote) — a suffix match
+        // is a coincidence check, not proof, so the row must ask a human to
+        // verify rather than assert the file was genuinely merged before.
+        Assert.Contains(vm.Rows, r => r.Note == MatchMerge.AlreadyMergedNote);
     }
 
     [Fact]
@@ -1691,5 +1695,110 @@ public class MatchMergeViewModelTests : IDisposable
 
         Assert.Equal(2, vm.ColumnPicks.Count);             // one pick per DISTINCT header
         Assert.Equal(vm.ChosenColumns.Count, vm.ChosenColumns.Distinct().Count());
+    }
+
+    // --------------------------------------------------------- finding B1
+    // BulkRename.Execute silently skips every Changed=false plan. For a
+    // "merge" row the only way Plan can come back Changed=false is
+    // Naming.RejectIllegal — so before this fix the row vanished from BOTH
+    // the merged and the failed count, the Status line said nothing, and
+    // the row kept claiming "ready to merge" forever.
+
+    [Fact]
+    public void DoMergeCountsAndFlagsAnIllegalCharacterRejectionInsteadOfSilentlyDroppingIt()
+    {
+        var roster = Path.Combine(_dir, "illegal_id_roster.csv");
+        File.WriteAllLines(roster, new[] { "Last,First,Control", "EVANS,FRANK,12/34" });
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
+        vm.LoadRosterFrom(roster);
+        var f = Touch("20240126-EVANS-FRANK.pdf");
+        vm.AddFiles(new[] { f });
+        Assert.Equal(1, vm.MergeCount);
+        Assert.Equal("", vm.Rows[0].Note);
+
+        vm.MergeCommand.Execute(null);
+
+        Assert.Contains("failed", vm.Status);
+        Assert.Contains("can't contain", vm.Status);   // Naming.RejectIllegal's own wording reaches Status
+        Assert.True(File.Exists(f));                    // never renamed — Plan rejected before Execute tried
+        Assert.NotEqual("", vm.Rows[0].Note);            // the note flips — stops claiming "ready to merge"
+        Assert.Equal(0, vm.MergeCount);                  // excluded from "ready to merge" going forward
+    }
+
+    // --------------------------------------------------------- finding B2
+    // BulkRename.Revert is per-file fail-soft but UndoBatch used to relabel
+    // every row and clear ALL of _outcomes regardless — a file whose revert
+    // failed (target occupied, locked, etc.) got silently marked "restored"
+    // and lost its only path back.
+
+    [Fact]
+    public void APartiallyFailedRevertOnlyRelabelsWhatCameBackAndKeepsTheRestForRetry()
+    {
+        var vm = Vm();
+        vm.LoadRosterFrom(WriteRoster());
+        var f = Touch("20240126-EVANS-FRANK.pdf");
+        vm.AddFiles(new[] { f });
+        vm.MergeCommand.Execute(null);
+        var merged = Path.Combine(_dir, "20240126-EVANS-FRANK-176797656.pdf");
+        Assert.True(File.Exists(merged));
+
+        // something else now occupies the original name — Revert can't move
+        // the merged file back onto it, and must fail that ONE outcome soft
+        File.WriteAllText(f, "someone else's file");
+
+        vm.UndoCommand.Execute(null);
+
+        Assert.True(File.Exists(merged));                  // NOT moved back — the revert failed
+        Assert.Equal("someone else's file", File.ReadAllText(f));   // interloper untouched
+        Assert.Contains(vm.Rows, r => r.File == Path.GetFileName(merged));   // row keeps the merged name
+        Assert.Contains("restored", vm.Status);
+        Assert.Contains("failed", vm.Status);
+        Assert.True(vm.UndoCommand.CanExecute(null));       // the failed outcome is retained — retry is possible
+    }
+
+    // --------------------------------------------------------- finding B3
+    // Absorb used to _outcomes.AddRange every batch, so "Undo last merge"
+    // actually undid EVERY merge since the tool opened. Each DoMerge/Absorb
+    // call must replace _outcomes with just that batch, matching the
+    // sibling BulkRenameViewModel.Apply's _lastOutcomes = renamed rule.
+
+    [Fact]
+    public void UndoOnlyRevertsTheLastMergeBatchNotEveryMergeSinceOpening()
+    {
+        var vm = Vm();
+        vm.LoadRosterFrom(WriteRoster());
+
+        var batch1 = new[]
+        {
+            Touch("20240101-EVANS-FRANK.pdf"),
+            Touch("20240102-EVANS-FRANK.pdf"),
+            Touch("20240103-EVANS-FRANK.pdf"),
+        };
+        vm.AddFiles(batch1);
+        Assert.Equal(3, vm.MergeCount);
+        vm.MergeCommand.Execute(null);
+        var batch1Merged = batch1
+            .Select(f => Path.Combine(_dir, Path.GetFileNameWithoutExtension(f) + "-176797656.pdf"))
+            .ToList();
+        Assert.All(batch1Merged, p => Assert.True(File.Exists(p)));
+
+        var batch2 = new[]
+        {
+            Touch("20240104-EVANS-FRANK.pdf"),
+            Touch("20240105-EVANS-FRANK.pdf"),
+        };
+        vm.AddFiles(batch2);
+        Assert.Equal(2, vm.MergeCount);
+        vm.MergeCommand.Execute(null);
+        var batch2Merged = batch2
+            .Select(f => Path.Combine(_dir, Path.GetFileNameWithoutExtension(f) + "-176797656.pdf"))
+            .ToList();
+        Assert.All(batch2Merged, p => Assert.True(File.Exists(p)));
+
+        vm.UndoCommand.Execute(null);
+
+        foreach (var f in batch2) Assert.True(File.Exists(f));             // batch 2 came back...
+        Assert.All(batch2Merged, p => Assert.False(File.Exists(p)));
+        Assert.All(batch1Merged, p => Assert.True(File.Exists(p)));        // ...batch 1 is untouched
     }
 }

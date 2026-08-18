@@ -148,7 +148,7 @@ public static partial class MatchMerge
     public sealed record MatchResult(
         string Source, string Status, string Last = "", string First = "",
         IReadOnlyList<Candidate>? Candidates = null, string NewStem = "",
-        IReadOnlyList<Suggestion>? Suggestions = null);
+        IReadOnlyList<Suggestion>? Suggestions = null, string Note = "");
 
     public static string MergedStem(string stem, string controlId) => $"{stem}-{controlId}";
 
@@ -287,6 +287,30 @@ public static partial class MatchMerge
             .ToList();
     }
 
+    /// <summary>Whether stem's trailing "-&lt;id&gt;" is trustworthy evidence
+    /// that this candidate was already merged in, versus an unrelated file
+    /// whose native suffix coincidentally equals someone's control id. The
+    /// two cases are byte-identical — no amount of upstream name-matching can
+    /// tell them apart, since a name match (exact reading or fuzzy
+    /// suggestion) is exactly what got the file to this check either way.
+    /// The only lever left is entropy: a one- or two-character id is common
+    /// enough to collide by chance and never counts; anything at or past the
+    /// tests' own shortest real id (3) is specific enough that the
+    /// coincidence becomes implausible — not impossible, see
+    /// <see cref="AlreadyMergedNote"/>.</summary>
+    private const int MinTrustworthyIdLength = 3;
+
+    private static bool AlreadyCarries(string stem, string controlId) =>
+        controlId.Length >= MinTrustworthyIdLength
+        && stem.EndsWith($"-{controlId}", StringComparison.Ordinal);
+
+    /// <summary>The note MatchResult carries for status "already". A suffix
+    /// match is a coincidence check, not proof (see <see cref="AlreadyCarries"/>)
+    /// — the wording asks the human to verify rather than asserting the file
+    /// was genuinely merged before.</summary>
+    public const string AlreadyMergedNote =
+        "already carries this id — verify it was filed, not a coincidence";
+
     /// <summary>Classify every file, in input order. Touches nothing.</summary>
     public static List<MatchResult> MatchFiles(IEnumerable<string> paths, Roster roster)
     {
@@ -295,23 +319,33 @@ public static partial class MatchMerge
         {
             var stem = Path.GetFileNameWithoutExtension(source);
             var readings = NameCandidates(stem);
-            (string Last, string First, IReadOnlyList<Candidate> C)? hit = null;
+
+            // Every reading that hits the roster, not just the first one: two
+            // roster rows can each align under a DIFFERENT split of the same
+            // hyphenated stem — the surname/first-name boundary is genuinely
+            // ambiguous — and stopping at the first hit used to merge onto
+            // whichever person happened to read first, silently. Union by
+            // ControlId so the same person matched under two readings still
+            // counts once.
+            var hits = new List<(string Last, string First, IReadOnlyList<Candidate> Found)>();
             foreach (var (last, first) in readings)
             {
                 var found = roster.Lookup(last, first);
-                if (found.Count > 0) { hit = (last, first, found); break; }
+                if (found.Count > 0) hits.Add((last, first, found));
             }
-            if (hit is null)
+
+            if (hits.Count == 0)
             {
-                // the exact lookup missed — the token pass may still SUGGEST,
-                // which reaches the review screen and never merges by itself
+                // every reading missed the exact lookup — the token pass may
+                // still SUGGEST, which reaches the review screen and never
+                // merges by itself
                 var suggestions = TokenMatches(stem, roster);
                 var (dl, df) = readings.Count > 0 ? readings[0] : ("", "");
-                if (suggestions.Any(s => stem.EndsWith($"-{s.Candidate.ControlId}", StringComparison.Ordinal)))
+                if (suggestions.Any(s => AlreadyCarries(stem, s.Candidate.ControlId)))
                     // mirrors the exact path's already-merged guard below: a
                     // file that already carries a suggested candidate's id was
                     // confirmed once already and must never re-suggest itself
-                    results.Add(new MatchResult(source, "already", dl, df));
+                    results.Add(new MatchResult(source, "already", dl, df, Note: AlreadyMergedNote));
                 else if (suggestions.Count > 0)
                     results.Add(new MatchResult(source, "suggested", dl, df,
                         Suggestions: suggestions));
@@ -321,13 +355,20 @@ public static partial class MatchMerge
                     results.Add(new MatchResult(source, "no_name"));
                 continue;
             }
-            var (hl, hf, candidates) = hit.Value;
-            if (candidates.Any(c => stem.EndsWith($"-{c.ControlId}", StringComparison.Ordinal)))
-                results.Add(new MatchResult(source, "already", hl, hf, candidates));
+
+            var (hl, hf, _) = hits[0];   // most-likely reading, for display only
+            var candidates = hits.SelectMany(h => h.Found).DistinctBy(c => c.ControlId).ToList();
+            if (candidates.Any(c => AlreadyCarries(stem, c.ControlId)))
+                results.Add(new MatchResult(source, "already", hl, hf, candidates, Note: AlreadyMergedNote));
             else if (candidates.Count == 1)
                 results.Add(new MatchResult(source, "merge", hl, hf, candidates,
                     MergedStem(stem, candidates[0].ControlId)));
             else
+                // either one reading's roster key alone covers >1 person
+                // (unchanged behaviour), or two DIFFERENT readings each
+                // resolved to a different person — either way, more than one
+                // distinct person is a live possibility and this is not this
+                // tool's call to make silently
                 results.Add(new MatchResult(source, "ambiguous", hl, hf, candidates));
         }
         return results;

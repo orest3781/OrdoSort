@@ -1381,7 +1381,13 @@ public class AutoFitColumnTests
             .FirstOrDefault(s => s.Property == FrameworkElement.ToolTipProperty);
         Assert.NotNull(tooltipSetter);
         var binding = Assert.IsType<Binding>(tooltipSetter!.Value);
-        Assert.Contains(bindingPathContains, binding.Path.Path);
+        // Triage's roster columns stopped interpolating the header into the
+        // Path (a comma there parses as a two-argument indexer — see
+        // RosterCellLookup); the header now rides ConverterParameter, so the
+        // identity check accepts either shape.
+        var carrier = binding.Path?.Path is { Length: > 0 } p ? p
+            : binding.ConverterParameter as string ?? "";
+        Assert.Contains(bindingPathContains, carrier);
     }
 
     /// <summary>Finds the DataGrid's own internal ScrollViewer (its

@@ -47,9 +47,17 @@
                         <TextBlock Text="Use selected id" Style="{StaticResource PrimaryButtonLabel}" />
                     </StackPanel>
                 </Button>
-                <Button Content="Skip this file" Click="OnSkip" Height="34" Margin="0,8,0,0" />
-                <!-- IsCancel: click or Esc — merges already done stay done -->
-                <Button Content="Stop reviewing" IsCancel="True" Height="34" Margin="0,8,0,0" />
+                <!-- x:Name on both: Enter belongs to whichever of these has
+                     keyboard focus, not to the row still selected behind it
+                     (TriageWindow.xaml.cs, DispatchVerb), and a test proving
+                     that needs the REAL buttons rather than a stand-in. -->
+                <Button x:Name="SkipButton" Content="Skip this file" Click="OnSkip"
+                        Height="34" Margin="0,8,0,0" />
+                <!-- IsCancel: click or Esc — merges already done stay done.
+                     Esc is also answered by DispatchVerb, which is the only
+                     route that works while the PDF pane holds focus. -->
+                <Button x:Name="StopButton" Content="Stop reviewing" IsCancel="True"
+                        Height="34" Margin="0,8,0,0" />
             </StackPanel>
             <!-- Enter or double-click accepts the selected row — a long review
                  run shouldn't mean reaching for the button every time -->

@@ -140,16 +140,25 @@ public sealed class MatchMergeHeaderMappingTests : IDisposable
     }
 
     [Fact]
-    public void DuplicateHeaderThatIsAMappedRoleStillFailsTheWholeFile()
+    public void DuplicateHeaderThatIsAMappedRoleStillFailsToLoadButKeepsThePickerUsable()
     {
         // "Control ID" itself is duplicated — THIS threatens the mapping
-        // (which occurrence is the real control id?), so it must still be
-        // refused, unlike the unrelated "Notes" duplicate above. A SAVED
-        // control mapping is used because Pick()'s own ranking already
-        // refuses to guess between two identically-scored, identically-named
-        // headers (see AmbiguousRankingLeavesTheRoleUnmappedRatherThanGuessing
-        // below) — routing through the saved value instead reaches
+        // (which occurrence is the real control id?), so loading the roster
+        // must still be refused, unlike the unrelated "Notes" duplicate
+        // above. A SAVED control mapping is used because Pick()'s own
+        // ranking already refuses to guess between two identically-scored,
+        // identically-named headers (see
+        // AmbiguousRankingLeavesTheRoleUnmappedRatherThanGuessing below) —
+        // routing through the saved value instead reaches
         // MatchMerge.LoadRoster directly, exercising ITS narrowed guard.
+        //
+        // Finding B6: this RosterException fires inside ReloadRoster AFTER
+        // Headers is already populated and showing real, current columns —
+        // the same class of "recoverable, fix it from the picker" problem
+        // as the unmapped/collision branch a few lines above it in the VM,
+        // which keeps HasRoster true for exactly that reason. HasRoster
+        // used to go false here too, hiding the very picker the error
+        // message tells the user to fix.
         var path = WriteCsv(
             "First Name,Last Name,Control ID,Control ID\nJohn,Doe,123,999\n");
         var cfg = new Config
@@ -161,7 +170,7 @@ public sealed class MatchMergeHeaderMappingTests : IDisposable
         vm.LoadRosterFrom(path);
 
         Assert.Equal("Control ID", vm.ControlHeader);   // the saved pick DID resolve
-        Assert.False(vm.HasRoster);
+        Assert.True(vm.HasRoster);                       // the picker stays usable
         Assert.Contains("Control ID", vm.Status);
         Assert.DoesNotContain("Roster loaded", vm.Status);
     }
@@ -383,5 +392,98 @@ public sealed class MatchMergeHeaderMappingTests : IDisposable
         Assert.Null(vm.LastHeader);
         Assert.Null(vm.ControlHeader);
         Assert.DoesNotContain("Roster loaded", vm.Status);
+    }
+
+    // --------------------------------------------------------- finding B6
+    // RosterException can also fire on a RE-load — the combos are changed
+    // AFTER a roster already loaded successfully once, not just on the very
+    // first LoadRosterFrom. ReloadRoster's catch used to clear HasRoster in
+    // that case too, hiding the very picker its own error message points
+    // the user back to.
+
+    [Fact]
+    public void DuplicateHeaderRosterExceptionOnAReloadKeepsHasRosterTrue()
+    {
+        var path = WriteCsv(
+            "First Name,Last Name,Control ID,Control ID,Alt ID\nJohn,Doe,123,999,ALT1\n");
+        var cfg = new Config
+        {
+            // Alt ID is unique, so the FIRST load succeeds cleanly.
+            MergeHeaders = new Dictionary<string, string>
+            {
+                ["first"] = "First Name", ["last"] = "Last Name", ["control"] = "Alt ID",
+            },
+        };
+        var vm = MakeVm(cfg);
+        vm.LoadRosterFrom(path);
+        Assert.True(vm.HasRoster);
+        Assert.Contains("Roster loaded", vm.Status);
+
+        // The user re-points Control at the duplicated column — a RE-load,
+        // not an initial load — and MatchMerge.LoadRoster refuses it.
+        vm.ControlHeader = "Control ID";
+
+        Assert.DoesNotContain("Roster loaded", vm.Status);
+        Assert.Contains("Control ID", vm.Status);
+        Assert.True(vm.HasRoster);          // the picker stays usable, not hidden
+        Assert.Equal(5, vm.Headers.Count);   // the mapping row still shows real headers
+    }
+
+    // --------------------------------------------------------- finding B4
+    // RebuildColumnPicks used to run only from the initial LoadRosterFrom
+    // guess; correcting a header combo afterwards left ColumnPicks
+    // pre-ticking the STALE guessed column forever.
+
+    [Fact]
+    public void CorrectingAHeaderComboRebuildsColumnPicksInsteadOfStayingOnTheStaleGuess()
+    {
+        // "Control ID" (2/2 signal) beats "Alt ID" (1/2 signal), so Control
+        // auto-guesses "Control ID" first.
+        var path = WriteCsv("First Name,Last Name,Control ID,Alt ID\nJohn,Doe,123,999\n");
+        var vm = MakeVm();
+        vm.LoadRosterFrom(path);
+        Assert.Equal("Control ID", vm.ControlHeader);
+        Assert.True(vm.ColumnPicks.Single(p => p.Name == "Control ID").IsChosen);
+        Assert.False(vm.ColumnPicks.Single(p => p.Name == "Alt ID").IsChosen);
+
+        // The user corrects the guess — "Alt ID" is actually the real id column.
+        vm.ControlHeader = "Alt ID";
+
+        Assert.True(vm.ColumnPicks.Single(p => p.Name == "Alt ID").IsChosen);     // now pre-ticked
+        Assert.False(vm.ColumnPicks.Single(p => p.Name == "Control ID").IsChosen); // stale guess dropped
+    }
+
+    // --------------------------------------------------------- finding B5
+    // ChosenColumns/ColumnPicks persist a global (not per-roster) pick
+    // list. A saved pick set from a roster with entirely different header
+    // spellings can overlap the NEW roster only on some unrelated column
+    // (e.g. both happen to have "Notes") — the identity headers must still
+    // always be present, or Review matches can't say WHO a row is about.
+
+    [Fact]
+    public void ChosenColumnsAlwaysIncludesTheCurrentRosterMappedIdentityHeaders()
+    {
+        var path = WriteCsv("Surname,Given Name,ID Number,Notes\nDoe,John,555,xyz\n");
+        var cfg = new Config
+        {
+            // A saved pick set left over from a DIFFERENTLY-headed roster —
+            // none of these spellings exist in the roster loaded below,
+            // except the unrelated "Notes" column.
+            MergeColumns = new List<string> { "Last", "First", "Control", "Notes" },
+        };
+        var vm = MakeVm(cfg);
+
+        vm.LoadRosterFrom(path);
+
+        Assert.Equal("Surname", vm.LastHeader);
+        Assert.Equal("Given Name", vm.FirstHeader);
+        Assert.Equal("ID Number", vm.ControlHeader);
+        // the stale saved list ticks only "Notes" in the picker...
+        Assert.False(vm.ColumnPicks.Single(p => p.Name == "Surname").IsChosen);
+        // ...but ChosenColumns — what Review matches actually renders — must
+        // never lack the columns that say who a row is about.
+        Assert.Contains("Surname", vm.ChosenColumns);
+        Assert.Contains("Given Name", vm.ChosenColumns);
+        Assert.Contains("ID Number", vm.ChosenColumns);
     }
 }
