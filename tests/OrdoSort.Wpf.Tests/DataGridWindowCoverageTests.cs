@@ -69,14 +69,11 @@ public class DataGridWindowCoverageTests
     {
         "MatchMergeWindow", "BulkRenameWindow", "HistoryWindow", "TriageWindow",
         // Tools windows added 2026-08-09 ("five Tools-menu utilities") —
-        // this task's own coverage-gap fix.
-        "FilenameListWindow", "ZipWindow", "ZipMergeWindow", "UnzipWindow", "PageCountsWindow",
-        // ZipToolsWindow (2026-08-18, the one-archive-window merge): registered
-        // the moment the window exists because fact 1 is derived by reflection
-        // and would otherwise fail by name on the commit that adds it. Its
-        // DataGridSelectionContrastTests builder lands with the cutover, when
-        // the three windows above it replaces are removed from this set.
-        "ZipToolsWindow",
+        // this task's own coverage-gap fix. Zip, Unzip and Merge PDFs from
+        // zip became ZipToolsWindow's two tabs on 2026-08-18; its builder
+        // takes a tab flag and covers both grids' columns, so one entry here
+        // stands for what used to be three.
+        "FilenameListWindow", "PageCountsWindow", "ZipToolsWindow",
     };
 
     /// <summary>Walks up from the running test assembly's own directory to
@@ -135,15 +132,16 @@ public class DataGridWindowCoverageTests
         // rename, a build config that hides types), an empty or tiny list
         // would make every fact below vacuously pass — proving nothing,
         // exactly the trap this whole task exists to close on the OTHER
-        // suites. Nine is the actual count at the time this suite was last
-        // updated (BulkRename/FilenameList/History/MatchMerge/PageCounts/
-        // Triage/Unzip/ZipMerge/Zip all declare a DataGrid —
-        // AboutWindow/LabelMakerWindow/ListReformatWindow/ManageSavedWindow/
-        // PrintPreviewWindow/SettingsWindow/UnlockWindow don't; Turnaround
-        // and Production, which also used to, were removed along with the
-        // reports feature), so eight is a safe floor that still catches
-        // enumeration silently degrading without being so tight it breaks on
-        // every ordinary new window.
+        // suites. Fourteen window types is the actual count at the time this
+        // suite was last updated, seven of which declare a DataGrid
+        // (BulkRename/FilenameList/History/MatchMerge/PageCounts/Triage/
+        // ZipTools — AboutWindow/LabelMakerWindow/ListReformatWindow/
+        // ManageSavedWindow/PrintPreviewWindow/SettingsWindow/UnlockWindow
+        // don't; Turnaround and Production, which also used to, were removed
+        // along with the reports feature, and Zip/Unzip/ZipMerge became
+        // ZipToolsWindow's two tabs), so eight is a safe floor that still
+        // catches enumeration silently degrading without being so tight it
+        // breaks on every ordinary new window.
         Assert.True(windowTypes.Count >= 8,
             $"only found {windowTypes.Count} Window types under OrdoSort.Wpf.Windows via reflection " +
             "— enumeration looks broken (namespace/assembly mismatch?), not that the app genuinely " +

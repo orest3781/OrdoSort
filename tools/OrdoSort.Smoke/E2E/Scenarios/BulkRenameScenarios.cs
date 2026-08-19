@@ -8,7 +8,7 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 /// files on disk really move.
 ///
 /// BulkRenameViewModel's marshalling shape is a THIRD one, distinct from
-/// both halves of the split UnzipViewModel/ZipMergeViewModel already
+/// both halves of the split ZipListViewModel's own scenario files already
 /// document and from UnlockViewModel's no-seam-at-all shape:
 ///
 /// Preview/NeedsNameCount/CountsLine/RenameButtonText and RenameCommand's

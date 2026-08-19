@@ -114,15 +114,17 @@ public class DataGridSelectionContrastTests
     // in this suite (and in DataGridNoteColourTests): DataGridSelectionContrastTests
     // ENUMERATES columns within windows it already has a builder for, so a
     // window nobody added a builder for is invisible to it — exactly what
-    // happened here for a full day after these five landed. Each builder
-    // below seeds its ViewModel's Rows directly (ZipRow/UnzipRow/PageCountRow
-    // via their own internal Apply, the same internal-member access
-    // ZipMergeViewModelTests/UnzipViewModelTests/PageCountsViewModelTests
-    // already use) rather than driving a real file-system batch through
-    // AddFilesAsync — same shortcut BuildMatchMergeWindow/BuildBulkRenameWindow
-    // above take with MatchRow/RenameRow, and harmless here since these
-    // Windows/ViewModels never re-derive Status from anything but the Apply
-    // call itself.
+    // happened here for a full day after these five landed. Three of them
+    // (Zip, Unzip, Merge PDFs from zip) became ZipToolsWindow's two tabs on
+    // 2026-08-18; one builder with a tab flag stands for what used to be
+    // three. Each builder below seeds its ViewModel's Rows directly
+    // (ZipItemRow/PageCountRow via their own internal Apply, the same
+    // internal-member access ZipExtractViewModelTests/MergePdfsViewModelTests/
+    // PageCountsViewModelTests already use) rather than driving a real
+    // file-system batch through AddPaths — same shortcut
+    // BuildMatchMergeWindow/BuildBulkRenameWindow above take with
+    // MatchRow/RenameRow, and harmless here since these Windows/ViewModels
+    // never re-derive Status from anything but the Apply call itself.
     //
     // See DataGridWindowCoverageTests for the OTHER half of this task's own
     // brief: a suite that discovers — via reflection over
@@ -135,41 +137,48 @@ public class DataGridSelectionContrastTests
     // file's own class doc for the honest scope of what "automatic" means
     // here.
 
-    private static (ZipMergeWindow win, DataGrid grid) BuildZipMergeWindow()
+    /// <summary>One builder for both of ZipToolsWindow's tabs (2026-08-18:
+    /// Zip, Unzip and Merge PDFs from zip became this one window). A
+    /// TabControl realizes ONLY the selected tab's content, so the tab is
+    /// chosen after Show and layout flushed again — without that,
+    /// FindDescendant returns the OTHER tab's grid and the assertion would
+    /// pass while measuring the wrong columns.
+    ///
+    /// Each tab is seeded through the result shape its own tab actually
+    /// produces: an extract failure on Zip &amp; unzip, a merge failure on
+    /// Merge PDFs. Only the tab under test is seeded, so a failure message
+    /// can only be about the grid that was measured.</summary>
+    private static (ZipToolsWindow win, DataGrid grid) BuildZipToolsWindow(bool mergeTab)
     {
-        var vm = new ZipMergeViewModel(new FakeDialogs());
-        var row = new ZipRow(@"C:\inbox\a-long-enough-filename-to-matter.zip");
-        row.Apply(new ZipMerge.MergeResult(row.Path, "error",
-            Message: "couldn't read 'entry.pdf' inside the zip — a long enough exception message to matter"));
-        vm.Rows.Add(row);
-        var win = new ZipMergeWindow(vm)
+        var vm = new ZipToolsViewModel(new FakeDialogs());
+        var row = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
+        if (mergeTab)
+        {
+            row.Apply(new ZipMerge.MergeResult(row.Path, "error",
+                Message: "couldn't read 'entry.pdf' inside the zip — a long enough exception message to matter"));
+            vm.MergePdfs.Rows.Add(row);
+        }
+        else
+        {
+            row.Apply(new Zipper.UnzipResult(row.Path, "error", null,
+                "not a valid zip archive — a long enough exception message to matter"));
+            vm.ZipExtract.Rows.Add(row);
+        }
+        var win = new ZipToolsWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
         };
         win.Show();
         win.UpdateLayout();
-        var grid = FindDescendant<DataGrid>(win)
-            ?? throw new InvalidOperationException("no DataGrid descendant under ZipMergeWindow");
-        return (win, grid);
-    }
-
-    private static (UnzipWindow win, DataGrid grid) BuildUnzipWindow()
-    {
-        var vm = new UnzipViewModel(new FakeDialogs());
-        var row = new UnzipRow(@"C:\inbox\a-long-enough-filename-to-matter.zip");
-        row.Apply(new Zipper.UnzipResult(row.Path, "error", null,
-            "not a valid zip archive — a long enough exception message to matter"));
-        vm.Rows.Add(row);
-        var win = new UnzipWindow(vm)
-        {
-            Left = -20000, Top = 0, ShowActivated = false,
-            WindowStartupLocation = WindowStartupLocation.Manual,
-        };
-        win.Show();
+        win.Tabs.SelectedIndex = mergeTab ? 1 : 0;
         win.UpdateLayout();
         var grid = FindDescendant<DataGrid>(win)
-            ?? throw new InvalidOperationException("no DataGrid descendant under UnzipWindow");
+            ?? throw new InvalidOperationException("no DataGrid descendant under ZipToolsWindow");
+        // The tab really did switch: both grids bind the same row property
+        // names, so a selection that silently didn't take would still find a
+        // grid, still find every column, and still pass.
+        Assert.Same(mergeTab ? vm.MergePdfs.Rows : vm.ZipExtract.Rows, grid.ItemsSource);
         return (win, grid);
     }
 
@@ -192,22 +201,6 @@ public class DataGridSelectionContrastTests
         return (win, grid);
     }
 
-    private static (ZipWindow win, DataGrid grid) BuildZipWindow()
-    {
-        var vm = new ZipViewModel(new FakeDialogs());
-        vm.Rows.Add(new PathRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf", "file"));
-        var win = new ZipWindow(vm)
-        {
-            Left = -20000, Top = 0, ShowActivated = false,
-            WindowStartupLocation = WindowStartupLocation.Manual,
-        };
-        win.Show();
-        win.UpdateLayout();
-        var grid = FindDescendant<DataGrid>(win)
-            ?? throw new InvalidOperationException("no DataGrid descendant under ZipWindow");
-        return (win, grid);
-    }
-
     private static (FilenameListWindow win, DataGrid grid) BuildFilenameListWindow()
     {
         var vm = new FilenameListViewModel(new FakeDialogs());
@@ -224,47 +217,39 @@ public class DataGridSelectionContrastTests
         return (win, grid);
     }
 
+    /// <summary>Both tabs' columns, selected and unselected, in one pass per
+    /// tab: the two grids are separate visual trees that can only be measured
+    /// one at a time, so building the window twice per scheme (once per tab)
+    /// is what covering every column costs here. Selected and unselected run
+    /// against the SAME built window rather than two, since neither assertion
+    /// leaves state the other reads — each sets grid.SelectedIndex itself.</summary>
     [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
-    public void ZipMergeAllColumnsSelectedClearContrast(string schemeKey) => _fx.Invoke(() =>
+    public void ZipToolsZipTabAllColumnsClearContrast(string schemeKey) => _fx.Invoke(() =>
     {
         var scheme = ThemePalette.FindScheme(schemeKey)!;
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
-        var (win, grid) = BuildZipMergeWindow();
-        try { AssertEverySelectedColumnClearsContrast(grid, p, "ZipMergeWindow"); }
+        var (win, grid) = BuildZipToolsWindow(mergeTab: false);
+        try
+        {
+            AssertEverySelectedColumnClearsContrast(grid, p, "ZipToolsWindow (Zip & unzip tab)");
+            AssertEveryUnselectedColumnClearsContrast(grid, p, "ZipToolsWindow (Zip & unzip tab)");
+        }
         finally { win.Close(); }
     });
 
     [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
-    public void ZipMergeAllColumnsUnselectedClearContrast(string schemeKey) => _fx.Invoke(() =>
+    public void ZipToolsMergeTabAllColumnsClearContrast(string schemeKey) => _fx.Invoke(() =>
     {
         var scheme = ThemePalette.FindScheme(schemeKey)!;
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
-        var (win, grid) = BuildZipMergeWindow();
-        try { AssertEveryUnselectedColumnClearsContrast(grid, p, "ZipMergeWindow"); }
-        finally { win.Close(); }
-    });
-
-    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
-    public void UnzipAllColumnsSelectedClearContrast(string schemeKey) => _fx.Invoke(() =>
-    {
-        var scheme = ThemePalette.FindScheme(schemeKey)!;
-        var p = scheme.Palette;
-        ThemeManager.Apply(_fx.App, scheme);
-        var (win, grid) = BuildUnzipWindow();
-        try { AssertEverySelectedColumnClearsContrast(grid, p, "UnzipWindow"); }
-        finally { win.Close(); }
-    });
-
-    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
-    public void UnzipAllColumnsUnselectedClearContrast(string schemeKey) => _fx.Invoke(() =>
-    {
-        var scheme = ThemePalette.FindScheme(schemeKey)!;
-        var p = scheme.Palette;
-        ThemeManager.Apply(_fx.App, scheme);
-        var (win, grid) = BuildUnzipWindow();
-        try { AssertEveryUnselectedColumnClearsContrast(grid, p, "UnzipWindow"); }
+        var (win, grid) = BuildZipToolsWindow(mergeTab: true);
+        try
+        {
+            AssertEverySelectedColumnClearsContrast(grid, p, "ZipToolsWindow (Merge PDFs tab)");
+            AssertEveryUnselectedColumnClearsContrast(grid, p, "ZipToolsWindow (Merge PDFs tab)");
+        }
         finally { win.Close(); }
     });
 
@@ -287,28 +272,6 @@ public class DataGridSelectionContrastTests
         ThemeManager.Apply(_fx.App, scheme);
         var (win, grid) = BuildPageCountsWindow();
         try { AssertEveryUnselectedColumnClearsContrast(grid, p, "PageCountsWindow"); }
-        finally { win.Close(); }
-    });
-
-    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
-    public void ZipAllColumnsSelectedClearContrast(string schemeKey) => _fx.Invoke(() =>
-    {
-        var scheme = ThemePalette.FindScheme(schemeKey)!;
-        var p = scheme.Palette;
-        ThemeManager.Apply(_fx.App, scheme);
-        var (win, grid) = BuildZipWindow();
-        try { AssertEverySelectedColumnClearsContrast(grid, p, "ZipWindow"); }
-        finally { win.Close(); }
-    });
-
-    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
-    public void ZipAllColumnsUnselectedClearContrast(string schemeKey) => _fx.Invoke(() =>
-    {
-        var scheme = ThemePalette.FindScheme(schemeKey)!;
-        var p = scheme.Palette;
-        ThemeManager.Apply(_fx.App, scheme);
-        var (win, grid) = BuildZipWindow();
-        try { AssertEveryUnselectedColumnClearsContrast(grid, p, "ZipWindow"); }
         finally { win.Close(); }
     });
 

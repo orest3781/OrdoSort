@@ -340,16 +340,8 @@ public partial class MainWindow : Window
     private void OnListReformat(object sender, RoutedEventArgs e) =>
         new Windows.ListReformatWindow(new ListReformatViewModel()) { Owner = this }.ShowDialog();
 
-    private void OnZipMerge(object sender, RoutedEventArgs e) =>
-        new Windows.ZipMergeWindow(new ZipMergeViewModel(Dialogs, uiContext: SynchronizationContext.Current))
-        { Owner = this }.ShowDialog();
-
-    private void OnZip(object sender, RoutedEventArgs e) =>
-        new Windows.ZipWindow(new ZipViewModel(Dialogs, uiContext: SynchronizationContext.Current))
-        { Owner = this }.ShowDialog();
-
-    private void OnUnzip(object sender, RoutedEventArgs e) =>
-        new Windows.UnzipWindow(new UnzipViewModel(Dialogs, uiContext: SynchronizationContext.Current))
+    private void OnZipTools(object sender, RoutedEventArgs e) =>
+        new Windows.ZipToolsWindow(new ZipToolsViewModel(Dialogs, SynchronizationContext.Current))
         { Owner = this }.ShowDialog();
 
     private void OnAbout(object sender, RoutedEventArgs e) =>

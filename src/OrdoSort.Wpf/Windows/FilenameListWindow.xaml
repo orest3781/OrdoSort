@@ -82,8 +82,8 @@
                              plain GridCellText: no status trigger of its own
                              here, so the shared style's default Foreground plus
                              its own trailing "let selection win" DataTrigger is
-                             the whole fix — same shape as ZipMergeWindow's Zip
-                             column. Measured directly (off-screen, before this
+                             the whole fix — same shape as ZipToolsWindow's Zip
+                             column on its Merge PDFs tab. Measured directly (off-screen, before this
                              fix, plain GridCellText): Theme.Text on Theme.Accent
                              ranged 1.26:1-2.14:1 across every scheme, nowhere
                              near the 4.5:1 floor — this window shipped with the

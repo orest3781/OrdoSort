@@ -13,12 +13,13 @@ namespace OrdoSort.Wpf.Views;
 /// comment — start there for the rule as it stands rather than how it got
 /// here.
 ///
-/// SEVEN windows depend on this class (nine before the reports feature —
-/// Turnaround and Production — was removed): History, MatchMerge,
-/// BulkRename, ZipMerge, Unzip and PageCounts take the remainder rule;
-/// Triage supplies its own <see cref="Func{Double,Double}"/> budget. Only
-/// ZipWindow and FilenameListWindow never call it, correctly — neither has a
-/// capped column to govern.
+/// SIX windows depend on this class (nine before the reports feature —
+/// Turnaround and Production — was removed, and one more before Zip, Unzip
+/// and ZipMerge became ZipTools' two tabs): History, MatchMerge, BulkRename,
+/// PageCounts and ZipTools — which tracks BOTH of its grids, one per tab —
+/// take the remainder rule; Triage supplies its own
+/// <see cref="Func{Double,Double}"/> budget. Only FilenameListWindow never
+/// calls it, correctly — it has no capped column to govern.
 ///
 /// The "declared Width, computed once" shape was this class's first design
 /// (2026-08-07 autofit-columns Task 1) and it undercounted a real, ordinary

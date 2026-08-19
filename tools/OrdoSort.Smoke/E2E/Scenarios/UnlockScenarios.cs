@@ -12,8 +12,8 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 /// guarantee (README, UnlockNeverOverwritesTests) can actually be
 /// demonstrated rather than merely asserted at unit level.
 ///
-/// UnlockViewModel has NO uiContext/IWorkScheduler seam at all — unlike
-/// ZipMergeViewModel/UnzipViewModel, its constructor takes no
+/// UnlockViewModel has NO uiContext/IWorkScheduler seam at all — unlike the
+/// zip tabs' ZipListViewModel, its constructor takes no
 /// SynchronizationContext and no scheduler, and there is no InlineScheduler
 /// equivalent that could collapse it to synchronous completion. UnlockAsync
 /// and ProbeRowsAsync always call the real Task.Run/Task.WhenAll — genuine
@@ -25,7 +25,7 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 /// DispatcherSynchronizationContext, so that resumption is a genuine
 /// dispatcher Post requiring a pump — for Summary, for ResultLines, and for
 /// every row's Status/Message from ApplyProbeResult alike. There is no
-/// UnzipViewModel/ZipMergeViewModel-shaped split here (one property set
+/// ZipListViewModel-shaped split here (one property set
 /// directly, another only from inside an explicit Post) to trip on: I traced
 /// every assignment reachable before the first await in AddFilesAsync
 /// (candidate/ignored bookkeeping only) and in UnlockAsync (ResetBanner,

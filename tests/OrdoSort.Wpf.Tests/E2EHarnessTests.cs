@@ -307,10 +307,10 @@ public class E2EHarnessTests
     /// <c>SynchronizationContext.Current</c> — which was null.
     ///
     /// That matters because the uiContext seam is exactly what
-    /// ZipViewModel.ApplyResult (and ZipMergeViewModel, and the rest) uses to
-    /// get an off-thread result back onto the UI thread: "a raw thread-pool
-    /// continuation has no synchronization context of its own to inherit". A
-    /// null uiContext makes ApplyResult take its other branch and apply
+    /// ZipListViewModel.ApplyOnUi (and the rest) uses to get an off-thread
+    /// result back onto the UI thread: "a raw thread-pool continuation has no
+    /// synchronization context of its own to inherit". A null uiContext makes
+    /// ApplyOnUi take its other branch and apply
     /// inline, so the whole marshalling hop the seam exists for goes
     /// unexercised — silently, with every scenario still green. That is the
     /// mock-theatre failure this suite is supposed to prevent.

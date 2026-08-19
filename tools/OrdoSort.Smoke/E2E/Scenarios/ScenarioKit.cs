@@ -22,9 +22,9 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 ///
 /// <see cref="Added"/> used to be the same bug in a different disguise: it
 /// waited on a Task's own IsCompleted instead of on the filesystem, but for
-/// ZipViewModel.AddPaths, ZipMergeViewModel.AddFilesAsync and
-/// UnzipViewModel.AddFilesAsync the only await in the method body is
-/// `await _scheduler.Run(...)`, and every scenario constructs those view
+/// ZipListViewModel.AddPaths — the single intake method both zip tabs now
+/// share, where there used to be one per tool — the only await in the method
+/// body is `await Scheduler.Run(...)`, and every scenario constructs those view
 /// models with InlineScheduler, whose Run() hands back an already-completed
 /// Task.FromResult. The intake Task was therefore IsCompleted before Added
 /// was ever called, <see cref="E2EPump.Until"/>'s own pre-pump fast path
