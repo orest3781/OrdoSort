@@ -209,6 +209,27 @@ public class WindowOverflowTests
             return (new ZipMergeWindow(vm), null);
         }),
 
+        // Both tabs are seeded and both are probed (ProbeEveryTab): only the
+        // selected tab's content exists in the visual tree, and an empty list
+        // is the one state that trivially fits — see this class's own doc.
+        // Each list gets a failed row because the Result column's own error
+        // message is the widest thing either grid ever shows.
+        ["ZipToolsWindow"] = new(580, 700, 420, 520, () =>
+        {
+            var vm = new ZipToolsViewModel(new FakeDialogs());
+            var archive = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
+            archive.Apply(new Zipper.UnzipResult(archive.Path, "error", null,
+                "not a valid zip archive — a long enough exception message to matter"));
+            vm.ZipExtract.Rows.Add(archive);
+            vm.ZipExtract.Rows.Add(new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf", "file"));
+
+            var toMerge = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
+            toMerge.Apply(new ZipMerge.MergeResult(toMerge.Path, "error",
+                Message: "couldn't read 'entry.pdf' inside the zip — a long enough exception message to matter"));
+            vm.MergePdfs.Rows.Add(toMerge);
+            return (new ZipToolsWindow(vm), null);
+        }, ProbeEveryTab: true),
+
         ["MainWindow"] = new(400, 470, 0, 0, () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "ordo_test_overflow_" + Guid.NewGuid());

@@ -71,6 +71,12 @@ public class DataGridWindowCoverageTests
         // Tools windows added 2026-08-09 ("five Tools-menu utilities") —
         // this task's own coverage-gap fix.
         "FilenameListWindow", "ZipWindow", "ZipMergeWindow", "UnzipWindow", "PageCountsWindow",
+        // ZipToolsWindow (2026-08-18, the one-archive-window merge): registered
+        // the moment the window exists because fact 1 is derived by reflection
+        // and would otherwise fail by name on the commit that adds it. Its
+        // DataGridSelectionContrastTests builder lands with the cutover, when
+        // the three windows above it replaces are removed from this set.
+        "ZipToolsWindow",
     };
 
     /// <summary>Walks up from the running test assembly's own directory to
