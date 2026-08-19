@@ -17,10 +17,10 @@ namespace OrdoSort.Wpf.Tests;
 ///
 /// AutoFitColumnTests measures real widths, and measures them well, but it is
 /// a hand-maintained list of per-window facts: it only ever proves the windows
-/// somebody remembered to write a case for. FilenameListWindow and ZipWindow
-/// have never appeared in it. That is the same failure mode
-/// DataGridSelectionContrastTests' own class doc calls out for columns, one
-/// level up.
+/// somebody remembered to write a case for. FilenameListWindow has never
+/// appeared in it, and neither did the old ZipWindow in its whole lifetime.
+/// That is the same failure mode DataGridSelectionContrastTests' own class doc
+/// calls out for columns, one level up.
 ///
 /// So these two facts are deliberately DERIVED, never hand-listed:
 ///
@@ -50,14 +50,18 @@ public class DataGridSizingCoverageTests
     /// <see cref="RegisteredWindowsAreRealGridWindows"/> is the mirror check
     /// that nothing here has gone stale.
     ///
-    /// FilenameListWindow and ZipWindow are deliberately NOT here — they are
-    /// the two grid windows in the app with zero measured sizing coverage.
-    /// They sit in <see cref="KnownUncovered"/> below instead, so the gap is
-    /// recorded as debt rather than left as an unexplained red suite.</summary>
+    /// FilenameListWindow is deliberately NOT here — it is the one grid
+    /// window left in the app with zero measured sizing coverage. It sits in
+    /// <see cref="KnownUncovered"/> below instead, so the gap is recorded as
+    /// debt rather than left as an unexplained red suite.
+    ///
+    /// ZipToolsWindow stands for what used to be ZipMergeWindow and
+    /// UnzipWindow: its AutoFitColumnTests facts take a tab flag and measure
+    /// both grids' Result columns.</summary>
     private static readonly HashSet<string> SizingCovered = new(StringComparer.Ordinal)
     {
         "MatchMergeWindow", "BulkRenameWindow", "HistoryWindow", "TriageWindow",
-        "PageCountsWindow", "ZipMergeWindow", "UnzipWindow",
+        "PageCountsWindow", "ZipToolsWindow",
     };
 
     /// <summary>Known-uncovered grid windows, listed so the gap is explicit
@@ -66,14 +70,13 @@ public class DataGridSizingCoverageTests
     /// fact 1 fail by name, which is the point: this list is a debt register,
     /// not a permanent exemption.
     ///
-    /// ZipWindow: one Auto column ("Kind", holding only "file"/"folder") and
-    /// a star filler, so nothing competes for width and there is no cap to
-    /// test today. FilenameListWindow: a single column, likewise.
-    /// Both are genuinely low-risk RIGHT NOW — and both would stop being so
-    /// the moment a second content column is added, with nothing to notice.</summary>
+    /// FilenameListWindow: a single column, so nothing competes for width and
+    /// there is no cap to test today. Genuinely low-risk RIGHT NOW — and it
+    /// would stop being so the moment a second content column is added, with
+    /// nothing to notice.</summary>
     private static readonly HashSet<string> KnownUncovered = new(StringComparer.Ordinal)
     {
-        "ZipWindow", "FilenameListWindow",
+        "FilenameListWindow",
     };
 
     private static string FindRepoRoot()

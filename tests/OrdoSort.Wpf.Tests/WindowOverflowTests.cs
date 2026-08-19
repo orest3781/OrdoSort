@@ -182,32 +182,26 @@ public class WindowOverflowTests
             return (new UnlockWindow(vm), null);
         }),
 
-        ["UnzipWindow"] = new(500, 640, 380, 500, () =>
+        // Both tabs are seeded and both are probed (ProbeEveryTab): only the
+        // selected tab's content exists in the visual tree, and an empty list
+        // is the one state that trivially fits — see this class's own doc.
+        // Each list gets a failed row because the Result column's own error
+        // message is the widest thing either grid ever shows.
+        ["ZipToolsWindow"] = new(580, 700, 420, 520, () =>
         {
-            var vm = new UnzipViewModel(new FakeDialogs());
-            var row = new UnzipRow(@"C:\inbox\a-long-enough-filename-to-matter.zip");
-            row.Apply(new Zipper.UnzipResult(row.Path, "error", null,
+            var vm = new ZipToolsViewModel(new FakeDialogs());
+            var archive = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
+            archive.Apply(new Zipper.UnzipResult(archive.Path, "error", null,
                 "not a valid zip archive — a long enough exception message to matter"));
-            vm.Rows.Add(row);
-            return (new UnzipWindow(vm), null);
-        }),
+            vm.ZipExtract.Rows.Add(archive);
+            vm.ZipExtract.Rows.Add(new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf", "file"));
 
-        ["ZipWindow"] = new(500, 640, 380, 500, () =>
-        {
-            var vm = new ZipViewModel(new FakeDialogs());
-            vm.Rows.Add(new PathRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf", "file"));
-            return (new ZipWindow(vm), null);
-        }),
-
-        ["ZipMergeWindow"] = new(580, 700, 420, 520, () =>
-        {
-            var vm = new ZipMergeViewModel(new FakeDialogs());
-            var row = new ZipRow(@"C:\inbox\a-long-enough-filename-to-matter.zip");
-            row.Apply(new ZipMerge.MergeResult(row.Path, "error",
+            var toMerge = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
+            toMerge.Apply(new ZipMerge.MergeResult(toMerge.Path, "error",
                 Message: "couldn't read 'entry.pdf' inside the zip — a long enough exception message to matter"));
-            vm.Rows.Add(row);
-            return (new ZipMergeWindow(vm), null);
-        }),
+            vm.MergePdfs.Rows.Add(toMerge);
+            return (new ZipToolsWindow(vm), null);
+        }, ProbeEveryTab: true),
 
         ["MainWindow"] = new(400, 470, 0, 0, () =>
         {

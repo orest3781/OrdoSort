@@ -102,7 +102,8 @@ workflow tests, builds, zips, and publishes.
   card previews the exact label, a full-sheet print preview with printer
   picker prints in-app at guaranteed 100% scale, and PDF export remains as
   an alternative). Also *Filename list*, *PDF page counts*, *List
-  reformatter*, *Merge PDFs from zip*, *Zip* and *Unzip*.
+  reformatter*, and *Zip and unzip* — which also merges the PDFs inside an
+  archive, on its own tab.
 - **Reports** — *Turn-around time* reads a folder of PECF report exports
   (xlsx or csv) and reports how long each document waited between its date
   and its upload; *Production reports* sweeps a folder of daily move-log
@@ -142,8 +143,8 @@ e2e.bat
 
 (or `dotnet run --project tools\OrdoSort.Smoke -- e2e` — the bat wraps that
 command, forwards any arguments, and opens the report when the run ends)
-drives all 14 user-facing surfaces — the ten Tools-menu utilities, both
-Reports, History, and the routing loop — as real windows against real files
+drives all 12 user-facing surfaces — the ten Tools-menu utilities, History,
+and the routing loop — as real windows against real files
 in a throwaway temp folder, then writes `evidence\<timestamp>\report.html`:
 one row per scenario, with the assertions it ran and a screenshot of the
 window.

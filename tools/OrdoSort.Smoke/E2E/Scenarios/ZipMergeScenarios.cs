@@ -4,9 +4,9 @@ using OrdoSort.Wpf.Windows;
 
 namespace OrdoSort.Smoke.E2E.Scenarios;
 
-/// <summary>"Merge PDFs from zip" as the real ZipMergeWindow, with the
-/// `merger` seam left at its default so ZipMerge.MergeZip really opens the
-/// archives and really writes a merged document.</summary>
+/// <summary>"Merge PDFs from zip" as the real ZipToolsWindow's Merge PDFs
+/// tab, with the `merger` seam left at its default so ZipMerge.MergeZip
+/// really opens the archives and really writes a merged document.</summary>
 public static class ZipMergeScenarios
 {
     private const string Surface = "Zip merge";
@@ -20,62 +20,69 @@ public static class ZipMergeScenarios
         new Scenario(Surface, "one bad archive among good ones", "awkward", BatchWithOneBad),
     };
 
-    private static ZipMergeViewModel NewVm(ScenarioContext ctx) =>
-        new(ctx.Dialogs, new InlineScheduler(), SynchronizationContext.Current);
+    private static ZipToolsViewModel NewVm(ScenarioContext ctx) =>
+        new(ctx.Dialogs, SynchronizationContext.Current, new InlineScheduler());
 
     /// <summary>Add every zip, run the merge, and wait for every row to leave
     /// Pending.
     ///
-    /// Waits on each row's own StatusKind, never on vm.Summary — and that
+    /// Waits on each row's own StatusKind, never on vm.Status — and that
     /// choice is load-bearing, not cosmetic, the same trap UnzipScenarios.cs
-    /// documents for UnzipViewModel. In ZipMergeViewModel, Summary is
-    /// assigned DIRECTLY inside MergeAsync's own loop body ("Merging N of
-    /// M…", then the final `Summary = string.Join(...)` verdict line) — no
-    /// _uiContext hop anywhere in that assignment. ZipRow's StatusKind/Note/
-    /// Output, by contrast, are only ever set from inside ZipRow.Apply, and
-    /// ZipMergeViewModel.ApplyResult only ever calls Apply from inside
-    /// `_uiContext.Post(_ => row.Apply(result), null)`.
+    /// documents for the other tab. In ZipListViewModel.RunBatchAsync, Status
+    /// is assigned DIRECTLY inside the loop body ("Merging N of M…", then the
+    /// final `Status = string.Join(...)` verdict line) — no UiContext hop
+    /// anywhere in that assignment. ZipItemRow's StatusKind/Note/Output, by
+    /// contrast, are only ever set from inside ZipItemRow.Apply, and
+    /// ZipListViewModel.ApplyOnUi only ever calls Apply from inside
+    /// `UiContext.Post(_ => apply(row, result), null)`.
     ///
-    /// Under InlineScheduler every `_scheduler.Run(...)` awaits an
+    /// Under InlineScheduler every `Scheduler.Run(...)` awaits an
     /// already-completed Task, so `MergeCommand.Execute(null)` — an async
     /// void method whose body runs synchronously up to its first real
     /// suspension point — runs MergeAsync's ENTIRE for-loop to completion,
-    /// including that final Summary assignment, before returning control
-    /// here. vm.Summary would therefore already read the finished verdict
+    /// including that final Status assignment, before returning control
+    /// here. vm.Status would therefore already read the finished verdict
     /// line on E2EPump.Until's very first (pre-pump) check — exactly the
     /// "predicate that's already true" trap ScenarioKit.Settle's own doc
     /// comment warns about, except the trap here is a VIEW MODEL property,
     /// not the filesystem. Waiting on every row's StatusKind instead
     /// genuinely blocks until the dispatcher actually runs each queued
-    /// ApplyResult Post, which is the one thing that proves the marshalling
+    /// ApplyOnUi Post, which is the one thing that proves the marshalling
     /// hop was exercised rather than just the underlying merge.
     ///
     /// This does not call ScenarioKit.Settle directly — Settle's signature
     /// waits on ONE status string, and BatchWithOneBad drives three rows at
     /// once — but it keeps Settle's contract: wait on a hop-guarded surface
-    /// property, and record that the wait succeeded as its own assertion.</summary>
-    private static ZipMergeWindow Merge(ScenarioContext ctx, ZipMergeViewModel vm, params string[] zips)
+    /// property, and record that the wait succeeded as its own assertion.
+    ///
+    /// Index 1 is the Merge PDFs tab: a TabControl realizes only the selected
+    /// tab's content, so the tab has to be current before anything reads or
+    /// photographs the grid.</summary>
+    private static ZipToolsWindow Merge(ScenarioContext ctx, ZipToolsViewModel tools, params string[] zips)
     {
-        var win = new ZipMergeWindow(vm);
+        var win = new ZipToolsWindow(tools);
         E2EPump.ShowOffscreen(win);
+        win.Tabs.SelectedIndex = 1;
+        win.UpdateLayout();
 
-        // AddFilesAsync's one await is `_scheduler.Run(...)`, which
-        // InlineScheduler completes synchronously, so Rows is already
-        // populated by the time this call returns — the row-count check
-        // below is the real assertion that intake worked; see ScenarioKit's
-        // class doc comment for why an Added(ctx, ...) wrapper here could
-        // never have failed.
-        _ = vm.AddFilesAsync(zips);
+        var vm = tools.MergePdfs;
+        // AddPaths' one await is `Scheduler.Run(...)`, which InlineScheduler
+        // completes synchronously, so Rows is already populated by the time
+        // this call returns — the row-count check below is the real assertion
+        // that intake worked; see ScenarioKit's class doc comment for why an
+        // Added(ctx, ...) wrapper here could never have failed.
+        _ = vm.AddPaths(zips);
         ctx.Check("every archive is listed", vm.Rows.Count == zips.Length,
             $"got {vm.Rows.Count} of {zips.Length}");
 
         vm.MergeCommand.Execute(null);
 
         var settled = E2EPump.Until(
-            () => vm.Rows.Count == zips.Length && vm.Rows.All(r => r.StatusKind != ZipRowStatus.Pending),
+            () => vm.Rows.Count == zips.Length
+                && vm.Rows.All(r => r.StatusKind != ZipItemRowStatus.Pending),
             20000);
         ctx.Check("every row reported a result", settled,
-            "rows: " + string.Join(", ", vm.Rows.Select(r => $"{r.FileName}:{r.StatusKind}")));
+            "rows: " + string.Join(", ", vm.Rows.Select(r => $"{r.Display}:{r.StatusKind}")));
 
         return win;
     }
@@ -100,10 +107,11 @@ public static class ZipMergeScenarios
         var c = ctx.Fx.Pdf("src/c.pdf", "PAGE THREE");
         var zip = ctx.Fx.Zip("archives/bundle.zip", ("a.pdf", a), ("b.pdf", b), ("c.pdf", c));
 
-        var vm = NewVm(ctx);
-        var win = Merge(ctx, vm, zip);
+        var tools = NewVm(ctx);
+        var win = Merge(ctx, tools, zip);
+        var vm = tools.MergePdfs;
 
-        ctx.Check("row reports ok", vm.Rows[0].StatusKind == ZipRowStatus.Ok,
+        ctx.Check("row reports ok", vm.Rows[0].StatusKind == ZipItemRowStatus.Ok,
             $"{vm.Rows[0].StatusKind} — {vm.Rows[0].Note}");
         var output = vm.Rows[0].Output;
         ctx.Check("an output path was reported", output is not null, "none");
@@ -121,10 +129,11 @@ public static class ZipMergeScenarios
         var txt = ctx.Fx.Text("src/readme.txt", "no documents here");
         var zip = ctx.Fx.Zip("archives/empty-of-pdfs.zip", ("readme.txt", txt));
 
-        var vm = NewVm(ctx);
-        var win = Merge(ctx, vm, zip);
+        var tools = NewVm(ctx);
+        var win = Merge(ctx, tools, zip);
+        var vm = tools.MergePdfs;
 
-        ctx.Check("reported as holding no PDFs", vm.Rows[0].StatusKind == ZipRowStatus.NoPdfs,
+        ctx.Check("reported as holding no PDFs", vm.Rows[0].StatusKind == ZipItemRowStatus.NoPdfs,
             $"{vm.Rows[0].StatusKind} — {vm.Rows[0].Note}");
         ctx.Check("nothing was written", vm.Rows[0].Output is null,
             $"wrote {vm.Rows[0].Output}");
@@ -139,10 +148,11 @@ public static class ZipMergeScenarios
         var zip = ctx.Fx.Zip("archives/mixed.zip",
             ("a.pdf", a), ("notes.txt", txt), ("b.pdf", b));
 
-        var vm = NewVm(ctx);
-        var win = Merge(ctx, vm, zip);
+        var tools = NewVm(ctx);
+        var win = Merge(ctx, tools, zip);
+        var vm = tools.MergePdfs;
 
-        ctx.Check("merged despite the extra file", vm.Rows[0].StatusKind == ZipRowStatus.Ok,
+        ctx.Check("merged despite the extra file", vm.Rows[0].StatusKind == ZipItemRowStatus.Ok,
             $"{vm.Rows[0].StatusKind} — {vm.Rows[0].Note}");
         if (vm.Rows[0].Output is { } output)
         {
@@ -167,11 +177,12 @@ public static class ZipMergeScenarios
         var locked = ctx.Fx.EncryptedPdf("src/locked.pdf", "secret");
         var zip = ctx.Fx.Zip("archives/has-locked.zip", ("plain.pdf", plain), ("locked.pdf", locked));
 
-        var vm = NewVm(ctx);
-        var win = Merge(ctx, vm, zip);
+        var tools = NewVm(ctx);
+        var win = Merge(ctx, tools, zip);
+        var vm = tools.MergePdfs;
 
         ctx.Check("reported as an error rather than a silent partial success",
-            vm.Rows[0].StatusKind == ZipRowStatus.Error,
+            vm.Rows[0].StatusKind == ZipItemRowStatus.Error,
             $"status was {vm.Rows[0].StatusKind} — {vm.Rows[0].Note}");
         ctx.Check("the outcome names the entry that could not be read",
             vm.Rows[0].Note.Contains("locked.pdf", StringComparison.Ordinal),
@@ -191,11 +202,12 @@ public static class ZipMergeScenarios
         var bad = ctx.Fx.Text("archives/bad.zip", "not a zip");
         var good2 = ctx.Fx.Zip("archives/good2.zip", ("a.pdf", a), ("b.pdf", b));
 
-        var vm = NewVm(ctx);
-        var win = Merge(ctx, vm, good1, bad, good2);
+        var tools = NewVm(ctx);
+        var win = Merge(ctx, tools, good1, bad, good2);
+        var vm = tools.MergePdfs;
 
-        var ok = vm.Rows.Count(r => r.StatusKind == ZipRowStatus.Ok);
-        var errors = vm.Rows.Count(r => r.StatusKind == ZipRowStatus.Error);
+        var ok = vm.Rows.Count(r => r.StatusKind == ZipItemRowStatus.Ok);
+        var errors = vm.Rows.Count(r => r.StatusKind == ZipItemRowStatus.Error);
         ctx.Check("both good archives merged", ok == 2, $"got {ok}");
         ctx.Check("the bad one is reported as an error", errors == 1, $"got {errors}");
         ctx.Capture(win);

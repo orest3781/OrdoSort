@@ -1,6 +1,6 @@
 @echo off
 rem Run the end-to-end demonstration suite. With no argument it drives all
-rem 14 surfaces as real windows against real files; pass a surface name to
+rem 12 surfaces as real windows against real files; pass a surface name to
 rem run just one, and --keep to preserve the scenario fixtures:
 rem   e2e.bat
 rem   e2e.bat zip

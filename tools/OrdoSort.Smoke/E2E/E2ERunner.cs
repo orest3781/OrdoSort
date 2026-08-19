@@ -149,7 +149,7 @@ public static class E2ERunner
     ///
     /// Every view model in this app takes a uiContext precisely so a result
     /// computed off-thread can Post itself back onto the UI thread
-    /// (ZipViewModel.ApplyResult: "a raw thread-pool continuation has no
+    /// (ZipListViewModel.ApplyOnUi: "a raw thread-pool continuation has no
     /// synchronization context of its own to inherit"). In the real app that
     /// context exists because Application.Run installs one. This runner never
     /// calls Application.Run or Dispatcher.Run — it drives the dispatcher with
@@ -192,8 +192,8 @@ public static class E2ERunner
         // Recorded here, once, so all nine surface files inherit it rather than
         // remembering to assert it themselves. Scenarios pass
         // SynchronizationContext.Current as their view model's uiContext, and
-        // ZipViewModel.ApplyResult reads "if (_uiContext is null) Apply(); else
-        // _uiContext.Post(…)". If this thread ever loses its context, every
+        // ZipListViewModel.ApplyOnUi reads "if (UiContext is null) apply(…);
+        // else UiContext.Post(…)". If this thread ever loses its context, every
         // scenario silently takes the inline branch: the result is applied
         // synchronously, the Settle wait finds Status already set and returns
         // without arming a frame, and the whole run goes green having never
