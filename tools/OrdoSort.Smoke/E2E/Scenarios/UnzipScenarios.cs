@@ -1,4 +1,4 @@
-﻿using OrdoSort.Wpf.ViewModels;
+using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Windows;
 using static OrdoSort.Smoke.E2E.Scenarios.ScenarioKit;
 
