@@ -221,7 +221,9 @@ public abstract class ZipListViewModel : ObservableObject
             // after applying it: the apply may be marshalled onto the UI
             // thread and has not necessarily landed yet.
             var status = statusOf(result);
-            var slot = clauses.ToList().FindIndex(c => c.Status == status);
+            var slot = -1;
+            for (var c = 0; c < clauses.Count; c++)
+                if (clauses[c].Status == status) { slot = c; break; }
             counts[slot >= 0 ? slot : clauses.Count - 1]++;
 
             ApplyOnUi(row, result, apply);
@@ -231,6 +233,17 @@ public abstract class ZipListViewModel : ObservableObject
         for (var i = 0; i < clauses.Count; i++)
             if (counts[i] > 0) parts.Add($"{counts[i]} {clauses[i].Label}");
         Status = string.Join(" · ", parts);
+
+        // Rows leaving Pending during the loop above change each row's OWN
+        // StatusKind, not the Rows collection, so the CollectionChanged
+        // subscription in the constructor never fires for it. Without this
+        // call, a button whose count derives from row status (e.g.
+        // ExtractButtonText's PendingZips) goes stale the instant the batch
+        // finishes: CanExecute correctly disables it, but the label still
+        // names the pre-run count. Matches the unmarshalled Status
+        // assignment just above — both run wherever this method's own
+        // continuation lands.
+        OnRowsChanged();
     }
 
     /// <summary>Marshals onto UiContext when one is set — a raw thread-pool

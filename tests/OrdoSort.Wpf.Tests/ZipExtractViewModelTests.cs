@@ -329,6 +329,38 @@ public class ZipExtractViewModelTests
         Assert.Equal("Extract 2 zips", vm.ExtractButtonText);
     }
 
+    /// <summary>Regression for the base class's OnRowsChanged call at the end
+    /// of RunBatchAsync (ZipListViewModel.cs). ExtractButtonText itself is
+    /// computed fresh on every read (PendingZips switch, no cached field), so
+    /// asserting its VALUE after ExtractAsync() would pass even without the
+    /// fix — reading the property always re-derives it correctly. What goes
+    /// stale is the bound TextBlock, which only re-reads the getter when
+    /// PropertyChanged fires for it. Rows leaving Pending during a run change
+    /// each row's OWN StatusKind, not the Rows collection, so the
+    /// CollectionChanged subscription that normally raises it never fires.
+    /// This pins the notification itself, the same way
+    /// TilePreviewProbeTests/SettingsViewModelTests pin other "bound control
+    /// reacts to X's PropertyChanged" facts.</summary>
+    [Fact]
+    public async Task ExtractButtonTextChangeNotifiesAfterExtractFinishes()
+    {
+        using var dir = new TempDir();
+        var vm = MakeVm(extractor: path => new Zipper.UnzipResult(path, "ok", path + ".out"));
+
+        var a = dir.File("a.zip");
+        var b = dir.File("b.zip");
+        await vm.AddPaths(new[] { a, b });
+        Assert.Equal("Extract 2 zips", vm.ExtractButtonText);
+
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        await vm.ExtractAsync();
+
+        Assert.Contains(nameof(vm.ExtractButtonText), raised);
+        Assert.Equal("Extract", vm.ExtractButtonText);
+    }
+
     [Fact]
     public async Task DuplicateReAddSetsAddNoteWithoutAddingADuplicateRow()
     {

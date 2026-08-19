@@ -1073,8 +1073,6 @@ public class AutoFitColumnTests
     // debounce here (unlike FilenameListViewModel), so this is a pure
     // shortcut, not a behavior change from what AddPaths would produce.
 
-    private const double PageCountsNoteShare = 0.45;
-
     private static PageCountsWindow BuildPageCountsWindow(string noteValue, int rowCount = 1)
     {
         var vm = new PageCountsViewModel(new FakeDialogs());

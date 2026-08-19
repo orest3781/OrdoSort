@@ -1,7 +1,5 @@
 using System.Windows;
-using System.Windows.Controls;
 using Microsoft.Win32;
-using OrdoSort.Core;
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Views;
 
