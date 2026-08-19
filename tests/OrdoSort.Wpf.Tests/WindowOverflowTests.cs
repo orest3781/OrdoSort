@@ -103,7 +103,12 @@ public class WindowOverflowTests
         ["ListReformatWindow"] = new(480, 620, 400, 520, () =>
             (new ListReformatWindow(new ListReformatViewModel
             {
-                InputText = "alpha\nbravo\ncharlie\nalpha",
+                // blanks + a repeat + the custom shape: the widest the counts
+                // line and the picker row ever get ("N items · N blank rows
+                // removed · N duplicates dropped", plus the delimiter box)
+                InputText = "alpha\n\nbravo\n\ncharlie\n\nalpha",
+                Dedupe = true,
+                Shape = ListReformat.OutputShape.CustomDelimiter,
             }), null)),
 
         ["ManageSavedWindow"] = new(380, 420, 360, 420, () =>

@@ -65,8 +65,8 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 ///
 /// <b>ListReformatViewModel</b> has no scheduler, no uiContext, and no
 /// DebouncedProbe — Recompute() runs synchronously and inline inside every
-/// property setter (ListReformatViewModel.cs:19,26,33,40: "if (Set(...))
-/// Recompute()"). There is no marshalling hop to wait on ANYWHERE in this
+/// property setter (ListReformatViewModel.cs:19,26,33,40,67: "if (Set(...))
+/// Recompute()", and Shape's own longer setter at :56 the same way). There is no marshalling hop to wait on ANYWHERE in this
 /// view model, which is the class's own doc comment's point ("nothing that
 /// could ever be slow enough to need debouncing off the UI thread"). Both
 /// scenarios below read OutputText/CountsLine the instant the property
@@ -299,6 +299,31 @@ public static class SmallToolScenarios
             vm.CountsLine);
         ctx.Check("only one \"smith john\" remains after Dedupe",
             vm.OutputText.Split(',').Count(i => i == "smith john") == 1, vm.OutputText);
+
+        // The counts line now accounts for the gaps it closed, not just the
+        // items it kept — three blank rows sit between the values above, and
+        // the trailing newline the paste ends with is NOT one of them.
+        ctx.Check("the counts line names the blank rows it removed",
+            vm.CountsLine.Contains("3 blank rows removed", StringComparison.Ordinal),
+            vm.CountsLine);
+
+        // A cell holding only a zero-width space reads as empty to anyone
+        // looking at the spreadsheet, and string.Trim does not remove it.
+        vm.InputText = "smith john\n​\njones mary";
+        ctx.Check("a zero-width-space cell counts as a blank row, not an item",
+            vm.OutputText == "smith john,jones mary"
+            && vm.CountsLine.Contains("1 blank row removed", StringComparison.Ordinal),
+            $"{vm.OutputText} | {vm.CountsLine}");
+
+        // Same list, shaped to go straight back into the column it came from.
+        vm.Shape = ListReformat.OutputShape.OnePerLine;
+        ctx.Check("One item per line hands back a column, gaps closed",
+            vm.OutputText == "smith john\r\njones mary", vm.OutputText);
+
+        vm.Shape = ListReformat.OutputShape.CustomDelimiter;
+        vm.CustomDelimiter = " | ";
+        ctx.Check("a custom delimiter is used verbatim",
+            vm.OutputText == "smith john | jones mary", vm.OutputText);
 
         ctx.Capture(win);
     }
