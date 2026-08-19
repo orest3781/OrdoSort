@@ -1,4 +1,4 @@
-# One archive window
+# One zip window
 
 **Date:** 2026-08-18
 **Status:** approved, ready for planning
@@ -35,10 +35,10 @@ for a decision the input already answers.
 
 ## Approach
 
-One window (`ArchiveWindow`) with **two tabs**, replacing three windows and
+One window (`ZipToolsWindow`) with **two tabs**, replacing three windows and
 three menu entries.
 
-**Zip & extract** holds one list and chooses its action from the contents:
+**Zip & unzip** holds one list and chooses its action from the contents:
 loose files and folders can be zipped, archives can be extracted, and the
 buttons light accordingly. Zip and Extract are inverse operations on the same
 objects, so nothing is gained by making a person declare which one they meant.
@@ -74,7 +74,7 @@ consolidation, which is what keeps its risk proportionate to its reach.
 
 ## Behaviour
 
-### Zip & extract
+### Zip & unzip
 
 The tab takes any file, folder, or archive that exists. Each action button
 carries its own count, so its scope is legible without a rule anyone has to
@@ -118,20 +118,20 @@ alone, exactly as it does today.
 ### Shared surface details
 
 - `Kind` gains a third value, `zip`, beside `file` and `folder`. On the Zip &
-  extract tab it is also the visual cue for why Extract lit up.
+  unzip tab it is also the visual cue for why Extract lit up.
 - Window: 700×520, min 580×420 — ZipMerge's dimensions, the largest of the
   three, and the one carrying the most content.
 - Extract and Merge stay cancellable (`_cts`, cancelled on window close). Zip
   stays non-cancellable, being a single operation.
-- Empty state, Zip & extract: "Drag files, folders or zips anywhere on this
+- Empty state, Zip & unzip: "Drag files, folders or zips anywhere on this
   window, or press Add…". Merge PDFs keeps "Drag zips anywhere on this
   window, or press Add zips…".
-- Tools menu: `_Zip tools…` replaces all three entries. Window title
-  "OrdoSort — Zip tools".
+- Tools menu: `_Zip and unzip…` replaces all three entries. Window title
+  "OrdoSort — Zip and unzip".
 
 ## Structure
 
-### `ArchiveRow`
+### `ZipItemRow`
 
 The union of today's three rows, living beside its view model as they do:
 
@@ -156,12 +156,12 @@ actually for; an earlier draft rejected one because three view models would
 have had to share a single list, and that objection does not apply once each
 tab has its own.
 
-**`ArchiveListViewModel`** (abstract) owns everything shared: `Rows`,
+**`ZipListViewModel`** (abstract) owns everything shared: `Rows`,
 `AddNote`, `Status`, `AddPaths`, `RemoveSelected`, `ClearCommand`, `Cancel()`,
 the `Rows.CollectionChanged` wiring, and the cancellable batch runner
 
 ```csharp
-protected Task RunBatchAsync(Func<ArchiveRow, ...> operation, tally labels)
+protected Task RunBatchAsync(Func<ZipItemRow, ...> operation, tally labels)
 ```
 
 which walks pending zip rows, honours the token, updates `Status` per item and
@@ -182,7 +182,7 @@ accepts zips only.
 **Extract and Merge are the same inherited runner with a different
 operation.** That is the duplication this design exists to delete.
 
-`ArchiveWindow`'s `DataContext` is a small shell holding one instance of each
+`ZipToolsWindow`'s `DataContext` is a small shell holding one instance of each
 subclass, one per tab.
 
 Zip's single-shot `Status` and the batch tools' running `Summary` become one
@@ -190,10 +190,10 @@ Zip's single-shot `Status` and the batch tools' running `Summary` become one
 
 ### Files
 
-Created: `ViewModels/ArchiveListViewModel.cs` (base + `ArchiveRow` +
-`ArchiveRowStatus`), `ViewModels/ZipExtractViewModel.cs`,
-`ViewModels/MergePdfsViewModel.cs`, `ViewModels/ArchiveViewModel.cs` (shell),
-`Windows/ArchiveWindow.xaml`, `Windows/ArchiveWindow.xaml.cs`.
+Created: `ViewModels/ZipListViewModel.cs` (base + `ZipItemRow` +
+`ZipItemRowStatus`), `ViewModels/ZipExtractViewModel.cs`,
+`ViewModels/MergePdfsViewModel.cs`, `ViewModels/ZipToolsViewModel.cs` (shell),
+`Windows/ZipToolsWindow.xaml`, `Windows/ZipToolsWindow.xaml.cs`.
 
 Deleted: `ViewModels/{Zip,Unzip,ZipMerge}ViewModel.cs`,
 `Windows/{Zip,Unzip,ZipMerge}Window.xaml{,.cs}`.
@@ -205,7 +205,7 @@ The window follows `SettingsWindow` for its `TabControl` and
 `UnzipWindow.xaml.cs` for everything else: `DataGridColumnCap.Track` on each
 tab's Result column in the constructor, `OnClosed` cancelling both tabs, and
 the shared `OnDragOver`/`OnDrop` pair routed to whichever tab is selected. The
-Zip & extract toolbar is Zip's, which is the superset: "Add files…", "Add
+Zip & unzip toolbar is Zip's, which is the superset: "Add files…", "Add
 folder…", "Remove selected", "Clear". Merge PDFs keeps "Add zips…", "Remove
 selected", "Clear".
 
@@ -229,7 +229,7 @@ The 37 facts across `ZipViewModelTests` (11), `UnzipViewModelTests` (13), and
   unchanged.
 
 Retired deliberately: the single "a non-zip drop is rejected" fact on the
-extract path, which the permissive Zip & extract intake contradicts by design.
+extract path, which the permissive Zip & unzip intake contradicts by design.
 Its Merge-tab counterpart survives.
 
 Added, covering what is genuinely new:
@@ -253,8 +253,8 @@ so neither floor is at risk.
 
 | File | Change |
 |---|---|
-| `DataGridWindowCoverageTests` | `CoveredWindows`: three names → `ArchiveWindow`. Its doc comment listing nine grid windows by name needs updating — grid windows go 9 → 7. |
-| `DataGridSizingCoverageTests` | `SizingCovered` gains `ArchiveWindow`; `ZipWindow` leaves `KnownUncovered` — the merged window has capped Result columns, so it graduates. |
+| `DataGridWindowCoverageTests` | `CoveredWindows`: three names → `ZipToolsWindow`. Its doc comment listing nine grid windows by name needs updating — grid windows go 9 → 7. |
+| `DataGridSizingCoverageTests` | `SizingCovered` gains `ZipToolsWindow`; `ZipWindow` leaves `KnownUncovered` — the merged window has capped Result columns, so it graduates. |
 | `WindowOverflowTests` | Three registry entries → one, at 580/700 × 420/520, with `ProbeEveryTab: true` — only the selected tab's content exists in the visual tree, exactly as for `SettingsWindow`. |
 | `AutoFitColumnTests` | Two builders → one, selecting the tab under test before measuring; six Result-column facts → three per tab where the column differs. |
 | `DataGridSelectionContrastTests` | Three builders → one, again selecting the tab; six theories → two. |
