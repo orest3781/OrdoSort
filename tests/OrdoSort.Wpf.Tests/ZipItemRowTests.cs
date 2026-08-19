@@ -1,0 +1,88 @@
+using OrdoSort.Core;
+using OrdoSort.Wpf.ViewModels;
+
+namespace OrdoSort.Wpf.Tests;
+
+/// <summary>ZipItemRow is the union of the three row types the zip tools
+/// used to carry one each (PathRow, UnzipRow, ZipRow). These pin the parts
+/// that were behaviour rather than plumbing: how a path becomes a Kind, and
+/// what each engine result turns into on the row.</summary>
+public class ZipItemRowTests
+{
+    [Theory]
+    [InlineData(@"C:\in\a.pdf", "file")]
+    [InlineData(@"C:\in\a.ZIP", "zip")]
+    [InlineData(@"C:\in\a.zip", "zip")]
+    public void KindOfReadsTheExtensionForAnythingThatIsNotADirectory(string path, string expected) =>
+        Assert.Equal(expected, ZipItemRow.KindOf(path));
+
+    [Fact]
+    public void KindOfCallsAnExistingDirectoryAFolder()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        try { Assert.Equal("folder", ZipItemRow.KindOf(dir)); }
+        finally { Directory.Delete(dir); }
+    }
+
+    [Fact]
+    public void IsZipDrivesOffKindNotTheExtension() =>
+        Assert.True(new ZipItemRow(@"C:\in\a.zip", "zip").IsZip);
+
+    /// <summary>A folder row shows the folder's OWN name; Path.GetFileName
+    /// would return "" for a trailing separator, which is why PathRow used
+    /// DirectoryInfo.Name and this keeps doing so.</summary>
+    [Fact]
+    public void DisplayUsesTheFolderNameForAFolderRow() =>
+        Assert.Equal("scans", new ZipItemRow(@"C:\in\scans\", "folder").Display);
+
+    [Fact]
+    public void DisplayUsesTheFileNameForEverythingElse() =>
+        Assert.Equal("a.pdf", new ZipItemRow(@"C:\in\a.pdf", "file").Display);
+
+    [Fact]
+    public void ApplyingAnOkExtractShowsTheOutputFolder()
+    {
+        var row = new ZipItemRow(@"C:\in\a.zip", "zip");
+        row.Apply(new Zipper.UnzipResult(@"C:\in\a.zip", "ok", @"C:\in\a"));
+        Assert.Equal(ZipItemRowStatus.Ok, row.StatusKind);
+        Assert.Equal("→ a", row.Note);
+        Assert.Equal(@"C:\in\a", row.Output);
+    }
+
+    [Fact]
+    public void ApplyingAFailedExtractShowsTheMessageVerbatim()
+    {
+        var row = new ZipItemRow(@"C:\in\a.zip", "zip");
+        row.Apply(new Zipper.UnzipResult(@"C:\in\a.zip", "error", null, "not a valid zip archive"));
+        Assert.Equal(ZipItemRowStatus.Error, row.StatusKind);
+        Assert.Equal("not a valid zip archive", row.Note);
+    }
+
+    [Fact]
+    public void ApplyingAnOkMergeCountsThePdfs()
+    {
+        var row = new ZipItemRow(@"C:\in\a.zip", "zip");
+        row.Apply(new ZipMerge.MergeResult(@"C:\in\a.zip", "ok", @"C:\in\a.pdf", PdfCount: 3));
+        Assert.Equal(ZipItemRowStatus.Ok, row.StatusKind);
+        Assert.Equal("→ a.pdf (3 PDFs)", row.Note);
+    }
+
+    [Fact]
+    public void ApplyingAMergeWithNoPdfsIsItsOwnStatus()
+    {
+        var row = new ZipItemRow(@"C:\in\a.zip", "zip");
+        row.Apply(new ZipMerge.MergeResult(@"C:\in\a.zip", "no_pdfs", Message: "no PDFs inside"));
+        Assert.Equal(ZipItemRowStatus.NoPdfs, row.StatusKind);
+        Assert.Equal("no PDFs inside", row.Note);
+    }
+
+    /// <summary>Singular/plural on the PDF count — ZipRow got this right and
+    /// the union must not lose it.</summary>
+    [Fact]
+    public void OnePdfIsNotPluralised()
+    {
+        var row = new ZipItemRow(@"C:\in\a.zip", "zip");
+        row.Apply(new ZipMerge.MergeResult(@"C:\in\a.zip", "ok", @"C:\in\a.pdf", PdfCount: 1));
+        Assert.Equal("→ a.pdf (1 PDF)", row.Note);
+    }
+}
