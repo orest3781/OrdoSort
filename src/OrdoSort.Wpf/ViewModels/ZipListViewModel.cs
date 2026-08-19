@@ -240,10 +240,14 @@ public abstract class ZipListViewModel : ObservableObject
         // call, a button whose count derives from row status (e.g.
         // ExtractButtonText's PendingZips) goes stale the instant the batch
         // finishes: CanExecute correctly disables it, but the label still
-        // names the pre-run count. Matches the unmarshalled Status
-        // assignment just above — both run wherever this method's own
-        // continuation lands.
-        OnRowsChanged();
+        // names the pre-run count.
+        //
+        // Marshalled, NOT called directly: ApplyOnUi above POSTS the last
+        // row's Apply rather than running it, so a direct call here reads
+        // that row while it is still Pending and announces a count that is
+        // one too high — the same defect one step later. Posting queues this
+        // behind every Apply the loop issued, so it reads settled rows.
+        RunOnUi(OnRowsChanged);
     }
 
     /// <summary>Marshals onto UiContext when one is set — a raw thread-pool

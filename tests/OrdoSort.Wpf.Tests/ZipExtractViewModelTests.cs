@@ -582,6 +582,60 @@ public class ZipExtractViewModelTests
         Assert.Equal("folder", vm.Rows.Single().Kind);
         Assert.False(vm.ExtractCommand.CanExecute(null));
     }
+
+    /// <summary>A SynchronizationContext that holds what is posted to it
+    /// until asked to run it, the way a real Dispatcher defers work rather
+    /// than running it inline. Every other fact in this file passes
+    /// uiContext: null, under which ApplyOnUi runs inline and this file's
+    /// batch tests never exercise marshalling at all.</summary>
+    private sealed class QueueingContext : SynchronizationContext
+    {
+        private readonly List<(SendOrPostCallback Callback, object? State)> _posted = new();
+
+        public override void Post(SendOrPostCallback d, object? state) => _posted.Add((d, state));
+
+        public void Drain()
+        {
+            var batch = _posted.ToList();
+            _posted.Clear();
+            foreach (var (callback, state) in batch) callback(state);
+        }
+    }
+
+    /// <summary>The button must be right AT THE MOMENT it announces itself,
+    /// which is what a bound control renders. The last row's Apply is POSTED,
+    /// so a refresh raised synchronously after the batch loop reads that row
+    /// while it is still Pending and announces a count one too high — the
+    /// same "button lies" defect as
+    /// <see cref="ExtractButtonTextChangeNotifiesAfterExtractFinishes"/>, one
+    /// step later, and invisible to every fact that runs with uiContext:
+    /// null. Captures the value carried by the notification rather than
+    /// re-reading afterwards: the property recomputes on every read, so a
+    /// later read is correct even when the announced value was not.</summary>
+    [Fact]
+    public async Task TheExtractLabelIsRightWhenItAnnouncesItselfEvenWhenApplyIsMarshalled()
+    {
+        using var dir = new TempDir();
+        var zip = dir.File("a.zip");
+        var ctx = new QueueingContext();
+        var vm = new ZipExtractViewModel(new FakeDialogs(), new InlineWorkScheduler(), ctx,
+            extractor: p => new Zipper.UnzipResult(p, "ok", Path.Combine(dir.Path, "a")));
+        await vm.AddPaths(new[] { zip });
+        ctx.Drain();
+        Assert.Equal("Extract 1 zip", vm.ExtractButtonText);
+
+        string? announced = null;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ZipExtractViewModel.ExtractButtonText))
+                announced = vm.ExtractButtonText;
+        };
+
+        await vm.ExtractAsync();
+        ctx.Drain();
+
+        Assert.Equal("Extract", announced);
+    }
 }
 
 /// <summary>A private, GUID-named temp folder for one test's files and
