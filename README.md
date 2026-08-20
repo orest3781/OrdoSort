@@ -110,12 +110,6 @@ workflow tests, builds, zips, and publishes.
   like — empty rows closed up and counted, including the cells that only
   look empty because they hold a zero-width character), and *Zip and
   unzip* — which also merges the PDFs inside an archive, on its own tab.
-- **Reports** — *Turn-around time* reads a folder of PECF report exports
-  (xlsx or csv) and reports how long each document waited between its date
-  and its upload; *Production reports* sweeps a folder of daily move-log
-  CSVs and totals them by whichever columns you tick, with derived
-  Employee, Date and Hour columns. Both load subfolders by default, say
-  what they skipped, and export to spreadsheet.
 
 ## Structure
 
