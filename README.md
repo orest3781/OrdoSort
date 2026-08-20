@@ -101,7 +101,10 @@ workflow tests, builds, zips, and publishes.
   per-client retention offsets, and a resettable running number; a live
   card previews the exact label, a full-sheet print preview with printer
   picker prints in-app at guaranteed 100% scale, and PDF export remains as
-  an alternative). Also *Filename list*, *PDF page counts*, *List
+  an alternative). Also *Filename list* (drop files or folders and get their
+  names as a list you curate — remove rows and they stay removed, add size,
+  modified date, folder or full path as columns, and copy or export exactly
+  the columns you can see), *PDF page counts*, *List
   reformatter* (paste a spreadsheet column and get it back as a
   comma-delimited line, one item per line, or joined by any delimiter you
   like — empty rows closed up and counted, including the cells that only

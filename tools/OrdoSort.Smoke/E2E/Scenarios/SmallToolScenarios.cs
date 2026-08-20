@@ -24,12 +24,25 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 /// uiContext is non-null (DebouncedProbe.cs:137-138) — never a direct call.
 /// InlineScheduler only changes what runs ON that thread-pool thread
 /// (Fire/RunAsync's own `await _scheduler.Run(compute)`), never whether the
-/// apply crosses back through Post. Rows, CountsLine and the OutputText
-/// change notification are set ONLY inside ApplyListing
-/// (FilenameListViewModel.cs:139-145), which is DebouncedProbe's `apply`
-/// callback — so waiting on any of the three genuinely needs a pump. The one
-/// exception, and the one place a filesystem-shaped trap could hide here:
-/// Refresh's own empty-`_sources` fast path (FilenameListViewModel.cs:126-131)
+/// apply crosses back through Post. That much is still true of the probe
+/// itself — but Rows, CountsLine and the OutputText/OutputCsv/CopyText/
+/// RemovedCount change notifications are NOT set only inside ApplyListing.
+/// All of them are set inside Reproject (FilenameListViewModel.cs:289-309),
+/// and ApplyListing (FilenameListViewModel.cs:258-264) — DebouncedProbe's
+/// own `apply` callback — is only ONE of the six call sites that reach it.
+/// The other five never go near the probe at all: the Columns/NameFilter/
+/// Descending property setters and the RemoveSelectedCommand/
+/// RestoreRemovedCommand command bodies each call Reproject directly,
+/// synchronously, on whatever thread touched them — the UI thread, always,
+/// both in production (WPF raises property changes and executes commands
+/// there) and in these scenarios. So the real split is by WHICH change: a
+/// column toggle, a name-filter keystroke, a sort-direction flip, a removal
+/// or a restore all resolve the instant the setter/command returns and need
+/// no E2EPump.Until anywhere near them; only a change that has to re-walk
+/// the filesystem — AddPaths/ClearCommand and the three intake options
+/// IncludeSubfolders, IncludeExtension and ExtensionFilter — goes through
+/// Refresh, and Refresh only reaches the probe when _sources is non-empty.
+/// Refresh's own empty-`_sources` fast path (FilenameListViewModel.cs:242-247)
 /// calls `_listingProbe.Cancel()` then `ApplyListing(...)` DIRECTLY, with no
 /// Timer and no Post at all — after ClearCommand, Rows.Count == 0 is already
 /// true the instant Execute returns. FilenamesAwkward below still calls
@@ -161,6 +174,31 @@ public static class SmallToolScenarios
             vm.Rows.Any(r => r.Name.Contains("café", StringComparison.Ordinal))
             && vm.Rows.Any(r => r.Name.Contains("文件", StringComparison.Ordinal)),
             string.Join(" | ", vm.Rows.Select(r => r.Name)));
+
+        // A column toggle is a projection, not a rebuild — which is exactly why
+        // no E2EPump wait appears on these two checks.
+        vm.Columns = FilenameList.Columns.Size | FilenameList.Columns.Folder;
+        ctx.Check("turning columns on switches the copy text to a table with a header",
+            vm.CopyText.StartsWith("Name\tSize\tFolder", StringComparison.Ordinal), vm.CopyText);
+
+        var doomed = vm.Rows[0].FullPath;
+        vm.SelectedPaths = new[] { doomed };
+        vm.RemoveSelectedCommand.Execute(null);
+        ctx.Check("the removed row is gone and the counts line says so",
+            vm.Rows.All(r => r.FullPath != doomed)
+            && vm.CountsLine.Contains("1 removed", StringComparison.Ordinal),
+            vm.CountsLine);
+
+        // ExtensionFilter is a real rebuild through the probe, so this one DOES
+        // need a pump — and it is the check that matters: the exclusion set has
+        // to outlive the walk. Both remaining source files are already .pdf, so
+        // the filter itself changes nothing about which files match; what it
+        // proves is that the removed row must not return when the listing
+        // rebuilds.
+        vm.ExtensionFilter = "pdf";
+        E2EPump.Until(() => vm.Rows.Count > 0 && vm.Rows.All(r => r.FullPath != doomed), 8000);
+        ctx.Check("it stays gone across a real rebuild",
+            vm.Rows.All(r => r.FullPath != doomed), vm.CountsLine);
 
         // ClearCommand hits Refresh's empty-_sources FAST PATH (Cancel() then
         // ApplyListing(...) called directly — no Timer, no Post), so
