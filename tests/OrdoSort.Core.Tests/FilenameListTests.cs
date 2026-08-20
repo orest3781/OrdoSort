@@ -315,4 +315,43 @@ public class FilenameListTests : IDisposable
         Assert.Equal("", FilenameList.ToText(Array.Empty<FilenameList.FileRow>(),
             FilenameList.Columns.Size));
     }
+
+    [Fact]
+    public void CsvAlwaysCarriesAHeaderEvenForNameOnly()
+    {
+        var csv = FilenameList.ToCsv(new[] { RowA }, FilenameList.Columns.None);
+        Assert.Equal("Name" + Environment.NewLine + "invoice-2024.pdf", csv);
+    }
+
+    [Fact]
+    public void CsvQuotesAFieldContainingAComma()
+    {
+        var row = new FilenameList.FileRow("smith, john.pdf", null, null, "", @"C:\in\smith, john.pdf");
+        var csv = FilenameList.ToCsv(new[] { row }, FilenameList.Columns.None);
+        Assert.Equal("Name" + Environment.NewLine + "\"smith, john.pdf\"", csv);
+    }
+
+    /// <summary>A filename is exactly the kind of user-controlled value that trips
+    /// Excel's formula parser, and Csv.EscapeField already guards it. This pins
+    /// that FilenameList routes through that guard rather than joining with commas
+    /// itself.</summary>
+    [Fact]
+    public void CsvNeutralisesAFilenameThatLooksLikeAFormula()
+    {
+        var row = new FilenameList.FileRow("=cmd|'/c calc'!A1.pdf", null, null, "", @"C:\in\x.pdf");
+        var csv = FilenameList.ToCsv(new[] { row }, FilenameList.Columns.None);
+        Assert.Contains("'=cmd", csv);                        // leading apostrophe added
+        Assert.DoesNotContain(Environment.NewLine + "=", csv);
+    }
+
+    [Fact]
+    public void CsvNumbersRowsFromOneWhenTheNumberColumnIsOn()
+    {
+        var csv = FilenameList.ToCsv(new[] { RowA, RowB },
+            FilenameList.Columns.Number | FilenameList.Columns.Size);
+        Assert.Equal(
+            "#,Name,Size" + Environment.NewLine +
+            "1,invoice-2024.pdf,241152" + Environment.NewLine +
+            "2,invoice-2025.pdf,198656", csv);
+    }
 }

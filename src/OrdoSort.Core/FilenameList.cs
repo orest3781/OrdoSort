@@ -139,6 +139,25 @@ public static class FilenameList
         return string.Join(Environment.NewLine, lines);
     }
 
+    /// <summary>The .csv export. Always carries a header — a CSV without one is
+    /// not a table — and every field goes through Csv.EscapeField, which carries
+    /// the Excel formula-injection guard. That guard matters more here than almost
+    /// anywhere else in the app: filenames are user-controlled, and a file called
+    /// "=cmd...pdf" is something Excel will try to interpret when the exported
+    /// file is opened.</summary>
+    public static string ToCsv(IReadOnlyList<FileRow> rows, Columns cols)
+    {
+        var active = Active(cols);
+        var lines = new List<string>(rows.Count + 1)
+        {
+            Csv.WriteRow(active.Select(c => c.Header)),
+        };
+        for (var i = 0; i < rows.Count; i++)
+            lines.Add(Csv.WriteRow(active.Select(c => Cell(rows[i], c.Flag, i))));
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
     /// <summary>The directory of <paramref name="file"/> relative to whichever
     /// root it arrived under. Roots can nest — someone drops a folder and then a
     /// subfolder of it — so the LONGEST match wins and Folder stays as short as it
