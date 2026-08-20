@@ -68,10 +68,11 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         set { if (Set(ref _descending, value)) Reproject(); }
     }
 
-    /// <summary>Drives the Save dialog's filter. The shape rule itself lives in
-    /// Core; this only mirrors it for the one thing the window needs.</summary>
-    public bool IsTableShape =>
-        (Columns & ~FilenameList.Columns.Number) != FilenameList.Columns.None;
+    /// <summary>Drives the Save dialog's filter. Delegates to Core's own
+    /// IsTable rather than re-deriving the rule here, so the file extension
+    /// SaveAsync picks and the content shape ToText/ToCsv actually produce
+    /// can never disagree.</summary>
+    public bool IsTableShape => FilenameList.IsTable(Columns);
 
     public string OutputText => FilenameList.ToText(Rows.ToList(), Columns);
     public string OutputCsv => FilenameList.ToCsv(Rows.ToList(), Columns);
@@ -177,10 +178,10 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
 
     /// <summary>Only ever runs on the UI thread (DebouncedProbe's
     /// SynchronizationContext marshal, or the empty-sources fast path
-    /// above), so mutating _allRows/Rows here is safe. This is the ONLY
-    /// place that goes back to the disk — everything Reproject folds in
-    /// (the name filter, the sort direction, the columns) is a re-render of
-    /// _allRows, never a new Build.</summary>
+    /// above), so assigning _allRows/_lastIgnored/_lastError here is safe.
+    /// This is the only place that APPLIES a disk read — the walk itself
+    /// (FilenameList.Build) runs on a worker thread inside Refresh's Trigger
+    /// closure, never here.</summary>
     private void ApplyListing(FilenameList.Listing listing)
     {
         _allRows = listing.Rows;
@@ -189,10 +190,26 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         Reproject();
     }
 
-    /// <summary>Rebuilds Rows from _allRows in memory. Deliberately never
-    /// touches _listingProbe: only the roots and the three intake filters
-    /// (IncludeSubfolders, IncludeExtension, ExtensionFilter) justify going back
-    /// to the disk.</summary>
+    /// <summary>Rebuilds Rows from _allRows in memory — the name filter, the
+    /// sort direction and the columns all land here, never a new Build.
+    /// Deliberately never touches _listingProbe: only the roots and the
+    /// three intake filters (IncludeSubfolders, IncludeExtension,
+    /// ExtensionFilter) justify going back to the disk.
+    ///
+    /// Four call sites reach this: ApplyListing (the probe's marshalled
+    /// callback) and the Columns/NameFilter/Descending setters (driven by
+    /// bindings, so the caller's thread). Mutating the ObservableCollection
+    /// Rows from more than one thread at once would be unsafe, but in
+    /// production every one of those four sites runs on the dispatcher —
+    /// the setters because WPF raises property changes from bound controls
+    /// on the UI thread, ApplyListing because DebouncedProbe marshals
+    /// through the SynchronizationContext passed to this class's
+    /// constructor. That guarantee comes from the constructor argument, not
+    /// from anything in this method. Tests that construct with
+    /// uiContext: null do NOT get it: a probe-driven Reproject there runs on
+    /// a threadpool thread, and those tests rely on WaitFor to let the probe
+    /// settle before touching a setter — nothing in this code enforces
+    /// that ordering.</summary>
     private void Reproject()
     {
         IEnumerable<FilenameList.FileRow> visible = _allRows;

@@ -78,8 +78,11 @@ public static class FilenameList
 
     /// <summary>True once any column carrying DATA is on. Number alone does not
     /// count — a numbered list of names is still a list, which is what lets
-    /// "1. invoice-2024.pdf" exist.</summary>
-    private static bool IsTable(Columns cols) => (cols & ~Columns.Number) != Columns.None;
+    /// "1. invoice-2024.pdf" exist. Public so callers outside Core (the view
+    /// model's save-file-extension choice) can share this exact rule instead of
+    /// re-deriving it — two copies of "what counts as a table" is how the
+    /// extension and the content shape end up disagreeing.</summary>
+    public static bool IsTable(Columns cols) => (cols & ~Columns.Number) != Columns.None;
 
     private static string Cell(FileRow row, Columns column, int index) => column switch
     {
