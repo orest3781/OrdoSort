@@ -199,3 +199,8 @@ running the app's own `Config`, `Scanner`, `MatchMerge` and `Unlock` logic
 over what it just wrote, so the summary it prints is checked rather than
 claimed. Everything lives under `demo-full\`, which is regenerated on each
 run and never touches real documents.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Third-party packages and their licenses are
+listed in [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES).
