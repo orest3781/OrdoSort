@@ -14,24 +14,56 @@ public static class FilenameList
 {
     public sealed record Options(bool Recursive, bool IncludeExtension, string ExtensionFilter = "");
 
-    public sealed record Listing(IReadOnlyList<string> Names, int Ignored, string Error = "");
+    public sealed record FileRow(
+        string Name,
+        long? Size,
+        DateTime? Modified,
+        string Folder,
+        string FullPath);
 
-    /// <summary>Never throws — Intake.Expand's own Ignored/Error flow
-    /// through unchanged. Duplicate names are kept (same name under two
-    /// different folders is still two rows in a filename list, not a set),
-    /// so this is a re-sort of the mapped names, not a Distinct().</summary>
-    public static Listing Build(IReadOnlyList<string> paths, Options opt)
+    public sealed record Listing(IReadOnlyList<FileRow> Rows, int Ignored, string Error = "")
+    {
+        /// <summary>TEMPORARY shim so FilenameListViewModel keeps compiling while
+        /// the layers migrate one task at a time. Deleted in Task 6, once the view
+        /// model reads Rows directly.</summary>
+        public IReadOnlyList<string> Names => Rows.Select(r => r.Name).ToList();
+    }
+
+    /// <summary>The per-file metadata read, injectable so a test can force the
+    /// failure that is otherwise a race: a file enumerated by Intake.Expand can be
+    /// gone, locked or access-denied by the time this runs. Production passes null
+    /// and gets the real FileInfo.</summary>
+    public static Listing Build(IReadOnlyList<string> paths, Options opt,
+        Func<string, (long Size, DateTime Modified)>? stat = null)
     {
         var expanded = Intake.Expand(paths, opt.Recursive, FolderMonitor.ParseFiletypes(opt.ExtensionFilter));
-        var names = expanded.Files
-            .Select(f => opt.IncludeExtension ? Path.GetFileName(f) : Path.GetFileNameWithoutExtension(f))
-            .ToList();
-        // Intake's own sort is by full PATH, which for IncludeExtension=false
-        // (or simply because two different folders share a prefix) does not
-        // necessarily match natural order over the mapped NAMES — re-sort on
-        // what this list is actually going to show.
-        names.Sort(NaturalSort.Instance);
-        return new Listing(names, expanded.Ignored, expanded.Error);
+        stat ??= p => { var fi = new FileInfo(p); return (fi.Length, fi.LastWriteTime); };
+
+        var rows = new List<FileRow>(expanded.Files.Count);
+        foreach (var file in expanded.Files)
+        {
+            long? size = null;
+            DateTime? modified = null;
+            try
+            {
+                var (s, m) = stat(file);
+                size = s;
+                modified = m;
+            }
+            catch (Exception)
+            {
+                // gone, locked or denied since the walk — an unknown value, not a
+                // reason to drop the row or to throw out of a never-throws method
+            }
+
+            rows.Add(new FileRow(
+                opt.IncludeExtension ? Path.GetFileName(file) : Path.GetFileNameWithoutExtension(file),
+                size, modified, "", file));
+        }
+
+        // Intake sorts by full PATH; re-sort on the NAME this list actually shows.
+        rows.Sort((a, b) => NaturalSort.Instance.Compare(a.Name, b.Name));
+        return new Listing(rows, expanded.Ignored, expanded.Error);
     }
 
     public static string ToText(IEnumerable<string> names) => string.Join(Environment.NewLine, names);

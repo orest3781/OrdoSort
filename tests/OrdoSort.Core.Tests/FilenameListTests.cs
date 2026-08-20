@@ -106,4 +106,61 @@ public class FilenameListTests : IDisposable
         Assert.Equal(1, listing.Ignored);
         Assert.Equal("", listing.Error);
     }
+
+    [Fact]
+    public void EachRowCarriesItsSizeAndFullPath()
+    {
+        var path = Touch("report.pdf");
+        File.WriteAllText(path, new string('x', 1234));
+
+        var listing = FilenameList.Build(new[] { _dir },
+            new FilenameList.Options(Recursive: false, IncludeExtension: true));
+
+        var row = Assert.Single(listing.Rows);
+        Assert.Equal("report.pdf", row.Name);
+        Assert.Equal(1234L, row.Size);   // long, not int — Size is long?
+        Assert.Equal(path, row.FullPath);
+    }
+
+    [Fact]
+    public void ModifiedIsTheFilesLastWriteTime()
+    {
+        var path = Touch("report.pdf");
+        var when = new DateTime(2026, 3, 4, 14, 22, 0, DateTimeKind.Local);
+        File.SetLastWriteTime(path, when);
+
+        var listing = FilenameList.Build(new[] { _dir },
+            new FilenameList.Options(Recursive: false, IncludeExtension: true));
+
+        Assert.Equal(when, Assert.Single(listing.Rows).Modified);
+    }
+
+    /// <summary>Build never throws, and a file that vanished between the walk and
+    /// the stat is reported as unknown rather than as 0 bytes — the row itself
+    /// stays, because it really was there in the walk.</summary>
+    [Fact]
+    public void AFileThatDisappearsAfterTheWalkHasNullSizeAndModified()
+    {
+        var path = Touch("gone.pdf");
+        var listing = FilenameList.Build(new[] { path },
+            new FilenameList.Options(Recursive: false, IncludeExtension: true),
+            stat: _ => throw new FileNotFoundException());
+
+        var row = Assert.Single(listing.Rows);
+        Assert.Equal("gone.pdf", row.Name);
+        Assert.Null(row.Size);
+        Assert.Null(row.Modified);
+    }
+
+    [Fact]
+    public void RowsStayInNaturalOrderByName()
+    {
+        Touch("item2.pdf"); Touch("item10.pdf"); Touch("item1.pdf");
+
+        var listing = FilenameList.Build(new[] { _dir },
+            new FilenameList.Options(Recursive: false, IncludeExtension: true));
+
+        Assert.Equal(new[] { "item1.pdf", "item2.pdf", "item10.pdf" },
+            listing.Rows.Select(r => r.Name).ToArray());
+    }
 }
