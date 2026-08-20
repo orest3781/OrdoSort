@@ -73,17 +73,12 @@ public static class FilenameList
     /// subfolder of it — so the LONGEST match wins and Folder stays as short as it
     /// can be. A root that IS the file, an individually added file, has no folder
     /// to be relative to.</summary>
-    private static string FolderFor(string file, IReadOnlyList<string> roots)
+    internal static string FolderFor(string file, IReadOnlyList<string> roots)
     {
         var best = "";
         foreach (var root in roots)
         {
             var trimmed = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            // "C:\" trims to "C:", which Windows reads as drive-RELATIVE — it
-            // resolves against the process's per-drive current directory, not the
-            // drive root. Put the separator back so GetRelativePath below anchors
-            // where the user actually pointed.
-            if (trimmed.Length == 2 && trimmed[1] == ':') trimmed += Path.DirectorySeparatorChar;
 
             if (string.Equals(trimmed, file, StringComparison.OrdinalIgnoreCase))
                 return "";   // the file was added directly
@@ -99,7 +94,16 @@ public static class FilenameList
         var dir = Path.GetDirectoryName(file);
         if (dir is null) return "";
 
-        var relative = Path.GetRelativePath(best, dir);
+        // "C:" is drive-RELATIVE in Windows, not the drive root: GetRelativePath
+        // resolves it against the process's per-drive current directory. Anchor it
+        // at the root here, at the point of use — putting the separator back on
+        // `trimmed` above would double it into "C:\\" and stop the prefix test
+        // matching anything.
+        var relativeTo = best.Length == 2 && best[1] == ':'
+            ? best + Path.DirectorySeparatorChar
+            : best;
+
+        var relative = Path.GetRelativePath(relativeTo, dir);
         // GetRelativePath returns "." when dir IS the root — that is not a folder.
         return relative == "." ? "" : relative;
     }

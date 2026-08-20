@@ -237,4 +237,23 @@ public class FilenameListTests : IDisposable
         Assert.Equal("data.pdf", row.Name);
         Assert.Equal("archive", row.Folder);
     }
+
+    /// <summary>A drive root is the one input where the path string cannot be
+    /// trimmed the way every other root is: "C:" is drive-RELATIVE in Windows and
+    /// resolves against the process's per-drive current directory, so anchoring it
+    /// wrong yields a silently wrong folder. Called directly rather than through
+    /// Build because the case needs files sitting at a real drive root.</summary>
+    [Fact]
+    public void ADriveRootAnchorsAtTheDriveNotTheProcessCurrentDirectory()
+    {
+        Assert.Equal(Path.Combine("reports", "2026"),
+            FilenameList.FolderFor(@"C:\reports\2026\report.pdf", new[] { @"C:\" }));
+    }
+
+    [Fact]
+    public void ADriveRootWithNoTrailingSeparatorBehavesTheSame()
+    {
+        Assert.Equal("reports",
+            FilenameList.FolderFor(@"C:\reports\report.pdf", new[] { "C:" }));
+    }
 }
