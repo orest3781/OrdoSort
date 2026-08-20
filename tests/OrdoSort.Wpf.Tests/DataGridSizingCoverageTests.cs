@@ -53,7 +53,12 @@ public class DataGridSizingCoverageTests
     /// FilenameListWindow is deliberately NOT here — it is the one grid
     /// window left in the app with zero measured sizing coverage. It sits in
     /// <see cref="KnownUncovered"/> below instead, so the gap is recorded as
-    /// debt rather than left as an unexplained red suite.
+    /// debt rather than left as an unexplained red suite. That debt got
+    /// materially worse on 2026-08-19 (Task 9, filename-list-manifest): the
+    /// window went from one column to six (#, Name, Size, Modified, Folder,
+    /// Full path — five of them optional, toggled via a Columns ▾ menu), so
+    /// the "nothing competes for width" premise this entry used to rest on
+    /// no longer holds. See KnownUncovered's own note.
     ///
     /// ZipToolsWindow stands for what used to be ZipMergeWindow and
     /// UnzipWindow: its AutoFitColumnTests facts take a tab flag and measure
@@ -70,10 +75,17 @@ public class DataGridSizingCoverageTests
     /// fact 1 fail by name, which is the point: this list is a debt register,
     /// not a permanent exemption.
     ///
-    /// FilenameListWindow: a single column, so nothing competes for width and
-    /// there is no cap to test today. Genuinely low-risk RIGHT NOW — and it
-    /// would stop being so the moment a second content column is added, with
-    /// nothing to notice.</summary>
+    /// FilenameListWindow: used to be a single column, so nothing competed
+    /// for width and there was no cap to test. That is no longer true (Task
+    /// 9, 2026-08-19): the window now has six DataGridTextColumns, five of
+    /// them optional and Visibility-toggled from code-behind, all sharing
+    /// the same DataGridColumnCap arithmetic every other multi-column grid
+    /// here depends on. This entry is now genuinely elevated risk, not
+    /// low-risk — recorded as debt rather than silently promoted to
+    /// SizingCovered, since doing that honestly needs a real AutoFitColumnTests
+    /// fact (a long value stopping at its cap, no horizontal scrollbar with
+    /// every optional column on at MinWidth), which is follow-up work this
+    /// task did not include.</summary>
     private static readonly HashSet<string> KnownUncovered = new(StringComparer.Ordinal)
     {
         "FilenameListWindow",

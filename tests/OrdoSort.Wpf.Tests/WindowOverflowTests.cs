@@ -80,9 +80,16 @@ public class WindowOverflowTests
 
         ["FilenameListWindow"] = new(480, 640, 400, 560, () =>
         {
-            var vm = new FilenameListViewModel(new FakeDialogs());
-            vm.Rows.Add(new FilenameList.FileRow(
-                "a-long-enough-filename-to-matter.pdf", null, null, "", ""));
+            var vm = new FilenameListViewModel(new NoDialogs())
+            {
+                // every column on, a filter typed, Z to A ticked: the longest
+                // the toolbar and the counts line ever get
+                Columns = FilenameList.Columns.Number | FilenameList.Columns.Size
+                        | FilenameList.Columns.Modified | FilenameList.Columns.Folder
+                        | FilenameList.Columns.FullPath,
+                NameFilter = "invoice",
+                Descending = true,
+            };
             return (new FilenameListWindow(vm), null);
         }),
 

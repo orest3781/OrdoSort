@@ -16,6 +16,7 @@
             <views:ColorStringToForeBrushConverter x:Key="ColorStringToForeBrush" />
             <views:SwatchCheckConverter x:Key="SwatchCheck" />
             <views:ZeroToVisibilityConverter x:Key="ZeroToVis" />
+            <views:PlusOneConverter x:Key="PlusOne" />
             <views:TextToVisibilityConverter x:Key="TextToVis" />
             <views:FileNameConverter x:Key="FileName" />
             <views:PasswordStatusConverter x:Key="PasswordStatus" />

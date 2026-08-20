@@ -203,7 +203,24 @@ public class DataGridSelectionContrastTests
 
     private static (FilenameListWindow win, DataGrid grid) BuildFilenameListWindow()
     {
-        var vm = new FilenameListViewModel(new FakeDialogs());
+        var vm = new FilenameListViewModel(new FakeDialogs())
+        {
+            // Every optional column on. This suite's whole contract (see the
+            // class doc above) is to enumerate whatever DataGridTextColumns
+            // are actually ON the grid — but FilenameListWindow's five
+            // optional columns (Task 9) set Visibility=Collapsed from
+            // code-behind when their Show* flag is off, and a Collapsed
+            // DataGridColumn never gets a DataGridCell realized at all (not
+            // merely hidden — verified empirically: AssertEvery*ColumnClears
+            // Contrast reported "cell never realized" for all five before
+            // this line was added). Leaving Columns at its None default
+            // would silently narrow this suite back down to just the
+            // always-visible Name column, exactly the single-hand-written-
+            // case trap this suite exists to replace.
+            Columns = FilenameList.Columns.Number | FilenameList.Columns.Size
+                    | FilenameList.Columns.Modified | FilenameList.Columns.Folder
+                    | FilenameList.Columns.FullPath,
+        };
         vm.Rows.Add(new FilenameList.FileRow(
             "a-long-enough-filename-to-matter.pdf", null, null, "", ""));
         var win = new FilenameListWindow(vm)

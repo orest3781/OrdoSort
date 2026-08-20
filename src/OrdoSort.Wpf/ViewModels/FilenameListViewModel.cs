@@ -56,7 +56,13 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         get => _selectedPaths;
         set
         {
-            _selectedPaths = value;
+            // Task 9 wires this from DataGrid.SelectionChanged, and a WPF
+            // selection handler can hand over an empty-or-null sequence
+            // (e.g. SelectedItems.Cast<...>() on a momentarily empty
+            // selection) — never let a null reach _selectedPaths, since
+            // every reader here (.Count, SelectedRows' HashSet ctor) assumes
+            // a real, if possibly empty, list.
+            _selectedPaths = value ?? Array.Empty<string>();
             Raise(nameof(SelectedPaths));
             Raise(nameof(CopyText));
         }
@@ -72,9 +78,25 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         {
             if (!Set(ref _columns, value)) return;
             Raise(nameof(IsTableShape));
+            Raise(nameof(ShowNumber)); Raise(nameof(ShowSize)); Raise(nameof(ShowModified));
+            Raise(nameof(ShowFolder)); Raise(nameof(ShowFullPath));
             Reproject();
         }
     }
+
+    // MenuItem.IsChecked is a bool, so each flag needs its own two-way adapter
+    // over Columns; the enum stays the single source of truth. The window's
+    // code-behind also reads these (not Columns' bits directly) to drive each
+    // optional DataGridColumn's Visibility — see FilenameListWindow.xaml.cs.
+    private bool Has(FilenameList.Columns flag) => (Columns & flag) != 0;
+    private void Toggle(FilenameList.Columns flag, bool on) =>
+        Columns = on ? Columns | flag : Columns & ~flag;
+
+    public bool ShowNumber   { get => Has(FilenameList.Columns.Number);   set => Toggle(FilenameList.Columns.Number, value); }
+    public bool ShowSize     { get => Has(FilenameList.Columns.Size);     set => Toggle(FilenameList.Columns.Size, value); }
+    public bool ShowModified { get => Has(FilenameList.Columns.Modified); set => Toggle(FilenameList.Columns.Modified, value); }
+    public bool ShowFolder   { get => Has(FilenameList.Columns.Folder);   set => Toggle(FilenameList.Columns.Folder, value); }
+    public bool ShowFullPath { get => Has(FilenameList.Columns.FullPath); set => Toggle(FilenameList.Columns.FullPath, value); }
 
     private string _nameFilter = "";
     public string NameFilter

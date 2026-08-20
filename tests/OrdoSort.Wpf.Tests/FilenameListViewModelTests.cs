@@ -238,6 +238,27 @@ public class FilenameListViewModelTests : IDisposable
         Assert.StartsWith("Name\tSize", vm.OutputText);
     }
 
+    /// <summary>MenuItem.IsChecked is a bool, so the Columns ▾ menu binds each
+    /// flag through its own ShowX adapter rather than the flags enum
+    /// directly; Columns itself stays the single source of truth both
+    /// directions read/write through.</summary>
+    [Fact]
+    public void TheShowAdaptersAreTwoWayOverTheColumnsFlags()
+    {
+        var vm = MakeVm(new FakeDialogs());
+
+        vm.ShowSize = true;
+        Assert.Equal(FilenameList.Columns.Size, vm.Columns);
+
+        vm.ShowFolder = true;
+        Assert.Equal(FilenameList.Columns.Size | FilenameList.Columns.Folder, vm.Columns);
+
+        vm.ShowSize = false;
+        Assert.Equal(FilenameList.Columns.Folder, vm.Columns);
+        Assert.False(vm.ShowSize);
+        Assert.True(vm.ShowFolder);
+    }
+
     [Fact]
     public void TheNameFilterNarrowsRowsInMemory()
     {

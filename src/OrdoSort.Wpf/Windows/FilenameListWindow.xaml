@@ -22,6 +22,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -37,6 +38,7 @@
                            TextTrimming="CharacterEllipsis" />
                 <WrapPanel>
                     <Button Content="Browse folder…" Command="{Binding BrowseFolderCommand}" Margin="0,0,6,4" />
+                    <Button Content="Browse files…" Command="{Binding BrowseFilesCommand}" Margin="0,0,6,4" />
                     <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,14,4" />
                     <CheckBox Content="Include subfolders" IsChecked="{Binding IncludeSubfolders}"
                               VerticalAlignment="Center" Margin="0,4,14,4" />
@@ -45,7 +47,36 @@
                 </WrapPanel>
             </DockPanel>
 
-            <Grid Grid.Row="1" Style="{StaticResource FieldRow}">
+            <!-- Its own row, not more items in the toolbar WrapPanel above:
+                 that one already carries three buttons and two checkboxes,
+                 and five more controls (Find box, Columns menu, sort
+                 checkbox, Restore button) would wrap to a THIRD line at the
+                 480px MinWidth WindowOverflowTests pins, not a tidy second
+                 one. -->
+            <WrapPanel Grid.Row="1" Margin="0,0,0,10">
+                <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,4,6,4" />
+                <TextBox Width="140" VerticalAlignment="Center" Margin="0,4,14,4"
+                         Text="{Binding NameFilter, UpdateSourceTrigger=PropertyChanged}" />
+                <Menu Background="Transparent" VerticalAlignment="Center" Margin="0,4,14,4">
+                    <MenuItem Header="Columns ▾">
+                        <MenuItem Header="Row number" IsCheckable="True"
+                                  IsChecked="{Binding ShowNumber}" StaysOpenOnClick="True" />
+                        <MenuItem Header="Size" IsCheckable="True"
+                                  IsChecked="{Binding ShowSize}" StaysOpenOnClick="True" />
+                        <MenuItem Header="Modified" IsCheckable="True"
+                                  IsChecked="{Binding ShowModified}" StaysOpenOnClick="True" />
+                        <MenuItem Header="Folder" IsCheckable="True"
+                                  IsChecked="{Binding ShowFolder}" StaysOpenOnClick="True" />
+                        <MenuItem Header="Full path" IsCheckable="True"
+                                  IsChecked="{Binding ShowFullPath}" StaysOpenOnClick="True" />
+                    </MenuItem>
+                </Menu>
+                <CheckBox Content="Z to A" IsChecked="{Binding Descending}"
+                          VerticalAlignment="Center" Margin="0,4,14,4" />
+                <Button Content="Restore removed" Command="{Binding RestoreRemovedCommand}" Margin="0,4" />
+            </WrapPanel>
+
+            <Grid Grid.Row="2" Style="{StaticResource FieldRow}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="180" />
@@ -58,10 +89,11 @@
                            Style="{StaticResource SubtleText}" TextTrimming="CharacterEllipsis" />
             </Grid>
 
-            <Grid Grid.Row="2">
+            <Grid Grid.Row="3">
                 <DataGrid x:Name="NamesGrid" ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
                           IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
-                          SelectionMode="Extended">
+                          SelectionMode="Extended" AlternationCount="{Binding Rows.Count}"
+                          SelectionChanged="OnSelectionChanged" PreviewKeyDown="OnGridKeyDown">
                     <!-- Local RowStyle, same shape as BulkRename/MatchMerge's own —
                          Theme.RowHover so the hover tint stays consistent app-wide. -->
                     <DataGrid.RowStyle>
@@ -75,31 +107,91 @@
                             </Style.Triggers>
                         </Style>
                     </DataGrid.RowStyle>
+                    <DataGrid.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Remove from list" Command="{Binding RemoveSelectedCommand}" />
+                            <MenuItem Header="Restore removed"  Command="{Binding RestoreRemovedCommand}" />
+                        </ContextMenu>
+                    </DataGrid.ContextMenu>
+                    <!-- Rows is ObservableCollection<FilenameList.FileRow>, so each
+                         column below binds one of ITS properties (Name, Size, …)
+                         rather than the row item itself. Every column keeps BasedOn
+                         GridCellTextSelectionAware (Theme/Styles.xaml), not plain
+                         GridCellText: no status trigger of its own here, so the
+                         shared style's default Foreground plus its own trailing
+                         "let selection win" DataTrigger is the whole fix — same
+                         shape as ZipToolsWindow's Zip column on its Merge PDFs tab.
+                         Measured directly (off-screen, before this fix, plain
+                         GridCellText): Theme.Text on Theme.Accent ranged
+                         1.26:1-2.14:1 across every scheme, nowhere near the 4.5:1
+                         floor — this window shipped with the exact selection-
+                         contrast bug GridCellTextSelectionAware exists to prevent,
+                         just never switched to it. -->
+                    <!-- Five of these six columns are optional (Columns ▾ in the
+                         toolbar above) and each carries an x:Name instead of a
+                         Visibility binding. That is deliberate, not an oversight:
+                         DataGridColumn is NOT part of the visual or logical tree
+                         (it lives in DataGrid.Columns, a plain object collection),
+                         so it has no DataContext and no ancestor a RelativeSource
+                         could walk up to — Visibility="{Binding DataContext.ShowX,
+                         RelativeSource={RelativeSource AncestorType=Window}}" on a
+                         column binds to nothing, fails SILENTLY (WPF logs a bind
+                         error nobody sees outside a debugger's Output window), and
+                         the column stays visible forever. Same shape of problem as
+                         SelectedPaths above (DataGrid.SelectedItems isn't bindable
+                         either) and same shape of answer: the window pushes state
+                         down imperatively instead of the column reaching up for
+                         it. See the constructor and SyncColumnVisibility in
+                         FilenameListWindow.xaml.cs. -->
                     <DataGrid.Columns>
-                        <!-- Rows is a plain ObservableCollection<string>: the empty
-                             Binding path targets the row item itself. BasedOn
-                             GridCellTextSelectionAware (Theme/Styles.xaml), not
-                             plain GridCellText: no status trigger of its own
-                             here, so the shared style's default Foreground plus
-                             its own trailing "let selection win" DataTrigger is
-                             the whole fix — same shape as ZipToolsWindow's Zip
-                             column on its Merge PDFs tab. Measured directly (off-screen, before this
-                             fix, plain GridCellText): Theme.Text on Theme.Accent
-                             ranged 1.26:1-2.14:1 across every scheme, nowhere
-                             near the 4.5:1 floor — this window shipped with the
-                             exact selection-contrast bug GridCellTextSelectionAware
-                             exists to prevent, just never switched to it. -->
-                        <!-- MinWidth: the only column in this grid, so nothing
-                             competes for width and this floor never binds today.
-                             Stated anyway so every filler in the app declares its
-                             floor — the cap formula reads these, and a filler
-                             without one silently contributes WPF's 20px default.
-                             See PageCountsWindow.xaml. -->
-                        <DataGridTextColumn Header="File name" Binding="{Binding}" Width="*" MinWidth="180">
+                        <DataGridTextColumn x:Name="NumberColumn" Header="#" Width="Auto" MinWidth="30"
+                                            Binding="{Binding (ItemsControl.AlternationIndex),
+                                              RelativeSource={RelativeSource AncestorType=DataGridRow},
+                                              Converter={StaticResource PlusOne}}">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn Header="File name" Binding="{Binding Name}" Width="*" MinWidth="180">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
                                     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                    <Setter Property="ToolTip" Value="{Binding}" />
+                                    <Setter Property="ToolTip" Value="{Binding Name}" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn x:Name="SizeColumn" Header="Size" Binding="{Binding Size}"
+                                            Width="Auto" MinWidth="60">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn x:Name="ModifiedColumn" Header="Modified" Width="Auto" MinWidth="120"
+                                            Binding="{Binding Modified, StringFormat='yyyy-MM-dd HH:mm'}">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn x:Name="FolderColumn" Header="Folder" Binding="{Binding Folder}"
+                                            Width="Auto" MinWidth="100">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding Folder}" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn x:Name="FullPathColumn" Header="Full path" Binding="{Binding FullPath}"
+                                            Width="Auto" MinWidth="140">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding FullPath}" />
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
