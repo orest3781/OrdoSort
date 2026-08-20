@@ -158,9 +158,9 @@ public static class SmallToolScenarios
         vm.AddPaths(new[] { folder });
         E2EPump.Until(() => vm.Rows.Count == 2, 8000);
         ctx.Check("unicode names survive",
-            vm.Rows.Any(r => r.Contains("café", StringComparison.Ordinal))
-            && vm.Rows.Any(r => r.Contains("文件", StringComparison.Ordinal)),
-            string.Join(" | ", vm.Rows));
+            vm.Rows.Any(r => r.Name.Contains("café", StringComparison.Ordinal))
+            && vm.Rows.Any(r => r.Name.Contains("文件", StringComparison.Ordinal)),
+            string.Join(" | ", vm.Rows.Select(r => r.Name)));
 
         // ClearCommand hits Refresh's empty-_sources FAST PATH (Cancel() then
         // ApplyListing(...) called directly — no Timer, no Post), so

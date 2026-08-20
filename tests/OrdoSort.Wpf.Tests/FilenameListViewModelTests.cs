@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.ViewModels;
 
@@ -63,7 +64,7 @@ public class FilenameListViewModelTests : IDisposable
         vm.BrowseFolderCommand.Execute(null);
 
         WaitFor(() => vm.Rows.Count == 2, "Rows should reflect the browsed folder's files");
-        Assert.Equal(new[] { "a.pdf", "b.pdf" }, vm.Rows);   // natural order
+        Assert.Equal(new[] { "a.pdf", "b.pdf" }, vm.Rows.Select(r => r.Name));   // natural order
     }
 
     [Fact]
@@ -73,11 +74,11 @@ public class FilenameListViewModelTests : IDisposable
         var vm = MakeVm(new FakeDialogs());
         vm.AddPaths(new[] { _dir });
         WaitFor(() => vm.Rows.Count == 1, "the initial add should settle first");
-        Assert.Equal("report.pdf", vm.Rows[0]);
+        Assert.Equal("report.pdf", vm.Rows[0].Name);
 
         vm.IncludeExtension = false;
 
-        WaitFor(() => vm.Rows.Count == 1 && vm.Rows[0] == "report",
+        WaitFor(() => vm.Rows.Count == 1 && vm.Rows[0].Name == "report",
             "unchecking Include extension should strip it from the listed name");
     }
 
@@ -93,7 +94,7 @@ public class FilenameListViewModelTests : IDisposable
         vm.IncludeSubfolders = true;
 
         WaitFor(() => vm.Rows.Count == 2, "checking Include subfolders should pull in the nested file too");
-        Assert.Equal(new[] { "nested.pdf", "top.pdf" }, vm.Rows);
+        Assert.Equal(new[] { "nested.pdf", "top.pdf" }, vm.Rows.Select(r => r.Name));
     }
 
     [Fact]
@@ -107,7 +108,7 @@ public class FilenameListViewModelTests : IDisposable
 
         vm.ExtensionFilter = "pdf";
 
-        WaitFor(() => vm.Rows.Count == 1 && vm.Rows[0] == "a.pdf",
+        WaitFor(() => vm.Rows.Count == 1 && vm.Rows[0].Name == "a.pdf",
             "the extension filter should narrow the listing down to just the matching type");
     }
 
@@ -120,7 +121,7 @@ public class FilenameListViewModelTests : IDisposable
         vm.AddPaths(new[] { _dir });
         WaitFor(() => vm.Rows.Count == 2, "the add should settle before reading OutputText");
 
-        Assert.Equal(string.Join(Environment.NewLine, vm.Rows), vm.OutputText);
+        Assert.Equal(string.Join(Environment.NewLine, vm.Rows.Select(r => r.Name)), vm.OutputText);
     }
 
     [Fact]
@@ -216,5 +217,126 @@ public class FilenameListViewModelTests : IDisposable
 
         vm.AddPaths(new[] { _dir + Path.DirectorySeparatorChar });
         Assert.Contains("already listed", vm.AddNote);
+    }
+
+    /// <summary>The whole point of gathering every column up front: a column
+    /// toggle must be a projection, not a filesystem walk. If this ever needs a
+    /// WaitFor, the data is being re-read and the design has regressed.</summary>
+    [Fact]
+    public void TurningOnAColumnReprojectsWithoutRebuilding()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("report.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle first");
+
+        vm.Columns = FilenameList.Columns.Size;
+
+        // asserted IMMEDIATELY — no WaitFor
+        Assert.True(vm.IsTableShape);
+        Assert.StartsWith("Name\tSize", vm.OutputText);
+    }
+
+    [Fact]
+    public void TheNameFilterNarrowsRowsInMemory()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("invoice.pdf"); Touch("report.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        vm.NameFilter = "inv";
+
+        Assert.Single(vm.Rows);
+        Assert.Equal("invoice.pdf", vm.Rows[0].Name);
+    }
+
+    [Fact]
+    public void TheNameFilterIsCaseInsensitive()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("Invoice.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle first");
+
+        vm.NameFilter = "INVOICE";
+
+        Assert.Single(vm.Rows);
+    }
+
+    [Fact]
+    public void DescendingReversesTheProjectionWithoutRebuilding()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("a.pdf"); Touch("b.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        vm.Descending = true;
+
+        Assert.Equal(new[] { "b.pdf", "a.pdf" }, vm.Rows.Select(r => r.Name).ToArray());
+    }
+
+    [Fact]
+    public void OutputCsvFollowsTheSameColumnsAsOutputText()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("report.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle first");
+
+        vm.Columns = FilenameList.Columns.Folder;
+
+        Assert.StartsWith("Name,Folder", vm.OutputCsv);
+    }
+
+    [Fact]
+    public void BrowseFilesAddsEveryFileThePickerReturned()
+    {
+        var a = Touch("a.pdf");
+        var b = Touch("b.pdf");
+        var dialogs = new FakeDialogs { NextOpenFiles = new[] { a, b } };
+        var vm = MakeVm(dialogs);
+
+        vm.BrowseFilesCommand.Execute(null);
+
+        WaitFor(() => vm.Rows.Count == 2, "both picked files should be listed");
+    }
+
+    [Fact]
+    public async Task SaveWritesCsvOnceThereAreColumns()
+    {
+        var target = Path.Combine(_dir, "out.csv");
+        var dialogs = new FakeDialogs { NextFolder = _dir, NextSaveFile = target };
+        Touch("report.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle first");
+
+        vm.Columns = FilenameList.Columns.Size;
+        await vm.SaveAsync();
+
+        var written = File.ReadAllText(target);
+        Assert.StartsWith("Name,Size", written);
+    }
+
+    [Fact]
+    public async Task SaveStillWritesThePlainTextListWithNoColumns()
+    {
+        var target = Path.Combine(_dir, "out.txt");
+        var dialogs = new FakeDialogs { NextFolder = _dir, NextSaveFile = target };
+        Touch("report.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle first");
+
+        await vm.SaveAsync();
+
+        Assert.Equal("report.pdf", File.ReadAllText(target));
     }
 }

@@ -204,7 +204,8 @@ public class DataGridSelectionContrastTests
     private static (FilenameListWindow win, DataGrid grid) BuildFilenameListWindow()
     {
         var vm = new FilenameListViewModel(new FakeDialogs());
-        vm.Rows.Add("a-long-enough-filename-to-matter.pdf");
+        vm.Rows.Add(new FilenameList.FileRow(
+            "a-long-enough-filename-to-matter.pdf", null, null, "", ""));
         var win = new FilenameListWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,

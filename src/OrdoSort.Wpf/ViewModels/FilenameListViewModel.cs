@@ -6,13 +6,16 @@ using OrdoSort.Wpf.Services;
 namespace OrdoSort.Wpf.ViewModels;
 
 /// <summary>Drop or browse files/folders, see a natural-sorted list of their
-/// filenames, copy it or save it as .txt. The whole tool is a thin UI shell
-/// over FilenameList.Build — this class owns only the roots people have
-/// added and the debounced recompute of the list from them, the same
-/// snapshot-off-thread-apply shape BulkRenameViewModel uses for its own
-/// preview (see that class's doc comment for why the compute must never run
-/// on the UI thread, and why the applied result must be exactly what a
-/// caller last saw rendered).</summary>
+/// filenames, copy it or save it as .txt or (once a column is on) .csv. The
+/// whole tool is a thin UI shell over FilenameList.Build — this class owns
+/// only the roots people have added and the debounced recompute of the list
+/// from them, the same snapshot-off-thread-apply shape BulkRenameViewModel
+/// uses for its own preview (see that class's doc comment for why the
+/// compute must never run on the UI thread, and why the applied result must
+/// be exactly what a caller last saw rendered). Everything downstream of
+/// that recompute — the name filter, the sort direction, the column set —
+/// is a Reproject: a re-render of the last Build result in memory, never a
+/// second walk of the filesystem.</summary>
 public sealed class FilenameListViewModel : ObservableObject, IDisposable
 {
     private readonly IDialogService _dialogs;
@@ -29,7 +32,49 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     // which must never run on the UI thread per keystroke of ExtensionFilter.
     private readonly DebouncedProbe<FilenameList.Listing> _listingProbe;
 
-    public ObservableCollection<string> Rows { get; } = new();
+    // The last Build result, unfiltered. Rows below is the VISIBLE projection
+    // of it — everything the user sees, copies and saves comes off that, which
+    // is what keeps "what you see is what you copy" true of the name filter and
+    // the sort direction and not only of the columns.
+    private IReadOnlyList<FilenameList.FileRow> _allRows = Array.Empty<FilenameList.FileRow>();
+    private int _lastIgnored;
+    private string _lastError = "";
+
+    public ObservableCollection<FilenameList.FileRow> Rows { get; } = new();
+
+    private FilenameList.Columns _columns = FilenameList.Columns.None;
+    public FilenameList.Columns Columns
+    {
+        get => _columns;
+        set
+        {
+            if (!Set(ref _columns, value)) return;
+            Raise(nameof(IsTableShape));
+            Reproject();
+        }
+    }
+
+    private string _nameFilter = "";
+    public string NameFilter
+    {
+        get => _nameFilter;
+        set { if (Set(ref _nameFilter, value)) Reproject(); }
+    }
+
+    private bool _descending;
+    public bool Descending
+    {
+        get => _descending;
+        set { if (Set(ref _descending, value)) Reproject(); }
+    }
+
+    /// <summary>Drives the Save dialog's filter. The shape rule itself lives in
+    /// Core; this only mirrors it for the one thing the window needs.</summary>
+    public bool IsTableShape =>
+        (Columns & ~FilenameList.Columns.Number) != FilenameList.Columns.None;
+
+    public string OutputText => FilenameList.ToText(Rows.ToList(), Columns);
+    public string OutputCsv => FilenameList.ToCsv(Rows.ToList(), Columns);
 
     public FilenameListViewModel(IDialogService dialogs, IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null, int probeDelayMs = 300)
@@ -41,6 +86,11 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         BrowseFolderCommand = new RelayCommand(() =>
         {
             if (_dialogs.BrowseFolder(null) is { } folder) AddPaths(new[] { folder });
+        });
+        BrowseFilesCommand = new RelayCommand(() =>
+        {
+            var files = _dialogs.AskOpenFiles("All files (*.*)|*.*");
+            if (files.Length > 0) AddPaths(files);
         });
         SaveCommand = new RelayCommand(Save);
         ClearCommand = new RelayCommand(() =>
@@ -86,11 +136,8 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     private string _addNote = "";
     public string AddNote { get => _addNote; private set => Set(ref _addNote, value); }
 
-    /// <summary>Pure — no backing field. The window's Copy button and Save
-    /// both read this directly rather than binding to it.</summary>
-    public string OutputText => FilenameList.ToText(Rows);
-
     public RelayCommand BrowseFolderCommand { get; }
+    public RelayCommand BrowseFilesCommand { get; }
     public RelayCommand SaveCommand { get; }
     public RelayCommand ClearCommand { get; }
 
@@ -130,21 +177,49 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
 
     /// <summary>Only ever runs on the UI thread (DebouncedProbe's
     /// SynchronizationContext marshal, or the empty-sources fast path
-    /// above), so mutating Rows here is safe.</summary>
+    /// above), so mutating _allRows/Rows here is safe. This is the ONLY
+    /// place that goes back to the disk — everything Reproject folds in
+    /// (the name filter, the sort direction, the columns) is a re-render of
+    /// _allRows, never a new Build.</summary>
     private void ApplyListing(FilenameList.Listing listing)
     {
-        Rows.Clear();
-        foreach (var name in listing.Names) Rows.Add(name);
-        CountsLine = _sources.Count == 0 ? "" : FormatCounts(listing);
-        Raise(nameof(OutputText));
+        _allRows = listing.Rows;
+        _lastIgnored = listing.Ignored;
+        _lastError = listing.Error;
+        Reproject();
     }
 
-    private static string FormatCounts(FilenameList.Listing listing)
+    /// <summary>Rebuilds Rows from _allRows in memory. Deliberately never
+    /// touches _listingProbe: only the roots and the three intake filters
+    /// (IncludeSubfolders, IncludeExtension, ExtensionFilter) justify going back
+    /// to the disk.</summary>
+    private void Reproject()
     {
-        var count = listing.Names.Count;
-        var line = $"{count} file{(count == 1 ? "" : "s")}";
-        if (listing.Ignored > 0) line += $" · {listing.Ignored} ignored";
-        if (listing.Error.Length > 0) line += $" · {listing.Error}";
+        IEnumerable<FilenameList.FileRow> visible = _allRows;
+
+        if (NameFilter.Length > 0)
+            visible = visible.Where(r =>
+                r.Name.Contains(NameFilter, StringComparison.OrdinalIgnoreCase));
+
+        var projected = visible.ToList();
+        if (Descending) projected.Reverse();
+
+        Rows.Clear();
+        foreach (var row in projected) Rows.Add(row);
+
+        CountsLine = _sources.Count == 0 ? "" : FormatCounts();
+        Raise(nameof(OutputText));
+        Raise(nameof(OutputCsv));
+    }
+
+    private string FormatCounts()
+    {
+        var total = _allRows.Count;
+        var line = $"{total} file{(total == 1 ? "" : "s")}";
+        var hidden = total - Rows.Count;
+        if (hidden > 0) line += $" · {hidden} filtered out";
+        if (_lastIgnored > 0) line += $" · {_lastIgnored} ignored";
+        if (_lastError.Length > 0) line += $" · {_lastError}";
         return line;
     }
 
@@ -152,9 +227,12 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
 
     internal async Task SaveAsync()
     {
-        var path = _dialogs.AskSaveFile("Text file (*.txt)|*.txt", "filenames.txt");
+        var (filter, suggested) = IsTableShape
+            ? ("CSV file (*.csv)|*.csv", "filenames.csv")
+            : ("Text file (*.txt)|*.txt", "filenames.txt");
+        var path = _dialogs.AskSaveFile(filter, suggested);
         if (path is null) return;
-        var text = OutputText;   // read on the UI thread before offloading
+        var text = IsTableShape ? OutputCsv : OutputText;   // read on the UI thread
         try
         {
             await _scheduler.Run(() => File.WriteAllText(path, text));

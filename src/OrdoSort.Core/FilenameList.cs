@@ -23,13 +23,7 @@ public static class FilenameList
         string Folder,
         string FullPath);
 
-    public sealed record Listing(IReadOnlyList<FileRow> Rows, int Ignored, string Error = "")
-    {
-        /// <summary>TEMPORARY shim so FilenameListViewModel keeps compiling while
-        /// the layers migrate one task at a time. Deleted in Task 6, once the view
-        /// model reads Rows directly.</summary>
-        public IReadOnlyList<string> Names => Rows.Select(r => r.Name).ToList();
-    }
+    public sealed record Listing(IReadOnlyList<FileRow> Rows, int Ignored, string Error = "");
 
     /// <summary>The per-file metadata read, injectable so a test can force the
     /// failure that is otherwise a race: a file enumerated by Intake.Expand can be
@@ -67,8 +61,6 @@ public static class FilenameList
         rows.Sort((a, b) => NaturalSort.Instance.Compare(a.Name, b.Name));
         return new Listing(rows, expanded.Ignored, expanded.Error);
     }
-
-    public static string ToText(IEnumerable<string> names) => string.Join(Environment.NewLine, names);
 
     /// <summary>Which optional columns are on. Name is NOT a member: it is always
     /// emitted, so including it would make a HasFlag check trivially true and

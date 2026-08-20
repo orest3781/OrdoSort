@@ -25,7 +25,7 @@ public class FilenameListTests : IDisposable
         Touch("report.pdf");
         var listing = FilenameList.Build(new[] { _dir },
             new FilenameList.Options(Recursive: false, IncludeExtension: false));
-        Assert.Equal(new[] { "report" }, listing.Names);
+        Assert.Equal(new[] { "report" }, listing.Rows.Select(r => r.Name).ToArray());
     }
 
     [Fact]
@@ -34,7 +34,7 @@ public class FilenameListTests : IDisposable
         Touch("report.pdf");
         var listing = FilenameList.Build(new[] { _dir },
             new FilenameList.Options(Recursive: false, IncludeExtension: true));
-        Assert.Equal(new[] { "report.pdf" }, listing.Names);
+        Assert.Equal(new[] { "report.pdf" }, listing.Rows.Select(r => r.Name).ToArray());
     }
 
     /// <summary>ParseFiletypes' own separator/leading-dot handling is already
@@ -52,7 +52,7 @@ public class FilenameListTests : IDisposable
         var listing = FilenameList.Build(new[] { _dir },
             new FilenameList.Options(Recursive: false, IncludeExtension: true, ExtensionFilter: ".pdf, docx"));
         Assert.Equal(new[] { Path.GetFileName(pdf), Path.GetFileName(docx) }
-            .OrderBy(n => n, NaturalSort.Instance), listing.Names);
+            .OrderBy(n => n, NaturalSort.Instance), listing.Rows.Select(r => r.Name).ToArray());
         Assert.Equal(2, listing.Ignored);
     }
 
@@ -63,7 +63,7 @@ public class FilenameListTests : IDisposable
         Touch("2.txt");
         var listing = FilenameList.Build(new[] { _dir },
             new FilenameList.Options(Recursive: false, IncludeExtension: true));
-        Assert.Equal(new[] { "2.txt", "10.txt" }, listing.Names);
+        Assert.Equal(new[] { "2.txt", "10.txt" }, listing.Rows.Select(r => r.Name).ToArray());
     }
 
     /// <summary>Same name under two different folders is still two rows in
@@ -76,13 +76,22 @@ public class FilenameListTests : IDisposable
         Touch(Path.Combine("sub2", "same.txt"));
         var listing = FilenameList.Build(new[] { _dir },
             new FilenameList.Options(Recursive: true, IncludeExtension: true));
-        Assert.Equal(new[] { "same.txt", "same.txt" }, listing.Names);
+        Assert.Equal(new[] { "same.txt", "same.txt" }, listing.Rows.Select(r => r.Name).ToArray());
     }
 
+    /// <summary>Named for the constraint that deserves to keep its name — the
+    /// line separator is Environment.NewLine — even though
+    /// NameOnlyIsAPlainListWithNoHeader covers the same ToText overload now.</summary>
     [Fact]
     public void ToTextJoinsWithEnvironmentNewLine()
     {
-        var text = FilenameList.ToText(new[] { "a.txt", "b.txt", "c.txt" });
+        var rows = new[]
+        {
+            new FilenameList.FileRow("a.txt", null, null, "", @"C:\in\a.txt"),
+            new FilenameList.FileRow("b.txt", null, null, "", @"C:\in\b.txt"),
+            new FilenameList.FileRow("c.txt", null, null, "", @"C:\in\c.txt"),
+        };
+        var text = FilenameList.ToText(rows, FilenameList.Columns.None);
         Assert.Equal(string.Join(Environment.NewLine, "a.txt", "b.txt", "c.txt"), text);
     }
 
@@ -91,7 +100,7 @@ public class FilenameListTests : IDisposable
     {
         var listing = FilenameList.Build(Array.Empty<string>(),
             new FilenameList.Options(Recursive: false, IncludeExtension: true));
-        Assert.Empty(listing.Names);
+        Assert.Empty(listing.Rows);
         Assert.Equal(0, listing.Ignored);
         Assert.Equal("", listing.Error);
     }
@@ -107,7 +116,7 @@ public class FilenameListTests : IDisposable
         var missing = Path.Combine(_dir, "ghost-folder");
         var listing = FilenameList.Build(new[] { missing },
             new FilenameList.Options(Recursive: false, IncludeExtension: true));
-        Assert.Empty(listing.Names);
+        Assert.Empty(listing.Rows);
         Assert.Equal(1, listing.Ignored);
         Assert.Equal("", listing.Error);
     }

@@ -81,7 +81,8 @@ public class WindowOverflowTests
         ["FilenameListWindow"] = new(480, 640, 400, 560, () =>
         {
             var vm = new FilenameListViewModel(new FakeDialogs());
-            vm.Rows.Add("a-long-enough-filename-to-matter.pdf");
+            vm.Rows.Add(new FilenameList.FileRow(
+                "a-long-enough-filename-to-matter.pdf", null, null, "", ""));
             return (new FilenameListWindow(vm), null);
         }),
 
