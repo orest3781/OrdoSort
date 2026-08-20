@@ -31,6 +31,12 @@ public sealed class DialogService : IDialogService
         return dlg.ShowDialog(_owner) == true ? dlg.FileName : null;
     }
 
+    public string[] AskOpenFiles(string filter)
+    {
+        var dlg = new OpenFileDialog { Filter = filter, Multiselect = true };
+        return dlg.ShowDialog(_owner) == true ? dlg.FileNames : Array.Empty<string>();
+    }
+
     public string? AskFilePath(string filter, string suggestedName)
     {
         var dlg = new OpenFileDialog

@@ -10,6 +10,14 @@ public interface IDialogService
     string? AskSaveFile(string filter, string suggestedName);
     string? AskOpenFile(string filter);
 
+    /// <summary>Pick one or more existing files. Empty when cancelled, never
+    /// null. Defaulted rather than abstract on purpose: ten classes implement
+    /// this interface and only two care about multi-select, so the rest inherit
+    /// a correct single-file fallback instead of each carrying a throwaway
+    /// override.</summary>
+    string[] AskOpenFiles(string filter) =>
+        AskOpenFile(filter) is { } one ? new[] { one } : Array.Empty<string>();
+
     /// <summary>Pick a file that may or may not exist yet (the history DB
     /// path). An open-style dialog — never the "replace it?" save prompt.</summary>
     string? AskFilePath(string filter, string suggestedName);
