@@ -121,7 +121,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         if (sourcesSnapshot.Count == 0)
         {
             _listingProbe.Cancel();
-            ApplyListing(new FilenameList.Listing(Array.Empty<string>(), 0, ""));
+            ApplyListing(new FilenameList.Listing(Array.Empty<FilenameList.FileRow>(), 0, ""));
             return;
         }
 
