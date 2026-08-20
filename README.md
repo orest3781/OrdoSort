@@ -86,30 +86,36 @@ workflow tests, builds, zips, and publishes.
   buttons render exactly as they'll appear, dashboard tiles preview against
   the real folder, naming choices show a worked example, and validation
   happens as you type. Unknown hand-edited config keys always survive.
-- **Tools** — *Unlock PDFs* (the unlocked file keeps its name and place, the
-  locked original moves to a dated `locked_archive` folder beside it; saved
-  passwords are stored as plain text in the shared config.json, so they work
-  from every station — the folder's own permissions are the security
-  boundary), *Bulk rename*
-  (find/replace, affixes, case, hand-editable preview, batch undo),
-  *Match & merge* (pair PDFs against a roster (CSV or Excel) by name and
-  merge each person's ID into the filename, with a side-by-side Review
-  matches view for ambiguous and suggested matches), and *Box labels*
-  (storage-box labels, ten 4×2" labels per letter sheet with cutting
-  gutters — big client+number code, a Code 39 barcode for hand scanners,
-  created and destruction dates on black bars,
-  per-client retention offsets, and a resettable running number; a live
-  card previews the exact label, a full-sheet print preview with printer
-  picker prints in-app at guaranteed 100% scale, and PDF export remains as
-  an alternative). Also *Filename list* (drop files or folders and get their
-  names as a list you curate — remove rows and they stay removed, add size,
-  modified date, folder or full path as columns, and copy or export exactly
-  the columns you can see), *PDF page counts*, *List
-  reformatter* (paste a spreadsheet column and get it back as a
-  comma-delimited line, one item per line, or joined by any delimiter you
-  like — empty rows closed up and counted, including the cells that only
-  look empty because they hold a zero-width character), and *Zip and
-  unzip* — which also merges the PDFs inside an archive, on its own tab.
+- **Tools** — eight utilities, each in its own window:
+  - *Unlock PDFs* — the unlocked file keeps its name and place; the locked
+    original moves to a dated `locked_archive` folder beside it. Saved
+    passwords are stored as plain text in the shared `config.json` so they
+    work from every station — the folder's own permissions are the security
+    boundary.
+  - *Bulk rename* — find/replace, affixes, case, a hand-editable preview, and
+    batch undo.
+  - *Match & merge* — pair PDFs against a roster (CSV or Excel) by name and
+    merge each person's ID into the filename, with a side-by-side *Review
+    matches* view for the ambiguous and suggested ones.
+  - *Box labels* — ten 4×2" storage-box labels per letter sheet with cutting
+    gutters: a big client+number code, a Code 39 barcode for hand scanners,
+    created and destruction dates on black bars, per-client retention
+    offsets, and a resettable running number. A live card previews the exact
+    label, and a full-sheet print preview with printer picker prints in-app
+    at a guaranteed 100% scale — PDF export remains as an alternative.
+  - *Filename list* — drop files or folders and get their names as a list you
+    curate: remove rows and they stay removed across a rebuild, add size,
+    modified date, folder or full path as columns, filter by name, and copy
+    or export exactly the columns you can see.
+  - *PDF page counts* — page counts for a pile of PDFs or a whole folder,
+    copied to the clipboard or saved as text; an unreadable file reports its
+    error in place rather than stopping the run.
+  - *List reformatter* — paste a spreadsheet column and get it back as a
+    comma-delimited line, one item per line, or joined by any delimiter you
+    like, with the empty rows closed up and counted — including the cells
+    that only look empty because they hold a zero-width character.
+  - *Zip and unzip* — one window, two tabs; the second merges the PDFs held
+    inside an archive.
 
 ## Structure
 
@@ -143,8 +149,8 @@ e2e.bat
 
 (or `dotnet run --project tools\OrdoSort.Smoke -- e2e` — the bat wraps that
 command, forwards any arguments, and opens the report when the run ends)
-drives all 12 user-facing surfaces — the ten Tools-menu utilities, History,
-and the routing loop — as real windows against real files
+drives all 12 user-facing surfaces — every Tools-menu utility (the zip
+window contributes three, one per job), History, and the routing loop — as real windows against real files
 in a throwaway temp folder, then writes `evidence\<timestamp>\report.html`:
 one row per scenario, with the assertions it ran and a screenshot of the
 window.
