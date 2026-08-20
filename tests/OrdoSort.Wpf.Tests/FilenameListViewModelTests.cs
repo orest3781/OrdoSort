@@ -340,10 +340,13 @@ public class FilenameListViewModelTests : IDisposable
         Assert.Equal("report.pdf", File.ReadAllText(target));
     }
 
-    /// <summary>The defect the exclusion set exists to prevent. A naive
-    /// Rows.Remove passes the first two asserts and fails the last: one keystroke
-    /// in the extension box re-walks the folder and the removed row comes straight
-    /// back.</summary>
+    /// <summary>The defect the exclusion set exists to prevent. Note what this
+    /// waits on: a NEW file, not the absence of the removed one. Waiting for the
+    /// removed row to stay gone proves nothing, because it is already gone the
+    /// instant RemoveSelected returns — WaitFor's predicate would be satisfied
+    /// before the debounced rebuild ever fires, and a naive Rows.Remove would
+    /// pass. "later.pdf" can only appear if the walk actually happened, so by the
+    /// time it shows up, a resurrected row would have arrived with it.</summary>
     [Fact]
     public void ARemovedRowStaysRemovedAcrossARebuild()
     {
@@ -358,10 +361,12 @@ public class FilenameListViewModelTests : IDisposable
         Assert.Single(vm.Rows);
         Assert.Equal("keep.pdf", vm.Rows[0].Name);
 
-        vm.ExtensionFilter = "pdf";   // forces a real rebuild through the probe
+        Touch("later.pdf");            // only a real walk can find this
+        vm.ExtensionFilter = "pdf";    // forces a rebuild through the probe
 
-        WaitFor(() => vm.Rows.Count == 1 && vm.Rows[0].Name == "keep.pdf",
-            "the removed row must not come back when the listing is rebuilt");
+        WaitFor(() => vm.Rows.Any(r => r.Name == "later.pdf"),
+            "the rebuild should have walked the folder and picked up the new file");
+        Assert.DoesNotContain(vm.Rows, r => r.Name == "drop.pdf");
     }
 
     [Fact]
