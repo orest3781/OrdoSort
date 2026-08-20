@@ -10,7 +10,13 @@
             <Button DockPanel.Dock="Right" Content="Close" Width="96" IsCancel="True" />
             <StackPanel Orientation="Horizontal">
                 <Button Content="Copy to clipboard" Click="OnCopy" Margin="0,0,8,0" />
-                <Button Content="Save as .txt…" Command="{Binding SaveCommand}" Margin="0,0,10,0" />
+                <!-- Content is BOUND, not literal: Save writes a .csv the moment any
+                     data column is on (FilenameListViewModel.SaveLabel), and a
+                     button promising ".txt" while the dialog offers ".csv" is the
+                     one thing this tool's own rule forbids. PageCountsWindow's
+                     identical-looking button keeps its literal correctly — that
+                     tool only ever writes .txt. -->
+                <Button Content="{Binding SaveLabel}" Command="{Binding SaveCommand}" Margin="0,0,10,0" />
                 <TextBlock Text="{Binding CountsLine}" VerticalAlignment="Center" Margin="0,0,10,0"
                            Style="{StaticResource SubtleText}" />
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center"

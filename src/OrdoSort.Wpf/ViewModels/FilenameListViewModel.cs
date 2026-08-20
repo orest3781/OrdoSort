@@ -78,6 +78,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         {
             if (!Set(ref _columns, value)) return;
             Raise(nameof(IsTableShape));
+            Raise(nameof(SaveLabel));
             Raise(nameof(ShowNumber)); Raise(nameof(ShowSize)); Raise(nameof(ShowModified));
             Raise(nameof(ShowFolder)); Raise(nameof(ShowFullPath));
             Reproject();
@@ -117,6 +118,14 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     /// SaveAsync picks and the content shape ToText/ToCsv actually produce
     /// can never disagree.</summary>
     public bool IsTableShape => FilenameList.IsTable(Columns);
+
+    /// <summary>The Save button's own text, which has to follow the shape for
+    /// the same reason the save dialog's filter does. Turn one data column on
+    /// and Save writes a .csv — a button hardcoded to "Save as .txt…" would
+    /// then name a format the click does not produce, which is the one thing
+    /// this tool's rule (nothing displays one value and produces another)
+    /// forbids, on the single control the whole export hangs off.</summary>
+    public string SaveLabel => IsTableShape ? "Save as .csv…" : "Save as .txt…";
 
     public string OutputText => FilenameList.ToText(Rows.ToList(), Columns);
     public string OutputCsv => FilenameList.ToCsv(Rows.ToList(), Columns);
@@ -325,15 +334,29 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
 
     internal async Task SaveAsync()
     {
-        var (filter, suggested) = IsTableShape
+        var table = IsTableShape;
+        var (filter, suggested) = table
             ? ("CSV file (*.csv)|*.csv", "filenames.csv")
             : ("Text file (*.txt)|*.txt", "filenames.txt");
         var path = _dialogs.AskSaveFile(filter, suggested);
         if (path is null) return;
-        var text = IsTableShape ? OutputCsv : OutputText;   // read on the UI thread
+        var text = table ? OutputCsv : OutputText;   // read on the UI thread
         try
         {
-            await _scheduler.Run(() => File.WriteAllText(path, text));
+            // The CSV goes out WITH a byte-order mark; the .txt stays exactly
+            // as it was, without one. The difference is Excel: it reads a
+            // BOM-less CSV in the system ANSI codepage, so "café.pdf" and
+            // "文件.pdf" arrive as mojibake — and filenames are precisely
+            // the field this export exists to carry. History.ExportCsv already
+            // writes through UTF8Encoding(true) for this exact reason. The
+            // two-argument WriteAllText below is left alone deliberately: its
+            // default is UTF-8 with no BOM, which is what every .txt this tool
+            // has ever written contains.
+            await _scheduler.Run(() =>
+            {
+                if (table) File.WriteAllText(path, text, new System.Text.UTF8Encoding(true));
+                else File.WriteAllText(path, text);
+            });
             Status = $"Saved to {Path.GetFileName(path)}";
         }
         catch (Exception ex)

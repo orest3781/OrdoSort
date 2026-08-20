@@ -346,6 +346,61 @@ public class FilenameListViewModelTests : IDisposable
         Assert.StartsWith("Name,Size", written);
     }
 
+    /// <summary>Excel reads a BOM-less CSV in the system ANSI codepage, so
+    /// "café" and "文件" open as mojibake — and filenames are exactly the
+    /// field this export exists to carry. History.ExportCsv already writes its
+    /// own CSV through UTF8Encoding(true) under a doc comment reading
+    /// "Excel-friendly BOM"; this is the same rule on this tool's export.
+    ///
+    /// Asserted on the BYTES on purpose: File.ReadAllText strips a BOM, so
+    /// every text-level assertion in this file — including
+    /// SaveWritesCsvOnceThereAreColumns just above — passes whether the BOM
+    /// is there or not. Only the bytes can tell.</summary>
+    [Fact]
+    public async Task SaveWritesTheCsvWithABomSoExcelKeepsNonAsciiNames()
+    {
+        var target = Path.Combine(_dir, "out.csv");
+        var dialogs = new FakeDialogs { NextFolder = _dir, NextSaveFile = target };
+        Touch("café-文件.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle first");
+
+        vm.Columns = FilenameList.Columns.Size;
+        await vm.SaveAsync();
+
+        var bytes = File.ReadAllBytes(target);
+        Assert.True(bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF,
+            "the exported CSV should start with the UTF-8 BOM (EF BB BF) — first bytes were "
+            + string.Join(" ", bytes.Take(3).Select(b => b.ToString("X2"))));
+        Assert.Contains("café-文件.pdf", File.ReadAllText(target));
+    }
+
+    /// <summary>The Save button's text and the file Save actually writes come
+    /// from one rule, so they cannot drift apart — the button used to be a
+    /// literal "Save as .txt…" while a single data column made the dialog
+    /// offer a .csv. The notification half matters as much as the value: the
+    /// button's Content is bound, so a SaveLabel nobody raises leaves ".txt…"
+    /// on screen forever no matter what the property returns.</summary>
+    [Fact]
+    public void TheSaveLabelNamesTheFormatSaveWillActuallyWrite()
+    {
+        var vm = MakeVm(new FakeDialogs());
+        var notified = new List<string>();
+        vm.PropertyChanged += (_, e) => notified.Add(e.PropertyName ?? "");
+
+        Assert.Equal("Save as .txt…", vm.SaveLabel);
+
+        vm.Columns = FilenameList.Columns.Size;
+        Assert.Equal("Save as .csv…", vm.SaveLabel);
+        Assert.Contains(nameof(vm.SaveLabel), notified);
+
+        // Number alone is still a LIST — "1. invoice.pdf" in a .txt, exactly
+        // as FilenameList.IsTable says, which is why the label delegates to it.
+        vm.Columns = FilenameList.Columns.Number;
+        Assert.Equal("Save as .txt…", vm.SaveLabel);
+    }
+
     [Fact]
     public async Task SaveStillWritesThePlainTextListWithNoColumns()
     {
