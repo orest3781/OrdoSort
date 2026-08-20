@@ -78,3 +78,6 @@ evidence/
 /*.png
 /*.jpg
 /*.jpeg
+
+# Claude skills lockfile — personal tooling, not part of the app
+skills-lock.json

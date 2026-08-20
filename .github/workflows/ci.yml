@@ -1,8 +1,26 @@
 name: CI
 
+# Bare `push:` ran this on every branch — and any branch with a PR open ran it
+# a second time via `pull_request:`, at Windows-runner rates (2x Linux against
+# the private-repo allowance). Same reasoning as e2e.yml's own trigger comment:
+# push covers main, the PR trigger covers everything else exactly once.
+# Docs-only changes build nothing, so they skip the run entirely.
 on:
   push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**", "ordosort.com/**"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", "ordosort.com/**"]
+  workflow_dispatch:
+
+# A second push to the same branch supersedes the first run — don't pay for both.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Build-and-test needs nothing but the checkout.
+permissions:
+  contents: read
 
 jobs:
   build-test:

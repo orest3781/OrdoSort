@@ -13,8 +13,21 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths-ignore: ["**.md", "docs/**", "ordosort.com/**"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", "ordosort.com/**"]
   workflow_dispatch:
+
+# A second push to the same branch supersedes the first run — don't pay for
+# both, least of all at 20 desktop-runner minutes each.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+# The suite reads the checkout and uploads its evidence artifact; the token
+# needs nothing beyond read (artifact upload uses its own scope-free API).
+permissions:
+  contents: read
 
 jobs:
   e2e:
