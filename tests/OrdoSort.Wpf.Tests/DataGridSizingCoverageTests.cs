@@ -78,14 +78,21 @@ public class DataGridSizingCoverageTests
     /// FilenameListWindow: used to be a single column, so nothing competed
     /// for width and there was no cap to test. That is no longer true (Task
     /// 9, 2026-08-19): the window now has six DataGridTextColumns, five of
-    /// them optional and Visibility-toggled from code-behind, all sharing
-    /// the same DataGridColumnCap arithmetic every other multi-column grid
-    /// here depends on. This entry is now genuinely elevated risk, not
-    /// low-risk — recorded as debt rather than silently promoted to
-    /// SizingCovered, since doing that honestly needs a real AutoFitColumnTests
-    /// fact (a long value stopping at its cap, no horizontal scrollbar with
-    /// every optional column on at MinWidth), which is follow-up work this
-    /// task did not include.</summary>
+    /// them optional and Visibility-toggled from code-behind. Unlike its
+    /// siblings — BulkRename, History, MatchMerge, PageCounts, Triage all
+    /// opt into DataGridColumnCap from their own constructors via a
+    /// DataGridColumnCap.Track(grid, …) call — FilenameListWindow.xaml.cs
+    /// makes NO such call, and no column here declares a MaxWidth. So the
+    /// real debt is not "capped but unmeasured" like a covered window would
+    /// be if its AutoFitColumnTests fact went stale; it is "no cap at all":
+    /// at MinWidth, six columns (three of them Width="Auto" with nothing
+    /// stopping them from growing — Folder, FullPath, and Modified) compete
+    /// for a 480px window with no arithmetic keeping any of them in bounds
+    /// beyond their own MinWidth floors. Recorded as debt rather than
+    /// silently promoted to SizingCovered, since doing that honestly needs
+    /// both a DataGridColumnCap.Track call (deliberately NOT added here —
+    /// deferred) and a real AutoFitColumnTests fact proving it holds. Follow-
+    /// up work this task did not include.</summary>
     private static readonly HashSet<string> KnownUncovered = new(StringComparer.Ordinal)
     {
         "FilenameListWindow",

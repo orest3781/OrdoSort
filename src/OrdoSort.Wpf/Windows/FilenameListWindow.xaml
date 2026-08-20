@@ -93,7 +93,36 @@
                 <DataGrid x:Name="NamesGrid" ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
                           IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
                           SelectionMode="Extended" AlternationCount="{Binding Rows.Count}"
+                          AlternatingRowBackground="{x:Null}" CanUserSortColumns="False"
                           SelectionChanged="OnSelectionChanged" PreviewKeyDown="OnGridKeyDown">
+                    <!-- AlternationCount is bound to Rows.Count rather than left at
+                         Theme/Styles.xaml's implicit DataGrid style's default (WPF
+                         only coerces it to 2 while the property is UNSET, so a
+                         local binding here defeats that): the "#" column above
+                         needs AlternationIndex to equal the row's actual position,
+                         not a value cycling 0/1. That means AlternationIndex can no
+                         longer double as a 2-cycle stripe index either — with the
+                         count equal to the row total, only row index 1 could ever
+                         land on the alternate brush, and every other row would
+                         fall through to RowStyle's flat Transparent background,
+                         which reads as a rendering bug (a single tinted row) rather
+                         than as "striping is off". AlternatingRowBackground is
+                         nulled out here so that trade is explicit: the row-number
+                         column owns the alternation channel, on purpose, and this
+                         grid does not stripe.
+
+                         CanUserSortColumns is off for a different reason: the "#"
+                         column's Binding is AlternationIndex, not a FileRow
+                         property, so DataGridBoundColumn's derived SortMemberPath
+                         for it names a member FileRow doesn't have — clicking that
+                         header would throw or silently no-op depending on WPF's
+                         mood. It would also be wrong even for a column that DID
+                         sort cleanly: this window already has a sort control (the
+                         Z to A checkbox above, bound to Descending), and letting
+                         the grid's own header-click sorting run at the same time
+                         would reorder Rows out from under it, so the on-screen "#"
+                         would stop matching the numbering in whatever gets copied
+                         or saved. Z to A is this window's only sort surface. -->
                     <!-- Local RowStyle, same shape as BulkRename/MatchMerge's own —
                          Theme.RowHover so the hover tint stays consistent app-wide. -->
                     <DataGrid.RowStyle>

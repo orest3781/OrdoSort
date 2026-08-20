@@ -90,6 +90,17 @@ public class WindowOverflowTests
                 NameFilter = "invoice",
                 Descending = true,
             };
+            // A widened Columns set with no ROW is an empty grid trivially
+            // fitting at MinWidth — this class's own doc warns about exactly
+            // that. Folder and FullPath get the long values here: they are
+            // the two columns that can actually run away (Width="Auto", no
+            // MinWidth cap and, as of this window, no DataGridColumnCap
+            // either — see DataGridSizingCoverageTests' KnownUncovered note).
+            vm.Rows.Add(new FilenameList.FileRow(
+                "a-long-enough-filename-to-matter.pdf", 123456789,
+                new DateTime(2026, 8, 19, 14, 30, 0),
+                @"C:\inbox\a-long-enough-folder-path-to-matter-at-minwidth",
+                @"C:\inbox\a-long-enough-folder-path-to-matter-at-minwidth\a-long-enough-filename-to-matter.pdf"));
             return (new FilenameListWindow(vm), null);
         }),
 
