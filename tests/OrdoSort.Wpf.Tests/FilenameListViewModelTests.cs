@@ -431,4 +431,74 @@ public class FilenameListViewModelTests : IDisposable
 
         Assert.Single(vm.Rows);
     }
+
+    [Fact]
+    public void CopyTextIsEverythingWhenNothingIsSelected()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("a.pdf"); Touch("b.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        Assert.Equal("a.pdf" + Environment.NewLine + "b.pdf", vm.CopyText);
+    }
+
+    [Fact]
+    public void CopyTextIsJustTheSelectionWhenThereIsOne()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("a.pdf"); Touch("b.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        vm.SelectedPaths = new[] { Path.Combine(_dir, "b.pdf") };
+
+        Assert.Equal("b.pdf", vm.CopyText);
+    }
+
+    [Fact]
+    public void TheSelectionKeepsTheColumnsAndTheirOrder()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("a.pdf"); Touch("b.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        vm.Columns = FilenameList.Columns.Folder;
+        vm.SelectedPaths = new[] { Path.Combine(_dir, "b.pdf") };
+
+        Assert.StartsWith("Name\tFolder" + Environment.NewLine + "b.pdf", vm.CopyText);
+    }
+
+    [Fact]
+    public void NoteCopiedSaysHowManyOfHowMany()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("a.pdf"); Touch("b.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        vm.SelectedPaths = new[] { Path.Combine(_dir, "b.pdf") };
+        vm.NoteCopied();
+
+        Assert.Equal("Copied 1 of 2", vm.Status);
+    }
+
+    [Fact]
+    public void NoteCopiedSaysThePlainCountWhenNothingIsSelected()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("a.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle first");
+
+        vm.NoteCopied();
+
+        Assert.Equal("Copied 1 name", vm.Status);
+    }
 }

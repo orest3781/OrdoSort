@@ -58,6 +58,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         {
             _selectedPaths = value;
             Raise(nameof(SelectedPaths));
+            Raise(nameof(CopyText));
         }
     }
 
@@ -97,6 +98,19 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
 
     public string OutputText => FilenameList.ToText(Rows.ToList(), Columns);
     public string OutputCsv => FilenameList.ToCsv(Rows.ToList(), Columns);
+
+    /// <summary>What the Copy button puts on the clipboard: the selected rows
+    /// when there are any, everything otherwise. This is what makes the button
+    /// agree with the Ctrl+C the grid already supports — before this, the
+    /// button copied all 200 rows while Ctrl+C copied the 5 you had picked.</summary>
+    public string CopyText => FilenameList.ToText(SelectedRows(), Columns);
+
+    private List<FilenameList.FileRow> SelectedRows()
+    {
+        if (_selectedPaths.Count == 0) return Rows.ToList();
+        var wanted = new HashSet<string>(_selectedPaths, StringComparer.OrdinalIgnoreCase);
+        return Rows.Where(r => wanted.Contains(r.FullPath)).ToList();
+    }
 
     public FilenameListViewModel(IDialogService dialogs, IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null, int probeDelayMs = 300)
@@ -268,6 +282,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         CountsLine = _sources.Count == 0 ? "" : FormatCounts();
         Raise(nameof(OutputText));
         Raise(nameof(OutputCsv));
+        Raise(nameof(CopyText));
         Raise(nameof(RemovedCount));
     }
 
@@ -308,10 +323,16 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Set by the window's code-behind after Clipboard.SetText
-    /// succeeds — Clipboard itself is a WPF/COM type and must never appear
-    /// in this class (it isn't safe to touch from the headless MTA tests
-    /// run under).</summary>
-    public void NoteCopied() => Status = $"Copied {Rows.Count} name{(Rows.Count == 1 ? "" : "s")}";
+    /// succeeds — Clipboard itself is a WPF/COM type and must never appear in
+    /// this class (it isn't safe to touch from the headless MTA tests run
+    /// under).</summary>
+    public void NoteCopied()
+    {
+        var copied = SelectedRows().Count;
+        Status = _selectedPaths.Count == 0
+            ? $"Copied {copied} name{(copied == 1 ? "" : "s")}"
+            : $"Copied {copied} of {Rows.Count}";
+    }
 
     /// <summary>Set by the window's code-behind when Clipboard.SetText
     /// throws COMException — the clipboard is a shared, single-owner OS
