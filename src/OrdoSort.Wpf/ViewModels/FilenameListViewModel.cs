@@ -40,6 +40,27 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     private int _lastIgnored;
     private string _lastError = "";
 
+    // Full paths the user has removed. Keyed on PATH rather than on the row,
+    // because a rebuild produces NEW FileRow instances for the same files —
+    // holding row references would let every removed row reappear on the next
+    // keystroke in the extension box.
+    private readonly HashSet<string> _excluded = new(StringComparer.OrdinalIgnoreCase);
+
+    public int RemovedCount => _allRows.Count(r => _excluded.Contains(r.FullPath));
+
+    /// <summary>Pushed in by the window on SelectionChanged — DataGrid's
+    /// SelectedItems is not bindable.</summary>
+    private IReadOnlyList<string> _selectedPaths = Array.Empty<string>();
+    public IReadOnlyList<string> SelectedPaths
+    {
+        get => _selectedPaths;
+        set
+        {
+            _selectedPaths = value;
+            Raise(nameof(SelectedPaths));
+        }
+    }
+
     public ObservableCollection<FilenameList.FileRow> Rows { get; } = new();
 
     private FilenameList.Columns _columns = FilenameList.Columns.None;
@@ -97,7 +118,21 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         ClearCommand = new RelayCommand(() =>
         {
             _sources.Clear();
+            _excluded.Clear();
             Refresh(immediate: true);
+        });
+        RemoveSelectedCommand = new RelayCommand(() =>
+        {
+            if (_selectedPaths.Count == 0) return;
+            foreach (var path in _selectedPaths) _excluded.Add(path);
+            SelectedPaths = Array.Empty<string>();
+            Reproject();
+        });
+        RestoreRemovedCommand = new RelayCommand(() =>
+        {
+            if (_excluded.Count == 0) return;
+            _excluded.Clear();
+            Reproject();
         });
     }
 
@@ -141,6 +176,8 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     public RelayCommand BrowseFilesCommand { get; }
     public RelayCommand SaveCommand { get; }
     public RelayCommand ClearCommand { get; }
+    public RelayCommand RemoveSelectedCommand { get; }
+    public RelayCommand RestoreRemovedCommand { get; }
 
     /// <summary>Called by drag-drop and both pickers. Dedupes against what's
     /// already listed (OrdinalIgnoreCase on the path as given — the same
@@ -196,14 +233,17 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     /// three intake filters (IncludeSubfolders, IncludeExtension,
     /// ExtensionFilter) justify going back to the disk.
     ///
-    /// Four call sites reach this: ApplyListing (the probe's marshalled
-    /// callback) and the Columns/NameFilter/Descending setters (driven by
-    /// bindings, so the caller's thread). Mutating the ObservableCollection
+    /// Six call sites reach this: ApplyListing (the probe's marshalled
+    /// callback), the Columns/NameFilter/Descending setters (driven by
+    /// bindings, so the caller's thread), and RemoveSelectedCommand/
+    /// RestoreRemovedCommand (driven by a button click, also the UI thread).
+    /// Mutating the ObservableCollection
     /// Rows from more than one thread at once would be unsafe, but in
-    /// production every one of those four sites runs on the dispatcher —
-    /// the setters because WPF raises property changes from bound controls
-    /// on the UI thread, ApplyListing because DebouncedProbe marshals
-    /// through the SynchronizationContext passed to this class's
+    /// production every one of those six sites runs on the dispatcher —
+    /// the setters and commands because WPF raises property changes and
+    /// command execution from bound controls on the UI thread, ApplyListing
+    /// because DebouncedProbe marshals through the SynchronizationContext
+    /// passed to this class's
     /// constructor. That guarantee comes from the constructor argument, not
     /// from anything in this method. Tests that construct with
     /// uiContext: null do NOT get it: a probe-driven Reproject there runs on
@@ -212,7 +252,8 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     /// that ordering.</summary>
     private void Reproject()
     {
-        IEnumerable<FilenameList.FileRow> visible = _allRows;
+        IEnumerable<FilenameList.FileRow> visible =
+            _allRows.Where(r => !_excluded.Contains(r.FullPath));
 
         if (NameFilter.Length > 0)
             visible = visible.Where(r =>
@@ -227,13 +268,16 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         CountsLine = _sources.Count == 0 ? "" : FormatCounts();
         Raise(nameof(OutputText));
         Raise(nameof(OutputCsv));
+        Raise(nameof(RemovedCount));
     }
 
     private string FormatCounts()
     {
         var total = _allRows.Count;
         var line = $"{total} file{(total == 1 ? "" : "s")}";
-        var hidden = total - Rows.Count;
+        var removed = RemovedCount;
+        if (removed > 0) line += $" · {removed} removed";
+        var hidden = total - removed - Rows.Count;
         if (hidden > 0) line += $" · {hidden} filtered out";
         if (_lastIgnored > 0) line += $" · {_lastIgnored} ignored";
         if (_lastError.Length > 0) line += $" · {_lastError}";

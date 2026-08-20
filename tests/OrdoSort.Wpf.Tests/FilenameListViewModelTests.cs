@@ -339,4 +339,91 @@ public class FilenameListViewModelTests : IDisposable
 
         Assert.Equal("report.pdf", File.ReadAllText(target));
     }
+
+    /// <summary>The defect the exclusion set exists to prevent. A naive
+    /// Rows.Remove passes the first two asserts and fails the last: one keystroke
+    /// in the extension box re-walks the folder and the removed row comes straight
+    /// back.</summary>
+    [Fact]
+    public void ARemovedRowStaysRemovedAcrossARebuild()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("keep.pdf"); Touch("drop.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        vm.SelectedPaths = new[] { Path.Combine(_dir, "drop.pdf") };
+        vm.RemoveSelectedCommand.Execute(null);
+        Assert.Single(vm.Rows);
+        Assert.Equal("keep.pdf", vm.Rows[0].Name);
+
+        vm.ExtensionFilter = "pdf";   // forces a real rebuild through the probe
+
+        WaitFor(() => vm.Rows.Count == 1 && vm.Rows[0].Name == "keep.pdf",
+            "the removed row must not come back when the listing is rebuilt");
+    }
+
+    [Fact]
+    public void TheCountsLineReportsWhatWasRemoved()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("keep.pdf"); Touch("drop.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        vm.SelectedPaths = new[] { Path.Combine(_dir, "drop.pdf") };
+        vm.RemoveSelectedCommand.Execute(null);
+
+        Assert.Equal("2 files · 1 removed", vm.CountsLine);
+    }
+
+    [Fact]
+    public void RestoreRemovedBringsThemBack()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("keep.pdf"); Touch("drop.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        vm.SelectedPaths = new[] { Path.Combine(_dir, "drop.pdf") };
+        vm.RemoveSelectedCommand.Execute(null);
+        vm.RestoreRemovedCommand.Execute(null);
+
+        Assert.Equal(2, vm.Rows.Count);
+        Assert.Equal(0, vm.RemovedCount);
+    }
+
+    [Fact]
+    public void ClearForgetsTheRemovals()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("keep.pdf"); Touch("drop.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+        vm.SelectedPaths = new[] { Path.Combine(_dir, "drop.pdf") };
+        vm.RemoveSelectedCommand.Execute(null);
+
+        vm.ClearCommand.Execute(null);
+        vm.BrowseFolderCommand.Execute(null);
+
+        WaitFor(() => vm.Rows.Count == 2, "Clear resets the exclusion set as well as the sources");
+    }
+
+    [Fact]
+    public void RemoveSelectedDoesNothingWithAnEmptySelection()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("keep.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle first");
+
+        vm.RemoveSelectedCommand.Execute(null);
+
+        Assert.Single(vm.Rows);
+    }
 }
