@@ -97,7 +97,48 @@ public class DataGridSizingCoverageTests
     /// debt rather than silently promoted to SizingCovered, since doing that
     /// honestly needs both a DataGridColumnCap.Track call (deliberately NOT
     /// added here — deferred) and a real AutoFitColumnTests fact proving it
-    /// holds. Follow-up work this task did not include.</summary>
+    /// holds.
+    ///
+    /// MEASURED 2026-08-19, off-screen, one fresh window per state, 60 rows,
+    /// long Folder/Full path values — recorded here because the obvious
+    /// one-line fix (Track(NamesGrid, FolderColumn, FullPathColumn) in the
+    /// constructor) turns out to need two decisions this branch is not the
+    /// place to make:
+    ///
+    /// 1. THE FLOORS ALREADY OVERFLOW. The six columns' own MinWidths sum to
+    ///    630 (30 + 180 + 60 + 120 + 100 + 140). At this window's declared
+    ///    480 MinWidth the grid measures 436 wide, and DataGridColumnCap caps
+    ///    against 436 - 17 (the reserved vertical scrollbar) = 419. So with
+    ///    every column on at MinWidth, NO cap can deliver the
+    ///    no-horizontal-scrollbar invariant every other window's
+    ///    AutoFitColumnTests fact asserts — the floors alone exceed the
+    ///    viewport by 211px. Untracked, that state measures Folder 451px and
+    ///    Full path 888px against a File name squeezed to its 180 floor, 1735px
+    ///    of columns in a 436px grid, horizontal scrollbar visible. Tracked, it
+    ///    measures 830px total with both path columns at their floors: much
+    ///    better, still overflowing. Landing a green fact needs a decision
+    ///    about the floors or about the window's MinWidth, not just a cap.
+    ///
+    /// 2. A COLLAPSED COLUMN IS NOT FREE. DataGridColumn.ActualWidth for a
+    ///    Collapsed column is NOT 0 — measured, it reports its MinWidth
+    ///    (30/60/120/100/140 for the five optional columns here). This is the
+    ///    first grid in the app whose columns collapse and reappear at
+    ///    runtime, so nothing has needed DataGridColumnCap.EntitlementOf to
+    ///    have an opinion about that before, and it does not: an untracked
+    ///    Auto column contributes column.ActualWidth whether or not it paints
+    ///    anything. Cost, measured with only Folder and Full path on at the
+    ///    default 640 width: the cap comes out 84.5px per column, where the
+    ///    three collapsed columns contributing 0 would make it 189.5px. The
+    ///    fix is a visibility test in EntitlementOf — inert for the six
+    ///    windows using it today, none of which collapse a column — but it is
+    ///    a change to shared arithmetic that has taken six measured fix rounds
+    ///    to reach its current shape, and on its own it does not resolve (1).
+    ///
+    /// Where the formula does work, for the record: at a 1200px window with
+    /// every column on, Track yields a 361.5px cap for each path column,
+    /// 1137px of columns in a 1156px grid, and no horizontal scrollbar.
+    ///
+    /// Follow-up work this task did not include.</summary>
     private static readonly HashSet<string> KnownUncovered = new(StringComparer.Ordinal)
     {
         "FilenameListWindow",
