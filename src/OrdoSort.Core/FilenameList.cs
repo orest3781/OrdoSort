@@ -1,5 +1,7 @@
 namespace OrdoSort.Core;
 
+using System.Globalization;
+
 /// <summary>
 /// Turns dropped/browsed files and folders into a flat, natural-sorted list
 /// of filenames — the tool exists to produce exactly that list for pasting
@@ -67,6 +69,75 @@ public static class FilenameList
     }
 
     public static string ToText(IEnumerable<string> names) => string.Join(Environment.NewLine, names);
+
+    /// <summary>Which optional columns are on. Name is NOT a member: it is always
+    /// emitted, so including it would make a HasFlag check trivially true and
+    /// leave the list-vs-table rule below unstateable.</summary>
+    [Flags]
+    public enum Columns
+    {
+        None = 0,
+        Number = 1,
+        Size = 2,
+        Modified = 4,
+        Folder = 8,
+        FullPath = 16,
+    }
+
+    /// <summary>True once any column carrying DATA is on. Number alone does not
+    /// count — a numbered list of names is still a list, which is what lets
+    /// "1. invoice-2024.pdf" exist.</summary>
+    private static bool IsTable(Columns cols) => (cols & ~Columns.Number) != Columns.None;
+
+    private static string Cell(FileRow row, Columns column, int index) => column switch
+    {
+        Columns.Number => (index + 1).ToString(CultureInfo.InvariantCulture),
+        Columns.Size => row.Size?.ToString(CultureInfo.InvariantCulture) ?? "",
+        Columns.Modified => row.Modified?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? "",
+        Columns.Folder => row.Folder,
+        Columns.FullPath => row.FullPath,
+        _ => row.Name,
+    };
+
+    // Fixed order, however the flags were combined. Columns.None stands for the
+    // always-present Name column in this table.
+    private static readonly (Columns Flag, string Header)[] Layout =
+    {
+        (Columns.Number, "#"),
+        (Columns.None, "Name"),
+        (Columns.Size, "Size"),
+        (Columns.Modified, "Modified"),
+        (Columns.Folder, "Folder"),
+        (Columns.FullPath, "Full path"),
+    };
+
+    private static List<(Columns Flag, string Header)> Active(Columns cols) =>
+        Layout.Where(c => c.Flag == Columns.None || (cols & c.Flag) != 0).ToList();
+
+    /// <summary>The clipboard text. One rule: Name alone is a plain list, with
+    /// Number as a "1. " prefix; any data column makes it tab-separated with a
+    /// header row, and Number becomes a column of its own.</summary>
+    public static string ToText(IReadOnlyList<FileRow> rows, Columns cols)
+    {
+        if (rows.Count == 0) return "";
+
+        if (!IsTable(cols))
+        {
+            var numbered = (cols & Columns.Number) != 0;
+            return string.Join(Environment.NewLine, rows.Select((r, i) =>
+                numbered ? $"{i + 1}. {r.Name}" : r.Name));
+        }
+
+        var active = Active(cols);
+        var lines = new List<string>(rows.Count + 1)
+        {
+            string.Join("\t", active.Select(c => c.Header)),
+        };
+        for (var i = 0; i < rows.Count; i++)
+            lines.Add(string.Join("\t", active.Select(c => Cell(rows[i], c.Flag, i))));
+
+        return string.Join(Environment.NewLine, lines);
+    }
 
     /// <summary>The directory of <paramref name="file"/> relative to whichever
     /// root it arrived under. Roots can nest — someone drops a folder and then a

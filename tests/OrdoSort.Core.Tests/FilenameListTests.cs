@@ -6,6 +6,11 @@ public class FilenameListTests : IDisposable
     public FilenameListTests() => Directory.CreateDirectory(_dir);
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 
+    private static readonly FilenameList.FileRow RowA =
+        new("invoice-2024.pdf", 241152, new DateTime(2026, 3, 4, 14, 22, 0), "2026", @"C:\in\2026\invoice-2024.pdf");
+    private static readonly FilenameList.FileRow RowB =
+        new("invoice-2025.pdf", 198656, new DateTime(2026, 3, 9, 9, 5, 0), "", @"C:\in\invoice-2025.pdf");
+
     private string Touch(string relative)
     {
         var path = Path.Combine(_dir, relative);
@@ -251,5 +256,63 @@ public class FilenameListTests : IDisposable
     {
         Assert.Equal("reports",
             FilenameList.FolderFor(@"C:\reports\report.pdf", new[] { "C:" }));
+    }
+
+    /// <summary>No new columns means byte-for-byte what the tool produced before
+    /// this feature existed.</summary>
+    [Fact]
+    public void NameOnlyIsAPlainListWithNoHeader()
+    {
+        var text = FilenameList.ToText(new[] { RowA, RowB }, FilenameList.Columns.None);
+        Assert.Equal("invoice-2024.pdf" + Environment.NewLine + "invoice-2025.pdf", text);
+    }
+
+    [Fact]
+    public void NumberAloneStaysAListAndRendersAsAPrefix()
+    {
+        var text = FilenameList.ToText(new[] { RowA, RowB }, FilenameList.Columns.Number);
+        Assert.Equal("1. invoice-2024.pdf" + Environment.NewLine + "2. invoice-2025.pdf", text);
+    }
+
+    [Fact]
+    public void ADataColumnMakesItTabSeparatedWithAHeader()
+    {
+        var text = FilenameList.ToText(new[] { RowA },
+            FilenameList.Columns.Size | FilenameList.Columns.Modified);
+        Assert.Equal(
+            "Name\tSize\tModified" + Environment.NewLine +
+            "invoice-2024.pdf\t241152\t2026-03-04 14:22", text);
+    }
+
+    [Fact]
+    public void NumberBecomesItsOwnColumnInTableShape()
+    {
+        var text = FilenameList.ToText(new[] { RowA },
+            FilenameList.Columns.Number | FilenameList.Columns.Size);
+        Assert.Equal("#\tName\tSize" + Environment.NewLine + "1\tinvoice-2024.pdf\t241152", text);
+    }
+
+    [Fact]
+    public void ColumnsAppearInTheFixedOrderHoweverTheyWereCombined()
+    {
+        var text = FilenameList.ToText(new[] { RowA },
+            FilenameList.Columns.FullPath | FilenameList.Columns.Folder | FilenameList.Columns.Size);
+        Assert.StartsWith("Name\tSize\tFolder\tFull path" + Environment.NewLine, text);
+    }
+
+    [Fact]
+    public void AnUnreadableFileLeavesItsSizeAndModifiedCellsEmpty()
+    {
+        var unknown = new FilenameList.FileRow("gone.pdf", null, null, "", @"C:\in\gone.pdf");
+        var text = FilenameList.ToText(new[] { unknown },
+            FilenameList.Columns.Size | FilenameList.Columns.Modified);
+        Assert.EndsWith("gone.pdf\t\t", text);
+    }
+
+    [Fact]
+    public void AnEmptyRowSetProducesAnEmptyString()
+    {
+        Assert.Equal("", FilenameList.ToText(Array.Empty<FilenameList.FileRow>(),
+            FilenameList.Columns.Size));
     }
 }
