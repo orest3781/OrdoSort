@@ -58,7 +58,7 @@ public static class FilenameList
 
             rows.Add(new FileRow(
                 opt.IncludeExtension ? Path.GetFileName(file) : Path.GetFileNameWithoutExtension(file),
-                size, modified, "", file));
+                size, modified, FolderFor(file, paths), file));
         }
 
         // Intake sorts by full PATH; re-sort on the NAME this list actually shows.
@@ -67,4 +67,35 @@ public static class FilenameList
     }
 
     public static string ToText(IEnumerable<string> names) => string.Join(Environment.NewLine, names);
+
+    /// <summary>The directory of <paramref name="file"/> relative to whichever
+    /// root it arrived under. Roots can nest — someone drops a folder and then a
+    /// subfolder of it — so the LONGEST match wins and Folder stays as short as it
+    /// can be. A root that IS the file, an individually added file, has no folder
+    /// to be relative to.</summary>
+    private static string FolderFor(string file, IReadOnlyList<string> roots)
+    {
+        var best = "";
+        foreach (var root in roots)
+        {
+            var trimmed = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            if (string.Equals(trimmed, file, StringComparison.OrdinalIgnoreCase))
+                return "";   // the file was added directly
+
+            var prefix = trimmed + Path.DirectorySeparatorChar;
+            if (file.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && trimmed.Length > best.Length)
+                best = trimmed;
+        }
+
+        if (best.Length == 0) return "";
+
+        var dir = Path.GetDirectoryName(file);
+        if (dir is null) return "";
+
+        var relative = Path.GetRelativePath(best, dir);
+        // GetRelativePath returns "." when dir IS the root — that is not a folder.
+        return relative == "." ? "" : relative;
+    }
 }

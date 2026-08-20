@@ -163,4 +163,55 @@ public class FilenameListTests : IDisposable
         Assert.Equal(new[] { "item1.pdf", "item2.pdf", "item10.pdf" },
             listing.Rows.Select(r => r.Name).ToArray());
     }
+
+    [Fact]
+    public void AFileAtTheRootHasNoFolder()
+    {
+        Touch("report.pdf");
+        var listing = FilenameList.Build(new[] { _dir },
+            new FilenameList.Options(Recursive: true, IncludeExtension: true));
+        Assert.Equal("", Assert.Single(listing.Rows).Folder);
+    }
+
+    [Fact]
+    public void ANestedFileCarriesItsPathRelativeToTheRoot()
+    {
+        Touch(Path.Combine("2026", "march", "report.pdf"));
+        var listing = FilenameList.Build(new[] { _dir },
+            new FilenameList.Options(Recursive: true, IncludeExtension: true));
+        Assert.Equal(Path.Combine("2026", "march"), Assert.Single(listing.Rows).Folder);
+    }
+
+    /// <summary>A file added individually is its own root, so there is no folder
+    /// for it to be relative to.</summary>
+    [Fact]
+    public void AnIndividuallyAddedFileHasNoFolder()
+    {
+        var path = Touch(Path.Combine("2026", "report.pdf"));
+        var listing = FilenameList.Build(new[] { path },
+            new FilenameList.Options(Recursive: false, IncludeExtension: true));
+        Assert.Equal("", Assert.Single(listing.Rows).Folder);
+    }
+
+    /// <summary>Nested roots: the file sits under both, and the LONGEST wins, so
+    /// Folder stays as short and as meaningful as it can be.</summary>
+    [Fact]
+    public void TheLongestMatchingRootWins()
+    {
+        Touch(Path.Combine("2026", "march", "report.pdf"));
+        var listing = FilenameList.Build(
+            new[] { _dir, Path.Combine(_dir, "2026") },
+            new FilenameList.Options(Recursive: true, IncludeExtension: true));
+
+        Assert.Equal("march", listing.Rows[0].Folder);
+    }
+
+    [Fact]
+    public void RootMatchingIgnoresCase()
+    {
+        Touch(Path.Combine("2026", "report.pdf"));
+        var listing = FilenameList.Build(new[] { _dir.ToUpperInvariant() },
+            new FilenameList.Options(Recursive: true, IncludeExtension: true));
+        Assert.Equal("2026", Assert.Single(listing.Rows).Folder);
+    }
 }
