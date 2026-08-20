@@ -189,16 +189,29 @@ public static class SmallToolScenarios
             && vm.CountsLine.Contains("1 removed", StringComparison.Ordinal),
             vm.CountsLine);
 
-        // ExtensionFilter is a real rebuild through the probe, so this one DOES
-        // need a pump — and it is the check that matters: the exclusion set has
-        // to outlive the walk. Both remaining source files are already .pdf, so
-        // the filter itself changes nothing about which files match; what it
-        // proves is that the removed row must not return when the listing
-        // rebuilds.
+        // ExtensionFilter is a real rebuild through the probe, so this DOES need
+        // a pump — but setting it straight to "pdf" would prove nothing:
+        // RemoveSelectedCommand's Reproject above already left Rows at exactly
+        // {survivor} with doomed absent, so a predicate checking that same
+        // shape is ALREADY true before Trigger's Timer ever fires, and
+        // E2EPump.Until short-circuits on its own first line without pumping a
+        // single frame (E2EPump.cs:22) — a regression that dropped the
+        // exclusion set during a probe-driven Reproject would sail straight
+        // past a check like that. Two round trips instead, so both waits force
+        // an observable transition a short-circuit can't fake.
+        //
+        // First, filter to something that matches neither survivor: Rows
+        // emptying is a transition only a real walk can produce.
+        vm.ExtensionFilter = "zzz";
+        E2EPump.Until(() => vm.Rows.Count == 0, 8000);
+
+        // Then filter back to "pdf". Rows going 0 -> 1 again likewise needs the
+        // walk, and THIS is the assertion that matters: the exclusion set had
+        // to outlive both rebuilds for the doomed row to still be missing.
         vm.ExtensionFilter = "pdf";
-        E2EPump.Until(() => vm.Rows.Count > 0 && vm.Rows.All(r => r.FullPath != doomed), 8000);
-        ctx.Check("it stays gone across a real rebuild",
-            vm.Rows.All(r => r.FullPath != doomed), vm.CountsLine);
+        E2EPump.Until(() => vm.Rows.Count == 1 && vm.Rows.All(r => r.FullPath != doomed), 8000);
+        ctx.Check("the removed row stays gone across two real rebuilds",
+            vm.Rows.Count == 1 && vm.Rows.All(r => r.FullPath != doomed), vm.CountsLine);
 
         // ClearCommand hits Refresh's empty-_sources FAST PATH (Cancel() then
         // ApplyListing(...) called directly — no Timer, no Post), so
