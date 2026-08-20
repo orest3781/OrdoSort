@@ -232,11 +232,25 @@
                         </DataGridTextColumn>
                     </DataGrid.Columns>
                 </DataGrid>
-                <TextBlock Text="Drag files or folders here, or browse…"
+                <!-- Two empty states, distinguished the same way HistoryWindow's
+                     are: a listing with nothing in it must not read the same as
+                     one whose Find box has hidden every row. Bound to Rows.Count
+                     alone (as this was), typing "zzz" in Find told a user with
+                     200 files already listed to go and drag some files in. -->
+                <TextBlock x:Name="EmptyListText"
+                           Text="Drag files or folders here, or browse…"
                            Style="{StaticResource EmptyStateText}"
                            IsHitTestVisible="False">
                     <TextBlock.Visibility>
-                        <Binding Path="Rows.Count" Converter="{StaticResource ZeroToVis}" />
+                        <Binding Path="IsEmpty" Converter="{StaticResource BoolToVis}" />
+                    </TextBlock.Visibility>
+                </TextBlock>
+                <TextBlock x:Name="NoMatchesText"
+                           Text="Nothing to show — every file is filtered out or removed."
+                           Style="{StaticResource EmptyStateText}"
+                           IsHitTestVisible="False">
+                    <TextBlock.Visibility>
+                        <Binding Path="NoMatches" Converter="{StaticResource BoolToVis}" />
                     </TextBlock.Visibility>
                 </TextBlock>
             </Grid>

@@ -85,14 +85,19 @@ public class DataGridSizingCoverageTests
     /// makes NO such call, and no column here declares a MaxWidth. So the
     /// real debt is not "capped but unmeasured" like a covered window would
     /// be if its AutoFitColumnTests fact went stale; it is "no cap at all":
-    /// at MinWidth, six columns (three of them Width="Auto" with nothing
-    /// stopping them from growing — Folder, FullPath, and Modified) compete
-    /// for a 480px window with no arithmetic keeping any of them in bounds
-    /// beyond their own MinWidth floors. Recorded as debt rather than
-    /// silently promoted to SizingCovered, since doing that honestly needs
-    /// both a DataGridColumnCap.Track call (deliberately NOT added here —
-    /// deferred) and a real AutoFitColumnTests fact proving it holds. Follow-
-    /// up work this task did not include.</summary>
+    /// at MinWidth, six columns compete for a 480px window with no arithmetic
+    /// keeping any of them in bounds beyond their own MinWidth floors. FIVE
+    /// of the six are Width="Auto" — #, Size, Modified, Folder and Full path,
+    /// every column except the File name star filler — but only two of those
+    /// can actually run away: Folder and Full path hold paths of no bounded
+    /// length. # counts rows, Size is a byte count, and Modified renders
+    /// through a fixed StringFormat that is always exactly 16 characters
+    /// wide, so all three are content-bounded in the sense
+    /// DataGridColumnCap's "untracked Auto" entitlement assumes. Recorded as
+    /// debt rather than silently promoted to SizingCovered, since doing that
+    /// honestly needs both a DataGridColumnCap.Track call (deliberately NOT
+    /// added here — deferred) and a real AutoFitColumnTests fact proving it
+    /// holds. Follow-up work this task did not include.</summary>
     private static readonly HashSet<string> KnownUncovered = new(StringComparer.Ordinal)
     {
         "FilenameListWindow",

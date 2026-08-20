@@ -209,6 +209,24 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     private string _countsLine = "";
     public string CountsLine { get => _countsLine; private set => Set(ref _countsLine, value); }
 
+    /// <summary>The two empty states, kept apart for exactly the reason
+    /// HistoryViewModel keeps its own IsEmpty/NoMatches apart: a listing with
+    /// nothing in it must not read the same as one whose Find box or removals
+    /// have hidden every row. The window's empty-state text used to bind
+    /// straight to Rows.Count, so typing "zzz" in Find replaced a 200-file
+    /// listing with "Drag files or folders here, or browse…" — an invitation
+    /// to drop files that are already dropped. CountsLine still tells the
+    /// truth underneath, but the Find box made that state easy to reach.
+    ///
+    /// Both are false whenever a row is actually visible, so a Rows collection
+    /// seeded directly with no Build behind it (WindowOverflowTests does that)
+    /// still shows neither message, exactly as before.</summary>
+    public bool IsEmpty => Rows.Count == 0 && _allRows.Count == 0;
+
+    /// <summary>Rows exist, but the projection is showing none of them — the
+    /// name filter, or everything having been removed. See <see cref="IsEmpty"/>.</summary>
+    public bool NoMatches => Rows.Count == 0 && _allRows.Count > 0;
+
     private string _status = "";
     public string Status { get => _status; private set => Set(ref _status, value); }
 
@@ -311,6 +329,8 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         foreach (var row in projected) Rows.Add(row);
 
         CountsLine = _sources.Count == 0 ? "" : FormatCounts();
+        Raise(nameof(IsEmpty));
+        Raise(nameof(NoMatches));
         Raise(nameof(OutputText));
         Raise(nameof(OutputCsv));
         Raise(nameof(CopyText));

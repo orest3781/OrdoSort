@@ -8,9 +8,15 @@ using System.Globalization;
 /// into a manifest or spreadsheet. Built entirely on Task 1's shared intake
 /// plumbing (Intake.Expand does the file-vs-folder walk and the extension
 /// filter; FolderMonitor.ParseFiletypes turns the free-text filter box into
-/// the set Intake wants), so this class is only the two steps intake alone
-/// can't do: stem/extension mapping and re-sorting on the produced NAMES
-/// rather than the full paths Intake itself sorts by.
+/// the set Intake wants), so this class owns only what intake alone can't
+/// do. That was two steps while a listing was bare names — stem/extension
+/// mapping, and re-sorting on the produced NAMES rather than the full paths
+/// Intake itself sorts by. A row is a manifest line now, so three more sit
+/// here too: the per-file Size/Modified read (guarded, nullable, never
+/// fatal), the Folder each row is relative to (FolderFor, which is what
+/// keeps the flattening non-lossy), and both export shapes — ToText and
+/// ToCsv — carrying the one rule that decides whether a listing comes out
+/// as a list or as a table.
 /// </summary>
 public static class FilenameList
 {
@@ -25,10 +31,16 @@ public static class FilenameList
 
     public sealed record Listing(IReadOnlyList<FileRow> Rows, int Ignored, string Error = "");
 
-    /// <summary>The per-file metadata read, injectable so a test can force the
-    /// failure that is otherwise a race: a file enumerated by Intake.Expand can be
-    /// gone, locked or access-denied by the time this runs. Production passes null
-    /// and gets the real FileInfo.</summary>
+    /// <summary>Never throws — Intake.Expand's own Ignored/Error flow through
+    /// unchanged, and the per-file read below is guarded row by row, so a file
+    /// that has gone, locked or turned access-denied since the walk costs its
+    /// Size and Modified and nothing else. Duplicate names are kept (the same
+    /// name under two different folders is still two rows in a filename list,
+    /// not a set), so this is a re-sort of the mapped rows, not a Distinct().
+    ///
+    /// <paramref name="stat"/> is that per-file metadata read, injectable so a
+    /// test can force the failure that is otherwise a race. Production passes
+    /// null and gets the real FileInfo.</summary>
     public static Listing Build(IReadOnlyList<string> paths, Options opt,
         Func<string, (long Size, DateTime Modified)>? stat = null)
     {

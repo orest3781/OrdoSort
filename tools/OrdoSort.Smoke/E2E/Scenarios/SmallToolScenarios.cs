@@ -27,8 +27,8 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 /// apply crosses back through Post. That much is still true of the probe
 /// itself — but Rows, CountsLine and the OutputText/OutputCsv/CopyText/
 /// RemovedCount change notifications are NOT set only inside ApplyListing.
-/// All of them are set inside Reproject (FilenameListViewModel.cs:289-309),
-/// and ApplyListing (FilenameListViewModel.cs:258-264) — DebouncedProbe's
+/// All of them are set inside Reproject (FilenameListViewModel.cs:316-338),
+/// and ApplyListing (FilenameListViewModel.cs:285-291) — DebouncedProbe's
 /// own `apply` callback — is only ONE of the six call sites that reach it.
 /// The other five never go near the probe at all: the Columns/NameFilter/
 /// Descending property setters and the RemoveSelectedCommand/
@@ -42,7 +42,7 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 /// the filesystem — AddPaths/ClearCommand and the three intake options
 /// IncludeSubfolders, IncludeExtension and ExtensionFilter — goes through
 /// Refresh, and Refresh only reaches the probe when _sources is non-empty.
-/// Refresh's own empty-`_sources` fast path (FilenameListViewModel.cs:242-247)
+/// Refresh's own empty-`_sources` fast path (FilenameListViewModel.cs:269-274)
 /// calls `_listingProbe.Cancel()` then `ApplyListing(...)` DIRECTLY, with no
 /// Timer and no Post at all — after ClearCommand, Rows.Count == 0 is already
 /// true the instant Execute returns. FilenamesAwkward below still calls

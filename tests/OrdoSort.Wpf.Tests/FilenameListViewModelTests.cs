@@ -1,3 +1,5 @@
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Diagnostics;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
@@ -221,7 +223,28 @@ public class FilenameListViewModelTests : IDisposable
 
     /// <summary>The whole point of gathering every column up front: a column
     /// toggle must be a projection, not a filesystem walk. If this ever needs a
-    /// WaitFor, the data is being re-read and the design has regressed.</summary>
+    /// WaitFor, the data is being re-read and the design has regressed.
+    ///
+    /// WHAT IT ASSERTS AND WHY. IsTableShape and OutputText are both computed
+    /// on demand from Rows + Columns, so both are already true the instant the
+    /// setter returns whether it called Reproject() or Refresh() — this test
+    /// used to assert only those two and was therefore green against the exact
+    /// regression it is named for. The notifications are what tell the two
+    /// apart: Reproject re-renders in memory and raises OutputText and Rows'
+    /// CollectionChanged SYNCHRONOUSLY, inside the setter, on this thread,
+    /// where Refresh only arms the debounced probe and its result arrives
+    /// later, on a threadpool thread, long after the next line has run.
+    ///
+    /// TheNameFilterNarrowsRowsInMemory and
+    /// DescendingReversesTheProjectionWithoutRebuilding get this for free by
+    /// asserting on Rows' CONTENT immediately, which a not-yet-run rebuild
+    /// cannot have produced. A column toggle changes no row's content, so this
+    /// one has to watch the notifications instead.
+    ///
+    /// The thread check is what makes that a fact rather than a race: a
+    /// rebuild's notifications arrive on the probe's own thread, so counting
+    /// only the ones raised on this thread means a late arrival can never be
+    /// mistaken for a synchronous reprojection.</summary>
     [Fact]
     public void TurningOnAColumnReprojectsWithoutRebuilding()
     {
@@ -230,10 +253,34 @@ public class FilenameListViewModelTests : IDisposable
         var vm = MakeVm(dialogs);
         vm.BrowseFolderCommand.Execute(null);
         WaitFor(() => vm.Rows.Count == 1, "the add should settle first");
+        var rowBefore = vm.Rows[0];
+
+        var setterThread = Environment.CurrentManagedThreadId;
+        var notified = new List<string>();
+        var rowsChanged = new List<NotifyCollectionChangedAction>();
+        void OnPropertyChanged(object? _, PropertyChangedEventArgs e)
+        {
+            if (Environment.CurrentManagedThreadId == setterThread) notified.Add(e.PropertyName ?? "");
+        }
+        void OnRowsChanged(object? _, NotifyCollectionChangedEventArgs e)
+        {
+            if (Environment.CurrentManagedThreadId == setterThread) rowsChanged.Add(e.Action);
+        }
+        vm.PropertyChanged += OnPropertyChanged;
+        ((INotifyCollectionChanged)vm.Rows).CollectionChanged += OnRowsChanged;
 
         vm.Columns = FilenameList.Columns.Size;
 
-        // asserted IMMEDIATELY — no WaitFor
+        vm.PropertyChanged -= OnPropertyChanged;
+        ((INotifyCollectionChanged)vm.Rows).CollectionChanged -= OnRowsChanged;
+
+        // all asserted IMMEDIATELY — no WaitFor
+        Assert.Contains(nameof(vm.OutputText), notified);
+        Assert.Contains(NotifyCollectionChangedAction.Reset, rowsChanged);   // Rows.Clear()
+        Assert.Contains(NotifyCollectionChangedAction.Add, rowsChanged);     // ...then re-added
+        // The SAME FileRow instance came back: an in-memory reprojection reuses
+        // what the last Build produced, where a fresh walk would have made a new one.
+        Assert.Same(rowBefore, vm.Rows[0]);
         Assert.True(vm.IsTableShape);
         Assert.StartsWith("Name\tSize", vm.OutputText);
     }
@@ -272,6 +319,33 @@ public class FilenameListViewModelTests : IDisposable
 
         Assert.Single(vm.Rows);
         Assert.Equal("invoice.pdf", vm.Rows[0].Name);
+    }
+
+    /// <summary>The Find box made a previously-rare state easy to reach, and
+    /// the window's empty-state text was bound to Rows.Count — so filtering a
+    /// 200-file listing down to nothing told the user to drag in files they
+    /// had already dragged in. The window binds these two flags instead, the
+    /// way HistoryWindow binds HistoryViewModel's IsEmpty/NoMatches.</summary>
+    [Fact]
+    public void TheEmptyStateTellsNothingLoadedApartFromNothingMatching()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("invoice.pdf");
+        var vm = MakeVm(dialogs);
+
+        Assert.True(vm.IsEmpty);       // nothing added yet — the real empty state
+        Assert.False(vm.NoMatches);
+
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle first");
+        Assert.False(vm.IsEmpty);
+        Assert.False(vm.NoMatches);
+
+        vm.NameFilter = "zzz";
+
+        Assert.Empty(vm.Rows);
+        Assert.False(vm.IsEmpty);      // the file is still listed, just hidden
+        Assert.True(vm.NoMatches);
     }
 
     [Fact]

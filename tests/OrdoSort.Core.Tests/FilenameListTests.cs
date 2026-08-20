@@ -208,7 +208,20 @@ public class FilenameListTests : IDisposable
     }
 
     /// <summary>Nested roots: the file sits under both, and the LONGEST wins, so
-    /// Folder stays as short and as meaningful as it can be.</summary>
+    /// Folder stays as short and as meaningful as it can be.
+    ///
+    /// TWO rows, not one, and deliberately asserted as two. Intake.Expand does
+    /// not dedupe ACROSS roots — it walks each root it is handed, so a file
+    /// under both _dir and _dir\2026 is genuinely enumerated twice and the
+    /// listing genuinely carries it twice. That is Expand's documented
+    /// behaviour and Build's own contract keeps it: duplicate rows are kept,
+    /// this is not a Distinct(). Assert.Single here would look tidier and
+    /// would fail, so the duplication is written down rather than hidden.
+    ///
+    /// Both copies get the SAME Folder, which is the actual point of the
+    /// longest-root rule: FolderFor resolves against the whole root list, not
+    /// against whichever root happened to enumerate that copy, so neither row
+    /// can come out as the longer "2026\march".</summary>
     [Fact]
     public void TheLongestMatchingRootWins()
     {
@@ -217,7 +230,8 @@ public class FilenameListTests : IDisposable
             new[] { _dir, Path.Combine(_dir, "2026") },
             new FilenameList.Options(Recursive: true, IncludeExtension: true));
 
-        Assert.Equal("march", listing.Rows[0].Folder);
+        Assert.Equal(2, listing.Rows.Count);
+        Assert.Equal(new[] { "march", "march" }, listing.Rows.Select(r => r.Folder).ToArray());
     }
 
     [Fact]
