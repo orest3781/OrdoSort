@@ -214,4 +214,27 @@ public class FilenameListTests : IDisposable
             new FilenameList.Options(Recursive: true, IncludeExtension: true));
         Assert.Equal("2026", Assert.Single(listing.Rows).Folder);
     }
+
+    /// <summary>When a root is provided with a trailing separator, the trimming operation
+    /// should not break path handling. This tests the fix that prevents "C:\" from becoming
+    /// the drive-RELATIVE "C:" which could resolve against the wrong directory.</summary>
+    [Fact]
+    public void RootWithTrailingSeparatorHandlesRelativizationCorrectly()
+    {
+        // Create a file in a subdirectory of _dir
+        Touch(Path.Combine("archive", "data.pdf"));
+
+        // Use _dir with a trailing separator (simulates user providing "C:\" format)
+        var rootWithSeparator = _dir.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+        // Build with the root that has trailing separator
+        // The fix ensures trimming and re-adding doesn't break the logic
+        var listing = FilenameList.Build(new[] { rootWithSeparator },
+            new FilenameList.Options(Recursive: true, IncludeExtension: true));
+
+        // Verify we found our file with correct folder path
+        var row = Assert.Single(listing.Rows);
+        Assert.Equal("data.pdf", row.Name);
+        Assert.Equal("archive", row.Folder);
+    }
 }

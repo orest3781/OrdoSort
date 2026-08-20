@@ -79,6 +79,11 @@ public static class FilenameList
         foreach (var root in roots)
         {
             var trimmed = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            // "C:\" trims to "C:", which Windows reads as drive-RELATIVE — it
+            // resolves against the process's per-drive current directory, not the
+            // drive root. Put the separator back so GetRelativePath below anchors
+            // where the user actually pointed.
+            if (trimmed.Length == 2 && trimmed[1] == ':') trimmed += Path.DirectorySeparatorChar;
 
             if (string.Equals(trimmed, file, StringComparison.OrdinalIgnoreCase))
                 return "";   // the file was added directly
