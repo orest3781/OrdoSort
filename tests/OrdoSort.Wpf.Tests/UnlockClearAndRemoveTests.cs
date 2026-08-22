@@ -102,6 +102,64 @@ public class UnlockClearAndRemoveTests : IDisposable
         Assert.Contains("1 unlocked", vm.Summary);
     }
 
+    /// <summary>Fix-round finding: _clearedWhileUnlocking's reset used to sit
+    /// AFTER the try/finally, reachable only on the no-exception path. If
+    /// Clear cancelled a run that then threw (a broken _unlock/_probe
+    /// delegate — both are constructor-injectable seams, not sealed to this
+    /// file) the flag stayed true forever, silently skipping every FUTURE
+    /// run's own Summary/ResultLines too, with no OnError-style hook to
+    /// surface it. The reset now lives inside the finally itself.</summary>
+    [Fact]
+    public async Task AClearCancelledRunThatThenThrowsStillLetsTheNextRunReportNormally()
+    {
+        var shouldThrow = true;
+        var scheduler = new ControlledWorkScheduler();
+        var vm = new UnlockViewModel(new Config(), () => true,
+            unlocker: (p, pw) => shouldThrow
+                ? throw new InvalidOperationException("boom")
+                : new Unlock.UnlockResult("ok", p, p, InPlace: true),
+            probe: (path, candidates) => new Unlock.ProbeResult("needs_password", path, Message: "x"),
+            scheduler: scheduler);
+
+        var a = Touch("a.pdf");
+        var addTask = vm.AddFilesAsync(new[] { a });
+        scheduler.ReleaseAll();
+        await addTask;
+
+        vm.Password = "secret";
+        var unlockTask = vm.UnlockAsync();   // dispatched, not yet run
+        Assert.Equal(1, scheduler.Queued);
+
+        vm.ClearCommand.Execute(null);   // sets the flag, cancels the run token
+
+        // The dispatched TryCandidates call throws once released — the
+        // exception propagates through Task.WhenAll and out of UnlockAsync
+        // itself, past its own finally, with nothing here to catch it (this
+        // test awaits UnlockAsync directly; AsyncRelayCommand.Execute is
+        // what catches it in production, via OnError).
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            scheduler.ReleaseAll();
+            await unlockTask;
+        });
+
+        // A second, ordinary run — no Clear this time — must report
+        // normally. Before this fix, the flag left stuck true by the run
+        // above would silently skip this run's reporting too.
+        shouldThrow = false;
+        var b = Touch("b.pdf");
+        var addTask2 = vm.AddFilesAsync(new[] { b });
+        scheduler.ReleaseAll();
+        await addTask2;
+
+        var unlockTask2 = vm.UnlockAsync();
+        scheduler.ReleaseAll();
+        await unlockTask2;
+
+        Assert.Contains("1 unlocked", vm.Summary);
+        Assert.Single(vm.ResultLines);
+    }
+
     [Fact]
     public async Task ClearWithNothingRunningStillWorks()
     {

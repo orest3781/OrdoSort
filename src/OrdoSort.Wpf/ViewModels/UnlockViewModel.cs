@@ -198,15 +198,19 @@ public sealed class UnlockViewModel : ObservableObject
     private CancellationTokenSource? _cts;
 
     /// <summary>Set by ClearCommand when it cancels a run in progress (QC-05),
-    /// consumed once by UnlockAsync's own tail — see both comments. Unlike
-    /// _probeCts, _cts is already recreated FROM SCRATCH by every UnlockAsync
-    /// call (see its own "using var cts" below), so there is no stale token
-    /// to hand out a fresh replacement for here; what still has to be told
-    /// apart is "cancelled because Clear ran" (report nothing — the list is
-    /// already wiped) from "cancelled because Cancel was pressed" (report
-    /// the truthful partial result, same as always) — a distinction
-    /// CancellationToken.IsCancellationRequested alone can't make, since
-    /// both paths cancel the same token.</summary>
+    /// consumed once — reset to false — inside UnlockAsync's own `finally`,
+    /// UNCONDITIONALLY (fix-round finding: it used to be reset only on the
+    /// no-exception path after the try/finally, so a Clear-cancelled run
+    /// that then threw left this stuck true forever, silently skipping
+    /// every future run's own reporting). Unlike _probeCts, _cts is already
+    /// recreated FROM SCRATCH by every UnlockAsync call (see its own "using
+    /// var cts" below), so there is no stale token to hand out a fresh
+    /// replacement for here; what still has to be told apart is "cancelled
+    /// because Clear ran" (report nothing — the list is already wiped) from
+    /// "cancelled because Cancel was pressed" (report the truthful partial
+    /// result, same as always) — a distinction CancellationToken.
+    /// IsCancellationRequested alone can't make, since both paths cancel
+    /// the same token.</summary>
     private bool _clearedWhileUnlocking;
 
     /// <summary>Extension set in Intake's shape (dot-less, lowercase) rather
@@ -867,6 +871,10 @@ public sealed class UnlockViewModel : ObservableObject
         using var cts = new CancellationTokenSource();
         _cts = cts;
         IsUnlocking = true;
+        // Read only after the finally below has had its one chance to reset
+        // _clearedWhileUnlocking — see that finally's comment for why the
+        // reset can't wait until here.
+        var clearedThisRun = false;
         try
         {
             var ct = cts.Token;
@@ -928,6 +936,20 @@ public sealed class UnlockViewModel : ObservableObject
         {
             _cts = null;
             IsUnlocking = false;
+            // MUST reset here, not after this finally: an exception out of
+            // the try (e.g. from a broken _unlock/_probe injected delegate —
+            // both are constructor seams, not sealed to this file) skips
+            // everything below this block entirely, same as it always
+            // skipped the reporting tail. Before this fix-round finding, the
+            // reset lived down there — reachable only on the no-exception
+            // path — so a Clear-cancelled run that then threw left the flag
+            // stuck true forever: every FUTURE run would silently skip its
+            // own Summary/ResultLines too, with nothing to surface it (no
+            // OnError-style hook covers this path). Captured into a local
+            // first so the ordinary, no-exception path below still knows
+            // whether THIS run was the one Clear cancelled.
+            clearedThisRun = _clearedWhileUnlocking;
+            _clearedWhileUnlocking = false;
         }
 
         // Clear wiped Files, ResultLines and Summary for the run this loop
@@ -935,13 +957,7 @@ public sealed class UnlockViewModel : ObservableObject
         // exactly the list the user cleared, so reporting per-row results
         // and a verdict here would silently repopulate what Clear just
         // emptied with results for files nobody can see anymore (QC-05).
-        // Consumed once, not left set: the NEXT run must report normally
-        // even if THIS one was Clear-cancelled.
-        if (_clearedWhileUnlocking)
-        {
-            _clearedWhileUnlocking = false;
-            return;
-        }
+        if (clearedThisRun) return;
 
         // reported in the order they were added, not the order they finished —
         // a list that reshuffles itself is harder to read than a slower one
