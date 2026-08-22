@@ -11,6 +11,8 @@
     --hair: #e6e2da;
     --accent: #8c6a3f;
     --accent-soft: #e9dfd0;
+    --crit: #c03535;
+    --crit-soft: #f6dcdc;
     --imp: #c65f33;          /* serious, stepped for light surface contrast */
     --imp-soft: #f7e3d9;
     --minor: #6f6a61;
@@ -32,6 +34,8 @@
       --hair: #2e2b27;
       --accent: #c99e63;
       --accent-soft: #3a3226;
+      --crit: #d03b3b;
+      --crit-soft: #3a2020;
       --imp: #ec835a;
       --imp-soft: #3c2a22;
       --minor: #a19a8e;
@@ -53,6 +57,8 @@
     --hair: #2e2b27;
     --accent: #c99e63;
     --accent-soft: #3a3226;
+    --crit: #d03b3b;
+    --crit-soft: #3a2020;
     --imp: #ec835a;
     --imp-soft: #3c2a22;
     --minor: #a19a8e;
@@ -124,6 +130,7 @@
   td.id { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; white-space: nowrap; color: var(--ink); }
   td.sev { white-space: nowrap; }
   .pill { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 999px; }
+  .pill.H { color: var(--crit); background: var(--crit-soft); }
   .pill.I { color: var(--imp); background: var(--imp-soft); }
   .pill.M { color: var(--minor); background: var(--minor-soft); }
   td.sf { color: var(--ink-2); white-space: nowrap; font-size: 12.5px; }
@@ -132,6 +139,7 @@
   .tag { display: inline-block; font-size: 11px; color: var(--accent); border: 1px solid var(--accent-soft); background: var(--accent-soft); border-radius: 4px; padding: 0 5px; margin-left: 5px; }
   td.sr { color: var(--muted); font-size: 12px; white-space: nowrap; }
   .empty { padding: 28px; text-align: center; color: var(--muted); }
+  .rowH td:first-child { box-shadow: inset 3px 0 0 var(--crit); }
   .rowI td:first-child { box-shadow: inset 3px 0 0 var(--imp); }
   .rowM td:first-child { box-shadow: inset 3px 0 0 var(--minor); }
   footer { margin-top: 22px; color: var(--muted); font-size: 12.5px; }
@@ -146,28 +154,28 @@
   <div class="tiles">
     <div class="tile hero">
       <div class="lbl">Open items</div>
-      <div class="val" id="heroOpen">127</div>
+      <div class="val" id="heroOpen">173</div>
       <div class="note">across 18 surfaces</div>
     </div>
     <div class="tile">
-      <div class="lbl"><span class="dot" style="background:var(--good)"></span>High</div>
-      <div class="val">0</div>
-      <div class="note">all nine closed by batch A</div>
+      <div class="lbl"><span class="dot" style="background:var(--crit)"></span>High</div>
+      <div class="val">4</div>
+      <div class="note">all new — fresh QC 2026-08-22</div>
     </div>
     <div class="tile">
       <div class="lbl"><span class="dot" style="background:var(--imp)"></span>Important</div>
-      <div class="val">50</div>
+      <div class="val">81</div>
       <div class="note">wrong &amp; confusing, nothing destroyed</div>
     </div>
     <div class="tile">
       <div class="lbl"><span class="dot" style="background:var(--minor)"></span>Minor</div>
-      <div class="val">77</div>
+      <div class="val">88</div>
       <div class="note">real but small</div>
     </div>
     <div class="tile">
       <div class="lbl">Doc findings closed</div>
-      <div class="val">89<span class="of"> / 196</span></div>
-      <div class="meter"><i style="width:45.4%"></i></div>
+      <div class="val">89<span class="of"> / 242</span></div>
+      <div class="meter"><i style="width:36.8%"></i></div>
       <div class="note">+ 28 memory-only open, 3 declined</div>
     </div>
   </div>
@@ -177,9 +185,9 @@
       <h2>Severity mix of what's open</h2>
       <div class="sevbar" id="sevbar"></div>
       <div class="legend">
-        <span><span class="dot" style="background:var(--imp)"></span>Important · 50</span>
-        <span><span class="dot" style="background:var(--minor)"></span>Minor · 77</span>
-        <span><span class="dot" style="background:var(--good)"></span>High · 0 open</span>
+        <span><span class="dot" style="background:var(--crit)"></span>High · 4</span>
+        <span><span class="dot" style="background:var(--imp)"></span>Important · 81</span>
+        <span><span class="dot" style="background:var(--minor)"></span>Minor · 88</span>
       </div>
       <h2 style="margin-top:18px">Closure progress by source</h2>
       <div id="sources"></div>
@@ -192,6 +200,7 @@
 
   <div class="filters" role="group" aria-label="Filters">
     <button class="chip sevchip" data-sev="" aria-pressed="true">All</button>
+    <button class="chip sevchip" data-sev="H" aria-pressed="false">High</button>
     <button class="chip sevchip" data-sev="I" aria-pressed="false">Important</button>
     <button class="chip sevchip" data-sev="M" aria-pressed="false">Minor</button>
     <select id="fSurface" aria-label="Surface"><option value="">All surfaces</option></select>
@@ -225,6 +234,52 @@
 // [id, sev(I|M), surface, title, source, marks, tags[]]
 // Mirrors refinement-master-checklist.md 1:1 — regenerate from it, never edit independently.
 const ITEMS = [
+["Q2-01","H","Bulk Rename","Post-batch window: Rename re-arms over executed plans; a second click or early cancel destroys the undo record","fresh-qc","V",[]],
+["Q2-02","H","MatchMerge / Review","Merge/Undo run BulkRename.Execute/Revert on the UI thread; outcomes assigned after the loop — QC-04 unpropagated","fresh-qc","V",[]],
+["Q2-03","H","Core / filing spine","A set-aside folder that IS the inbox: Skip renames in place with ' (2)', reports set aside, re-queues the file","fresh-qc","V",[]],
+["Q2-04","H","Core / filing spine","The QC-03 guard thrown from UndoAction skips Session's restore: both copies exist, history says filed, Undo bricked","fresh-qc","V/U",[]],
+["Q2-05","I","Zip Tools","Clear cannot stop an in-flight add — four tools (Zip/Unlock/PageCounts/BulkRename) repopulate a cleared list","fresh-qc","V",[]],
+["Q2-06","I","Unlock","Manage saved… live during a run re-probes files the batch is rewriting; candidates snapshot makes the new password useless","fresh-qc","V/U",[]],
+["Q2-07","I","Zip Tools","Action buttons gate only themselves: two batches run over one list, one Status line loses the other's verdict","fresh-qc","V",[]],
+["Q2-08","I","Shell / main window","Settings OK during Start's scan: route buttons wear the old config's problems; session seeded from the old inbox","fresh-qc","V/U",[]],
+["Q2-09","I","Zip Tools","Three of four intake paths discard their own failure — a drop that fails mid-walk does nothing, silently","fresh-qc","V",[]],
+["Q2-10","I","PageCounts","Save/Copy mid-count exports a total short by every in-flight row and calls it 'Saved'","fresh-qc","V",[]],
+["Q2-11","I","Config","TrySave's collision refusal reports no refused keys: every unrelated background save modal-warns, forever","fresh-qc","V",[]],
+["Q2-12","I","Bulk Rename","Add buttons and drop ungated during a batch; mid-batch add can list one file twice after the fixup","fresh-qc","V",[]],
+["Q2-13","I","Zip Tools","Zipper.CreateZip still uses the aborting enumeration — one denied subfolder loses the whole archive job","fresh-qc","V",[]],
+["Q2-14","I","Tests / build","Star-column lint is XAML-only; Triage's only star column is built in C# and its floor is unpinned","fresh-qc","V",[]],
+["Q2-15","I","Tests / build","Nothing measures LabelMakerWindow vertically — the delegation covers the wrong axis at no declared height","fresh-qc","V",[]],
+["Q2-16","I","Tests / build","Ready dashboard never measured in the ~350-422px band compact mode parks users at","fresh-qc","V",[]],
+["Q2-17","I","Tests / build","Batch A's per-window 75% floor reached one of five probe call sites; the rest sit at 28-75% of measured","fresh-qc","V",[]],
+["Q2-18","I","Tests / build","Neither overflow suite renders largest-font-at-narrowest-width — the corner the suites exist for","fresh-qc","V",[]],
+["Q2-19","I","Tests / build","TextWrapCoverage floors are loose and fact 1's floor counts candidates before the waiver can zero the walk","fresh-qc","V",[]],
+["Q2-20","I","Settings","Opening Settings: 7-9 sequential file reads + three SHA256 hashes on the UI thread before the window exists","fresh-qc","V/U",[]],
+["Q2-21","I","Label Maker","The constructor blocks up to a documented 5s on a contended store file before the window appears","fresh-qc","V",[]],
+["Q2-22","I","Label Maker","PrintPreview's constructor enumerates print queues synchronously; an offline queue stalls before anything shows","fresh-qc","V/U",[]],
+["Q2-23","I","Bulk Rename","'Add folder' walks the folder on the UI thread as the argument to the async call — last of its family","fresh-qc","V",[]],
+["Q2-24","I","Shell / main window","The four open-folder commands check-and-launch synchronously; a dead share stalls an everyday click","fresh-qc","V/U",[]],
+["Q2-25","I","Settings","Browse… probes the current (possibly dead) path before the picker opens — hangs exactly when fixing a bad path","fresh-qc","V/U",[]],
+["Q2-26","I","Unlock","UnlockAsync size-classifies every queued file synchronously before its first await","fresh-qc","V",[]],
+["Q2-27","I","Shell / main window","RefreshFoldersAsync has no catch at three fire-and-forget sites — one exception and the dashboard never updates again","fresh-qc","V/U",[]],
+["Q2-28","I","History / crash log","History load/export catches miss SqliteException: empty window forever, or a silent no-op export","fresh-qc","V/U",[]],
+["Q2-29","I","Label Maker","SavePdf discards its task and its catch misses FormatException from RebuildFromClaim's parses","fresh-qc","V/U",[]],
+["Q2-30","I","Unlock","UnlockCommand's OnError is never subscribed — a throwing run produces zero feedback; the code's own comment admits it","fresh-qc","V",[]],
+["Q2-31","I","MatchMerge / Review","TriageWindow holds the app's only unguarded async-void handlers (three); census is 7 sites, not the recorded 5","fresh-qc","V/U",[]],
+["Q2-32","I","Shell / main window","Log-off/restart tears the process down with no grace for tool-window batches mid-write","fresh-qc","V/U",[]],
+["Q2-33","I","Shell / main window","The async Loaded continuation can run Shell.Initialize against an already-disposed Shell","fresh-qc","V/U",[]],
+["Q2-34","I","Shell / main window","A blank inbox flattens to the config directory; the Ready screen affirms a calm empty inbox that doesn't exist","fresh-qc","V",[]],
+["Q2-35","I","Shell / main window","Hand-edited duplicate hotkeys: both buttons wear the badge, the later binding silently wins","fresh-qc","V/U",[]],
+["Q2-36","M","Tests / build","WindowOverflowTests' registry lacks the discovery guard its siblings have — a new window ships uncovered, silently","fresh-qc","V",[]],
+["Q2-37","M","Tests / build","The FilenameList overflow builder says 'every column on' and omits the Pages column","fresh-qc","V",[]],
+["Q2-38","M","Folder watch","SetFolders lacks the _disposed guard its neighbours have; post-dispose calls resurrect undisposable watchers","fresh-qc","V",[]],
+["Q2-39","M","Zip Tools","Three more cancelled-but-never-disposed CTS/semaphore pairs at close (both zip tabs + Unlock's probe pair)","fresh-qc","V",[]],
+["Q2-40","M","Config","history_db validated nowhere: blank/directory value is the one startup refusal naming no key, path, or remedy","fresh-qc","V/U",[]],
+["Q2-41","M","Settings","A monitored folder with a blank path passes OK silently and becomes a permanent, unclearable error tile","fresh-qc","V",[]],
+["Q2-42","M","Label Maker","A close refused for a duplicate id re-asks every blank-id destroy confirmation on each attempt, plus a 5s store read","fresh-qc","V",[]],
+["Q2-43","M","Settings","The blank-set-aside warning turns every OK into 'Save anyway?' on stations that never skip","fresh-qc","V",[]],
+["Q2-44","M","Shell / main window","AsyncRelayCommand is silent-by-default without OnError; five more VMs never wire it — class-sweep row","fresh-qc","V",[]],
+["Q2-45","M","Tests / build","The FolderMonitor ACL test bails with a bare return (zero assertions) wherever the deny-ACE doesn't hold","fresh-qc","V",[]],
+["Q2-46","M","Tests / build","UnknownOldestAge test never exercises the sentinel detection that is QC-13; its '155' assert cannot fail","fresh-qc","V",[]],
 ["QC-10","I","Bulk Rename","Uppercase/Lowercase is a silent no-op: case-only renames classified unchanged and skipped","app-qc","V",[]],
 ["QC-15","I","Label Maker","Copies > 1 puts the same barcode on multiple boxes; Esc's 'counter untouched' claim is false","app-qc","V/U",[]],
 ["QC-17","I","Settings","OK never validates a route's filename suffix; a ':' passes OK then fails every commit","app-qc","V",[]],
@@ -233,7 +288,7 @@ const ITEMS = [
 ["QC-20","I","Folder watch","FileSystemWatcher.Error never handled; a dead watcher is never re-armed","app-qc","V",[]],
 ["QC-21","I","History / crash log","Patient document paths reach crash.log, which sits beside the shared config on the share","app-qc","V",[]],
 ["QC-22","I","WebView2 preview","WebView2 keeps a history DB of every previewed document; nothing clears it","app-qc","V/U",[]],
-["QC-23","I","Settings","HotkeyParser catches a narrower exception than KeyGesture throws; 'Ctrl+300' bricks Settings","app-qc","V/U",[]],
+["QC-23","I","Settings","HotkeyParser catches a narrower exception than KeyGesture throws; 'Ctrl+300' bricks Settings — settled empirically 2026-08-22","app-qc","V",[]],
 ["QC-24","I","WebView2 preview","No ProcessFailed handler and _ready never cleared; a dead Edge process fails every keystroke","app-qc","V",[]],
 ["QC-25","I","Filename List","Dispose() disposes the count semaphore while in-flight counters still release it","app-qc","V",[]],
 ["QC-27","I","Folder watch","Unguarded List shared across threads; SetFolders racing Dispose can skip Shell.Dispose","app-qc","U",[]],
@@ -265,7 +320,7 @@ const ITEMS = [
 ["DW-07","I","Shell / main window","ApplySettingsAsync adopts a failed save into memory (_cfg = cfg before TrySave is checked)","08-07","",[]],
 ["DW-08","I","Settings","Only route destinations get a writability probe; everything else is existence-only","08-07","",[]],
 ["DW-09","I","Settings","Station-local absolute paths in the shared config never flagged; drive/UNC coherence unchecked","08-07","",[]],
-["DW-01","I","Core / filing spine","Cross-volume move's crash branch unverified: kill mid-copy can leave a partial file under the canonical name","08-04 + core","U",["deferred","2src"]],
+["DW-01","I","Core / filing spine","Cross-volume kill mid-copy PROVEN 2026-08-22: full-length corrupt file under the canonical name, undetectable by size","08-04 + core","V",["2src"]],
 ["DW-02","I","Core / filing spine","Commit.SkipFile has no catch(FileExistsRace); the race becomes an unhandled UI exception","core","",[]],
 ["DW-03","I","Config","ResolveConfined is lexical only; a junction inside the config dir escapes confinement","sec","",[]],
 ["DW-04","I","Repo / process","Releases ship unsigned; SmartScreen on first run. Needs a signing certificate","08-04 + tb","",["user","2src"]],
@@ -279,7 +334,7 @@ const ITEMS = [
 ["DW-16","M","Shell / main window","AuditError.NewPath carries a vanished file's inbox path and the UI says it 'moved'","app-qc","",[]],
 ["DW-17","M","Core / filing spine","Collision counter is O(n) sequential File.Exists round-trips per commit","app-qc","",[]],
 ["DW-18","M","Core / filing spine","A directory occupying the target name is invisible to both collision guards","app-qc","",[]],
-["DW-19","M","Core / filing spine","RejectIllegal misses a trailing space, so 'CON .pdf' is emitted","app-qc","U",[]],
+["DW-19","M","Core / filing spine","RejectIllegal misses a trailing space; 'CON .pdf' measured 2026-08-22: an ordinary file on Win11 NTFS","app-qc","V",[]],
 ["DW-20","M","MatchMerge / Review","ClearCommand doesn't clear _outcomes; Undo renames files the empty grid never showed","app-qc","",[]],
 ["DW-21","M","Settings","Watch-folder labels aren't duplicate-checked at OK, while route labels are","app-qc","",[]],
 ["DW-22","M","Unlock","Hard kill leaves an unencrypted temp PDF in %TEMP%; no startup sweep for stale files","app-qc + 08-07","",["2src"]],
@@ -355,6 +410,7 @@ const ITEMS = [
 ];
 
 const SOURCES = [
+["Fresh QC 2026-08-22", 46, 0, 46],
 ["App QC 2026-08-21", 55, 16, 39],
 ["Filename List 2026-08-20", 30, 6, 24],
 ["Dropdowns QC 2026-08-07", 26, 5, 21],
@@ -371,10 +427,10 @@ const $ = s => document.querySelector(s);
 
 // Severity mix bar (2px surface gaps via flex gap)
 {
-  const total = 127, imp = 50, min = 77;
   $("#sevbar").innerHTML =
-    `<div style="flex:${imp};background:var(--imp)">50</div>` +
-    `<div style="flex:${min};background:var(--minor)">77</div>`;
+    `<div style="flex:4;background:var(--crit)">4</div>` +
+    `<div style="flex:81;background:var(--imp)">81</div>` +
+    `<div style="flex:88;background:var(--minor)">88</div>`;
 }
 
 // Per-source closure meters (closed / total; open+declined = remainder)
@@ -407,7 +463,7 @@ const $ = s => document.querySelector(s);
 
 // Filters + table
 const state = { sev: "", surface: "", source: "", tag: "", text: "" };
-const SEVWORD = { I: "Important", M: "Minor" };
+const SEVWORD = { H: "High", I: "Important", M: "Minor" };
 const TAGWORD = { deferred: "deferred", user: "user", verify: "verify", "2src": "2 sources" };
 
 function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }

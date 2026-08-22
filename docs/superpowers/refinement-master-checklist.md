@@ -5,11 +5,13 @@ this repo. This file is the single tracker of everything still open app-wide. It
 **tracker, not an authority** — every item cites its source, and if this file and a source
 ever disagree, **the source wins**. Nothing was fixed in the pass that produced this file.
 
-**Snapshot: 127 open items — 0 High · 50 Important · 77 Minor.**
-Batch A (2026-08-22, branch `fix/app-qc-2026-08-21`) closed all nine High findings.
-Doc-source arithmetic: 196 findings recorded across ten source documents = 89 closed +
-104 open + 3 declined; the 104 collapse to 99 unique rows after cross-source dedupe, plus
-28 memory-only items = 127.
+**Snapshot: 173 open items — 4 High · 81 Important · 88 Minor.**
+Batch A (2026-08-22, branch `fix/app-qc-2026-08-21`) closed all nine of the first audit's
+High findings; the fresh QC of 2026-08-22 (`audits/2026-08-22-fresh-qc.md`, IDs `Q2-nn`)
+then added 46 findings including 4 new Highs — three of them in or beside batch A's own
+fixes. Doc-source arithmetic: 242 findings recorded across eleven source documents = 89
+closed + 150 open + 3 declined; the 150 collapse to 145 unique rows after cross-source
+dedupe, plus 28 memory-only items = 173.
 
 ## How to read this file
 
@@ -33,14 +35,20 @@ Doc-source arithmetic: 196 findings recorded across ten source documents = 89 cl
 
 ---
 
-## High — 0 open
+## High — 4 open
 
-All nine High findings (QC-01…QC-09) were closed by batch A on `fix/app-qc-2026-08-21`
-(Core 685/685, Wpf 1797/1797; audit status block, 2026-08-22). Nothing High is open.
+The first audit's nine Highs (QC-01…QC-09) were closed by batch A on
+`fix/app-qc-2026-08-21` (audit status block, 2026-08-22). The fresh QC then found four
+new ones — every chain hand-verified against source.
+
+- [ ] **Q2-01** [V] · Bulk Rename — after (or during) a batch, the Rename button re-arms over the just-executed plans before the off-thread re-plan lands; a second click — or a cancel before the first file — replaces `_lastOutcomes` with an empty list and destroys the undo record of renames already on disk. Introduced by batch A's own responsiveness fix. *(fresh-qc §High; found independently by two sweeps)*
+- [ ] **Q2-02** [V] · MatchMerge / Review — Merge and Undo run `BulkRename.Execute`/`Revert` synchronously on the UI thread and assign `_outcomes` only after the loop: a kill of the frozen window leaves files renamed with no undo path. QC-04, never propagated to the sibling. *(fresh-qc §High)*
+- [ ] **Q2-03** [V] · Core / filing spine + Settings — a set-aside folder (or route destination) that IS the inbox — or the same folder spelled two ways — makes Skip rename the document in place with " (2)", report "✓ Set aside", count the whole inbox as set-aside files, and re-queue the renamed file. No hop anywhere compares two configured folders; QC-08's cross-field check covers the four side-file keys only. *(fresh-qc §High)*
+- [ ] **Q2-04** [V]/[U] · Core / filing spine — the QC-03 post-move guard, thrown from `UndoAction`, skips all of `Session.UndoLast`'s state restoration: document back in the inbox AND at the destination while counters and history say "filed", and a second Undo is permanently refused. Introduced by batch A; same Win32/SMB trigger as QC-03. *(fresh-qc §High)*
 
 ---
 
-## Important — 50 open
+## Important — 81 open
 
 ### App-wide QC, 2026-08-21 (`audits/2026-08-21-app-qc.md`) — 16
 
@@ -52,7 +60,7 @@ All nine High findings (QC-01…QC-09) were closed by batch A on `fix/app-qc-202
 - [ ] **QC-20** [V] · Folder watch — `FileSystemWatcher.Error` is never handled and a dead watcher is never re-armed; at `poll_seconds = 600` that is ten minutes of blindness with no indication. *(app-qc §Important)*
 - [ ] **QC-21** [V] · History / crash log — patient document paths reach `crash.log`, which sits beside the shared config on the share; one history-DB hiccup appends a patient name to a plaintext file multiple stations can read. *(app-qc §Important)*
 - [ ] **QC-22** [V]/[U] · WebView2 preview — WebView2 keeps a history DB of every previewed document (`file:///` navigations; profile confirmed 70 MB on this machine) and nothing ever clears it. *(app-qc §Important)*
-- [ ] **QC-23** [V]/[U] · Settings — `HotkeyParser` catches `NotSupportedException` but `KeyGesture` can throw `InvalidEnumArgumentException` (`"Ctrl+300"` parses), making session start fail *and* crashing Settings on open — the one screen where it could be fixed. *(app-qc §Important)*
+- [ ] **QC-23** [V] · Settings — `HotkeyParser` catches `NotSupportedException` but `KeyGesture` throws `InvalidEnumArgumentException` (`"Ctrl+300"` parses), making session start fail *and* crashing Settings on open — the one screen where it could be fixed. *(app-qc §Important)* — [U] settled empirically 2026-08-22: exception type confirmed (fresh-qc §Experiments); only the fix remains.
 - [ ] **QC-24** [V] · WebView2 preview — no `ProcessFailed` handler and `_ready` is never cleared; if the Edge process dies, every subsequent filing keystroke throws outside both catch paths until restart. *(app-qc §Important)*
 - [ ] **QC-25** [V] · Filename List — `Dispose()` disposes `_countGate` while in-flight counters still release it; silent today, a crash-on-close the day unobserved-task handling changes. *(app-qc §Important)*
 - [ ] **QC-27** [U] · Folder watch — `FolderWatchService` shares an unguarded `List` across threads; a `SetFolders` on a pool thread racing `Dispose()` can throw out of the `Closed` handler so `Shell.Dispose()` never runs and History is never closed. *(app-qc §Important)*
@@ -93,7 +101,7 @@ All nine High findings (QC-01…QC-09) were closed by batch A on `fix/app-qc-202
 
 ### Carried from the v1-era audits — 5
 
-- [ ] **DW-01** [U] · Core / filing spine — the cross-volume move's crash branch is unverified and deliberately open: a kill/power-loss/disk-full mid-copy can leave a partial file holding the canonical name (08-04 §1.4, "left deliberately … needs a disk-full or kill test across two real volumes"). QC-03's batch-A fix covers only the copy-succeeded-delete-failed branch, and its Win32 behaviour was simulated, not reproduced (fixes plan Task 4). *(08-04 §1.4 + 08-09 core §Important 3 + app-qc §What this method would miss)* `(deferred, 2 sources)`
+- [ ] **DW-01** [V] · Core / filing spine — the cross-volume move's crash branch: a kill mid-copy leaves a file holding the canonical name (08-04 §1.4). QC-03's batch-A fix covers only the copy-succeeded-delete-failed branch. *(08-04 §1.4 + 08-09 core §Important 3 + app-qc §What this method would miss)* `(2 sources)` — **PROVEN 2026-08-22** on local volumes, and worse than recorded: killed at 150ms the destination is FULL-LENGTH with incomplete data (CopyFile preallocates — undetectable by size); killed post-copy both complete copies remain (fresh-qc §Experiments). SMB untested. No longer merely deferred — the hazard is demonstrated.
 - [ ] **DW-02** · Core / filing spine — `Commit.SkipFile` calls `MoveNeverOverwrite` with no `catch (FileExistsRace)`, unlike `CommitFile`/`UndoAction`; the private exception sails past `OnSkipAsync`'s catches to an unhandled UI-thread exception. No document is lost (guard fires pre-move). *(08-09 core §Important 1)*
 - [ ] **DW-03** · Config — `ResolveConfined` checks containment via lexical `Path.GetFullPath` only, which does not resolve reparse points; a junction inside the config directory can redirect a confined side-file read/write outside it. *(08-09 security §Important 2)*
 - [ ] **DW-04** · Repo / process — releases ship unsigned; first run trips SmartScreen. Azure Trusted Signing is wired in `release.yml` but gated on secrets that don't exist; needs a code-signing certificate the owner does not yet have. *(08-04 §3.2 + 08-09 tests-build §Important 2)* `(user, 2 sources)`
@@ -107,9 +115,43 @@ All nine High findings (QC-01…QC-09) were closed by batch A on `fix/app-qc-202
 - [ ] **DW-13** · Repo / process — `docs/sample/` still holds 412 files / 23 MB of real exports in the working tree (untracked, ignored, never committed — but a QC subagent read a row of one CSV during the 2026-08-21 pass, exactly what the `.gitignore` comment predicts). `S:\OrdoSort-samples` already exists; moving the folder closes it. *(app-qc §Working-tree note + memory: ordosort-app-qc-2026-08-21)* `(user, 2 sources)`
 - [ ] **DW-14** · Repo / process — `docs/FileMover.py`, `docs/paper_mover_logger.py`, and `docs/RemoveReadOnly.ps1` default their logs to beside-the-script (inside the tree, un-ignored) and the Python two log full document paths. Whether they are still run decides whether this matters — needs the user's answer. *(app-qc §Working-tree note)* `(user)`
 
+### Fresh QC, 2026-08-22 (`audits/2026-08-22-fresh-qc.md`) — 31
+
+- [ ] **Q2-05** [V] · Zip Tools / Unlock / PageCounts / Bulk Rename — Clear cannot stop an in-flight add: the off-thread walk finishes and repopulates the list the user just emptied (Unlock then re-probes the rows with the fresh token Clear installed). Fifth-through-eighth instances of the DW-78 class. *(fresh-qc §Important)*
+- [ ] **Q2-06** [V]/[U] · Unlock — "Manage saved…" stays live during a run and `RequeueAllFilesForProbing` re-probes the very files the batch is archiving/rewriting; the run's candidates snapshot also makes the newly added password useless mid-run. *(fresh-qc §Important)*
+- [ ] **Q2-07** [V] · Zip Tools — action buttons gate only themselves; Extract and Zip can run concurrently over one list and the shared Status line keeps only the last writer's verdict. *(fresh-qc §Important)*
+- [ ] **Q2-08** [V]/[U] · Shell / main window — Settings can be OK'd during Start's off-thread scan (`if (_busy) return;` — nothing sets `_busy`); `BuildRoutes` then zips the new config's routes against the old config's problem strings, and the session is seeded from a scan of the old inbox. *(fresh-qc §Important)*
+- [ ] **Q2-09** [V] · Zip Tools / Unlock / PageCounts — three of four intake paths are fire-and-forget with no catch around `Intake.Expand`: a drop that fails mid-walk simply does nothing — no rows, no note, no dialog, no crash.log. *(fresh-qc §Important)*
+- [ ] **Q2-10** [V] · PageCounts — Save/Copy mid-count exports a snapshot short by every still-counting row and reports "Saved to …"; pending rows emit a bare name+tab and drop out of the Total. High-arguable. *(fresh-qc §Important)*
+- [ ] **Q2-11** [V] · Config / Settings — `TrySave`'s collision refusal returns empty `refusedSideFileKeys`, which takes `WarnSaveFailure`'s unconditional-modal branch: every unrelated background save (merge headers, tile toggle, Unlock-open password sweep) nags forever on a collision the user can't act on from that dialog. Introduced by the QC-08 closure. *(fresh-qc §Important)*
+- [ ] **Q2-12** [V] · Bulk Rename — the add paths (buttons and drop) are the ungated third sibling of Clear/Remove: a mid-batch add dedupes against pre-rename sources, and the post-batch fixup then lists one file twice — the exact state the dedupe's own comment exists to prevent. Introduced beside batch A's gate. *(fresh-qc §Important)*
+- [ ] **Q2-13** [V] · Zip Tools — `Zipper.CreateZip`'s folder walk still uses the aborting `SearchOption` overload: one denied subfolder loses the whole archive job with a raw access-denied. Third instance of QC-01's class; two of three call sites fixed. *(fresh-qc §Important)*
+- [ ] **Q2-14** [V] · Tests / build — the star-column lint reads XAML only; TriageWindow's sole star column is built in C#, so its `FillerMinWidth` is unpinned — delete it and every suite stays green under a class doc claiming coverage. *(fresh-qc §Important)*
+- [ ] **Q2-15** [V] · Tests / build — nothing measures LabelMakerWindow vertically: the registry delegates to a suite that probes `checkVertical: false` at no declared height; deleting that suite entirely fails nothing. *(fresh-qc §Important)*
+- [ ] **Q2-16** [V] · Tests / build — the Ready dashboard is never measured in the ~350-422px band compact mode parks users at; the MainWindow registry entry renders at 400 but examines 11 chrome elements (the screens are Visibility-bound and never shown). *(fresh-qc §Important)*
+- [ ] **Q2-17** [V] · Tests / build — batch A's per-window ⌈0.75×measured⌉ floor reached one of five `OverflowProbe` call sites; the other four keep flat floors at 28-75% of their measured populations — the partial blindness QC-09's own correction named. *(fresh-qc §Important)*
+- [ ] **Q2-18** [V] · Tests / build — neither overflow suite ever renders largest-font-at-narrowest-width; the 2×2 corner the suites exist for is tested in neither. *(fresh-qc §Important)*
+- [ ] **Q2-19** [V] · Tests / build — `TextWrapCoverageTests`' floors are 23%/56% of population, and fact 1's floor counts candidates before `HasWidthPin` can waive every one of them — a shared wrapper gaining `MaxWidth` zeroes the walk with `judged` unchanged. *(fresh-qc §Important)*
+- [ ] **Q2-20** [V]/[U] · Settings — opening Settings runs 7-9 sequential file reads plus three SHA256 hashes on the UI thread before the window exists (`FreshConfigForSettings()` as a constructor argument). Distinct from QC-18's OK path. *(fresh-qc §Important)*
+- [ ] **Q2-21** [V] · Label Maker — the constructor blocks up to a documented 5 seconds (`BoxLabelStore.DefaultMaxWaitMs`) on a contended store file before the window appears. *(fresh-qc §Important)*
+- [ ] **Q2-22** [V]/[U] · Label Maker — PrintPreview's constructor enumerates print queues synchronously (`LocalPrintServer`, `GetPrintQueues`, `DefaultPrintQueue`); an offline network queue stalls before the window is visible. *(fresh-qc §Important)*
+- [ ] **Q2-23** [V] · Bulk Rename — "Add folder" evaluates `Directory.GetFiles(dlg.FolderName)` on the UI thread as the argument to the async call; the one window in its family that still walks on the dispatcher. *(fresh-qc §Important)*
+- [ ] **Q2-24** [V]/[U] · Shell / main window — the four open-folder commands (Inbox, Deferred, toast, backups) run `Directory.Exists` + `Process.Start` synchronously; a dead share stalls the main window on an everyday click. *(fresh-qc §Important)*
+- [ ] **Q2-25** [V]/[U] · Settings — every Browse… button probes the current (possibly dead) path with `Directory.Exists` before the picker opens — the hang lands exactly when the user is trying to fix a bad path. *(fresh-qc §Important)*
+- [ ] **Q2-26** [V] · Unlock — `UnlockAsync`'s synchronous prefix size-classifies every queued file (`FileInfo.Length` per row) on the UI thread before its first await; the same cost class the window's own comment fixed for adds. *(fresh-qc §Important)*
+- [ ] **Q2-27** [V]/[U] · Shell / main window — `RefreshFoldersAsync` has no catch and all three call sites are bare `_ =`: one exception past Scanner/FolderMonitor's narrow filters and the dashboard silently never updates again. `RunGuarded` wraps its three siblings; this one was missed. *(fresh-qc §Important)*
+- [ ] **Q2-28** [V]/[U] · History / crash log — History's load has no try at all and both exports catch only `IOException or UnauthorizedAccessException`; a `SqliteException` (busy/locked/corrupt multi-station DB) means an empty window forever or a silent no-op export. *(fresh-qc §Important)*
+- [ ] **Q2-29** [V]/[U] · Label Maker — `SavePdf` discards its task and `SavePdfAsync`'s catch misses `FormatException` from `RebuildFromClaim`'s `int.Parse`; `Problems()` gates only the selected row, per its own comment. *(fresh-qc §Important)*
+- [ ] **Q2-30** [V] · Unlock — `UnlockCommand`'s `OnError` is never subscribed, so a run that throws produces zero feedback; the finally's own comment admits "no OnError-style hook covers this path". *(fresh-qc §Important)*
+- [ ] **Q2-31** [V]/[U] · MatchMerge / Review — TriageWindow holds the app's only unguarded `async void` handlers (Loaded init, `OnUseSelected`, `OnSkip`); a dead WebView2 mid-decision escapes to the global crash dialog instead of a local message. Census correction recorded: 7 sites, not 5 — a baseline undercount. *(fresh-qc §Important)*
+- [ ] **Q2-32** [V]/[U] · Shell / main window — log-off/restart (`WM_QUERYENDSESSION` + `ShutdownMode="OnMainWindowClose"`) tears the process down with no grace for tool-window batches mid-write; only the main commit has `FinishClosingWhenIdle`. A half-written zip, or an unlocked PDF half-written with its original already archived. *(fresh-qc §Important)*
+- [ ] **Q2-33** [V]/[U] · Shell / main window — the async `Loaded` continuation (WebView2 init → `Shell.Initialize()`) can resume after `Closed` has disposed Shell: startup work runs against disposed History/watchers, with warnings parented to a dead window. *(fresh-qc §Important)*
+- [ ] **Q2-34** [V] · Shell / main window — a blank inbox flattens to the config directory (the blank-preserving wrapper was scoped to the two Deferred call sites, per its own comment): the Ready screen affirms "0 files ready" with the calm-inbox illustration, "Open inbox" opens the config folder, and the watcher watches it. QC-02's shape, on the field the product is about. *(fresh-qc §Important)*
+- [ ] **Q2-35** [V]/[U] · Shell / main window — duplicate hotkeys in a hand-edited config pass `Load` unexamined; both route buttons wear the badge and WPF's last-added binding wins silently, with history faithfully recording the destination the user didn't choose. Re-grade to High arguable. *(fresh-qc §Important)*
+
 ---
 
-## Minor — 77 open
+## Minor — 88 open
 
 ### App-wide QC, 2026-08-21 — 17
 
@@ -117,7 +159,7 @@ All nine High findings (QC-01…QC-09) were closed by batch A on `fix/app-qc-202
 - [ ] **DW-16** · Shell / main window — `AuditError.NewPath` carries the inbox path of a vanished file and the UI then says it "moved" (`Session.cs:203`; `ShellViewModel.cs:285-286`). *(app-qc §Minor)*
 - [ ] **DW-17** · Core / filing spine — the collision counter is O(n) sequential `File.Exists` round-trips per commit (`Naming.cs:140-145`). *(app-qc §Minor)*
 - [ ] **DW-18** · Core / filing spine — a directory occupying the target name is invisible to both collision guards (`File.Exists` is false for directories). *(app-qc §Minor)*
-- [ ] **DW-19** [U] · Core / filing spine — `RejectIllegal` misses a trailing space, so `CON .pdf` is emitted (`Naming.cs:109`). *(app-qc §Minor)*
+- [ ] **DW-19** [V] · Core / filing spine — `RejectIllegal` misses a trailing space, so `CON .pdf` is emitted (`Naming.cs:109`). *(app-qc §Minor)* — measured 2026-08-22: creates an ordinary file on Win11 NTFS, no device capture (fresh-qc §Experiments); residual risk is older Windows/other stations only.
 - [ ] **DW-20** · MatchMerge / Review matches — `ClearCommand` doesn't clear `_outcomes`, so "Undo last merge" stays enabled and renames files the empty grid never showed (`MatchMergeViewModel.cs:84`). *(app-qc §Minor)*
 - [ ] **DW-21** · Settings — watch-folder labels aren't duplicate-checked at OK, while route labels are. *(app-qc §Minor)*
 - [ ] **DW-22** · Unlock — a hard kill leaves an unencrypted temp PDF in `%TEMP%` (every graceful path cleans up) and nothing sweeps stale `ordosort_unlock_*` at startup. *(app-qc §Minor + 08-07 §3 Minor)* `(2 sources)`
@@ -203,6 +245,20 @@ All nine High findings (QC-01…QC-09) were closed by batch A on `fix/app-qc-202
 - [ ] **DW-78** · Zip Tools — the batch-mutated-under-a-live-list defect class has now appeared four times (QC-05 ×2, Task 7's caught regression, QC-31); the audit recommends one sweep asking that question of every batch surface rather than fixing instances one at a time. *(app-qc §QC-31 note)*
 - [ ] **DW-79** · Repo / process — `docs/superpowers/plans/2026-08-09-v1-release-blockers.md` still shows every checkbox unchecked although its tasks landed; stale by the repo's own dated-artifact convention, but the 08-09 audit counted it as a finding. *(08-09 tests-build §Minor 3)*
 
+### Fresh QC, 2026-08-22 — 11
+
+- [ ] **Q2-36** [V] · Tests / build — `WindowOverflowTests`' hand-maintained registry lacks the reflection discovery guard both sibling suites carry in the same assembly; a new window ships with zero overflow coverage and nothing says so. *(fresh-qc §Minor)*
+- [ ] **Q2-37** [V] · Tests / build — the FilenameList overflow builder says "every column on" and omits the Pages column, so the window's real widest set is never rendered and the floor is calibrated to the narrower one. *(fresh-qc §Minor)*
+- [ ] **Q2-38** [V] · Folder watch — `SetFolders` lacks the `_disposed` guard its neighbours have; a post-dispose call resurrects real watcher handles nothing will dispose. *(fresh-qc §Minor)*
+- [ ] **Q2-39** [V] · Zip Tools / Unlock — three more cancelled-but-never-disposed CTS/semaphore pairs at close, beyond QC-25/DW-23: `ZipListViewModel._cts` (both tabs) and Unlock's `_probeGate`/`_probeCts`. *(fresh-qc §Minor)*
+- [ ] **Q2-40** [V]/[U] · Config — `history_db` is the one config value validated nowhere: a blank or directory-pointing value is the only startup refusal naming no key/path/remedy ("SQLite Error 14"), blank clears its Settings note where blank-inbox renders a problem, and blank passes OK where the side-file keys get defaults. *(fresh-qc §Minor)*
+- [ ] **Q2-41** [V] · Settings — a monitored folder with a blank path passes OK silently and becomes a permanent, unclearable error tile whose click is a no-op, while the route equivalent warns and disables with a reason. *(fresh-qc §Minor)*
+- [ ] **Q2-42** [V] · Label Maker — a close refused for a duplicate id re-runs `TryPersist` from the top each attempt: every blanked row's destructive remove-confirmation is re-asked before the duplicate message, plus a fresh up-to-5s store read per attempt. Friction, not a trap. *(fresh-qc §Minor)*
+- [ ] **Q2-43** [V] · Settings — the new blank-set-aside warning turns every OK into "Save anyway?" on a station that deliberately never configures one; an unconditional nag on an optional field. Introduced by batch A. *(fresh-qc §Minor)*
+- [ ] **Q2-44** [V] · Shell / main window — `AsyncRelayCommand` is silent-by-default without `OnError`, and five more VMs never wire it; currently safe only because their Core calls promise never to throw. Class-sweep row, same spirit as DW-78. *(fresh-qc §Minor)*
+- [ ] **Q2-45** [V] · Tests / build — the FolderMonitor ACL test bails with a bare `return` (zero assertions) wherever the deny-ACE doesn't hold — the only pin `120770c` has, and its flake direction is a silent green. *(fresh-qc §Minor)*
+- [ ] **Q2-46** [V] · Tests / build — `UnknownOldestAgeRendersAsUnknownNotAHugeNumber` never exercises the sentinel detection that is QC-13 and its `DoesNotContain("155")` cannot fail for any input; the real pin lives in `PipelineTests` (sound). *(fresh-qc §Minor)*
+
 ---
 
 ## Deferred by the user — awaiting a go
@@ -266,9 +322,10 @@ Per-source arithmetic, checked against each source's own status record. **Total 
 | `2026-08-09-v1-release-audit-security.md` | 4 | 1 | 3 | 0 | Counts line "Critical 0 / Important 2 / Minor 2" |
 | `2026-08-09-v1-release-audit-tests-build.md` | 8 | 2 | 6 | 0 | Counts line "Critical 0 · Important 3 · Minor 5" (two Minors live unlabeled in Part A prose — noted) |
 | `2026-08-09-v1-release-audit-ui.md` | 4 | 3 | 1 | 0 | 3 Important closed by `2115826` (+ reports removal); Minor 4 confirmed open in current `ThemeTests.cs` |
-| **Doc totals** | **196** | **89** | **104** | **3** | |
+| `2026-08-22-fresh-qc.md` | 46 | 0 | 46 | 0 | New audit, all open; 4 High (Q2-01…04), 31 Important, 11 Minor; also settles marks on QC-23, DW-01, DW-19 empirically |
+| **Doc totals** | **242** | **89** | **150** | **3** | |
 | Memory (no self-count) | — | — | 28 unique | — | further memory rows resolved on verification (below); 6 obsolete |
-| **Unique open rows** | | | **127** | | 104 doc rows − 5 cross-source dedupes + 28 memory-only |
+| **Unique open rows** | | | **173** | | 150 doc rows − 5 cross-source dedupes + 28 memory-only |
 
 **Cross-source dedupes (each is one row above, both sources cited):** DW-01
 (08-04 §1.4 = 08-09 core Imp 3), DW-04 (08-04 §3.2 = 08-09 tb Imp 2), DW-05
