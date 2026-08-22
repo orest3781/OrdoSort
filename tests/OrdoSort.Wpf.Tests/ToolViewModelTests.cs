@@ -1010,8 +1010,16 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     /// <summary>Counts how many times the injected scheduler is actually asked
-    /// to run work — i.e. how many times a real Plan() compute landed — while
-    /// still doing the work for real via TaskWorkScheduler underneath.
+    /// to run work, while still doing the work for real via TaskWorkScheduler
+    /// underneath. NOT "how many Plan() computes landed", though it was that
+    /// when it was written: AddFilesAsync runs its intake through this same
+    /// scheduler now (audit QC-04), and the count is incremented at SCHEDULE
+    /// time — before Run even returns its task — so an add contributes one
+    /// tick of its own before any plan is computed. Every caller below
+    /// therefore captures a BASELINE once the add has settled and waits on a
+    /// delta from it, rather than on a literal that silently comes to mean a
+    /// different compute the moment anything else starts sharing the
+    /// scheduler.
     ///
     /// Needed because a value-only WaitFor (e.g. "NewName == X") can pass on
     /// its very first poll against LEFTOVER state from an earlier compute,
@@ -1078,10 +1086,10 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     [Fact]
-    public void CountsLineCallsOutTheRowsStillWaitingOnAName()
+    public async Task CountsLineCallsOutTheRowsStillWaitingOnAName()
     {
         var vm = new BulkRenameViewModel();
-        vm.AddFilesAsync(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf"),
+        await vm.AddFilesAsync(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf"),
                             Touch("notes_only.pdf") });
         vm.ReceivedDate = new DateTime(2024, 1, 26);
         vm.ReviewMode = true;
@@ -1098,11 +1106,14 @@ public class BulkRenameViewModelTests : IDisposable
     ///
     /// Waits for the probe to settle before returning so the four tests below
     /// that assert on Preview/NeedsNameCount immediately after calling this
-    /// don't each need their own WaitFor.</summary>
-    private BulkRenameViewModel BatchWithStrays()
+    /// don't each need their own WaitFor. The intake is awaited rather than
+    /// discarded: it runs off-thread now (audit QC-04), and letting it race
+    /// the setters below would have the view model's file list appended to on
+    /// a pool thread while this one reads it.</summary>
+    private async Task<BulkRenameViewModel> BatchWithStrays()
     {
         var vm = new BulkRenameViewModel();
-        vm.AddFilesAsync(new[]
+        await vm.AddFilesAsync(new[]
         {
             Touch("SMITH_JOHN_5_5_2024_ACME_RECORDS_1-1__08_02_24_1019_X.pdf"),
             Touch("oddball one.pdf"),
@@ -1116,9 +1127,9 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     [Fact]
-    public void RowsThatCouldNotBeParsedAreFlaggedAndCounted()
+    public async Task RowsThatCouldNotBeParsedAreFlaggedAndCounted()
     {
-        var vm = BatchWithStrays();
+        var vm = await BatchWithStrays();
 
         Assert.Equal(2, vm.NeedsNameCount);
         Assert.False(vm.Preview[0].NeedsName);   // parsed fine
@@ -1129,11 +1140,11 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     [Fact]
-    public void AStrayOpensPrefilledWithTheDatePrefixSoOnlyTheNameIsTyped()
+    public async Task AStrayOpensPrefilledWithTheDatePrefixSoOnlyTheNameIsTyped()
     {
         // the date is a batch constant the user already chose — retyping it on
         // every stray is both keystrokes and a chance to drift out of format
-        var vm = BatchWithStrays();
+        var vm = await BatchWithStrays();
 
         Assert.Equal("20240802-", vm.Preview[1].EditSeed);
         // a row that parsed opens with what it already says, to be edited
@@ -1141,9 +1152,9 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     [Fact]
-    public void NextStrayWrapsPastTheRowsThatAreAlreadyRight()
+    public async Task NextStrayWrapsPastTheRowsThatAreAlreadyRight()
     {
-        var vm = BatchWithStrays();
+        var vm = await BatchWithStrays();
 
         Assert.Equal(1, vm.IndexOfNextNeedingName(-1));  // from the top
         Assert.Equal(3, vm.IndexOfNextNeedingName(1));   // skips row 2
@@ -1151,9 +1162,9 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     [Fact]
-    public void FixingAStrayByHandRemovesItFromTheCount()
+    public async Task FixingAStrayByHandRemovesItFromTheCount()
     {
-        var vm = BatchWithStrays();
+        var vm = await BatchWithStrays();
         vm.SetOverride(vm.Preview[1].Source, "20240802-ODD-ONE");
 
         WaitFor(() => vm.NeedsNameCount == 1, "NeedsNameCount should drop once the hand edit is applied");
@@ -1162,7 +1173,7 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     [Fact]
-    public void NoStraysMeansNothingToJumpTo()
+    public async Task NoStraysMeansNothingToJumpTo()
     {
         // NeedsNameCount/IndexOfNextNeedingName/CountsLine all read the same
         // (0/-1/no-"need a name") whether or not Find/Replace has actually
@@ -1171,14 +1182,25 @@ public class BulkRenameViewModelTests : IDisposable
         // compute without ever observing the Find/Replace recompute this
         // test claims to exercise. Count computes instead, so the wait
         // actually forces that recompute to land first.
+        //
+        // The wait below is a BASELINE PLUS A DELTA, and conjoins the one
+        // value only the recompute can produce, for a measured reason: while
+        // "calls == 1" was a literal, AddFilesAsync moving its intake onto
+        // this same scheduler made it true before the first plan was ever
+        // computed, every later literal came to mean a different compute,
+        // and the three assertions below — all already true of the add-only
+        // preview — were left guarded by nothing at all.
         var calls = 0;
         var vm = new BulkRenameViewModel(scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
-        vm.AddFilesAsync(new[] { Touch("scan_001.pdf") });
-        WaitFor(() => calls == 1, "the initial add's compute should land");
+        await vm.AddFilesAsync(new[] { Touch("scan_001.pdf") });
+        WaitFor(() => vm.Preview.Count == 1, "the initial add's compute should land");
+        var afterAdd = calls;
 
         vm.Find = "scan";
         vm.Replace = "fax";
-        WaitFor(() => calls == 2, "the Find/Replace-triggered recompute should land before asserting");
+        WaitFor(() => calls == afterAdd + 1
+                      && vm.Preview.Count == 1 && vm.Preview[0].NewName == "fax_001.pdf",
+            "the Find/Replace-triggered recompute should land before asserting");
 
         Assert.Equal(0, vm.NeedsNameCount);
         Assert.Equal(-1, vm.IndexOfNextNeedingName(-1));
@@ -1186,10 +1208,10 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     [Fact]
-    public void FindReplacePreviewMatchesThePlan()
+    public async Task FindReplacePreviewMatchesThePlan()
     {
         var vm = new BulkRenameViewModel();
-        vm.AddFilesAsync(new[] { Touch("scan_001.pdf"), Touch("keep.pdf") });
+        await vm.AddFilesAsync(new[] { Touch("scan_001.pdf"), Touch("keep.pdf") });
         vm.Find = "scan";
         vm.Replace = "fax";
 
@@ -1201,10 +1223,10 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     [Fact]
-    public void ReviewTransformParsesTheMedicalFaxNames()
+    public async Task ReviewTransformParsesTheMedicalFaxNames()
     {
         var vm = new BulkRenameViewModel();
-        vm.AddFilesAsync(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf") });
+        await vm.AddFilesAsync(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf") });
         vm.ReceivedDate = new DateTime(2024, 1, 26);
         vm.ReviewMode = true;
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "20240126-BROWN-ADAM.pdf",
@@ -1212,7 +1234,7 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     [Fact]
-    public void HandEditSurvivesAnOpChange()
+    public async Task HandEditSurvivesAnOpChange()
     {
         // The override's own value ("CUSTOM NAME.pdf") doesn't change across
         // the Find/Replace step below, so a value-only WaitFor there would
@@ -1226,11 +1248,15 @@ public class BulkRenameViewModelTests : IDisposable
         var calls = 0;
         var vm = new BulkRenameViewModel(scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
         var src = Touch("scan_001.pdf");
-        vm.AddFilesAsync(new[] { src });
-        WaitFor(() => calls == 1, "the initial add's compute should land");
+        await vm.AddFilesAsync(new[] { src });
+        WaitFor(() => vm.Preview.Count == 1, "the initial add's compute should land");
+        // Baseline, not a literal — see CountingWorkScheduler's own comment
+        // for what the literals came to mean once the intake started sharing
+        // this scheduler.
+        var afterAdd = calls;
 
         vm.SetOverride(src, "CUSTOM NAME.pdf");   // typed extension is stripped
-        WaitFor(() => calls == 2 && vm.Preview.Count == 1 && vm.Preview[0].NewName == "CUSTOM NAME.pdf",
+        WaitFor(() => calls == afterAdd + 1 && vm.Preview.Count == 1 && vm.Preview[0].NewName == "CUSTOM NAME.pdf",
             "the preview should eventually reflect the hand edit");
         Assert.True(vm.Preview[0].Manual);
 
@@ -1244,12 +1270,12 @@ public class BulkRenameViewModelTests : IDisposable
         // can be observed true before Preview is repopulated — indexing
         // Preview[0] right after would then be a transient
         // ArgumentOutOfRangeException, not a value mismatch.
-        WaitFor(() => calls == 3 && vm.Preview.Count == 1,
+        WaitFor(() => calls == afterAdd + 2 && vm.Preview.Count == 1,
             "the Find/Replace-triggered recompute should land before proceeding");
         Assert.Equal("CUSTOM NAME.pdf", vm.Preview[0].NewName);   // the override still beat the op
 
         vm.SetOverride(src, "");   // clearing goes back to the op result
-        WaitFor(() => calls == 4 && vm.Preview.Count == 1 && vm.Preview[0].NewName == "fax_001.pdf",
+        WaitFor(() => calls == afterAdd + 3 && vm.Preview.Count == 1 && vm.Preview[0].NewName == "fax_001.pdf",
             "clearing the override should fall back to the op result");
     }
 
@@ -1329,10 +1355,10 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     [Fact]
-    public void DeleteSegment2ProducesCorrectPreview()
+    public async Task DeleteSegment2ProducesCorrectPreview()
     {
         var vm = new BulkRenameViewModel();
-        vm.AddFilesAsync(new[] { Touch("A-B-C.pdf") });
+        await vm.AddFilesAsync(new[] { Touch("A-B-C.pdf") });
         vm.DeleteSeg2 = true;
 
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
@@ -1341,10 +1367,10 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     [Fact]
-    public void DeleteSegment2AndLastProducesCorrectPreview()
+    public async Task DeleteSegment2AndLastProducesCorrectPreview()
     {
         var vm = new BulkRenameViewModel();
-        vm.AddFilesAsync(new[] { Touch("A-B-C.pdf") });
+        await vm.AddFilesAsync(new[] { Touch("A-B-C.pdf") });
         vm.DeleteSeg2 = true;
         vm.DeleteSegLast = true;
 
@@ -1354,10 +1380,10 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     [Fact]
-    public void UncheckedDeleteSegmentsReturnsOriginal()
+    public async Task UncheckedDeleteSegmentsReturnsOriginal()
     {
         var vm = new BulkRenameViewModel();
-        vm.AddFilesAsync(new[] { Touch("A-B-C.pdf") });
+        await vm.AddFilesAsync(new[] { Touch("A-B-C.pdf") });
         vm.DeleteSeg2 = true;
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
             "the preview should eventually reflect DeleteSeg2");
@@ -1369,7 +1395,7 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     [Fact]
-    public void HandEditedTargetStillOverridesDeleteSegments()
+    public async Task HandEditedTargetStillOverridesDeleteSegments()
     {
         // Same shape as HandEditSurvivesAnOpChange's false-green (the
         // override value doesn't change across the final step, so a
@@ -1382,15 +1408,17 @@ public class BulkRenameViewModelTests : IDisposable
         var calls = 0;
         var vm = new BulkRenameViewModel(scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
         var src = Touch("A-B-C.pdf");
-        vm.AddFilesAsync(new[] { src });
-        WaitFor(() => calls == 1, "the initial add's compute should land");
+        await vm.AddFilesAsync(new[] { src });
+        WaitFor(() => vm.Preview.Count == 1, "the initial add's compute should land");
+        // Baseline, not a literal — see CountingWorkScheduler's own comment.
+        var afterAdd = calls;
 
         vm.DeleteSeg2 = true;
-        WaitFor(() => calls == 2 && vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
+        WaitFor(() => calls == afterAdd + 1 && vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
             "the preview should eventually reflect DeleteSeg2");
 
         vm.SetOverride(src, "CUSTOM-NAME.pdf");
-        WaitFor(() => calls == 3 && vm.Preview.Count == 1 && vm.Preview[0].NewName == "CUSTOM-NAME.pdf",
+        WaitFor(() => calls == afterAdd + 2 && vm.Preview.Count == 1 && vm.Preview[0].NewName == "CUSTOM-NAME.pdf",
             "the preview should eventually reflect the hand edit");
         Assert.True(vm.Preview[0].Manual);
 
@@ -1398,7 +1426,7 @@ public class BulkRenameViewModelTests : IDisposable
         // wait for THIS recompute specifically before asserting — same
         // calls-alone-doesn't-guard-Preview hazard as HandEditSurvivesAnOpChange,
         // so Preview.Count == 1 is conjoined here too.
-        WaitFor(() => calls == 4 && vm.Preview.Count == 1,
+        WaitFor(() => calls == afterAdd + 3 && vm.Preview.Count == 1,
             "the DeleteSeg2=false-triggered recompute should land before asserting");
         Assert.Equal("CUSTOM-NAME.pdf", vm.Preview[0].NewName);   // the override still beat the op
     }

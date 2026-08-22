@@ -168,8 +168,17 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         // _lastOutcomes, so Undo remains offered.
         RenameCommand.OnError += ex => Status = $"The rename stopped unexpectedly: {ex.Message}";
         UndoCommand.OnError += ex => Status = $"Undo stopped unexpectedly: {ex.Message}";
+        // Gated on !IsBusy like the two above, and for a reason this task
+        // created: while the renames froze the UI thread, Clear and Remove
+        // selected were unreachable during a batch. A responsive window makes
+        // pressing Clear while two hundred files move an ordinary thing to
+        // do — and the batch would go on renaming files no longer listed,
+        // leaving the fixup matching nothing and an empty grid under
+        // "Renamed 12 files.". Same defect QC-05 describes in ZipTools and
+        // Unlock; this is the third place it can happen.
         ClearCommand = new RelayCommand(
-            () => { _files.Clear(); _overrides.Clear(); Refresh(immediate: true); });
+            () => { _files.Clear(); _overrides.Clear(); Refresh(immediate: true); },
+            () => !IsBusy);
     }
 
     public void Dispose()
@@ -239,11 +248,11 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     private bool _isBusy;
 
     /// <summary>True while a rename or an undo batch is running: shows the
-    /// Cancel button, gates it, and keeps the other of the two from starting
-    /// a second run over the same files. AsyncRelayCommand already blocks
-    /// re-entering the SAME command; this is what stops Undo being pressed
-    /// halfway through a rename, which would try to put back files the batch
-    /// is still moving.</summary>
+    /// Cancel button and gates every other action that touches the file list.
+    /// AsyncRelayCommand's own guard only blocks re-entering the SAME command,
+    /// so this is what makes WPF disable Undo, Clear and Remove selected while
+    /// a rename runs — each of them would otherwise act on a list the batch is
+    /// halfway through rewriting.</summary>
     public bool IsBusy
     {
         get => _isBusy;
@@ -253,8 +262,16 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
             RenameCommand.RaiseCanExecuteChanged();
             UndoCommand.RaiseCanExecuteChanged();
             CancelCommand.RaiseCanExecuteChanged();
+            ClearCommand.RaiseCanExecuteChanged();
+            Raise(nameof(IsIdle));
         }
     }
+
+    /// <summary>The inverse of <see cref="IsBusy"/>, for the one button that
+    /// is a Click handler rather than a command and so has no CanExecute of
+    /// its own to disable it — Remove selected. See ClearCommand's comment
+    /// for why removing files mid-batch has to be off the table.</summary>
+    public bool IsIdle => !IsBusy;
 
     /// <summary>What Undo would put back. Exposed so a test can observe it
     /// MID-batch — the durability half of QC-04 is a claim about what this
@@ -301,7 +318,21 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         // once, so it used to cost the UI thread one stall per file before
         // the first preview row ever appeared. Same defect and same fix as
         // ZipListViewModel.AddPaths and UnlockViewModel.AddFilesAsync.
-        var offThread = await _scheduler.Run(() => Intake.Add(already, candidates, exists: File.Exists));
+        Intake.Added offThread;
+        try
+        {
+            offThread = await _scheduler.Run(() => Intake.Add(already, candidates, exists: File.Exists));
+        }
+        catch (Exception ex)
+        {
+            // The window calls this as `_ = AddFilesAsync(…)`, and a discarded
+            // Task discards its failure with it — the vanishing-failure defect
+            // FireAndForgetGuardTests exists for. Caught HERE rather than at
+            // that one call site so every caller gets the net, and reported
+            // through the line that already exists for intake feedback.
+            AddNote = $"Couldn't read what was dropped: {ex.Message}";
+            return;
+        }
 
         // Re-checked against the LIVE list, not the snapshot taken before
         // the await — otherwise a second drop landing mid-await gets two
@@ -319,6 +350,11 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
 
     public void RemoveFiles(IEnumerable<string> sources)
     {
+        // The button is disabled mid-batch (IsIdle), but the guard lives here
+        // too: this is public, and dropping a file from the list while the
+        // batch is renaming it would leave the post-loop fixup with nothing to
+        // match and the row gone from a grid that still claims the rename.
+        if (IsBusy) return;
         foreach (var s in sources.ToList())
         {
             _files.Remove(s);
@@ -559,28 +595,37 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
                 (outcome.Final is null ? failed : renamed).Add(outcome);
             }
         }
+        // In the finally, not after it: a batch that stops on something
+        // unexpected must not leave _files naming paths that no longer exist.
+        // Skipping this on that path left the grid listing files that had
+        // already been renamed, and the "stopped unexpectedly" message then
+        // invited a second Rename over rows every one of which would fail.
+        // Status stays OUTSIDE, last, so it reports only a run that finished
+        // its loop — the faulted path's message belongs to OnError.
         finally
         {
             _batchCts = null;
+            _overrides.Clear();
+            var finals = renamed.ToDictionary(o => o.Source, o => o.Final!);
+            for (var i = 0; i < _files.Count; i++)
+                if (finals.TryGetValue(_files[i], out var f)) _files[i] = f;
+            // The operation fields are cleared even on a cancel, deliberately.
+            // Leaving them set would re-render the same rule over a list where
+            // some files already carry its result, so finishing the job by
+            // pressing Rename again would prefix the prefixed ones twice. A
+            // clean slate over the names that are actually on disk is the only
+            // state that can't quietly do that; Undo covers the half that ran.
+            Find = Replace = Prefix = Suffix = "";
+            CaseIndex = 0;
+            ReviewMode = false;
+            DeleteSeg1 = DeleteSeg2 = DeleteSeg3 = DeleteSeg4 = DeleteSegLast = false;
+            Refresh(immediate: true);
+            UndoCommand.RaiseCanExecuteChanged();
+            // Last, so the tool only becomes usable again once its list agrees
+            // with the disk.
             IsBusy = false;
         }
 
-        _overrides.Clear();
-        var finals = renamed.ToDictionary(o => o.Source, o => o.Final!);
-        for (var i = 0; i < _files.Count; i++)
-            if (finals.TryGetValue(_files[i], out var f)) _files[i] = f;
-        // The operation fields are cleared even on a cancel, deliberately.
-        // Leaving them set would re-render the same rule over a list where
-        // some files already carry its result, so finishing the job by
-        // pressing Rename again would prefix the prefixed ones twice. A clean
-        // slate over the names that are actually on disk is the only state
-        // that can't quietly do that; Undo covers the half that ran.
-        Find = Replace = Prefix = Suffix = "";
-        CaseIndex = 0;
-        ReviewMode = false;
-        DeleteSeg1 = DeleteSeg2 = DeleteSeg3 = DeleteSeg4 = DeleteSegLast = false;
-        Refresh(immediate: true);
-        UndoCommand.RaiseCanExecuteChanged();
         Status = cancelled
             // Names what completed, not what was asked for: that is both the
             // honest count and exactly what Undo can still put back.
@@ -642,16 +687,19 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
                 }
             }
         }
+        // Same shape as ApplyAsync's: the list has to agree with the disk even
+        // when the undo stops on something unexpected, and Status stays
+        // outside so the faulted path's message belongs to OnError.
         finally
         {
             _batchCts = null;
+            for (var i = 0; i < _files.Count; i++)
+                if (restored.TryGetValue(_files[i], out var s)) _files[i] = s;
+            Refresh(immediate: true);
+            UndoCommand.RaiseCanExecuteChanged();
             IsBusy = false;
         }
 
-        for (var i = 0; i < _files.Count; i++)
-            if (restored.TryGetValue(_files[i], out var s)) _files[i] = s;
-        Refresh(immediate: true);
-        UndoCommand.RaiseCanExecuteChanged();
         Status = cancelled
             ? $"Cancelled — restored {restored.Count} of {total}."
             : problems.Count > 0 ? string.Join("; ", problems) : "Original names restored.";

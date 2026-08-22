@@ -158,7 +158,8 @@
                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
                     <Button Content="Add files…" Click="OnAddFiles" Margin="0,0,6,0" />
                     <Button Content="Add a folder's files…" Click="OnAddFolder" Margin="0,0,6,0" />
-                    <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,0" />
+                    <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,0"
+                            IsEnabled="{Binding IsIdle}" />
                     <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,0" />
                 </StackPanel>
                 <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"

@@ -83,7 +83,15 @@ public class CultureInvariantDatesTests : IDisposable
         UnderCulture(culture, () =>
         {
             var path = MakeFile("SMITH_JOHN_01_15_2024.pdf");
-            var vm = new BulkRenameViewModel();
+            // InlineWorkScheduler, so the intake — off the UI thread since
+            // audit QC-04 — has finished before the setters below touch the
+            // same file list, instead of appending to it from a pool thread
+            // while this one reads it. Awaiting instead would resume this
+            // body on another thread and leave UnderCulture restoring the
+            // culture on the wrong one. Nothing the test measures moves:
+            // the code under test here, CurrentOp's yyyyMMdd stem, runs on
+            // THIS thread inside Refresh either way.
+            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
             vm.AddFilesAsync(new[] { path });
             vm.ReviewMode = true;
             vm.ReceivedDate = new DateTime(2026, 8, 2);
@@ -112,7 +120,8 @@ public class CultureInvariantDatesTests : IDisposable
         UnderCulture(culture, () =>
         {
             var path = MakeFile("whatever.pdf");   // doesn't match the review layout
-            var vm = new BulkRenameViewModel();
+            // InlineWorkScheduler for the same reason as the theory above.
+            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
             vm.AddFilesAsync(new[] { path });
             vm.ReviewMode = true;
             vm.ReceivedDate = new DateTime(2026, 8, 2);

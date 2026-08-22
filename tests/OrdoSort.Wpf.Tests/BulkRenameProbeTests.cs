@@ -86,11 +86,11 @@ public class BulkRenameProbeTests : IDisposable
     // ---- 1. the UI thread does not block on the plan itself ---------------
 
     [Fact]
-    public void SettingFindReturnsPromptlyEvenWhilePlanItselfIsSlow()
+    public async Task SettingFindReturnsPromptlyEvenWhilePlanItselfIsSlow()
     {
         var a = Touch("scan_001.pdf");
         var vm = new BulkRenameViewModel(plan: (paths, op, overrides) => SlowPlan(300, paths, op, overrides));
-        vm.AddFilesAsync(new[] { a });
+        await vm.AddFilesAsync(new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle before the timing measurement");
 
         var sw = Stopwatch.StartNew();
@@ -104,11 +104,11 @@ public class BulkRenameProbeTests : IDisposable
     // ---- 2. the preview still becomes correct — this is not "never compute"
 
     [Fact]
-    public void ThePreviewEventuallyReflectsTheSlowPlansResult()
+    public async Task ThePreviewEventuallyReflectsTheSlowPlansResult()
     {
         var a = Touch("scan_001.pdf");
         var vm = new BulkRenameViewModel(plan: (paths, op, overrides) => SlowPlan(300, paths, op, overrides));
-        vm.AddFilesAsync(new[] { a });
+        await vm.AddFilesAsync(new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle first");
 
         vm.Find = "scan";
@@ -121,13 +121,13 @@ public class BulkRenameProbeTests : IDisposable
     // ---- 3. a burst of keystrokes runs Plan once, not once per character --
 
     [Fact]
-    public void TypingABurstRunsThePlanOnceNotPerKeystroke()
+    public async Task TypingABurstRunsThePlanOnceNotPerKeystroke()
     {
         var calls = 0;
         var a = Touch("scan_001.pdf");
         var vm = new BulkRenameViewModel(
             scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
-        vm.AddFilesAsync(new[] { a });
+        await vm.AddFilesAsync(new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle before the keystroke burst starts");
         var callsBeforeTyping = calls;
 
@@ -148,14 +148,14 @@ public class BulkRenameProbeTests : IDisposable
     // classification rather than assuming it -------------------------------
 
     [Fact]
-    public void ADiscreteToggleResolvesWithoutWaitingTheFullDebounceWindow()
+    public async Task ADiscreteToggleResolvesWithoutWaitingTheFullDebounceWindow()
     {
         var a = Touch("A-B-C.pdf");
         // an artificially huge debounce window — if the discrete toggle
         // waited it out like a typed field, the WaitFor below (timeout well
         // under this) would fail
         var vm = new BulkRenameViewModel(probeDelayMs: 5000);
-        vm.AddFilesAsync(new[] { a });
+        await vm.AddFilesAsync(new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle before the timing measurement");
 
         vm.DeleteSeg2 = true;   // one of the five DeleteSeg* flags — a single click, not typed text

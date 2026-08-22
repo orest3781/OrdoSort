@@ -152,7 +152,9 @@ public class BulkRenameBatchTests : IDisposable
 
     /// <summary>A batch of <paramref name="names"/> with a prefix rule that
     /// changes every one of them, settled so the preview really is showing
-    /// what Rename would execute.</summary>
+    /// what Rename would execute. The intake is hand-cranked through the
+    /// scheduler by Settle rather than awaited — it shares the queue with the
+    /// batch under test — so it lands on THIS thread, not a pool one.</summary>
     private (BulkRenameViewModel Vm, QueuedWorkScheduler Scheduler) Batch(params string[] names)
     {
         var scheduler = new QueuedWorkScheduler();
@@ -257,6 +259,66 @@ public class BulkRenameBatchTests : IDisposable
         Assert.True(vm.UndoCommand.CanExecute(null));
         Assert.False(vm.IsBusy);             // or the tool is dead for the rest of the session
         Assert.Contains("unexpectedly", vm.Status);
+
+        // And the list has to agree with the disk. Skipping the post-loop
+        // fixup on this path left the grid listing "a.pdf" — a name that no
+        // longer exists — with the rule still armed, so the message inviting
+        // a second Rename would have run it over rows that could only fail.
+        scheduler.Settle(
+            () => vm.Preview.Count == 2 && vm.Preview.Any(r => r.Current == "NEW-a.pdf"),
+            "the preview should be rebuilt over the names that are actually on disk");
+        Assert.Contains(vm.Preview, r => r.Current == "b.pdf");
+        Assert.Equal("", vm.Prefix);         // the rule is cleared, so no second pass double-prefixes
+    }
+
+    // ---- 3. nothing else may touch the list mid-batch ---------------------
+
+    /// <summary>Collateral from this task, not a pre-existing defect: while
+    /// the renames froze the UI thread, Clear and Remove selected could not be
+    /// pressed during a batch. A responsive window makes pressing them while
+    /// two hundred files move an ordinary thing to do, and the batch would go
+    /// on renaming files that are no longer listed — the post-loop fixup then
+    /// matches nothing and the grid ends up empty under "Renamed 12 files.".
+    /// Same defect QC-05 describes in ZipTools and Unlock.</summary>
+    [Fact]
+    public void NeitherClearNorRemoveCanTouchTheListWhileTheBatchRuns()
+    {
+        var (vm, scheduler) = Batch("a.pdf", "b.pdf");
+        var b = Path.Combine(_dir, "b.pdf");
+
+        vm.RenameCommand.Execute(null);      // first rename dispatched, not yet run
+
+        Assert.False(vm.ClearCommand.CanExecute(null));
+        Assert.False(vm.IsIdle);             // what disables the Remove button, which is a Click handler
+
+        vm.SelectedSources = new[] { b };
+        vm.RemoveSelected();                 // the click that slips through anyway
+
+        scheduler.Settle(() => !vm.IsBusy, "the batch should run to the end");
+        scheduler.Quiesce();
+
+        // Both files were renamed and both are still listed under their new
+        // names: the removal did not quietly drop a row the batch was moving.
+        Assert.Equal(2, vm.Preview.Count);
+        Assert.Contains(vm.Preview, r => r.Current == "NEW-b.pdf");
+        Assert.True(vm.ClearCommand.CanExecute(null));   // and normal service resumes
+        Assert.True(vm.IsIdle);
+    }
+
+    /// <summary>The window calls the intake as `_ = AddFilesAsync(…)`, and a
+    /// discarded Task takes its failure with it — the vanishing-failure defect
+    /// FireAndForgetGuardTests exists for. It reports instead, through the
+    /// line that already carries intake feedback.</summary>
+    [Fact]
+    public async Task AnIntakeThatBlowsUpReportsInsteadOfVanishing()
+    {
+        var scheduler = new QueuedWorkScheduler();
+        var vm = new BulkRenameViewModel(scheduler: scheduler, probeDelayMs: 0);
+        scheduler.FailNextDispatch = true;
+
+        await vm.AddFilesAsync(new[] { Touch("a.pdf") });
+
+        Assert.Contains("Couldn't read", vm.AddNote);
     }
 
     // ---- 3. cancel ---------------------------------------------------------
