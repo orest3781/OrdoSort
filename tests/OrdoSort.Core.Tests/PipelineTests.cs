@@ -31,6 +31,7 @@ public class PipelineTests : IDisposable
 
     public void Dispose()
     {
+        Commit.SurvivingSourceHookForTests = null;
         SqliteClear();
         for (var a = 0; ; a++)
         {
@@ -190,6 +191,50 @@ public class PipelineTests : IDisposable
         Assert.True(File.Exists(src));
     }
 
+    // ---- 2026-08 audit QC-03: File.Move can report success and still leave
+    // the source behind (MoveFileExW + MOVEFILE_COPY_ALLOWED, cross-volume,
+    // undeletable original). That real Win32 branch needs a read-only source
+    // on a second volume and can't be forced on one machine — these pin the
+    // seam instead (Commit.SurvivingSourceHookForTests, wired into
+    // MoveNeverOverwrite) rather than the syscall itself. ----
+
+    [Fact]
+    public void CommitMoveThatSurvivesAtTheSourceRefusesLoudlyAndFileStays()
+    {
+        var src = MakePdf(_inbox, "20240115--111111.pdf");
+        var originalBytes = File.ReadAllBytes(src);
+        // The real Win32 branch never deletes src in the first place; this
+        // recreates it right after the real (same-volume) move actually
+        // deletes it, so MoveNeverOverwrite's post-move check sees exactly
+        // what the cross-volume case would leave behind.
+        Commit.SurvivingSourceHookForTests = () => File.WriteAllBytes(src, originalBytes);
+
+        var ex = Assert.Throws<CommitError>(() => Commit.CommitFile(src, "SMITH", Dest, "insert"));
+
+        Assert.Contains("20240115--111111.pdf", ex.Message);
+        Assert.Contains("could not be removed", ex.Message);
+        Assert.True(File.Exists(src));
+        Assert.Equal(originalBytes, File.ReadAllBytes(src));
+        // The copy that genuinely reached the destination is left alone —
+        // deleting it would risk destroying the only good copy.
+        Assert.True(File.Exists(Path.Combine(_dest, "20240115-SMITH-111111.pdf")));
+    }
+
+    [Fact]
+    public void SkipMoveThatSurvivesAtTheSourceRefusesLoudlyAndFileStays()
+    {
+        var src = MakePdf(_inbox, "20240115--222222.pdf");
+        var originalBytes = File.ReadAllBytes(src);
+        Commit.SurvivingSourceHookForTests = () => File.WriteAllBytes(src, originalBytes);
+
+        var ex = Assert.Throws<CommitError>(() => Commit.SkipFile(src, _deferred));
+
+        Assert.Contains("20240115--222222.pdf", ex.Message);
+        Assert.Contains("could not be removed", ex.Message);
+        Assert.True(File.Exists(src));
+        Assert.True(File.Exists(Path.Combine(_deferred, "20240115--222222.pdf")));
+    }
+
     // ---- Session (with real history) ----
     [Fact]
     public void SessionCommitLogsAndAdvances()
@@ -242,5 +287,47 @@ public class PipelineTests : IDisposable
         s.SkipCurrent();
         Assert.Equal(1, s.Skipped);
         Assert.True(File.Exists(Path.Combine(_deferred, "20240101--1.pdf")));
+    }
+
+    [Fact]
+    public void SessionCommitThatSurvivesAtTheSourceAdvancesNothingAndLogsNothing()
+    {
+        using var h = new History(Path.Combine(_root, "h.sqlite"));
+        var cfg = new Config { Inbox = _inbox, Deferred = _deferred, NamingMode = "insert" };
+        var s = new Session(cfg, h, _cfgPath);
+        var a = MakePdf(_inbox, "20240101--1.pdf");
+        var originalBytes = File.ReadAllBytes(a);
+        s.Start(new[] { a });
+        Commit.SurvivingSourceHookForTests = () => File.WriteAllBytes(a, originalBytes);
+
+        var ex = Assert.Throws<CommitError>(() => s.CommitCurrent("SMITH JOHN", Dest));
+
+        Assert.Contains("20240101--1.pdf", ex.Message);
+        Assert.Equal(0, s.Pos);        // never advanced — Current is still `a`
+        Assert.Equal(0, s.Filed);
+        Assert.Equal(a, s.Current);
+        Assert.False(s.CanUndo);       // no undo entry was pushed
+        Assert.Empty(h.Rows());        // no history row for a move that half-failed
+    }
+
+    [Fact]
+    public void SessionSkipThatSurvivesAtTheSourceAdvancesNothingAndLogsNothing()
+    {
+        using var h = new History(Path.Combine(_root, "h.sqlite"));
+        var cfg = new Config { Inbox = _inbox, Deferred = _deferred };
+        var s = new Session(cfg, h, _cfgPath);
+        var a = MakePdf(_inbox, "20240101--1.pdf");
+        var originalBytes = File.ReadAllBytes(a);
+        s.Start(new[] { a });
+        Commit.SurvivingSourceHookForTests = () => File.WriteAllBytes(a, originalBytes);
+
+        var ex = Assert.Throws<CommitError>(() => s.SkipCurrent());
+
+        Assert.Contains("20240101--1.pdf", ex.Message);
+        Assert.Equal(0, s.Pos);
+        Assert.Equal(0, s.Skipped);
+        Assert.Equal(a, s.Current);
+        Assert.False(s.CanUndo);
+        Assert.Empty(h.Rows());
     }
 }

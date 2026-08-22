@@ -38,6 +38,37 @@ public static class Commit
             throw new CommitError($"Couldn't move {Path.GetFileName(src)} to " +
                                   $"{Path.GetDirectoryName(target)}:\n{ex.Message}");
         }
+
+        SurvivingSourceHookForTests?.Invoke();
+
+        // File.Move is MoveFileExW with MOVEFILE_COPY_ALLOWED, documented: "If
+        // the file is successfully copied to a different volume and the
+        // original file is unable to be deleted, the function succeeds
+        // leaving the source file intact." Inbox on one share and routes on
+        // another is the normal deployment here, so a non-throwing return
+        // above is NOT proof src is gone (2026-08 audit finding QC-03). Left
+        // unchecked: the UI reports "Filed", Session logs the row and
+        // advances, and the original sits in the inbox forever — worse,
+        // UndoAction's own File.Exists(originalPath) guard further down this
+        // file then reads "original still there" as "already exists again"
+        // and refuses the undo, so the user is left with two copies and no
+        // way back through the app. Re-check explicitly and refuse instead.
+        //
+        // Do NOT delete the destination copy to clean this up: it's the one
+        // file that demonstrably wrote successfully, and deleting it on a
+        // path that's already behaving abnormally risks destroying the only
+        // good copy. Refusing loudly and leaving both copies in place for a
+        // human to sort out is the correct behaviour here.
+        if (File.Exists(src))
+            throw new CommitError(
+                $"{Path.GetFileName(src)} could not be filed cleanly. A copy " +
+                "reached the destination, but the original could not be " +
+                "removed from the inbox — Windows allows a cross-volume move " +
+                "to report success even when it can't delete the source. Two " +
+                $"copies of this document now exist: the new one at {target}, " +
+                $"and the original still at {src}. This document has NOT been " +
+                "recorded as filed. Confirm the copy at the destination is " +
+                "correct, then remove the original from the inbox by hand.");
     }
 
     public static CommitOutcome CommitFile(
@@ -133,6 +164,21 @@ public static class Commit
     /// instant between the guard and the move) instead of relying on real
     /// thread timing. Production code never sets this.</summary>
     internal static Action? RaceHookForTests;
+
+    /// <summary>Test-only seam: when set, invoked inside MoveNeverOverwrite
+    /// immediately after File.Move returns without throwing, before the
+    /// File.Exists(src) recheck below decides whether the move actually took.
+    /// Lets a test simulate the one Win32 branch nothing here can reproduce
+    /// reliably on one machine — MoveFileExW's MOVEFILE_COPY_ALLOWED path,
+    /// where a cross-volume move that can't delete its source still reports
+    /// success (2026-08 audit finding QC-03) — by recreating src itself, the
+    /// same "make the filesystem match the scenario, then let the real check
+    /// run" approach RaceHookForTests/SkipRaceHookForTests use for their own
+    /// races. Not split per caller the way those two are: this check has no
+    /// caller-specific behaviour to protect, so it fires uniformly for every
+    /// MoveNeverOverwrite call (CommitFile, SkipFile, UndoAction alike).
+    /// Production code never sets this.</summary>
+    internal static Action? SurvivingSourceHookForTests;
 
     /// <summary>Reverse one commit/skip: move the file back to its original
     /// name. Raises CommitError if the undo can't be done — the filed copy
