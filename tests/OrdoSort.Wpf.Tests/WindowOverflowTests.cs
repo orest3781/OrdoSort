@@ -61,18 +61,31 @@ public class WindowOverflowTests
     private readonly HighlightContrastFixture _fx;
     public WindowOverflowTests(HighlightContrastFixture fx) => _fx = fx;
 
+    /// <param name="MinExamined">How many text-bearing elements this window
+    /// must put in front of OverflowProbe. Required, not defaulted, so a new
+    /// registry entry cannot quietly arrive unguarded — and per-window rather
+    /// than one shared number because the registry spans AboutWindow's 6
+    /// elements and SettingsWindow's 326 across seven tabs: a floor low enough
+    /// for the smallest window proves almost nothing about the largest, which
+    /// is QC-09's blindness back in partial form on exactly the windows with
+    /// the most to check. Each value is three quarters of the count measured
+    /// on this machine, rounded up (the count is in the comment beside it) —
+    /// tight enough that losing a quarter of a window's traversal fails,
+    /// loose enough to survive ordinary copy edits. Re-measure by raising the
+    /// assertion below and reading the counts out of the failure messages.</param>
     private sealed record Probe(
         double MinWidth,
         double DefaultWidth,
         double MinHeight,
         double DefaultHeight,
         Func<(Window window, Action? cleanup)> Build,
+        int MinExamined,
         bool SetWidthAfterShow = false,
         bool ProbeEveryTab = false);
 
     private static Dictionary<string, Probe> Registry() => new()
     {
-        ["AboutWindow"] = new(340, 380, 220, 240, () => (new AboutWindow(), null)),
+        ["AboutWindow"] = new(340, 380, 220, 240, () => (new AboutWindow(), null), MinExamined: 5),   // 6 measured
 
         ["BulkRenameWindow"] = new(700, 820, 520, 640, () =>
         {
@@ -82,7 +95,7 @@ public class WindowOverflowTests
                 changed: true, manual: true, needsName: false, editSeed: "20240101-SMITH-JOHN.pdf",
                 noteIsProblem: false));
             return (new BulkRenameWindow(vm), null);
-        }),
+        }, MinExamined: 40),   // 53 measured
 
         ["FilenameListWindow"] = new(480, 640, 400, 560, () =>
         {
@@ -108,7 +121,7 @@ public class WindowOverflowTests
                 @"C:\inbox\a-long-enough-folder-path-to-matter-at-minwidth",
                 @"C:\inbox\a-long-enough-folder-path-to-matter-at-minwidth\a-long-enough-filename-to-matter.pdf"));
             return (new FilenameListWindow(vm), null);
-        }),
+        }, MinExamined: 33),   // 44 measured
 
         ["HistoryWindow"] = new(700, 980, 400, 640, () =>
         {
@@ -123,7 +136,7 @@ public class WindowOverflowTests
                 SqliteConnection.ClearAllPools();
                 try { File.Delete(dbPath); } catch { /* best effort */ }
             });
-        }),
+        }, MinExamined: 20),   // 26 measured
 
         ["ListReformatWindow"] = new(480, 620, 400, 520, () =>
             (new ListReformatWindow(new ListReformatViewModel
@@ -134,14 +147,14 @@ public class WindowOverflowTests
                 InputText = "alpha\n\nbravo\n\ncharlie\n\nalpha",
                 Dedupe = true,
                 Shape = ListReformat.OutputShape.CustomDelimiter,
-            }), null)),
+            }), null), MinExamined: 17),   // 22 measured
 
         ["ManageSavedWindow"] = new(380, 420, 360, 420, () =>
         {
             var vm = new UnlockViewModel(new Config(), () => true);
             vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
             return (new ManageSavedWindow(vm), null);
-        }),
+        }, MinExamined: 10),   // 13 measured
 
         ["MatchMergeWindow"] = new(720, 840, 520, 640, () =>
         {
@@ -150,7 +163,7 @@ public class WindowOverflowTests
                 "a-long-enough-filename-to-matter.pdf", "SMITH, JOHN — 1234567890.pdf",
                 "3 candidates — decide in Review matches", "ambiguous"));
             return (new MatchMergeWindow(vm), null);
-        }),
+        }, MinExamined: 26),   // 34 measured
 
         ["PageCountsWindow"] = new(580, 700, 440, 560, () =>
         {
@@ -160,14 +173,14 @@ public class WindowOverflowTests
                 "password-protected or unreadable — couldn't count"));
             vm.Rows.Add(row);
             return (new PageCountsWindow(vm), null);
-        }),
+        }, MinExamined: 19),   // 25 measured
 
         ["PrintPreviewWindow"] = new(680, 900, 560, 840, () =>
         {
             var doc = LabelPrinting.BuildDocument(
                 BoxLabels.Batch("ABCD", 1, 12, new DateTime(2026, 7, 25), 30));
             return (new PrintPreviewWindow(doc, "test", _ => { }), null);
-        }),
+        }, MinExamined: 18),   // 24 measured
 
         ["SettingsWindow"] = new(760, 880, 560, 820, () =>
         {
@@ -182,7 +195,7 @@ public class WindowOverflowTests
                 () => ThemePalette.Light, cfgPath,
                 uiContext: SynchronizationContext.Current);
             return (new SettingsWindow(vm), null);
-        }, ProbeEveryTab: true),
+        }, MinExamined: 245, ProbeEveryTab: true),   // 326 measured
 
         ["TriageWindow"] = new(900, 1150, 560, 720, () =>
         {
@@ -200,7 +213,7 @@ public class WindowOverflowTests
             win.ShowCurrentAsync().GetAwaiter().GetResult();
 #pragma warning restore xUnit1031
             return (win, null);
-        }),
+        }, MinExamined: 14),   // 18 measured
 
         ["UnlockWindow"] = new(540, 620, 560, 660, () =>
         {
@@ -210,7 +223,7 @@ public class WindowOverflowTests
                 "This PDF needs a password none of the saved ones supply.");
             vm.Files.Add(row);
             return (new UnlockWindow(vm), null);
-        }),
+        }, MinExamined: 17),   // 22 measured
 
         // Both tabs are seeded and both are probed (ProbeEveryTab): only the
         // selected tab's content exists in the visual tree, and an empty list
@@ -231,7 +244,7 @@ public class WindowOverflowTests
                 Message: "couldn't read 'entry.pdf' inside the zip — a long enough exception message to matter"));
             vm.MergePdfs.Rows.Add(toMerge);
             return (new ZipToolsWindow(vm), null);
-        }, ProbeEveryTab: true),
+        }, MinExamined: 38, ProbeEveryTab: true),   // 50 measured
 
         ["MainWindow"] = new(400, 470, 0, 0, () =>
         {
@@ -258,7 +271,7 @@ public class WindowOverflowTests
                     catch (UnauthorizedAccessException) { Thread.Sleep(50); }
                 }
             });
-        }, SetWidthAfterShow: true),
+        }, MinExamined: 9, SetWidthAfterShow: true),   // 11 measured
     };
 
     public static TheoryData<string, double, bool> Cases()
@@ -326,15 +339,19 @@ public class WindowOverflowTests
                 offenders.AddRange(OverflowProbe.Escapees(content, checkVertical: true, out examined));
             }
 
-            // Sized off the SMALLEST registered window: AboutWindow judges 6
-            // (two buttons, the TextBlocks their content presenters generate,
-            // two prose lines), where SettingsWindow's seven tabs judge 333.
-            // The point is to catch the probe going blind, not to pin element
-            // counts, so it sits just under the smallest real one.
-            Assert.True(examined >= 5,
-                $"{windowName} at font {fontSize}, width {width}: the probe examined only " +
-                $"{examined} elements — it is not measuring anything, so the assertion below " +
-                "passes vacuously");
+            // Per-window (see Probe.MinExamined). What this proves is that
+            // the traversal still reaches roughly as much of THIS window as it
+            // did when the floors were measured — not that it reached every
+            // element: the deliberate quarter of slack means a window could
+            // lose up to a quarter of its controls to a Collapsed binding and
+            // still pass. Guarding that last quarter would mean a number that
+            // fails on every copy edit, and a floor that gets tuned away is
+            // worth less than one that holds.
+            Assert.True(examined >= probe.MinExamined,
+                $"{windowName} at font {fontSize}, width {width}: the probe examined {examined} " +
+                $"elements, below this window's floor of {probe.MinExamined} — it is measuring " +
+                "less of the window than it used to, so the assertion below proves less than it " +
+                "appears to");
             Assert.True(offenders.Count == 0,
                 $"{windowName} at font {fontSize}, width {width}: elements escape the window:\n  " +
                 string.Join("\n  ", offenders));
