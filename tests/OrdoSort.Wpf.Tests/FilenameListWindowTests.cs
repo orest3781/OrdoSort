@@ -13,6 +13,35 @@ public class FilenameListWindowTests
     private readonly HighlightContrastFixture _fx;
     public FilenameListWindowTests(HighlightContrastFixture fx) => _fx = fx;
 
+    /// <summary>Audit FL-04. The grid shipped with WPF's own clipboard support
+    /// live, so Ctrl+C emitted DataGrid's tab-separated cells with NO header
+    /// row, while the Copy button emitted FilenameList.ToText — which for a
+    /// table-shaped listing DOES write a header, and for a numbered list writes
+    /// "1. name" rather than "1	name". Same selection, two different payloads,
+    /// nothing on screen saying which one you got.
+    ///
+    /// Setting ClipboardCopyMode to None is what actually closes that: it takes
+    /// WPF's copy out of the picture entirely, leaving the window's own Ctrl+C
+    /// handler to call the same method the button calls. One payload, by
+    /// construction rather than by two implementations agreeing.</summary>
+    [Fact]
+    public void TheGridDoesNotRunItsOwnClipboardCopy() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs());
+        var window = new FilenameListWindow(vm);
+        window.Left = -20000; window.Top = 0; window.ShowActivated = false;
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+
+            Assert.Equal(DataGridClipboardCopyMode.None, window.NamesGrid.ClipboardCopyMode);
+        }
+        finally { window.Close(); }
+    });
+
     /// <summary>The column-visibility mechanism is imperative on purpose: a
     /// DataGridColumn is not in the visual or logical tree, so a RelativeSource
     /// binding to the view model never resolves and would fail SILENTLY, leaving
@@ -56,6 +85,7 @@ public class FilenameListWindowTests
                 (v => vm.ShowModified = v, window.ModifiedColumn, nameof(vm.ShowModified)),
                 (v => vm.ShowFolder = v, window.FolderColumn, nameof(vm.ShowFolder)),
                 (v => vm.ShowFullPath = v, window.FullPathColumn, nameof(vm.ShowFullPath)),
+                (v => vm.ShowPages = v, window.PagesColumn, nameof(vm.ShowPages)),
             };
 
             // Columns default off (FilenameListViewModel.Columns starts at

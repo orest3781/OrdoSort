@@ -19,6 +19,49 @@ public class FilenameListTests : IDisposable
         return path;
     }
 
+    /// <summary>The Pages column is the first that cannot come from the walk —
+    /// it costs a PdfReader.Open per file — but once a row carries it, it
+    /// exports like any other data column. A row that could NOT be counted
+    /// carries its reason in the cell rather than a silent blank, matching what
+    /// PageCountsViewModel.OutputText has always written: a hole in a manifest
+    /// tells you nothing, "password-protected" tells you what to do next.</summary>
+    [Fact]
+    public void ThePagesColumnCarriesTheCountIntoTheTextExport()
+    {
+        var counted = RowA with { Pages = 12 };
+        var failed = RowB with { PageNote = "password-protected or unreadable — couldn't count" };
+
+        var text = FilenameList.ToText(new[] { counted, failed }, FilenameList.Columns.Pages);
+        var lines = text.Split(Environment.NewLine);
+
+        Assert.Equal("Name	Pages", lines[0]);
+        Assert.Equal("invoice-2024.pdf	12", lines[1]);
+        Assert.Equal("invoice-2025.pdf	password-protected or unreadable — couldn't count", lines[2]);
+    }
+
+    [Fact]
+    public void ThePagesColumnCarriesTheCountIntoTheCsvExport()
+    {
+        var counted = RowA with { Pages = 12 };
+
+        var csv = FilenameList.ToCsv(new[] { counted }, FilenameList.Columns.Pages);
+        var lines = csv.Split(Environment.NewLine);
+
+        Assert.Equal("Name,Pages", lines[0]);
+        Assert.Equal("invoice-2024.pdf,12", lines[1]);
+    }
+
+    /// <summary>Pages is a DATA column, so switching it on makes the listing a
+    /// table — which is what flips the save dialog and the Save button's own
+    /// label from .txt to .csv. Number alone still doesn't.</summary>
+    [Fact]
+    public void ThePagesColumnMakesTheListingATable()
+    {
+        Assert.True(FilenameList.IsTable(FilenameList.Columns.Pages));
+        Assert.True(FilenameList.IsTable(FilenameList.Columns.Pages | FilenameList.Columns.Number));
+        Assert.False(FilenameList.IsTable(FilenameList.Columns.Number));
+    }
+
     [Fact]
     public void IncludeExtensionFalseStripsTheExtension()
     {

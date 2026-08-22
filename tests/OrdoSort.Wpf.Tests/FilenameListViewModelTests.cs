@@ -52,8 +52,9 @@ public class FilenameListViewModelTests : IDisposable
         }
     }
 
-    private static FilenameListViewModel MakeVm(FakeDialogs dialogs) =>
-        new(dialogs, new InlineWorkScheduler(), uiContext: null, probeDelayMs: 0);
+    private static FilenameListViewModel MakeVm(FakeDialogs dialogs,
+        Func<string, PageCounts.CountResult>? counter = null) =>
+        new(dialogs, new InlineWorkScheduler(), uiContext: null, probeDelayMs: 0, counter: counter);
 
     [Fact]
     public void BrowseFolderPopulatesRowsFromTheChosenFolder()
@@ -155,6 +156,65 @@ public class FilenameListViewModelTests : IDisposable
         vm.SaveCommand.Execute(null);   // must not throw
 
         Assert.Equal("", vm.Status);
+    }
+
+    /// <summary>Audit FL-06. Status carried "Copied 12 names", "Saved to
+    /// filenames.csv", "Couldn't save: …" and "Clipboard busy" in one amber —
+    /// the colour this app reserves for "needs attention", so a clean save
+    /// looked exactly like a failed one. PageCountsWindow, written for the same
+    /// footer, already puts save/copy feedback in CaptionText and keeps amber
+    /// for the batch's own verdict; its comment even cites this window as the
+    /// model it followed. This window was the one not following its own
+    /// convention. The view model now says which kind of message it is.</summary>
+    [Fact]
+    public void ASuccessfulSaveIsNotFlaggedAsAProblem()
+    {
+        Touch("a.pdf");
+        var dialogs = new FakeDialogs { NextSaveFile = Path.Combine(_dir, "out.txt") };
+        var vm = MakeVm(dialogs);
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle before saving");
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.Contains("Saved to", vm.Status);
+        Assert.False(vm.StatusIsProblem);
+    }
+
+    [Fact]
+    public void AFailedSaveIsFlaggedAsAProblem()
+    {
+        Touch("a.pdf");
+        var intoAMissingFolder = Path.Combine(_dir, "no-such-folder", "out.txt");
+        var dialogs = new FakeDialogs { NextSaveFile = intoAMissingFolder };
+        var vm = MakeVm(dialogs);
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle before saving");
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.Contains("Couldn't save", vm.Status);
+        Assert.True(vm.StatusIsProblem);
+    }
+
+    /// <summary>A problem flag that never clears is its own bug: the next
+    /// successful action has to put the footer back to normal.</summary>
+    [Fact]
+    public void ASuccessAfterAFailureClearsTheProblemFlag()
+    {
+        Touch("a.pdf");
+        var dialogs = new FakeDialogs { NextSaveFile = Path.Combine(_dir, "gone", "out.txt") };
+        var vm = MakeVm(dialogs);
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle before saving");
+
+        vm.SaveCommand.Execute(null);
+        Assert.True(vm.StatusIsProblem);
+
+        dialogs.NextSaveFile = Path.Combine(_dir, "out.txt");
+        vm.SaveCommand.Execute(null);
+
+        Assert.False(vm.StatusIsProblem);
     }
 
     [Fact]
@@ -346,6 +406,253 @@ public class FilenameListViewModelTests : IDisposable
         Assert.Empty(vm.Rows);
         Assert.False(vm.IsEmpty);      // the file is still listed, just hidden
         Assert.True(vm.NoMatches);
+    }
+
+    /// <summary>Audit FL-01. The IsEmpty/NoMatches split fixed the Find box
+    /// and only the Find box. ExtensionFilter is applied inside Build (via
+    /// Intake.Expand), so a type filter matching nothing empties _allRows as
+    /// well as Rows — and IsEmpty, defined as "Rows.Count == 0 &amp;&amp;
+    /// _allRows.Count == 0", went true. A user with a folder already added
+    /// was told to drag in files they had already dragged in: the exact bug
+    /// the split exists to prevent, reached by the other filter.</summary>
+    [Fact]
+    public void TheTypeFilterHidingEverythingIsNoMatchesNotAnEmptyList()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("invoice.pdf");
+        var vm = MakeVm(dialogs);
+
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle first");
+
+        vm.ExtensionFilter = "zzz";
+        WaitFor(() => vm.Rows.Count == 0, "the type filter should hide the only file");
+
+        Assert.False(vm.IsEmpty);      // the folder IS added — nothing left to drag in
+        Assert.True(vm.NoMatches);
+    }
+
+    /// <summary>Audit FL-03. Reproject calls Rows.Clear(), the DataGrid drops
+    /// its selection on that Reset, and the window pushes the now-empty
+    /// selection straight back into SelectedPaths — so selecting five rows and
+    /// then ticking a column in Columns ▾ (a perfectly ordinary thing to do
+    /// before copying) silently turned "copy my five" into "copy all 200",
+    /// with CopyText's everything-when-nothing-is-selected fallback making it
+    /// look like a clean copy.
+    ///
+    /// The handler below IS the regression: a view model on its own never sees
+    /// the selection cleared, so a test without it passes against the broken
+    /// code and proves nothing. It reproduces exactly what WPF does.</summary>
+    [Fact]
+    public void TheRowSelectionSurvivesAReprojection()
+    {
+        Touch("alpha.pdf");
+        Touch("beta.pdf");
+        Touch("gamma.pdf");
+        var vm = MakeVm(new FakeDialogs());
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 3, "the add should settle first");
+
+        vm.Rows.CollectionChanged += (_, e) =>
+        {
+            if (e.Action == NotifyCollectionChangedAction.Reset)
+                vm.SelectedPaths = Array.Empty<string>();
+        };
+
+        var alpha = Path.Combine(_dir, "alpha.pdf");
+        vm.SelectedPaths = new[] { alpha };
+
+        vm.Descending = true;   // a reproject that hides nothing
+
+        Assert.Equal(new[] { alpha }, vm.SelectedPaths);
+        Assert.Equal("alpha.pdf", vm.CopyText);
+    }
+
+    /// <summary>The other half of FL-03: restoring the selection must not
+    /// resurrect rows the reproject deliberately hid, or Copy would emit a
+    /// name that is no longer on screen.</summary>
+    [Fact]
+    public void ARestoredSelectionDropsRowsTheFilterHid()
+    {
+        Touch("alpha.pdf");
+        Touch("beta.pdf");
+        var vm = MakeVm(new FakeDialogs());
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        vm.Rows.CollectionChanged += (_, e) =>
+        {
+            if (e.Action == NotifyCollectionChangedAction.Reset)
+                vm.SelectedPaths = Array.Empty<string>();
+        };
+
+        var alpha = Path.Combine(_dir, "alpha.pdf");
+        vm.SelectedPaths = new[] { alpha, Path.Combine(_dir, "beta.pdf") };
+
+        vm.NameFilter = "alpha";
+
+        Assert.Equal(new[] { alpha }, vm.SelectedPaths);
+    }
+
+    /// <summary>Audit FL-05. Delete removed rows instantly and the only way
+    /// back was "Restore removed", which restores EVERYTHING — so curating 60
+    /// rows down to 12 and then fat-fingering Delete once more meant undoing
+    /// all 48 and starting over. Removals become a stack; Ctrl+Z pops the last
+    /// batch and leaves every earlier one alone.</summary>
+    [Fact]
+    public void UndoRestoresOnlyTheLastRemovalBatch()
+    {
+        Touch("alpha.pdf");
+        Touch("beta.pdf");
+        Touch("gamma.pdf");
+        var vm = MakeVm(new FakeDialogs());
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 3, "the add should settle first");
+
+        vm.SelectedPaths = new[] { Path.Combine(_dir, "alpha.pdf") };
+        vm.RemoveSelectedCommand.Execute(null);
+        Assert.Equal(2, vm.Rows.Count);
+
+        vm.SelectedPaths = new[] { Path.Combine(_dir, "beta.pdf") };
+        vm.RemoveSelectedCommand.Execute(null);
+        Assert.Single(vm.Rows);
+
+        vm.UndoRemovalCommand.Execute(null);
+
+        // beta comes back; alpha stays removed — that is the whole point
+        Assert.Equal(new[] { "beta.pdf", "gamma.pdf" }, vm.Rows.Select(r => r.Name));
+    }
+
+    /// <summary>Undo pops one batch at a time; Restore removed still clears the
+    /// whole stack in one go. Two controls, each saying plainly what it does.</summary>
+    [Fact]
+    public void RestoreRemovedStillClearsEveryBatchAtOnce()
+    {
+        Touch("alpha.pdf");
+        Touch("beta.pdf");
+        var vm = MakeVm(new FakeDialogs());
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        vm.SelectedPaths = new[] { Path.Combine(_dir, "alpha.pdf") };
+        vm.RemoveSelectedCommand.Execute(null);
+        vm.SelectedPaths = new[] { Path.Combine(_dir, "beta.pdf") };
+        vm.RemoveSelectedCommand.Execute(null);
+        Assert.Empty(vm.Rows);
+
+        vm.RestoreRemovedCommand.Execute(null);
+
+        Assert.Equal(2, vm.Rows.Count);
+        Assert.Equal(0, vm.RemovedCount);
+    }
+
+    /// <summary>Undo with nothing removed must be a no-op, not a crash — the
+    /// keystroke is always live, whatever state the list is in.</summary>
+    [Fact]
+    public void UndoWithNothingRemovedDoesNothing()
+    {
+        Touch("alpha.pdf");
+        var vm = MakeVm(new FakeDialogs());
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle first");
+
+        vm.UndoRemovalCommand.Execute(null);
+
+        Assert.Single(vm.Rows);
+    }
+
+    /// <summary>The Pages column is the first that costs disk I/O per row, so
+    /// nothing is counted until it is asked for. The Assert.All below is what
+    /// makes this a real test rather than one waiting on a state the code had
+    /// already reached: it pins the false half of the transition before
+    /// ShowPages is ever set.</summary>
+    [Fact]
+    public void TurningOnThePagesColumnCountsTheListedPdfs()
+    {
+        Touch("a.pdf");
+        Touch("b.pdf");
+        var vm = MakeVm(new FakeDialogs(), counter: p => new PageCounts.CountResult(p, 7));
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        Assert.All(vm.Rows, r => Assert.Null(r.Pages));   // nothing counted until asked
+
+        vm.ShowPages = true;
+
+        WaitFor(() => vm.Rows.All(r => r.Pages == 7), "every listed PDF should get its count");
+    }
+
+    /// <summary>Opening a .txt as a PDF is a guaranteed failure and a wasted
+    /// disk read; the counter must never even be asked.</summary>
+    [Fact]
+    public void OnlyPdfRowsAreEverCounted()
+    {
+        Touch("a.pdf");
+        Touch("notes.txt");
+        var asked = new List<string>();
+        var vm = MakeVm(new FakeDialogs(), counter: p =>
+        {
+            lock (asked) asked.Add(p);
+            return new PageCounts.CountResult(p, 3);
+        });
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        vm.ShowPages = true;
+        WaitFor(() => vm.Rows.Single(r => r.Name == "a.pdf").Pages == 3, "the PDF should be counted");
+
+        Assert.Null(vm.Rows.Single(r => r.Name == "notes.txt").Pages);
+        Assert.Equal(new[] { Path.Combine(_dir, "a.pdf") }, asked);
+    }
+
+    /// <summary>A count that fails carries its reason into the row, the way
+    /// PageCountsViewModel's own Note column always has — a blank cell would
+    /// leave the user unable to tell "not a PDF" from "locked".</summary>
+    [Fact]
+    public void AFailedCountCarriesItsReasonIntoTheRow()
+    {
+        Touch("locked.pdf");
+        var vm = MakeVm(new FakeDialogs(), counter: p =>
+            new PageCounts.CountResult(p, null, "open in another program — couldn't count"));
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle first");
+
+        vm.ShowPages = true;
+
+        WaitFor(() => vm.Rows[0].PageNote.Length > 0, "the failure should reach the row");
+        Assert.Null(vm.Rows[0].Pages);
+        Assert.Contains("another program", vm.Rows[0].PageNote);
+    }
+
+    /// <summary>Counts are cached on the full path, so the reprojections that
+    /// happen on every Find keystroke re-render what is already known instead
+    /// of going back to disk. Without this, typing in the Find box would reopen
+    /// every PDF in the list, once per character.</summary>
+    [Fact]
+    public void ACountedRowIsNotCountedAgainWhenTheFilterChanges()
+    {
+        Touch("alpha.pdf");
+        Touch("beta.pdf");
+        var calls = 0;
+        var vm = MakeVm(new FakeDialogs(), counter: p =>
+        {
+            Interlocked.Increment(ref calls);
+            return new PageCounts.CountResult(p, 5);
+        });
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        vm.ShowPages = true;
+        WaitFor(() => vm.Rows.All(r => r.Pages == 5), "both PDFs should be counted");
+        var callsAfterCounting = calls;
+
+        // Reproject is synchronous inside the setter, so this needs no polling —
+        // and polling for an already-true condition is exactly the trap here.
+        vm.NameFilter = "alpha";
+
+        Assert.Single(vm.Rows);
+        Assert.Equal(5, vm.Rows[0].Pages);            // still shows what it knows
+        Assert.Equal(callsAfterCounting, calls);      // without going back to disk
     }
 
     [Fact]

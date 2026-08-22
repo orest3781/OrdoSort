@@ -27,7 +27,18 @@ public static class FilenameList
         long? Size,
         DateTime? Modified,
         string Folder,
-        string FullPath);
+        string FullPath,
+        int? Pages = null,
+        string PageNote = "")
+    {
+        /// <summary>What the Pages column shows and exports: the count when there
+        /// is one, otherwise the reason there is not. Defined once, on the row,
+        /// so the grid cell and both export shapes cannot drift apart — the same
+        /// discipline IsTable exists for. Both empty means "not a PDF", which is
+        /// not an error and needs no explanation.</summary>
+        public string PageCell =>
+            Pages?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? PageNote;
+    }
 
     public sealed record Listing(IReadOnlyList<FileRow> Rows, int Ignored, string Error = "");
 
@@ -86,6 +97,7 @@ public static class FilenameList
         Modified = 4,
         Folder = 8,
         FullPath = 16,
+        Pages = 32,
     }
 
     /// <summary>True once any column carrying DATA is on. Number alone does not
@@ -99,6 +111,12 @@ public static class FilenameList
     private static string Cell(FileRow row, Columns column, int index) => column switch
     {
         Columns.Number => (index + 1).ToString(CultureInfo.InvariantCulture),
+        // The count when there is one, otherwise the reason there isn't — the
+        // shape PageCountsViewModel.OutputText has always written. A blank cell
+        // in a manifest tells the reader nothing; "password-protected" tells
+        // them what to do about it. Both empty means "not a PDF", or "not
+        // counted yet", which are correctly indistinguishable in an export.
+        Columns.Pages => row.PageCell,
         Columns.Size => row.Size?.ToString(CultureInfo.InvariantCulture) ?? "",
         Columns.Modified => row.Modified?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? "",
         Columns.Folder => row.Folder,
@@ -112,6 +130,7 @@ public static class FilenameList
     {
         (Columns.Number, "#"),
         (Columns.None, "Name"),
+        (Columns.Pages, "Pages"),
         (Columns.Size, "Size"),
         (Columns.Modified, "Modified"),
         (Columns.Folder, "Folder"),

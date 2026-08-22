@@ -20,6 +20,8 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
 {
     private readonly IDialogService _dialogs;
     private readonly IWorkScheduler _scheduler;
+    private readonly SynchronizationContext? _uiContext;
+    private readonly Func<string, PageCounts.CountResult> _counter;
 
     // Dropped/browsed roots (files and/or folders) — deduped on full path,
     // OrdinalIgnoreCase (Windows paths). Existence isn't checked here; a
@@ -45,6 +47,40 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     // holding row references would let every removed row reappear on the next
     // keystroke in the extension box.
     private readonly HashSet<string> _excluded = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The same removals as <see cref="_excluded"/>, but kept in the
+    /// order they happened so Ctrl+Z can undo ONE of them (audit FL-05). The set
+    /// answers "is this row hidden?" on every reproject and the list answers
+    /// "what was the last thing I removed?"; keeping both beats deriving either,
+    /// because the set is hit once per row per keystroke. A path appears in at
+    /// most one batch — RemoveSelected only records paths the set did not
+    /// already hold — so popping a batch can never resurrect a row an earlier
+    /// batch removed.</summary>
+    private readonly List<List<string>> _removalBatches = new();
+
+    /// <summary>How many PDFs are opened at once — the same figure and the same
+    /// reasoning as PageCountsViewModel.MaxConcurrentCounts and
+    /// UnlockViewModel.MaxConcurrentUnlocks: the work is spent waiting on I/O,
+    /// PDFs may live on a slow share, and four overlaps most of that waiting
+    /// without turning the share itself into the bottleneck.</summary>
+    internal const int MaxConcurrentCounts = 4;
+
+    /// <summary>Page counts already known, keyed on full path — the same
+    /// identity _excluded and the selection restore use, and for the same
+    /// reason: a reproject hands out NEW FileRow instances for the same files,
+    /// so anything keyed on the row itself would be thrown away on every Find
+    /// keystroke. Keyed this way, the Find box re-renders what is already known
+    /// instead of reopening every PDF in the list once per character.</summary>
+    private readonly Dictionary<string, PageCounts.CountResult> _pageCounts =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Paths whose count is running right now. Reproject fires on
+    /// every keystroke and asks for counts each time; without this, a slow
+    /// share would collect a fresh request per character for the same file.</summary>
+    private readonly HashSet<string> _countsInFlight = new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly SemaphoreSlim _countGate = new(MaxConcurrentCounts);
+    private CancellationTokenSource _countCts = new();
 
     public int RemovedCount => _allRows.Count(r => _excluded.Contains(r.FullPath));
 
@@ -80,8 +116,14 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
             Raise(nameof(IsTableShape));
             Raise(nameof(SaveLabel));
             Raise(nameof(ShowNumber)); Raise(nameof(ShowSize)); Raise(nameof(ShowModified));
-            Raise(nameof(ShowFolder)); Raise(nameof(ShowFullPath));
-            Reproject();
+            Raise(nameof(ShowFolder)); Raise(nameof(ShowFullPath)); Raise(nameof(ShowPages));
+
+            // Unticking Pages IS the cancel affordance — there is no separate
+            // button. Counts already gathered stay in _pageCounts, so ticking it
+            // back on is instant rather than a second trip to the disk.
+            if (!ShowPages) CancelCounting();
+
+            Reproject();   // starts counting again when the column is on
         }
     }
 
@@ -98,6 +140,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     public bool ShowModified { get => Has(FilenameList.Columns.Modified); set => Toggle(FilenameList.Columns.Modified, value); }
     public bool ShowFolder   { get => Has(FilenameList.Columns.Folder);   set => Toggle(FilenameList.Columns.Folder, value); }
     public bool ShowFullPath { get => Has(FilenameList.Columns.FullPath); set => Toggle(FilenameList.Columns.FullPath, value); }
+    public bool ShowPages    { get => Has(FilenameList.Columns.Pages);    set => Toggle(FilenameList.Columns.Pages, value); }
 
     private string _nameFilter = "";
     public string NameFilter
@@ -144,10 +187,13 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     }
 
     public FilenameListViewModel(IDialogService dialogs, IWorkScheduler? scheduler = null,
-        SynchronizationContext? uiContext = null, int probeDelayMs = 300)
+        SynchronizationContext? uiContext = null, int probeDelayMs = 300,
+        Func<string, PageCounts.CountResult>? counter = null)
     {
         _dialogs = dialogs;
         _scheduler = scheduler ?? new TaskWorkScheduler();
+        _uiContext = uiContext;
+        _counter = counter ?? PageCounts.Count;
         _listingProbe = new DebouncedProbe<FilenameList.Listing>(_scheduler, uiContext, ApplyListing, probeDelayMs);
 
         BrowseFolderCommand = new RelayCommand(() =>
@@ -164,24 +210,48 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         {
             _sources.Clear();
             _excluded.Clear();
+            _removalBatches.Clear();
+            CancelCounting();
+            _pageCounts.Clear();   // a re-added file may have changed on disk
             Refresh(immediate: true);
         });
         RemoveSelectedCommand = new RelayCommand(() =>
         {
             if (_selectedPaths.Count == 0) return;
-            foreach (var path in _selectedPaths) _excluded.Add(path);
+
+            var batch = new List<string>();
+            foreach (var path in _selectedPaths)
+                if (_excluded.Add(path)) batch.Add(path);   // Add() is false if already hidden
+            if (batch.Count == 0) return;
+
+            _removalBatches.Add(batch);
             SelectedPaths = Array.Empty<string>();
+            Reproject();
+        });
+        UndoRemovalCommand = new RelayCommand(() =>
+        {
+            if (_removalBatches.Count == 0) return;
+            var last = _removalBatches[^1];
+            _removalBatches.RemoveAt(_removalBatches.Count - 1);
+            foreach (var path in last) _excluded.Remove(path);
             Reproject();
         });
         RestoreRemovedCommand = new RelayCommand(() =>
         {
             if (_excluded.Count == 0) return;
             _excluded.Clear();
+            _removalBatches.Clear();
             Reproject();
         });
     }
 
-    public void Dispose() => _listingProbe.Dispose();
+    public void Dispose()
+    {
+        CancelCounting();
+        _countCts.Dispose();
+        _countGate.Dispose();
+        _listingProbe.Dispose();
+    }
 
     // ------------------------------------------------------------- options
     private bool _includeSubfolders;
@@ -220,15 +290,42 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     ///
     /// Both are false whenever a row is actually visible, so a Rows collection
     /// seeded directly with no Build behind it (WindowOverflowTests does that)
-    /// still shows neither message, exactly as before.</summary>
-    public bool IsEmpty => Rows.Count == 0 && _allRows.Count == 0;
+    /// still shows neither message, exactly as before.
+    ///
+    /// Keyed on _sources, NOT on _allRows (audit FL-01). _allRows is what Build
+    /// RETURNED, and ExtensionFilter is applied inside Build — so a type filter
+    /// matching nothing empties _allRows too, and this flag went true, sending a
+    /// user with a folder already added back to "drag files in": precisely the
+    /// state the split exists to rule out, reached by the other filter. _sources
+    /// answers the question the empty state actually asks — has anything been
+    /// added at all? The Find box escaped this only because it filters
+    /// downstream, in Reproject, leaving _allRows intact.</summary>
+    public bool IsEmpty => Rows.Count == 0 && _sources.Count == 0;
 
-    /// <summary>Rows exist, but the projection is showing none of them — the
-    /// name filter, or everything having been removed. See <see cref="IsEmpty"/>.</summary>
-    public bool NoMatches => Rows.Count == 0 && _allRows.Count > 0;
+    /// <summary>Something was added, but the projection is showing none of it —
+    /// the name filter, the type filter, everything having been removed, or a
+    /// folder that turned out to hold no files. See <see cref="IsEmpty"/>.</summary>
+    public bool NoMatches => Rows.Count == 0 && _sources.Count > 0;
 
     private string _status = "";
     public string Status { get => _status; private set => Set(ref _status, value); }
+
+    /// <summary>Whether <see cref="Status"/> is reporting a FAILURE rather than
+    /// a completed action (audit FL-06). The window colours the line from this:
+    /// amber is this app's "needs attention", and spending it on "Copied 12
+    /// names" left a genuine save failure looking identical to a success.
+    /// PageCountsWindow already draws that distinction for the same footer.</summary>
+    private bool _statusIsProblem;
+    public bool StatusIsProblem { get => _statusIsProblem; private set => Set(ref _statusIsProblem, value); }
+
+    /// <summary>The one way Status is written, so the message and its severity
+    /// can never be set apart from each other — a stale problem flag under a
+    /// success message would be worse than the single colour it replaces.</summary>
+    private void SetStatus(string message, bool problem = false)
+    {
+        Status = message;
+        StatusIsProblem = problem;
+    }
 
     /// <summary>Feedback for the last AddPaths call ("nothing new — already
     /// listed"); blank when it added something.</summary>
@@ -241,6 +338,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     public RelayCommand ClearCommand { get; }
     public RelayCommand RemoveSelectedCommand { get; }
     public RelayCommand RestoreRemovedCommand { get; }
+    public RelayCommand UndoRemovalCommand { get; }
 
     /// <summary>Called by drag-drop and both pickers. Dedupes against what's
     /// already listed (OrdinalIgnoreCase on the path as given — the same
@@ -325,8 +423,18 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         var projected = visible.ToList();
         if (Descending) projected.Reverse();
 
+        // Snapshot BEFORE the rebuild (audit FL-03). Rows.Clear() below raises a
+        // Reset, the DataGrid drops its selection on it, and the window pushes
+        // that empty selection straight back into SelectedPaths — so by the time
+        // the adds finish, _selectedPaths is gone. Keyed on FullPath because a
+        // rebuild hands out NEW FileRow instances for the same files; the path is
+        // the only stable identity, the same reason _excluded is keyed that way.
+        var wasSelected = _selectedPaths;
+
         Rows.Clear();
-        foreach (var row in projected) Rows.Add(row);
+        foreach (var row in projected) Rows.Add(WithKnownCount(row));
+
+        RestoreSelection(wasSelected);
 
         CountsLine = _sources.Count == 0 ? "" : FormatCounts();
         Raise(nameof(IsEmpty));
@@ -335,7 +443,149 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         Raise(nameof(OutputCsv));
         Raise(nameof(CopyText));
         Raise(nameof(RemovedCount));
+
+        // Only ever counts what is VISIBLE and not yet known, so narrowing with
+        // the type box or the Find box scopes the work before it starts. Once
+        // everything on screen is counted this finds nothing to do and returns
+        // immediately, which is what makes it safe to call per keystroke.
+        if (ShowPages) _ = CountVisiblePdfsAsync();
     }
+
+    /// <summary>Re-attaches a page count this row already earned. FileRow is an
+    /// immutable record, so this is a with-copy rather than a mutation: the row
+    /// objects are rebuilt on every reproject and the dictionary is what
+    /// actually persists.</summary>
+    private FilenameList.FileRow WithKnownCount(FilenameList.FileRow row)
+    {
+        if (_pageCounts.TryGetValue(row.FullPath, out var known))
+            return row with { Pages = known.Pages, PageNote = known.Error };
+
+        // A row whose count is running says so. Without this it is blank, which
+        // is exactly what a non-PDF looks like — PageCountRow has modelled a
+        // Pending flag since the page-counts tool shipped and never rendered it,
+        // so "counting" and "nothing to count" were indistinguishable on screen.
+        return _countsInFlight.Contains(row.FullPath)
+            ? row with { PageNote = CountingMarker }
+            : row;
+    }
+
+    internal const string CountingMarker = "…";
+
+    private static bool IsPdf(string path) =>
+        Path.GetExtension(path).Equals(".pdf", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Counts every visible PDF whose count is neither already known
+    /// nor already running, four at a time. Opening a .txt as a PDF is a
+    /// guaranteed failure and a wasted disk read, so non-PDFs are never even
+    /// asked about — they simply have no page count, which is not an error.</summary>
+    private async Task CountVisiblePdfsAsync()
+    {
+        var token = _countCts.Token;
+
+        var todo = Rows.Select(r => r.FullPath)
+            .Where(IsPdf)
+            .Where(p => !_pageCounts.ContainsKey(p) && !_countsInFlight.Contains(p))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (todo.Count == 0) return;
+
+        foreach (var path in todo)
+        {
+            _countsInFlight.Add(path);
+            PublishCount(path, new PageCounts.CountResult(path, null, CountingMarker));
+        }
+
+        await Task.WhenAll(todo.Select(path => CountOneAsync(path, token)));
+    }
+
+    private async Task CountOneAsync(string path, CancellationToken token)
+    {
+        await _countGate.WaitAsync();
+        try
+        {
+            // Checked between files, not mid-file: _counter is synchronous and
+            // runs to completion once started, so this only stops a count that
+            // has not begun — the same contract PageCountsViewModel documents.
+            if (token.IsCancellationRequested) return;
+            var result = await _scheduler.Run(() => _counter(path));
+            Apply(() =>
+            {
+                if (token.IsCancellationRequested) return;
+                _countsInFlight.Remove(path);
+                _pageCounts[path] = result;
+                PublishCount(path, result);
+            });
+        }
+        finally
+        {
+            _countGate.Release();
+        }
+    }
+
+    /// <summary>Replaces just the one row this count belongs to, rather than
+    /// reprojecting the whole list: a reproject per result would be quadratic on
+    /// a big listing and would throw away the scroll position every time a count
+    /// landed. ObservableCollection raises Replace, so the grid re-renders that
+    /// single row.</summary>
+    private void PublishCount(string path, PageCounts.CountResult result)
+    {
+        for (var i = 0; i < Rows.Count; i++)
+        {
+            if (!string.Equals(Rows[i].FullPath, path, StringComparison.OrdinalIgnoreCase)) continue;
+            Rows[i] = Rows[i] with { Pages = result.Pages, PageNote = result.Error };
+            break;
+        }
+
+        Raise(nameof(OutputText));
+        Raise(nameof(OutputCsv));
+        Raise(nameof(CopyText));
+    }
+
+    /// <summary>Marshals onto the UI context when there is one — the same shape
+    /// DebouncedProbe's apply step uses, because a thread-pool continuation has
+    /// no synchronization context of its own to inherit. Mutating Rows off the
+    /// dispatcher would be a crash waiting to happen.</summary>
+    private void Apply(Action action)
+    {
+        if (_uiContext is null) action();
+        else _uiContext.Post(_ => action(), null);
+    }
+
+    /// <summary>Stops anything not yet started and abandons whatever is in
+    /// flight. Known counts are deliberately KEPT — they are still true.</summary>
+    private void CancelCounting()
+    {
+        _countCts.Cancel();
+        _countCts.Dispose();
+        _countCts = new CancellationTokenSource();
+        _countsInFlight.Clear();
+    }
+
+    /// <summary>Re-establishes the selection a rebuild just destroyed, keeping
+    /// only paths that are still visible — restoring a row the filter has since
+    /// hidden would let Copy emit a name that is not on screen, which is the
+    /// same "shows one thing, produces another" failure this fix exists to end.
+    /// Assigns the field rather than the property so the window's own
+    /// SelectionChanged push isn't mistaken for a user action.</summary>
+    private void RestoreSelection(IReadOnlyList<string> wanted)
+    {
+        if (wanted.Count == 0) return;
+
+        var visible = new HashSet<string>(
+            Rows.Select(r => r.FullPath), StringComparer.OrdinalIgnoreCase);
+        var kept = wanted.Where(visible.Contains).ToList();
+
+        _selectedPaths = kept;
+        Raise(nameof(SelectedPaths));
+        Raise(nameof(CopyText));
+        SelectionRestored?.Invoke(this, kept);
+    }
+
+    /// <summary>Raised after a reproject has re-established which paths are
+    /// selected, so the window can re-apply it to the grid. DataGrid.SelectedItems
+    /// is not bindable, so this is the same push shape SelectedPaths already uses
+    /// in the other direction — the window pushes down, this pushes back up.</summary>
+    public event EventHandler<IReadOnlyList<string>>? SelectionRestored;
 
     private string FormatCounts()
     {
@@ -377,13 +627,13 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
                 if (table) File.WriteAllText(path, text, new System.Text.UTF8Encoding(true));
                 else File.WriteAllText(path, text);
             });
-            Status = $"Saved to {Path.GetFileName(path)}";
+            SetStatus($"Saved to {Path.GetFileName(path)}");
         }
         catch (Exception ex)
         {
             // never throw out of a command — the write failing (locked
             // file, gone folder, no permission) is feedback, not a crash
-            Status = $"Couldn't save: {ex.Message}";
+            SetStatus($"Couldn't save: {ex.Message}", problem: true);
         }
     }
 
@@ -394,14 +644,14 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     public void NoteCopied()
     {
         var copied = SelectedRows().Count;
-        Status = _selectedPaths.Count == 0
+        SetStatus(_selectedPaths.Count == 0
             ? $"Copied {copied} name{(copied == 1 ? "" : "s")}"
-            : $"Copied {copied} of {Rows.Count}";
+            : $"Copied {copied} of {Rows.Count}");
     }
 
     /// <summary>Set by the window's code-behind when Clipboard.SetText
     /// throws COMException — the clipboard is a shared, single-owner OS
     /// resource another app can be holding for a moment; this just says so
     /// rather than losing the failure silently.</summary>
-    public void NoteClipboardBusy() => Status = "Clipboard busy — try again";
+    public void NoteClipboardBusy() => SetStatus("Clipboard busy — try again", problem: true);
 }

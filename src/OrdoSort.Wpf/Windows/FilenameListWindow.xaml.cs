@@ -28,7 +28,30 @@ public partial class FilenameListWindow : Window
         // again every time one of the Show* properties changes.
         SyncColumnVisibility();
         _vm.PropertyChanged += OnVmPropertyChanged;
-        Closed += (_, _) => _vm.PropertyChanged -= OnVmPropertyChanged;
+        _vm.SelectionRestored += OnSelectionRestored;
+        Closed += (_, _) =>
+        {
+            _vm.PropertyChanged -= OnVmPropertyChanged;
+            _vm.SelectionRestored -= OnSelectionRestored;
+        };
+    }
+
+    /// <summary>Re-applies a selection the view model preserved across a
+    /// reproject (audit FL-03). The grid drops its selection whenever Rows is
+    /// Reset, so without this the rows come back unselected even though the
+    /// view model still knows which ones the user picked. Assigning
+    /// SelectedItems re-enters OnSelectionChanged below, which pushes the same
+    /// set straight back down — idempotent, and it keeps the two sides in
+    /// agreement rather than needing a re-entrancy guard.</summary>
+    private void OnSelectionRestored(object? sender, IReadOnlyList<string> paths)
+    {
+        if (paths.Count == 0) return;
+
+        var wanted = new HashSet<string>(paths, System.StringComparer.OrdinalIgnoreCase);
+        NamesGrid.SelectedItems.Clear();
+        foreach (var row in NamesGrid.Items.OfType<OrdoSort.Core.FilenameList.FileRow>())
+            if (wanted.Contains(row.FullPath))
+                NamesGrid.SelectedItems.Add(row);
     }
 
     private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -37,7 +60,8 @@ public partial class FilenameListWindow : Window
             or nameof(FilenameListViewModel.ShowSize)
             or nameof(FilenameListViewModel.ShowModified)
             or nameof(FilenameListViewModel.ShowFolder)
-            or nameof(FilenameListViewModel.ShowFullPath))
+            or nameof(FilenameListViewModel.ShowFullPath)
+            or nameof(FilenameListViewModel.ShowPages))
         {
             SyncColumnVisibility();
         }
@@ -50,6 +74,7 @@ public partial class FilenameListWindow : Window
         ModifiedColumn.Visibility = _vm.ShowModified ? Visibility.Visible : Visibility.Collapsed;
         FolderColumn.Visibility = _vm.ShowFolder ? Visibility.Visible : Visibility.Collapsed;
         FullPathColumn.Visibility = _vm.ShowFullPath ? Visibility.Visible : Visibility.Collapsed;
+        PagesColumn.Visibility = _vm.ShowPages ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // DataGrid.SelectedItems is not bindable, so the window pushes the
@@ -62,15 +87,33 @@ public partial class FilenameListWindow : Window
 
     private void OnGridKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (e.Key != System.Windows.Input.Key.Delete) return;
-        _vm.RemoveSelectedCommand.Execute(null);
-        e.Handled = true;
+        if (e.Key == System.Windows.Input.Key.Delete)
+        {
+            _vm.RemoveSelectedCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+C routes to the SAME method the Copy button uses (audit FL-04).
+        // The grid's ClipboardCopyMode is None, so WPF's own copy — tab-separated
+        // cells with no header row — is gone; without this branch the keystroke
+        // would simply do nothing, which is a worse tool than one that copies the
+        // wrong format. Sharing PerformCopy is what makes the two paths incapable
+        // of disagreeing, rather than two implementations that happen to match.
+        if (e.Key == System.Windows.Input.Key.C
+            && e.KeyboardDevice.Modifiers == System.Windows.Input.ModifierKeys.Control)
+        {
+            PerformCopy();
+            e.Handled = true;
+        }
     }
 
     // CLIPBOARD RULE: System.Windows.Clipboard appears ONLY here, never in
     // the view model — Clipboard is a WPF/COM type the headless MTA tests
     // can't safely touch.
-    private void OnCopy(object sender, RoutedEventArgs e)
+    private void OnCopy(object sender, RoutedEventArgs e) => PerformCopy();
+
+    private void PerformCopy()
     {
         var text = _vm.CopyText;
         if (text.Length == 0) return;   // nothing listed yet — Clipboard.SetText throws on ""

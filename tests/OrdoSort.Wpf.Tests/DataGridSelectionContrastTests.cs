@@ -207,7 +207,7 @@ public class DataGridSelectionContrastTests
         {
             // Every optional column on. This suite's whole contract (see the
             // class doc above) is to enumerate whatever DataGridTextColumns
-            // are actually ON the grid — but FilenameListWindow's five
+            // are actually ON the grid — but FilenameListWindow's six
             // optional columns (Task 9) set Visibility=Collapsed from
             // code-behind when their Show* flag is off, and a Collapsed
             // DataGridColumn never gets a DataGridCell realized at all (not
@@ -219,10 +219,13 @@ public class DataGridSelectionContrastTests
             // case trap this suite exists to replace.
             Columns = FilenameList.Columns.Number | FilenameList.Columns.Size
                     | FilenameList.Columns.Modified | FilenameList.Columns.Folder
-                    | FilenameList.Columns.FullPath,
+                    | FilenameList.Columns.FullPath | FilenameList.Columns.Pages,
         };
+        // Pages is seeded with a real value rather than left null: the point of
+        // this suite is to measure TEXT against the selection background, and an
+        // empty cell measures nothing.
         vm.Rows.Add(new FilenameList.FileRow(
-            "a-long-enough-filename-to-matter.pdf", null, null, "", ""));
+            "a-long-enough-filename-to-matter.pdf", null, null, "", "", Pages: 12));
         var win = new FilenameListWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
