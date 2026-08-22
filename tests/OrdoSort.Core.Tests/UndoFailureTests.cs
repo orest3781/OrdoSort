@@ -57,6 +57,7 @@ public class UndoFailureTests : IDisposable
     public void Dispose()
     {
         Commit.RaceHookForTests = null;
+        Commit.SurvivingSourceHookForTests = null;
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         for (var a = 0; ; a++)
         {
@@ -141,6 +142,50 @@ public class UndoFailureTests : IDisposable
         Assert.True(File.Exists(filedPath));
         Assert.Equal(destBefore, Listing(_dest));
         Assert.False(Directory.Exists(_inbox));
+    }
+
+    /// <summary>app-qc-2026-08-21 final review, finding 2 (Minor):
+    /// MoveNeverOverwrite's post-move refusal message is shared by
+    /// CommitFile, SkipFile AND UndoAction (see MoveNeverOverwrite's own
+    /// comment above its throw), but used to hardcode "the inbox" and "the
+    /// original" as if <c>src</c> were always the untouched inbox file --
+    /// true for CommitFile/SkipFile, backwards on undo, where <c>src</c> is
+    /// the FILED copy and <c>target</c> is the inbox. A reader following
+    /// that old prose on an undo would delete the just-restored inbox copy
+    /// and leave the filed one behind -- the one case where both copies are
+    /// NOT interchangeable, since only the restored one is back where the
+    /// rest of the app expects it. Same seam PipelineTests'
+    /// CommitMoveThatSurvivesAtTheSourceRefusesLoudlyAndFileStays uses to
+    /// reach this branch without a real second volume.</summary>
+    [Fact]
+    public void UndoMoveThatSurvivesAtTheSourceDoesNotCallTheFiledCopyTheInbox()
+    {
+        var src = MakePdf(_inbox, "20240115--111111.pdf");
+        var outcome = Commit.CommitFile(src, "SMITH", new Route { Label = "R", Path = _dest }, "insert");
+        var filedPath = outcome.NewPath!;
+        var filedBytes = File.ReadAllBytes(filedPath);
+        // The real Win32 branch never deletes src (here, the filed copy) in
+        // the first place; this recreates it right after the real
+        // (same-volume) move actually deletes it, so MoveNeverOverwrite's
+        // post-move check sees exactly what the cross-volume case would
+        // leave behind.
+        Commit.SurvivingSourceHookForTests = () => File.WriteAllBytes(filedPath, filedBytes);
+
+        var ex = Assert.Throws<CommitError>(() => Commit.UndoAction(filedPath, src));
+
+        Assert.Contains(Path.GetFileName(filedPath), ex.Message);
+        Assert.Contains("could not be removed", ex.Message);
+        // The actual bug: on this path src is the filed copy and target is
+        // the inbox, so a message that role-labels either one as "the
+        // inbox" or "the original" is describing the wrong file no matter
+        // which noun it picks. Checked as phrases, not a bare "inbox"
+        // substring -- src's own interpolated path legitimately contains
+        // the folder name "inbox" (see _inbox above) regardless of wording.
+        Assert.DoesNotContain("the inbox", ex.Message);
+        Assert.DoesNotContain("original", ex.Message);
+        Assert.True(File.Exists(filedPath));
+        Assert.Equal(filedBytes, File.ReadAllBytes(filedPath));
+        Assert.True(File.Exists(src));   // the restored copy also survived
     }
 
     // ---------------------------------------------------------------------

@@ -61,17 +61,25 @@ public static class Commit
         // human to sort out is the correct behaviour here.
         if (File.Exists(src))
             throw new CommitError(
-                // "moved", not "filed": this same message fires from SkipFile
-                // too (the user clicked Skip, not File), and MoveNeverOverwrite
-                // has no way to know which caller it was reached from.
+                // "moved", not "filed": this same message fires from
+                // SkipFile too (the user clicked Skip, not File) AND from
+                // UndoAction (:202) — where src is the FILED copy and
+                // target is the inbox, the exact opposite of CommitFile/
+                // SkipFile's roles. The wording below is deliberately
+                // caller-neutral (paths, never "the inbox"/"the original")
+                // for that reason: app-qc-2026-08-21 final review, finding
+                // 2 — the old text called src "the original" and target
+                // "the inbox" unconditionally, which was backwards on the
+                // undo path and would send a reader who trusted the prose
+                // over the paths to delete the wrong copy.
                 $"{Path.GetFileName(src)} could not be moved cleanly. A copy " +
-                "reached the destination, but the original could not be " +
-                "removed from the inbox — Windows allows a cross-volume move " +
-                "to report success even when it can't delete the source. Two " +
-                $"copies of this document now exist: the new one at {target}, " +
-                $"and the original still at {src}. This document has NOT been " +
-                "recorded as moved. Confirm the copy at the destination is " +
-                "correct, then remove the original from the inbox by hand.");
+                $"reached {target}, but the copy at {src} could not be " +
+                "removed — Windows allows a cross-volume move to report " +
+                "success even when it can't delete the source. Two copies " +
+                $"of this document now exist: one at {target}, and one " +
+                $"still at {src}. This document has NOT been recorded as " +
+                $"moved. Confirm the copy at {target} is correct, then " +
+                $"remove the copy at {src} by hand.");
     }
 
     public static CommitOutcome CommitFile(
