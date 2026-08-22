@@ -57,8 +57,18 @@ public static class FolderMonitor
         try
         {
             var types = ParseFiletypes(wf.Filetypes);
-            var option = wf.Recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-            var files = Directory.EnumerateFiles(wf.Path, "*", option)
+            // Same fix as Intake.cs:33-49, and for the same reason: the bare
+            // SearchOption overload aborts the WHOLE walk on the first
+            // unreadable subfolder, so this dashboard tile would go blank
+            // instead of alerting on a readable sibling. AttributesToSkip = 0
+            // matters here too — see that comment.
+            var options = new EnumerationOptions
+            {
+                RecurseSubdirectories = wf.Recursive,
+                IgnoreInaccessible = true,
+                AttributesToSkip = 0,
+            };
+            var files = Directory.EnumerateFiles(wf.Path, "*", options)
                 .Where(f => TypeMatches(f, types))
                 .ToList();
             // matches are RELATIVE paths (just the name for top-level files),

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using OrdoSort.Core;
 
 namespace OrdoSort.Core.Tests;
@@ -178,6 +179,66 @@ public class FolderMonitorTests : IDisposable
         var wf = Wf("a");
         Touch(wf.Path, "anything.pdf");
         Assert.False(FolderMonitor.Status(wf, new[] { "", "   " }).Alerting);
+    }
+
+    /// <summary>Same .NET 8 SearchOption.AllDirectories abort documented at
+    /// Intake.cs:33-49: one denied subfolder anywhere in the tree takes down
+    /// Status for the WHOLE watch, so a file named URGENT sitting in a fully
+    /// readable sibling folder raises no alert. aaa_denied sorts before
+    /// zzz_ok alphabetically, so a top-down walk reaches it first; pre-fix,
+    /// that abort loses zzz_ok's alert too, even though it's a sibling never
+    /// inside the denied folder.</summary>
+    [Fact]
+    public void InaccessibleSubfolderDoesNotSuppressAlertsInReadableSiblings()
+    {
+        var wf = Wf("a", recursive: true);
+        Touch(wf.Path, "top.pdf");
+        Touch(Path.Combine(wf.Path, "aaa_denied"), "hidden.pdf");
+        Touch(Path.Combine(wf.Path, "zzz_ok"), "URGENT-scan.pdf");
+        var deniedDir = Path.Combine(wf.Path, "aaa_denied");
+        var user = Environment.UserDomainName + "\\" + Environment.UserName;
+
+        RunIcacls(deniedDir, "/deny", $"{user}:(OI)(CI)R");
+        try
+        {
+            // Elevated/backup-privilege sessions (an admin console, some CI
+            // runners) can bypass a deny ACE outright. If enumerating the
+            // denied folder still succeeds here, this fixture can't
+            // reproduce the abort on this machine — a vacuous pass beats a
+            // false failure.
+            bool bypassed;
+            try
+            {
+                Directory.EnumerateFiles(deniedDir).Any();
+                bypassed = true;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                bypassed = false;
+            }
+            if (bypassed) return;
+
+            var s = FolderMonitor.Status(wf, new[] { "URGENT" });
+
+            Assert.Equal("", s.Error);
+            Assert.Equal(2, s.Count);   // top.pdf + zzz_ok's file; aaa_denied's is skipped, not counted
+            Assert.True(s.Alerting);
+            Assert.Equal(new[] { Path.Combine("zzz_ok", "URGENT-scan.pdf") }, s.Matches);
+        }
+        finally
+        {
+            // Always undo the deny — otherwise Dispose()'s Directory.Delete
+            // of _dir fails on the still-locked-out aaa_denied subtree.
+            RunIcacls(deniedDir, "/remove:d", user);
+        }
+    }
+
+    private static void RunIcacls(params string[] args)
+    {
+        var psi = new ProcessStartInfo("icacls") { UseShellExecute = false, CreateNoWindow = true };
+        foreach (var a in args) psi.ArgumentList.Add(a);
+        using var p = Process.Start(psi)!;
+        p.WaitForExit();
     }
 
     [Fact]
