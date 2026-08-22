@@ -19,11 +19,45 @@ dotnet test OrdoSort.sln --no-build -v minimal
 
 **Baseline as of 2026-08-15** (`main` at `40b6eba`): **Core 661, Wpf 1738.**
 
+**Baseline as of 2026-08-22** (`fix/app-qc-2026-08-21`, the QC batch-A fix pass):
+**Core 685, Wpf 1797.** Measured on `main` at `66be355` immediately before that pass:
+**Core 660, Wpf 1764.**
+
+Note the Core count is **one lower** than the 2026-08-15 line above, and that difference
+cannot be explained from this repository: `40b6eba` is not reachable here — it predates
+the 2026-08-20 history rebuild — so the commits between the two measurements are gone.
+Recorded as unexplained rather than guessed at. Anyone with the pre-rebuild bundle could
+settle it; absent that, treat 660 as the real floor for `66be355` and do not read the
+2026-08-15 line as evidence a test was lost.
+
 **Then prove it's non-deterministic.** A test is a flake only if it passes on a re-run of the *identical binary*. If it fails twice, it is a defect. Run it in isolation too — most flakes here are parallel-schedule interference and pass alone.
 
 ---
 
 ## Live
+
+### `TilePreviewProbeTests.EditingANonSelectedWatchFolderNeverProbesAtAll`
+`tests/OrdoSort.Wpf.Tests/TilePreviewProbeTests.cs` · listed 2026-08-22, **observed once**
+
+`Assert.Equal() Failure: Expected: 1, Actual: 2` — one more probe landed than the test
+expects. Seen during a full-solution run on 2026-08-21, in a task that changed only
+`src/OrdoSort.Core/Commit.cs` and its Core tests — nothing in the WPF layer.
+
+**Evidence it is non-deterministic:** the changes were stashed, the tree rebuilt on
+unmodified code, and the test run three times in isolation — it passed all three
+(`Passed! - Failed: 0, Passed: 4 … Duration: 26-27 ms`). The changes were then restored
+and the full suite re-run: clean.
+
+Mechanism unknown. An extra probe landing suggests a debounced probe from an adjacent
+test's fixture arriving late under parallel load, which would make it the same
+suite-load interference family as the entries below — but that is a hypothesis, not a
+diagnosis, and nobody has reproduced it deliberately.
+
+**Why it is being written down now:** this test was already believed to be flaky from an
+earlier pass, but that belief lived only in a working note and never reached this file —
+which is why the 2026-08-21 implementer that hit it had to spend a full stash-rebuild-
+isolate cycle re-deriving what someone already knew. That cost is the reason this file
+exists. The durable fix is to assert on the probe seam rather than a call count.
 
 ### `FocusRingCoverageTests.TabItemShowsTheBronzeFocusRing`
 `tests/OrdoSort.Wpf.Tests/FocusRingCoverageTests.cs:403` · listed 2026-08-09, **unconfirmed**
@@ -48,6 +82,29 @@ Kept rather than dropped: nine clean runs are not proof. But it is no longer an 
 ---
 
 ## Environment-dependent — not flakes
+
+### The WPF test host can crash on WebView2 teardown, aborting the whole run
+Observed 2026-08-21 mid-run at 1298 Wpf tests:
+
+```
+Test host process crashed : [ERROR:ui\gfx\win\window_impl.cc:172]
+Failed to unregister class Chrome_WidgetWin_0. Error = 1411
+```
+
+The identical binaries then passed 1789/1789, and the two runs after that were clean.
+The task that hit it touched no WebView2 code.
+
+**This is the reason the `Passed!` rule at the top of this file is not pedantry.** A run
+that aborts this way can present as a non-zero exit with no failing test, or — worse —
+be mistaken for a completed run. Read the `Passed!` line and its count; if there isn't
+one, the run did not finish, whatever the exit code says.
+
+Related, same session: builds were repeatedly blocked by Smart App Control by hash (five
+different assemblies at various points), each time producing a **zero-test run**, always
+cleared by a full `bin`/`obj` clean and rebuild. And a full run once hung past ten
+minutes on ~19 stray `dotnet.exe`/`testhost.exe` processes left from earlier cycles —
+if a run hangs, check for and kill those before diagnosing anything else.
+
 
 ### `WebViewPdfViewerGuardBehaviourTests` (all 5)
 `tests/OrdoSort.Wpf.Tests/ViewerNavigationPolicyTests.cs:107`
