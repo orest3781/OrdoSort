@@ -187,7 +187,8 @@
 
             <DockPanel Grid.Row="2" Margin="0,8,0,8">
                 <Button Content="Add files…" Click="OnAddFiles" Margin="0,0,6,0" />
-                <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,0" />
+                <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,0"
+                        IsEnabled="{Binding IsIdle}" />
                 <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,0" />
                 <TextBlock Text="{Binding AddNote}" Style="{StaticResource CaptionText}"
                            VerticalAlignment="Center"

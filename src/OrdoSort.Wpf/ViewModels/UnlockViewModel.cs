@@ -197,6 +197,18 @@ public sealed class UnlockViewModel : ObservableObject
 
     private CancellationTokenSource? _cts;
 
+    /// <summary>Set by ClearCommand when it cancels a run in progress (QC-05),
+    /// consumed once by UnlockAsync's own tail — see both comments. Unlike
+    /// _probeCts, _cts is already recreated FROM SCRATCH by every UnlockAsync
+    /// call (see its own "using var cts" below), so there is no stale token
+    /// to hand out a fresh replacement for here; what still has to be told
+    /// apart is "cancelled because Clear ran" (report nothing — the list is
+    /// already wiped) from "cancelled because Cancel was pressed" (report
+    /// the truthful partial result, same as always) — a distinction
+    /// CancellationToken.IsCancellationRequested alone can't make, since
+    /// both paths cancel the same token.</summary>
+    private bool _clearedWhileUnlocking;
+
     /// <summary>Extension set in Intake's shape (dot-less, lowercase) rather
     /// than the EndsWith(".pdf") this used to inline — same rule, one place.</summary>
     private static readonly ISet<string> Pdfs = new HashSet<string> { "pdf" };
@@ -243,6 +255,19 @@ public sealed class UnlockViewModel : ObservableObject
             _probeCts = new CancellationTokenSource();
             oldProbeCts.Cancel();
             oldProbeCts.Dispose();
+            // The RUN token, not only the probe's (QC-05): a batch left
+            // running after Clear wiped Files went on to archive originals
+            // and write unlocked files for rows nobody could see, then
+            // silently repopulated ResultLines and Summary with results for
+            // files the user had just cleared. _cts is per-run (see
+            // UnlockAsync) rather than a standing field like _probeCts, so
+            // there is nothing to replace it WITH here — the next
+            // UnlockAsync call builds its own, un-cancelled by construction.
+            if (_cts is { } runCts)
+            {
+                _clearedWhileUnlocking = true;
+                runCts.Cancel();
+            }
         });
         SaveBannerCommand = new RelayCommand(SaveBannerPassword, () => SaveBannerName.Trim().Length > 0);
         RemoveSavedCommand = new RelayCommand(RemoveSelectedSaved, () => SelectedSavedEntry is not null);
@@ -328,8 +353,19 @@ public sealed class UnlockViewModel : ObservableObject
     public bool IsUnlocking
     {
         get => _isUnlocking;
-        private set { if (Set(ref _isUnlocking, value)) CancelCommand.RaiseCanExecuteChanged(); }
+        private set
+        {
+            if (!Set(ref _isUnlocking, value)) return;
+            CancelCommand.RaiseCanExecuteChanged();
+            Raise(nameof(IsIdle));
+        }
     }
+
+    /// <summary>The inverse of IsUnlocking — Remove selected is a Click
+    /// handler with no CanExecute of its own to disable it, same shape as
+    /// BulkRenameViewModel.IsIdle. See RemoveFiles' comment for why removing
+    /// a file mid-run has to be off the table (QC-05).</summary>
+    public bool IsIdle => !IsUnlocking;
 
     /// <summary>Stop the batch: files already done stay done (each one is
     /// individually safe), files not yet started report cancelled instead of
@@ -655,8 +691,15 @@ public sealed class UnlockViewModel : ObservableObject
         await ProbeCompletion;
     }
 
+    /// <summary>The button is disabled mid-run (IsIdle), but the guard lives
+    /// here too: this is public, and removing a row while UnlockAsync's
+    /// `rows` snapshot (see its own doc comment) still holds it changes
+    /// nothing about the loop's plans for it — the file still gets its
+    /// original archived and its unlocked file written, for a row the list
+    /// no longer shows (QC-05).</summary>
     public void RemoveFiles(IEnumerable<string> paths)
     {
+        if (IsUnlocking) return;
         foreach (var p in paths.ToList())
         {
             var row = Files.FirstOrDefault(r => r.Path == p);
@@ -857,7 +900,19 @@ public sealed class UnlockViewModel : ObservableObject
                 {
                     gate.Release();
                 }
-                Summary = $"Unlocking {Interlocked.Increment(ref finished)} of {rows.Count}…";
+                // finished still needs counting even when the line below is
+                // skipped — the large-file loop after this one reads it.
+                var doneSoFar = Interlocked.Increment(ref finished);
+                // Clear can cancel THIS run while several files are already
+                // past the gate above (QC-05) — "one already under way
+                // finishes" applies to progress reporting too, not only to
+                // the file move itself: a stale "Unlocking N of M…" landing
+                // after Clear's own "" would be exactly the silent
+                // repopulation ClearCommand's comment describes. Checked
+                // here, not by cancelling this continuation outright: the
+                // file work above already happened either way.
+                if (!_clearedWhileUnlocking)
+                    Summary = $"Unlocking {doneSoFar} of {rows.Count}…";
             }));
 
             foreach (var i in large)
@@ -873,6 +928,19 @@ public sealed class UnlockViewModel : ObservableObject
         {
             _cts = null;
             IsUnlocking = false;
+        }
+
+        // Clear wiped Files, ResultLines and Summary for the run this loop
+        // was still finishing (see ClearCommand's comment) — `rows` above is
+        // exactly the list the user cleared, so reporting per-row results
+        // and a verdict here would silently repopulate what Clear just
+        // emptied with results for files nobody can see anymore (QC-05).
+        // Consumed once, not left set: the NEXT run must report normally
+        // even if THIS one was Clear-cancelled.
+        if (_clearedWhileUnlocking)
+        {
+            _clearedWhileUnlocking = false;
+            return;
         }
 
         // reported in the order they were added, not the order they finished —
