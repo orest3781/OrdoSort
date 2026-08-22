@@ -138,6 +138,18 @@ public class SessionDeferredResolutionTests : IDisposable
     // path-resolution quirk, not a deliberate refusal — SkipCurrent's own
     // blank-or-whitespace guard (Session.SkipCurrent) makes the refusal
     // deliberate instead of coincidental.
+    //
+    // That coincidence means File.Exists/Directory.GetFiles/CommitError-type
+    // alone are satisfied identically whether the deliberate guard fires or
+    // whether it's gone and MoveNeverOverwrite's unrelated IOException fires
+    // instead — none of the three would notice SkipCurrent's
+    // IsNullOrWhiteSpace guard silently narrowing to IsNullOrEmpty (proven
+    // directly by staging that exact narrowing and watching this test keep
+    // passing on the message-less assertions alone). The message text is the
+    // one thing that differs between the two paths — the guard's literal
+    // "Set-aside folder is not available: (not set)" versus
+    // MoveNeverOverwrite's "Couldn't move {name} to {dir}: …" — so assert on
+    // it to make this test actually discriminate which path fired.
     [Fact]
     public void SkipCurrentWithAWhitespaceOnlyDeferredRefusesTheSameWay()
     {
@@ -154,7 +166,8 @@ public class SessionDeferredResolutionTests : IDisposable
             $"found beside config.json instead, at {_configDir}: " +
             $"{string.Join(", ", Directory.GetFiles(_configDir).Select(Path.GetFileName))}");
         Assert.Empty(Directory.GetFiles(_configDir));
-        Assert.IsType<CommitError>(ex);
+        var commitError = Assert.IsType<CommitError>(ex);
+        Assert.Contains("Set-aside folder is not available", commitError.Message);
     }
 
     // Scanner.DeferredSummary's own blank-folder guard (Scanner.cs) already
