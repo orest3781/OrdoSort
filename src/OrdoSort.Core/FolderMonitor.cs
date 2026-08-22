@@ -20,9 +20,20 @@ public static class FolderMonitor
     }
 
     /// <summary>Extensions (no dot, lower) a folder counts; empty set = any file.</summary>
+    /// <summary>Trim('*', '.') rather than the old TrimStart('.') (audit FL-02):
+    /// every caller feeds this free text a person typed — the filename list's
+    /// "Only these types" box, a watch folder's Filetypes, the Settings field —
+    /// and "*.pdf" is what a Windows user types. The old parser left the '*' on,
+    /// producing the token "*.pdf", which matches no extension that has ever
+    /// existed: zero results, no error, no clue why. Trimming both characters
+    /// from both ends also collapses "*" and "*.*" to nothing, which is right —
+    /// an empty set already means "accept everything" to TypeMatches, so a bare
+    /// star lands on the meaning the user intended instead of its exact
+    /// opposite. Where() then drops those now-empty tokens.</summary>
     public static HashSet<string> ParseFiletypes(string filetypes) =>
         filetypes.Split(new[] { ' ', ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
-            .Select(t => t.TrimStart('.').ToLowerInvariant())
+            .Select(t => t.Trim('*', '.').ToLowerInvariant())
+            .Where(t => t.Length > 0)
             .ToHashSet();
 
     private static bool TypeMatches(string file, HashSet<string> types) =>

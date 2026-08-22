@@ -50,6 +50,30 @@ public class FolderMonitorTests : IDisposable
         Assert.Equal(new[] { "pdf", "tif", "txt" }, types.OrderBy(x => x));
     }
 
+    /// <summary>Audit FL-02. "*.pdf" is the single most likely thing a Windows
+    /// user types into a box labelled "Only these types" — and the old parser
+    /// only did TrimStart('.'), so the leading '*' survived, the token became
+    /// "*.pdf", and it matched no extension that has ever existed. Silently:
+    /// zero rows, no error. Every caller of this method takes free text from a
+    /// user (the filename list's type box, a watch folder's Filetypes, the
+    /// Settings field), so the fix belongs here rather than at one call site.</summary>
+    [Fact]
+    public void FiletypesAcceptGlobStyleWildcards()
+    {
+        var types = FolderMonitor.ParseFiletypes("*.pdf, *.TIF ;*docx");
+        Assert.Equal(new[] { "docx", "pdf", "tif" }, types.OrderBy(x => x));
+    }
+
+    /// <summary>A bare "*" means "everything", which is what an empty set
+    /// already means to TypeMatches — so it must not survive as a literal
+    /// token, or it would match nothing and mean the exact opposite.</summary>
+    [Fact]
+    public void ABareStarMeansEverythingNotALiteralToken()
+    {
+        Assert.Empty(FolderMonitor.ParseFiletypes("*"));
+        Assert.Empty(FolderMonitor.ParseFiletypes("*.*"));
+    }
+
     [Fact]
     public void RecursiveCountsSubfolders()
     {
