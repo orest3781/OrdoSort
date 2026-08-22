@@ -66,6 +66,14 @@ public class ShellReadyTests
         fx.Shell.ApplyDeferred(new Scanner.DeferredInfo(1, null));
         Assert.Contains("unknown", fx.Shell.DeferredAlert);
         Assert.DoesNotContain("155", fx.Shell.DeferredAlert);
+
+        // The rail-facing _deferredDetail switch is a separate, hand-edited
+        // copy of the same OldestAgeDays switch (ShellViewModel.cs:659-664)
+        // -- a copy-paste omission there would not be a compile error, only
+        // a silently blank "oldest  " (Nullable<int>.ToString() on null).
+        var deferredNotice = fx.Shell.Notices.FirstOrDefault(n => n.Key == "deferred");
+        Assert.NotNull(deferredNotice);
+        Assert.Contains("unknown", deferredNotice!.Detail);
     }
 
     [Fact]
