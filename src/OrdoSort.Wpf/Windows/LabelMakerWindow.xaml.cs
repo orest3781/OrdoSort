@@ -16,10 +16,12 @@ public partial class LabelMakerWindow : Window
         vm.PrintSheets = PrintSheets;
         vm.RequestIdFocus += () => { IdBox.Focus(); IdBox.SelectAll(); };
         // client edits are settings — they stick even without printing.
-        // A refused write (duplicate id on screen, or the store threw) must
-        // keep the window open — otherwise the warning that tells the user
-        // to "fix the duplicate before closing" is a lie, and every edit in
-        // the session, including unrelated ones, is discarded with it.
+        // A duplicate id on screen must keep the window open — otherwise the
+        // warning that tells the user to "fix the duplicate before closing"
+        // is a lie, and every edit in the session, including unrelated ones,
+        // is discarded with it. TryPersist returns false ONLY for that case
+        // (never for a store failure the user has no in-window way to fix —
+        // see its doc comment) so this stays a plain "block on false."
         Closing += (_, e) => { if (!vm.TryPersist()) e.Cancel = true; };
     }
 

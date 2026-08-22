@@ -589,11 +589,18 @@ public sealed class LabelMakerViewModel : ObservableObject
     /// unparseable typo took a client from 4211 to 1 on close (QC-06). A
     /// parse failure here gets the same "leave the disk alone" treatment as
     /// an untouched field, not a fabricated number.</summary>
-    /// <returns>false when the write was refused (a duplicate id on screen,
-    /// or the store itself threw) — already warned, so the caller (the
-    /// window's Closing handler) must set e.Cancel = true rather than let
-    /// the close proceed over edits that were never written. true covers
-    /// both "wrote successfully" and "there was nothing to write."</returns>
+    /// <returns>false only when a duplicate id on screen refused the write —
+    /// already warned, so the caller (the window's Closing handler) must set
+    /// e.Cancel = true rather than let the close proceed over edits that
+    /// were never written; the user CAN fix a duplicate id and retry, so
+    /// trapping them here is the right trade. true covers "wrote
+    /// successfully," "there was nothing to write," AND the store itself
+    /// throwing (a busy or, worse, a corrupt box-labels file) — there is no
+    /// in-window fix for either, so unlike the duplicate-id case this does
+    /// NOT block the close (see the ConfigException catch below: fix round 1
+    /// code review, 2026-08-22 — blocking there trapped the user with no way
+    /// out, the exact failure mode ShutdownDuringCommitTests.cs:239-241
+    /// already paid for once).</returns>
     internal bool TryPersist()
     {
         // A client's id going blank through editing — not the explicit
@@ -705,7 +712,6 @@ public sealed class LabelMakerViewModel : ObservableObject
                     }
                     else
                     {
-                        var edited = vm.ToClient();
                         // DestroyDays and NextNumber are re-parsed straight
                         // from the text here rather than trusted from
                         // ToClient()'s TryParse fallback (30 / 1) — landing
@@ -724,7 +730,12 @@ public sealed class LabelMakerViewModel : ObservableObject
                         // alone" treatment as no edit at all.
                         if (_numberEdited.Contains(vm) && long.TryParse(vm.NextNumberText.Trim(), out var next))
                             fresh.NextNumber = next;
-                        fresh.Extras = edited.Extras;
+                        // Extras is the one field ToClient() doesn't
+                        // fabricate a fallback for, so it's copied directly
+                        // rather than building a whole LabelClient (with its
+                        // own re-parse of the two fields just handled above)
+                        // just to reach one property off it.
+                        fresh.Extras = new Dictionary<string, System.Text.Json.JsonElement>(vm.Extras);
                     }
                 }
                 return 0;
@@ -738,11 +749,17 @@ public sealed class LabelMakerViewModel : ObservableObject
         }
         catch (ConfigException ex)
         {
-            _dialogs.Warn(ex.Message, "OrdoSort — label maker");
-            // a busy/corrupt file means nothing landed on disk either — the
-            // caller must not let the close proceed over these edits any
-            // more than it would over a duplicate id
-            return false;
+            // Unlike the duplicate-id refusal above, this does NOT block the
+            // close: a busy file has no in-window retry (Mutate already
+            // exhausted its own retry budget getting here), and a corrupt
+            // file has no in-window fix at all — cancelling Close() would
+            // just trap the user with the same window forever, which is
+            // worse than the data loss it's trying to prevent (see the
+            // <returns> doc above). The "don't lie about writing" promise is
+            // kept through the message instead of through a trap.
+            _dialogs.Warn(ex.Message + "\n\nNone of this session's changes were saved.",
+                "OrdoSort — label maker");
+            return true;
         }
     }
 }

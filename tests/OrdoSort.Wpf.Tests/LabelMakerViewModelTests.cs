@@ -735,6 +735,7 @@ public class LabelMakerViewModelTests : IDisposable
     [Theory]
     [InlineData("")]
     [InlineData("abc")]
+    [InlineData("4,211")]   // parity with the number test — int.TryParse rejects it too
     public void PersistLeavesTheStoredRetentionAloneWhenTheEditedTextDoesNotParse(string badText)
     {
         // Same shape, the other field ToClient() silently defaults (to 30).
@@ -777,6 +778,33 @@ public class LabelMakerViewModelTests : IDisposable
 
         Assert.True(vm.TryPersist());
         Assert.Equal(90, BoxLabelStore.Read(path).LabelClients.Single(c => c.Id == "CCCC").DestroyDays);
+    }
+
+    [Fact]
+    public void TryPersistDoesNotBlockOnAStoreFailureButWarnsThatNothingWasSaved()
+    {
+        // Fix round 1 (code review, 2026-08-22): unlike a duplicate id, a
+        // busy or corrupt store file has no in-window fix-and-retry — the
+        // user cannot rename their way out of it. Blocking the close there
+        // would trap them the same way ShutdownDuringCommitTests.cs:239-241
+        // already recorded once ("The window never closed. That is a worse
+        // defect than the one this task set out to fix."), so TryPersist
+        // must let the close proceed and say plainly, in the warning itself,
+        // that this session's edits were not saved.
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 7 });
+        var vm = Vm(path);
+        vm.Clients.Single().DestroyDaysText = "45";   // a pending edit — otherwise TryPersist never
+                                                       // attempts a write at all (zero-edit close)
+
+        // Simulate a crash mid-write elsewhere: the file exists but is now
+        // empty. BoxLabelStore.Mutate refuses to treat that as "no clients
+        // yet" (2026-08-04 audit 2.2) and throws instead.
+        File.WriteAllText(path, "");
+
+        Assert.True(vm.TryPersist());   // must NOT trap the user the way a duplicate id does
+        var warning = Assert.Single(_dialogs.Warnings).Message;
+        Assert.Contains("interrupted", warning);                              // the store's own diagnosis
+        Assert.Contains("None of this session's changes were saved", warning); // the promise, kept via the message
     }
 
     // --------------------------------------------- QC-14: Reset confirms
