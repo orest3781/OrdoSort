@@ -58,8 +58,18 @@ public class BulkRenameBatchTests : IDisposable
         /// <summary>Dispatched-but-not-yet-run items.</summary>
         public int Queued { get { lock (_gate) return _queued.Count; } }
 
+        /// <summary>Make the NEXT dispatch throw rather than queue — a batch
+        /// dying partway for a reason BulkRename.Execute's own per-file catch
+        /// (IOException/UnauthorizedAccessException) doesn't cover.</summary>
+        public bool FailNextDispatch { get; set; }
+
         public Task<T> Run<T>(Func<T> work)
         {
+            if (FailNextDispatch)
+            {
+                FailNextDispatch = false;
+                throw new InvalidOperationException("the scheduler is unavailable");
+            }
             var completion = new TaskCompletionSource<T>();
             lock (_gate)
                 _queued.Add(() =>
@@ -222,6 +232,33 @@ public class BulkRenameBatchTests : IDisposable
         Assert.Equal("Renamed 3 files.", vm.Status);
     }
 
+    /// <summary>The other way a batch ends early, and the one a cancel can't
+    /// stand in for: it stops on something no per-file catch covers. The
+    /// renames that completed are still recorded, so Undo can put them back,
+    /// and the tool says what happened instead of leaving its last
+    /// "Renaming 1 of 2…" line up as if it were still working.
+    ///
+    /// Unlike the cancel tests, this one discriminates the recording rule
+    /// from the END state: the code after the loop never runs at all here, so
+    /// an outcomes list assigned there would still be empty.</summary>
+    [Fact]
+    public void ABatchThatStopsOnAnUnexpectedFailureStillLeavesItsRenamesUndoable()
+    {
+        var (vm, scheduler) = Batch("a.pdf", "b.pdf");
+        var a = Path.Combine(_dir, "a.pdf");
+
+        vm.RenameCommand.Execute(null);
+        scheduler.FailNextDispatch = true;   // the SECOND file's hand-off blows up
+        scheduler.ReleaseNext("the first rename should be dispatched");
+
+        Assert.False(File.Exists(a));
+        Assert.True(File.Exists(Path.Combine(_dir, "b.pdf")));
+        Assert.Single(vm.LastOutcomes);
+        Assert.True(vm.UndoCommand.CanExecute(null));
+        Assert.False(vm.IsBusy);             // or the tool is dead for the rest of the session
+        Assert.Contains("unexpectedly", vm.Status);
+    }
+
     // ---- 3. cancel ---------------------------------------------------------
 
     /// <summary>Cancel stops the files that haven't started and says what
@@ -243,19 +280,29 @@ public class BulkRenameBatchTests : IDisposable
         // matters happens before the SECOND file is dispatched.
         vm.CancelCommand.Execute(null);
         scheduler.ReleaseNext("the in-flight rename should still be dispatched");
+        // Drained, so "the rest were never touched" is a claim about the
+        // batch stopping rather than about the test simply not releasing
+        // them: anything still queued would run right here.
+        scheduler.Quiesce();
 
         Assert.False(File.Exists(a));                 // the one that started, finished
-        Assert.True(File.Exists(b));                  // the rest were never touched
+        Assert.True(File.Exists(b));                  // the rest were never started
         Assert.True(File.Exists(c));
         Assert.False(vm.IsBusy);
         Assert.Equal("Cancelled — renamed 1 of 3.", vm.Status);
     }
 
-    /// <summary>The user-facing half of durability: after a cancelled batch,
-    /// Undo puts back exactly the files that were renamed and leaves the rest
-    /// alone. This is what the old post-loop assignment cost — the batch
-    /// ended early, _lastOutcomes was still the previous batch's (usually
-    /// empty), and the renames that DID happen had no way back.</summary>
+    /// <summary>End to end: after a cancelled batch, Undo puts back exactly
+    /// the files that were renamed and leaves the rest alone.
+    ///
+    /// Measured, so it is not mistaken for more than it is: this passes
+    /// against the old post-loop `_lastOutcomes = renamed` too, because a
+    /// cancel still falls out of the loop into that assignment. Only a batch
+    /// that never reaches its end at all — a killed process — loses the
+    /// outcomes that way, and the mid-batch test above is what actually
+    /// discriminates the recording rule. What this one pins is the cancel/undo
+    /// pair: a stopped batch is undoable, and undoing it touches only the
+    /// files it really renamed.</summary>
     [Fact]
     public void UndoAfterACancelledBatchPutsBackWhatTheBatchRenamed()
     {

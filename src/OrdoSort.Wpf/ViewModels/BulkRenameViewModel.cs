@@ -157,6 +157,17 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         RenameCommand = new AsyncRelayCommand(ApplyAsync, () => _changed > 0 && !IsBusy);
         UndoCommand = new AsyncRelayCommand(UndoBatchAsync, () => _lastOutcomes.Count > 0 && !IsBusy);
         CancelCommand = new RelayCommand(() => _batchCts?.Cancel(), () => IsBusy);
+        // AsyncRelayCommand reports a faulted run here and then swallows it,
+        // so without a handler a batch that stopped on something unexpected
+        // would leave its last "Renaming 3 of 12…" line up as if it were
+        // still working — the same vanishing-failure defect
+        // FireAndForgetGuardTests exists for. Anything reaching here IS
+        // unexpected: Execute and Revert are already per-file fail-soft for
+        // IO and access errors, which is why this says so plainly instead of
+        // claiming a count. What the batch did finish is still in
+        // _lastOutcomes, so Undo remains offered.
+        RenameCommand.OnError += ex => Status = $"The rename stopped unexpectedly: {ex.Message}";
+        UndoCommand.OnError += ex => Status = $"Undo stopped unexpectedly: {ex.Message}";
         ClearCommand = new RelayCommand(
             () => { _files.Clear(); _overrides.Clear(); Refresh(immediate: true); });
     }
