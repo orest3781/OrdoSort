@@ -1,3 +1,4 @@
+using OrdoSort.Core;
 using OrdoSort.Wpf.ViewModels;
 
 namespace OrdoSort.Wpf.Tests;
@@ -50,6 +51,21 @@ public class ShellReadyTests
         fx.Shell.Initialize();
         Assert.True(fx.Shell.HasDeferred);
         Assert.Contains("1 set-aside file waiting", fx.Shell.DeferredAlert);
+    }
+
+    [Fact]
+    public void UnknownOldestAgeRendersAsUnknownNotAHugeNumber()
+    {
+        // QC-13: OldestAgeDays is null when every set-aside file's mtime read
+        // failed -- the pre-fix bug reported a ~155,000-day-old folder
+        // instead. Constructed directly (see ApplyDeferred's doc comment):
+        // reaching this through a real Scanner.DeferredSummary call needs a
+        // file gone between Directory.GetFiles and its mtime read, which
+        // isn't a race this machine can reproduce.
+        using var fx = new ShellFixture();
+        fx.Shell.ApplyDeferred(new Scanner.DeferredInfo(1, null));
+        Assert.Contains("unknown", fx.Shell.DeferredAlert);
+        Assert.DoesNotContain("155", fx.Shell.DeferredAlert);
     }
 
     [Fact]

@@ -137,7 +137,7 @@ public class PipelineTests : IDisposable
     [Fact]
     public void DeferredSummaryCountsAndAgesTheOldest()
     {
-        Assert.Equal(new Scanner.DeferredInfo(0, 0), Scanner.DeferredSummary(_inbox));
+        Assert.Equal(new Scanner.DeferredInfo(0, null), Scanner.DeferredSummary(_inbox));
 
         var old = MakePdf(_inbox, "20240101--old.pdf");
         MakePdf(_inbox, "20240102--new.pdf");
@@ -150,6 +150,36 @@ public class PipelineTests : IDisposable
     [Fact]
     public void DeferredSummaryMissingFolderIsZeroNotCrash() =>
         Assert.Equal(0, Scanner.DeferredSummary(@"Z:\nope\gone").Count);
+
+    [Fact]
+    public void SafeMtimeOfAFileGoneByReadTimeIsNullNotTheSentinelTicks()
+    {
+        // QC-13: FileInfo.LastWriteTimeUtc does not throw for a file that's
+        // gone -- it silently returns 1601-01-01 UTC -- so files.Min(SafeMtime)
+        // used to latch that sentinel and report a ~155,000-day-old folder
+        // over one vanished file. Directory.GetFiles's result is captured
+        // BEFORE the delete, exactly how DeferredSummary/Scan capture it, so
+        // this reproduces "gone by the time it's read" deterministically
+        // instead of racing a real deletion against the scan (not
+        // reproducible on this machine per the plan's filesystem-condition
+        // note).
+        var path = MakePdf(_inbox, "20240101--1.pdf");
+        var listed = Directory.GetFiles(_inbox);
+        File.Delete(path);
+        Assert.Null(Scanner.SafeMtime(listed[0]));
+    }
+
+    [Fact]
+    public void OldestAgeDaysSkipsUnknownMtimesInsteadOfLettingOnePoisonTheFolder()
+    {
+        var now = new DateTime(2026, 8, 21, 0, 0, 0, DateTimeKind.Local);
+        var readable = new DateTime(2026, 8, 17, 0, 0, 0, DateTimeKind.Utc).Ticks;   // 4 days old
+        Assert.Equal(4, Scanner.OldestAgeDays(new long?[] { readable, null }, now));
+    }
+
+    [Fact]
+    public void OldestAgeDaysIsNullWhenEveryFileVanished() =>
+        Assert.Null(Scanner.OldestAgeDays(new long?[] { null, null }, DateTime.Now));
 
     // ---- Commit ----
     [Fact]
@@ -287,6 +317,23 @@ public class PipelineTests : IDisposable
         s.SkipCurrent();
         Assert.Equal(1, s.Skipped);
         Assert.True(File.Exists(Path.Combine(_deferred, "20240101--1.pdf")));
+    }
+
+    [Fact]
+    public void SessionExtendTreatsACaseOnlyDifferentPathAsAlreadyKnown()
+    {
+        // QC-12: Extend used to dedupe with a raw case-sensitive
+        // HashSet<string> -- a second, stricter answer to the question
+        // CONTEXT.md says PathIdentity alone decides.
+        using var h = new History(Path.Combine(_root, "h.sqlite"));
+        var cfg = new Config { Inbox = _inbox, Deferred = _deferred };
+        var s = new Session(cfg, h, _cfgPath);
+        var a = MakePdf(_inbox, "20240101--1.pdf");
+        s.Start(new[] { a });
+        Assert.Equal(1, s.Total);
+
+        Assert.Equal(0, s.Extend(new[] { a.ToUpperInvariant() }));
+        Assert.Equal(1, s.Total);
     }
 
     [Fact]

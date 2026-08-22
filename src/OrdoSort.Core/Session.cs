@@ -87,7 +87,9 @@ public sealed class Session
     /// Files already known are ignored. Returns how many were added.</summary>
     public int Extend(IEnumerable<string> paths)
     {
-        var known = new HashSet<string>(Queue);
+        // QC-12: path identity is decided in exactly one place (CONTEXT.md) —
+        // PathIdentity.PathComparer, not a second, raw string compare here.
+        var known = new HashSet<string>(Queue, PathIdentity.PathComparer.Instance);
         var added = paths.Where(p => known.Add(p)).ToList();
         Queue.AddRange(added);
         return added.Count;

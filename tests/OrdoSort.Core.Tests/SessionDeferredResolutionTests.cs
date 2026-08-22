@@ -186,7 +186,11 @@ public class SessionDeferredResolutionTests : IDisposable
     // pins DeferredSummary's own contract; the composition defect is pinned
     // where the resolving caller actually lives, in
     // OrdoSort.Wpf.Tests.FolderPathResolutionTests.
+    //
+    // QC-13 (Task 9) changed OldestAgeDays from int to int? — a blank folder
+    // still short-circuits before any file is ever read, so the shape here
+    // is (0, null), not a reason to touch the guard itself.
     [Fact]
     public void DeferredSummaryOfABlankFolderIsZero() =>
-        Assert.Equal(new Scanner.DeferredInfo(0, 0), Scanner.DeferredSummary(""));
+        Assert.Equal(new Scanner.DeferredInfo(0, null), Scanner.DeferredSummary(""));
 }

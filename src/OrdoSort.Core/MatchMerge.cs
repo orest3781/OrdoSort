@@ -23,9 +23,17 @@ public static partial class MatchMerge
     // widening of the one boundary this tool promises never to widen. Folding
     // lives in CleanTokens, where a hit is only ever a human-confirmed
     // suggestion.
+    //
+    // QC-16: splitting on the array-less Split(' ', ...) overload used to
+    // catch ONLY ASCII 0x20 -- a roster cell pasted from a web portal with a
+    // non-breaking space between name segments never normalized to the same
+    // key an ASCII-space cell does, and the exact lookup silently missed.
+    // MatchMergeViewModel.Tokenize already treats any Unicode whitespace as
+    // a separator for headers; the null-separator-array overload here does
+    // the same for Split, using framework's own whitespace definition.
     private static string Norm(string name) =>
         string.Join(' ', name.Replace('_', ' ').ToUpperInvariant()
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     public sealed record Candidate(string ControlId, IReadOnlyDictionary<string, string> Row);
 
@@ -166,12 +174,15 @@ public static partial class MatchMerge
         return sb.ToString();
     }
 
-    /// <summary>Splits on '-', '_' and space, then drops single-letter and
-    /// all-digit tokens — the one cleaning rule the file side and the roster
-    /// side must share, so a hyphenated name never glues into one token on
-    /// one side and splits apart on the other.</summary>
+    /// <summary>Splits on '-', '_' and any Unicode whitespace (QC-16 — see
+    /// Norm's comment; this is the file-and-roster-shared sibling of that
+    /// same fix), then drops single-letter and all-digit tokens — the one
+    /// cleaning rule the file side and the roster side must share, so a
+    /// hyphenated name never glues into one token on one side and splits
+    /// apart on the other.</summary>
     private static IEnumerable<string> CleanTokens(string text) =>
-        FoldAccents(text).ToUpperInvariant()
+        string.Concat(FoldAccents(text).ToUpperInvariant()
+                .Select(c => char.IsWhiteSpace(c) ? ' ' : c))
             .Split(new[] { '-', '_', ' ' }, StringSplitOptions.RemoveEmptyEntries)
             .Where(t => t.Length > 1 && !t.All(char.IsDigit));
 

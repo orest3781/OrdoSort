@@ -14,9 +14,23 @@ public static class Scanner
         try { return new FileInfo(p).Length; } catch { return 0; }
     }
 
-    private static long SafeMtime(string p)
+    // QC-13: unlike .Length, FileInfo.LastWriteTimeUtc does NOT throw for a
+    // file gone by read time -- it silently returns this fixed sentinel
+    // instead. Before this, files.Min(SafeMtime) latched that 1601 date and
+    // reported a ~155,000-day-old folder over one vanished file. Internal so
+    // the listed-then-vanished case (not reproducible as a real race on this
+    // machine) can be pinned directly -- capture Directory.GetFiles's
+    // result, delete the file, then read it. See PipelineTests.
+    private static readonly DateTime MissingFileSentinel = DateTime.FromFileTimeUtc(0);
+
+    internal static long? SafeMtime(string p)
     {
-        try { return new FileInfo(p).LastWriteTimeUtc.Ticks; } catch { return 0; }
+        try
+        {
+            var t = new FileInfo(p).LastWriteTimeUtc;
+            return t == MissingFileSentinel ? null : t.Ticks;
+        }
+        catch { return null; }
     }
 
     /// <summary>Which files the inbox picks up: insert mode needs the "--"
@@ -52,8 +66,12 @@ public static class Scanner
         matching = sort switch
         {
             "filename_desc" => matching.OrderByDescending(f => System.IO.Path.GetFileName(f).ToLowerInvariant()).ToList(),
-            "mtime_asc" => matching.OrderBy(SafeMtime).ToList(),
-            "mtime_desc" => matching.OrderByDescending(SafeMtime).ToList(),
+            // QC-13: an unknown mtime (SafeMtime -- a file gone by read time)
+            // must never read as the oldest/newest file it's sorted by; ??
+            // pushes it to the back of either direction instead of defaulting
+            // to 0, the front of mtime_asc.
+            "mtime_asc" => matching.OrderBy(f => SafeMtime(f) ?? long.MaxValue).ToList(),
+            "mtime_desc" => matching.OrderByDescending(f => SafeMtime(f) ?? long.MinValue).ToList(),
             "size_asc" => matching.OrderBy(SafeSize).ThenBy(f => System.IO.Path.GetFileName(f).ToLowerInvariant()).ToList(),
             "size_desc" => matching.OrderByDescending(SafeSize).ThenBy(f => System.IO.Path.GetFileName(f).ToLowerInvariant()).ToList(),
             _ => matching.OrderBy(f => System.IO.Path.GetFileName(f).ToLowerInvariant()).ToList(),
@@ -71,21 +89,36 @@ public static class Scanner
 
     /// <summary>Set-aside folder summary: how many files, and how old the
     /// oldest is in whole days — age is the point in a retention shop. Never
-    /// throws; empty/missing/unreadable → (0, 0). "now" is injectable for tests.</summary>
-    public sealed record DeferredInfo(int Count, int OldestAgeDays);
+    /// throws; empty/missing/unreadable → (0, null). OldestAgeDays is
+    /// nullable, not a number, when no file's mtime could be read (QC-13) —
+    /// the same "rather than lying with 0 bytes or a 1601 date" direction
+    /// docs/superpowers/specs/2026-08-19-filename-list-upgrade-design.md
+    /// chose for FilenameList.FileRow. "now" is injectable for tests.</summary>
+    public sealed record DeferredInfo(int Count, int? OldestAgeDays);
+
+    /// <summary>Oldest-file age in whole days from a set of per-file mtimes,
+    /// skipping any SafeMtime couldn't read — null, not a number, when none
+    /// are known. Internal so DeferredSummary's Min-skips-unknown behaviour
+    /// is pinnable without a real vanished-mid-scan race.</summary>
+    internal static int? OldestAgeDays(IEnumerable<long?> mtimes, DateTime now)
+    {
+        var known = mtimes.Where(t => t.HasValue).Select(t => t!.Value).ToList();
+        if (known.Count == 0) return null;
+        var oldest = known.Min();   // ticks; smallest = oldest
+        var age = now - new DateTime(oldest, DateTimeKind.Utc).ToLocalTime();
+        return Math.Max(0, (int)age.TotalDays);
+    }
 
     public static DeferredInfo DeferredSummary(string? folder, DateTime? now = null)
     {
         if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
-            return new DeferredInfo(0, 0);
+            return new DeferredInfo(0, null);
         try
         {
             var files = Directory.GetFiles(folder);
-            if (files.Length == 0) return new DeferredInfo(0, 0);
-            var oldest = files.Min(SafeMtime);   // ticks; smallest = oldest
-            var age = (now ?? DateTime.Now) - new DateTime(oldest, DateTimeKind.Utc).ToLocalTime();
-            return new DeferredInfo(files.Length, Math.Max(0, (int)age.TotalDays));
+            if (files.Length == 0) return new DeferredInfo(0, null);
+            return new DeferredInfo(files.Length, OldestAgeDays(files.Select(SafeMtime), now ?? DateTime.Now));
         }
-        catch { return new DeferredInfo(0, 0); }
+        catch { return new DeferredInfo(0, null); }
     }
 }

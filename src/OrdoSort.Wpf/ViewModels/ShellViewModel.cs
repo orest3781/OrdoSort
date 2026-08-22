@@ -608,7 +608,13 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private string _deferredMessage = "";
     private string _deferredDetail = "";
 
-    private void ApplyDeferred(Scanner.DeferredInfo info)
+    // internal, not private: QC-13's "unknown" rendering needs OldestAgeDays
+    // null with Count > 0, which only happens when every set-aside file
+    // vanishes between Directory.GetFiles and its mtime read (Scanner) — not
+    // reproducible as a real race on this machine. Constructing the
+    // DeferredInfo directly and calling this pins the rendering seam
+    // instead. See ShellReadyTests.
+    internal void ApplyDeferred(Scanner.DeferredInfo info)
     {
         if (info.Count == 0)
         {
@@ -624,8 +630,13 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             _deferredDismissed = false;
         _deferredLastCount = info.Count;
 
+        // QC-13: OldestAgeDays is null when every set-aside file's mtime read
+        // failed (Scanner.SafeMtime, e.g. a file gone by read time) -- render
+        // "unknown" rather than let that read as "0 days old" or, pre-fix, a
+        // ~155,000-day sentinel date.
         var age = info.OldestAgeDays switch
         {
+            null => "   ·   oldest unknown",
             0 => "",
             1 => "   ·   oldest 1 day",
             var d => $"   ·   oldest {d} days",
@@ -647,6 +658,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         _deferredMessage = $"{info.Count} set-aside file{(info.Count == 1 ? "" : "s")} waiting";
         _deferredDetail = info.OldestAgeDays switch
         {
+            null => "oldest unknown",
             0 => "",
             1 => "oldest 1 day",
             var d => $"oldest {d} days",

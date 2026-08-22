@@ -66,4 +66,18 @@ public static class PathIdentity
             ? string.Equals(ca, cb, StringComparison.OrdinalIgnoreCase)
             : string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>The comparer a HashSet/Dictionary needs to dedupe by path
+    /// identity instead of re-deciding the question this class exists to
+    /// answer once. QC-12: Session.Extend used to build a raw case-sensitive
+    /// HashSet&lt;string&gt; — a second, stricter answer than Same itself gives.</summary>
+    public sealed class PathComparer : IEqualityComparer<string>
+    {
+        public static readonly PathComparer Instance = new();
+        public bool Equals(string? a, string? b) => Same(a, b);
+        // Must agree with Same's own fallback: hash whichever form Same
+        // would actually compare, canonical when there is one.
+        public int GetHashCode(string obj) =>
+            StringComparer.OrdinalIgnoreCase.GetHashCode(Canonical(obj) ?? obj);
+    }
 }

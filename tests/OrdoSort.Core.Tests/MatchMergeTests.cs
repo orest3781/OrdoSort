@@ -64,6 +64,28 @@ public class MatchMergeTests : IDisposable
     }
 
     [Fact]
+    public void NonBreakingSpaceInARosterCellStillExactMatches()
+    {
+        // QC-16: Norm split on the single ASCII ' ' (0x20), so a roster cell
+        // pasted from a web portal with U+00A0 (non-breaking space) between
+        // name segments never normalized to the key an ASCII-space query
+        // produces. MatchMergeViewModel.Tokenize already treats any Unicode
+        // whitespace as a word boundary for headers, with a comment saying
+        // so; Norm is the data-path sibling that never got it.
+        var nbspLastName = "De" + '\u00A0' + "La" + '\u00A0' + "Cruz";
+        var path = Path.Combine(_dir, "nbsp_roster.csv");
+        File.WriteAllText(path,
+            "First Name,Last Name,Control ID,DOB\n" +
+            $"Maria,{nbspLastName},111222333,3/4/1970\n",
+            new System.Text.UTF8Encoding(true));
+        var roster = MatchMerge.LoadRoster(path, "First Name", "Last Name", "Control ID");
+
+        // Same ASCII-space query that matches an ASCII-space cell
+        // (MatchingIsCaseAndSeparatorInsensitive above).
+        Assert.Single(roster.Lookup("de la cruz", "maria"));
+    }
+
+    [Fact]
     public void MergedConventionReading() =>
         Assert.Equal(("BROWN", "ADAM"), NameCandidates("20240126-BROWN-ADAM")[0]);
 
