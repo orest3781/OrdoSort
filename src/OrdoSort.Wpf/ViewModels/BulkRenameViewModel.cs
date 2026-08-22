@@ -72,7 +72,13 @@ public sealed class RenameRow
 /// thread) and an apply step (ApplyPlans — mutates Preview and friends, only
 /// ever run on the UI thread via DebouncedProbe's marshal), the same
 /// gather/apply shape RouteEditVm/WatchEditVm already use for their own
-/// probes (SettingsViewModel.cs:56-64,208-216).</summary>
+/// probes (SettingsViewModel.cs:56-64,208-216).
+///
+/// The renames themselves, the undo and the intake's existence checks are
+/// off-thread for the same reason (audit QC-04) — they are the same I/O, only
+/// a batch of it — through ApplyAsync/UndoBatchAsync/AddFilesAsync rather than
+/// through the probe, since they are single deliberate actions with nothing to
+/// debounce and a progress line and a cancel of their own.</summary>
 public sealed class BulkRenameViewModel : ObservableObject, IDisposable
 {
     private readonly List<string> _files = new();
@@ -122,6 +128,21 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     private readonly Func<IEnumerable<string>, RenameOp,
         IReadOnlyDictionary<string, string>?, List<PlannedRename>> _plan;
 
+    // The renames and the undo run here too, not only the preview (audit
+    // QC-04). One File.Move per file against a share is the same cost the
+    // class comment above says the preview must never pay on the UI thread,
+    // and a batch is a hundred of them in a row.
+    private readonly IWorkScheduler _scheduler;
+
+    // The batch's brake. One source PER BATCH, unlike ZipListViewModel's
+    // single window-lifetime source: cancelling one run here must leave the
+    // next one able to start, since the natural thing to do after stopping a
+    // batch is to fix the rule and run it again. Also cancelled from Dispose
+    // — MainWindow disposes this view model as the dialog closes, and a
+    // closed window must not keep moving files (UnlockViewModel.CancelUnlock
+    // states the same rule).
+    private CancellationTokenSource? _batchCts;
+
     public ObservableCollection<RenameRow> Preview { get; } = new();
 
     public BulkRenameViewModel(
@@ -130,15 +151,21 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         SynchronizationContext? uiContext = null, int probeDelayMs = 300)
     {
         _plan = plan ?? Plan;
+        _scheduler = scheduler ?? new TaskWorkScheduler();
         _plansProbe = new DebouncedProbe<List<PlannedRename>>(
-            scheduler ?? new TaskWorkScheduler(), uiContext, ApplyPlans, probeDelayMs);
-        RenameCommand = new RelayCommand(Apply, () => _changed > 0);
-        UndoCommand = new RelayCommand(UndoBatch, () => _lastOutcomes.Count > 0);
+            _scheduler, uiContext, ApplyPlans, probeDelayMs);
+        RenameCommand = new AsyncRelayCommand(ApplyAsync, () => _changed > 0 && !IsBusy);
+        UndoCommand = new AsyncRelayCommand(UndoBatchAsync, () => _lastOutcomes.Count > 0 && !IsBusy);
+        CancelCommand = new RelayCommand(() => _batchCts?.Cancel(), () => IsBusy);
         ClearCommand = new RelayCommand(
             () => { _files.Clear(); _overrides.Clear(); Refresh(immediate: true); });
     }
 
-    public void Dispose() => _plansProbe.Dispose();
+    public void Dispose()
+    {
+        _plansProbe.Dispose();
+        _batchCts?.Cancel();
+    }
 
     // ------------------------------------------------------------ op fields
     // ReviewMode/ReceivedDate/CaseIndex/DeleteSeg* are single clicks, not a
@@ -198,8 +225,35 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     public string RenameButtonText =>
         _changed > 0 ? $"Rename {_changed} file{(_changed == 1 ? "" : "s")}" : "Rename";
 
-    public RelayCommand RenameCommand { get; }
-    public RelayCommand UndoCommand { get; }
+    private bool _isBusy;
+
+    /// <summary>True while a rename or an undo batch is running: shows the
+    /// Cancel button, gates it, and keeps the other of the two from starting
+    /// a second run over the same files. AsyncRelayCommand already blocks
+    /// re-entering the SAME command; this is what stops Undo being pressed
+    /// halfway through a rename, which would try to put back files the batch
+    /// is still moving.</summary>
+    public bool IsBusy
+    {
+        get => _isBusy;
+        private set
+        {
+            if (!Set(ref _isBusy, value)) return;
+            RenameCommand.RaiseCanExecuteChanged();
+            UndoCommand.RaiseCanExecuteChanged();
+            CancelCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    /// <summary>What Undo would put back. Exposed so a test can observe it
+    /// MID-batch — the durability half of QC-04 is a claim about what this
+    /// holds while the batch is still running, which a check of the finished
+    /// state cannot tell apart from the defect.</summary>
+    internal IReadOnlyList<RenameOutcome> LastOutcomes => _lastOutcomes;
+
+    public AsyncRelayCommand RenameCommand { get; }
+    public AsyncRelayCommand UndoCommand { get; }
+    public RelayCommand CancelCommand { get; }
     public RelayCommand ClearCommand { get; }
 
     private RenameOp CurrentOp()
@@ -225,11 +279,30 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     /// rather than merely tidy: two rows over one file both reach
     /// BulkRename.Execute as File.Moves, and the second fails on bytes the
     /// first already moved. See PathIdentity.</summary>
-    public void AddFiles(IEnumerable<string> paths)
+    public async Task AddFilesAsync(IEnumerable<string> paths)
     {
-        var taken = Intake.Add(_files, paths, exists: File.Exists);
-        _files.AddRange(taken.Files);
-        AddNote = taken.Note("file");
+        var candidates = paths.ToList();
+        var already = _files.ToList();
+
+        // Intake's existence check is a File.Exists per dropped path, and
+        // that is a network round trip on the shares this tool targets —
+        // "Add a folder's files…" hands over a folder's worth of them at
+        // once, so it used to cost the UI thread one stall per file before
+        // the first preview row ever appeared. Same defect and same fix as
+        // ZipListViewModel.AddPaths and UnlockViewModel.AddFilesAsync.
+        var offThread = await _scheduler.Run(() => Intake.Add(already, candidates, exists: File.Exists));
+
+        // Re-checked against the LIVE list, not the snapshot taken before
+        // the await — otherwise a second drop landing mid-await gets two
+        // rows over one file, which is exactly what the dedupe note above
+        // exists to prevent.
+        var settled = Intake.Add(_files, offThread.Files);
+        _files.AddRange(settled.Files);
+        AddNote = (offThread with
+        {
+            Files = settled.Files,
+            AlreadyListed = offThread.AlreadyListed + settled.AlreadyListed,
+        }).Note("file");
         Refresh(immediate: true);
     }
 
@@ -242,6 +315,62 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         }
         AddNote = "";
         Refresh(immediate: true);
+    }
+
+    /// <summary>Drop the rows the grid selection holds — read from the
+    /// selection THIS class preserved across reprojections rather than from
+    /// the grid at click time (audit QC-11). The window pushes its selection
+    /// down through <see cref="SelectedSources"/>; see the snapshot in
+    /// ApplyPlans for why reading the grid at click time removed nothing at
+    /// all after any keystroke in one of the operation fields.</summary>
+    public void RemoveSelected()
+    {
+        if (_selectedSources.Count == 0) return;
+        RemoveFiles(_selectedSources);
+    }
+
+    /// <summary>Pushed in by the window on SelectionChanged — DataGrid's
+    /// SelectedItems is not bindable, so this is the same push shape
+    /// FilenameListViewModel.SelectedPaths uses. Keyed on RenameRow.Source:
+    /// a rebuilt preview hands out NEW RenameRow instances for the same
+    /// files, so the row object is no identity at all.</summary>
+    private IReadOnlyList<string> _selectedSources = Array.Empty<string>();
+    public IReadOnlyList<string> SelectedSources
+    {
+        get => _selectedSources;
+        set
+        {
+            // A WPF selection handler can hand over an empty-or-null
+            // sequence (SelectedItems.OfType<…>() on a momentarily empty
+            // selection); every reader here assumes a real, if empty, list.
+            _selectedSources = value ?? Array.Empty<string>();
+            Raise(nameof(SelectedSources));
+        }
+    }
+
+    /// <summary>Raised after a rebuild has re-established which sources are
+    /// selected, so the window can re-apply it to the grid — the other half
+    /// of the push <see cref="SelectedSources"/> makes in the opposite
+    /// direction. Same shape as FilenameListViewModel.SelectionRestored.</summary>
+    public event EventHandler<IReadOnlyList<string>>? SelectionRestored;
+
+    /// <summary>Re-establishes the selection a rebuild just destroyed,
+    /// keeping only rows that are still listed — restoring one the batch has
+    /// since dropped would let Remove selected try to remove a file that
+    /// isn't on screen. Assigns the field rather than the property so the
+    /// window's own SelectionChanged echo isn't mistaken for a user
+    /// action.</summary>
+    private void RestoreSelection(IReadOnlyList<string> wanted)
+    {
+        if (wanted.Count == 0) return;
+
+        var listed = new HashSet<string>(
+            Preview.Select(r => r.Source), StringComparer.OrdinalIgnoreCase);
+        var kept = wanted.Where(listed.Contains).ToList();
+
+        _selectedSources = kept;
+        Raise(nameof(SelectedSources));
+        SelectionRestored?.Invoke(this, kept);
     }
 
     /// <summary>A hand-edited "New name" cell. Empty text clears the override;
@@ -325,6 +454,17 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         // show, not a re-plan from whatever the op fields say by the time the
         // button is clicked — see the finding-1 note on _lastRenderedPlans.
         _lastRenderedPlans = plans;
+
+        // Snapshot BEFORE the rebuild (audit QC-11 — the same defect FL-03
+        // fixed in FilenameListViewModel, never applied here). Preview.Clear()
+        // raises a Reset, the DataGrid drops its selection on it, and the
+        // window pushes that now-empty selection straight back into
+        // SelectedSources — so eight rows picked out for Remove selected are
+        // gone by the time one more character typed into "At start:" finishes
+        // debouncing, and the button then removes nothing, with no error and
+        // nothing on screen to tell the difference from a real removal.
+        var wasSelected = _selectedSources;
+
         Preview.Clear();
         _changed = 0;
         foreach (var pr in plans)
@@ -342,6 +482,7 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
                 string.Join(" — ", notes), pr.Changed, pr.Manual, needsName,
                 needsName ? SeedFor(newName) : newName, noteIsProblem: pr.Note.Length > 0));
         }
+        RestoreSelection(wasSelected);
         NeedsNameCount = Preview.Count(r => r.NeedsName);
         CountsLine = _files.Count == 0
             ? ""
@@ -351,43 +492,163 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         RenameCommand.RaiseCanExecuteChanged();
     }
 
-    internal void Apply()
+    /// <summary>Rename what Preview last rendered, one file at a time and off
+    /// the UI thread (audit QC-04). The loop is the sequential,
+    /// cancelled-between-items shape ZipListViewModel.RunBatchAsync runs its
+    /// own batches with, for the same two reasons: several File.Moves at once
+    /// against one share buys contention rather than speed, and a batch
+    /// stopped between files leaves every file it did touch in a finished
+    /// state.
+    ///
+    /// What is different here, and is the reason QC-04 is High, is WHERE the
+    /// outcome is recorded. <see cref="_lastOutcomes"/> — the only thing Undo
+    /// reads — is published BEFORE the first move and appended to as each one
+    /// lands, so it names the work already done at every instant of the
+    /// batch. It used to be assigned only after the loop, which meant a batch
+    /// that didn't reach its last file left files renamed on disk with no
+    /// undo path at all: not a theoretical window, since the loop ran on the
+    /// UI thread and the frozen window is precisely what made people kill the
+    /// app.
+    ///
+    /// Everything after the loop stays on the UI thread by the ordinary
+    /// route: this only ever starts from RenameCommand on the dispatcher
+    /// thread, so each await resumes on the context captured there — the same
+    /// shape ShellViewModel.OnUndoAsync uses for its own scheduler hop.
+    /// (ZipListViewModel posts explicitly instead because its batch marshals
+    /// per-row applies; there is no such hand-off here.)</summary>
+    internal async Task ApplyAsync()
     {
         // Execute what Preview last rendered, not a fresh Plan() from
         // CurrentOp() — see the finding-1 note on _lastRenderedPlans. This is
         // the whole fix: it makes "the operation executed is the operation
         // last rendered" true unconditionally, rather than true only when no
         // debounce/compute is in flight at the moment of the click.
-        var outcomes = Execute(_lastRenderedPlans);
+        // Filtered to the rows that actually change, which is both what
+        // Execute would have skipped anyway and what "3 of 12" has to count
+        // to match the number on the button.
+        var batch = _lastRenderedPlans.Where(p => p.Changed).ToList();
+
+        var renamed = new List<RenameOutcome>();
+        var failed = new List<RenameOutcome>();
+        _lastOutcomes = renamed;   // published before the first move — see above
+
+        using var cts = new CancellationTokenSource();
+        _batchCts = cts;
+        IsBusy = true;
+        var cancelled = false;
+        try
+        {
+            for (var i = 0; i < batch.Count; i++)
+            {
+                // Checked BETWEEN files, never mid-move: a File.Move is not
+                // interruptible and a half-done one is worse than a late one.
+                if (cts.IsCancellationRequested) { cancelled = true; break; }
+                Status = $"Renaming {i + 1} of {batch.Count}…";
+                var outcome = await _scheduler.Run(() => RenameOne(batch[i]));
+                (outcome.Final is null ? failed : renamed).Add(outcome);
+            }
+        }
+        finally
+        {
+            _batchCts = null;
+            IsBusy = false;
+        }
+
         _overrides.Clear();
-        var renamed = outcomes.Where(o => o.Final != null).ToList();
-        var failed = outcomes.Where(o => o.Final == null).ToList();
         var finals = renamed.ToDictionary(o => o.Source, o => o.Final!);
         for (var i = 0; i < _files.Count; i++)
             if (finals.TryGetValue(_files[i], out var f)) _files[i] = f;
-        _lastOutcomes = renamed;
+        // The operation fields are cleared even on a cancel, deliberately.
+        // Leaving them set would re-render the same rule over a list where
+        // some files already carry its result, so finishing the job by
+        // pressing Rename again would prefix the prefixed ones twice. A clean
+        // slate over the names that are actually on disk is the only state
+        // that can't quietly do that; Undo covers the half that ran.
         Find = Replace = Prefix = Suffix = "";
         CaseIndex = 0;
         ReviewMode = false;
         DeleteSeg1 = DeleteSeg2 = DeleteSeg3 = DeleteSeg4 = DeleteSegLast = false;
         Refresh(immediate: true);
         UndoCommand.RaiseCanExecuteChanged();
-        Status = failed.Count > 0
-            ? $"Renamed {renamed.Count}; {failed.Count} failed — e.g. " +
-              $"{Path.GetFileName(failed[0].Source)}: {failed[0].Error}"
-            : $"Renamed {renamed.Count} file{(renamed.Count == 1 ? "" : "s")}.";
+        Status = cancelled
+            // Names what completed, not what was asked for: that is both the
+            // honest count and exactly what Undo can still put back.
+            ? $"Cancelled — renamed {renamed.Count} of {batch.Count}" +
+              (failed.Count > 0 ? $", {failed.Count} failed" : "") + "."
+            : failed.Count > 0
+                ? $"Renamed {renamed.Count}; {failed.Count} failed — e.g. " +
+                  $"{Path.GetFileName(failed[0].Source)}: {failed[0].Error}"
+                : $"Renamed {renamed.Count} file{(renamed.Count == 1 ? "" : "s")}.";
     }
 
-    internal void UndoBatch()
+    /// <summary>One plan through BulkRename.Execute. Its loop body is
+    /// self-contained per plan — the target collision is re-checked against
+    /// the disk at the last instant (BulkRename.cs:195) and nothing carries
+    /// between iterations — so running it a plan at a time is the same
+    /// execution, just with a seam between files for the progress line, the
+    /// cancel check and the outcome record. Every plan reaching here has
+    /// Changed set, which is what makes the single outcome certain.</summary>
+    private static RenameOutcome RenameOne(PlannedRename plan) => Execute(new[] { plan })[0];
+
+    /// <summary>Put a batch back, newest first, one file at a time and off
+    /// the UI thread — BulkRename.Revert is the same foreach of File.Moves
+    /// Execute is, and it was on the UI thread for the same reason.
+    ///
+    /// Each restored file is dropped from <see cref="_lastOutcomes"/> as it
+    /// lands, the mirror of Apply's recording rule: what is left there is
+    /// always exactly what is still renamed on disk, so a cancelled undo can
+    /// be resumed rather than leaving the list claiming files it already put
+    /// back. A file that could NOT be restored is deliberately kept for the
+    /// same reason MatchMerge keeps its failed outcomes — it really is still
+    /// renamed, and retrying is the only way out.</summary>
+    internal async Task UndoBatchAsync()
     {
-        var problems = Revert(_lastOutcomes);
-        var restored = _lastOutcomes.Where(o => o.Final != null)
-            .ToDictionary(o => o.Final!, o => o.Source);
+        var batch = _lastOutcomes;
+        var total = batch.Count;
+        var problems = new List<string>();
+        var restored = new Dictionary<string, string>();
+
+        using var cts = new CancellationTokenSource();
+        _batchCts = cts;
+        IsBusy = true;
+        var cancelled = false;
+        try
+        {
+            for (var i = total - 1; i >= 0; i--)
+            {
+                if (cts.IsCancellationRequested) { cancelled = true; break; }
+                var outcome = batch[i];
+                Status = $"Restoring {total - i} of {total}…";
+                var problem = await _scheduler.Run(() => RevertOne(outcome));
+                if (problem is null)
+                {
+                    restored[outcome.Final!] = outcome.Source;
+                    batch.RemoveAt(i);
+                }
+                else
+                {
+                    problems.Add(problem);
+                }
+            }
+        }
+        finally
+        {
+            _batchCts = null;
+            IsBusy = false;
+        }
+
         for (var i = 0; i < _files.Count; i++)
             if (restored.TryGetValue(_files[i], out var s)) _files[i] = s;
-        _lastOutcomes = new List<RenameOutcome>();
         Refresh(immediate: true);
         UndoCommand.RaiseCanExecuteChanged();
-        Status = problems.Count > 0 ? string.Join("; ", problems) : "Original names restored.";
+        Status = cancelled
+            ? $"Cancelled — restored {restored.Count} of {total}."
+            : problems.Count > 0 ? string.Join("; ", problems) : "Original names restored.";
     }
+
+    /// <summary>One outcome through BulkRename.Revert — self-contained per
+    /// outcome for the same reason <see cref="RenameOne"/> is — as the
+    /// readable problem it reported, or null when the name was restored.</summary>
+    private static string? RevertOne(RenameOutcome outcome) =>
+        Revert(new[] { outcome }).FirstOrDefault();
 }

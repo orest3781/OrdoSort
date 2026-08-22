@@ -50,9 +50,11 @@ public static class ScenarioKit
     /// from INSIDE the uiContext.Post marshalling hop, not where the calling
     /// thread assigns it directly and returns. It used to be called at 7
     /// sites where it could never fail (5 in BulkRenameScenarios.cs, 2 in
-    /// MatchMergeScenarios.cs): BulkRenameViewModel.Apply/UndoBatch and
-    /// MatchMergeViewModel's DoMerge/UndoBatch all set Status synchronously,
-    /// on the calling thread, with no Post anywhere in the method — so
+    /// MatchMergeScenarios.cs): BulkRenameViewModel.ApplyAsync/UndoBatchAsync
+    /// (whose scheduler hops collapse to nothing under the InlineScheduler
+    /// those scenarios inject — see BulkRenameScenarios' class doc) and
+    /// MatchMergeViewModel's DoMerge/UndoBatch all set Status on the calling
+    /// thread, with no Post anywhere in the method — so
     /// `status()` already satisfied the predicate before E2EPump.Until ever
     /// ran, and its pre-pump fast path (`if (kickoff is null && ready())
     /// return true`) answered on the spot. The recorded assertion could not

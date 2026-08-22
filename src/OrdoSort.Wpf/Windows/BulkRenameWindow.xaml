@@ -35,6 +35,11 @@
                     </StackPanel>
                 </Button>
                 <Button Content="Undo last rename" Command="{Binding UndoCommand}" Margin="0,0,10,0" />
+                <!-- the batch's brake, same shape as UnlockWindow's: files
+                     already renamed stay renamed and Undo still covers them,
+                     the rest are simply not started -->
+                <Button Content="Cancel" Command="{Binding CancelCommand}" Margin="0,0,10,0"
+                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
                            Style="{StaticResource StatusText}" MaxWidth="360" />
             </StackPanel>
@@ -165,6 +170,7 @@
                 <DataGrid x:Name="PreviewGrid" ItemsSource="{Binding Preview}" AutoGenerateColumns="False"
                           CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column"
                           CellEditEnding="OnCellEditEnding" SelectionMode="Extended"
+                          SelectionChanged="OnSelectionChanged"
                           PreviewKeyDown="OnGridKeyDown">
                     <DataGrid.RowStyle>
                         <!-- Local RowStyle, BasedOn the shared GridRow style

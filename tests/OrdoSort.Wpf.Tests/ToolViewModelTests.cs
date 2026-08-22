@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using OrdoSort.Core;
@@ -1031,13 +1032,16 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     [Fact]
-    public void CountsLineAndAddNoteTrackTheBatch()
+    public async Task CountsLineAndAddNoteTrackTheBatch()
     {
         var vm = new BulkRenameViewModel();
         var a = Touch("scan_001.pdf");
         var b = Touch("keep.pdf");
-        vm.AddFiles(new[] { a, b, a });   // duplicate ignored
-        Assert.Contains("2 added", vm.AddNote);   // set synchronously, not through the probe
+        // Awaited, not polled: the intake's File.Exists checks moved off the
+        // UI thread with the renames (audit QC-04), so AddNote is settled
+        // when the returned task is — it still doesn't go through the probe.
+        await vm.AddFilesAsync(new[] { a, b, a });   // duplicate ignored
+        Assert.Contains("2 added", vm.AddNote);
         Assert.Contains("1 ignored", vm.AddNote);
 
         vm.Find = "scan";
@@ -1061,13 +1065,13 @@ public class BulkRenameViewModelTests : IDisposable
     /// nothing wrong with it. Seven sibling tools already deduped with
     /// OrdinalIgnoreCase; this one and MatchMerge did not.</summary>
     [Fact]
-    public void ACaseOnlyDuplicateIsNotAddedTwice()
+    public async Task ACaseOnlyDuplicateIsNotAddedTwice()
     {
         var vm = new BulkRenameViewModel();
         var a = Touch("scan_001.pdf");
         var shouty = Path.Combine(_dir, "SCAN_001.pdf");   // same file, different spelling
 
-        vm.AddFiles(new[] { a, shouty });
+        await vm.AddFilesAsync(new[] { a, shouty });
 
         Assert.Contains("1 added", vm.AddNote);
         Assert.Contains("1 ignored", vm.AddNote);
@@ -1077,7 +1081,7 @@ public class BulkRenameViewModelTests : IDisposable
     public void CountsLineCallsOutTheRowsStillWaitingOnAName()
     {
         var vm = new BulkRenameViewModel();
-        vm.AddFiles(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf"),
+        vm.AddFilesAsync(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf"),
                             Touch("notes_only.pdf") });
         vm.ReceivedDate = new DateTime(2024, 1, 26);
         vm.ReviewMode = true;
@@ -1098,7 +1102,7 @@ public class BulkRenameViewModelTests : IDisposable
     private BulkRenameViewModel BatchWithStrays()
     {
         var vm = new BulkRenameViewModel();
-        vm.AddFiles(new[]
+        vm.AddFilesAsync(new[]
         {
             Touch("SMITH_JOHN_5_5_2024_ACME_RECORDS_1-1__08_02_24_1019_X.pdf"),
             Touch("oddball one.pdf"),
@@ -1169,7 +1173,7 @@ public class BulkRenameViewModelTests : IDisposable
         // actually forces that recompute to land first.
         var calls = 0;
         var vm = new BulkRenameViewModel(scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
-        vm.AddFiles(new[] { Touch("scan_001.pdf") });
+        vm.AddFilesAsync(new[] { Touch("scan_001.pdf") });
         WaitFor(() => calls == 1, "the initial add's compute should land");
 
         vm.Find = "scan";
@@ -1185,7 +1189,7 @@ public class BulkRenameViewModelTests : IDisposable
     public void FindReplacePreviewMatchesThePlan()
     {
         var vm = new BulkRenameViewModel();
-        vm.AddFiles(new[] { Touch("scan_001.pdf"), Touch("keep.pdf") });
+        vm.AddFilesAsync(new[] { Touch("scan_001.pdf"), Touch("keep.pdf") });
         vm.Find = "scan";
         vm.Replace = "fax";
 
@@ -1200,7 +1204,7 @@ public class BulkRenameViewModelTests : IDisposable
     public void ReviewTransformParsesTheMedicalFaxNames()
     {
         var vm = new BulkRenameViewModel();
-        vm.AddFiles(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf") });
+        vm.AddFilesAsync(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf") });
         vm.ReceivedDate = new DateTime(2024, 1, 26);
         vm.ReviewMode = true;
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "20240126-BROWN-ADAM.pdf",
@@ -1222,7 +1226,7 @@ public class BulkRenameViewModelTests : IDisposable
         var calls = 0;
         var vm = new BulkRenameViewModel(scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
         var src = Touch("scan_001.pdf");
-        vm.AddFiles(new[] { src });
+        vm.AddFilesAsync(new[] { src });
         WaitFor(() => calls == 1, "the initial add's compute should land");
 
         vm.SetOverride(src, "CUSTOM NAME.pdf");   // typed extension is stripped
@@ -1250,11 +1254,11 @@ public class BulkRenameViewModelTests : IDisposable
     }
 
     [Fact]
-    public void ApplyRenamesOnDiskAndUndoRestores()
+    public async Task ApplyRenamesOnDiskAndUndoRestores()
     {
         var vm = new BulkRenameViewModel();
         var src = Touch("scan_001.pdf");
-        vm.AddFiles(new[] { src });
+        await vm.AddFilesAsync(new[] { src });
         vm.Find = "scan";
         vm.Replace = "fax";
         // Post finding-1 fix, Apply() executes the plan Preview last
@@ -1265,14 +1269,14 @@ public class BulkRenameViewModelTests : IDisposable
         // (pre-Find/Replace) plans instead of exercising a real rename.
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "fax_001.pdf",
             "the preview should settle on the Find/Replace result before Apply");
-        vm.Apply();
+        await vm.ApplyAsync();
 
         Assert.True(File.Exists(Path.Combine(_dir, "fax_001.pdf")));
         Assert.False(File.Exists(src));
         Assert.Contains("Renamed 1 file", vm.Status);
         Assert.Equal("", vm.Find);   // ops reset after a batch
 
-        vm.UndoBatch();
+        await vm.UndoBatchAsync();
         Assert.True(File.Exists(src));
         Assert.Equal("Original names restored.", vm.Status);
     }
@@ -1298,11 +1302,11 @@ public class BulkRenameViewModelTests : IDisposable
     /// Preview never showed. Post-fix, Apply() executes the retained
     /// fax_001.pdf plan regardless of what Find says by then.</summary>
     [Fact]
-    public void ApplyExecutesTheOperationLastRenderedNotAStillDebouncingEdit()
+    public async Task ApplyExecutesTheOperationLastRenderedNotAStillDebouncingEdit()
     {
         var vm = new BulkRenameViewModel();
         var src = Touch("scan_001.pdf");
-        vm.AddFiles(new[] { src });
+        await vm.AddFilesAsync(new[] { src });
         vm.Find = "scan";
         vm.Replace = "fax";
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "fax_001.pdf",
@@ -1314,7 +1318,7 @@ public class BulkRenameViewModelTests : IDisposable
         // recompute has not landed, so Preview/RenameButtonText still show
         // the fax_001.pdf plan above.
         vm.Find = "s";
-        vm.Apply();   // clicked inside the debounce window, before the recompute lands
+        await vm.ApplyAsync();   // clicked inside the debounce window, before the recompute lands
 
         // What got renamed on disk must be what Preview showed, not a plan
         // built from the newer, never-rendered Find="s".
@@ -1328,7 +1332,7 @@ public class BulkRenameViewModelTests : IDisposable
     public void DeleteSegment2ProducesCorrectPreview()
     {
         var vm = new BulkRenameViewModel();
-        vm.AddFiles(new[] { Touch("A-B-C.pdf") });
+        vm.AddFilesAsync(new[] { Touch("A-B-C.pdf") });
         vm.DeleteSeg2 = true;
 
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
@@ -1340,7 +1344,7 @@ public class BulkRenameViewModelTests : IDisposable
     public void DeleteSegment2AndLastProducesCorrectPreview()
     {
         var vm = new BulkRenameViewModel();
-        vm.AddFiles(new[] { Touch("A-B-C.pdf") });
+        vm.AddFilesAsync(new[] { Touch("A-B-C.pdf") });
         vm.DeleteSeg2 = true;
         vm.DeleteSegLast = true;
 
@@ -1353,7 +1357,7 @@ public class BulkRenameViewModelTests : IDisposable
     public void UncheckedDeleteSegmentsReturnsOriginal()
     {
         var vm = new BulkRenameViewModel();
-        vm.AddFiles(new[] { Touch("A-B-C.pdf") });
+        vm.AddFilesAsync(new[] { Touch("A-B-C.pdf") });
         vm.DeleteSeg2 = true;
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
             "the preview should eventually reflect DeleteSeg2");
@@ -1378,7 +1382,7 @@ public class BulkRenameViewModelTests : IDisposable
         var calls = 0;
         var vm = new BulkRenameViewModel(scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
         var src = Touch("A-B-C.pdf");
-        vm.AddFiles(new[] { src });
+        vm.AddFilesAsync(new[] { src });
         WaitFor(() => calls == 1, "the initial add's compute should land");
 
         vm.DeleteSeg2 = true;
@@ -1399,14 +1403,58 @@ public class BulkRenameViewModelTests : IDisposable
         Assert.Equal("CUSTOM-NAME.pdf", vm.Preview[0].NewName);   // the override still beat the op
     }
 
+    /// <summary>Audit QC-11. ApplyPlans calls Preview.Clear() on every
+    /// rebuild, the DataGrid drops its selection on that Reset, and the
+    /// window pushes the now-empty selection straight back down — so
+    /// selecting eight rows to drop from the batch and then typing one more
+    /// character into "At start:" left Remove selected removing nothing at
+    /// all, with no error and nothing on screen to tell it from a real
+    /// removal. All four of Find/Replace/Prefix/Suffix debounce into that
+    /// rebuild, so it is one keystroke away at any moment.
+    ///
+    /// The CollectionChanged handler below IS the regression: a view model on
+    /// its own never sees the selection cleared, so a test without it passes
+    /// against the broken code and proves nothing. It reproduces exactly what
+    /// WPF does. Same shape as FilenameListViewModelTests.
+    /// TheRowSelectionSurvivesAReprojection, which pinned this defect's twin
+    /// (FL-03) in the Filename list.</summary>
     [Fact]
-    public void DeleteSegmentsResetAfterApply()
+    public async Task TheRowSelectionSurvivesARebuiltPreview()
+    {
+        var vm = new BulkRenameViewModel();
+        var alpha = Touch("alpha.pdf");
+        var beta = Touch("beta.pdf");
+        var gamma = Touch("gamma.pdf");
+        await vm.AddFilesAsync(new[] { alpha, beta, gamma });
+        WaitFor(() => vm.Preview.Count == 3, "the add should settle first");
+
+        vm.Preview.CollectionChanged += (_, e) =>
+        {
+            if (e.Action == NotifyCollectionChangedAction.Reset)
+                vm.SelectedSources = Array.Empty<string>();
+        };
+
+        vm.SelectedSources = new[] { alpha, beta };
+        vm.Prefix = "X-";   // one more character typed into "At start:"
+        WaitFor(() => vm.Preview.Count == 3 && vm.Preview.All(r => r.Changed),
+            "the rebuilt preview should reflect the prefix");
+
+        vm.RemoveSelected();
+
+        WaitFor(() => vm.Preview.Count == 1,
+            "Remove selected should drop the two rows that were picked before the rebuild");
+        Assert.Equal(gamma, vm.Preview[0].Source);
+        Assert.Empty(vm.SelectedSources);   // and the rows it dropped are no longer claimed as selected
+    }
+
+    [Fact]
+    public async Task DeleteSegmentsResetAfterApply()
     {
         var vm = new BulkRenameViewModel();
         var src = Touch("A-B-C.pdf");
-        vm.AddFiles(new[] { src });
+        await vm.AddFilesAsync(new[] { src });
         vm.DeleteSeg2 = true;
-        vm.Apply();
+        await vm.ApplyAsync();
 
         Assert.False(vm.DeleteSeg1);
         Assert.False(vm.DeleteSeg2);
@@ -1760,7 +1808,7 @@ public class MatchMergeViewModelTests : IDisposable
     // Absorb used to _outcomes.AddRange every batch, so "Undo last merge"
     // actually undid EVERY merge since the tool opened. Each DoMerge/Absorb
     // call must replace _outcomes with just that batch, matching the
-    // sibling BulkRenameViewModel.Apply's _lastOutcomes = renamed rule.
+    // sibling BulkRenameViewModel.ApplyAsync's _lastOutcomes = renamed rule.
 
     [Fact]
     public void UndoOnlyRevertsTheLastMergeBatchNotEveryMergeSinceOpening()

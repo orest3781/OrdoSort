@@ -84,7 +84,7 @@ public class CultureInvariantDatesTests : IDisposable
         {
             var path = MakeFile("SMITH_JOHN_01_15_2024.pdf");
             var vm = new BulkRenameViewModel();
-            vm.AddFiles(new[] { path });
+            vm.AddFilesAsync(new[] { path });
             vm.ReviewMode = true;
             vm.ReceivedDate = new DateTime(2026, 8, 2);
 
@@ -113,7 +113,7 @@ public class CultureInvariantDatesTests : IDisposable
         {
             var path = MakeFile("whatever.pdf");   // doesn't match the review layout
             var vm = new BulkRenameViewModel();
-            vm.AddFiles(new[] { path });
+            vm.AddFilesAsync(new[] { path });
             vm.ReviewMode = true;
             vm.ReceivedDate = new DateTime(2026, 8, 2);
 

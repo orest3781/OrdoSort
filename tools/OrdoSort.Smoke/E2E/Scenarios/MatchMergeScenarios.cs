@@ -24,8 +24,9 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 /// calling thread: ReadHeaders/LoadRoster parse the CSV inline, MatchFiles
 /// is a plain foreach with no I/O, and DoMerge's rename goes through
 /// MatchMerge.ExecuteMerges -&gt; BulkRename.Plan/BulkRename.Execute, the
-/// same non-async foreach/File.Move pair BulkRenameViewModel.Apply calls
-/// directly (see BulkRenameScenarios' class doc comment). The one async
+/// same non-async foreach/File.Move pair — called straight from the command
+/// here, which is what BulkRenameViewModel did before audit QC-04 moved its
+/// own copy onto a scheduler (see BulkRenameScenarios' class doc comment). The one async
 /// method on this view model, AutoLoadRosterAsync, is never reached by any
 /// scenario here (it needs Config.MergeRoster already set from a previous
 /// run; ConfigFixture.Write always starts it blank, so MatchMergeWindow's

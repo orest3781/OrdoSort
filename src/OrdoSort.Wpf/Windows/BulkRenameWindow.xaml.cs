@@ -23,19 +23,45 @@ public partial class BulkRenameWindow : Window
         _vm = vm;
         DataContext = vm;
         DataGridColumnCap.Track(PreviewGrid, CurrentColumn, NoteColumn);
+        _vm.SelectionRestored += OnSelectionRestored;
+        Closed += (_, _) => _vm.SelectionRestored -= OnSelectionRestored;
     }
+
+    /// <summary>Re-applies a selection the view model preserved across a
+    /// rebuilt preview (audit QC-11). The grid drops its selection whenever
+    /// Preview is Reset, so without this the rows come back unselected even
+    /// though the view model still knows which ones the user picked.
+    /// Assigning SelectedItems re-enters OnSelectionChanged below, which
+    /// pushes the same set straight back down — idempotent, and it keeps the
+    /// two sides in agreement rather than needing a re-entrancy guard.</summary>
+    private void OnSelectionRestored(object? sender, IReadOnlyList<string> sources)
+    {
+        if (sources.Count == 0) return;
+
+        var wanted = new HashSet<string>(sources, System.StringComparer.OrdinalIgnoreCase);
+        PreviewGrid.SelectedItems.Clear();
+        foreach (var row in PreviewGrid.Items.OfType<RenameRow>())
+            if (wanted.Contains(row.Source))
+                PreviewGrid.SelectedItems.Add(row);
+    }
+
+    private void OnSelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        _vm.SelectedSources = PreviewGrid.SelectedItems
+            .OfType<RenameRow>()
+            .Select(r => r.Source)
+            .ToList();
 
     private void OnAddFiles(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog { Filter = "All files (*.*)|*.*", Multiselect = true };
-        if (dlg.ShowDialog(this) == true) _vm.AddFiles(dlg.FileNames);
+        if (dlg.ShowDialog(this) == true) _ = _vm.AddFilesAsync(dlg.FileNames);
     }
 
     private void OnAddFolder(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFolderDialog();
         if (dlg.ShowDialog(this) == true)
-            _vm.AddFiles(Directory.GetFiles(dlg.FolderName));
+            _ = _vm.AddFilesAsync(Directory.GetFiles(dlg.FolderName));
     }
 
     private void OnJumpToNextStray(object sender, RoutedEventArgs e)
@@ -46,9 +72,11 @@ public partial class BulkRenameWindow : Window
         if (next >= 0 && PreviewGrid.Items[next] is RenameRow target) BeginEdit(target);
     }
 
-    private void OnRemoveSelected(object sender, RoutedEventArgs e) =>
-        _vm.RemoveFiles(PreviewGrid.SelectedItems.OfType<RenameRow>()
-            .Select(r => r.Source).ToList());
+    /// <summary>Reads the selection the view model preserved, not the
+    /// grid's live one (audit QC-11): the grid's is empty for a beat after
+    /// every rebuilt preview, which is any keystroke in one of the operation
+    /// fields, and removing an empty selection is a silent no-op.</summary>
+    private void OnRemoveSelected(object sender, RoutedEventArgs e) => _vm.RemoveSelected();
 
     /// <summary>The "New name" column is the escape hatch for the handful of
     /// files an operation can't name, so getting into it must not be a secret.
@@ -126,6 +154,6 @@ public partial class BulkRenameWindow : Window
 
     private void OnDrop(object sender, DragEventArgs e)
     {
-        if (e.Data.GetData(DataFormats.FileDrop) is string[] paths) _vm.AddFiles(paths);
+        if (e.Data.GetData(DataFormats.FileDrop) is string[] paths) _ = _vm.AddFilesAsync(paths);
     }
 }

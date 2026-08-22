@@ -90,7 +90,7 @@ public class BulkRenameProbeTests : IDisposable
     {
         var a = Touch("scan_001.pdf");
         var vm = new BulkRenameViewModel(plan: (paths, op, overrides) => SlowPlan(300, paths, op, overrides));
-        vm.AddFiles(new[] { a });
+        vm.AddFilesAsync(new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle before the timing measurement");
 
         var sw = Stopwatch.StartNew();
@@ -108,7 +108,7 @@ public class BulkRenameProbeTests : IDisposable
     {
         var a = Touch("scan_001.pdf");
         var vm = new BulkRenameViewModel(plan: (paths, op, overrides) => SlowPlan(300, paths, op, overrides));
-        vm.AddFiles(new[] { a });
+        vm.AddFilesAsync(new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle first");
 
         vm.Find = "scan";
@@ -127,7 +127,7 @@ public class BulkRenameProbeTests : IDisposable
         var a = Touch("scan_001.pdf");
         var vm = new BulkRenameViewModel(
             scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
-        vm.AddFiles(new[] { a });
+        vm.AddFilesAsync(new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle before the keystroke burst starts");
         var callsBeforeTyping = calls;
 
@@ -155,7 +155,7 @@ public class BulkRenameProbeTests : IDisposable
         // waited it out like a typed field, the WaitFor below (timeout well
         // under this) would fail
         var vm = new BulkRenameViewModel(probeDelayMs: 5000);
-        vm.AddFiles(new[] { a });
+        vm.AddFilesAsync(new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle before the timing measurement");
 
         vm.DeleteSeg2 = true;   // one of the five DeleteSeg* flags — a single click, not typed text

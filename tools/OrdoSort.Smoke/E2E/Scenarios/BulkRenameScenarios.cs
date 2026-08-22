@@ -28,24 +28,29 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 /// pre-pump check.
 ///
 /// Status is the opposite shape, and it is direct, not a hazard for reading
-/// it — but a trap for waiting on it: Apply() and UndoBatch() assign Status
-/// themselves, synchronously, on the calling thread — no Post anywhere in
-/// either method. Critically, unlike Summary in Unzip/ZipMerge (an aggregate
-/// that can be non-empty from a live "N of M…" line while individual rows
-/// are still Pending), there is no async per-row completion Status could
-/// race ahead of here: BulkRename.Execute and BulkRename.Revert are plain
-/// foreach/File.Move loops with no Task.Run of their own, called directly at
-/// the top of Apply()/UndoBatch() before Status is ever touched. So by the
-/// time RenameCommand.Execute(null)/UndoCommand.Execute(null) return, the
-/// real rename has already happened and Status already reports it — which
-/// is exactly why ScenarioKit.Settle does not belong here: its wait exists
-/// to pump a frame while a result is still in flight, and nothing is in
-/// flight by the time these five sites would have called it, so
+/// it — but a trap for waiting on it: ApplyAsync()/UndoBatchAsync() assign
+/// Status themselves, on the calling thread, with no Post anywhere in either
+/// method. Since audit QC-04 those two run their File.Moves one file at a
+/// time through the IWorkScheduler seam (they were plain foreach/File.Move
+/// loops on the UI thread before), but that changes nothing HERE: the seam
+/// is InlineScheduler, so every await completes synchronously and the whole
+/// batch — including the "Renaming 2 of 5…" progress line and the final
+/// verdict — has run by the time RenameCommand.Execute(null)/
+/// UndoCommand.Execute(null) returns. Unlike Summary in Unzip/ZipMerge (an
+/// aggregate that can be non-empty from a live "N of M…" line while
+/// individual rows are still Pending), there is no marshalling hop for
+/// Status to race here at all.
+///
+/// That is exactly why ScenarioKit.Settle does not belong here: its wait
+/// exists to pump a frame while a result is still in flight, and nothing is
+/// in flight by the time these five sites would have called it, so
 /// E2EPump.Until's pre-pump fast path always answered before Settle's own
 /// wait could ever matter. The five sites below assert `vm.Status` directly
 /// instead — the same right verdict property, checked for what it actually
 /// says (e.g. `vm.Status.StartsWith("Renamed", …)`) rather than waited on
-/// for a hop that never happens. See ScenarioKit.Settle's doc comment.
+/// for a hop that never happens. Note this now rests on the InlineScheduler
+/// above: swap that for a real one and Status becomes a wait, not a read.
+/// See ScenarioKit.Settle's doc comment.
 ///
 /// Two of the brief's own waits had exactly the trap ScenarioKit.Settle
 /// warns about, just aimed at a view-model property instead of the
@@ -101,7 +106,7 @@ public static class BulkRenameScenarios
         var vm = NewVm();
         var win = Open(vm);
 
-        vm.AddFiles(new[] { a, b });
+        vm.AddFilesAsync(new[] { a, b });
         E2EPump.Until(() => vm.Preview.Count == 2, 8000);
         ctx.Check("preview shows both files", vm.Preview.Count == 2, $"got {vm.Preview.Count}");
 
@@ -144,7 +149,7 @@ public static class BulkRenameScenarios
         var vm = NewVm();
         var win = Open(vm);
 
-        vm.AddFiles(new[] { a, b });
+        vm.AddFilesAsync(new[] { a, b });
         E2EPump.Until(() => vm.Preview.Count == 2, 8000);
 
         // Force both to the same target name via the per-file override. The
@@ -192,7 +197,7 @@ public static class BulkRenameScenarios
         var vm = NewVm();
         var win = Open(vm);
 
-        vm.AddFiles(new[] { a });
+        vm.AddFilesAsync(new[] { a });
         E2EPump.Until(() => vm.Preview.Count == 1, 8000);
 
         vm.Prefix = "OK-";
@@ -236,7 +241,7 @@ public static class BulkRenameScenarios
         var vm = NewVm();
         var win = Open(vm);
 
-        vm.AddFiles(new[] { a });
+        vm.AddFilesAsync(new[] { a });
         E2EPump.Until(() => vm.Preview.Count == 1, 8000);
 
         vm.SetOverride(a, "RENAMED");
