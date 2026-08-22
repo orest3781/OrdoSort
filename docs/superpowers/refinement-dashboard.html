@@ -1,0 +1,446 @@
+<title>OrdoSort Refinement Tracker</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;700&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f7f5f2;
+    --surface: #fdfcfa;
+    --ink: #191714;
+    --ink-2: #5b564e;
+    --muted: #898781;
+    --hair: #e6e2da;
+    --accent: #8c6a3f;
+    --accent-soft: #e9dfd0;
+    --imp: #c65f33;          /* serious, stepped for light surface contrast */
+    --imp-soft: #f7e3d9;
+    --minor: #6f6a61;
+    --minor-soft: #ecebe6;
+    --good: #226f22;
+    --good-soft: #ddeedd;
+    --track: #ece8e0;
+    --chip-on: #191714;
+    --chip-on-ink: #fdfcfa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #121110;
+      --surface: #1c1a18;
+      --ink: #f2efe9;
+      --ink-2: #b5aea2;
+      --muted: #8f8a80;
+      --hair: #2e2b27;
+      --accent: #c99e63;
+      --accent-soft: #3a3226;
+      --imp: #ec835a;
+      --imp-soft: #3c2a22;
+      --minor: #a19a8e;
+      --minor-soft: #2b2925;
+      --good: #4caf50;
+      --good-soft: #21301f;
+      --track: #2b2925;
+      --chip-on: #f2efe9;
+      --chip-on-ink: #191714;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #121110;
+    --surface: #1c1a18;
+    --ink: #f2efe9;
+    --ink-2: #b5aea2;
+    --muted: #8f8a80;
+    --hair: #2e2b27;
+    --accent: #c99e63;
+    --accent-soft: #3a3226;
+    --imp: #ec835a;
+    --imp-soft: #3c2a22;
+    --minor: #a19a8e;
+    --minor-soft: #2b2925;
+    --good: #4caf50;
+    --good-soft: #21301f;
+    --track: #2b2925;
+    --chip-on: #f2efe9;
+    --chip-on-ink: #191714;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1, h2 { font-family: "Schibsted Grotesk", system-ui, sans-serif; text-wrap: balance; }
+  h1 { font-size: 28px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 15px; font-weight: 700; margin: 0 0 12px; }
+  .sub { color: var(--ink-2); margin: 0 0 6px; }
+  .prov { color: var(--muted); font-size: 12.5px; margin: 0; }
+  .prov code { font-size: 12px; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 26px 0 14px; }
+  .tile { background: var(--surface); border: 1px solid var(--hair); border-radius: 10px; padding: 14px 16px 12px; }
+  .tile .lbl { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+  .tile .val { font-family: "Schibsted Grotesk", system-ui, sans-serif; font-size: 34px; font-weight: 700; line-height: 1.15; }
+  .tile .note { font-size: 12.5px; color: var(--muted); }
+  .tile.hero .val { color: var(--accent); font-size: 44px; }
+  .val .of { font-size: 18px; color: var(--muted); font-weight: 500; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+
+  .meter { height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; margin-top: 8px; }
+  .meter > i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+
+  .sevbar { display: flex; gap: 2px; height: 22px; border-radius: 5px; overflow: hidden; margin: 4px 0 8px; }
+  .sevbar > div { display: flex; align-items: center; justify-content: center; color: var(--page); font-size: 12px; font-weight: 600; min-width: 34px; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-2); }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 0 14px; }
+  @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+  .panel { background: var(--surface); border: 1px solid var(--hair); border-radius: 10px; padding: 16px; }
+  .barrow { display: grid; grid-template-columns: 148px 1fr 30px; gap: 8px; align-items: center; margin: 5px 0; font-size: 13px; }
+  .barrow .nm { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .barrow .tr { height: 10px; background: var(--track); border-radius: 3px; }
+  .barrow .tr > i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+  .barrow .n  { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .srcrow .tr > i { background: var(--good); }
+  .srcrow .n { color: var(--ink-2); font-size: 12.5px; white-space: nowrap; }
+  .srcrow { grid-template-columns: minmax(120px, 200px) 1fr 74px; }
+
+  .filters { position: sticky; top: 0; z-index: 5; background: var(--page); padding: 10px 0; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-bottom: 1px solid var(--hair); }
+  .chip { border: 1px solid var(--hair); background: var(--surface); color: var(--ink-2); border-radius: 999px; padding: 4px 12px; font-size: 13px; cursor: pointer; }
+  .chip:hover { border-color: var(--accent); }
+  .chip[aria-pressed="true"] { background: var(--chip-on); color: var(--chip-on-ink); border-color: var(--chip-on); }
+  .chip:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  select, input[type="search"] { background: var(--surface); color: var(--ink); border: 1px solid var(--hair); border-radius: 8px; padding: 5px 9px; font-size: 13px; font-family: inherit; }
+  input[type="search"] { flex: 1 1 160px; min-width: 140px; }
+  .count { font-size: 13px; color: var(--ink-2); margin-left: auto; font-variant-numeric: tabular-nums; }
+
+  .tblwrap { overflow-x: auto; border: 1px solid var(--hair); border-radius: 10px; background: var(--surface); margin-top: 14px; }
+  table { border-collapse: collapse; width: 100%; min-width: 760px; }
+  th { text-align: left; font-size: 11.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 10px 12px 8px; border-bottom: 1px solid var(--hair); }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--hair); vertical-align: top; font-size: 13.5px; }
+  tr:last-child td { border-bottom: 0; }
+  td.id { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; white-space: nowrap; color: var(--ink); }
+  td.sev { white-space: nowrap; }
+  .pill { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 999px; }
+  .pill.I { color: var(--imp); background: var(--imp-soft); }
+  .pill.M { color: var(--minor); background: var(--minor-soft); }
+  td.sf { color: var(--ink-2); white-space: nowrap; font-size: 12.5px; }
+  td.tt { color: var(--ink); }
+  .mk { color: var(--muted); font-size: 11.5px; margin-left: 6px; }
+  .tag { display: inline-block; font-size: 11px; color: var(--accent); border: 1px solid var(--accent-soft); background: var(--accent-soft); border-radius: 4px; padding: 0 5px; margin-left: 5px; }
+  td.sr { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .empty { padding: 28px; text-align: center; color: var(--muted); }
+  .rowI td:first-child { box-shadow: inset 3px 0 0 var(--imp); }
+  .rowM td:first-child { box-shadow: inset 3px 0 0 var(--minor); }
+  footer { margin-top: 22px; color: var(--muted); font-size: 12.5px; }
+  footer a { color: var(--accent); }
+</style>
+
+<div class="wrap">
+  <h1>OrdoSort Refinement Tracker</h1>
+  <p class="sub">Every open item app-wide, consolidated from ten audits, their remediation plans, and memory-recorded deferrals.</p>
+  <p class="prov">Render of <code>docs/superpowers/refinement-master-checklist.md</code>, snapshot 2026-08-22 · branch <code>docs/refinement-tracker</code> · if this page and the checklist disagree, the checklist wins.</p>
+
+  <div class="tiles">
+    <div class="tile hero">
+      <div class="lbl">Open items</div>
+      <div class="val" id="heroOpen">127</div>
+      <div class="note">across 18 surfaces</div>
+    </div>
+    <div class="tile">
+      <div class="lbl"><span class="dot" style="background:var(--good)"></span>High</div>
+      <div class="val">0</div>
+      <div class="note">all nine closed by batch A</div>
+    </div>
+    <div class="tile">
+      <div class="lbl"><span class="dot" style="background:var(--imp)"></span>Important</div>
+      <div class="val">50</div>
+      <div class="note">wrong &amp; confusing, nothing destroyed</div>
+    </div>
+    <div class="tile">
+      <div class="lbl"><span class="dot" style="background:var(--minor)"></span>Minor</div>
+      <div class="val">77</div>
+      <div class="note">real but small</div>
+    </div>
+    <div class="tile">
+      <div class="lbl">Doc findings closed</div>
+      <div class="val">89<span class="of"> / 196</span></div>
+      <div class="meter"><i style="width:45.4%"></i></div>
+      <div class="note">+ 28 memory-only open, 3 declined</div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="panel">
+      <h2>Severity mix of what's open</h2>
+      <div class="sevbar" id="sevbar"></div>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--imp)"></span>Important · 50</span>
+        <span><span class="dot" style="background:var(--minor)"></span>Minor · 77</span>
+        <span><span class="dot" style="background:var(--good)"></span>High · 0 open</span>
+      </div>
+      <h2 style="margin-top:18px">Closure progress by source</h2>
+      <div id="sources"></div>
+    </div>
+    <div class="panel">
+      <h2>Open items by surface</h2>
+      <div id="surfaces"></div>
+    </div>
+  </div>
+
+  <div class="filters" role="group" aria-label="Filters">
+    <button class="chip sevchip" data-sev="" aria-pressed="true">All</button>
+    <button class="chip sevchip" data-sev="I" aria-pressed="false">Important</button>
+    <button class="chip sevchip" data-sev="M" aria-pressed="false">Minor</button>
+    <select id="fSurface" aria-label="Surface"><option value="">All surfaces</option></select>
+    <select id="fSource" aria-label="Source"><option value="">All sources</option></select>
+    <select id="fTag" aria-label="Tag">
+      <option value="">Any tag</option>
+      <option value="deferred">deferred (recorded decision)</option>
+      <option value="user">blocked on user</option>
+      <option value="verify">needs re-verification</option>
+      <option value="2src">two sources</option>
+    </select>
+    <input type="search" id="fText" placeholder="Search id or text…" aria-label="Search">
+    <span class="count" id="shown"></span>
+  </div>
+
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>ID</th><th>Severity</th><th>Surface</th><th>Finding</th><th>Source</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="empty" hidden>Nothing matches these filters.</div>
+  </div>
+
+  <footer>
+    Sources: <code>docs/superpowers/audits/</code> (2026-08-02 ×2 · 08-04 · 08-07 · 08-09 ×4 · 08-20 FL · 08-21 QC), their plans, and project memory.
+    Update procedure lives at the end of the checklist; regenerate this page from it, never the reverse.
+  </footer>
+</div>
+
+<script>
+// [id, sev(I|M), surface, title, source, marks, tags[]]
+// Mirrors refinement-master-checklist.md 1:1 — regenerate from it, never edit independently.
+const ITEMS = [
+["QC-10","I","Bulk Rename","Uppercase/Lowercase is a silent no-op: case-only renames classified unchanged and skipped","app-qc","V",[]],
+["QC-15","I","Label Maker","Copies > 1 puts the same barcode on multiple boxes; Esc's 'counter untouched' claim is false","app-qc","V/U",[]],
+["QC-17","I","Settings","OK never validates a route's filename suffix; a ':' passes OK then fails every commit","app-qc","V",[]],
+["QC-18","I","Settings","OK runs every folder check and write-probe inline on the UI thread","app-qc","V/U",[]],
+["QC-19","I","Shell / main window","10-second force-close can discard an AuditError in silence: filed, no history row, no warning","app-qc","V/U",[]],
+["QC-20","I","Folder watch","FileSystemWatcher.Error never handled; a dead watcher is never re-armed","app-qc","V",[]],
+["QC-21","I","History / crash log","Patient document paths reach crash.log, which sits beside the shared config on the share","app-qc","V",[]],
+["QC-22","I","WebView2 preview","WebView2 keeps a history DB of every previewed document; nothing clears it","app-qc","V/U",[]],
+["QC-23","I","Settings","HotkeyParser catches a narrower exception than KeyGesture throws; 'Ctrl+300' bricks Settings","app-qc","V/U",[]],
+["QC-24","I","WebView2 preview","No ProcessFailed handler and _ready never cleared; a dead Edge process fails every keystroke","app-qc","V",[]],
+["QC-25","I","Filename List","Dispose() disposes the count semaphore while in-flight counters still release it","app-qc","V",[]],
+["QC-27","I","Folder watch","Unguarded List shared across threads; SetFolders racing Dispose can skip Shell.Dispose","app-qc","U",[]],
+["QC-28","I","Label Maker","Rename onto an id a peer just created merges into their row and drops the counter","app-qc","V/U",[]],
+["QC-29","I","Label Maker","A lowercase id on disk duplicates on first save, then bricks save and print","app-qc","V/U",[]],
+["QC-30","I","Settings","Re-pointing a side-file path silently discards the same session's edits","app-qc","V",[]],
+["QC-31","I","Zip Tools","ZipAsync ignores cancellation entirely; closing the window mid-zip leaves it running","app-qc","V",[]],
+["FL-07","I","Filename List","Nothing the tool learns survives closing it (columns, subfolders, filters)","fl","",["deferred"]],
+["FL-08","I","Filename List","No sign a big walk is happening: no spinner, no cancel on a large recursive folder","fl","live",[]],
+["FL-09","I","Filename List","Toggling Include extension re-walks the disk for a cosmetic change","fl","",["deferred"]],
+["FL-10","I","Filename List","Default window size too narrow for its own columns; width bump absorbed only the Pages column","fl","",["deferred"]],
+["FL-11","I","Filename List","Column headers look sortable and aren't","fl","",["deferred"]],
+["FL-12","I","Filename List","'Z to A' is a checkbox doing a two-state control's job","fl","",["deferred"]],
+["FL-13","I","Filename List","'Remove from list' is right-click-and-Delete only; no toolbar button","fl","",[]],
+["FL-14","I","Filename List","Buttons never disable; Copy/Restore/Clear/Save on empty states are silent no-ops","fl","",[]],
+["FL-15","I","Filename List","'Restore removed' doesn't say how many rows it will restore","fl","",[]],
+["FL-16","I","Filename List","Clear wipes everything with no confirmation and no undo","fl","",[]],
+["FL-17","I","Filename List","Stale AddNote and Status outlive what produced them","fl","",[]],
+["FL-18","I","Filename List","The footer grows and shoves the grid when a save fails; full text still unrecoverable","fl","live",[]],
+["FL-19","I","Filename List","Dropping onto either text box probably loses the drop","fl","live",[]],
+["FL-20","I","Filename List","Nothing indicates the window is a drop target while you drag","fl","",[]],
+["D2","I","Config","SortChoices/Config.Sorts list drift throws on Load and blocks startup with no in-app recovery","08-07","V",[]],
+["D3","I","Settings","6 of 11 combos have no accessible name","08-07","V",[]],
+["D4","I","Settings","No validation on UiFontFamily, NamingMode, or Section; a stale value renders the combo blank","08-07","V",[]],
+["R2","I","History / crash log","Daily history backup is a raw File.Copy of a live SQLite DB; a torn backup reads as success","08-07","V/U",[]],
+["R3","I","Core / filing spine","ExportCsv and RenderPdf truncate in place with no temp+rename; a crash destroys the old file","08-07","V",[]],
+["R4","I","History / crash log","crash.log grows unbounded with no rotation; SMB append atomicity unverified","08-07","V/U",[]],
+["DW-06","I","Config","Route and watch-folder paths still get the raw resolution the C2 fix removed for Inbox/Deferred","08-07","",[]],
+["DW-07","I","Shell / main window","ApplySettingsAsync adopts a failed save into memory (_cfg = cfg before TrySave is checked)","08-07","",[]],
+["DW-08","I","Settings","Only route destinations get a writability probe; everything else is existence-only","08-07","",[]],
+["DW-09","I","Settings","Station-local absolute paths in the shared config never flagged; drive/UNC coherence unchecked","08-07","",[]],
+["DW-01","I","Core / filing spine","Cross-volume move's crash branch unverified: kill mid-copy can leave a partial file under the canonical name","08-04 + core","U",["deferred","2src"]],
+["DW-02","I","Core / filing spine","Commit.SkipFile has no catch(FileExistsRace); the race becomes an unhandled UI exception","core","",[]],
+["DW-03","I","Config","ResolveConfined is lexical only; a junction inside the config dir escapes confinement","sec","",[]],
+["DW-04","I","Repo / process","Releases ship unsigned; SmartScreen on first run. Needs a signing certificate","08-04 + tb","",["user","2src"]],
+["DW-05","I","Tests / build","LabelPreview.cs (the physical printed label sheet) has zero test coverage","08-04 + tb","",["2src"]],
+["DW-10","I","Shell / main window","OpenDeferredCommand and two SetFolders call sites share QC-02's blank-Deferred root","app-qc","",[]],
+["DW-11","I","Unlock","UnlockCommand lacks the !IsUnlocking guard its siblings have","app-qc","",[]],
+["DW-12","I","MatchMerge / Review","Plain digit/S keys over the viewer pane are unrecoverable without a WH_KEYBOARD_LL hook","memory","",[]],
+["DW-13","I","Repo / process","docs/sample/ holds 412 files of real exports in the working tree; move to S:\\OrdoSort-samples","app-qc + memory","",["user","2src"]],
+["DW-14","I","Repo / process","FileMover.py / paper_mover_logger.py / RemoveReadOnly.ps1 log document paths inside the tree","app-qc","",["user"]],
+["DW-15","M","Core / filing spine","Commit.SkipFile lets ArgumentException escape while CommitFile wraps it","app-qc","",[]],
+["DW-16","M","Shell / main window","AuditError.NewPath carries a vanished file's inbox path and the UI says it 'moved'","app-qc","",[]],
+["DW-17","M","Core / filing spine","Collision counter is O(n) sequential File.Exists round-trips per commit","app-qc","",[]],
+["DW-18","M","Core / filing spine","A directory occupying the target name is invisible to both collision guards","app-qc","",[]],
+["DW-19","M","Core / filing spine","RejectIllegal misses a trailing space, so 'CON .pdf' is emitted","app-qc","U",[]],
+["DW-20","M","MatchMerge / Review","ClearCommand doesn't clear _outcomes; Undo renames files the empty grid never showed","app-qc","",[]],
+["DW-21","M","Settings","Watch-folder labels aren't duplicate-checked at OK, while route labels are","app-qc","",[]],
+["DW-22","M","Unlock","Hard kill leaves an unencrypted temp PDF in %TEMP%; no startup sweep for stale files","app-qc + 08-07","",["2src"]],
+["DW-23","M","PageCounts","CTS/semaphore never disposed; MainWindow never disposes WebView2 (test-host exit hang)","app-qc","",[]],
+["DW-24","M","Shell / main window","DialogRelay inherits the single-select default for AskOpenFiles (latent)","app-qc","",[]],
+["DW-25","M","Core / filing spine","DebouncedProbe.Trigger's _disposed check sits outside the lock Dispose takes","app-qc","U",[]],
+["DW-26","M","Tests / build","Fixed-sleep negative tests (probe cancels); the flake direction is a silent pass","app-qc","",[]],
+["DW-27","M","Tests / build","RouteTrailTests has the only unguarded Assert.All; passes on an empty collection","app-qc","",[]],
+["DW-28","M","Tests / build","Two tests derive the expected value from the code under test","app-qc","",[]],
+["DW-29","M","Tests / build","Scanner.Scan's mtime sorts are fixed but unpinned by any test","app-qc","",[]],
+["DW-30","M","Tests / build","RestoreRemovedStillClearsEveryBatchAtOnce is an already-true trap","app-qc","",[]],
+["DW-31","M","Tests / build","Ctrl+C routing to PerformCopy() has no test; delete the branch and the suite stays green","app-qc","",[]],
+["FL-21","M","Filename List","'ignored' conflates filtered-out with broken","fl","",[]],
+["FL-22","M","Filename List","Find searches names only, even when the Full path column is on","fl","",[]],
+["FL-23","M","Filename List","The two hidden-row mechanisms share one dead-end message; still no way out","fl","",[]],
+["FL-24","M","Filename List","Intake and view controls interleaved across three toolbar rows","fl","",[]],
+["FL-25","M","Filename List","No accessible names on this window's inputs","fl","",[]],
+["FL-26","M","Filename List","Find label spacing off-canon (6px button gap for a label→control pair)","fl","",[]],
+["FL-27","M","Filename List","No default button; Enter does nothing","fl","",[]],
+["FL-28","M","Filename List","ToText and ToCsv disagree about the empty listing","fl","",[]],
+["FL-29","M","Filename List","AddNote truncates the sentence that explains what went wrong; no tooltip","fl","",[]],
+["FL-30","M","Filename List","The Size column renders raw bytes","fl","",["deferred"]],
+["DW-32","M","Tests / build","QcTests.MatchMergeControlIdWithColonIsSafeToo has a dead branch; its assertion never runs","08-04","",[]],
+["DW-33","M","Tests / build","WatchListRowTemplateTests.OpenDashboard can leak a shown SettingsWindow into later tests","08-04","",[]],
+["DW-34","M","Tests / build","ValidateRoute/ProbeWritable's 'not a folder'/'not writable' branches untested","08-04","",[]],
+["DW-35","M","Tests / build",".NET 8 reaches end of life 2026-11-10 — under three months away; noted, not migrated","08-04 + tb","",["2src"]],
+["DW-36","M","Unlock","Suffix-mode writes the final .pdf with CreateNew and no temp+swap; crash leaves a corrupt file","core","",[]],
+["DW-37","M","History / crash log","crash.log appends have no cross-process coordination; concurrent crashes can interleave","sec","",[]],
+["DW-38","M","Settings","RecomputeDataFileNote/AdoptRepointedSection use the unconfined resolver every other read path avoids","08-07 + sec","",["2src"]],
+["DW-39","M","Tests / build","Mutable test seams owed consolidation into one TestHooks class; a seventh was found undercounted","tb + memory","",["2src"]],
+["DW-40","M","Tests / build","ThemeTests.TextPairs() missing three real pairings (StatusAmber/Surface, AccentBronzeText, SubtleText)","ui + memory","",["2src"]],
+["DW-80","M","Tests / build","publish.bat's comment overstates .NET 8 Desktop Runtime presence on 'modern Windows'","tb","",[]],
+["DW-81","M","Tests / build","Local publish output not purely single-file: ~815 KB of WebView2 XML docs beside the exe","tb","",[]],
+["DW-41","M","Settings","A saved custom .wav sound file is never existence-checked","08-07","",[]],
+["DW-42","M","Label Maker","'No printers found' also fires for a stopped print spooler","08-07","",[]],
+["DW-43","M","Settings","TileVisibilityIndex/SoundChoiceVm int↔string mapping duplicated and unenforced","08-07","",[]],
+["DW-44","M","Settings","Highlighted-row legibility fix test-pinned for only 6 of 11 combos","08-07","",[]],
+["DW-45","M","Settings","'Folder does not exist' ambiguous between never-configured and share-unreachable","08-07","U",[]],
+["DW-46","M","Core / filing spine","TOCTOU in CommitFile's vanished-file check yields a raw error, not the friendly message","08-07","",[]],
+["DW-47","M","Config","ProbeWritable writes its probe file inside the real destination folder","08-07","",[]],
+["DW-48","M","Repo / process","No longPathAware manifest declaration","08-07","",[]],
+["DW-49","M","Core / filing spine","Roster-driven names have no length cap short of PathTooLongException","08-07","",[]],
+["DW-50","M","Filename List","FilenameListWindow never calls DataGridColumnCap.Track, unlike every sibling","memory","",["deferred"]],
+["DW-51","M","Shell / main window","A Collapsed column's ActualWidth counts as MinWidth — phantom entitlement in the cap math","memory","",[]],
+["DW-52","M","MatchMerge / Review","Folder expansion runs synchronously on the UI thread","memory","",[]],
+["DW-53","M","MatchMerge / Review","MatchResult.Status uses raw strings where sibling VMs use enums","memory","",[]],
+["DW-54","M","MatchMerge / Review","Refresh() is O(files × roster) per mutation","memory","",[]],
+["DW-55","M","MatchMerge / Review","The roster file is read twice per load","memory","",[]],
+["DW-56","M","Tests / build","SessionDeferredResolutionTests flake (2026-08-19) not yet in known-flakes.md","memory","",["verify"]],
+["DW-57","M","Tests / build","WPF test-host process-exit hang not yet written up in known-flakes.md","memory","",[]],
+["DW-58","M","Tests / build","Two VM tests flaky under full-suite load only (TilePreview…, HandEditSurvives…)","memory","",[]],
+["DW-59","M","Tests / build","TabItemShowsTheBronzeFocusRing is environment-sensitive","memory","",["2src"]],
+["DW-60","M","Tests / build","UnlockProbeWritesNothingTests flaky under full-suite parallelism","memory","",[]],
+["DW-61","M","Tests / build","Box labels + Routing loop have one clean e2e scenario each; spec promised clean+awkward pairs","memory","",[]],
+["DW-62","M","Label Maker","BoxLabelStore IOException HResult filtering follow-up","memory","",["verify"]],
+["DW-63","M","Label Maker","ClaimNumbers should be offloaded from the UI thread in SavePdf","memory","",["verify"]],
+["DW-64","M","Settings","AdoptRepointedSection path-identity edge: wrap ResolveBeside in Path.GetFullPath","memory","",["verify"]],
+["DW-65","M","Settings · Dashboard tab","Flat-order ↑/↓ can look inert across group boundaries","memory","",[]],
+["DW-66","M","Settings · Dashboard tab","DropWatch's null branch is untested","memory","",[]],
+["DW-67","M","Settings · Dashboard tab","Per-keystroke Section rebuild overhead","memory","",[]],
+["DW-68","M","Settings · Dashboard tab","Two headers show when a Section equals MonitorTitle","memory","",[]],
+["DW-69","M","Settings · Dashboard tab","Triple insert-shape duplication; an InsertWatch helper is owed","memory","",[]],
+["DW-70","M","Settings · Dashboard tab","'Add section' can duplicate a renamed default heading's text","memory","",[]],
+["DW-71","M","Settings · Dashboard tab","The user's visual acceptance pass on the tab is still recorded as pending","memory","",["user","verify"]],
+["DW-72","M","Shell / main window","OnEnterAsync carries an inline copy of the enter-target formula","memory","",[]],
+["DW-73","M","Core / filing spine","DebouncedProbe checks its generation before Post, not inside it (~300ms stale repaint)","memory","",[]],
+["DW-74","M","Bulk Rename","Recursive/Color ride the debounced path though they're discrete clicks","memory","",[]],
+["DW-75","M","History / crash log","History's SqliteConnection undisposed when its constructor throws mid-open","memory","",["verify"]],
+["DW-76","M","Website","Settings gallery screenshot's lower half is empty; recapture on a denser tab","memory","",[]],
+["DW-77","M","Tests / build","The other coverage-style suites were never asked 'what did this actually measure?'","app-qc","",[]],
+["DW-78","M","Zip Tools","Sweep every batch surface for the mutated-under-a-live-list class (four instances so far)","app-qc","",[]],
+["DW-79","M","Repo / process","v1-release-blockers plan shows every checkbox unchecked though its tasks landed","tb","",[]]
+];
+
+const SOURCES = [
+["App QC 2026-08-21", 55, 16, 39],
+["Filename List 2026-08-20", 30, 6, 24],
+["Dropdowns QC 2026-08-07", 26, 5, 21],
+["Full audit 2026-08-04", 30, 22, 7],
+["v1 tests-build 2026-08-09", 8, 2, 6],
+["v1 core 2026-08-09", 4, 1, 3],
+["v1 security 2026-08-09", 4, 1, 3],
+["v1 UI 2026-08-09", 4, 3, 1],
+["UI audit 2026-08-02", 22, 21, 0],
+["UI pass 2 2026-08-02", 13, 12, 0]
+];
+
+const $ = s => document.querySelector(s);
+
+// Severity mix bar (2px surface gaps via flex gap)
+{
+  const total = 127, imp = 50, min = 77;
+  $("#sevbar").innerHTML =
+    `<div style="flex:${imp};background:var(--imp)">50</div>` +
+    `<div style="flex:${min};background:var(--minor)">77</div>`;
+}
+
+// Per-source closure meters (closed / total; open+declined = remainder)
+{
+  const el = $("#sources");
+  el.innerHTML = SOURCES.map(([n, t, c]) => {
+    const pct = t ? Math.round(100 * c / t) : 0;
+    return `<div class="barrow srcrow"><span class="nm" title="${n}">${n}</span>` +
+      `<span class="tr"><i style="width:${pct}%"></i></span>` +
+      `<span class="n">${c}/${t}</span></div>`;
+  }).join("");
+}
+
+// Open-by-surface bars, computed from ITEMS
+{
+  const by = new Map();
+  for (const it of ITEMS) by.set(it[2], (by.get(it[2]) || 0) + 1);
+  const rows = [...by.entries()].sort((a, b) => b[1] - a[1]);
+  const max = rows[0][1];
+  $("#surfaces").innerHTML = rows.map(([n, c]) =>
+    `<div class="barrow"><span class="nm" title="${n}">${n}</span>` +
+    `<span class="tr"><i style="width:${Math.round(100 * c / max)}%"></i></span>` +
+    `<span class="n">${c}</span></div>`).join("");
+  const sSel = $("#fSurface");
+  for (const [n] of rows) sSel.add(new Option(n, n));
+  const srcSel = $("#fSource"), srcs = new Set();
+  for (const it of ITEMS) it[4].split(" + ").forEach(s => srcs.add(s));
+  for (const s of [...srcs].sort()) srcSel.add(new Option(s, s));
+}
+
+// Filters + table
+const state = { sev: "", surface: "", source: "", tag: "", text: "" };
+const SEVWORD = { I: "Important", M: "Minor" };
+const TAGWORD = { deferred: "deferred", user: "user", verify: "verify", "2src": "2 sources" };
+
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+
+function render() {
+  const t = state.text.toLowerCase();
+  const list = ITEMS.filter(it =>
+    (!state.sev || it[1] === state.sev) &&
+    (!state.surface || it[2] === state.surface) &&
+    (!state.source || it[4].split(" + ").includes(state.source)) &&
+    (!state.tag || it[6].includes(state.tag)) &&
+    (!t || (it[0] + " " + it[3] + " " + it[2]).toLowerCase().includes(t))
+  );
+  $("#rows").innerHTML = list.map(it =>
+    `<tr class="row${it[1]}"><td class="id">${it[0]}</td>` +
+    `<td class="sev"><span class="pill ${it[1]}">${SEVWORD[it[1]]}</span>` +
+    (it[5] ? `<span class="mk">[${it[5]}]</span>` : "") + `</td>` +
+    `<td class="sf">${esc(it[2])}</td>` +
+    `<td class="tt">${esc(it[3])}${it[6].map(g => `<span class="tag">${TAGWORD[g]}</span>`).join("")}</td>` +
+    `<td class="sr">${esc(it[4])}</td></tr>`).join("");
+  $("#empty").hidden = list.length > 0;
+  $("#shown").textContent = list.length === ITEMS.length
+    ? `${ITEMS.length} items` : `${list.length} of ${ITEMS.length}`;
+}
+
+document.querySelectorAll(".sevchip").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".sevchip").forEach(x => x.setAttribute("aria-pressed", "false"));
+  b.setAttribute("aria-pressed", "true");
+  state.sev = b.dataset.sev; render();
+}));
+$("#fSurface").addEventListener("change", e => { state.surface = e.target.value; render(); });
+$("#fSource").addEventListener("change", e => { state.source = e.target.value; render(); });
+$("#fTag").addEventListener("change", e => { state.tag = e.target.value; render(); });
+$("#fText").addEventListener("input", e => { state.text = e.target.value; render(); });
+render();
+</script>
