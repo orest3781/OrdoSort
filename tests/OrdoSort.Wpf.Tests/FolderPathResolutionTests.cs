@@ -72,4 +72,28 @@ public class FolderPathResolutionTests
         Assert.Equal(absoluteInbox, ShellViewModel.ResolvePath(absoluteInbox, cfgPath));
         Assert.Equal(absoluteDeferred, ShellViewModel.ResolvePath(absoluteDeferred, cfgPath));
     }
+
+    // QC-02 (2026-08-21 audit, task 3): ResolvePath("", cfgPath) is
+    // Config.ResolveBeside's documented behaviour for a blank value —
+    // Path.Combine(dir, "") returns `dir` — so RefreshFoldersAsync's
+    // Scanner.DeferredSummary(ResolvePath(cfg.Deferred, cfgPath)) used to
+    // hand DeferredSummary the config directory itself for a blank
+    // Deferred: non-blank, exists, so DeferredSummary's own "is it blank"
+    // guard never fired and it counted whatever already lives beside
+    // config.json (history.sqlite, at minimum — ShellFixture's History
+    // opens it synchronously in the constructor) as "set-aside files
+    // waiting". The fix is in the caller, not DeferredSummary: a blank
+    // Deferred must never reach ResolvePath in the first place.
+    [Fact]
+    public void ABlankDeferredNeverCountsTheConfigDirectorysOwnFilesAsSetAside()
+    {
+        using var fx = new ShellFixture(cfg => cfg.Deferred = "");
+        Assert.True(File.Exists(Path.Combine(fx.Dir, "history.sqlite")),
+            "fixture assumption broken: expected history.sqlite already sitting beside config.json");
+
+        fx.Shell.Initialize();
+
+        Assert.False(fx.Shell.HasDeferred,
+            $"expected no set-aside alert for a blank Deferred folder, got \"{fx.Shell.DeferredAlert}\"");
+    }
 }

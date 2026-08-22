@@ -2236,7 +2236,9 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         else if (!_directoryExists(ResolveFolderPath(inbox)))
             warnings.Add($"The inbox folder doesn't exist: {ResolveFolderPath(inbox)}");
         var deferred = Deferred.Trim();
-        if (deferred.Length > 0 && !_directoryExists(ResolveFolderPath(deferred)))
+        if (deferred.Length == 0)
+            warnings.Add("No set-aside folder is set — Skip will refuse until one is configured.");
+        else if (!_directoryExists(ResolveFolderPath(deferred)))
             warnings.Add($"The set-aside folder doesn't exist: {ResolveFolderPath(deferred)}");
         foreach (var r in Routes)
         {

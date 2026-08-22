@@ -532,7 +532,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 var cfgPath = _cfgPath;
                 var snap = await _scheduler.Run(() => new FolderSnapshot(
                     Scanner.Scan(ResolvePath(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode),
-                    Scanner.DeferredSummary(ResolvePath(cfg.Deferred, cfgPath)),
+                    Scanner.DeferredSummary(ResolveDeferredPath(cfg.Deferred, cfgPath)),
                     wantStatuses
                         ? FolderMonitor.All(cfg.WatchFolders, cfg.AlertTexts)
                             .Where(s => mode == "all" || s.HasFiles || s.Error.Length > 0)
@@ -656,7 +656,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     private async Task RefreshDeferredAsync()
     {
-        var deferred = ResolvePath(_cfg.Deferred, _cfgPath);
+        var deferred = ResolveDeferredPath(_cfg.Deferred, _cfgPath);
         ApplyDeferred(await _scheduler.Run(() => Scanner.DeferredSummary(deferred)));
     }
 
@@ -2055,6 +2055,19 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     // do not.
     internal static string ResolvePath(string value, string cfgPath) =>
         Config.ResolveBeside(cfgPath, value);
+
+    // Scanner.DeferredSummary's own blank-folder guard (Scanner.cs) treats
+    // "" as "nothing set aside" — but only if it is still blank by the time
+    // DeferredSummary sees it. Path.Combine(dir, "") == dir, so feeding a
+    // blank cfg.Deferred through ResolvePath first flattens it to
+    // config.json's own directory, which is non-blank and always exists:
+    // DeferredSummary's guard never fires, and it counts whatever already
+    // lives beside config.json (history.sqlite, at minimum) as "set-aside
+    // files waiting" (2026-08-21 QC-02 audit). Only the two
+    // Scanner.DeferredSummary call sites need this — they're the ones
+    // whose blank-check depends on the value staying blank.
+    internal static string ResolveDeferredPath(string value, string cfgPath) =>
+        string.IsNullOrWhiteSpace(value) ? value : ResolvePath(value, cfgPath);
 
     internal static void OpenFolder(string folder)
     {

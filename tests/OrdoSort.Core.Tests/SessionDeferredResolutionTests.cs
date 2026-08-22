@@ -93,4 +93,80 @@ public class SessionDeferredResolutionTests : IDisposable
         // stations must never be touched by resolving THIS station's copy.
         Assert.Equal("set-aside", cfg.Deferred);
     }
+
+    // QC-02 (2026-08-21 audit, task 3): Config.ResolveBeside("", cfgPath) is
+    // Path.Combine(dir, "") — which .NET defines as `dir` — so an unguarded
+    // blank Deferred silently became "the folder config.json lives in".
+    // Commit.SkipFile's own "is it blank" guard (Commit.cs) can no longer
+    // fire once that flattening has already happened, so Skip moved the
+    // document next to config.json and reported success. SkipCurrent must
+    // refuse BEFORE calling ResolveBeside, while cfg.Deferred is still
+    // recognizably blank.
+    [Fact]
+    public void SkipCurrentWithABlankDeferredRefusesInsteadOfMisfilingBesideConfigJson()
+    {
+        var cfg = new Config { Inbox = _inbox, Deferred = "" };
+        using var history = new History(Path.Combine(_root, "h3.sqlite"));
+        var session = new Session(cfg, history, _cfgPath);
+        var src = MakePdf("20240115--333333.pdf");
+        session.Start(new[] { src });
+
+        // Record.Exception, not Assert.Throws: unfixed, the blank Deferred
+        // is silently flattened to _configDir and the move SUCCEEDS — no
+        // exception at all, just a misfiled document and a reported
+        // success. Asserting the throw first would only ever report "no
+        // exception was thrown" and stop there; checking location first
+        // shows the actual misfile the throw's absence causes.
+        var ex = Record.Exception(() => session.SkipCurrent());
+
+        Assert.True(File.Exists(src),
+            $"expected {src} to remain in the inbox after a refused skip, but it is gone — " +
+            $"found beside config.json instead, at {_configDir}: " +
+            $"{string.Join(", ", Directory.GetFiles(_configDir).Select(Path.GetFileName))}");
+        Assert.Empty(Directory.GetFiles(_configDir));
+        Assert.IsType<CommitError>(ex);
+    }
+
+    // Unlike "", "   " does NOT collapse under Path.Combine — it survives
+    // as a literal three-space directory NAME, so before the fix this threw
+    // for an unrelated, accidental reason: Directory.Exists trims trailing
+    // whitespace off a path's last segment (so Commit.SkipFile's own guard
+    // sees the config directory as "available"), but File.Move does not
+    // extend that same leniency to an intermediate segment, so the actual
+    // move fails with "Could not find a part of the path", caught and
+    // rewrapped as a CommitError by MoveNeverOverwrite. That is a Windows
+    // path-resolution quirk, not a deliberate refusal — SkipCurrent's own
+    // blank-or-whitespace guard (Session.SkipCurrent) makes the refusal
+    // deliberate instead of coincidental.
+    [Fact]
+    public void SkipCurrentWithAWhitespaceOnlyDeferredRefusesTheSameWay()
+    {
+        var cfg = new Config { Inbox = _inbox, Deferred = "   " };
+        using var history = new History(Path.Combine(_root, "h4.sqlite"));
+        var session = new Session(cfg, history, _cfgPath);
+        var src = MakePdf("20240115--444444.pdf");
+        session.Start(new[] { src });
+
+        var ex = Record.Exception(() => session.SkipCurrent());
+
+        Assert.True(File.Exists(src),
+            $"expected {src} to remain in the inbox after a refused skip, but it is gone — " +
+            $"found beside config.json instead, at {_configDir}: " +
+            $"{string.Join(", ", Directory.GetFiles(_configDir).Select(Path.GetFileName))}");
+        Assert.Empty(Directory.GetFiles(_configDir));
+        Assert.IsType<CommitError>(ex);
+    }
+
+    // Scanner.DeferredSummary's own blank-folder guard (Scanner.cs) already
+    // returns (0, 0) for a literal "" — that was true before this task and
+    // stays true after, since the actual knock-on defect isn't in
+    // DeferredSummary itself but in the callers that resolve a blank
+    // Deferred to the config directory BEFORE DeferredSummary ever sees it
+    // (ShellViewModel.RefreshFoldersAsync/RefreshDeferredAsync). This test
+    // pins DeferredSummary's own contract; the composition defect is pinned
+    // where the resolving caller actually lives, in
+    // OrdoSort.Wpf.Tests.FolderPathResolutionTests.
+    [Fact]
+    public void DeferredSummaryOfABlankFolderIsZero() =>
+        Assert.Equal(new Scanner.DeferredInfo(0, 0), Scanner.DeferredSummary(""));
 }

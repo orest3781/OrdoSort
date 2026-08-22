@@ -144,6 +144,17 @@ public sealed class Session
     public Commit.SkipOutcome SkipCurrent()
     {
         var src = Current ?? throw new CommitError("No document is loaded.");
+        // Refuse BEFORE ResolveBeside, not after: Path.Combine(dir, "") ==
+        // dir, so a blank _cfg.Deferred flattens to config.json's own
+        // directory — non-blank, always exists — and Commit.SkipFile's own
+        // "is it blank" guard can never fire on that flattened value. Skip
+        // moved a patient document next to config.json and reported
+        // success (2026-08-21 QC-02 audit). Same CommitError shape
+        // Commit.SkipFile already throws for an unavailable set-aside
+        // folder, so ShellViewModel.OnSkipAsync's existing CommitError
+        // handler reports it unchanged.
+        if (string.IsNullOrWhiteSpace(_cfg.Deferred))
+            throw new CommitError("Set-aside folder is not available: (not set)");
         var deferred = Config.ResolveBeside(_cfgPath, _cfg.Deferred);
         var outcome = Commit.SkipFile(src, deferred);
         if (outcome.Vanished) { LogVanished(src); return outcome; }

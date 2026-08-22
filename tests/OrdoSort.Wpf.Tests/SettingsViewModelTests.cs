@@ -573,6 +573,22 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
+    public void WarningsFlagABlankSetAsideFolderTheSameWayAsABlankInbox()
+    {
+        // Two lines apart in Warnings() (SettingsViewModel.cs), a blank
+        // inbox warned ("No inbox folder is set…") and a blank Deferred
+        // warned nothing at all — the `deferred.Length > 0 && …` guard
+        // simply skipped the blank case instead of flagging it (QC-02,
+        // 2026-08-21 audit). Match the inbox warning's own shape: still a
+        // Warning, not a HardError, since a user who never skips doesn't
+        // need a blocked OK over an optional field.
+        var cfg = new Config { Inbox = _dir };
+        var vm = new SettingsViewModel(cfg, _dialogs);
+
+        Assert.Contains(vm.Warnings(), w => w.Contains("set-aside", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void ARelativeInboxAndDeferredSurviveSaveWithTheirRawSpellingUnchanged()
     {
         // Config.TrySaveMain's own doc comment: never silently rewrite a
