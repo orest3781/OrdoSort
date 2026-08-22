@@ -73,7 +73,12 @@ public class LabelMakerOverflowTests
             window.UpdateLayout();
             OverflowProbe.PumpRender();
 
-            var offenders = OverflowProbe.HorizontalEscapees((FrameworkElement)window.Content);
+            var offenders = OverflowProbe.HorizontalEscapees((FrameworkElement)window.Content, out var examined);
+            // 36 elements are judged here, so 10 is a floor with room to
+            // spare — it is here to catch the probe going blind (QC-09), not
+            // to pin the element count
+            Assert.True(examined >= 10,
+                $"the probe examined only {examined} elements — it is not measuring anything");
             Assert.True(offenders.Count == 0,
                 $"font {fontSize}, width {width}: elements escape the window:\n  " +
                 string.Join("\n  ", offenders));

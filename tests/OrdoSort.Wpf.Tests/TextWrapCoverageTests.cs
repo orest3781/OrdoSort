@@ -107,6 +107,7 @@ public class TextWrapCoverageTests
     public void WrapDeclaringTextBlocksAreNotMeasuredAtInfiniteWidth()
     {
         var offenders = new List<string>();
+        var judged = 0;
         var shared = XDocument.Load(
             Path.Combine(FindRepoRoot(), "src", "OrdoSort.Wpf", "Theme", "Styles.xaml"));
         foreach (var file in ProseSurfaceXamlFiles())
@@ -124,6 +125,7 @@ public class TextWrapCoverageTests
                     || StyleHandsItWrapOrTrim(tb, wrapStyles);
                 if (!declares) continue;
                 if (HasWidthPin(tb)) continue;
+                judged++;
 
                 // walk outward until something pins width; an infinite-width
                 // measurer seen before any pin defeats the declared wrap
@@ -138,6 +140,18 @@ public class TextWrapCoverageTests
                 }
             }
         }
+        // Same sanity floor, and for the same reason, as
+        // DataGridSizingCoverageTests' reflection one: "no offenders" over an
+        // empty candidate list is a pass that means nothing, and every
+        // candidate here can be waved through at once — by ExtractKey
+        // over-matching so StyleHandsItWrapOrTrim acquits everything, or by
+        // the XAML walk quietly resolving to no files. 88 TextBlocks reach the
+        // walk today, so 20 is a floor with room for ordinary copy edits.
+        Assert.True(judged >= 20,
+            $"only {judged} TextBlocks reached the ancestor walk — the candidate set looks " +
+            "broken (no XAML files found? every style suddenly reads as wrap-carrying?), not " +
+            "that the app genuinely shrank to that few prose TextBlocks");
+
         Assert.True(offenders.Count == 0,
             "TextBlock declares wrapping/trimming (inline or via style) but an ancestor " +
             "measures it at infinite width, so it never engages and the text runs off " +
@@ -148,6 +162,7 @@ public class TextWrapCoverageTests
     public void SentenceLengthLiteralsDeclareWrapOrTrim()
     {
         var offenders = new List<string>();
+        var judged = 0;
         var shared = XDocument.Load(
             Path.Combine(FindRepoRoot(), "src", "OrdoSort.Wpf", "Theme", "Styles.xaml"));
         foreach (var file in ProseSurfaceXamlFiles())
@@ -159,6 +174,7 @@ public class TextWrapCoverageTests
                 var text = (string?)tb.Attribute("Text");
                 if (text is null || text.Length < 60 || text.StartsWith("{", StringComparison.Ordinal))
                     continue;
+                judged++;
                 if (tb.Attribute("TextWrapping") is not null || tb.Attribute("TextTrimming") is not null)
                     continue;
                 if (StyleHandsItWrapOrTrim(tb, wrapStyles)) continue;
@@ -166,6 +182,15 @@ public class TextWrapCoverageTests
                 offenders.Add(Where(file, tb) + " \"" + text[..40] + "…\"");
             }
         }
+        // The floor counts CANDIDATES, not verdicts: every check after the
+        // 60-char one is an acquittal, so counting below them would just be
+        // asserting "offenders >= 0". 18 sentence-length literals exist across
+        // the prose surfaces today; 10 says the walk still found the source.
+        Assert.True(judged >= 10,
+            $"only {judged} sentence-length literal TextBlocks were found across " +
+            "MainWindow/Views/Windows — the XAML walk looks broken, not that the app genuinely " +
+            "shrank to that little prose");
+
         Assert.True(offenders.Count == 0,
             "sentence-length literal Text without TextWrapping or TextTrimming — " +
             "clips or overflows in a narrow window:\n  " + string.Join("\n  ", offenders));

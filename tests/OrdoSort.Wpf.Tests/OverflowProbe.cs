@@ -29,15 +29,27 @@ internal static class OverflowProbe
     /// with its text and coordinates; empty when the layout is clean.
     /// Elements inside an open Popup/ToolTip layer are naturally excluded —
     /// the walk covers only the window's own visual tree.</summary>
-    public static List<string> HorizontalEscapees(FrameworkElement contentRoot) =>
-        Escapees(contentRoot, checkVertical: false);
+    /// <param name="examined">See <see cref="Escapees"/> — assert a floor on
+    /// it, always.</param>
+    public static List<string> HorizontalEscapees(FrameworkElement contentRoot, out int examined) =>
+        Escapees(contentRoot, checkVertical: false, out examined);
 
     /// <summary>Both axes. Vertical escape is the same defect family seen
     /// top-to-bottom: a window that opens shorter than its content cuts the
     /// bottom controls off with no scrollbar and no visual hint. Elements
     /// inside a vertically-scrollable region (a list, a tab's ScrollViewer)
     /// are reachable and exempt, mirroring the horizontal rule.</summary>
-    public static List<string> Escapees(FrameworkElement contentRoot, bool checkVertical)
+    /// <param name="examined">How many candidates survived the IsVisible /
+    /// ActualWidth filter below and were actually judged. It is an out
+    /// parameter rather than a convenience because an empty candidate list
+    /// makes "no offenders" mean nothing, and this suite shipped exactly that
+    /// for months: UIElement.IsVisible is false for any tree whose root has no
+    /// PresentationSource, so four call sites that Measure/Arrange a view by
+    /// hand and never Show() it skipped EVERY candidate. A MinWidth="2000"
+    /// TextBlock injected into DoneView — 2000px inside a 370px panel — still
+    /// gave "Failed: 0, Passed: 7" (QC-09). Every call site must assert a
+    /// floor on this.</param>
+    public static List<string> Escapees(FrameworkElement contentRoot, bool checkVertical, out int examined)
     {
         var probes = new List<FrameworkElement>();
         var texts = new List<TextBlock>(); FindAll(contentRoot, texts); probes.AddRange(texts);
@@ -46,9 +58,11 @@ internal static class OverflowProbe
         probes.AddRange(buttons.Where(b => b is not ToggleButton));
 
         var offenders = new List<string>();
+        examined = 0;
         foreach (var e in probes)
         {
             if (!e.IsVisible || e.ActualWidth == 0) continue;
+            examined++;
             var bounds = e.TransformToAncestor(contentRoot)
                 .TransformBounds(new Rect(0, 0, e.ActualWidth, e.ActualHeight));
             // half-pixel tolerance for layout rounding; an element inside a

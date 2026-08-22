@@ -42,9 +42,16 @@ file sealed class NoDialogs : IDialogService
 /// Special cases:
 /// - SettingsWindow probes all seven tabs in one pass (only the selected
 ///   tab's content exists in the visual tree).
-/// - TriageWindow is never Show()n — Loaded would start a real WebView2/Edge
-///   init the test host cannot complete (see TriageWindowDisposalTests) — so
-///   its content root is measured/arranged by hand at the target size.
+/// - TriageWindow used to be exempt from Show(), its content root
+///   measured/arranged by hand instead, on the grounds that Loaded starts a
+///   real WebView2/Edge init. That exemption made its two cases measure
+///   NOTHING: UIElement.IsVisible is false for any tree with no
+///   PresentationSource, so OverflowProbe skipped every candidate and both
+///   cases passed over an empty list (QC-09). It is Show()n like the rest now
+///   — AutoFitColumnTests' ShowOffscreenAndDriveCurrent has been doing
+///   exactly that, off-screen and with the real init left running in the
+///   background, since fix round 1. Its builder still drives ShowCurrentAsync
+///   itself, before Show(), rather than waiting on that init to resolve.
 /// - MainWindow's ctor parks the window at 470 wide (EnterCompact), so the
 ///   width under test is applied AFTER Show(), the way a user's drag would
 ///   (HeaderLayoutTests' pattern).</summary>
@@ -60,7 +67,6 @@ public class WindowOverflowTests
         double MinHeight,
         double DefaultHeight,
         Func<(Window window, Action? cleanup)> Build,
-        bool Show = true,
         bool SetWidthAfterShow = false,
         bool ProbeEveryTab = false);
 
@@ -194,7 +200,7 @@ public class WindowOverflowTests
             win.ShowCurrentAsync().GetAwaiter().GetResult();
 #pragma warning restore xUnit1031
             return (win, null);
-        }, Show: false),
+        }),
 
         ["UnlockWindow"] = new(540, 620, 560, 660, () =>
         {
@@ -287,49 +293,48 @@ public class WindowOverflowTests
         try
         {
             var offenders = new List<string>();
-            if (probe.Show)
+            var examined = 0;
+            window.Show();
+            if (probe.SetWidthAfterShow)
             {
-                window.Show();
-                if (probe.SetWidthAfterShow)
-                {
-                    window.Width = width;
-                    if (height > 0) window.Height = height;
-                }
-                window.UpdateLayout();
-                OverflowProbe.PumpRender();
-                window.UpdateLayout();
+                window.Width = width;
+                if (height > 0) window.Height = height;
+            }
+            window.UpdateLayout();
+            OverflowProbe.PumpRender();
+            window.UpdateLayout();
 
-                var content = (FrameworkElement)window.Content;
-                if (probe.ProbeEveryTab)
+            var content = (FrameworkElement)window.Content;
+            if (probe.ProbeEveryTab)
+            {
+                var tabControl = FindDescendant<TabControl>(content)
+                    ?? throw new InvalidOperationException("ProbeEveryTab set but no TabControl found");
+                foreach (var tab in tabControl.Items.Cast<TabItem>())
                 {
-                    var tabControl = FindDescendant<TabControl>(content)
-                        ?? throw new InvalidOperationException("ProbeEveryTab set but no TabControl found");
-                    foreach (var tab in tabControl.Items.Cast<TabItem>())
-                    {
-                        tabControl.SelectedItem = tab;
-                        window.UpdateLayout();
-                        OverflowProbe.PumpRender();
-                        window.UpdateLayout();
-                        offenders.AddRange(OverflowProbe.Escapees(content, checkVertical: true)
+                    tabControl.SelectedItem = tab;
+                    window.UpdateLayout();
+                    OverflowProbe.PumpRender();
+                    window.UpdateLayout();
+                    offenders.AddRange(
+                        OverflowProbe.Escapees(content, checkVertical: true, out var tabExamined)
                             .Select(o => $"[tab {tab.Header}] {o}"));
-                    }
-                }
-                else
-                {
-                    offenders.AddRange(OverflowProbe.Escapees(content, checkVertical: true));
+                    examined += tabExamined;
                 }
             }
             else
             {
-                // never Show()n (WebView2 — see class doc): lay the content
-                // root out by hand at the target size instead
-                var root = (FrameworkElement)window.Content;
-                root.Measure(new Size(width, height));
-                root.Arrange(new Rect(0, 0, width, height));
-                root.UpdateLayout();
-                offenders.AddRange(OverflowProbe.Escapees(root, checkVertical: true));
+                offenders.AddRange(OverflowProbe.Escapees(content, checkVertical: true, out examined));
             }
 
+            // Sized off the SMALLEST registered window: AboutWindow judges 6
+            // (two buttons, the TextBlocks their content presenters generate,
+            // two prose lines), where SettingsWindow's seven tabs judge 333.
+            // The point is to catch the probe going blind, not to pin element
+            // counts, so it sits just under the smallest real one.
+            Assert.True(examined >= 5,
+                $"{windowName} at font {fontSize}, width {width}: the probe examined only " +
+                $"{examined} elements — it is not measuring anything, so the assertion below " +
+                "passes vacuously");
             Assert.True(offenders.Count == 0,
                 $"{windowName} at font {fontSize}, width {width}: elements escape the window:\n  " +
                 string.Join("\n  ", offenders));
@@ -355,6 +360,7 @@ public class WindowOverflowTests
         ThemeManager.Apply(_fx.App, dark: false);
         var defaultFont = _fx.App.Resources["AppFontSize"];
         _fx.App.Resources["AppFontSize"] = fontSize;
+        Window? host = null;
         try
         {
             var view = new ProcessingView
@@ -365,17 +371,21 @@ public class WindowOverflowTests
                     CurrentFilename = "a-long-enough-original-filename-to-matter.pdf",
                 },
             };
-            view.Measure(new Size(370, 2000));
-            view.Arrange(new Rect(0, 0, 370, 2000));
-            view.UpdateLayout();
+            host = HostOffscreen(view, 370);
 
-            var offenders = OverflowProbe.HorizontalEscapees(view);
+            var offenders = OverflowProbe.HorizontalEscapees(view, out var examined);
+            // 16 judged with this stub — the eight unconditional TextBlocks,
+            // three buttons and their generated labels; the route list and the
+            // last-action card are the parts the stub deliberately leaves empty
+            Assert.True(examined >= 8,
+                $"the probe examined only {examined} elements — it is not measuring anything");
             Assert.True(offenders.Count == 0,
                 $"ProcessingView at font {fontSize}, panel width 370: elements escape:\n  " +
                 string.Join("\n  ", offenders));
         }
         finally
         {
+            host?.Close();
             _fx.App.Resources["AppFontSize"] = defaultFont;
         }
     });
@@ -400,6 +410,7 @@ public class WindowOverflowTests
         ThemeManager.Apply(_fx.App, dark: false);
         var defaultFont = _fx.App.Resources["AppFontSize"];
         _fx.App.Resources["AppFontSize"] = fontSize;
+        Window? host = null;
         try
         {
             using var fx = new ShellFixture(cfg =>
@@ -415,17 +426,21 @@ public class WindowOverflowTests
             fx.Shell.Initialize();
 
             var view = new ReadyView { DataContext = fx.Shell };
-            view.Measure(new Size(width, 2000));
-            view.Arrange(new Rect(0, 0, width, 2000));
-            view.UpdateLayout();
+            host = HostOffscreen(view, width);
 
-            var offenders = OverflowProbe.HorizontalEscapees(view);
+            var offenders = OverflowProbe.HorizontalEscapees(view, out var examined);
+            // 23 judged: four seeded watch-folder tiles (icon, label and count
+            // apiece) above the big count, its caption, the detail line and the
+            // two bottom buttons — at every width in the theory data
+            Assert.True(examined >= 10,
+                $"the probe examined only {examined} elements — it is not measuring anything");
             Assert.True(offenders.Count == 0,
                 $"ReadyView at font {fontSize}, panel width {width}: elements escape:\n  " +
                 string.Join("\n  ", offenders));
         }
         finally
         {
+            host?.Close();
             _fx.App.Resources["AppFontSize"] = defaultFont;
         }
     });
@@ -443,23 +458,62 @@ public class WindowOverflowTests
         ThemeManager.Apply(_fx.App, dark: false);
         var defaultFont = _fx.App.Resources["AppFontSize"];
         _fx.App.Resources["AppFontSize"] = fontSize;
+        Window? host = null;
         try
         {
             var view = new DoneView();
-            view.Measure(new Size(370, 2000));
-            view.Arrange(new Rect(0, 0, 370, 2000));
-            view.UpdateLayout();
+            host = HostOffscreen(view, 370);
 
-            var offenders = OverflowProbe.HorizontalEscapees(view);
+            var offenders = OverflowProbe.HorizontalEscapees(view, out var examined);
+            // 8 judged: with no DataContext the log line and its trail stay
+            // collapsed, leaving the count/detail/status lines, both buttons
+            // and their labels
+            Assert.True(examined >= 6,
+                $"the probe examined only {examined} elements — it is not measuring anything");
             Assert.True(offenders.Count == 0,
                 $"DoneView at font {fontSize}, panel width 370: elements escape:\n  " +
                 string.Join("\n  ", offenders));
         }
         finally
         {
+            host?.Close();
             _fx.App.Resources["AppFontSize"] = defaultFont;
         }
     });
+
+    /// <summary>The three views above are probed standalone rather than
+    /// inside MainWindow, and each used to be laid out by hand — which meant
+    /// they were not probed at all. UIElement.IsVisible is false for any tree
+    /// whose root has no PresentationSource, OverflowProbe skips !IsVisible
+    /// candidates, and so all seven cases asserted "no offenders" over an
+    /// empty candidate list: a MinWidth="2000" TextBlock injected into
+    /// DoneView, 2000px inside a 370px panel, still passed (QC-09). Hosting
+    /// the view in a shown off-screen window is what LabelMakerOverflowTests
+    /// always did and the reason that suite was never blind.
+    ///
+    /// The panel size is pinned on the VIEW, not on the host window, for two
+    /// reasons: the probe then measures the exact width the test names rather
+    /// than that width minus the host's chrome, and the view lays out at the
+    /// same generous height the hand-arranged pass gave it, so only the
+    /// hosting changed and nothing is newly squeezed.</summary>
+    private static Window HostOffscreen(FrameworkElement view, double width)
+    {
+        view.Width = width;
+        view.Height = 2000;
+        var host = new Window
+        {
+            Content = view,
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            // the host's own size decides nothing — the view is pinned above
+            Width = width, Height = 600,
+        };
+        host.Show();
+        host.UpdateLayout();
+        OverflowProbe.PumpRender();
+        host.UpdateLayout();
+        return host;
+    }
 
     private static T? FindDescendant<T>(DependencyObject node) where T : DependencyObject
     {

@@ -244,8 +244,18 @@ public class DataGridSizingCoverageTests
         // attributes split across lines are still one match.
         var columnPattern = new Regex(@"<DataGrid\w*Column\b[^>]*", RegexOptions.Singleline);
         var floorless = new List<string>();
+        var windowTypes = AllWindowTypeNames();
 
-        foreach (var window in AllWindowTypeNames().Where(XamlHasDataGrid))
+        // The same sanity floor its sibling above carries, and it belongs here
+        // just as much: this fact reads the app entirely through that
+        // reflection call, so a namespace or assembly mismatch would empty the
+        // loop and pass vacuously.
+        Assert.True(windowTypes.Count >= 10,
+            $"only found {windowTypes.Count} Window types under OrdoSort.Wpf.Windows via reflection "
+            + "— enumeration looks broken (namespace/assembly mismatch?), not that the app genuinely "
+            + "shrank to that few windows");
+
+        foreach (var window in windowTypes.Where(XamlHasDataGrid))
         {
             foreach (Match column in columnPattern.Matches(XamlOf(window)))
             {
