@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
 using OrdoSort.Core;
 
 namespace OrdoSort.Core.Tests;
@@ -292,7 +293,20 @@ public class UndoRaceCollection
 /// <see cref="SessionDeferredResolutionTests"/> (both call
 /// <c>Commit.SkipFile</c>/<c>Session.SkipCurrent</c> and, pre-fix, had no
 /// <c>[Collection]</c> attribute at all). Same pairwise-anchored-to-
-/// UndoFailureTests shape as the original three, for the same reason.</summary>
+/// UndoFailureTests shape as the original three, for the same reason.
+///
+/// Task-4 fix-round-2 review (2026-08-22, QC-03): the five hand-written
+/// tests above are exactly the trap this whole QC pass exists to close —
+/// a hardcoded list of today's five classes catches nothing about a sixth
+/// class a future change adds. <see cref="EveryClassThatReachesMoveNeverOverwriteSharesTheCollection"/>
+/// below is the structural replacement: it derives its own class set by
+/// reading every .cs file under tests/OrdoSort.Core.Tests off disk (same
+/// repo-root walk as DataGridSizingCoverageTests/TextWrapCoverageTests in
+/// OrdoSort.Wpf.Tests) instead of naming classes, so a new caller is a
+/// candidate the moment it exists. The five tests above are kept anyway —
+/// they're cheap, they name today's specific set for a reader who doesn't
+/// want to trust a regex, and dropping them recovers nothing the new test
+/// doesn't already cover more generally.</summary>
 public class UndoRaceTestCollectionMembershipTests
 {
     // Reads the [Collection("...")] name via CustomAttributeData's
@@ -353,5 +367,138 @@ public class UndoRaceTestCollectionMembershipTests
 
         Assert.NotNull(undoCollection);
         Assert.Equal(undoCollection, sessionDeferredCollection);
+    }
+
+    // -----------------------------------------------------------------
+    // Structural guard (2026-08-22, QC-03 fix-round-2): derives its own
+    // class set instead of naming one, so a sixth class reaching
+    // Commit.MoveNeverOverwrite is caught without anyone updating a list.
+    // -----------------------------------------------------------------
+
+    private static string FindRepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "OrdoSort.sln")))
+            dir = dir.Parent;
+        return dir?.FullName ?? throw new InvalidOperationException(
+            "couldn't find OrdoSort.sln walking up from " + AppContext.BaseDirectory +
+            " — this test reads its own project's .cs sources off disk and needs the repo root.");
+    }
+
+    // A class declaration up to its opening brace. [^{]* covers a base/
+    // interface list ("class Foo : IDisposable") without crossing into the
+    // NEXT class — a base list can't itself contain a raw '{' in valid C#.
+    private static readonly Regex ClassDeclaration =
+        new(@"\bpublic\s+(?:sealed\s+)?class\s+(?<name>\w+)\b[^{]*\{", RegexOptions.Compiled);
+
+    // The methods Commit.MoveNeverOverwrite sits behind: two direct
+    // (Commit.CommitFile/SkipFile/UndoAction) and three via Session
+    // (.CommitCurrent/.SkipCurrent/.UndoLast). Matches only a real call —
+    // MethodName immediately followed by '(' — not a bare mention.
+    private static readonly Regex SeamCall = new(
+        @"\b(?:Commit\.CommitFile|Commit\.SkipFile|Commit\.UndoAction|" +
+        @"\.CommitCurrent|\.SkipCurrent|\.UndoLast)\s*\(", RegexOptions.Compiled);
+
+    // This file's own class docs above talk ABOUT those method names in
+    // prose ("grep for CommitFile(/SkipFile(/…") — real risk of the scan
+    // matching its own commentary rather than real calls. Strips block
+    // comments, then truncates every line at its first "//" (which also
+    // removes "///" doc comments, "//" being a prefix of it). Good enough
+    // for this project's actual style: no file under tests/OrdoSort.Core.Tests
+    // puts "//" inside a string literal on a line that also declares a
+    // class or calls one of the seam methods.
+    private static string StripComments(string source)
+    {
+        var noBlocks = Regex.Replace(source, @"/\*.*?\*/", "", RegexOptions.Singleline);
+        var lines = noBlocks.Split('\n');
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var slashes = lines[i].IndexOf("//", StringComparison.Ordinal);
+            if (slashes >= 0) lines[i] = lines[i][..slashes];
+        }
+        return string.Join('\n', lines);
+    }
+
+    /// <summary>Every top-level class name under tests/OrdoSort.Core.Tests
+    /// whose OWN body — not a sibling class living in the same file, like
+    /// this one's own three neighbours in UndoFailureTests.cs — contains a
+    /// real call to a method that reaches Commit.MoveNeverOverwrite. Reads
+    /// source off disk rather than reflecting over compiled IL because the
+    /// call site, not the compiled type, is what determines whether a class
+    /// needs the collection — a class could reference Session without ever
+    /// calling CommitCurrent/SkipCurrent/UndoLast on it.
+    ///
+    /// Attributes each call to the CLOSEST class declaration textually
+    /// before it, by position, rather than brace-matching each class's own
+    /// closing brace. Deliberately: this project's own top-level test
+    /// classes are always siblings in a file, never nested (confirmed by
+    /// reading every file this scan covers), so "nearest declaration above"
+    /// already identifies the right owner. Brace-counting was the first
+    /// attempt and it broke on real fixture data — ConfigSplitTests.cs
+    /// deliberately writes the malformed JSON literal "{ not json" to prove
+    /// Config.Load fails readably, a single un-matched '{' inside an
+    /// ordinary string literal that a depth counter can't tell from real
+    /// code without also tokenizing every other kind of C# string (verbatim,
+    /// interpolated, raw). Position order sidesteps that class of problem
+    /// entirely — it never needs to know where a class ends.</summary>
+    private static List<string> ClassesReachingMoveNeverOverwrite()
+    {
+        var dir = Path.Combine(FindRepoRoot(), "tests", "OrdoSort.Core.Tests");
+        var found = new List<string>();
+        foreach (var file in Directory.EnumerateFiles(dir, "*.cs"))
+        {
+            var source = StripComments(File.ReadAllText(file));
+            var classStarts = ClassDeclaration.Matches(source)
+                .Select(m => (Index: m.Index, Name: m.Groups["name"].Value))
+                .OrderBy(x => x.Index)
+                .ToList();
+            foreach (Match call in SeamCall.Matches(source))
+            {
+                var owner = classStarts.LastOrDefault(c => c.Index <= call.Index);
+                if (owner.Name is not null)
+                    found.Add(owner.Name);
+            }
+        }
+        return found;
+    }
+
+    [Fact]
+    public void EveryClassThatReachesMoveNeverOverwriteSharesTheCollection()
+    {
+        var classes = ClassesReachingMoveNeverOverwrite().Distinct(StringComparer.Ordinal).ToList();
+
+        // Same "did the scan actually examine anything" floor as
+        // DataGridSizingCoverageTests/TextWrapCoverageTests: a scan that
+        // quietly matches nothing (a moved directory, a renamed method)
+        // would make the loop below pass vacuously — exactly the QC-09
+        // failure mode this whole pass exists to close. Five classes reach
+        // the seam today (the same five the hand-written tests above name),
+        // so 5 is a floor with zero slack, not headroom for growth: any drop
+        // below it means the scan broke, not that call sites went away.
+        Assert.True(classes.Count >= 5,
+            $"only found {classes.Count} class(es) whose source calls a method that reaches " +
+            "Commit.MoveNeverOverwrite (CommitFile/SkipFile/UndoAction/CommitCurrent/SkipCurrent/" +
+            "UndoLast) under tests/OrdoSort.Core.Tests — the scan looks broken (moved directory? " +
+            "renamed method?), not that the app genuinely shrank to that few call sites: " +
+            string.Join(", ", classes));
+
+        var assembly = typeof(UndoFailureTests).Assembly;
+        var unserialized = classes
+            .Select(name => (Name: name, Type: assembly.GetTypes()
+                .FirstOrDefault(t => t.Namespace == "OrdoSort.Core.Tests" && t.Name == name)))
+            .Select(x => (x.Name, x.Type, Collection: x.Type is null ? null : CollectionNameOf(x.Type)))
+            .Where(x => x.Collection != UndoFailureTests.Name)
+            .ToList();
+
+        Assert.True(unserialized.Count == 0,
+            "these classes call a method that reaches the shared Commit.MoveNeverOverwrite — where " +
+            "the QC-03 seam Commit.SurvivingSourceHookForTests fires unconditionally for every " +
+            "caller, armed or not — but do not declare [Collection(UndoFailureTests.Name)], so " +
+            "xUnit can run them concurrently with PipelineTests (the class that arms that seam) and " +
+            "let a stray, already-torn-down closure fire mid-move inside them: " +
+            string.Join(", ", unserialized.Select(x =>
+                x.Type is null ? $"{x.Name} (found calling the seam, but no compiled type by that " +
+                                  "name in OrdoSort.Core.Tests — check for a typo in the class name)"
+                               : $"{x.Name} (in \"{x.Collection ?? "<no [Collection] attribute>"}\")")));
     }
 }
