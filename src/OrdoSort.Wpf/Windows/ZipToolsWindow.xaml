@@ -74,7 +74,8 @@
                         <WrapPanel>
                             <Button Content="Add files…" Click="OnAddFiles" Margin="0,0,6,4" />
                             <Button Content="Add folder…" Click="OnAddFolder" Margin="0,0,6,4" />
-                            <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,4" />
+                            <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,4"
+                                    IsEnabled="{Binding IsIdle}" />
                             <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,4" />
                         </WrapPanel>
                     </DockPanel>
@@ -224,7 +225,8 @@
                         <!-- Same WrapPanel reason as the tab above. -->
                         <WrapPanel>
                             <Button Content="Add zips…" Click="OnAddZips" Margin="0,0,6,4" />
-                            <Button Content="Remove selected" Click="OnRemoveSelectedMerge" Margin="0,0,6,4" />
+                            <Button Content="Remove selected" Click="OnRemoveSelectedMerge" Margin="0,0,6,4"
+                                    IsEnabled="{Binding IsIdle}" />
                             <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,4" />
                         </WrapPanel>
                     </DockPanel>

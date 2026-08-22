@@ -97,9 +97,13 @@ public abstract class ZipListViewModel : ObservableObject
     protected readonly IWorkScheduler Scheduler;
     protected readonly SynchronizationContext? UiContext;
 
-    // Cancelled once, from the window's OnClosed: a closed window must not
-    // keep working invisibly.
-    private readonly CancellationTokenSource _cts = new();
+    // Cancelled for good from the window's OnClosed — a closed window must
+    // not keep working invisibly — and cancelled-then-REPLACED by every
+    // Clear (QC-05): a list just wiped by the user must not go on being
+    // written to by whatever batch was running, but the NEXT batch still
+    // needs a token that isn't born cancelled. No longer readonly for
+    // exactly that swap; see ClearCommand below.
+    private CancellationTokenSource _cts = new();
 
     public ObservableCollection<ZipItemRow> Rows { get; } = new();
 
@@ -114,6 +118,18 @@ public abstract class ZipListViewModel : ObservableObject
             Status = "";
             AddNote = "";
             OnRowsChanged();
+            // A batch running when Clear is pressed must stop instead of
+            // going on to apply results to rows nobody can see anymore
+            // (QC-05) — cancel the RUN token, then hand out a FRESH one so
+            // the next Extract/Merge isn't born cancelled, the same swap
+            // Unlock's own ClearCommand already does for its probe token
+            // (see UnlockViewModel.ClearCommand). RunBatchAsync's tail
+            // checks for exactly this replacement so it doesn't overwrite
+            // the "" just set above with a stale partial count.
+            var oldCts = _cts;
+            _cts = new CancellationTokenSource();
+            oldCts.Cancel();
+            oldCts.Dispose();
         });
 
         Rows.CollectionChanged += (_, _) => OnRowsChanged();
@@ -133,6 +149,27 @@ public abstract class ZipListViewModel : ObservableObject
     protected virtual void OnRowsChanged() { }
 
     public RelayCommand ClearCommand { get; }
+
+    private bool _isBusy;
+
+    /// <summary>True while RunBatchAsync (Extract or Merge, whichever
+    /// subclass called it) is running. Gates Remove selected — see IsIdle —
+    /// the third place this exact defect (QC-05) turned up: a row removed
+    /// mid-batch would still be worked on by a loop that had already
+    /// snapshotted it, then leave nothing visible to explain the result.
+    /// Deliberately does NOT gate Clear: unlike Remove selected, Clear has
+    /// to stay reachable during a run, since pressing it is what actually
+    /// stops one (see ClearCommand above).</summary>
+    public bool IsBusy
+    {
+        get => _isBusy;
+        private set { if (Set(ref _isBusy, value)) Raise(nameof(IsIdle)); }
+    }
+
+    /// <summary>The inverse of IsBusy — Remove selected is a Click handler
+    /// with no CanExecute of its own to disable it, same shape as
+    /// BulkRenameViewModel.IsIdle.</summary>
+    public bool IsIdle => !IsBusy;
 
     /// <summary>Feedback for the last AddPaths call ("2 added · 1 ignored…");
     /// blank when it added something with nothing to complain about.</summary>
@@ -175,9 +212,14 @@ public abstract class ZipListViewModel : ObservableObject
         }).Note(IntakeNoun);
     }
 
-    /// <summary>Removes exactly the rows the window's grid selection holds.</summary>
+    /// <summary>Removes exactly the rows the window's grid selection holds.
+    /// The button is disabled mid-batch (IsIdle), but the guard lives here
+    /// too: this is public, and dropping a row while RunBatchAsync's own
+    /// snapshot still holds it would let the loop go on to apply a result
+    /// to a row nobody can see anymore (QC-05).</summary>
     public void RemoveSelected(IList rows)
     {
+        if (IsBusy) return;
         foreach (var item in rows.Cast<ZipItemRow>().ToList())
             Rows.Remove(item);
     }
@@ -207,32 +249,53 @@ public abstract class ZipListViewModel : ObservableObject
         var token = _cts.Token;
         var counts = new int[clauses.Count];
 
-        for (var i = 0; i < pending.Count; i++)
+        IsBusy = true;
+        try
         {
-            // Checked BETWEEN items, never mid-item: a half-written output is
-            // worse than a late one.
-            if (token.IsCancellationRequested) break;
+            for (var i = 0; i < pending.Count; i++)
+            {
+                // Checked BETWEEN items, never mid-item: a half-written output
+                // is worse than a late one.
+                if (token.IsCancellationRequested) break;
 
-            var row = pending[i];
-            Status = $"{progressVerb} {i + 1} of {pending.Count}…";
-            var result = await Scheduler.Run(() => operation(row.Path));
+                var row = pending[i];
+                Status = $"{progressVerb} {i + 1} of {pending.Count}…";
+                var result = await Scheduler.Run(() => operation(row.Path));
 
-            // Tallied from the result's OWN status rather than from the row
-            // after applying it: the apply may be marshalled onto the UI
-            // thread and has not necessarily landed yet.
-            var status = statusOf(result);
-            var slot = -1;
-            for (var c = 0; c < clauses.Count; c++)
-                if (clauses[c].Status == status) { slot = c; break; }
-            counts[slot >= 0 ? slot : clauses.Count - 1]++;
+                // Tallied from the result's OWN status rather than from the
+                // row after applying it: the apply may be marshalled onto the
+                // UI thread and has not necessarily landed yet.
+                var status = statusOf(result);
+                var slot = -1;
+                for (var c = 0; c < clauses.Count; c++)
+                    if (clauses[c].Status == status) { slot = c; break; }
+                counts[slot >= 0 ? slot : clauses.Count - 1]++;
 
-            ApplyOnUi(row, result, apply);
+                ApplyOnUi(row, result, apply);
+            }
+        }
+        finally
+        {
+            IsBusy = false;
         }
 
-        var parts = new List<string>();
-        for (var i = 0; i < clauses.Count; i++)
-            if (counts[i] > 0) parts.Add($"{counts[i]} {clauses[i].Label}");
-        Status = string.Join(" · ", parts);
+        // Clear replaces _cts with a FRESH source rather than merely
+        // cancelling this one in place (see ClearCommand) — so if Clear ran
+        // while this loop was still going, _cts.Token is no longer even the
+        // SAME token this run captured above. That is what tells "cancelled
+        // because Clear ran" — which already wrote its own "" and must not
+        // have it overwritten with a partial count for rows nobody can see
+        // anymore (QC-05) — apart from "cancelled because the window
+        // closed" (Cancel() cancels this SAME token in place, no
+        // replacement; OnClosed is its only caller, and nobody is around to
+        // see the difference either way).
+        if (token == _cts.Token)
+        {
+            var parts = new List<string>();
+            for (var i = 0; i < clauses.Count; i++)
+                if (counts[i] > 0) parts.Add($"{counts[i]} {clauses[i].Label}");
+            Status = string.Join(" · ", parts);
+        }
 
         // Rows leaving Pending during the loop above change each row's OWN
         // StatusKind, not the Rows collection, so the CollectionChanged
