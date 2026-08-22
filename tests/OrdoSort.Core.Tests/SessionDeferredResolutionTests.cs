@@ -11,7 +11,14 @@ namespace OrdoSort.Core.Tests;
 /// Every test here deliberately puts config.json in a directory that is NOT
 /// the test process's working directory (asserted in the constructor) — a
 /// fixture where the two coincide would pass whether or not the fix is
-/// actually wired in, proving nothing.</summary>
+/// actually wired in, proving nothing.
+///
+/// Task-4 fix-round-1 review (2026-08-22, QC-03): every test here calls
+/// Session.SkipCurrent, which reaches Commit.SkipFile and so the shared
+/// private Commit.MoveNeverOverwrite — same as CommitSkipFileTests, see its
+/// class doc for why that means this class must share
+/// UndoFailureTests.Name too.</summary>
+[Collection(UndoFailureTests.Name)]
 public class SessionDeferredResolutionTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "ordosessdef_" + Guid.NewGuid());

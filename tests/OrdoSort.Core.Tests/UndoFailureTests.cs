@@ -273,7 +273,26 @@ public class UndoRaceCollection
 /// AuditFailureTests, the one the first fix pass missed — fails this test.
 /// Pre-fix, none of the three classes had a [Collection] attribute at all, so
 /// every name below was null and this failed; a future edit that drops any
-/// one attribute or typos its name fails it again.</summary>
+/// one attribute or typos its name fails it again.
+///
+/// Task-4 fix-round-1 review (2026-08-22, QC-03) widened what this class
+/// guards. <see cref="Commit.SurvivingSourceHookForTests"/> (the QC-03 test
+/// seam) sits inside the shared private <c>Commit.MoveNeverOverwrite</c>
+/// itself, not one call site, so it fires unconditionally for every caller —
+/// <c>CommitFile</c>, <c>SkipFile</c>, and <c>UndoAction</c> alike — whether
+/// or not that caller's own test ever touches a hook. That means the
+/// invariant isn't "every class that sets a hook shares this collection" but
+/// "every class that reaches <c>MoveNeverOverwrite</c> at all does" — a
+/// stray, already-torn-down closure from a finished <see cref="PipelineTests"/>
+/// test can otherwise fire mid-move in a completely unrelated class and throw
+/// a wrong exception type into its assertion. A grep across tests/ for
+/// <c>CommitFile(</c>/<c>SkipFile(</c>/<c>UndoAction(</c>/<c>CommitCurrent(</c>/
+/// <c>SkipCurrent(</c>/<c>UndoLast(</c> confirms five classes reach it:
+/// the original three above, plus <see cref="CommitSkipFileTests"/> and
+/// <see cref="SessionDeferredResolutionTests"/> (both call
+/// <c>Commit.SkipFile</c>/<c>Session.SkipCurrent</c> and, pre-fix, had no
+/// <c>[Collection]</c> attribute at all). Same pairwise-anchored-to-
+/// UndoFailureTests shape as the original three, for the same reason.</summary>
 public class UndoRaceTestCollectionMembershipTests
 {
     // Reads the [Collection("...")] name via CustomAttributeData's
@@ -314,5 +333,25 @@ public class UndoRaceTestCollectionMembershipTests
 
         Assert.NotNull(pipelineCollection);
         Assert.Equal(pipelineCollection, auditCollection);
+    }
+
+    [Fact]
+    public void CommitSkipFileTestsSharesUndoFailureTestsCollection()
+    {
+        var undoCollection = CollectionNameOf(typeof(UndoFailureTests));
+        var commitSkipCollection = CollectionNameOf(typeof(CommitSkipFileTests));
+
+        Assert.NotNull(undoCollection);
+        Assert.Equal(undoCollection, commitSkipCollection);
+    }
+
+    [Fact]
+    public void SessionDeferredResolutionTestsSharesUndoFailureTestsCollection()
+    {
+        var undoCollection = CollectionNameOf(typeof(UndoFailureTests));
+        var sessionDeferredCollection = CollectionNameOf(typeof(SessionDeferredResolutionTests));
+
+        Assert.NotNull(undoCollection);
+        Assert.Equal(undoCollection, sessionDeferredCollection);
     }
 }

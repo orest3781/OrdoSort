@@ -61,13 +61,16 @@ public static class Commit
         // human to sort out is the correct behaviour here.
         if (File.Exists(src))
             throw new CommitError(
-                $"{Path.GetFileName(src)} could not be filed cleanly. A copy " +
+                // "moved", not "filed": this same message fires from SkipFile
+                // too (the user clicked Skip, not File), and MoveNeverOverwrite
+                // has no way to know which caller it was reached from.
+                $"{Path.GetFileName(src)} could not be moved cleanly. A copy " +
                 "reached the destination, but the original could not be " +
                 "removed from the inbox — Windows allows a cross-volume move " +
                 "to report success even when it can't delete the source. Two " +
                 $"copies of this document now exist: the new one at {target}, " +
                 $"and the original still at {src}. This document has NOT been " +
-                "recorded as filed. Confirm the copy at the destination is " +
+                "recorded as moved. Confirm the copy at the destination is " +
                 "correct, then remove the original from the inbox by hand.");
     }
 
