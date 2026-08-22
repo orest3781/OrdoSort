@@ -200,9 +200,36 @@ public sealed class LabelMakerViewModel : ObservableObject
             if (s.Id.Length > 0) _removedIds.Add(s.Id);   // a blank pristine row was never on disk
             Selected = Clients.FirstOrDefault();
         }, () => Selected is not null);
-        ResetNumberCommand = new RelayCommand(
-            () => { if (Selected is { } s) s.NextNumberText = "1"; },
-            () => Selected is not null);
+        ResetNumberCommand = new RelayCommand(() =>
+        {
+            if (Selected is not { } s) return;
+            // Reset reaches the identical end state RemoveClientCommand's
+            // confirmation exists to guard — one click loses a running
+            // number that may already have physical boxes printed against
+            // it (QC-14) — so it confirms the same way, for the same reason
+            // (a just-added blank row goes quietly)
+            var pristine = s.Id.Length == 0 && s.NextNumberText.Trim() is "" or "1";
+            // Show what's actually about to be destroyed, not the VM's
+            // possibly-stale in-memory number — see the identical lookup in
+            // RemoveClientCommand above.
+            var shownNumber = s.NextNumberText;
+            if (!pristine)
+            {
+                try
+                {
+                    var onDisk = BoxLabelStore.Read(_boxLabelsPath).LabelClients
+                        .FirstOrDefault(c => c.Id == s.Id);
+                    if (onDisk is not null) shownNumber = onDisk.NextNumber.ToString();
+                }
+                catch (ConfigException) { /* fall back to the VM's number above */ }
+            }
+            if (!pristine && !_dialogs.Confirm(
+                    $"Reset \"{s.Id}\"'s label number to 1?\n\nIts running label number "
+                    + $"({shownNumber}) will be lost.",
+                    "OrdoSort — label maker"))
+                return;
+            s.NextNumberText = "1";
+        }, () => Selected is not null);
         PrintCommand = new RelayCommand(Print, () => Selected is not null);
         SavePdfCommand = new RelayCommand(SavePdf, () => Selected is not null);
 
@@ -551,8 +578,23 @@ public sealed class LabelMakerViewModel : ObservableObject
     /// ORIGINAL on-disk row's fresh NextNumber captured, and that carried
     /// value (not the VM's stale one) is what the rename writes under its
     /// final id — again unless <see cref="_numberEdited"/> says the user
-    /// deliberately typed a number of their own, which still wins.</summary>
-    internal void Persist()
+    /// deliberately typed a number of their own, which still wins.
+    ///
+    /// Both NextNumberText and DestroyDaysText are parsed straight off the
+    /// text here, never trusted from <see cref="LabelClientVm.ToClient"/>'s
+    /// TryParse fallback (30 / 1) — that fallback exists for building a
+    /// genuinely NEW client, where there is no on-disk value to fall back to
+    /// instead. For an existing row it is exactly the wrong default: it
+    /// silently overwrites whatever is on disk, so a cleared box or an
+    /// unparseable typo took a client from 4211 to 1 on close (QC-06). A
+    /// parse failure here gets the same "leave the disk alone" treatment as
+    /// an untouched field, not a fabricated number.</summary>
+    /// <returns>false when the write was refused (a duplicate id on screen,
+    /// or the store itself threw) — already warned, so the caller (the
+    /// window's Closing handler) must set e.Cancel = true rather than let
+    /// the close proceed over edits that were never written. true covers
+    /// both "wrote successfully" and "there was nothing to write."</returns>
+    internal bool TryPersist()
     {
         // A client's id going blank through editing — not the explicit
         // Remove button — is the same destructive act wearing a different
@@ -588,7 +630,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             finally { _suppressDirty = false; }
         }
 
-        if (_dirty.Count == 0 && _removedIds.Count == 0) return;   // zero-edit close writes nothing
+        if (_dirty.Count == 0 && _removedIds.Count == 0) return true;   // zero-edit close writes nothing
 
         var duplicate = Clients
             .Where(c => c.Id.Length > 0)
@@ -598,7 +640,7 @@ public sealed class LabelMakerViewModel : ObservableObject
         {
             _dialogs.Warn($"Two clients share the id \"{duplicate.Key}\" — fix the duplicate "
                 + "before closing; nothing was saved.", "OrdoSort — label maker");
-            return;
+            return false;   // caller must not let the close proceed over this
         }
 
         try
@@ -664,11 +706,24 @@ public sealed class LabelMakerViewModel : ObservableObject
                     else
                     {
                         var edited = vm.ToClient();
-                        fresh.DestroyDays = edited.DestroyDays;
+                        // DestroyDays and NextNumber are re-parsed straight
+                        // from the text here rather than trusted from
+                        // ToClient()'s TryParse fallback (30 / 1) — landing
+                        // that fallback on disk is how an empty box, "4,211"
+                        // (NumberStyles.Integer rejects the thousands
+                        // separator), or a stray keystroke took a real
+                        // client's counter from 4211 to 1 (QC-06). An
+                        // unparseable box leaves the disk value alone,
+                        // exactly like an untouched field already does.
+                        if (int.TryParse(vm.DestroyDaysText.Trim(), out var days)) fresh.DestroyDays = days;
                         // NextNumber: disk wins unless the user actually
-                        // edited the number box on this row — see the
-                        // Persist doc comment and _numberEdited above.
-                        if (_numberEdited.Contains(vm)) fresh.NextNumber = edited.NextNumber;
+                        // edited the number box on this row AND it parses —
+                        // see the Persist doc comment and _numberEdited
+                        // above. An edit that doesn't parse is not a
+                        // deliberate number; it gets the same "leave it
+                        // alone" treatment as no edit at all.
+                        if (_numberEdited.Contains(vm) && long.TryParse(vm.NextNumberText.Trim(), out var next))
+                            fresh.NextNumber = next;
                         fresh.Extras = edited.Extras;
                     }
                 }
@@ -679,8 +734,16 @@ public sealed class LabelMakerViewModel : ObservableObject
             // resync _originId so the next round of renames (before the
             // next Persist) is measured from here, not from before this write
             foreach (var vm in Clients) _originId[vm] = vm.Id;
+            return true;
         }
-        catch (ConfigException ex) { _dialogs.Warn(ex.Message, "OrdoSort — label maker"); }
+        catch (ConfigException ex)
+        {
+            _dialogs.Warn(ex.Message, "OrdoSort — label maker");
+            // a busy/corrupt file means nothing landed on disk either — the
+            // caller must not let the close proceed over these edits any
+            // more than it would over a duplicate id
+            return false;
+        }
     }
 }
 

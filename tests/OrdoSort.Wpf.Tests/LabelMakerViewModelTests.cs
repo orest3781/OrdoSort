@@ -237,12 +237,12 @@ public class LabelMakerViewModelTests : IDisposable
         vm.Selected!.Id = "abcd";                 // typed lowercase...
         Assert.Equal("ABCD", vm.Selected.Id);     // ...uppercased on the way in
 
-        vm.Persist();
+        vm.TryPersist();
         Assert.Equal("ABCD", Assert.Single(BoxLabelStore.Read(path).LabelClients).Id);
 
         vm.RemoveClientCommand.Execute(null);
         Assert.Empty(vm.Clients);
-        vm.Persist();
+        vm.TryPersist();
         Assert.Empty(BoxLabelStore.Read(path).LabelClients);
     }
 
@@ -318,7 +318,7 @@ public class LabelMakerViewModelTests : IDisposable
         vm.AddClientCommand.Execute(null);
         vm.Selected!.Id = "OLDX";     // same id, brand-new row, never touched NextNumberText
 
-        vm.Persist();
+        vm.TryPersist();
 
         var only = Assert.Single(BoxLabelStore.Read(path).LabelClients);
         Assert.Equal("OLDX", only.Id);
@@ -393,7 +393,7 @@ public class LabelMakerViewModelTests : IDisposable
         BoxLabelStore.Mutate(path, d =>
             { d.LabelClients.Single(c => c.Id == "BBBB").NextNumber = 50; return 0; });
 
-        vm.Persist();
+        vm.TryPersist();
 
         var stored = BoxLabelStore.Read(path).LabelClients;
         Assert.Equal(45, stored.Single(c => c.Id == "AAAA").DestroyDays);   // our edit landed
@@ -411,7 +411,7 @@ public class LabelMakerViewModelTests : IDisposable
         BoxLabelStore.Mutate(path, d => { d.LabelClients.Single().NextNumber = 99; return 0; });
         var beforeBytes = File.ReadAllBytes(path);
 
-        vm.Persist();
+        vm.TryPersist();
 
         Assert.Equal(beforeBytes, File.ReadAllBytes(path));   // byte-identical: no write happened
         Assert.Equal(99, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
@@ -427,7 +427,7 @@ public class LabelMakerViewModelTests : IDisposable
 
         vm.Clients.Single().Id = "newx";
 
-        vm.Persist();
+        vm.TryPersist();
 
         var only = Assert.Single(BoxLabelStore.Read(path).LabelClients);
         Assert.Equal("NEWX", only.Id);
@@ -451,7 +451,7 @@ public class LabelMakerViewModelTests : IDisposable
 
         vm.Clients.Single().Id = "yyyy";   // rename only — NextNumberText untouched
 
-        vm.Persist();
+        vm.TryPersist();
 
         var only = Assert.Single(BoxLabelStore.Read(path).LabelClients);
         Assert.Equal("YYYY", only.Id);
@@ -475,7 +475,7 @@ public class LabelMakerViewModelTests : IDisposable
         c.Id = "yyyy";
         c.NextNumberText = "999";   // deliberate correction, on top of the rename
 
-        vm.Persist();
+        vm.TryPersist();
 
         Assert.Equal(999, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
     }
@@ -497,7 +497,7 @@ public class LabelMakerViewModelTests : IDisposable
         c.Id = "yyyy";
         c.Id = "zzzz";
 
-        vm.Persist();
+        vm.TryPersist();
 
         var only = Assert.Single(BoxLabelStore.Read(path).LabelClients);
         Assert.Equal("ZZZZ", only.Id);
@@ -525,7 +525,7 @@ public class LabelMakerViewModelTests : IDisposable
         c.Id = "yyyy";
         c.Id = "xxxx";   // back to the original id
 
-        vm.Persist();
+        vm.TryPersist();
 
         var only = Assert.Single(BoxLabelStore.Read(path).LabelClients);
         Assert.Equal("XXXX", only.Id);
@@ -550,7 +550,7 @@ public class LabelMakerViewModelTests : IDisposable
         c.Id = "zzzz";
         c.Id = "xxxx";   // back to the original id, three hops later
 
-        vm.Persist();
+        vm.TryPersist();
 
         var only = Assert.Single(BoxLabelStore.Read(path).LabelClients);
         Assert.Equal("XXXX", only.Id);
@@ -577,7 +577,7 @@ public class LabelMakerViewModelTests : IDisposable
         edited.Id = "AC";    // ACM -> AC   (the sibling's own live id, momentarily)
         edited.Id = "ACX";   // AC -> ACX   (final: queues "AC" for the sweep)
 
-        vm.Persist();
+        vm.TryPersist();
 
         var stored = BoxLabelStore.Read(path).LabelClients;
         var sibling = stored.SingleOrDefault(c => c.Id == "AC");
@@ -598,7 +598,7 @@ public class LabelMakerViewModelTests : IDisposable
         _dialogs.ConfirmAnswer = false;   // decline — the client survives
         vm.Clients.Single().Id = "";
 
-        vm.Persist();
+        vm.TryPersist();
 
         var kept = Assert.Single(BoxLabelStore.Read(path).LabelClients);
         Assert.Equal("MEDR", kept.Id);
@@ -615,7 +615,7 @@ public class LabelMakerViewModelTests : IDisposable
         _dialogs.ConfirmAnswer = true;    // confirm — deliberate removal
         vm.Clients.Single().Id = "";
 
-        vm.Persist();
+        vm.TryPersist();
 
         Assert.Empty(BoxLabelStore.Read(path).LabelClients);
     }
@@ -641,7 +641,7 @@ public class LabelMakerViewModelTests : IDisposable
         BoxLabelStore.Mutate(path, d =>
             { d.LabelClients.Single(c => c.Id == "BBBB").NextNumber = 99; return 0; });
 
-        vm.Persist();
+        vm.TryPersist();
 
         Assert.Contains("share the id", Assert.Single(_dialogs.Warnings).Message);
         var stored = BoxLabelStore.Read(path).LabelClients;
@@ -664,7 +664,7 @@ public class LabelMakerViewModelTests : IDisposable
             { d.LabelClients.Single(c => c.Id == "XXXX").NextNumber = 140; return 0; });
 
         vm.Clients.Single().DestroyDaysText = "60";   // unrelated edit — retention only
-        vm.Persist();
+        vm.TryPersist();
 
         var stored = BoxLabelStore.Read(path).LabelClients.Single();
         Assert.Equal(60, stored.DestroyDays);    // our edit landed
@@ -685,7 +685,7 @@ public class LabelMakerViewModelTests : IDisposable
             { d.LabelClients.Single(c => c.Id == "XXXX").NextNumber = 140; return 0; });
 
         vm.Clients.Single().NextNumberText = "500";   // deliberate correction
-        vm.Persist();
+        vm.TryPersist();
 
         Assert.Equal(500, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
     }
@@ -703,11 +703,118 @@ public class LabelMakerViewModelTests : IDisposable
         Assert.Equal("15", vm.Clients.Single().NextNumberText);   // display updated...
         var afterClaim = File.ReadAllBytes(path);                // ...and the claim's write already landed
 
-        vm.Persist();   // Persist has nothing of its own to write on top of that
+        vm.TryPersist();   // Persist has nothing of its own to write on top of that
 
         Assert.Equal(afterClaim, File.ReadAllBytes(path));
         Assert.Equal(15, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);   // the claim's write stands
     }
+
+    // ------------------------------------------------ QC-06: parse failures
+
+    [Theory]
+    [InlineData("")]         // cleared the box
+    [InlineData("4,211")]    // NumberStyles.Integer (the TryParse default) rejects the thousands separator
+    [InlineData("abc")]
+    public void PersistLeavesTheStoredNumberAloneWhenTheEditedTextDoesNotParse(string badText)
+    {
+        // The audit's own example: a client sitting at 4211 must not become
+        // 1 on disk because the number box holds something un-parseable at
+        // close time. ToClient()'s TryParse fallback (1) must never reach
+        // the store here — assert on the STORE, not the VM, or a view model
+        // that shows the right number while the store holds 1 would pass.
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 4211 });
+        var vm = Vm(path);
+
+        vm.Clients.Single().NextNumberText = badText;
+
+        vm.TryPersist();
+
+        Assert.Equal(4211, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("abc")]
+    public void PersistLeavesTheStoredRetentionAloneWhenTheEditedTextDoesNotParse(string badText)
+    {
+        // Same shape, the other field ToClient() silently defaults (to 30).
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 45, NextNumber = 7 });
+        var vm = Vm(path);
+
+        vm.Clients.Single().DestroyDaysText = badText;
+
+        vm.TryPersist();
+
+        Assert.Equal(45, BoxLabelStore.Read(path).LabelClients.Single().DestroyDays);
+    }
+
+    // --------------------------------------- QC-07: refusal must not close
+
+    [Fact]
+    public void TryPersistRefusesUnderDuplicateIdsWithoutDiscardingAnUnrelatedEdit()
+    {
+        // The old void Persist() gave the window's Closing handler nothing
+        // to check, so it closed anyway on a duplicate id — discarding every
+        // edit in the session, including this unrelated one. TryPersist must
+        // report the refusal, AND the unrelated edit must still be pending
+        // (not silently dropped) so a later, successful TryPersist lands it.
+        var path = PathWith(
+            new LabelClient { Id = "AAAA", DestroyDays = 30, NextNumber = 7 },
+            new LabelClient { Id = "BBBB", DestroyDays = 30, NextNumber = 10 },
+            new LabelClient { Id = "CCCC", DestroyDays = 30, NextNumber = 20 });
+        var vm = Vm(path);
+        var collider = vm.Clients.Single(c => c.Id == "AAAA");
+        var unrelated = vm.Clients.Single(c => c.Id == "CCCC");
+
+        unrelated.DestroyDaysText = "90";   // a deliberate edit, unrelated to the collision below
+        collider.Id = "BBBB";               // collision: two rows now say "BBBB"
+
+        Assert.False(vm.TryPersist());
+        Assert.Contains("share the id", Assert.Single(_dialogs.Warnings).Message);
+        Assert.Equal(30, BoxLabelStore.Read(path).LabelClients.Single(c => c.Id == "CCCC").DestroyDays);
+
+        collider.Id = "AAAB";   // fix the duplicate
+
+        Assert.True(vm.TryPersist());
+        Assert.Equal(90, BoxLabelStore.Read(path).LabelClients.Single(c => c.Id == "CCCC").DestroyDays);
+    }
+
+    // --------------------------------------------- QC-14: Reset confirms
+
+    [Fact]
+    public void ResetDeclinedLeavesTheNumberUnchanged()
+    {
+        var path = PathWith(new LabelClient { Id = "MEDR", NextNumber = 4242 });
+        var vm = Vm(path);
+
+        _dialogs.ConfirmAnswer = false;   // "No" — the counter survives
+        vm.ResetNumberCommand.Execute(null);
+
+        Assert.Equal("4242", vm.Selected!.NextNumberText);
+        Assert.Contains("4242", Assert.Single(_dialogs.Confirms).Message);
+    }
+
+    [Fact]
+    public void ResetAcceptedSetsTheNumberToOne()
+    {
+        var path = PathWith(new LabelClient { Id = "MEDR", NextNumber = 4242 });
+        var vm = Vm(path);
+
+        _dialogs.ConfirmAnswer = true;   // "Yes" — deliberate reset
+        vm.ResetNumberCommand.Execute(null);
+
+        Assert.Equal("1", vm.Selected!.NextNumberText);
+        Assert.Single(_dialogs.Confirms);   // the house pattern asks first, even when accepted
+    }
+
+    // Note: no test pins the pristine (just-added blank row) carve-out on
+    // ResetNumberCommand — a candidate for one is trivially true against
+    // BOTH the unfixed code (which never confirms anything) and the fixed
+    // code (which confirms everything except the pristine case), so it
+    // cannot fail against the defect this task fixes and would be exactly
+    // the accidental-pass trap this repo has been bitten by four times. The
+    // carve-out is still implemented, matching RemoveClientCommand's shape;
+    // it is just not separately claimed as tested here.
 
     // -------------------------------------------------------------- ceiling
 
