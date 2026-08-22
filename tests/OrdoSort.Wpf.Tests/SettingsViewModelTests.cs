@@ -483,6 +483,53 @@ public class SettingsViewModelTests : IDisposable
         Assert.Equal(before, vm.DestinationsFile);
     }
 
+    // -------------------------------------- side-file uniqueness (QC-08):
+    // each of the four DebouncedProbe notes above sees only its OWN field
+    // (SettingsViewModel.cs:617-627), so a collision BETWEEN fields has no
+    // home there — HardErrors is where the whole form is visible at once.
+
+    [Fact]
+    public void HardErrorsCatchesTwoSideFileFieldsNamingOneFile()
+    {
+        var cfgPath = Path.Combine(_dir, "config.json");
+        Config.Save(new Config(), cfgPath);
+        var cfg = Config.Load(cfgPath);
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath)
+        {
+            MonitoredFoldersFile = "destinations.json",   // collides with DestinationsFile's default
+        };
+
+        var errors = vm.HardErrors();
+
+        Assert.Contains(errors, e => e.Contains("Destinations") && e.Contains("Monitored folders"));
+    }
+
+    [Fact]
+    public void HardErrorsHasNoCollisionErrorWhenAllFourSideFilesAreDistinct()
+    {
+        var cfgPath = Path.Combine(_dir, "config.json");
+        Config.Save(new Config(), cfgPath);
+        var cfg = Config.Load(cfgPath);
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
+
+        Assert.Empty(vm.HardErrors());
+    }
+
+    [Fact]
+    public void HardErrorsSkipsTheCollisionCheckWithNoKnownConfigPath()
+    {
+        // No cfgPath (Settings opened before any file exists — same case
+        // PickSideFile and RecomputeDataFileNote both already guard) means
+        // there is no base directory to resolve a relative side-file path
+        // against, so there is nothing safe to compare. Must not throw.
+        var vm = new SettingsViewModel(new Config(), _dialogs)
+        {
+            MonitoredFoldersFile = "destinations.json",
+        };
+
+        Assert.Empty(vm.HardErrors());
+    }
+
     [Fact]
     public void PathNotesSurfaceProblemsLive()
     {

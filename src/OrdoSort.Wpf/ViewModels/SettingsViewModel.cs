@@ -2222,8 +2222,52 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 errors.Add($"\"{w.Label}\": \"{w.Color}\" is not a color (try #c0392b).");
         }
 
+        // QC-08: each of the four side-file fields owns its own DebouncedProbe
+        // note above, which sees only that field's own value — a constraint
+        // BETWEEN fields has no home there. HardErrors is the right place
+        // because it already sees the whole form, and it runs before OK is
+        // accepted, so the user is told which two fields clash instead of
+        // finding out from a refused Save. Reuses the same
+        // Config.TryFindSideFileCollision Save/TrySave check, resolved
+        // against the same blank-means-default substitution TryBuildResult
+        // applies below — so a blank box and its own default filename are
+        // compared as what they'll actually become on disk, not as "".
+        // Skipped with no known _cfgPath (Settings opened before any config
+        // exists — same guard PickSideFile and RecomputeDataFileNote already
+        // use): there is no base directory to resolve a relative path
+        // against, so there is nothing safe to compare yet.
+        if (_cfgPath is { } cfgPathForCollision)
+        {
+            var destFile = DestinationsFile.Trim().Length == 0
+                ? Config.DefaultDestinationsFile : DestinationsFile.Trim();
+            var monFile = MonitoredFoldersFile.Trim().Length == 0
+                ? Config.DefaultMonitoredFoldersFile : MonitoredFoldersFile.Trim();
+            var alertsFileForCollision = AlertsFile.Trim().Length == 0
+                ? Config.DefaultAlertsFile : AlertsFile.Trim();
+            var boxFile = BoxLabelsFile.Trim().Length == 0
+                ? Config.DefaultBoxLabelsFile : BoxLabelsFile.Trim();
+            if (Config.TryFindSideFileCollision(cfgPathForCollision, destFile, monFile,
+                    alertsFileForCollision, boxFile, out var collKeyA, out var collKeyB, out _))
+                errors.Add($"\"{SideFileFieldLabel(collKeyA)}\" and \"{SideFileFieldLabel(collKeyB)}\" " +
+                           "are set to the same file — point them at different files.");
+        }
+
         return errors;
     }
+
+    /// <summary>The "Data files" tab's own labels (SettingsWindow.xaml) for
+    /// a side-file JSON key, for a HardErrors message a user actually
+    /// recognizes — Config's own exception messages name the raw key
+    /// (destinations_file, etc.) because that's what config.json shows a
+    /// hand-editor; this is the Settings-facing half of the same fact.</summary>
+    private static string SideFileFieldLabel(string key) => key switch
+    {
+        "destinations_file" => "Destinations",
+        "monitored_folders_file" => "Monitored folders",
+        "alerts_file" => "Alerts",
+        "box_labels_file" => "Box labels",
+        _ => key,
+    };
 
     /// <summary>Problems worth a "Save anyway?" — unreachable folders mostly
     /// (they may simply be offline right now).</summary>

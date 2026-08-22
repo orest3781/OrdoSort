@@ -176,6 +176,17 @@ public sealed class Config
     [JsonIgnore] public Dictionary<string, JsonElement> AlertsFileExtras { get; set; } = new();
     [JsonIgnore] public Dictionary<string, JsonElement> BoxLabelsFileExtras { get; set; } = new();
 
+    /// <summary>Non-null after <see cref="Load(string,bool)"/> when two of the
+    /// four side-file keys resolve to the same file (QC-08). Load does NOT
+    /// throw for this — a config problem that blocks startup leaves the user
+    /// no in-app recovery (2026-08-07 audit D2), and adding a second one here
+    /// would regress against that while fixing this. The next <see cref="Save"/>
+    /// or <see cref="TrySave"/> DOES refuse, which is what actually prevents
+    /// the data loss; this string only makes the problem visible as data
+    /// instead of losing it silently, the same "never throws, problems come
+    /// back as data" contract <c>Scanner.DeferredSummary</c> documents.</summary>
+    [JsonIgnore] public string? SideFileCollisionWarning { get; set; }
+
     [JsonExtensionData] public Dictionary<string, JsonElement> Extras { get; set; } = new();
 
     private static readonly JsonSerializerOptions Opts = new()
@@ -287,6 +298,16 @@ public sealed class Config
             cfg.BoxLabelsFileExtras = bd.Extras ?? new();
         }
         cfg.NormalizeSectionItems();
+        // Surfaced, never thrown — see SideFileCollisionWarning's own doc
+        // comment for why a collision here must not join naming_mode/sort/
+        // etc. above in blocking startup. TryFindSideFileCollision, not the
+        // throwing check Save/TrySave use, is the point of that split.
+        if (TryFindSideFileCollision(path, cfg.DestinationsFile, cfg.MonitoredFoldersFile,
+                cfg.AlertsFile, cfg.BoxLabelsFile, out var collKeyA, out var collKeyB, out var collPath))
+            cfg.SideFileCollisionWarning =
+                $"{collKeyA} and {collKeyB} both point at {collPath}, so only one of them " +
+                "actually holds what was last saved there. OrdoSort started anyway, but fix " +
+                "this in Settings — Save will refuse until the two point at different files.";
         return cfg;
     }
 
@@ -394,6 +415,55 @@ public sealed class Config
         }
     }
 
+    /// <summary>Which two of the four side-file keys — if any — resolve to
+    /// the same file. Resolved through <see cref="ResolveBesideForWrite"/>,
+    /// the exact confinement-checked path <see cref="Save"/> and
+    /// <see cref="TrySave"/> actually write through, and compared through
+    /// <see cref="PathIdentity"/> rather than a raw string compare
+    /// (CONTEXT.md: "path identity is decided in exactly one place") — so
+    /// "./destinations.json" and "destinations.json" collide exactly like an
+    /// identical spelling. A key whose OWN path escapes confinement is left
+    /// out of the comparison: that is a separate refusal, raised
+    /// independently wherever the key is actually resolved for real, and
+    /// folding it in here would report the wrong pair instead of the real
+    /// one. Public (not private) so Settings' HardErrors can run this exact
+    /// check against the form's live, not-yet-saved values before OK is
+    /// accepted, instead of only finding out from a refused Save.
+    ///
+    /// QC-08 (2026-08-21 audit): pointing monitored_folders_file at
+    /// destinations.json let one Save silently erase every filing
+    /// destination, because WriteDoc is a full re-serialization of one doc
+    /// type, never a read-modify-write.</summary>
+    public static bool TryFindSideFileCollision(string configPath,
+        string destinationsFile, string monitoredFoldersFile, string alertsFile, string boxLabelsFile,
+        out string keyA, out string keyB, out string collisionPath)
+    {
+        var keys = new (string Key, string Value)[]
+        {
+            ("destinations_file", destinationsFile),
+            ("monitored_folders_file", monitoredFoldersFile),
+            ("alerts_file", alertsFile),
+            ("box_labels_file", boxLabelsFile),
+        };
+        var resolved = new List<(string Key, string Full)>();
+        foreach (var (key, value) in keys)
+        {
+            try { resolved.Add((key, ResolveBesideForWrite(configPath, value, key))); }
+            catch (ConfigException) { /* that key's own confinement refusal fires separately */ }
+        }
+        for (var i = 0; i < resolved.Count; i++)
+            for (var j = i + 1; j < resolved.Count; j++)
+                if (PathIdentity.Same(resolved[i].Full, resolved[j].Full))
+                {
+                    keyA = resolved[i].Key;
+                    keyB = resolved[j].Key;
+                    collisionPath = resolved[i].Full;
+                    return true;
+                }
+        keyA = keyB = collisionPath = "";
+        return false;
+    }
+
     /// <summary>An explicit JSON null means the same thing as an absent key:
     /// use the default. System.Text.Json only applies a property initializer
     /// when the key is MISSING, so `"routes": null` would otherwise leave a
@@ -475,6 +545,22 @@ public sealed class Config
     private static List<T> Clean<T>(List<T>? items) where T : class =>
         items is null ? new() : items.Where(i => i is not null).ToList();
 
+    /// <summary>Refuses a Save/TrySave the same way ResolveConfined already
+    /// refuses an escaping path — see <see cref="TryFindSideFileCollision"/>
+    /// for what counts as a collision. Must run before ANY of the four
+    /// side-file writes: each one is a full re-serialization of one doc
+    /// type, so writing even one of a colliding pair before this check ran
+    /// would already have destroyed the other's content (QC-08).</summary>
+    private static void CheckSideFileUniqueness(Config cfg, string path)
+    {
+        if (TryFindSideFileCollision(path, cfg.DestinationsFile, cfg.MonitoredFoldersFile,
+                cfg.AlertsFile, cfg.BoxLabelsFile, out var keyA, out var keyB, out var collisionPath))
+            throw new ConfigException(
+                $"{keyA} and {keyB} both resolve to {collisionPath}. Two side-file keys can't " +
+                "name the same file — each Save fully rewrites its own file, so the second " +
+                "write would silently erase what the first just saved. Point them at different files.");
+    }
+
     /// <summary>Write the main config (without the split sections) and the
     /// Settings-owned side files. box-labels.json is bootstrap-only: created
     /// when missing, never overwritten — its counters belong to the Box
@@ -486,6 +572,7 @@ public sealed class Config
     /// finding 1). See WriteAtomicNew's doc comment for the full story.</summary>
     public static void Save(Config cfg, string path)
     {
+        CheckSideFileUniqueness(cfg, path);
         var dir = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
         SaveMain(cfg, path);
@@ -667,6 +754,19 @@ public sealed class Config
     {
         var errors = new List<string>();
         var refused = new List<string>();
+
+        // Checked before any I/O at all — same reasoning as CheckSideFileUniqueness's
+        // own doc comment. Not added to `refused`: that list means "a confinement
+        // escape", a different, narrower refusal ShellViewModel treats as
+        // structural-and-suppressible; a collision gets its own message every time.
+        Attempt(() => CheckSideFileUniqueness(cfg, path), path);
+        if (errors.Count > 0)
+        {
+            error = string.Join("; ", errors);
+            refusedSideFileKeys = Array.Empty<string>();
+            return false;
+        }
+
         var dir = Path.GetDirectoryName(Path.GetFullPath(path));
         Attempt(() => { if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir); }, path);
         if (errors.Count > 0)
