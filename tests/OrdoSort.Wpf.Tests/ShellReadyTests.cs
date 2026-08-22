@@ -99,6 +99,26 @@ public class ShellReadyTests
         Assert.False(fx.Shell.StartEnabled);
         Assert.NotEqual("", fx.Shell.DetailLine);
     }
+
+    /// <summary>app-qc-2026-08-21 finding 1 (Important): Config.Load already
+    /// computes SideFileCollisionWarning for a config.json that already has
+    /// two side-file keys pointing at the same file (a hand edit, or a save
+    /// made before that collision check existed), but nothing in src/ read
+    /// it -- a user in that state got no indication at all until a Save was
+    /// refused or they happened to open Settings. This pins that the rail
+    /// now surfaces it, the same non-blocking way the set-aside notice
+    /// already does.</summary>
+    [Fact]
+    public void SideFileCollisionWarningAppearsAsANotice()
+    {
+        using var fx = new ShellFixture(cfg => cfg.SideFileCollisionWarning =
+            "monitored_folders_file and destinations_file both point at destinations.json");
+
+        var notice = fx.Shell.Notices.FirstOrDefault(n => n.Key == "config-collision");
+        Assert.NotNull(notice);
+        Assert.Contains("monitored_folders_file", notice!.Message);
+        Assert.Contains("destinations_file", notice.Message);
+    }
 }
 
 internal static class ShellAsserts

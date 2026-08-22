@@ -184,7 +184,13 @@ public sealed class Config
     /// or <see cref="TrySave"/> DOES refuse, which is what actually prevents
     /// the data loss; this string only makes the problem visible as data
     /// instead of losing it silently, the same "never throws, problems come
-    /// back as data" contract <c>Scanner.DeferredSummary</c> documents.</summary>
+    /// back as data" contract <c>Scanner.DeferredSummary</c> documents. As of
+    /// the app-qc-2026-08-21 fix pass, "visible as data" is no longer a
+    /// dead end: OrdoSort.Wpf.ViewModels.ShellViewModel.RefreshNotices reads
+    /// this field into the same non-blocking notification rail every other
+    /// startup-time problem already uses — a config that already carries a
+    /// collision (a hand edit, or a save made before this check existed) no
+    /// longer starts the app with no indication at all.</summary>
     [JsonIgnore] public string? SideFileCollisionWarning { get; set; }
 
     [JsonExtensionData] public Dictionary<string, JsonElement> Extras { get; set; } = new();

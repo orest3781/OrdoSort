@@ -175,6 +175,13 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         OpenInboxCommand = new RelayCommand(() => OpenFolder(ResolvePath(_cfg.Inbox, _cfgPath)));
         OpenToastCommand = new RelayCommand(() => { OpenFolder(_toastFolder); HideToast(); });
         OpenHistoryBackupFolderCommand = new RelayCommand(() => OpenFolder(_historyBackupDir));
+        // Points at config.json's own folder, not a Settings window this
+        // class has no way to open (its own class doc: "No WPF types" --
+        // Settings is opened by MainWindow's code-behind). That folder is
+        // also where the colliding side files themselves live, so it is
+        // still the fastest path to actually seeing the problem.
+        OpenConfigFolderCommand = new RelayCommand(() =>
+            OpenFolder(Path.GetDirectoryName(Path.GetFullPath(_cfgPath)) ?? ""));
         RouteCommand = new AsyncRelayCommand<int>(OnRouteAsync);
         SkipCommand = new AsyncRelayCommand(OnSkipAsync);
         UndoCommand = new AsyncRelayCommand(OnUndoAsync, () => _session.CanUndo);
@@ -457,6 +464,16 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// widen this for.</summary>
     private bool _historyBackupDismissed;
 
+    /// <summary>True until the user dismisses the config-side-file-collision
+    /// rail notice (app-qc-2026-08-21 finding 1). Simpler than
+    /// <see cref="_historyBackupDismissed"/>'s own re-raise rule: unlike
+    /// HistoryBackupWarning, <see cref="Config.SideFileCollisionWarning"/> is
+    /// computed exactly once, by Config.Load, before this object even
+    /// exists, and nothing in this class ever recomputes or clears it for
+    /// the rest of the session — so there is no false-&gt;true transition
+    /// that would ever need to un-dismiss this.</summary>
+    private bool _configCollisionDismissed;
+
     /// <summary>The only writer of <see cref="HistoryBackupWarning"/> — both
     /// call sites (the constructor, ApplySettingsAsync's db swap) route
     /// through here so the dismiss re-raise rule and the rail refresh can't
@@ -475,6 +492,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     public RelayCommand OpenInboxCommand { get; }
     public RelayCommand OpenToastCommand { get; }
     public RelayCommand OpenHistoryBackupFolderCommand { get; }
+    public RelayCommand OpenConfigFolderCommand { get; }
 
     /// <summary>Called once by the window after the viewer init attempt:
     /// start watching and take the first scan.</summary>
@@ -967,6 +985,18 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 "or permissions if this keeps happening."));
         if (ToastVisible)
             wanted.Add(("alert", NoticeKind.Error, ToastText, ToastDetail));
+        // app-qc-2026-08-21 finding 1: Config.SideFileCollisionWarning was
+        // computed by Load and then read by nothing in src/ -- a config.json
+        // that already had a collision (a hand edit, or a save made before
+        // that check existed) started the app with no indication at all,
+        // discoverable only via a refused Save or a trip into Settings. This
+        // is the fix: the same non-blocking rail every other startup-time
+        // problem already uses. No Detail split -- the message Config builds
+        // already names both colliding keys and the save-refusal consequence
+        // in one sentence, and re-deriving that split here would just be a
+        // second copy of Config's own wording to keep in sync.
+        if (_cfg.SideFileCollisionWarning is { } collision && !_configCollisionDismissed)
+            wanted.Add(("config-collision", NoticeKind.Warning, collision, ""));
 
         for (var i = Notices.Count - 1; i >= 0; i--)
             if (!wanted.Any(w => w.Key == Notices[i].Key))
@@ -1002,6 +1032,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         "deferred" => () => OpenDeferredCommand.Execute(null),
         "history-backup" => () => OpenHistoryBackupFolderCommand.Execute(null),
         "alert" => () => OpenToastCommand.Execute(null),
+        "config-collision" => () => OpenConfigFolderCommand.Execute(null),
         _ => () => { },
     };
 
@@ -1015,6 +1046,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // on the next RaiseNewAlerts) is exactly the re-raise behaviour a
         // dismissed flag would otherwise exist to reproduce.
         "alert" => () => HideToast(),
+        "config-collision" => () => { _configCollisionDismissed = true; RefreshNotices(); },
         _ => () => { },
     };
 
