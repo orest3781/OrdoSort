@@ -392,8 +392,13 @@ Do not hand-roll a string compare.
 `TrySave` must surface it as a failure with a readable error, not throw past its contract —
 read how it reports other failures and match.
 
-`Load` should refuse the same collision, so a hand-edited config is caught at startup rather
-than at the next save. Match how `Config.Load` already handles an invalid config.
+**`Load` must NOT throw on a collision.** (Controller ruling, recorded in the ledger, amending
+an earlier draft of this task.) The 2026-08-07 audit records D2 — *"a list drift refuses to
+start the app"* — as an Important defect precisely because a config problem that blocks startup
+leaves the user no in-app recovery. Adding a second one would regress against the spec while
+fixing QC-08. `Save`/`TrySave` refusing is what prevents the data loss; `HardErrors()` is where
+the user fixes it. `Load` may surface the collision (an error string, the way it surfaces other
+recoverable problems) but must let the app start.
 
 **Settings:** `HardErrors()` must catch the collision before OK is accepted, so the user is
 told which two fields clash rather than getting an exception. Note the architectural reason
@@ -548,6 +553,34 @@ must still happen on the UI thread. `ZipListViewModel`'s `ApplyOnUi`/`RunOnUi` s
 Preserve the `_lastRenderedPlans` discipline (`:355-360`): the operation executed must remain
 the operation last rendered. That was a deliberate fix; do not regress it.
 
+### Also in this task — QC-11, *Remove selected* silently removes nothing
+
+(Controller ruling, recorded in the ledger: QC-11 was drafted as part of Task 9, and moved here
+because it edits the same two files and the same command wiring this task rewrites. Splitting
+them across two dispatches would guarantee a conflict inside one method.)
+
+`ApplyPlans` (`BulkRenameViewModel.cs:322-328`) does `Preview.Clear()` on every call, and all
+four of Find/Replace/Prefix/Suffix debounce into it (`:156-165`,
+`UpdateSourceTrigger=PropertyChanged` at `BulkRenameWindow.xaml:84, 87, 110, 113`). `Clear()`
+fires a Reset, which drops `DataGrid.SelectedItems`. `OnRemoveSelected`
+(`BulkRenameWindow.xaml.cs:49-51`) reads `SelectedItems` at click time only, and
+`RemoveFiles([])` (`:236-245`) is a no-op with no status change.
+
+So: select 8 rows to drop from the batch, type one more character into "At start:", wait 300ms,
+click *Remove selected* — 0 rows are removed, with no error and no visual difference from a
+successful removal.
+
+**This is FL-03, fixed in `FilenameListViewModel` on 2026-08-21 and never applied here.** Use
+that fix as the template: snapshot the selection by identity before `Preview.Clear()`, restore
+it after re-adding, drop rows the reproject hid, and re-apply to the grid. `RenameRow.Source` is
+the identity key. See `FilenameListViewModel.cs:432`, `:437`, `:576` and the `SelectionRestored`
+event the window subscribes to.
+
+Test: selecting rows, typing into Prefix, then *Remove selected* still removes the intended
+rows. Mirror `TheRowSelectionSurvivesAReprojection` in `FilenameListViewModelTests.cs:447`, which
+is the strongest test in that pass — it installs a `CollectionChanged`/Reset handler that
+reproduces WPF pushing an empty selection back, which is what makes it fail against unfixed code.
+
 ### Tests
 
 `tests/OrdoSort.Wpf.Tests/` — there is an existing `BulkRenameProbeTests.cs` and the Settings
@@ -617,25 +650,18 @@ should show a removed row still being processed.
 
 ---
 
-## Task 9 — The remaining propagation fixes (QC-11, QC-12, QC-13, QC-16)
+## Task 9 — The remaining propagation fixes (QC-12, QC-13, QC-16)
 
-Four small independent fixes. Each has a correct implementation already in this repo, one file
+Three small independent fixes. Each has a correct implementation already in this repo, one file
 over. Batch them; one commit is fine.
 
-### QC-11 — Bulk Rename's *Remove selected* silently removes nothing
+**QC-11 was drafted here and has moved into Task 7** (controller ruling, in the ledger) — it
+edits the same files Task 7 rewrites.
 
-`BulkRenameViewModel.cs:322-328` — `ApplyPlans` does `Preview.Clear()` on every call, and all
-four of Find/Replace/Prefix/Suffix debounce into it (`:156-165`, `UpdateSourceTrigger=PropertyChanged`
-at `BulkRenameWindow.xaml:84, 87, 110, 113`). `Clear()` fires a Reset, which drops
-`DataGrid.SelectedItems`. `OnRemoveSelected` (`BulkRenameWindow.xaml.cs:49-51`) reads
-`SelectedItems` at click time only, and `RemoveFiles([])` (`:236-245`) is a no-op with no
-status change.
-
-**This is FL-03, fixed in `FilenameListViewModel` on 2026-08-21 and never applied here.** Use
-that fix as the template: snapshot the selection by identity before `Preview.Clear()`, restore
-it after re-adding, drop rows the reproject hid, and re-apply to the grid. `RenameRow.Source`
-is the identity key. See `FilenameListViewModel.cs:432`, `:437`, `:576` and the
-`SelectionRestored` event the window subscribes to.
+**Task 3 has already edited `Scanner.DeferredSummary` before you** (controller ruling): it makes
+a blank `folder` return `new DeferredInfo(0, 0)` before resolution. **Preserve that guard.** Your
+QC-13 change alters `DeferredInfo`'s shape, so Task 3's `DeferredSummary("")` test must be
+*updated* to the new shape, never deleted.
 
 ### QC-12 — `Session.Extend` decides path identity with a raw case-sensitive `HashSet`
 
@@ -702,8 +728,6 @@ changes.
 
 One per fix, each watched failing first:
 
-- QC-11: selecting rows, typing into Prefix, then Remove selected still removes the intended
-  rows. (Mirror the FilenameList test `TheRowSelectionSurvivesAReprojection`.)
 - QC-12: a case-only-different path is treated as already known by `Extend` and does not
   produce a duplicate queue entry.
 - QC-13: a folder whose only file vanished reports age unknown, not ~155,000 days; a folder
