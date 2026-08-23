@@ -548,6 +548,19 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     private readonly Config _original;
     private readonly IDialogService _dialogs;
+
+    /// <summary>The editor's own dialog channel, shared with its window.
+    ///
+    /// The discard-on-close prompt (SettingsWindow.OnClosing) is the same class
+    /// of question this view model already asks through <c>_dialogs</c> — "these
+    /// need fixing first", "save anyway?" — so it goes through the same service
+    /// rather than the window constructing a second one. That is not only
+    /// tidiness: a window-owned default would raise a REAL modal MessageBox in
+    /// every headless test that closes a Settings window it had edited, and
+    /// those tests already hand a fake to this view model. Sharing means they
+    /// get the fake for free and none of them had to change.</summary>
+    internal IDialogService Dialogs => _dialogs;
+
     private readonly Func<ThemePalette> _palette;
     private readonly string? _cfgPath;
 
@@ -812,6 +825,12 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         };
         RecomputeTilePreview(immediate: true);
         RebuildWatchRows();
+
+        // LAST in the constructor, deliberately: every collection and row view
+        // model above has to exist before the baseline is taken, or the first
+        // thing IsDirty compares against is a half-built editor and the window
+        // reports unsaved changes the moment it opens.
+        _openSnapshot = Snapshot();
     }
 
     // The recompute below only ever renders SelectedWatch, so a keystroke on
@@ -2316,6 +2335,46 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 "OrdoSort — possible problems"))
             return false;
 
+        var cfg = BuildEditedConfig();
+
+        // A section re-pointed at a path that already holds a file: that
+        // file — not whatever this window happened to load with — becomes
+        // the truth (box-labels.json is excluded; it's already protected as
+        // a bootstrap-only write with its own exclusive writer).
+        AdoptRepointedSection<DestinationsDoc>(_original.DestinationsFile, cfg.DestinationsFile, d =>
+        {
+            cfg.Routes = d.Routes ?? new();
+            cfg.DestinationsFileExtras = d.Extras ?? new();
+        });
+        AdoptRepointedSection<MonitoredFoldersDoc>(_original.MonitoredFoldersFile, cfg.MonitoredFoldersFile, d =>
+        {
+            cfg.WatchFolders = d.WatchFolders ?? new();
+            cfg.MonitoredFoldersFileExtras = d.Extras ?? new();
+        });
+        AdoptRepointedSection<AlertsDoc>(_original.AlertsFile, cfg.AlertsFile, d =>
+        {
+            cfg.AlertTexts = d.AlertTexts ?? new();
+            cfg.AlertsFileExtras = d.Extras ?? new();
+        });
+
+        Result = cfg;
+        return true;
+    }
+
+    /// <summary>The field mapping alone: the editor's current state as a
+    /// <see cref="Config"/>, with no validation, no dialogs, and no disk I/O.
+    /// Split out of <see cref="TryBuildResult"/> so the unsaved-changes check
+    /// (<see cref="IsDirty"/>) can reuse the very same mapping instead of
+    /// keeping a second, hand-maintained list of "things the user can edit" —
+    /// the same reasoning the JSON clone below already applies to unedited
+    /// fields. A field added here is compared automatically.
+    ///
+    /// Deliberately does NOT run AdoptRepointedSection: that decides which
+    /// FILE wins for a re-pointed section, which is a save-time question and
+    /// touches disk. A re-point still registers as an edit here, because the
+    /// path itself is one of the fields copied below.</summary>
+    private Config BuildEditedConfig()
+    {
         // JSON-clone the original so EVERY unedited field and unknown key
         // survives by construction (no hand-maintained carry-through list).
         var cfg = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(_original))!;
@@ -2374,28 +2433,37 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         // persists straight to _cfg.SavedPasswords itself. The JSON clone
         // above already carries the original's list through untouched.
 
-        // A section re-pointed at a path that already holds a file: that
-        // file — not whatever this window happened to load with — becomes
-        // the truth (box-labels.json is excluded; it's already protected as
-        // a bootstrap-only write with its own exclusive writer).
-        AdoptRepointedSection<DestinationsDoc>(_original.DestinationsFile, cfg.DestinationsFile, d =>
-        {
-            cfg.Routes = d.Routes ?? new();
-            cfg.DestinationsFileExtras = d.Extras ?? new();
-        });
-        AdoptRepointedSection<MonitoredFoldersDoc>(_original.MonitoredFoldersFile, cfg.MonitoredFoldersFile, d =>
-        {
-            cfg.WatchFolders = d.WatchFolders ?? new();
-            cfg.MonitoredFoldersFileExtras = d.Extras ?? new();
-        });
-        AdoptRepointedSection<AlertsDoc>(_original.AlertsFile, cfg.AlertsFile, d =>
-        {
-            cfg.AlertTexts = d.AlertTexts ?? new();
-            cfg.AlertsFileExtras = d.Extras ?? new();
-        });
+        return cfg;
+    }
 
-        Result = cfg;
-        return true;
+    // ------------------------------------------------------- unsaved edits
+    /// <summary>The editor's state as it was when the window opened. Compared
+    /// against the live state to answer <see cref="IsDirty"/>.</summary>
+    private readonly string _openSnapshot;
+
+    private string Snapshot() => JsonSerializer.Serialize(BuildEditedConfig());
+
+    /// <summary>Has anything actually been changed since this editor opened?
+    ///
+    /// Answered by comparing CONTENT, not by listening for change events, and
+    /// the difference matters: selecting a different destination or monitored
+    /// folder raises PropertyChanged across the view model without editing
+    /// anything, so an event-based flag reports unsaved changes for merely
+    /// reading down the list. Prompting there teaches people to dismiss the
+    /// prompt, which defeats it for the case it exists to catch. Comparing
+    /// content also makes an edit-then-undo correctly clean.
+    ///
+    /// A build that throws counts as dirty rather than propagating: the state
+    /// most likely to reach this is a half-typed number (UiFontSizeText is
+    /// int.Parse'd behind a validation gate that only OK runs), and a
+    /// half-typed number is by definition something the user typed.</summary>
+    public bool IsDirty
+    {
+        get
+        {
+            try { return !string.Equals(Snapshot(), _openSnapshot, StringComparison.Ordinal); }
+            catch (Exception) { return true; }
+        }
     }
 
     /// <summary>When a section's path box was changed to point at a file

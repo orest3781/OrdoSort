@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -15,12 +16,36 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
+        Closing += OnClosing;
     }
 
     private void OnOk(object sender, RoutedEventArgs e)
     {
         if (_vm.TryBuildResult()) DialogResult = true;
     }
+
+    /// <summary>Seven tabs of editing used to vanish on Esc without a word.
+    /// Esc is safe in every other window in this app, which is exactly why
+    /// reaching for it here was so easy (UI-06).
+    ///
+    /// Hooked on Closing rather than on the Cancel button, because all three
+    /// ways out have to be covered and only one of them is that button: Cancel
+    /// and Esc both go through <c>IsCancel</c>, and the title bar's X goes
+    /// through neither. Closing is the one place they meet.
+    ///
+    /// <c>DialogResult == true</c> means OK already built and accepted the
+    /// result, so there is nothing to discard and nothing to ask about.</summary>
+    private void OnClosing(object? sender, CancelEventArgs e)
+    {
+        if (DialogResult == true) return;
+        if (!_vm.IsDirty) return;
+        if (_vm.Dialogs.Confirm(
+                "Discard your changes to the settings?",
+                "OrdoSort — unsaved changes"))
+            return;
+        e.Cancel = true;
+    }
+
 
     /// <summary>The hotkey box records the actual keystroke instead of free
     /// text — what you press is exactly what will file.</summary>
