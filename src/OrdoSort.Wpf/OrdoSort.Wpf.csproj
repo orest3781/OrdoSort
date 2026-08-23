@@ -17,8 +17,13 @@
   <ItemGroup>
     <!-- also a WPF resource so windows show it when run via the dotnet host -->
     <Resource Include="app.ico" />
-    <!-- empty-state illustrations (generated, de-whited, 512px) -->
-    <Resource Include="Assets\*.png" />
+    <!-- No Assets\*.png glob: the four empty-state PNGs it used to ship
+         (inbox-clear, done, labels-empty, unlock) were replaced by the vector
+         ControlTemplates in Theme/Illustrations.xaml, which follow the theme.
+         The files stayed behind and kept compiling in as ~353 KB of resources
+         nothing referenced. Deleted 2026-08-22 (UI audit UI-03). Re-adding a
+         glob here would silently ship whatever lands in Assets\ next; add an
+         explicit <Resource Include="..."/> per file instead. -->
     <!-- original synthesized alert sounds -->
     <Resource Include="Assets\sounds\*.wav" />
   </ItemGroup>
