@@ -274,26 +274,53 @@ public class WindowOverflowTests
         }, MinExamined: 9, SetWidthAfterShow: true),   // 11 measured
     };
 
-    public static TheoryData<string, double, bool> Cases()
+    /// <summary>The default face. Named rather than inlined so the family axis
+    /// below reads as a deliberate list including the default, not a special
+    /// case bolted beside it.</summary>
+    private const string DefaultFamily = App.DefaultFontChain;
+
+    /// <summary>A monospace face, which is the axis this suite was missing.
+    ///
+    /// Font FAMILY is a first-class Appearance setting with a free-text picker,
+    /// and until 2026-08-23 every case here ran in the default Segoe UI
+    /// Variable — so the suite varied size and never varied width-per-character.
+    /// Consolas at the same nominal size is substantially wider, and running the
+    /// app under it is what exposed a destination path rendering 11 of its 38
+    /// characters and a hotkey hint wrapping to four lines (UI-25, UI-26,
+    /// UI-29). Neither is exotic: the demo workbench ships with
+    /// ui_font_family set to exactly this.
+    ///
+    /// Consolas specifically because it is present on every supported Windows
+    /// (it has shipped in-box since Vista), so this cannot become a test that
+    /// passes only on the machine that wrote it.</summary>
+    private const string WideFamily = "Consolas";
+
+    public static TheoryData<string, double, string, bool> Cases()
     {
-        var data = new TheoryData<string, double, bool>();
+        var data = new TheoryData<string, double, string, bool>();
         foreach (var name in Registry().Keys)
         {
-            data.Add(name, 14.0, true);    // default font, MinWidth
-            data.Add(name, 18.0, false);   // large preset font, default Width
+            data.Add(name, 14.0, DefaultFamily, true);    // default font, MinWidth
+            data.Add(name, 18.0, DefaultFamily, false);   // large preset font, default Width
+            // The harshest combination anyone can actually configure: the wider
+            // face at the window's own minimum width.
+            data.Add(name, 14.0, WideFamily, true);
         }
         return data;
     }
 
     [Theory, MemberData(nameof(Cases))]
-    public void NoTextElementEscapesTheWindow(string windowName, double fontSize, bool atMinWidth) => _fx.Invoke(() =>
+    public void NoTextElementEscapesTheWindow(
+        string windowName, double fontSize, string fontFamily, bool atMinWidth) => _fx.Invoke(() =>
     {
         var probe = Registry()[windowName];
         var width = atMinWidth ? probe.MinWidth : probe.DefaultWidth;
         var height = atMinWidth ? probe.MinHeight : probe.DefaultHeight;
         ThemeManager.Apply(_fx.App, dark: false);
         var defaultFont = _fx.App.Resources["AppFontSize"];
+        var defaultFamily = _fx.App.Resources["AppFontFamily"];
         _fx.App.Resources["AppFontSize"] = fontSize;
+        _fx.App.Resources["AppFontFamily"] = new System.Windows.Media.FontFamily(fontFamily);
 
         var (window, cleanup) = probe.Build();
         window.Left = -20000; window.Top = 0; window.ShowActivated = false;
@@ -348,7 +375,7 @@ public class WindowOverflowTests
             // fails on every copy edit, and a floor that gets tuned away is
             // worth less than one that holds.
             Assert.True(examined >= probe.MinExamined,
-                $"{windowName} at font {fontSize}, width {width}: the probe examined {examined} " +
+                $"{windowName} at {fontFamily} {fontSize}, width {width}: the probe examined {examined} " +
                 $"elements, below this window's floor of {probe.MinExamined} — it is measuring " +
                 "less of the window than it used to, so the assertion below proves less than it " +
                 "appears to");
@@ -360,6 +387,7 @@ public class WindowOverflowTests
         {
             window.Close();
             _fx.App.Resources["AppFontSize"] = defaultFont;
+            _fx.App.Resources["AppFontFamily"] = defaultFamily;
             cleanup?.Invoke();
         }
     });

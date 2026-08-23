@@ -852,7 +852,12 @@
          both palettes and all three shipped shapes by
          ContentTemplateSetterTests.ClosedComboBoxStillShowsTheSelectedItemLegibly. -->
     <DataTemplate x:Key="KvpValueTemplate">
-        <TextBlock Text="{Binding Value}">
+        <!-- TextTrimming: a ComboBox does not clip its own item content, so a
+             choice longer than the control rendered straight past it and out of
+             the window at a wider configured font ("(use the Filing setting)",
+             UI-29). Trimming here covers every ComboBox using this template
+             rather than each call site guessing its own width. -->
+        <TextBlock Text="{Binding Value}" TextTrimming="CharacterEllipsis">
             <TextBlock.Foreground>
                 <PriorityBinding>
                     <Binding Path="Foreground" RelativeSource="{RelativeSource AncestorType=ComboBoxItem}" />

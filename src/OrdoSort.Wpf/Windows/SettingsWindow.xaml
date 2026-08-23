@@ -537,6 +537,15 @@
                             <Grid Style="{StaticResource FieldRow}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                                    <!-- No MinWidth here, deliberately, and it was tried:
+                                         a 120px floor pushed Browse…/Open/Create it clean off
+                                         the window at MinWidth in a wide font, trading an
+                                         unreadable field for unreachable buttons. This row
+                                         cannot fit a label, a path and two buttons at 760px in
+                                         Consolas; making it do so is a layout change, not a
+                                         column tweak (recorded as UI-30). The ToolTip on the
+                                         box below is the mitigation until then, and
+                                         FieldClippingTests holds it in place. -->
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
@@ -555,7 +564,18 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="Folder:" Style="{StaticResource FieldLabel}" />
-                                <TextBox Grid.Column="1" Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}" />
+                                <!-- ToolTip: this column is a star sharing the row with
+                                     Browse…/Open and a SharedSizeGroup label, so at a wider
+                                     configured font it squeezes to around 110px and shows
+                                     roughly the first third of a real destination path —
+                                     every route then looks identical, because they share a
+                                     prefix (UI-25). Nothing is lost (a TextBox scrolls) but
+                                     nothing is READABLE either, and the overflow suite
+                                     cannot see this: no text escapes the window, the field
+                                     just clips its own value. The tooltip is the same
+                                     answer every grid cell in this app already gives. -->
+                                <TextBox Grid.Column="1" Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="{Binding Path}" />
                                 <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                         Command="{Binding DataContext.BrowseRoutePathCommand,
                                                   RelativeSource={RelativeSource AncestorType=Window}}" />
@@ -597,7 +617,15 @@
                             <Grid Style="{StaticResource FieldRow}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
-                                    <ColumnDefinition Width="160" />
+                                    <!-- star capped, not a fixed width: LabelCol is a
+                                         SharedSizeGroup, so at a wider configured font the
+                                         label column grows and a FIXED value column cannot
+                                         give anything back — the star column beside it
+                                         collapsed and its content rendered past the window
+                                         edge (UI-29, found once the overflow suite began
+                                         varying font FAMILY). Same fix Naming mode below
+                                         already carried. -->
+                                    <ColumnDefinition Width="*" MaxWidth="160" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <!-- Destinations alignment fast-follow (spacing-rhythm
@@ -638,7 +666,15 @@
                             <Grid Style="{StaticResource FieldRow}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
-                                    <ColumnDefinition Width="160" />
+                                    <!-- star capped, not a fixed width: LabelCol is a
+                                         SharedSizeGroup, so at a wider configured font the
+                                         label column grows and a FIXED value column cannot
+                                         give anything back — the star column beside it
+                                         collapsed and its content rendered past the window
+                                         edge (UI-29, found once the overflow suite began
+                                         varying font FAMILY). Same fix Naming mode below
+                                         already carried. -->
+                                    <ColumnDefinition Width="*" MaxWidth="160" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Filename suffix:" Style="{StaticResource FieldLabel}" />
@@ -673,7 +709,15 @@
                             <Grid Style="{StaticResource FieldRow}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
-                                    <ColumnDefinition Width="160" />
+                                    <!-- star capped, not a fixed width: LabelCol is a
+                                         SharedSizeGroup, so at a wider configured font the
+                                         label column grows and a FIXED value column cannot
+                                         give anything back — the star column beside it
+                                         collapsed and its content rendered past the window
+                                         edge (UI-29, found once the overflow suite began
+                                         varying font FAMILY). Same fix Naming mode below
+                                         already carried. -->
+                                    <ColumnDefinition Width="*" MaxWidth="160" />
                                     <!-- star column added for the swatch ItemsControl
                                          below (Row 1) — the 160 column alone is too
                                          narrow to keep all 12 swatches on one row (see
@@ -998,7 +1042,12 @@
                                         <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="140" />
+                                        <!-- star capped, not a fixed 140: two Auto columns
+                                             (LabelCol and "Section:") grow with the configured
+                                             font, and a fixed last column cannot give anything
+                                             back — the section picker rendered past the window
+                                             edge (UI-29). -->
+                                        <ColumnDefinition Width="*" MaxWidth="140" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="Label:" Style="{StaticResource FieldLabel}" />
                                     <TextBox Grid.Column="1" Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}" />
@@ -1042,7 +1091,10 @@
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <TextBlock Text="Folder:" Style="{StaticResource FieldLabel}" />
-                                    <TextBox Grid.Column="1" Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}" />
+                                    <!-- Same squeeze, same answer as the Destinations
+                                         Folder box above (UI-25). -->
+                                    <TextBox Grid.Column="1" Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="{Binding Path}" />
                                     <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                             Command="{Binding DataContext.BrowseWatchPathCommand,
                                                       RelativeSource={RelativeSource AncestorType=Window}}" />
@@ -1110,16 +1162,23 @@
                                             <CheckBox Content="PNG" IsChecked="{Binding TypePng}" Margin="0,4"
                                                       IsEnabled="{Binding AnyType, Converter={StaticResource InvertBool}}" />
                                         </WrapPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0"
+                                        <!-- DockPanel, not a horizontal StackPanel: a horizontal
+                                             StackPanel measures every child at INFINITE width, so
+                                             the hint had no finite width to trim against and
+                                             rendered past the window edge at a wider configured
+                                             font (UI-29). As the fill child it gets what is left
+                                             and its ellipsis engages. -->
+                                        <DockPanel Margin="0,2,0,0"
                                                     IsEnabled="{Binding AnyType, Converter={StaticResource InvertBool}}">
-                                            <TextBlock Text="other:" Style="{StaticResource SubtleText}"
+                                            <TextBlock DockPanel.Dock="Left" Text="other:" Style="{StaticResource SubtleText}"
                                                        VerticalAlignment="Center" Margin="0,0,6,0" />
-                                            <TextBox Width="120" Text="{Binding OtherTypes}"
+                                            <TextBox DockPanel.Dock="Left" Width="120" Text="{Binding OtherTypes}"
                                                      AutomationProperties.Name="Other file types" />
                                             <TextBlock Text="e.g. docx"
                                                        Style="{StaticResource CaptionText}"
+                                                       TextTrimming="CharacterEllipsis"
                                                        VerticalAlignment="Center" Margin="8,0,0,0" />
-                                        </StackPanel>
+                                        </DockPanel>
                                     </StackPanel>
                                     <CheckBox Grid.Row="1" Grid.Column="1" Content="include subfolders"
                                               IsChecked="{Binding Recursive}"

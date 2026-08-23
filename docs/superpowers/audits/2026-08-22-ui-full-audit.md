@@ -361,7 +361,7 @@ Five findings the source read could not have produced. Four of them appear
 because the live config sets `ui_font_family: Consolas` — a **non-default font
 family**, an axis nothing in the test suite varies.
 
-### UI-25 — the destination folder path is truncated to a third of itself (Medium)
+### UI-25 — the destination folder path is truncated to a third of itself (Medium) — **MITIGATED 2026-08-23**
 
 Settings ▸ Destinations, the `Folder:` field. The configured value for the
 "Invoices" route is `S:/OrdoSort/demo-full/routes/01-invoices` (38 characters).
@@ -376,7 +376,7 @@ identical in this field, since they all share the same first 11 characters.
 `WindowOverflowTests` cannot catch this: it asserts that no text **escapes the
 window**, and a `TextBox` clipping its own content internally escapes nothing.
 
-### UI-26 — the Hotkey hint wraps to four lines and quadruples its row (Low)
+### UI-26 — the Hotkey hint wraps to four lines and quadruples its row (Low) — **FIXED 2026-08-23**
 
 Same tab. `press the keys · Backspace clears` is squeezed into a column narrow
 enough that it breaks as `press the / keys · / Backspace / clears`, stretching
@@ -417,7 +417,7 @@ So the app's only advertised accelerator is announced to sighted users and
 withheld from everyone else. (The same enumeration confirmed the access keys are
 collision-free: File S/V/E/X, Tools U/B/M/X/F/C/L/Z, Help A.)
 
-### UI-29 — the overflow suite varies font size but never font family (Medium, test gap)
+### UI-29 — the overflow suite varies font size but never font family (Medium, test gap) — **FIXED 2026-08-23**
 
 `WindowOverflowTests.Cases()` runs every window at 14px and 18px — both in the
 **default** `Segoe UI Variable Text`. Consolas at the same nominal size is
@@ -433,6 +433,32 @@ UI face alongside the default — and, separately, an assertion that a bound
 class of defect UI-25 belongs to and the current probe is blind to.
 
 ---
+
+---
+
+## Found while fixing (2026-08-23)
+
+### UI-30 — the destination Folder box measures ZERO at the window's own minimum width (Medium)
+
+Discovered by the guard written for UI-25. The audit reported the field showing
+about a third of its value at the default width; measured at the window's
+declared `MinWidth` of 760 in Consolas, the column resolves to **0px** — the
+box is not narrow, it is absent, and it holds the most important value on the
+tab.
+
+A `MinWidth="120"` floor on that column was tried and reverted in the same
+pass: it pushes **Browse…**, **Open** and **Create it** clean off the window,
+trading an unreadable field for unreachable buttons. The row simply cannot fit
+a SharedSizeGroup label, a path and two buttons at 760px in a wide font.
+
+That makes it a layout change rather than a column tweak — the buttons need to
+wrap under the field, or the label needs to stop sharing the group, and the row
+also carries the Problem/Create-it sub-row whose alignment several existing
+comments were written to protect. Out of scope for the pass that found it.
+
+The ToolTip added for UI-25 is the mitigation and `FieldClippingTests` holds it
+in place, so the value is at least recoverable at any width.
+
 
 ## Low / polish
 

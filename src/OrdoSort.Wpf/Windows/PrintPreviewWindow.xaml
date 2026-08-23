@@ -7,7 +7,14 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Style="{StaticResource {x:Type Window}}">
     <DockPanel Margin="14">
-        <TextBlock x:Name="PageInfo" DockPanel.Dock="Top" Margin="0,0,0,8"
+        <!-- TextWrapping: this line is a sentence ("2 sheets · Print at 100% scale
+         (no "fit to page") · 10 labels, 4 × 2 in · cut along the gray guides")
+         and SubtleText does not wrap of its own accord. At a wider configured
+         font it measured 824px inside a 636px window — found once the overflow
+         suite began varying font FAMILY as well as size (UI-29). Docked Top, so
+         it has a finite width and the wrap actually engages. -->
+    <TextBlock x:Name="PageInfo" DockPanel.Dock="Top" Margin="0,0,0,8"
+                   TextWrapping="Wrap"
                    Style="{StaticResource SubtleText}" />
 
         <!-- everything needed to print lives here — no OS dialog round trip
