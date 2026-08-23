@@ -18,8 +18,12 @@ test suite so nothing already guarded is reported as open. Contrast numbers
 were computed independently (WCAG 2.1 relative luminance) and agree with
 `ThemePalette.cs`'s own documented figures to two decimals.
 
-**29 findings** — 2 High, 13 Medium, 14 Low. Numbered `UI-nn`; severity is
-about what a user hits, not how hard it is to fix.
+**30 findings** — 2 High, 14 Medium, 14 Low (UI-30 was found while fixing).
+Numbered `UI-nn`; severity is about what a user hits, not how hard it is to fix.
+
+**Status 2026-08-23: 19 fixed or mitigated, 11 open.** Still open: UI-05's
+keyboard half (access keys), UI-09, UI-11, UI-17, UI-18, UI-19, UI-20, UI-21,
+UI-23, UI-24, and UI-30 (the Folder row's layout).
 
 ---
 
@@ -306,7 +310,7 @@ the overflow entirely off the *bottom* — where OK and Cancel live.
 This machine's work area is 5120x1392, so it cannot reproduce the end state; the
 finding is arithmetic plus the confirmed placement behaviour, not a screenshot.
 
-### UI-10 — `HistoryWindow` is the only tool window that shows in the taskbar
+### UI-10 — `HistoryWindow` is the only tool window that shows in the taskbar — **FIXED 2026-08-23**
 
 `Windows/HistoryWindow.xaml:4` — every other tool window sets
 `ShowInTaskbar="False"`; this one doesn't, so it alone adds a second OrdoSort
@@ -323,7 +327,7 @@ Same concept, same window family, different affordance, different label,
 different glyph strategy. The `…` on MatchMerge's is also slightly wrong by
 convention — it opens a popover, not a dialog.
 
-### UI-12 — in PageCounts every button is live even with an empty list
+### UI-12 — in PageCounts every button is live even with an empty list — **FIXED 2026-08-23**
 
 **Corrected by the live pass.** The first draft's table claimed PageCounts'
 Clear and "Save as .txt..." disable correctly. They do not. Measured with zero
@@ -468,16 +472,16 @@ in place, so the value is at least recoverable at any width.
 
 ## Low / polish
 
-- **UI-13** Double space in visible copy: `BulkRenameWindow.xaml:58` —
+- **UI-13** *(fixed)* Double space in visible copy: `BulkRenameWindow.xaml:58` —
   `"Review files: rename to  <received date>-LAST-FIRST"`.
-- **UI-14** The same label, two capitalisations: `"Include subfolders"`
+- **UI-14** *(fixed)* The same label, two capitalisations: `"Include subfolders"`
   (FilenameListWindow.xaml:73) vs `"include subfolders"`
   (SettingsWindow.xaml:1124).
-- **UI-15** Lowercase-initial labels against the app's sentence-case norm:
+- **UI-15** *(fixed)* Lowercase-initial labels against the app's sentence-case norm:
   LabelMaker's `"black bars (white text)"` / `"plain (black text)"`, Settings'
   `"always the first destination"` / `"the last-used destination (starts at the
   first)"` / `"last"`.
-- **UI-16** Empty states say "press Add…" (PageCounts, ZipTools ×2, Unlock,
+- **UI-16** *(fixed)* Empty states say "press Add…" (PageCounts, ZipTools ×2, Unlock,
   LabelMaker) where the gesture is a click.
 - **UI-17** Icon vocabulary is split. Segoe Fluent glyphs (`&#xE7xx;`) are used
   27 times through the `Icon` style, but raw Unicode characters appear
@@ -501,7 +505,7 @@ in place, so the value is at least recoverable at any width.
   / Next-label-number / Labels-to-print, Settings' poll seconds and font size.
   Validation lives in the view models, which is correct, but the input
   affordance says nothing.
-- **UI-22** `PrintPreviewWindow` has no `IsDefault` button — Enter from the
+- **UI-22** *(fixed)* `PrintPreviewWindow` has no `IsDefault` button — Enter from the
   Copies box does nothing.
 - **UI-23** Help holds a single item. The app ships real hotkeys (Ctrl+K,
   Ctrl+Shift+Z, Esc, Ctrl+,, per-route hotkeys, 1–9/S/Enter in Triage) and

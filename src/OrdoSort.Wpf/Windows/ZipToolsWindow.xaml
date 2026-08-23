@@ -200,7 +200,7 @@
                                 </DataGridTextColumn>
                             </DataGrid.Columns>
                         </DataGrid>
-                        <TextBlock Text="Drag files, folders or zips anywhere on this window, or press Add…"
+                        <TextBlock Text="Drag files, folders or zips anywhere on this window, or click Add files…"
                                    Style="{StaticResource EmptyStateText}"
                                    IsHitTestVisible="False">
                             <TextBlock.Visibility>
@@ -313,7 +313,7 @@
                                 </DataGridTextColumn>
                             </DataGrid.Columns>
                         </DataGrid>
-                        <TextBlock Text="Drag zips anywhere on this window, or press Add zips…"
+                        <TextBlock Text="Drag zips anywhere on this window, or click Add zips…"
                                    Style="{StaticResource EmptyStateText}"
                                    IsHitTestVisible="False">
                             <TextBlock.Visibility>

@@ -160,7 +160,7 @@
                         </DataGridTextColumn>
                     </DataGrid.Columns>
                 </DataGrid>
-                <TextBlock Text="Drag PDFs anywhere on this window, or press Add PDFs…"
+                <TextBlock Text="Drag PDFs anywhere on this window, or click Add PDFs…"
                            Style="{StaticResource EmptyStateText}"
                            IsHitTestVisible="False">
                     <TextBlock.Visibility>

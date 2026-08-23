@@ -75,7 +75,15 @@ public sealed class PageCountsViewModel : ObservableObject
         _uiContext = uiContext;
         _counter = counter ?? PageCounts.Count;
 
-        SaveCommand = new RelayCommand(Save);
+        // Gated, and the gate is WIRED: RelayCommand has no CommandManager
+        // hookup, so a predicate without a matching RaiseCanExecuteChanged
+        // leaves a button stuck in whatever state it was born in — which is
+        // worse than the ungated button it replaces. Rows is the only thing
+        // this depends on, so its own CollectionChanged is the complete
+        // trigger. Ungated before this, "Save as .txt…" on an empty list
+        // opened a save dialog and wrote an empty file (UI-12).
+        SaveCommand = new RelayCommand(Save, () => Rows.Count > 0);
+        Rows.CollectionChanged += (_, _) => SaveCommand.RaiseCanExecuteChanged();
         ClearCommand = new RelayCommand(() =>
         {
             Rows.Clear();

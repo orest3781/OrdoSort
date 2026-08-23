@@ -55,7 +55,7 @@
             </Grid.RowDefinitions>
 
             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                <CheckBox Content="Review files: rename to  &lt;received date&gt;-LAST-FIRST"
+                <CheckBox Content="Review files: rename to &lt;received date&gt;-LAST-FIRST"
                           IsChecked="{Binding ReviewMode}" VerticalAlignment="Center" />
                 <TextBlock Text="received:" VerticalAlignment="Center" Margin="12,0,8,0" />
                 <DatePicker SelectedDate="{Binding ReceivedDate}"

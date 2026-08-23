@@ -383,10 +383,10 @@
                                   IsChecked="{Binding UppercaseNames}" />
                         <TextBlock Text="Enter files to:" Margin="0,4,0,4" />
                         <RadioButton GroupName="EnterMode"
-                                     Content="the last-used destination (starts at the first)"
+                                     Content="The last-used destination (starts at the first)"
                                      IsChecked="{Binding EnterCommits}" Margin="12,0,0,4" />
                         <RadioButton GroupName="EnterMode"
-                                     Content="always the first destination"
+                                     Content="Always the first destination"
                                      IsChecked="{Binding EnterCommits, Converter={StaticResource InvertBool}}"
                                      Margin="12,0,0,0" />
                         <Grid Style="{StaticResource FieldRow}">
@@ -1196,7 +1196,7 @@
                                                        VerticalAlignment="Center" Margin="8,0,0,0" />
                                         </DockPanel>
                                     </StackPanel>
-                                    <CheckBox Grid.Row="1" Grid.Column="1" Content="include subfolders"
+                                    <CheckBox Grid.Row="1" Grid.Column="1" Content="Include subfolders"
                                               IsChecked="{Binding Recursive}"
                                               ToolTip="Alerting files found in a subfolder show 'in ⟨subfolder⟩' on the tile" />
                                 </Grid>

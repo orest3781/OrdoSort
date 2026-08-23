@@ -198,7 +198,7 @@
                     <StackPanel>
                         <ContentControl Template="{StaticResource Illustration.Unlock}"
                                          Height="80" Margin="0,0,0,8" />
-                        <TextBlock Text="Drag PDFs anywhere on this window, or press Add files…"
+                        <TextBlock Text="Drag PDFs anywhere on this window, or click Add files…"
                                    Style="{StaticResource SubtleText}" HorizontalAlignment="Center"
                                    TextWrapping="Wrap" TextAlignment="Center" />
                     </StackPanel>

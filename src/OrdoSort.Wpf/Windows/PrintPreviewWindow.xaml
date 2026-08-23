@@ -21,7 +21,11 @@
              (whose Windows 11 preview pane can't render XPS jobs anyway) -->
         <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
             <Button DockPanel.Dock="Right" Content="Cancel" Width="96" IsCancel="True" />
-            <Button x:Name="PrintButton" DockPanel.Dock="Right" Click="OnPrint"
+            <!-- IsDefault: Enter from the Copies box did nothing at all, on a
+                 window whose whole job is one action. Safe here because the
+                 preview IS the confirmation — nothing spools until this is
+                 pressed, and Cancel/Esc backs out. -->
+            <Button x:Name="PrintButton" DockPanel.Dock="Right" Click="OnPrint" IsDefault="True"
                     Style="{StaticResource PrimaryButton}" Width="110" Margin="0,0,8,0"
                     AutomationProperties.Name="Print">
                 <StackPanel Orientation="Horizontal">

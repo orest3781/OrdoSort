@@ -101,6 +101,12 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
             _selectedPaths = value ?? Array.Empty<string>();
             Raise(nameof(SelectedPaths));
             Raise(nameof(CopyText));
+            // "Remove selected" is gated on there BEING a selection, and
+            // RelayCommand only re-asks when told to — without this the button
+            // would sit disabled no matter what the user picked, which is the
+            // stuck-disabled failure RefreshCommandStates' own comment warns
+            // about (UI-12).
+            RemoveSelectedCommand?.RaiseCanExecuteChanged();
         }
     }
 
@@ -205,7 +211,9 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
             var files = _dialogs.AskOpenFiles("All files (*.*)|*.*");
             if (files.Length > 0) AddPaths(files);
         });
-        SaveCommand = new RelayCommand(Save);
+        // Same gate-and-wire as PageCountsViewModel — see its comment for why
+        // the RaiseCanExecuteChanged half is not optional (UI-12).
+        SaveCommand = new RelayCommand(Save, () => Rows.Count > 0);
         ClearCommand = new RelayCommand(() =>
         {
             _sources.Clear();
@@ -227,7 +235,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
             _removalBatches.Add(batch);
             SelectedPaths = Array.Empty<string>();
             Reproject();
-        });
+        }, () => _selectedPaths.Count > 0);
         UndoRemovalCommand = new RelayCommand(() =>
         {
             if (_removalBatches.Count == 0) return;
@@ -235,14 +243,33 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
             _removalBatches.RemoveAt(_removalBatches.Count - 1);
             foreach (var path in last) _excluded.Remove(path);
             Reproject();
-        });
+        }, () => _removalBatches.Count > 0);
         RestoreRemovedCommand = new RelayCommand(() =>
         {
             if (_excluded.Count == 0) return;
             _excluded.Clear();
             _removalBatches.Clear();
             Reproject();
-        });
+        }, () => _excluded.Count > 0);
+    }
+
+    /// <summary>Re-asks every gated command whether it can still run.
+    ///
+    /// RelayCommand raises CanExecuteChanged only when told to — there is no
+    /// CommandManager hookup — so a CanExecute predicate without a call to this
+    /// leaves its button stuck in whatever state it was born in. That is worse
+    /// than the ungated button it replaces: a permanently disabled Restore is
+    /// unreachable, where a permanently enabled one at least still worked.
+    ///
+    /// Called from the two funnels every mutation passes through (Refresh and
+    /// Reproject), rather than from each handler, so a new mutation path
+    /// inherits it instead of having to remember it (UI-12).</summary>
+    private void RefreshCommandStates()
+    {
+        SaveCommand.RaiseCanExecuteChanged();
+        RemoveSelectedCommand.RaiseCanExecuteChanged();
+        UndoRemovalCommand.RaiseCanExecuteChanged();
+        RestoreRemovedCommand.RaiseCanExecuteChanged();
     }
 
     public void Dispose()
@@ -443,6 +470,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         Raise(nameof(OutputCsv));
         Raise(nameof(CopyText));
         Raise(nameof(RemovedCount));
+        RefreshCommandStates();
 
         // Only ever counts what is VISIBLE and not yet known, so narrowing with
         // the type box or the Find box scopes the work before it starts. Once
