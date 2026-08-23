@@ -73,7 +73,7 @@ public class WindowOverflowTests
     /// tight enough that losing a quarter of a window's traversal fails,
     /// loose enough to survive ordinary copy edits. Re-measure by raising the
     /// assertion below and reading the counts out of the failure messages.</param>
-    private sealed record Probe(
+    internal sealed record Probe(
         double MinWidth,
         double DefaultWidth,
         double MinHeight,
@@ -83,7 +83,10 @@ public class WindowOverflowTests
         bool SetWidthAfterShow = false,
         bool ProbeEveryTab = false);
 
-    private static Dictionary<string, Probe> Registry() => new()
+    /// <summary>Internal, not private: AccessibleNameTests builds the same
+    /// windows, with the same realistic content, and duplicating fourteen
+    /// builders would guarantee the two drift.</summary>
+    internal static Dictionary<string, Probe> Registry() => new()
     {
         ["AboutWindow"] = new(340, 380, 220, 240, () => (new AboutWindow(), null), MinExamined: 5),   // 6 measured
 

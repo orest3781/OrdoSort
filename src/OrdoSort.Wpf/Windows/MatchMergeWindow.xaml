@@ -61,7 +61,8 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="Roster:" Style="{StaticResource FieldLabel}" />
                 <Grid Grid.Column="1">
-                    <TextBox Text="{Binding RosterPath, Mode=OneWay}" IsReadOnly="True" />
+                    <TextBox Text="{Binding RosterPath, Mode=OneWay}" IsReadOnly="True"
+                             AutomationProperties.Name="Roster spreadsheet" ToolTip="{Binding RosterPath}" />
                     <TextBlock Text="no roster loaded yet — pick the spreadsheet (CSV or Excel) with names and Control IDs"
                                VerticalAlignment="Center" Margin="8,0" IsHitTestVisible="False"
                                TextTrimming="CharacterEllipsis">
@@ -145,7 +146,7 @@
             </DockPanel>
 
             <Grid Grid.Row="3">
-                <DataGrid x:Name="MatchGrid" ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
+                <DataGrid x:Name="MatchGrid" AutomationProperties.Name="Matches" ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
                           IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
                           SelectionMode="Extended">
                     <!-- Foreground DataTriggers used to live here, on DataGridRow,

@@ -86,7 +86,8 @@
             <WrapPanel Grid.Row="1" Margin="0,0,0,10">
                 <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,4,6,4" />
                 <TextBox Width="140" VerticalAlignment="Center" Margin="0,4,14,4"
-                         Text="{Binding NameFilter, UpdateSourceTrigger=PropertyChanged}" />
+                         Text="{Binding NameFilter, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.Name="Find in this list" />
                 <Menu Background="Transparent" VerticalAlignment="Center" Margin="0,4,14,4">
                     <MenuItem Header="Columns ▾">
                         <MenuItem Header="Row number" IsCheckable="True"
@@ -116,13 +117,15 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="Only these types:" Style="{StaticResource FieldLabel}" />
                 <TextBox Grid.Column="1" Margin="0,0,10,0"
-                         Text="{Binding ExtensionFilter, UpdateSourceTrigger=PropertyChanged}" />
+                         Text="{Binding ExtensionFilter, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.Name="Only these file types" />
                 <TextBlock Grid.Column="2" Text="pdf, docx — blank = all" VerticalAlignment="Center"
                            Style="{StaticResource SubtleText}" TextTrimming="CharacterEllipsis" />
             </Grid>
 
             <Grid Grid.Row="3">
-                <DataGrid x:Name="NamesGrid" ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
+                <DataGrid x:Name="NamesGrid" ItemsSource="{Binding Rows}"
+                          AutomationProperties.Name="File names" AutoGenerateColumns="False"
                           IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
                           SelectionMode="Extended" AlternationCount="{Binding Rows.Count}"
                           AlternatingRowBackground="{x:Null}" CanUserSortColumns="False"

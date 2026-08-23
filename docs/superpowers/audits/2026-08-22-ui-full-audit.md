@@ -167,7 +167,7 @@ hundred KB." 353 KB of dead resources is a meaningful share of that.
 **Fix:** delete the four files; narrow the `Resource` glob to `app.ico` and the
 sounds, or leave the glob and let it match nothing.
 
-### UI-04 — screen-reader names are absent in three windows and near-absent in two more
+### UI-04 — screen-reader names are absent in three windows and near-absent in two more — **FIXED 2026-08-23**
 
 > **Confirmed live via UI Automation** against the running Filename list window:
 > both `Edit` controls report `Name=''`, the `DataGrid` reports `Name=''` (only
@@ -195,7 +195,7 @@ bound name. The gap is concrete, not abstract:
 - Every `DataGrid` in the app is unnamed: `NamesGrid`, `CountsGrid`,
   `ItemsGrid`, `ZipsGrid`, `Candidates`, `HistoryGrid`.
 
-### UI-05 — no access keys and no `Label.Target` outside the menu bar
+### UI-05 — no access keys and no `Label.Target` outside the menu bar — **PARTLY ADDRESSED 2026-08-23**
 
 > **Confirmed live:** no control in the inspected window reports a `LabeledBy`
 > at all — the bare-`TextBlock` labels create no programmatic association, as
@@ -206,10 +206,16 @@ matches, and `<Label Target=…>` appears nowhere in the app. Only the main menu
 (`_File`/`_Tools`/`_Help`), the six Settings tabs and the two ZipTools tabs
 carry mnemonics.
 
-Consequences: no Alt+key reaches any button in any dialog, and because every
-field label is a bare `TextBlock` rather than a `Label` with a `Target`, there
-is no programmatic label association for assistive tech even where an
-`AutomationProperties.Name` exists on the control itself. Keyboard-only
+**Half of this is now closed.** The screen-reader half — every control able to
+say what it is — is done and guarded (UI-04, `AccessibleNameTests`): naming the
+control directly is the mechanism assistive tech actually reads, and it needs
+no `Label.Target`. What remains is the KEYBOARD half: no Alt+key reaches any
+button in any dialog. That is a separate change (an access key per button, kept
+unique per window) and is still open.
+
+Consequences of the remaining half: no Alt+key reaches any button in any
+dialog, and every field label is still a bare `TextBlock` rather than a `Label`
+with a `Target`. Keyboard-only
 operation of Settings — the most control-dense window — is Tab-walking only.
 
 ### UI-06 — Settings discards every edit without asking
@@ -398,7 +404,7 @@ message passed straight through. This is the failure mode that greets a user
 whose config got corrupted — the moment the app most needs to say what to do
 next.
 
-### UI-28 — the one advertised shortcut is invisible to screen readers (Low)
+### UI-28 — the one advertised shortcut is invisible to screen readers — **FIXED 2026-08-23** (Low)
 
 `MainWindow.xaml:295` sets `InputGestureText="Ctrl+,"` on Settings…, and the
 binding really is registered. But UI Automation reports `AcceleratorKey=''` for

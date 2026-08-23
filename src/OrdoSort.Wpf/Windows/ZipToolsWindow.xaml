@@ -81,7 +81,8 @@
                     </DockPanel>
 
                     <Grid Grid.Row="1">
-                        <DataGrid x:Name="ItemsGrid" ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
+                        <DataGrid x:Name="ItemsGrid" ItemsSource="{Binding Rows}"
+                                  AutomationProperties.Name="Files, folders and archives to process" AutoGenerateColumns="False"
                                   IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
                                   SelectionMode="Extended">
                             <!-- Theme.RowHover so the hover tint stays
@@ -232,7 +233,8 @@
                     </DockPanel>
 
                     <Grid Grid.Row="1">
-                        <DataGrid x:Name="ZipsGrid" ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
+                        <DataGrid x:Name="ZipsGrid" ItemsSource="{Binding Rows}"
+                                  AutomationProperties.Name="Zips to merge" AutoGenerateColumns="False"
                                   IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
                                   SelectionMode="Extended">
                             <!-- Same RowStyle as the Zip &amp; unzip grid; it

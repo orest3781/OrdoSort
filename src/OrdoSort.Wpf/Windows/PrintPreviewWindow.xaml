@@ -41,6 +41,6 @@
         </DockPanel>
 
         <!-- the exact document that spools: zoom and page through it here -->
-        <local:PreviewDocumentViewer x:Name="Viewer" />
+        <local:PreviewDocumentViewer x:Name="Viewer" AutomationProperties.Name="Print preview" />
     </DockPanel>
 </Window>

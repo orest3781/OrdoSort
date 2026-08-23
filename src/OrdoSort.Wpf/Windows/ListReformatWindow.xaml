@@ -31,6 +31,7 @@
 
             <TextBlock Grid.Row="0" Text="Paste your list:" Margin="0,0,0,10" />
             <TextBox Grid.Row="1" Margin="0,0,0,10"
+                     AutomationProperties.Name="Your list"
                      Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}"
                      AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
                      HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" />
@@ -55,12 +56,14 @@
             <WrapPanel Grid.Row="3" Margin="0,0,0,10" VerticalAlignment="Center">
                 <TextBlock Text="Join as:" VerticalAlignment="Center" Margin="0,4,8,4" />
                 <ComboBox MinWidth="170" VerticalAlignment="Center" Margin="0,4,14,4"
+                          AutomationProperties.Name="Join items as"
                           ItemsSource="{x:Static vm:ListReformatViewModel.ShapeChoices}"
                           SelectedValuePath="Key"
                           SelectedValue="{Binding Shape}"
                           ItemTemplate="{StaticResource KvpValueTemplate}" />
                 <TextBox Width="70" VerticalAlignment="Center" Margin="0,4,8,4"
                          ToolTip="Text to put between items"
+                         AutomationProperties.Name="Text between items"
                          Text="{Binding CustomDelimiter, UpdateSourceTrigger=PropertyChanged}"
                          IsEnabled="{Binding IsCustomDelimiter}" />
             </WrapPanel>
@@ -71,6 +74,7 @@
                            Style="{StaticResource SubtleText}" />
             </DockPanel>
             <TextBox Grid.Row="5"
+                     AutomationProperties.Name="Result"
                      Text="{Binding OutputText, Mode=OneWay}"
                      IsReadOnly="True" IsReadOnlyCaretVisible="True" TextWrapping="NoWrap"
                      HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" />

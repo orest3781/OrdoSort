@@ -36,7 +36,8 @@
             <!-- x:Name: HistoryWindow.xaml.cs tracks this grid's own live
                  ActualWidth (DataGridColumnCap.Track) to keep When/Name/
                  Destination's caps correct as the window is resized. -->
-            <DataGrid x:Name="HistoryGrid" ItemsSource="{Binding RowsView}" AutoGenerateColumns="False"
+            <DataGrid x:Name="HistoryGrid" ItemsSource="{Binding RowsView}"
+                      AutomationProperties.Name="Filing history" AutoGenerateColumns="False"
                       IsReadOnly="True" HeadersVisibility="Column"
                       SelectionMode="Single" CanUserAddRows="False">
                 <!-- Local RowStyle, BasedOn the shared GridRow style
@@ -298,7 +299,17 @@
                     <!-- Undone: a checkbox glyph plus a five-letter header —
                          Width="Auto" sizes to that on its own with no
                          realistic way to grow large, so it's left uncapped. -->
-                    <DataGridCheckBoxColumn Header="Undone" Binding="{Binding Reverted}" Width="Auto" />
+                    <!-- ElementStyle, not a column-level AutomationProperties.Name: the
+                         column header is chrome, and the thing a screen reader lands
+                         on is the per-row CheckBox, which otherwise announces only
+                         "checkbox, checked" with no idea what was undone (UI-04). -->
+                    <DataGridCheckBoxColumn Header="Undone" Binding="{Binding Reverted}" Width="Auto">
+                        <DataGridCheckBoxColumn.ElementStyle>
+                            <Style TargetType="CheckBox">
+                                <Setter Property="AutomationProperties.Name" Value="Undone" />
+                            </Style>
+                        </DataGridCheckBoxColumn.ElementStyle>
+                    </DataGridCheckBoxColumn>
                 </DataGrid.Columns>
             </DataGrid>
 

@@ -238,7 +238,8 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <TextBlock Text="Inbox:" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" Text="{Binding Inbox, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox Grid.Column="1" Text="{Binding Inbox, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Inbox folder" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseInboxCommand}" />
                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding InboxNote}"
@@ -257,7 +258,8 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <TextBlock Text="Set-aside folder:" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" Text="{Binding Deferred, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox Grid.Column="1" Text="{Binding Deferred, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Set-aside folder" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseDeferredCommand}" />
                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DeferredNote}"
@@ -278,7 +280,8 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <TextBlock Text="Names list:" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" Text="{Binding NamesFile, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox Grid.Column="1" Text="{Binding NamesFile, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Names list file" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseNamesFileCommand}" />
                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding NamesFileNote}"
@@ -297,7 +300,8 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <TextBlock Text="History database:" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" Text="{Binding HistoryDb, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox Grid.Column="1" Text="{Binding HistoryDb, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="History database file" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseHistoryDbCommand}" />
                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding HistoryDbNote}"
@@ -370,6 +374,7 @@
                                       ItemsSource="{x:Static vm:SettingsViewModel.SortChoices}"
                                       SelectedValuePath="Key"
                                       SelectedValue="{Binding SortKey}"
+                                      AutomationProperties.Name="Filing order"
                                       ItemTemplate="{StaticResource KvpValueTemplate}" />
                         </Grid>
 
@@ -392,6 +397,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Word separator:" Style="{StaticResource FieldLabel}" />
                             <TextBox Grid.Column="1" Text="{Binding WordSeparator, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Word separator"
                                      MaxLength="3" />
                             <TextBlock Grid.Column="2" Style="{StaticResource SubtleText}"
                                        VerticalAlignment="Center" Margin="8,0,0,0" TextWrapping="Wrap"
@@ -430,6 +436,7 @@
                         </WrapPanel>
                         <Grid>
                             <ListBox x:Name="RouteList" ItemsSource="{Binding Routes}"
+                                     AutomationProperties.Name="Destinations"
                                      SelectedItem="{Binding SelectedRoute}" AllowDrop="True"
                                      PreviewMouseLeftButtonDown="List_DragArm"
                                      PreviewMouseMove="List_DragMove"
@@ -531,7 +538,8 @@
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Button label:" Style="{StaticResource FieldLabel}" />
-                                <TextBox Grid.Column="1" Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Grid.Column="1" Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Destination button label" />
                             </Grid>
 
                             <Grid Style="{StaticResource FieldRow}">
@@ -575,7 +583,8 @@
                                      just clips its own value. The tooltip is the same
                                      answer every grid cell in this app already gives. -->
                                 <TextBox Grid.Column="1" Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}"
-                                         ToolTip="{Binding Path}" />
+                                         ToolTip="{Binding Path}"
+                                         AutomationProperties.Name="Destination folder" />
                                 <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                         Command="{Binding DataContext.BrowseRoutePathCommand,
                                                   RelativeSource={RelativeSource AncestorType=Window}}" />
@@ -679,6 +688,7 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Filename suffix:" Style="{StaticResource FieldLabel}" />
                                 <TextBox Grid.Column="1" Text="{Binding Suffix, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Filename suffix"
                                          IsEnabled="{Binding AppendSuffix}" />
                                 <CheckBox Grid.Column="2" Margin="8,0,0,0"
                                           VerticalAlignment="Center" IsChecked="{Binding AppendSuffix}">
@@ -699,6 +709,7 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Naming mode:" Style="{StaticResource FieldLabel}" />
                                 <ComboBox Grid.Column="1"
+                                          AutomationProperties.Name="Naming mode for this destination"
                                           ItemsSource="{x:Static vm:SettingsViewModel.ModeChoices}"
                                           SelectedValuePath="Key"
                                           SelectedValue="{Binding NamingMode}"
@@ -738,7 +749,8 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="Button color:" Style="{StaticResource FieldLabel}" />
-                                <TextBox Grid.Column="1" Text="{Binding Color, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Grid.Column="1" Text="{Binding Color, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Destination button colour" />
                                 <ItemsControl Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
                                               ItemsSource="{x:Static vm:SettingsViewModel.SwatchColors}"
                                               Margin="0,2,0,0">
@@ -844,6 +856,7 @@
                                             AutomationProperties.Name="Move folder down" />
                                 </WrapPanel>
                                 <ListBox x:Name="WatchList" ItemsSource="{Binding WatchRows}"
+                                         AutomationProperties.Name="Monitored folders and sections"
                                          SelectedItem="{Binding SelectedWatchRow}" AllowDrop="True"
                                          PreviewMouseLeftButtonDown="List_DragArm"
                                          PreviewMouseMove="List_DragMove"
@@ -1050,7 +1063,8 @@
                                         <ColumnDefinition Width="*" MaxWidth="140" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="Label:" Style="{StaticResource FieldLabel}" />
-                                    <TextBox Grid.Column="1" Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox Grid.Column="1" Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.Name="Monitored folder label" />
                                     <TextBlock Grid.Column="2" Text="Section:" Style="{StaticResource FieldLabel}" Margin="8,0,8,0" />
                                     <!-- IsTextSearchEnabled=False: an editable ComboBox's built-in
                                          text search otherwise (a) auto-completes a typed prefix into
@@ -1066,6 +1080,7 @@
                                          new section ("Incoming 2") isn't auto-completed
                                          onto an existing one -->
                                     <ComboBox Grid.Column="3" IsEditable="True" IsTextSearchEnabled="False"
+                                              AutomationProperties.Name="Section"
                                               ItemsSource="{Binding DataContext.SectionChoices,
                                                             RelativeSource={RelativeSource AncestorType=Window}}"
                                               Text="{Binding Section, UpdateSourceTrigger=PropertyChanged}"
@@ -1094,7 +1109,8 @@
                                     <!-- Same squeeze, same answer as the Destinations
                                          Folder box above (UI-25). -->
                                     <TextBox Grid.Column="1" Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}"
-                                             ToolTip="{Binding Path}" />
+                                             ToolTip="{Binding Path}"
+                                             AutomationProperties.Name="Monitored folder path" />
                                     <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                             Command="{Binding DataContext.BrowseWatchPathCommand,
                                                       RelativeSource={RelativeSource AncestorType=Window}}" />
@@ -1193,7 +1209,8 @@
                                     <TextBlock Text="Tile color:" Style="{StaticResource FieldLabel}"
                                                VerticalAlignment="Top" Margin="0,4,8,0" />
                                     <TextBox Grid.Column="1" VerticalAlignment="Top"
-                                             Text="{Binding Color, UpdateSourceTrigger=PropertyChanged}" />
+                                             Text="{Binding Color, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.Name="Tile colour" />
                                     <ItemsControl Grid.Column="2" Margin="8,0,0,0"
                                                   ItemsSource="{x:Static vm:SettingsViewModel.SwatchColors}">
                                         <ItemsControl.ItemsPanel>
@@ -1487,6 +1504,7 @@
                                   ItemsSource="{x:Static vm:SettingsViewModel.FontChoices}"
                                   SelectedValuePath="Key"
                                   SelectedValue="{Binding UiFontFamily}"
+                                  AutomationProperties.Name="App font"
                                   ItemTemplate="{StaticResource FontChoiceTemplate}" />
                     </Grid>
                     <Grid Style="{StaticResource FieldRow}">
@@ -1622,7 +1640,8 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <TextBlock Text="Destinations:" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" Text="{Binding DestinationsFile, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox Grid.Column="1" Text="{Binding DestinationsFile, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Destinations file" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseDestinationsFileCommand}" />
                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DestinationsFileNote}"
@@ -1641,7 +1660,8 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <TextBlock Text="Monitored folders:" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" Text="{Binding MonitoredFoldersFile, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox Grid.Column="1" Text="{Binding MonitoredFoldersFile, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Monitored folders file" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseMonitoredFoldersFileCommand}" />
                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding MonitoredFoldersFileNote}"
@@ -1660,7 +1680,8 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <TextBlock Text="Alerts:" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" Text="{Binding AlertsFile, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox Grid.Column="1" Text="{Binding AlertsFile, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Alerts file" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseAlertsFileCommand}" />
                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AlertsFileNote}"
@@ -1679,7 +1700,8 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <TextBlock Text="Box labels:" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" Text="{Binding BoxLabelsFile, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox Grid.Column="1" Text="{Binding BoxLabelsFile, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Box labels file" />
                             <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                                     Command="{Binding BrowseBoxLabelsFileCommand}" />
                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding BoxLabelsFileNote}"

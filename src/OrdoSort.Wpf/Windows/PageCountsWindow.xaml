@@ -46,7 +46,8 @@
             </DockPanel>
 
             <Grid Grid.Row="1">
-                <DataGrid x:Name="CountsGrid" ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
+                <DataGrid x:Name="CountsGrid" ItemsSource="{Binding Rows}"
+                          AutomationProperties.Name="PDFs and their page counts" AutoGenerateColumns="False"
                           IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
                           SelectionMode="Extended">
                     <!-- Local RowStyle, same shape as BulkRename/MatchMerge/

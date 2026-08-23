@@ -59,6 +59,7 @@
                           IsChecked="{Binding ReviewMode}" VerticalAlignment="Center" />
                 <TextBlock Text="received:" VerticalAlignment="Center" Margin="12,0,8,0" />
                 <DatePicker SelectedDate="{Binding ReceivedDate}"
+                            AutomationProperties.Name="Received date"
                             IsEnabled="{Binding ReviewMode}" Width="130" />
             </StackPanel>
 
@@ -86,10 +87,12 @@
                             </Grid.RowDefinitions>
                             <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,0,8,6" />
                             <TextBox Grid.Column="1" Width="150" Margin="0,0,0,6"
-                                     Text="{Binding Find, UpdateSourceTrigger=PropertyChanged}" />
+                                     Text="{Binding Find, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Find text" />
                             <TextBlock Grid.Row="1" Text="Replace with:" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <TextBox Grid.Row="1" Grid.Column="1" Width="150"
-                                     Text="{Binding Replace, UpdateSourceTrigger=PropertyChanged}" />
+                                     Text="{Binding Replace, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Replace with" />
                         </Grid>
                     </StackPanel>
                 </Border>
@@ -112,10 +115,12 @@
                             </Grid.RowDefinitions>
                             <TextBlock Text="At start:" VerticalAlignment="Center" Margin="0,0,8,6" />
                             <TextBox Grid.Column="1" Width="130" Margin="0,0,0,6"
-                                     Text="{Binding Prefix, UpdateSourceTrigger=PropertyChanged}" />
+                                     Text="{Binding Prefix, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Add at start" />
                             <TextBlock Grid.Row="1" Text="At end:" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <TextBox Grid.Row="1" Grid.Column="1" Width="130"
-                                     Text="{Binding Suffix, UpdateSourceTrigger=PropertyChanged}" />
+                                     Text="{Binding Suffix, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Add at end" />
                         </Grid>
                     </StackPanel>
                 </Border>
@@ -136,7 +141,8 @@
                 <Border Style="{StaticResource ParamCard}" MinWidth="150">
                     <StackPanel>
                         <TextBlock Text="Letter case" Style="{StaticResource SectionText}" Margin="0,0,0,8" />
-                        <ComboBox Width="150" SelectedIndex="{Binding CaseIndex}">
+                        <ComboBox Width="150" SelectedIndex="{Binding CaseIndex}"
+                                  AutomationProperties.Name="Letter case">
                             <ComboBoxItem Content="Keep case" />
                             <ComboBoxItem Content="UPPERCASE" />
                             <ComboBoxItem Content="lowercase" />
@@ -169,6 +175,7 @@
 
             <Grid Grid.Row="3">
                 <DataGrid x:Name="PreviewGrid" ItemsSource="{Binding Preview}" AutoGenerateColumns="False"
+                          AutomationProperties.Name="Rename preview"
                           CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column"
                           CellEditEnding="OnCellEditEnding" SelectionMode="Extended"
                           SelectionChanged="OnSelectionChanged"
