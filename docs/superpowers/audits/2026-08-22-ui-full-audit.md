@@ -32,7 +32,7 @@ What running the app changed. Everything here is measured, not inferred.
 | UI-01 | **Confirmed.** Brush resolved off the real rendered `TextBlock`: `Rgb(46,125,50)` in all four dark schemes, ratios 3.33 / 3.44 / 3.43 / 3.71. Light schemes pass (4.82 / 5.27 / 5.40). |
 | UI-02 | **Confirmed visually.** Screenshot: OrdoSort's own error dialog is white with a light title bar beside the app's dark Ledger window, in Segoe UI rather than the configured Consolas. |
 | UI-04, UI-05 | **Confirmed via UI Automation.** Both `Edit` controls in Filename list report `Name=''`, the `DataGrid` reports `Name=''`, and **no control anywhere reports a `LabeledBy`**. |
-| UI-07 | **Wrong as written — corrected.** "Manage saved…" and Close do *not* move (0.0px). The primary **Unlock** button moves instead, and the consequence is worse than reported. |
+| UI-07 | **Wrong twice — corrected, then fixed.** "Manage saved…" and Close do *not* move (0.0px); the primary **Unlock** button does. And of the four sites named, only Unlock moves at all. |
 | UI-09 | **Partly wrong — corrected.** TriageWindow (720) fits a 768px laptop; only PrintPreview and Settings don't. |
 | UI-12 | **Wrong in detail — corrected.** In PageCounts *every* button is always enabled, Clear and Save included. |
 | UI-17 | **Confirmed visually.** Under Consolas the ↑/↓ glyphs fall back to another face and render as hairlines beside bold Consolas labels. |
@@ -225,14 +225,30 @@ other window in this app, where it is always safe.
 
 ### UI-07 — starting a batch slides Cancel under the cursor that just clicked Unlock
 
-`UnlockWindow.xaml:26-28` · `BulkRenameWindow.xaml:41` · `HistoryWindow.xaml:28-30` · `MainWindow.xaml:251`
+`UnlockWindow.xaml` — **FIXED 2026-08-22**
 
-**Corrected by the live pass.** The first draft claimed "Manage saved…" gets
-shoved. It does not — measured at 0.0px. The footer is a right-aligned
-horizontal `StackPanel`, so everything to the *right* of the insertion point is
-anchored; only what is to its *left* moves. What actually happens is worse.
+**Corrected twice.** The first draft claimed "Manage saved…" gets shoved; the
+live pass showed it does not (0.0px) and that the primary **Unlock** button
+moves instead. Writing the guard then corrected it again: the draft listed four
+sites, and **only one of them moves.**
 
-Measured on the real window (Unlock 110px wide, Cancel 96px + 8px margin):
+Measured across all four by `TransientFooterButtonTests`:
+
+| Site | Panel | Moves? |
+|---|---|---|
+| **Unlock** — Cancel | right-aligned `StackPanel`, Cancel 2nd of 4 | **yes — Unlock −104px** |
+| BulkRename — Cancel | left-aligned fill `StackPanel`, Cancel after both buttons | no |
+| History — "Show all" | `DockPanel`, docked children take from the remaining rect | no |
+| MainWindow — Refresh | combo beside it is gated on the same state and goes with it | no |
+
+The rule the draft was missing: a **left**-aligned StackPanel grows rightward
+and displaces only children *after* the insertion; a **right**-aligned one has
+its right edge pinned and displaces the children *before* it; a `DockPanel`'s
+docked children cost their neighbours nothing and the fill child absorbs the
+difference. Unlock was the only footer that was both right-aligned and had its
+transient button part-way along.
+
+What that produced:
 
 ```
 Cancel at rest = Collapsed, width=96, margin=0,0,8,0
@@ -244,18 +260,17 @@ Cancel at rest = Collapsed, width=96, margin=0,0,8,0
   Unlock button IsEnabled during run: True
 ```
 
-You click **Unlock**, the batch starts, and the button you just clicked jumps
-104px left — leaving **87% of the pixels under your cursor now occupied by
-Cancel**. A double-click, an impatient second click, or a slow click-and-release
-cancels the batch it just started. Unlock also stays enabled throughout (guarded
-internally by `if (IsUnlocking) return;`), so nothing signals the swap.
+Click **Unlock**, and the button you clicked jumps 104px left, leaving 87% of
+the pixels under the cursor occupied by Cancel — on a button that stays enabled
+throughout. A double-click or a slow release cancelled the batch it just
+started.
 
-BulkRename has the same shape with Cancel third in the row; History's "Show all"
-and MainWindow's Refresh reflow on the same mechanism.
-
-**Fix:** `Visibility="Hidden"` instead of `Collapsed` reserves the slot and makes
-all four cases inert. Failing that, put the brake somewhere the primary button
-is not about to be.
+**Fixed** by giving Unlock the footer shape every other batch tool already had
+(`DockPanel`, Close docked right, actions in the left-aligned fill child) with
+Cancel last in the row, so nothing sits after it to be pushed. Unlock had been
+the only outlier of the six batch tools, and the difference was never cosmetic.
+Guarded by `TransientFooterButtonTests`, which asserts the property rather than
+the mechanism: showing a transient footer button moves no other button.
 
 ### UI-08 — Enter in Manage saved passwords closes the window and loses the entry
 

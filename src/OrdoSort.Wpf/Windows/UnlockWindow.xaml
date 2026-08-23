@@ -7,28 +7,48 @@
         DragOver="OnDragOver" Drop="OnDrop"
         Style="{StaticResource {x:Type Window}}">
     <DockPanel Margin="14">
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right"
-                    Margin="0,10,0,0">
-            <Button Command="{Binding UnlockCommand}"
-                    Style="{StaticResource PrimaryButton}" Width="110" Margin="0,0,8,0"
-                    IsDefault="True"
-                    AutomationProperties.Name="Unlock">
-                <StackPanel Orientation="Horizontal">
-                    <!-- Same glyph as this tool's own Tools menu entry
-                         (MainWindow.xaml, "_Unlock PDFs…") — E785. -->
-                    <TextBlock Style="{StaticResource Icon}" Text="&#xE785;" Margin="0,0,8,0"
-                               Foreground="{DynamicResource Theme.AccentText}" />
-                    <TextBlock Text="Unlock" Style="{StaticResource PrimaryButtonLabel}" />
-                </StackPanel>
-            </Button>
-            <!-- the batch's brake: files already done stay done, the rest
-                 report cancelled instead of running on unstoppably -->
-            <Button Content="Cancel" Command="{Binding CancelCommand}" Width="96"
-                    Margin="0,0,8,0"
-                    Visibility="{Binding IsUnlocking, Converter={StaticResource BoolToVis}}" />
-            <Button Content="Manage saved…" Click="OnManageSaved" Padding="8,4" Margin="0,0,8,0" />
-            <Button Content="Close" Width="96" IsCancel="True" />
-        </StackPanel>
+        <!-- DockPanel with Close docked Right and the actions in the fill
+             child: the shape every other batch tool's footer already uses
+             (BulkRename, MatchMerge, PageCounts, ZipTools, FilenameList).
+             This window was the one outlier — a single StackPanel with
+             HorizontalAlignment="Right" — and the difference was not cosmetic.
+             A right-aligned StackPanel has its RIGHT edge pinned, so a child
+             appearing part-way along displaces everything BEFORE it leftward;
+             a left-aligned fill child grows rightward and displaces only what
+             comes AFTER. With Cancel second of four, showing it dragged the
+             primary Unlock button 104px left, putting Cancel over 87% of the
+             pixels the cursor had just clicked Unlock on — and Unlock stays
+             enabled during a run (it is guarded internally), so nothing about
+             the button under the cursor said it had changed. A second click,
+             or a slow release, cancelled the batch it had just started.
+             Measured, not reasoned: TransientFooterButtonTests. -->
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <Button DockPanel.Dock="Right" Content="Close" Width="96" IsCancel="True" />
+            <StackPanel Orientation="Horizontal">
+                <Button Command="{Binding UnlockCommand}"
+                        Style="{StaticResource PrimaryButton}" Width="110" Margin="0,0,8,0"
+                        IsDefault="True"
+                        AutomationProperties.Name="Unlock">
+                    <StackPanel Orientation="Horizontal">
+                        <!-- Same glyph as this tool's own Tools menu entry
+                             (MainWindow.xaml, "_Unlock PDFs…") — E785. -->
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE785;" Margin="0,0,8,0"
+                                   Foreground="{DynamicResource Theme.AccentText}" />
+                        <TextBlock Text="Unlock" Style="{StaticResource PrimaryButtonLabel}" />
+                    </StackPanel>
+                </Button>
+                <Button Content="Manage saved…" Click="OnManageSaved" Padding="8,4" Margin="0,0,8,0" />
+                <!-- the batch's brake: files already done stay done, the rest
+                     report cancelled instead of running on unstoppably.
+                     LAST in this row on purpose — it is the only child here
+                     that comes and goes, and nothing sits after it to be
+                     pushed. Putting it back beside Unlock would reintroduce
+                     the displacement above in mirror image. -->
+                <Button Content="Cancel" Command="{Binding CancelCommand}" Width="96"
+                        AutomationProperties.Name="Cancel"
+                        Visibility="{Binding IsUnlocking, Converter={StaticResource BoolToVis}}" />
+            </StackPanel>
+        </DockPanel>
 
         <!-- IsSharedSizeScope: only one FieldRow lives in this window today
              (Password:, below), but it follows the LabelMakerWindow.xaml
