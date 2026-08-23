@@ -269,8 +269,13 @@
                     Visibility="{Binding AllQuiet, Converter={StaticResource BoolToVis}}">
             <!-- BodySmallText size — Icon style already sets FontFamily;
                  converting would drop it. -->
+            <!-- Theme.StatusGreen, NOT Theme.Success: this glyph is rendered as
+                 TEXT at FontSize 12 on Theme.WindowBg, where Success measures
+                 3.33:1 (graphite) — small text, so no large-text exemption
+                 applies and this was a plain WCAG AA failure. StatusGreen
+                 measures 8.49:1. See ThemeTokenRoleTests. -->
             <TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" FontSize="12"
-                       Foreground="{DynamicResource Theme.Success}" Margin="0,0,8,0" />
+                       Foreground="{DynamicResource Theme.StatusGreen}" Margin="0,0,8,0" />
             <TextBlock Text="All monitored folders are quiet"
                        Style="{StaticResource SubtleText}" />
         </StackPanel>

@@ -4,8 +4,16 @@
     <StackPanel>
         <ContentControl Template="{StaticResource Illustration.Done}"
                          Height="96" Margin="0,4,0,12" HorizontalAlignment="Center" />
+        <!-- Theme.StatusGreen, NOT Theme.Success: this is real foreground TEXT,
+             and Success measures 3.33:1 (graphite) to 3.71:1 (carbon) against
+             this element's own background, Theme.WindowBg. HeadlineText is 26px
+             Bold, so WCAG counts it as large text and 3:1 technically clears —
+             but this app's stated floor is 4.5:1 for every shipped text pairing,
+             and StatusGreen measures 8.49:1 here. Same token/role confusion the
+             Danger -> StatusRed sites below and in ProcessingView already fixed;
+             ThemeTokenRoleTests now lints it. -->
         <TextBlock Text="{Binding CountLine}" Style="{StaticResource HeadlineText}"
-                   Foreground="{DynamicResource Theme.Success}" />
+                   Foreground="{DynamicResource Theme.StatusGreen}" />
         <TextBlock Text="{Binding DetailLine}" TextWrapping="Wrap" Margin="0,6,0,0" />
         <TextBlock Text="{Binding LogLine}" Style="{StaticResource SubtleText}"
                    TextWrapping="Wrap" Margin="0,4,0,0"
