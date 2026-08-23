@@ -42,17 +42,33 @@
                            Margin="0,0,0,6" />
                 <TextBlock Grid.Column="1" Text="Password:" Style="{StaticResource CaptionText}"
                            Margin="0,0,0,6" />
+                <!-- PreviewKeyDown on BOTH fields, not a window-level Return
+                     KeyBinding: Close carries IsDefault and this window is
+                     opened with ShowDialog (UnlockWindow.OnManageSaved), so an
+                     unhandled Enter here clicked Close and threw away both
+                     typed fields (UI-08). The handler claims Enter for the two
+                     boxes only, leaving Close's IsDefault intact everywhere
+                     else in the dialog — same shape as UnlockWindow's
+                     OnSaveNameKeyDown and Settings' alert-term box. -->
                 <TextBox x:Name="NewPwLabel" Grid.Row="1" Margin="0,0,6,0"
+                         PreviewKeyDown="OnEntryKeyDown"
                          AutomationProperties.Name="New password label" />
                 <PasswordBox x:Name="NewPwValue" Grid.Row="1" Grid.Column="1" Margin="0,0,6,0"
+                             PreviewKeyDown="OnEntryKeyDown"
                              AutomationProperties.Name="New password" />
                 <Button Grid.Row="1" Grid.Column="2" Content="Add" Click="OnAddPassword"
                         MinWidth="52" Margin="0,0,6,0" />
                 <Button Grid.Row="1" Grid.Column="3" Content="Remove"
                         Command="{Binding RemoveSavedCommand}" />
             </Grid>
-            <ListBox ItemsSource="{Binding Saved}" SelectedItem="{Binding SelectedSavedEntry}"
-                     MinHeight="60">
+            <!-- x:Name'd so ManageSavedEnterKeyTests can put keyboard focus
+                 somewhere OUTSIDE the entry form and prove Enter there still
+                 closes the window — i.e. that the Enter fix claimed the key
+                 for the two fields rather than stripping Close's IsDefault. -->
+            <ListBox x:Name="SavedList"
+                     ItemsSource="{Binding Saved}" SelectedItem="{Binding SelectedSavedEntry}"
+                     MinHeight="60"
+                     AutomationProperties.Name="Saved passwords">
                 <!-- Label gets a LOCAL Foreground bound back to the generated
                      ListBoxItem — see Styles.xaml's ListBoxItem style
                      comment: an ItemTemplate's LOCAL ContentTemplate
