@@ -1,0 +1,53 @@
+<Window x:Class="OrdoSort.Wpf.Windows.MessageWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        SizeToContent="WidthAndHeight" ResizeMode="NoResize"
+        MinWidth="360" MaxWidth="520"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Style="{StaticResource {x:Type Window}}">
+    <!-- The app's own message box. Every alert, warning and confirmation used
+         to be a Win32 MessageBox, which is not a WPF Window: TitleBar.Hook
+         never saw it, no Theme.* brush reached it, and it ignored the
+         configured app font. In the four dark schemes the app opened a white
+         dialog with a light title bar on top of a dark window (UI-02).
+
+         This is a plain Window, so it inherits the implicit Window style
+         (background, foreground, font family and size) and TitleBar's
+         class-level Loaded handler gives it the same immersive-dark caption
+         every other window gets, for free.
+
+         Icon colours are restricted to tokens ThemeTests.EveryTextPairingMeets-
+         WcagAa already enforces against Theme.WindowBg — StatusAmber,
+         StatusRed and AccentBronze — so this window cannot introduce a new
+         unproven pairing. -->
+    <DockPanel Margin="18,16,18,14">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,18,0,0">
+            <!-- Copy: a Win32 MessageBox answers Ctrl+C by putting its text on
+                 the clipboard, and error messages here carry file paths people
+                 genuinely need to paste somewhere. A TextBlock cannot be
+                 selected, so the affordance is made explicit rather than
+                 silently dropped. -->
+            <Button x:Name="CopyButton" Content="Copy" Click="OnCopy"
+                    MinWidth="72" Margin="0,0,8,0"
+                    AutomationProperties.Name="Copy this message" />
+            <Button x:Name="PrimaryAction" Click="OnPrimary" MinWidth="96" Margin="0,0,8,0" />
+            <Button x:Name="SecondaryAction" Click="OnSecondary" MinWidth="96" />
+        </StackPanel>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="Glyph" Style="{StaticResource Icon}" FontSize="22"
+                       VerticalAlignment="Top" Margin="0,1,14,0" />
+            <!-- MaxWidth, not a fixed Width: SizeToContent lets a short message
+                 make a small dialog, and this stops a long one growing a single
+                 unreadable line across the monitor. -->
+            <TextBlock x:Name="MessageText" Grid.Column="1" TextWrapping="Wrap"
+                       MaxWidth="420" VerticalAlignment="Center" />
+        </Grid>
+    </DockPanel>
+</Window>

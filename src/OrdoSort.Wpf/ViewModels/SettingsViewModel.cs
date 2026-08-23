@@ -2332,7 +2332,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         var warnings = Warnings();
         if (warnings.Count > 0 && !_dialogs.Confirm(
                 " • " + string.Join("\n • ", warnings) + "\n\nSave anyway?",
-                "OrdoSort — possible problems"))
+                "OrdoSort — possible problems", "Save anyway", "Go back"))
             return false;
 
         var cfg = BuildEditedConfig();

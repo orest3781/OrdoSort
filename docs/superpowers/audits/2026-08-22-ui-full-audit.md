@@ -115,7 +115,7 @@ hole — either add `{Success, WindowBg}` / `{Success, Surface}` to
 `Foreground=` position in any XAML, which is what actually went wrong twice
 now.
 
-### UI-02 — every alert, confirmation and error is an unthemed Win32 `MessageBox`
+### UI-02 — every alert, confirmation and error is an unthemed Win32 `MessageBox` — **FIXED 2026-08-23**
 
 > **Confirmed visually.** A real config-error dialog from the real code path,
 > screenshotted beside the app's dark Ledger window: white body, light title
@@ -383,7 +383,7 @@ enough that it breaks as `press the / keys · / Backspace / clears`, stretching
 the Hotkey row to roughly four times the height of the rows above and below it
 and leaving a tall, mostly empty input box beside it.
 
-### UI-27 — raw .NET exception text is shown to the user (Medium)
+### UI-27 — raw .NET exception text is shown to the user (Medium) — **FIXED 2026-08-23**
 
 `App.xaml.cs:62`. Launching with a malformed config produces, verbatim:
 

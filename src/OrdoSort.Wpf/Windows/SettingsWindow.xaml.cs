@@ -41,7 +41,7 @@ public partial class SettingsWindow : Window
         if (!_vm.IsDirty) return;
         if (_vm.Dialogs.Confirm(
                 "Discard your changes to the settings?",
-                "OrdoSort — unsaved changes"))
+                "OrdoSort — unsaved changes", "Discard", "Keep editing"))
             return;
         e.Cancel = true;
     }

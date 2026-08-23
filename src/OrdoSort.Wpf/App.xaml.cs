@@ -26,7 +26,7 @@ public partial class App : Application
         DispatcherUnhandledException += (_, ex) =>
         {
             var logged = LogCrash(ex.Exception);
-            MessageBox.Show(
+            OrdoSort.Wpf.Windows.MessageWindow.Show(MainWindow,
                 "OrdoSort hit a problem it wasn't expecting and stopped what it was doing.\n\n" +
                 "No document was lost — OrdoSort only ever moves files, never deletes them, " +
                 "so anything it was part-way through is either where it started or where it " +
@@ -35,7 +35,7 @@ public partial class App : Application
                     ? "The technical details were written to crash.log, beside your config file."
                     : "The technical details could not be written to crash.log — the location " +
                       "may not be writable."),
-                "OrdoSort — unexpected problem", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "OrdoSort — unexpected problem", OrdoSort.Wpf.Windows.MessageKind.Warning);
             ex.Handled = true;
             // Handled keeps a running app alive, which is right once there is
             // a window to go back to. Before MainWindow exists there is
@@ -52,6 +52,18 @@ public partial class App : Application
             : Path.Combine(AppContext.BaseDirectory, "config.json");
         _crashDir = Path.GetDirectoryName(Path.GetFullPath(_cfgPath)) ?? ".";
 
+        // Theme FIRST, before anything that can raise a dialog. The app's
+        // dialogs are real WPF windows now (MessageWindow, UI-02), so they
+        // resolve Theme.* brushes and need those resources present — and the
+        // failure below is the one most likely to be the first and only thing
+        // a user ever sees. "auto" because the configured scheme lives in the
+        // config file that has not been read yet, and following the OS is the
+        // honest answer while we cannot know the preference; SetMode switches
+        // to the real one once we do. Start (not SetMode) is called here
+        // because it also installs the title-bar hook and the OS-preference
+        // listener, and those must happen exactly once.
+        Theme.ThemeManager.Start(this, "auto");
+
         Config cfg;
         try
         {
@@ -59,13 +71,22 @@ public partial class App : Application
         }
         catch (ConfigException ex)
         {
-            MessageBox.Show(ex.Message, "OrdoSort — configuration problem",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            // The parser's own Path/LineNumber/BytePositionInLine tail used to
+            // be pasted straight at the user (UI-27). Config.Load's message is
+            // written for a person to act on now; the raw detail rides on the
+            // inner exception and goes to crash.log, where it is recoverable
+            // without being in the way.
+            var logged = LogCrash(ex);
+            OrdoSort.Wpf.Windows.MessageWindow.Show(null,
+                ex.Message + (logged
+                    ? "\n\nThe technical details were written to crash.log, beside your config file."
+                    : ""),
+                "OrdoSort — configuration problem", OrdoSort.Wpf.Windows.MessageKind.Warning);
             Shutdown(1);
             return;
         }
 
-        Theme.ThemeManager.Start(this, cfg.Theme);
+        Theme.ThemeManager.SetMode(this, cfg.Theme);
         ApplyFont(this, cfg);
 
         try
@@ -79,8 +100,8 @@ public partial class App : Application
             // the shell ctor opens SQLite and takes the daily backup — a locked
             // or corrupt history DB must fail with a dialog, not a silent crash
             LogCrash(ex);
-            MessageBox.Show("OrdoSort couldn't start:\n\n" + ex.Message,
-                "OrdoSort", MessageBoxButton.OK, MessageBoxImage.Error);
+            OrdoSort.Wpf.Windows.MessageWindow.Show(null, "OrdoSort couldn't start:\n\n" + ex.Message,
+                "OrdoSort", OrdoSort.Wpf.Windows.MessageKind.Warning);
             Shutdown(1);
         }
     }

@@ -403,6 +403,12 @@ public partial class MainWindow : Window
         public void Warn(string m, string t) => _get().Warn(m, t);
         public void Info(string m, string t) => _get().Info(m, t);
         public bool Confirm(string m, string t) => _get().Confirm(m, t);
+        // Forwarded explicitly: without this override the relay would inherit
+        // the interface's default, which drops the labels and calls the 2-arg
+        // Confirm — so every verb-labelled question routed through the relay
+        // would silently come back as Yes/No.
+        public bool Confirm(string m, string t, string yes, string no) =>
+            _get().Confirm(m, t, yes, no);
         public string? AskSaveFile(string f, string s) => _get().AskSaveFile(f, s);
         public string? AskOpenFile(string f) => _get().AskOpenFile(f);
         public string? AskFilePath(string f, string s) => _get().AskFilePath(f, s);

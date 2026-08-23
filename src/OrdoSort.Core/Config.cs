@@ -255,11 +255,11 @@ public sealed class Config
         }
         catch (JsonException ex)
         {
-            throw new ConfigException($"Config file {path} is not valid JSON: {ex.Message}");
+            throw new ConfigException(JsonProblem(path, ex), ex);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            throw new ConfigException($"Config file {path} could not be read: {ex.Message}");
+            throw new ConfigException(ReadProblem(path), ex);
         }
         cfg.Normalize();
         if (Array.IndexOf(Naming.Modes, cfg.NamingMode) < 0)
@@ -413,11 +413,11 @@ public sealed class Config
         }
         catch (JsonException ex)
         {
-            throw new ConfigException($"Config file {full} is not valid JSON: {ex.Message}");
+            throw new ConfigException(JsonProblem(full, ex), ex);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            throw new ConfigException($"Config file {full} could not be read: {ex.Message}");
+            throw new ConfigException(ReadProblem(full), ex);
         }
     }
 
@@ -895,11 +895,53 @@ public sealed class Config
             return $"destination not writable: {ex.Message}";
         }
     }
+
+    /// <summary>What to say when a config file will not parse. Keeps the
+    /// phrase "is not valid JSON" — several suites assert on it, and it is
+    /// also the plainest description of the fault — but replaces the parser's
+    /// own tail with the one part of it a person can use: the line. See
+    /// ConfigException's second constructor for where the raw text goes.</summary>
+    private static string JsonProblem(string path, JsonException ex)
+    {
+        // Two things off the exception are worth a user's time — WHICH setting
+        // and WHICH line — and neither is the BytePositionInLine that made the
+        // old message unreadable. Path arrives as "$.poll_seconds"; the "$."
+        // is JSON-pointer syntax, not something to show anyone.
+        var key = ex.Path?.TrimStart('$', '.');
+        var line = ex.LineNumber is { } n ? n + 1 : (long?)null;   // counts from 0
+
+        var where = (key, line) switch
+        {
+            ({ Length: > 0 }, { } l) => $" The problem is at \"{key}\", on line {l}.",
+            ({ Length: > 0 }, null) => $" The problem is at \"{key}\".",
+            (_, { } l) => $" The problem is on line {l}.",
+            _ => "",
+        };
+        return $"Config file {path} is not valid JSON.{where} " +
+               "Open it in a text editor and check that setting — a missing comma or quote, " +
+               "or a value of the wrong kind — or delete the file and OrdoSort will write a " +
+               "fresh one with default settings.";
+    }
+
+    /// <summary>What to say when a config file cannot be opened at all. The
+    /// OS message ("The process cannot access the file because it is being
+    /// used by another process") names a mechanism, not an action.</summary>
+    private static string ReadProblem(string path) =>
+        $"Config file {path} could not be read. It may be open in another program, " +
+        "or on a drive or share this computer cannot reach right now.";
 }
 
 public class ConfigException : Exception
 {
     public ConfigException(string message) : base(message) { }
+
+    /// <summary>Carries the underlying failure without putting it in front of
+    /// the user. <see cref="Exception.Message"/> on this type is a sentence a
+    /// person can act on; the parser's or the OS's own wording — which is
+    /// where <c>Path: $.inbox | LineNumber: 1 | BytePositionInLine: 0</c> came
+    /// from — belongs on the inner exception, so callers can log it in full
+    /// while showing the readable half (2026-08-22 UI audit, UI-27).</summary>
+    public ConfigException(string message, Exception? inner) : base(message, inner) { }
 }
 
 /// <summary>Thrown by <see cref="Config.Load(string,bool)"/> with

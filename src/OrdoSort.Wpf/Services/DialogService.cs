@@ -1,5 +1,6 @@
 using System.Windows;
 using Microsoft.Win32;
+using OrdoSort.Wpf.Windows;
 
 namespace OrdoSort.Wpf.Services;
 
@@ -9,15 +10,24 @@ public sealed class DialogService : IDialogService
 
     public DialogService(Window owner) => _owner = owner;
 
+    // MessageWindow, not MessageBox.Show: a Win32 message box is not a WPF
+    // Window, so TitleBar.Hook never saw it, no Theme.* brush reached it, and
+    // it ignored the configured app font — in the four dark schemes the app
+    // opened a white dialog with a light title bar on top of a dark one
+    // (UI-02). File and folder pickers below stay on the OS dialogs: those are
+    // shell components the user already knows, and they follow the OS theme.
+
     public void Warn(string message, string title) =>
-        MessageBox.Show(_owner, message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
+        MessageWindow.Show(_owner, message, title, MessageKind.Warning);
 
     public void Info(string message, string title) =>
-        MessageBox.Show(_owner, message, title, MessageBoxButton.OK, MessageBoxImage.Information);
+        MessageWindow.Show(_owner, message, title, MessageKind.Info);
 
     public bool Confirm(string message, string title) =>
-        MessageBox.Show(_owner, message, title, MessageBoxButton.YesNo,
-            MessageBoxImage.Question) == MessageBoxResult.Yes;
+        Confirm(message, title, "Yes", "No");
+
+    public bool Confirm(string message, string title, string yesLabel, string noLabel) =>
+        MessageWindow.Confirm(_owner, message, title, yesLabel, noLabel);
 
     public string? AskSaveFile(string filter, string suggestedName)
     {

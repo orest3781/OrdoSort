@@ -194,7 +194,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             if (!pristine && !_dialogs.Confirm(
                     $"Remove \"{s.Id}\"?\n\nIts running label number ({shownNumber}) "
                     + "will be lost — re-adding the client starts back at 1.",
-                    "OrdoSort — label maker"))
+                    "OrdoSort — label maker", "Remove client", "Keep it"))
                 return;
             Clients.Remove(s);
             if (s.Id.Length > 0) _removedIds.Add(s.Id);   // a blank pristine row was never on disk
@@ -226,7 +226,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             if (!pristine && !_dialogs.Confirm(
                     $"Reset \"{s.Id}\"'s label number to 1?\n\nIts running label number "
                     + $"({shownNumber}) will be lost.",
-                    "OrdoSort — label maker"))
+                    "OrdoSort — label maker", "Reset to 1", "Keep counting"))
                 return;
             s.NextNumberText = "1";
         }, () => Selected is not null);
@@ -629,7 +629,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             if (_dialogs.Confirm(
                     $"Remove \"{origin}\"?\n\nIts running label number ({shownNumber}) "
                     + "will be lost — re-adding the client starts back at 1.",
-                    "OrdoSort — label maker"))
+                    "OrdoSort — label maker", "Remove client", "Keep it"))
                 continue;   // confirmed: leave the blank id — the sweep below removes it
 
             _suppressDirty = true;

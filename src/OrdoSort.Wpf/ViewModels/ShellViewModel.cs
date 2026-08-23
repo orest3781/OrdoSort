@@ -1764,7 +1764,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                     $"Another station changed the {JoinNaturally(changed)} while you had " +
                     "Settings open. Saving now will replace their changes with yours. Save anyway, " +
                     "or cancel and reopen Settings to see theirs?",
-                    "OrdoSort — settings conflict");
+                    "OrdoSort — settings conflict", "Save anyway", "Cancel");
                 if (!proceed) return;   // abandon: _cfg, history, watchers all left untouched
             }
         }
