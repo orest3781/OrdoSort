@@ -1,0 +1,46 @@
+<Project>
+
+  <!-- Windows Smart App Control blocks unsigned binaries by file HASH, and a
+       .NET SDK build is deterministic by default: the same sources compile to
+       the same bytes forever. Those two facts together make a SAC block
+       permanent. Once SAC has ruled on OrdoSort.dll's hash, every subsequent
+       build reproduces that exact hash, so rebuilding — the developer's first
+       instinct, and the thing that fixes almost everything else — provably
+       cannot clear it. Measured on 2026-08-25 with SAC in Enforced mode
+       (HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy
+       VerifiedAndReputablePolicyState = 1):
+
+         deterministic build   -> OrdoSort.dll SHA256 806A4F6F...  process dies
+                                  at startup, exit 0xE0434352, CodeIntegrity
+                                  event 3077 "did not meet the Enterprise
+                                  signing level requirements"
+         Deterministic=false   -> OrdoSort.dll SHA256 94BF8C38...  app runs,
+                                  zero block events
+
+       Note what is NOT blocked: OrdoSort.exe. That file is the SDK's apphost
+       stub, it starts fine, and it dies loading the managed assembly beside
+       it. This matters because it rules out the two fixes that look obvious.
+       Relaunching through `dotnet OrdoSort.dll` to bypass the stub does not
+       help — the CodeIntegrity log shows dotnet.exe blocked loading the very
+       same dll — and rebuilding to "refresh" the stub does not help either,
+       since the stub's bytes are SDK template + app name + version resource
+       and do not change when you edit code.
+
+       So the one lever that works is the assembly's hash, and the only
+       supported way to move it is to turn determinism off. That is scoped to
+       Debug deliberately: Release builds are what publish.bat ships, and
+       reproducible release bytes are worth more than local convenience.
+       Release binaries need a real code-signing certificate, not this.
+
+       This lives in Directory.Build.TARGETS rather than Directory.Build.props
+       because $(Configuration) is not yet defined when props is imported —
+       measured, not assumed: a plain `dotnet build` evaluates $(Configuration)
+       as "" in Directory.Build.props and as "Debug" in Directory.Build.targets,
+       so the same condition written in props would silently never fire for the
+       exact builds it exists to fix. NonDeterministicDebugBuildTests guards
+       both halves of this. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <Deterministic>false</Deterministic>
+  </PropertyGroup>
+
+</Project>
