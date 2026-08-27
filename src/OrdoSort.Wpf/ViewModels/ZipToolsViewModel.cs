@@ -21,7 +21,7 @@ public sealed class ZipToolsViewModel
         IWorkScheduler? scheduler = null)
     {
         ZipExtract = new ZipExtractViewModel(dialogs, scheduler, uiContext);
-        MergePdfs = new MergePdfsViewModel(dialogs, scheduler, uiContext);
+        MergePdfs = new MergePdfsViewModel(scheduler, uiContext);
     }
 
     public void Cancel()

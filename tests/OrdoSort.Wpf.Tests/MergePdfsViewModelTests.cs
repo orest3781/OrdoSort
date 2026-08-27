@@ -19,9 +19,8 @@ namespace OrdoSort.Wpf.Tests;
 public class MergePdfsViewModelTests
 {
     private static MergePdfsViewModel MakeVm(
-        IDialogService? dialogs = null,
         Func<string, ZipMerge.MergeResult>? merger = null) =>
-        new(dialogs ?? new FakeDialogs(), new InlineWorkScheduler(), uiContext: null, merger);
+        new(new InlineWorkScheduler(), uiContext: null, merger);
 
     [Fact]
     public async Task StatusesAndNotesAreAppliedPerRowAfterAMergeRun()

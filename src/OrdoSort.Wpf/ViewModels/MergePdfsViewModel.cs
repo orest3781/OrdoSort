@@ -17,14 +17,11 @@ public sealed class MergePdfsViewModel : ZipListViewModel
     /// <summary>Extension set in Intake's shape (dot-less, lowercase).</summary>
     private static readonly ISet<string> Zips = new HashSet<string> { "zip" };
 
-    public MergePdfsViewModel(IDialogService dialogs, IWorkScheduler? scheduler = null,
+    public MergePdfsViewModel(IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null,
         Func<string, ZipMerge.MergeResult>? merger = null)
         : base(scheduler, uiContext)
     {
-        // dialogs is accepted for ctor-shape consistency with the sibling
-        // tab; nothing here needs it, so there is no field to keep it in.
-        _ = dialogs;
         _merger = merger ?? ZipMerge.MergeZip;
 
         MergeCommand = new AsyncRelayCommand(MergeAsync, () => Rows.Count > 0);
