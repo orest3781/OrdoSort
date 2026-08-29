@@ -215,7 +215,7 @@ public static class Unlock
         // password cannot answer this question.
         using (var probeStream = new MemoryStream(sourceBytes, writable: false))
         {
-            if (IsProvablyNotEncrypted(probeStream))
+            if (PdfPasswords.IsProvablyNotEncrypted(probeStream))
                 return new("not_encrypted", src, Message: "This PDF isn't password-protected.");
         }
         // couldn't prove it unencrypted -> it's encrypted (or damaged in a
@@ -223,63 +223,21 @@ public static class Unlock
         // through and let the candidate loop's own exception discipline
         // below decide which.
 
-        for (var i = 0; i < candidates.Count; i++)
+        // The candidate loop lives in PdfPasswords now (2026-08-28), shared
+        // with the merge tools: the same open mode, the same
+        // PdfReaderException-is-a-wrong-password discipline, and the same
+        // page touch on the winner — which is what keeps the agreement with
+        // UnlockPdf below meaningful rather than coincidental.
+        var outcome = PdfPasswords.OpenWithPasswords(sourceBytes, candidates, ask: null,
+            Path.GetFileName(src), inside: null);
+        outcome.Document?.Dispose();
+        outcome.Stream?.Dispose();
+        return outcome.Status switch
         {
-            try
-            {
-                using var ms = new MemoryStream(sourceBytes, writable: false);
-                using var doc = PdfReader.Open(ms, candidates[i], PdfDocumentOpenMode.Import);
-                // VerifyReadable's own technique (Unlock.cs, below), applied
-                // here to the winning candidate before declaring ready:
-                // closes the gap a 2026-08 review found — this loop used to
-                // open a candidate and immediately discard it, never
-                // touching a single page, while the real UnlockPdf goes on
-                // to copy every page, save, and run this exact touch over
-                // the result. See this method's doc comment for what
-                // touching a page does and does not catch, and what a
-                // six-fixture investigation into the gap found.
-                for (var p = 0; p < doc.PageCount; p++) { var _ = doc.Pages[p]; }
-                return new("ready", src, MatchedIndex: i, Message: "A saved password opens this.");
-            }
-            catch (PdfReaderException)
-            {
-                // wrong password for this one candidate; try the next
-            }
-            catch (Exception ex)
-            {
-                return new("unreadable", src, Message: $"Couldn't read it: {ex.Message}");
-            }
-        }
-
-        return new("needs_password", src,
-            Message: "This PDF needs a password none of the saved ones supply.");
-    }
-
-    /// <summary>Shared by <see cref="ProbeReadiness"/> and
-    /// <see cref="UnlockBuffered"/> — both need the identical no-password
-    /// encryption check and, before the 2026-08 fix round, each carried its
-    /// own copy. Opening WITH a password cannot answer "is this encrypted",
-    /// because a correctly decrypted document reports itself unencrypted
-    /// just like one that never was. Returns true only when opening without
-    /// a password succeeded AND proved the document unencrypted; false means
-    /// "couldn't prove that" — encrypted, or damaged in a way that looks the
-    /// same from here — and the caller falls through to its own
-    /// password-based path either way. <paramref name="stream"/> must be
-    /// freshly positioned at 0 (a fresh MemoryStream view in both current
-    /// callers); this does not rewind it back for the caller to reuse, so
-    /// callers pass a stream they are about to discard, same as before this
-    /// was extracted.</summary>
-    private static bool IsProvablyNotEncrypted(Stream stream)
-    {
-        try
-        {
-            using var probe = PdfReader.Open(stream, PdfDocumentOpenMode.Import);
-            return !probe.SecuritySettings.IsEncrypted;
-        }
-        catch
-        {
-            return false;
-        }
+            "opened" => new("ready", src, MatchedIndex: outcome.MatchedIndex, Message: "A saved password opens this."),
+            "unreadable" => new("unreadable", src, Message: $"Couldn't read it: {outcome.Message}"),
+            _ => new("needs_password", src, Message: "This PDF needs a password none of the saved ones supply."),
+        };
     }
 
     /// <summary>The fast path: ONE read of the source, and the probe, decrypt
@@ -310,25 +268,28 @@ public static class Unlock
         // why opening WITH the password cannot answer this.
         using (var probeStream = new MemoryStream(sourceBytes, writable: false))
         {
-            if (IsProvablyNotEncrypted(probeStream))
+            if (PdfPasswords.IsProvablyNotEncrypted(probeStream))
                 return new("not_encrypted", src, Message: "This PDF isn't password-protected.");
         }
         // couldn't prove it unencrypted -> it's encrypted; fall through
 
+        var opened = PdfPasswords.OpenWithPasswords(sourceBytes, new[] { password }, ask: null,
+            Path.GetFileName(src), inside: null);
+        if (opened.Status == "needs_password")
+            return new("wrong_password", src, Message: "That password didn't work.");
+        if (opened.Status == "unreadable")
+            return new("error", src, Message: $"Couldn't unlock it: {opened.Message}");
+
         byte[] unlockedBytes;
         try
         {
-            using var inStream = new MemoryStream(sourceBytes, writable: false);
-            using var input = PdfReader.Open(inStream, password, PdfDocumentOpenMode.Import);
+            using var inStream = opened.Stream!;
+            using var input = opened.Document!;
             using var output = new PdfDocument();
             foreach (var page in input.Pages) output.AddPage(page);
             using var outStream = new MemoryStream();
             output.Save(outStream, closeStream: false);
             unlockedBytes = outStream.ToArray();
-        }
-        catch (PdfReaderException)
-        {
-            return new("wrong_password", src, Message: "That password didn't work.");
         }
         catch (Exception ex)
         {
@@ -593,7 +554,7 @@ public static class Unlock
     /// other cause of a refused move needs a different answer from the person
     /// reading the message — and the old text blamed an open program for all
     /// of them, including files that were merely read-only.</summary>
-    private static bool IsInUse(IOException ex) =>
+    internal static bool IsInUse(IOException ex) =>
         (ex.HResult & 0xFFFF) is 32 or 33;
 
     /// <summary>Reopen the saved copy and touch every page. "" if it's a
