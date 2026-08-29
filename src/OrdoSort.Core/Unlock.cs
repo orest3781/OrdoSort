@@ -291,6 +291,13 @@ public static class Unlock
             output.Save(outStream, closeStream: false);
             unlockedBytes = outStream.ToArray();
         }
+        // Mirrors UnlockStreaming's catch so the two size-chosen paths agree
+        // on a post-open PdfReaderException; not constructible in a test
+        // (ProbeReadiness's six-fixture note) — a structural guard, not a tested branch.
+        catch (PdfReaderException)
+        {
+            return new("wrong_password", src, Message: "That password didn't work.");
+        }
         catch (Exception ex)
         {
             return new("error", src, Message: $"Couldn't unlock it: {ex.Message}");
