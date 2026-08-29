@@ -39,6 +39,7 @@ The following packages are licensed under the MIT License
   - System.Security.Cryptography.ProtectedData  8.0.0   (c) Microsoft Corporation
   - PDFsharp                         6.1.1   (c) empira Software GmbH / PDFsharp Team
                                               https://docs.pdfsharp.net/
+  - SharpZipLib                      1.4.2   Copyright © 2000-2022 SharpZipLib Contributors
 
   The MIT License (MIT)
 
