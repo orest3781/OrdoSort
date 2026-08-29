@@ -520,16 +520,23 @@ public class ZipperTests : IDisposable
         Assert.Equal(new[] { false, true }, flags);
     }
 
-    [Fact]
-    public void SkippingThePromptIsNeedsPasswordAndLeavesNoFolder()
+    /// <summary>Both key sizes (2026-08-28 review finding): AES entries carry
+    /// no CRC at all, so a wrong AES password is only ever caught by
+    /// SharpZipLib's own end-of-stream authentication failing inside
+    /// <see cref="Decrypts"/> — nothing in the ZipCrypto-only version of this
+    /// fact exercised that branch.</summary>
+    [Theory]
+    [InlineData(0)]     // ZipCrypto
+    [InlineData(256)]   // WinZip AES
+    public void SkippingThePromptIsNeedsPasswordAndLeavesNoFolder(int aesKeySize)
     {
-        var zipPath = MakeLockedZip("skipped.zip", "right", 0, ("a.txt", "aaa"));
+        var zipPath = MakeLockedZip($"skipped-{aesKeySize}.zip", "right", aesKeySize, ("a.txt", "aaa"));
 
         var r = Zipper.Extract(zipPath, new[] { "nope" }, _ => null);
 
         Assert.Equal("needs_password", r.Status);
         Assert.Null(r.OutputFolder);
-        Assert.False(Directory.Exists(Path.Combine(_dir, "skipped")));
+        Assert.False(Directory.Exists(Path.Combine(_dir, $"skipped-{aesKeySize}")));
     }
 
     [Fact]
@@ -576,6 +583,36 @@ public class ZipperTests : IDisposable
 
         var probed = Zipper.Probe(zipPath, new[] { collider! });
         Assert.Equal("needs_password", probed.Status);
+    }
+
+    /// <summary>A second way verification can be quietly defeated (2026-08-28
+    /// review finding), independent of the check-byte collision above: a
+    /// 0-byte encrypted entry decrypts to 0 bytes under ANY password, so its
+    /// CRC (0) always matches the archive's recorded CRC (also 0) — if
+    /// picked as the probe entry, every wrong password would read as
+    /// "opened". The empty entry is deliberately the FIRST and smallest-by-size
+    /// entry in the archive; <see cref="SmallestEncryptedEntry"/> must still
+    /// pick the non-empty one after it, for both Probe and Extract, and must
+    /// still resolve to the empty entry once the real password is known so
+    /// it round-trips like any other entry.</summary>
+    [Fact]
+    public void AnEmptyEncryptedEntryIsNeverPickedAsTheProbeOverANonEmptyOne()
+    {
+        var zipPath = MakeLockedZip("empty-first.zip", "right", 0, ("empty.txt", ""), ("a.txt", "aaa"));
+
+        var probedWrong = Zipper.Probe(zipPath, new[] { "wrong" });
+        Assert.Equal("needs_password", probedWrong.Status);
+
+        var extractedWrong = Zipper.Extract(zipPath, new[] { "wrong" }, ask: null);
+        Assert.Equal("needs_password", extractedWrong.Status);
+        Assert.Null(extractedWrong.OutputFolder);
+        Assert.False(Directory.Exists(Path.Combine(_dir, "empty-first")));
+
+        var extractedRight = Zipper.Extract(zipPath, new[] { "right" }, ask: null);
+        Assert.Equal("ok", extractedRight.Status);
+        var outDir = Path.Combine(_dir, "empty-first");
+        Assert.Equal("", File.ReadAllText(Path.Combine(outDir, "empty.txt")));
+        Assert.Equal("aaa", File.ReadAllText(Path.Combine(outDir, "a.txt")));
     }
 
     [Fact]
@@ -656,10 +693,12 @@ public class ZipperTests : IDisposable
         Assert.Equal(1, r.MatchedIndex);
     }
 
-    [Fact]
-    public void ProbeReportsNeedsPasswordWhenNoCandidateOpensIt()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(256)]
+    public void ProbeReportsNeedsPasswordWhenNoCandidateOpensIt(int aesKeySize)
     {
-        var zipPath = MakeLockedZip("needs.zip", "right", 0, ("a.txt", "aaa"));
+        var zipPath = MakeLockedZip("needs.zip", "right", aesKeySize, ("a.txt", "aaa"));
         var r = Zipper.Probe(zipPath, new[] { "nope" });
         Assert.Equal("needs_password", r.Status);
         Assert.Null(r.MatchedIndex);
@@ -678,7 +717,14 @@ public class ZipperTests : IDisposable
     /// <summary>The probe writes nothing, anywhere — the same promise
     /// UnlockProbeWritesNothingTests holds Unlock.ProbeReadiness to, proven
     /// the same way: names, sizes and mtimes of the fixture directory before
-    /// and after, and no new "ordosort_*" file at the top of %TEMP%.</summary>
+    /// and after. No %TEMP% assertion here (2026-08-28 review finding):
+    /// docs/known-flakes.md records that exact check flaking on
+    /// UnlockProbeWritesNothingTests because a concurrently-running unlock
+    /// test writes its own working copy into %TEMP% mid-window, fixed there
+    /// by sharing UnlockNeverOverwritesTests' collection — but ZipperTests
+    /// runs in AtomicPlaceTests' collection instead, so it cannot join that
+    /// fix, and the check has nothing to prove here anyway: Zipper.Probe has
+    /// no %TEMP% code path at all.</summary>
     [Fact]
     public void ProbeWritesNothing()
     {
@@ -691,7 +737,6 @@ public class ZipperTests : IDisposable
             .Select(f => (Path.GetFileName(f)!, new FileInfo(f).Length, File.GetLastWriteTimeUtc(f)))
             .OrderBy(t => t.Item1, StringComparer.Ordinal).ToArray();
         var before = Snapshot(_dir);
-        var tempBefore = Directory.GetFiles(Path.GetTempPath(), "ordosort_*").ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         Zipper.Probe(Path.Combine(_dir, "plain.zip"), new[] { "x" });
         Zipper.Probe(Path.Combine(_dir, "ready.zip"), new[] { "aaa" });
@@ -700,6 +745,5 @@ public class ZipperTests : IDisposable
         Zipper.Probe(Path.Combine(_dir, "missing.zip"), new[] { "x" });
 
         Assert.Equal(before, Snapshot(_dir));
-        Assert.Empty(Directory.GetFiles(Path.GetTempPath(), "ordosort_*").Except(tempBefore, StringComparer.OrdinalIgnoreCase));
     }
 }

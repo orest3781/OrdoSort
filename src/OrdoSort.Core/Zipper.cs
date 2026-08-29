@@ -66,8 +66,11 @@ namespace OrdoSort.Core;
 /// entries store no CRC (AE-2 writes zero) and are authenticated by
 /// SharpZipLib itself at end of stream instead, which is why every read
 /// runs to the END of the entry. The probe verifies against the smallest
-/// encrypted entry, which bounds its cost; Extract verifies every entry it
-/// writes. One password per archive: the one that opens the smallest
+/// NON-EMPTY encrypted entry (see <see cref="SmallestEncryptedEntry"/> — a
+/// 0-byte entry's CRC trivially matches under any password, which defeats
+/// the check above just as completely as the 1-byte header collision does),
+/// which bounds its cost; Extract verifies every entry it writes. One
+/// password per archive: the one that opens the smallest non-empty
 /// encrypted entry is set for all of them, and an entry that rejects it
 /// fails the zip naming that entry.
 /// </summary>
@@ -412,9 +415,10 @@ public static class Zipper
 
     /// <summary>Settles the archive's password when any entry is encrypted:
     /// "not_encrypted" when none is (nothing to do); otherwise
-    /// <see cref="Passwords.Resolve"/> over the smallest encrypted entry, and
-    /// on "opened" the password is left set on <paramref name="zip"/> for
-    /// every later read. Internal so PdfMerge opens archives exactly this way.</summary>
+    /// <see cref="Passwords.Resolve"/> over the smallest NON-EMPTY encrypted
+    /// entry (see <see cref="SmallestEncryptedEntry"/>), and on "opened" the
+    /// password is left set on <paramref name="zip"/> for every later read.
+    /// Internal so PdfMerge opens archives exactly this way.</summary>
     internal static PasswordResolution UnlockArchive(SzlZipFile zip, IReadOnlyList<ZipEntry> entries,
         IReadOnlyList<string> candidates, Func<PasswordRequest, string?>? ask, string zipName)
     {
@@ -441,15 +445,27 @@ public static class Zipper
         return output.ToArray();
     }
 
+    /// <summary>The entry <see cref="Decrypts"/> tests a candidate password
+    /// against. Prefers the smallest NON-EMPTY encrypted entry: a 0-byte
+    /// entry decrypts to 0 bytes under ANY password, so its CRC (0) always
+    /// matches the archive's recorded CRC (also 0) regardless of whether the
+    /// password is right — picking one as the probe would silently collapse
+    /// verification back to ZipCrypto's bare 1-byte header check, exactly
+    /// what the class doc comment's verification rule exists to rule out
+    /// (2026-08-28 review finding). Falls back to the first empty entry only
+    /// when every encrypted entry in the archive is empty — there is nothing
+    /// else to test against.</summary>
     private static ZipEntry? SmallestEncryptedEntry(IReadOnlyList<ZipEntry> entries)
     {
-        ZipEntry? smallest = null;
+        ZipEntry? smallestNonEmpty = null;
+        ZipEntry? firstEmpty = null;
         foreach (var entry in entries)
         {
             if (!entry.IsCrypted || !entry.IsFile) continue;
-            if (smallest is null || entry.Size < smallest.Size) smallest = entry;
+            if (entry.Size == 0) { firstEmpty ??= entry; continue; }
+            if (smallestNonEmpty is null || entry.Size < smallestNonEmpty.Size) smallestNonEmpty = entry;
         }
-        return smallest;
+        return smallestNonEmpty ?? firstEmpty;
     }
 
     /// <summary>One attempt with one password against one entry, read to the
