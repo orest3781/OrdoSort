@@ -1,6 +1,6 @@
 using System.Reflection;
 using System.Reflection.PortableExecutable;
-using OrdoSort.Wpf.Windows;
+using OrdoSort.Wpf;
 
 namespace OrdoSort.Wpf.Tests;
 
@@ -35,7 +35,7 @@ public class NonDeterministicDebugBuildTests
 {
     public static TheoryData<string> ShippedAssemblies() => new()
     {
-        typeof(AboutWindow).Assembly.Location,
+        typeof(MainWindow).Assembly.Location,
         typeof(OrdoSort.Core.Route).Assembly.Location,
     };
 

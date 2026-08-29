@@ -132,14 +132,15 @@ public class DataGridWindowCoverageTests
         // rename, a build config that hides types), an empty or tiny list
         // would make every fact below vacuously pass — proving nothing,
         // exactly the trap this whole task exists to close on the OTHER
-        // suites. Fourteen window types is the actual count at the time this
+        // suites. Thirteen window types is the actual count at the time this
         // suite was last updated, seven of which declare a DataGrid
         // (BulkRename/FilenameList/History/MatchMerge/PageCounts/Triage/
-        // ZipTools — AboutWindow/LabelMakerWindow/ListReformatWindow/
-        // ManageSavedWindow/PrintPreviewWindow/SettingsWindow/UnlockWindow
-        // don't; Turnaround and Production, which also used to, were removed
-        // along with the reports feature, and Zip/Unzip/ZipMerge became
-        // ZipToolsWindow's two tabs), so eight is a safe floor that still
+        // ZipTools — LabelMakerWindow/ListReformatWindow/ManageSavedWindow/
+        // PrintPreviewWindow/SettingsWindow/UnlockWindow don't; Turnaround and
+        // Production, which also used to, were removed along with the reports
+        // feature, AboutWindow was deleted with the Help menu, and
+        // Zip/Unzip/ZipMerge became ZipToolsWindow's two tabs), so eight is a
+        // safe floor that still
         // catches enumeration silently degrading without being so tight it
         // breaks on every ordinary new window.
         Assert.True(windowTypes.Count >= 8,

@@ -344,9 +344,6 @@ public partial class MainWindow : Window
         new Windows.ZipToolsWindow(new ZipToolsViewModel(Dialogs, SynchronizationContext.Current))
         { Owner = this }.ShowDialog();
 
-    private void OnAbout(object sender, RoutedEventArgs e) =>
-        new Windows.AboutWindow { Owner = this }.ShowDialog();
-
     private void OnSettings(object sender, RoutedEventArgs e)
     {
         if (!Shell.IsReady)

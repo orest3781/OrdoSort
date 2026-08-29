@@ -64,7 +64,7 @@ public class WindowOverflowTests
     /// <param name="MinExamined">How many text-bearing elements this window
     /// must put in front of OverflowProbe. Required, not defaulted, so a new
     /// registry entry cannot quietly arrive unguarded — and per-window rather
-    /// than one shared number because the registry spans AboutWindow's 6
+    /// than one shared number because the registry spans MainWindow's 11
     /// elements and SettingsWindow's 326 across seven tabs: a floor low enough
     /// for the smallest window proves almost nothing about the largest, which
     /// is QC-09's blindness back in partial form on exactly the windows with
@@ -84,12 +84,10 @@ public class WindowOverflowTests
         bool ProbeEveryTab = false);
 
     /// <summary>Internal, not private: AccessibleNameTests builds the same
-    /// windows, with the same realistic content, and duplicating fourteen
+    /// windows, with the same realistic content, and duplicating thirteen
     /// builders would guarantee the two drift.</summary>
     internal static Dictionary<string, Probe> Registry() => new()
     {
-        ["AboutWindow"] = new(340, 380, 220, 240, () => (new AboutWindow(), null), MinExamined: 5),   // 6 measured
-
         ["BulkRenameWindow"] = new(700, 820, 520, 640, () =>
         {
             var vm = new BulkRenameViewModel();
