@@ -1,7 +1,7 @@
 # Two zip windows
 
 **Date:** 2026-08-25
-**Status:** approved, ready for planning
+**Status:** superseded by `2026-08-28-zip-and-merge-redo-design.md` — the window split carries over unchanged; the "no engine change" scope does not
 
 ## Problem
 
