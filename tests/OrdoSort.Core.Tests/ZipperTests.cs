@@ -1,5 +1,9 @@
 using System.IO.Compression;
 using System.Text;
+using ICSharpCode.SharpZipLib.Checksum;
+using ICSharpCode.SharpZipLib.Zip;
+using SzlZipFile = ICSharpCode.SharpZipLib.Zip.ZipFile;
+using ZipFile = System.IO.Compression.ZipFile;
 
 namespace OrdoSort.Core.Tests;
 
@@ -42,6 +46,55 @@ public class ZipperTests : IDisposable
             var bytes = Encoding.UTF8.GetBytes(content);
             s.Write(bytes, 0, bytes.Length);
         }
+        return path;
+    }
+
+    private static readonly string[] NoPasswords = Array.Empty<string>();
+
+    /// <summary>An <c>ask</c> that must never be reached: a fact passing a
+    /// working candidate proves nothing if the prompt quietly rescued it.</summary>
+    private static string? NeverAsked(PasswordRequest _) =>
+        throw new InvalidOperationException("the prompt was reached");
+
+    /// <summary>A locked zip through SharpZipLib's own writer — the only
+    /// writer in reach that encrypts. ZipCrypto when <paramref name="aesKeySize"/>
+    /// is 0, WinZip AES otherwise. Entries here are deflated; see
+    /// MakeStoredLockedZip for the stored variant the check-byte fact needs.</summary>
+    private string MakeLockedZip(string name, string password, int aesKeySize,
+        params (string EntryName, string Content)[] entries)
+    {
+        var path = Path.Combine(_dir, name);
+        using var fs = File.Create(path);
+        using var zos = new ZipOutputStream(fs) { Password = password };
+        foreach (var (entryName, content) in entries)
+        {
+            var bytes = Encoding.UTF8.GetBytes(content);
+            var entry = new ZipEntry(entryName) { Size = bytes.Length, AESKeySize = aesKeySize };
+            zos.PutNextEntry(entry);
+            zos.Write(bytes, 0, bytes.Length);
+            zos.CloseEntry();
+        }
+        return path;
+    }
+
+    /// <summary>One STORED ZipCrypto entry — no Deflate to choke on garbage,
+    /// so a password that slips past the 1-byte header check hands back
+    /// garbage silently and only the CRC can tell (measured 2026-08-28).</summary>
+    private string MakeStoredLockedZip(string name, string password, string content)
+    {
+        var path = Path.Combine(_dir, name);
+        var bytes = Encoding.UTF8.GetBytes(content);
+        var crc = new Crc32();
+        crc.Update(bytes);
+        using var fs = File.Create(path);
+        using var zos = new ZipOutputStream(fs) { Password = password };
+        var entry = new ZipEntry("s.txt")
+        {
+            Size = bytes.Length, Crc = crc.Value, CompressionMethod = CompressionMethod.Stored, AESKeySize = 0,
+        };
+        zos.PutNextEntry(entry);
+        zos.Write(bytes, 0, bytes.Length);
+        zos.CloseEntry();
         return path;
     }
 
@@ -104,7 +157,7 @@ public class ZipperTests : IDisposable
             Assert.Equal(new[] { "docs (2)/readme.txt", "docs/readme.txt" }, names);
         }
 
-        var extracted = Zipper.Extract(target);
+        var extracted = Zipper.Extract(target, NoPasswords, null);
         Assert.Equal("ok", extracted.Status);
         var outDir = extracted.OutputFolder!;
         Assert.Equal("from A", File.ReadAllText(Path.Combine(outDir, "docs", "readme.txt")));
@@ -138,7 +191,7 @@ public class ZipperTests : IDisposable
             Assert.Equal(new[] { "shared (2).txt/inside.txt", "shared.txt" }, names);
         }
 
-        var extracted = Zipper.Extract(target);
+        var extracted = Zipper.Extract(target, NoPasswords, null);
         Assert.Equal("ok", extracted.Status);
         var outDir = extracted.OutputFolder!;
         Assert.Equal("loose file content", File.ReadAllText(Path.Combine(outDir, "shared.txt")));
@@ -268,7 +321,7 @@ public class ZipperTests : IDisposable
     {
         var zipPath = MakeZip("bundle.zip", ("a.txt", "aaa"), ("sub/b.txt", "bbb"));
 
-        var r = Zipper.Extract(zipPath);
+        var r = Zipper.Extract(zipPath, NoPasswords, null);
 
         Assert.Equal("ok", r.Status);
         var outDir = Path.Combine(_dir, "bundle");
@@ -283,8 +336,8 @@ public class ZipperTests : IDisposable
     {
         var zipPath = MakeZip("bundle2.zip", ("a.txt", "aaa"));
 
-        var r1 = Zipper.Extract(zipPath);
-        var r2 = Zipper.Extract(zipPath);
+        var r1 = Zipper.Extract(zipPath, NoPasswords, null);
+        var r2 = Zipper.Extract(zipPath, NoPasswords, null);
 
         Assert.Equal("ok", r1.Status);
         Assert.Equal("ok", r2.Status);
@@ -292,28 +345,37 @@ public class ZipperTests : IDisposable
         Assert.Equal(Path.Combine(_dir, "bundle2 (2)"), r2.OutputFolder);
     }
 
-    /// <summary>Pins .NET 8's own ZipFile.ExtractToDirectory traversal
-    /// protection — see Zipper's class doc comment on why that framework
-    /// guarantee is load-bearing here. A crafted entry name that tries to
-    /// escape the destination folder must be refused, and must leave no
-    /// trace either outside the zip's own directory (evil.txt) or inside it
-    /// (the partial output folder this call created before extraction
-    /// failed).</summary>
-    [Fact]
-    public void ZipSlipEntryIsRejectedAndLeavesNoTraceOutsideOrInside()
+    /// <summary>The ZipSlip guard is Zipper's own since the SharpZipLib move
+    /// (2026-08-28) — see the class doc comment. Written with
+    /// System.IO.Compression on purpose: that writer keeps entry names
+    /// verbatim, while SharpZipLib's own writer cleans them (measured:
+    /// "C:\drive.txt" became "drive.txt"), so a SharpZipLib-built fixture
+    /// would never reach the guard at all. A crafted name that would land
+    /// outside the destination must be refused and leave no trace either
+    /// outside the zip's own directory or inside it (the partial output
+    /// folder this call created before extraction failed).</summary>
+    [Theory]
+    [InlineData(@"..\evil.txt")]
+    [InlineData("../evil.txt")]
+    [InlineData("/evil.txt")]
+    [InlineData(@"C:\evil.txt")]
+    public void ZipSlipEntryIsRejectedAndLeavesNoTraceOutsideOrInside(string entryName)
     {
         var zipPath = Path.Combine(_dir, "slip.zip");
         using (var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
         {
-            using var s = zip.CreateEntry(@"..\evil.txt").Open();
+            using var s = zip.CreateEntry(entryName).Open();
             var bytes = Encoding.UTF8.GetBytes("pwned");
             s.Write(bytes, 0, bytes.Length);
         }
 
-        var r = Zipper.Extract(zipPath);
+        var r = Zipper.Extract(zipPath, NoPasswords, null);
 
         Assert.Equal("error", r.Status);
+        Assert.Contains("outside", r.Message);
         Assert.False(File.Exists(Path.Combine(_dir, "evil.txt")));
+        Assert.False(File.Exists(Path.Combine(Path.GetPathRoot(Path.GetFullPath(_dir))!, "evil.txt")));
+        Assert.False(File.Exists(@"C:\evil.txt"));
         Assert.False(Directory.Exists(Path.Combine(_dir, "slip")));
     }
 
@@ -323,7 +385,7 @@ public class ZipperTests : IDisposable
         var path = Path.Combine(_dir, "junk.zip");
         File.WriteAllBytes(path, Encoding.UTF8.GetBytes("this is not a zip"));
 
-        var r = Zipper.Extract(path);   // must not throw
+        var r = Zipper.Extract(path, NoPasswords, null);   // must not throw
 
         Assert.Equal("error", r.Status);
         Assert.Contains("not a valid zip", r.Message);
@@ -356,7 +418,7 @@ public class ZipperTests : IDisposable
         var sentinel = Path.Combine(peerDir, "sentinel.txt");
         File.WriteAllText(sentinel, "not touched");
 
-        var r = Zipper.Extract(path, pickOutputDir: _ => peerDir);
+        var r = Zipper.Extract(path, NoPasswords, null, pickOutputDir: _ => peerDir);
 
         Assert.Equal("error", r.Status);
         Assert.True(Directory.Exists(peerDir));
@@ -411,5 +473,233 @@ public class ZipperTests : IDisposable
         // The archive really is the new one, not the old file left in place.
         using var archive = System.IO.Compression.ZipFile.OpenRead(dest);
         Assert.Equal("doc.txt", Assert.Single(archive.Entries).FullName);
+    }
+
+    // ------------------------------------------------------ passwords
+
+    [Theory]
+    [InlineData(0)]     // ZipCrypto
+    [InlineData(256)]   // WinZip AES
+    public void ALockedZipExtractsWithTheRightCandidateAndNeverAsks(int aesKeySize)
+    {
+        var zipPath = MakeLockedZip("locked.zip", "right", aesKeySize, ("a.txt", "aaa"), ("sub/b.txt", "bbb"));
+
+        var r = Zipper.Extract(zipPath, new[] { "nope", "right" }, NeverAsked);
+
+        Assert.Equal("ok", r.Status);
+        var outDir = Path.Combine(_dir, "locked");
+        Assert.Equal("aaa", File.ReadAllText(Path.Combine(outDir, "a.txt")));
+        Assert.Equal("bbb", File.ReadAllText(Path.Combine(outDir, "sub", "b.txt")));
+    }
+
+    [Fact]
+    public void WhenNoCandidateOpensItThePromptIsAskedForTheArchiveItself()
+    {
+        var zipPath = MakeLockedZip("asked.zip", "right", 0, ("a.txt", "aaa"));
+        var requests = new List<PasswordRequest>();
+
+        var r = Zipper.Extract(zipPath, new[] { "nope" }, req => { requests.Add(req); return "right"; });
+
+        Assert.Equal("ok", r.Status);
+        var req = Assert.Single(requests);
+        Assert.Equal("asked.zip", req.Item);
+        Assert.Null(req.Inside);
+        Assert.False(req.PreviousAttemptFailed);
+    }
+
+    [Fact]
+    public void AWrongTypedPasswordIsAskedAgainWithTheFailedFlag()
+    {
+        var zipPath = MakeLockedZip("twice.zip", "right", 0, ("a.txt", "aaa"));
+        var answers = new Queue<string?>(new[] { "bad", "right" });
+        var flags = new List<bool>();
+
+        var r = Zipper.Extract(zipPath, NoPasswords, req => { flags.Add(req.PreviousAttemptFailed); return answers.Dequeue(); });
+
+        Assert.Equal("ok", r.Status);
+        Assert.Equal(new[] { false, true }, flags);
+    }
+
+    [Fact]
+    public void SkippingThePromptIsNeedsPasswordAndLeavesNoFolder()
+    {
+        var zipPath = MakeLockedZip("skipped.zip", "right", 0, ("a.txt", "aaa"));
+
+        var r = Zipper.Extract(zipPath, new[] { "nope" }, _ => null);
+
+        Assert.Equal("needs_password", r.Status);
+        Assert.Null(r.OutputFolder);
+        Assert.False(Directory.Exists(Path.Combine(_dir, "skipped")));
+    }
+
+    [Fact]
+    public void WithNoPromptALockedZipNobodyCanOpenIsNeedsPassword()
+    {
+        var zipPath = MakeLockedZip("noask.zip", "right", 0, ("a.txt", "aaa"));
+        var r = Zipper.Extract(zipPath, new[] { "nope" }, ask: null);
+        Assert.Equal("needs_password", r.Status);
+        Assert.False(Directory.Exists(Path.Combine(_dir, "noask")));
+    }
+
+    /// <summary>The correctness rule behind the CRC check. ZipCrypto's header
+    /// check is one byte, so about 1 wrong password in 256 passes it — and on
+    /// a STORED entry there is no Deflate to choke on the garbage: measured
+    /// 2026-08-28, "wrong147" read 39 bytes silently with the CRC wrong.
+    /// The header's 12 random bytes make the colliding password different
+    /// every time the fixture is built, so the test finds one at runtime by
+    /// asking SharpZipLib directly, then proves Zipper still refuses it.</summary>
+    [Fact]
+    public void AWrongPasswordThatPassesTheCheckByteIsStillRejected()
+    {
+        var zipPath = MakeStoredLockedZip("collide.zip", "right", "stored zipcrypto entry with a known crc");
+
+        string? collider = null;
+        using (var zip = new SzlZipFile(zipPath))
+        {
+            var entry = zip[0];
+            for (var i = 0; i < 20000 && collider is null; i++)
+            {
+                zip.Password = "wrong" + i;
+                try
+                {
+                    using var s = zip.GetInputStream(entry);   // throws "Invalid password" unless the check byte matches
+                    collider = "wrong" + i;
+                }
+                catch (ZipException) { }
+            }
+        }
+        Assert.NotNull(collider);   // (255/256)^20000 — a miss here means the fixture is not ZipCrypto
+
+        var extracted = Zipper.Extract(zipPath, new[] { collider! }, ask: null);
+        Assert.Equal("needs_password", extracted.Status);
+        Assert.False(Directory.Exists(Path.Combine(_dir, "collide")));
+
+        var probed = Zipper.Probe(zipPath, new[] { collider! });
+        Assert.Equal("needs_password", probed.Status);
+    }
+
+    [Fact]
+    public void MixedEncryptedAndPlainEntriesExtractTogether()
+    {
+        var zipPath = Path.Combine(_dir, "mixed.zip");
+        using (var fs = File.Create(zipPath))
+        using (var zos = new ZipOutputStream(fs))
+        {
+            void Put(string name, string content, string? password)
+            {
+                zos.Password = password;
+                var bytes = Encoding.UTF8.GetBytes(content);
+                zos.PutNextEntry(new ZipEntry(name) { Size = bytes.Length, AESKeySize = 0 });
+                zos.Write(bytes, 0, bytes.Length);
+                zos.CloseEntry();
+            }
+            Put("plain.txt", "plain", null);
+            Put("locked.txt", "locked", "right");
+        }
+
+        var r = Zipper.Extract(zipPath, new[] { "right" }, NeverAsked);
+
+        Assert.Equal("ok", r.Status);
+        Assert.Equal("plain", File.ReadAllText(Path.Combine(_dir, "mixed", "plain.txt")));
+        Assert.Equal("locked", File.ReadAllText(Path.Combine(_dir, "mixed", "locked.txt")));
+    }
+
+    /// <summary>One password per archive: the password that opens the
+    /// smallest encrypted entry is used for all of them, and an entry that
+    /// rejects it fails the zip naming that entry — never a half-extracted
+    /// folder left behind.</summary>
+    [Fact]
+    public void ALaterEntryWithADifferentPasswordFailsTheZipNamingIt()
+    {
+        var zipPath = Path.Combine(_dir, "two-passwords.zip");
+        using (var fs = File.Create(zipPath))
+        using (var zos = new ZipOutputStream(fs))
+        {
+            void Put(string name, string content, string password)
+            {
+                zos.Password = password;
+                var bytes = Encoding.UTF8.GetBytes(content);
+                zos.PutNextEntry(new ZipEntry(name) { Size = bytes.Length, AESKeySize = 0 });
+                zos.Write(bytes, 0, bytes.Length);
+                zos.CloseEntry();
+            }
+            Put("small.txt", "s", "right");                              // the smallest — the probe entry
+            Put("other.txt", "a much longer entry body here", "different");
+        }
+
+        var r = Zipper.Extract(zipPath, new[] { "right" }, NeverAsked);
+
+        Assert.Equal("error", r.Status);
+        Assert.Contains("other.txt", r.Message);
+        Assert.False(Directory.Exists(Path.Combine(_dir, "two-passwords")));
+    }
+
+    // ---------------------------------------------------------- Probe
+
+    [Fact]
+    public void ProbeReportsNotEncryptedForAPlainZip()
+    {
+        var zipPath = MakeZip("plain.zip", ("a.txt", "aaa"));
+        var r = Zipper.Probe(zipPath, new[] { "irrelevant" });
+        Assert.Equal("not_encrypted", r.Status);
+        Assert.Null(r.MatchedIndex);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(256)]
+    public void ProbeReportsReadyWithTheIndexOfTheCandidateThatOpensIt(int aesKeySize)
+    {
+        var zipPath = MakeLockedZip("ready.zip", "right", aesKeySize, ("a.txt", "aaa"));
+        var r = Zipper.Probe(zipPath, new[] { "nope", "right" });
+        Assert.Equal("ready", r.Status);
+        Assert.Equal(1, r.MatchedIndex);
+    }
+
+    [Fact]
+    public void ProbeReportsNeedsPasswordWhenNoCandidateOpensIt()
+    {
+        var zipPath = MakeLockedZip("needs.zip", "right", 0, ("a.txt", "aaa"));
+        var r = Zipper.Probe(zipPath, new[] { "nope" });
+        Assert.Equal("needs_password", r.Status);
+        Assert.Null(r.MatchedIndex);
+    }
+
+    [Fact]
+    public void ProbeReportsUnreadableForSomethingThatIsNotAZip()
+    {
+        var path = Path.Combine(_dir, "junk.zip");
+        File.WriteAllBytes(path, Encoding.UTF8.GetBytes("this is not a zip"));
+        var r = Zipper.Probe(path, new[] { "x" });
+        Assert.Equal("unreadable", r.Status);
+        Assert.Contains("not a valid zip", r.Message);
+    }
+
+    /// <summary>The probe writes nothing, anywhere — the same promise
+    /// UnlockProbeWritesNothingTests holds Unlock.ProbeReadiness to, proven
+    /// the same way: names, sizes and mtimes of the fixture directory before
+    /// and after, and no new "ordosort_*" file at the top of %TEMP%.</summary>
+    [Fact]
+    public void ProbeWritesNothing()
+    {
+        MakeZip("plain.zip", ("a.txt", "aaa"));
+        MakeLockedZip("ready.zip", "aaa", 0, ("a.txt", "aaa"));
+        MakeLockedZip("needs.zip", "zzz", 256, ("a.txt", "aaa"));
+        File.WriteAllBytes(Path.Combine(_dir, "junk.zip"), Encoding.UTF8.GetBytes("junk"));
+
+        static (string, long, DateTime)[] Snapshot(string dir) => Directory.GetFiles(dir)
+            .Select(f => (Path.GetFileName(f)!, new FileInfo(f).Length, File.GetLastWriteTimeUtc(f)))
+            .OrderBy(t => t.Item1, StringComparer.Ordinal).ToArray();
+        var before = Snapshot(_dir);
+        var tempBefore = Directory.GetFiles(Path.GetTempPath(), "ordosort_*").ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        Zipper.Probe(Path.Combine(_dir, "plain.zip"), new[] { "x" });
+        Zipper.Probe(Path.Combine(_dir, "ready.zip"), new[] { "aaa" });
+        Zipper.Probe(Path.Combine(_dir, "needs.zip"), new[] { "nope" });
+        Zipper.Probe(Path.Combine(_dir, "junk.zip"), new[] { "x" });
+        Zipper.Probe(Path.Combine(_dir, "missing.zip"), new[] { "x" });
+
+        Assert.Equal(before, Snapshot(_dir));
+        Assert.Empty(Directory.GetFiles(Path.GetTempPath(), "ordosort_*").Except(tempBefore, StringComparer.OrdinalIgnoreCase));
     }
 }

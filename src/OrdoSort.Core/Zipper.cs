@@ -1,4 +1,9 @@
 using System.IO.Compression;
+using ICSharpCode.SharpZipLib;
+using ICSharpCode.SharpZipLib.Checksum;
+using ICSharpCode.SharpZipLib.Zip;
+using SzlZipFile = ICSharpCode.SharpZipLib.Zip.ZipFile;
+using ZipFile = System.IO.Compression.ZipFile;
 
 namespace OrdoSort.Core;
 
@@ -36,22 +41,45 @@ namespace OrdoSort.Core;
 /// that already existed — created by another process, or a user in Explorer —
 /// could get deleted, contents and all, the moment extraction into it failed).
 ///
-/// ZipSlip: <see cref="Extract(string)"/> hands the whole zip to
-/// <see cref="ZipFile.ExtractToDirectory(string, string)"/>, which since
-/// .NET's original 4.5/Core ZipFile implementation has always refused to
-/// extract an entry whose resolved path would land outside the destination
-/// directory — a crafted entry name like "..\evil.txt" throws an IOException
-/// rather than writing outside the folder this method just created. That
-/// runtime guarantee is LOAD-BEARING here: this class does no path-safety
-/// checking of its own on the way in, and depends entirely on the framework
-/// call refusing the traversal before a single byte lands outside `dir`. See
-/// ZipperTests' ZipSlip pin test, which exists specifically to catch a
-/// regression (or a .NET version) where that guarantee stops holding.
+/// Reading goes through SharpZipLib (2026-08-28): it decrypts ZipCrypto and
+/// WinZip-AES archives, which System.IO.Compression cannot, so Extract and
+/// Probe take the candidate passwords the caller knows and an `ask`
+/// callback for the ones it doesn't (see <see cref="Passwords.Resolve"/>).
+/// Creation stays on System.IO.Compression: output is never encrypted, and
+/// ZipFile.Open's atomic CreateNew above is proven.
+///
+/// Two things the old reader did for free are this class's own now, and
+/// both are correctness rules rather than niceties:
+///
+/// ZipSlip: ZipFile.ExtractToDirectory refused any entry resolving outside
+/// the destination. SharpZipLib hands entry names back exactly as the
+/// archive stored them — measured: "..\evil.txt", "/rooted.txt" and
+/// "C:\drive.txt" all arrive verbatim from an archive another tool wrote —
+/// so <see cref="GuardedTarget"/> resolves every entry's full path itself
+/// and refuses one that does not sit under the output folder before a byte
+/// is written. ZipperTests' ZipSlip theory pins all four forms.
+///
+/// Verification: ZipCrypto's header check is one byte, so 1 wrong password
+/// in 256 passes it and yields garbage — silently, on a stored entry
+/// (measured 2026-08-28: "wrong147" read 39 bytes with the CRC wrong). So a
+/// password counts only if the entry decrypts AND its CRC matches; AES
+/// entries store no CRC (AE-2 writes zero) and are authenticated by
+/// SharpZipLib itself at end of stream instead, which is why every read
+/// runs to the END of the entry. The probe verifies against the smallest
+/// encrypted entry, which bounds its cost; Extract verifies every entry it
+/// writes. One password per archive: the one that opens the smallest
+/// encrypted entry is set for all of them, and an entry that rejects it
+/// fails the zip naming that entry.
 /// </summary>
 public static class Zipper
 {
     public sealed record ZipResult(string Status, string? Output, string Message = "");   // "ok" | "error"
-    public sealed record UnzipResult(string Zip, string Status, string? OutputFolder, string Message = "");  // "ok" | "error"
+    public sealed record UnzipResult(string Zip, string Status, string? OutputFolder, string Message = "");  // "ok" | "needs_password" | "error"
+
+    /// <summary>The read-only readiness verdict for one archive — the zip
+    /// side of Unlock.ProbeReadiness. not_encrypted | ready (with the index
+    /// into the candidates that opened it) | needs_password | unreadable.</summary>
+    public sealed record ZipProbeResult(string Zip, string Status, int? MatchedIndex = null, string Message = "");
 
     /// <summary>Zip every file/folder in <paramref name="paths"/> into one
     /// archive. Entries that no longer exist by the time this runs are
@@ -257,11 +285,15 @@ public static class Zipper
     /// <summary>Extract every entry in <paramref name="zipPath"/> into a
     /// fresh sibling folder named after the zip (collision-suffixed via
     /// <see cref="Collision.FreeDirectory"/>, so re-extracting the same zip
-    /// never overwrites a previous run's output). See the class doc comment
-    /// for why <see cref="ZipFile.ExtractToDirectory(string, string)"/>'s own
-    /// traversal protection is load-bearing for this method's path safety,
-    /// and for the created-gate discipline the cleanup below follows.</summary>
-    public static UnzipResult Extract(string zipPath) => Extract(zipPath, pickOutputDir: null);
+    /// never overwrites a previous run's output). A locked archive is opened
+    /// with the first of <paramref name="candidates"/> that verifies, else
+    /// with what <paramref name="ask"/> supplies; a skipped prompt (or no
+    /// prompt at all) is "needs_password" and nothing is written. See the
+    /// class doc comment for the path guard, the verification rule, and the
+    /// created-gate discipline the cleanup below follows.</summary>
+    public static UnzipResult Extract(string zipPath, IReadOnlyList<string> candidates,
+        Func<PasswordRequest, string?>? ask) =>
+        Extract(zipPath, candidates, ask, pickOutputDir: null);
 
     /// <summary>Test seam for the created-gate cleanup (see ExtractCore's own
     /// comment on `created`): <paramref name="pickOutputDir"/> defaults to
@@ -271,12 +303,13 @@ public static class Zipper
     /// in Explorer) claiming that exact folder in the gap between the real
     /// FreeDirectory probe and this call's own Directory.Exists check,
     /// without needing real thread timing to provoke it. Same shape as
-    /// ZipMerge.MergeZip's internal pickOutput seam.</summary>
-    internal static UnzipResult Extract(string zipPath, Func<string, string>? pickOutputDir)
+    /// PdfMerge.MergeZip's internal pickOutput seam.</summary>
+    internal static UnzipResult Extract(string zipPath, IReadOnlyList<string> candidates,
+        Func<PasswordRequest, string?>? ask, Func<string, string>? pickOutputDir)
     {
         try
         {
-            return ExtractCore(zipPath, pickOutputDir ?? Collision.FreeDirectory);
+            return ExtractCore(zipPath, candidates, ask, pickOutputDir ?? Collision.FreeDirectory);
         }
         catch (Exception ex)
         {
@@ -284,48 +317,233 @@ public static class Zipper
         }
     }
 
-    private static UnzipResult ExtractCore(string zipPath, Func<string, string> pickOutputDir)
+    private static UnzipResult ExtractCore(string zipPath, IReadOnlyList<string> candidates,
+        Func<PasswordRequest, string?>? ask, Func<string, string> pickOutputDir)
     {
-        var zipDir = Path.GetDirectoryName(Path.GetFullPath(zipPath))!;
-        var zipStem = Path.GetFileNameWithoutExtension(zipPath);
-        var dir = pickOutputDir(Path.Combine(zipDir, zipStem));
-
-        // Directory.CreateDirectory is idempotent — unlike ZipFile.Open's
-        // FileMode.CreateNew for the CreateZip file path, it does NOT throw
-        // just because `dir` already exists (empty or not), so "did THIS
-        // call create it" can't be inferred from CreateDirectory succeeding
-        // the way `created = true` right after ZipFile.Open works above.
-        // Instead `created` is decided by an explicit existence check taken
-        // immediately before the create call — Collision.FreeDirectory (or
-        // whatever pickOutputDir returns) only proves the name was free AT
-        // CHECK TIME, and another process/user can still claim it in the gap
-        // before this line runs. See the class doc comment for why this is a
-        // narrowed race window, not the atomic guarantee the file path gets.
-        var created = false;
+        SzlZipFile zip;
         try
         {
-            created = !Directory.Exists(dir);
-            Directory.CreateDirectory(dir);
-            ZipFile.ExtractToDirectory(zipPath, dir);
-            return new UnzipResult(zipPath, "ok", dir);
+            zip = new SzlZipFile(zipPath);
         }
-        catch (InvalidDataException)
+        catch (ZipException)
         {
-            // ZipArchive's own "this isn't a zip" exception — readable voice
-            // for what is, from the user's side, just a bad file.
-            if (created) RemoveDirectoryQuietly(dir);
+            // "Cannot find central directory" — readable voice for what is,
+            // from the user's side, just a bad file.
             return new UnzipResult(zipPath, "error", null, "not a valid zip");
+        }
+
+        using (zip)
+        {
+            var entries = zip.Cast<ZipEntry>().ToList();
+
+            // Passwords are settled BEFORE the output folder exists: a skipped
+            // prompt must leave nothing behind, and there is nothing to clean up
+            // if nothing was created.
+            var archive = UnlockArchive(zip, entries, candidates, ask, Path.GetFileName(zipPath));
+            if (archive.Status == "needs_password")
+                return new UnzipResult(zipPath, "needs_password", null, "needs a password");
+            if (archive.Status == "unreadable")
+                return new UnzipResult(zipPath, "error", null, "couldn't extract: an encrypted entry couldn't be read");
+
+            var zipDir = Path.GetDirectoryName(Path.GetFullPath(zipPath))!;
+            var zipStem = Path.GetFileNameWithoutExtension(zipPath);
+            var dir = pickOutputDir(Path.Combine(zipDir, zipStem));
+
+            // Directory.CreateDirectory is idempotent — unlike ZipFile.Open's
+            // FileMode.CreateNew for the CreateZip file path, it does NOT throw
+            // just because `dir` already exists (empty or not), so "did THIS
+            // call create it" can't be inferred from CreateDirectory succeeding
+            // the way `created = true` right after ZipFile.Open works above.
+            // Instead `created` is decided by an explicit existence check taken
+            // immediately before the create call — Collision.FreeDirectory (or
+            // whatever pickOutputDir returns) only proves the name was free AT
+            // CHECK TIME, and another process/user can still claim it in the gap
+            // before this line runs. See the class doc comment for why this is a
+            // narrowed race window, not the atomic guarantee the file path gets.
+            var created = false;
+            try
+            {
+                created = !Directory.Exists(dir);
+                Directory.CreateDirectory(dir);
+                foreach (var entry in entries) WriteEntry(zip, entry, dir);
+                return new UnzipResult(zipPath, "ok", dir);
+            }
+            catch (Exception ex)
+            {
+                // Covers the path guard's refusal, a wrong-password entry
+                // failing verification, and ordinary IO failures (locked file,
+                // gone share, out of disk space mid-extract).
+                if (created) RemoveDirectoryQuietly(dir);
+                return new UnzipResult(zipPath, "error", null, $"couldn't extract: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>Read-only readiness check: does one of <paramref name="candidates"/>
+    /// already open this archive? Never writes, moves or deletes anything —
+    /// ZipperTests.ProbeWritesNothing holds it to that. The verdicts mirror
+    /// Unlock.ProbeReadiness's, minus in_use (an archive is opened once,
+    /// read-shared, and a locked one surfaces as unreadable).</summary>
+    public static ZipProbeResult Probe(string zipPath, IReadOnlyList<string> candidates)
+    {
+        try
+        {
+            using var zip = new SzlZipFile(zipPath);
+            var entries = zip.Cast<ZipEntry>().ToList();
+            var archive = UnlockArchive(zip, entries, candidates, ask: null, Path.GetFileName(zipPath));
+            return archive.Status switch
+            {
+                "not_encrypted" => new ZipProbeResult(zipPath, "not_encrypted", Message: "This zip isn't password-protected."),
+                "opened" => new ZipProbeResult(zipPath, "ready", archive.MatchedIndex, "A saved password opens this."),
+                "needs_password" => new ZipProbeResult(zipPath, "needs_password",
+                    Message: "This zip needs a password none of the saved ones supply."),
+                _ => new ZipProbeResult(zipPath, "unreadable", Message: "An encrypted entry couldn't be read."),
+            };
+        }
+        catch (ZipException)
+        {
+            return new ZipProbeResult(zipPath, "unreadable", Message: "not a valid zip");
         }
         catch (Exception ex)
         {
-            // Covers everything else, including the IOException
-            // ZipFile.ExtractToDirectory throws when an entry's resolved
-            // path would land outside `dir` (the ZipSlip guard the class
-            // doc comment describes) and ordinary IO failures (locked file,
-            // gone share, out of disk space mid-extract).
-            if (created) RemoveDirectoryQuietly(dir);
-            return new UnzipResult(zipPath, "error", null, $"couldn't extract: {ex.Message}");
+            return new ZipProbeResult(zipPath, "unreadable", Message: $"Couldn't read it: {ex.Message}");
         }
+    }
+
+    /// <summary>Settles the archive's password when any entry is encrypted:
+    /// "not_encrypted" when none is (nothing to do); otherwise
+    /// <see cref="Passwords.Resolve"/> over the smallest encrypted entry, and
+    /// on "opened" the password is left set on <paramref name="zip"/> for
+    /// every later read. Internal so PdfMerge opens archives exactly this way.</summary>
+    internal static PasswordResolution UnlockArchive(SzlZipFile zip, IReadOnlyList<ZipEntry> entries,
+        IReadOnlyList<string> candidates, Func<PasswordRequest, string?>? ask, string zipName)
+    {
+        var probeEntry = SmallestEncryptedEntry(entries);
+        if (probeEntry is null) return new PasswordResolution("not_encrypted");
+
+        var resolution = Passwords.Resolve(candidates, ask, zipName, inside: null,
+            password => Decrypts(zip, probeEntry, password));
+        if (resolution.Status == "opened") zip.Password = resolution.Password;
+        return resolution;
+    }
+
+    /// <summary>The whole decrypted entry, verified (see <see cref="CopyVerified"/>).
+    /// Throws InvalidDataException when it does not verify. Internal for
+    /// PdfMerge, which buffers PDF entries the same way.</summary>
+    internal static byte[] ReadEntry(SzlZipFile zip, ZipEntry entry)
+    {
+        using var output = new MemoryStream();
+        using (var input = zip.GetInputStream(entry))
+        {
+            if (!CopyVerified(input, entry, output))
+                throw new InvalidDataException($"'{entry.Name}' didn't decrypt cleanly — wrong password or a damaged entry");
+        }
+        return output.ToArray();
+    }
+
+    private static ZipEntry? SmallestEncryptedEntry(IReadOnlyList<ZipEntry> entries)
+    {
+        ZipEntry? smallest = null;
+        foreach (var entry in entries)
+        {
+            if (!entry.IsCrypted || !entry.IsFile) continue;
+            if (smallest is null || entry.Size < smallest.Size) smallest = entry;
+        }
+        return smallest;
+    }
+
+    /// <summary>One attempt with one password against one entry, read to the
+    /// END of the stream so ZipCrypto's CRC can be compared and AES's
+    /// authentication code gets checked. SharpZipLib's own exceptions —
+    /// "Invalid password" from the header check, an inflater choking on
+    /// garbage, the AES code failing — are all the same answer: wrong
+    /// password. Anything else (an IO failure) is unreadable.</summary>
+    private static PasswordTry Decrypts(SzlZipFile zip, ZipEntry entry, string password)
+    {
+        zip.Password = password;
+        try
+        {
+            using var stream = zip.GetInputStream(entry);
+            return CopyVerified(stream, entry, Stream.Null) ? PasswordTry.Opened : PasswordTry.WrongPassword;
+        }
+        catch (SharpZipBaseException)
+        {
+            return PasswordTry.WrongPassword;
+        }
+        catch (Exception)
+        {
+            return PasswordTry.Unreadable;
+        }
+    }
+
+    /// <summary>Copies an entry's decrypted bytes to <paramref name="destination"/>,
+    /// computing the CRC on the way. False when an encrypted, non-AES entry's
+    /// CRC does not match what the archive recorded — the only thing that
+    /// catches a wrong password the 1-byte header check let through. Plain
+    /// entries are not second-guessed (the old reader never checked them
+    /// either), and AES entries store no CRC at all (measured: entry.Crc is
+    /// 0) — SharpZipLib authenticates those itself at end of stream, which is
+    /// why this always reads to the end.</summary>
+    private static bool CopyVerified(Stream source, ZipEntry entry, Stream destination)
+    {
+        var crc = new Crc32();
+        var buffer = new byte[81920];
+        int read;
+        while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            crc.Update(new ArraySegment<byte>(buffer, 0, read));
+            destination.Write(buffer, 0, read);
+        }
+        if (!entry.IsCrypted || entry.AESKeySize > 0) return true;
+        return (uint)crc.Value == (uint)entry.Crc;
+    }
+
+    private static void WriteEntry(SzlZipFile zip, ZipEntry entry, string dir)
+    {
+        var target = GuardedTarget(dir, entry.Name);
+        if (entry.IsDirectory)
+        {
+            Directory.CreateDirectory(target);
+            return;
+        }
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        // CreateNew, so a duplicate entry path fails loudly instead of the
+        // second one silently overwriting the first — the behaviour
+        // ZipFile.ExtractToDirectory had, and which CreateZip's in-archive
+        // dedupe exists to avoid producing.
+        using var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write);
+        try
+        {
+            using var input = zip.GetInputStream(entry);
+            if (!CopyVerified(input, entry, output))
+                throw new InvalidDataException($"'{entry.Name}' didn't decrypt cleanly — wrong password or a damaged entry");
+        }
+        catch (SharpZipBaseException ex)
+        {
+            // One password per archive: an entry the archive's password does
+            // not open ("Invalid password" from its header check, or the
+            // inflater/AES check failing further in) fails the zip NAMING
+            // the entry — SharpZipLib's own message never says which one.
+            throw new InvalidDataException(
+                $"'{entry.Name}' didn't decrypt cleanly — wrong password or a damaged entry ({ex.Message})");
+        }
+    }
+
+    /// <summary>The ZipSlip guard. Resolves where <paramref name="entryName"/>
+    /// would land and refuses anything not strictly under <paramref name="dir"/>:
+    /// ".." segments resolve above it, a rooted name ("/evil.txt") resolves to
+    /// the drive root, and a drive-qualified one ("C:\evil.txt") makes
+    /// Path.Combine discard the folder altogether — all three arrive verbatim
+    /// from SharpZipLib. Checked before a byte is written; the caller's
+    /// created-gate cleanup removes whatever this call created up to then.</summary>
+    private static string GuardedTarget(string dir, string entryName)
+    {
+        var relative = entryName.Replace('/', Path.DirectorySeparatorChar);
+        var root = Path.GetFullPath(dir).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var full = Path.GetFullPath(Path.Combine(root, relative));
+        if (Path.IsPathRooted(relative) || !full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"refused '{entryName}' — it would land outside the output folder");
+        return full;
     }
 
     private static void RemoveFileQuietly(string path)

@@ -27,7 +27,9 @@ public sealed class ZipExtractViewModel : ZipListViewModel
     {
         _dialogs = dialogs;
         _zipper = zipper ?? Zipper.CreateZip;
-        _extractor = extractor ?? Zipper.Extract;
+        // No passwords yet — Task 6 threads the window's candidates and its
+        // prompt through here; until then a locked zip reports needs_password.
+        _extractor = extractor ?? (path => Zipper.Extract(path, Array.Empty<string>(), null));
 
         ZipCommand = new AsyncRelayCommand(() => ZipAsync(null), () => Rows.Count > 0);
         ZipAsCommand = new AsyncRelayCommand(ZipWithDialogAsync, () => Rows.Count > 0);
