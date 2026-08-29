@@ -20,8 +20,11 @@ public sealed class ZipToolsViewModel
     public ZipToolsViewModel(IDialogService dialogs, SynchronizationContext? uiContext = null,
         IWorkScheduler? scheduler = null)
     {
-        ZipExtract = new ZipExtractViewModel(dialogs, scheduler, uiContext);
-        MergePdfs = new MergePdfsViewModel(scheduler, uiContext);
+        // No saved passwords through this shell: it is deleted in Task 9,
+        // when the windows construct their own view models with the list
+        // MainWindow hands them.
+        ZipExtract = new ZipExtractViewModel(dialogs, Array.Empty<string>(), scheduler, uiContext);
+        MergePdfs = new MergePdfsViewModel(dialogs, scheduler, uiContext);
     }
 
     public void Cancel()

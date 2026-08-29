@@ -4,36 +4,37 @@ using OrdoSort.Wpf.Services;
 
 namespace OrdoSort.Wpf.ViewModels;
 
-/// <summary>The Zip &amp; unzip tab: one list holding files, folders and
+/// <summary>The Zip and unzip window: one list holding files, folders and
 /// archives, and the buttons light from what is in it. Zip folds the whole
-/// list into one archive; Extract maps each pending archive to its own
+/// list into one archive; Extract maps each runnable archive to its own
 /// sibling folder. They are inverse operations on the same objects, which is
 /// why one list serves both and nobody has to pick a mode.
 ///
 /// Every button carries its own count ("Zip 5 items", "Extract 2 zips"), so a
 /// mixed list states each action's scope rather than leaving it to be
-/// inferred.</summary>
+/// inferred. A locked archive is probed as it is added (the saved passwords
+/// only — see the base class) and, at Extract time, opened with the
+/// window's candidates or the prompt; a skipped prompt leaves it runnable.</summary>
 public sealed class ZipExtractViewModel : ZipListViewModel
 {
-    private readonly IDialogService _dialogs;
     private readonly Func<IReadOnlyList<string>, string?, Zipper.ZipResult> _zipper;
-    private readonly Func<string, Zipper.UnzipResult> _extractor;
+    private readonly Func<string, IReadOnlyList<string>, Func<PasswordRequest, string?>?, Zipper.UnzipResult> _extractor;
+    private readonly Func<string, IReadOnlyList<string>, Zipper.ZipProbeResult> _zipProbe;
 
-    public ZipExtractViewModel(IDialogService dialogs, IWorkScheduler? scheduler = null,
-        SynchronizationContext? uiContext = null,
+    public ZipExtractViewModel(IDialogService dialogs, IReadOnlyList<string> savedPasswords,
+        IWorkScheduler? scheduler = null, SynchronizationContext? uiContext = null,
         Func<IReadOnlyList<string>, string?, Zipper.ZipResult>? zipper = null,
-        Func<string, Zipper.UnzipResult>? extractor = null)
-        : base(scheduler, uiContext)
+        Func<string, IReadOnlyList<string>, Func<PasswordRequest, string?>?, Zipper.UnzipResult>? extractor = null,
+        Func<string, IReadOnlyList<string>, Zipper.ZipProbeResult>? zipProbe = null)
+        : base(dialogs, savedPasswords, scheduler, uiContext)
     {
-        _dialogs = dialogs;
         _zipper = zipper ?? Zipper.CreateZip;
-        // No passwords yet — Task 6 threads the window's candidates and its
-        // prompt through here; until then a locked zip reports needs_password.
-        _extractor = extractor ?? (path => Zipper.Extract(path, Array.Empty<string>(), null));
+        _extractor = extractor ?? Zipper.Extract;
+        _zipProbe = zipProbe ?? Zipper.Probe;
 
         ZipCommand = new AsyncRelayCommand(() => ZipAsync(null), () => Rows.Count > 0);
         ZipAsCommand = new AsyncRelayCommand(ZipWithDialogAsync, () => Rows.Count > 0);
-        ExtractCommand = new AsyncRelayCommand(ExtractAsync, () => PendingZips > 0);
+        ExtractCommand = new AsyncRelayCommand(ExtractAsync, () => RunnableZips > 0);
     }
 
     /// <summary>Anything that exists — a PDF is valid input here, just for
@@ -42,7 +43,12 @@ public sealed class ZipExtractViewModel : ZipListViewModel
 
     protected override string IntakeNoun => "item";
 
-    private int PendingZips => Rows.Count(r => r.IsZip && r.StatusKind == ZipItemRowStatus.Pending);
+    private int RunnableZips => Rows.Count(r => r.IsZip && r.IsRunnable);
+
+    /// <summary>Archives only: a loose file or a folder needs nothing said
+    /// about it before Zip folds it in.</summary>
+    protected override (ZipItemRowStatus Status, string Note)? Probe(ZipItemRow row, IReadOnlyList<string> savedPasswords) =>
+        row.IsZip ? FromZipProbe(_zipProbe(row.Path, savedPasswords)) : null;
 
     protected override void OnRowsChanged()
     {
@@ -65,9 +71,10 @@ public sealed class ZipExtractViewModel : ZipListViewModel
         var n => $"Zip {n} items",
     };
 
-    /// <summary>Counts only the archives a click would actually act on, so a
-    /// mixed list cannot overstate this button's reach.</summary>
-    public string ExtractButtonText => PendingZips switch
+    /// <summary>Counts only the archives a click would actually act on —
+    /// pending ones and ones still waiting for a password — so a mixed list
+    /// cannot overstate this button's reach.</summary>
+    public string ExtractButtonText => RunnableZips switch
     {
         0 => "Extract",
         1 => "Extract 1 zip",
@@ -96,17 +103,27 @@ public sealed class ZipExtractViewModel : ZipListViewModel
     {
         if (Rows.Count == 0) return;
         var suggested = Zipper.DefaultName(Rows.Select(r => r.Path).ToList());
-        var path = _dialogs.AskSaveFile("Zip archive (*.zip)|*.zip", suggested);
+        var path = Dialogs.AskSaveFile("Zip archive (*.zip)|*.zip", suggested);
         if (path is null) return;
         await ZipAsync(path);
     }
 
-    /// <summary>The map: each pending archive into its own sibling folder.
-    /// Loose rows are never passed to the extractor.</summary>
+    /// <summary>The map: each runnable archive into its own sibling folder,
+    /// one unit per row. Loose rows are never passed to the extractor. The
+    /// candidates and the prompt are the base class's; the extractor asks
+    /// only for what none of the candidates opens.</summary>
     internal Task ExtractAsync() => RunBatchAsync(
-        _extractor,
+        Rows.Where(r => r.IsZip && r.IsRunnable)
+            .Select(row => new Unit<Zipper.UnzipResult>(new[] { row },
+                candidates => _extractor(row.Path, candidates, AskPassword)))
+            .ToList(),
         r => r.Status,
-        (row, r) => row.Apply(r),
+        (rows, r) => rows[0].Apply(r),
         "Extracting",
-        new[] { ("ok", "extracted"), ("error", "failed") });
+        new[]
+        {
+            new TallyClause("ok", "extracted"),
+            new TallyClause("needs_password", "needs a password", "need a password"),
+            new TallyClause("error", "failed"),
+        });
 }

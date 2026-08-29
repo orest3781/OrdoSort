@@ -10,7 +10,9 @@ namespace OrdoSort.Wpf.Tests;
 public class ZipItemRowTests
 {
     [Theory]
-    [InlineData(@"C:\in\a.pdf", "file")]
+    [InlineData(@"C:\in\a.pdf", "pdf")]
+    [InlineData(@"C:\in\a.PDF", "pdf")]
+    [InlineData(@"C:\in\a.txt", "file")]
     [InlineData(@"C:\in\a.ZIP", "zip")]
     [InlineData(@"C:\in\a.zip", "zip")]
     public void KindOfReadsTheExtensionForAnythingThatIsNotADirectory(string path, string expected) =>
@@ -84,5 +86,53 @@ public class ZipItemRowTests
         var row = new ZipItemRow(@"C:\in\a.zip", "zip");
         row.Apply(new PdfMerge.MergeResult(@"C:\in\a.zip", "ok", @"C:\in\a.pdf", PdfCount: 1));
         Assert.Equal("→ a.pdf (1 PDF)", row.Note);
+    }
+
+    [Fact]
+    public void ApplyingANeedsPasswordExtractLeavesTheRowRunnable()
+    {
+        var row = new ZipItemRow(@"C:\in\a.zip", "zip");
+        row.Apply(new Zipper.UnzipResult(@"C:\in\a.zip", "needs_password", null, "needs a password"));
+        Assert.Equal(ZipItemRowStatus.NeedsPassword, row.StatusKind);
+        Assert.Equal("needs a password", row.Note);
+        Assert.True(row.IsRunnable);
+        Assert.Null(row.Output);
+    }
+
+    [Fact]
+    public void ApplyingANeedsPasswordMergeKeepsTheMessageThatNamesTheEntry()
+    {
+        var row = new ZipItemRow(@"C:\in\a.zip", "zip");
+        row.Apply(new PdfMerge.MergeResult(@"C:\in\a.zip", "needs_password",
+            Message: "'report.pdf' inside needs a password", Item: "report.pdf"));
+        Assert.Equal(ZipItemRowStatus.NeedsPassword, row.StatusKind);
+        Assert.Equal("'report.pdf' inside needs a password", row.Note);
+        Assert.True(row.IsRunnable);
+    }
+
+    [Theory]
+    [InlineData(ZipItemRowStatus.Pending, true)]
+    [InlineData(ZipItemRowStatus.NeedsPassword, true)]
+    [InlineData(ZipItemRowStatus.Ok, false)]
+    [InlineData(ZipItemRowStatus.NoPdfs, false)]
+    [InlineData(ZipItemRowStatus.Error, false)]
+    public void OnlyPendingAndNeedsPasswordAreRunnable(ZipItemRowStatus status, bool runnable)
+    {
+        var row = new ZipItemRow(@"C:\in\a.zip", "zip");
+        row.Mark(status, "");
+        Assert.Equal(runnable, row.IsRunnable);
+    }
+
+    /// <summary>A probe's verdict, or "not merged — x needs a password" on a
+    /// row a culprit held back: status and note only, never Output.</summary>
+    [Fact]
+    public void MarkSetsStatusAndNoteWithoutTouchingOutput()
+    {
+        var row = new ZipItemRow(@"C:\in\a.zip", "zip");
+        row.Apply(new Zipper.UnzipResult(@"C:\in\a.zip", "ok", @"C:\in\a"));
+        row.Mark(ZipItemRowStatus.Pending, "a saved password opens this");
+        Assert.Equal(ZipItemRowStatus.Pending, row.StatusKind);
+        Assert.Equal("a saved password opens this", row.Note);
+        Assert.Equal(@"C:\in\a", row.Output);
     }
 }

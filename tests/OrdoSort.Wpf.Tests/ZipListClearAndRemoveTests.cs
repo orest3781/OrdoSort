@@ -25,7 +25,9 @@ namespace OrdoSort.Wpf.Tests;
 public class ZipListClearAndRemoveTests
 {
     private static ZipExtractViewModel MakeVm(Func<string, Zipper.UnzipResult>? extractor = null) =>
-        new(new FakeDialogs(), new InlineWorkScheduler(), uiContext: null, extractor: extractor);
+        new(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(), uiContext: null,
+            extractor: extractor is null ? null : (p, _, _) => extractor(p),
+            zipProbe: (p, _) => new Zipper.ZipProbeResult(p, "not_encrypted"));
 
     [Fact]
     public async Task ClearDuringARunCancelsTheBatchAndTheWipedStatusIsNotRepopulated()

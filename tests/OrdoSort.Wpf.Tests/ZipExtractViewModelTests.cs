@@ -1,7 +1,9 @@
 using System.IO.Compression;
+using ICSharpCode.SharpZipLib.Zip;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.ViewModels;
+using ZipFile = System.IO.Compression.ZipFile;
 
 namespace OrdoSort.Wpf.Tests;
 
@@ -19,11 +21,19 @@ namespace OrdoSort.Wpf.Tests;
 /// asserted immediately after — no polling needed.</summary>
 public class ZipExtractViewModelTests
 {
+    /// <summary>The probe defaults to "not encrypted" so every fact that is
+    /// not ABOUT probing keeps its rows Pending — the real Zipper.Probe on a
+    /// TempDir's one-byte "x" files would report every one of them
+    /// unreadable and leave nothing runnable.</summary>
     private static ZipExtractViewModel MakeVm(
         IDialogService? dialogs = null,
+        IReadOnlyList<string>? savedPasswords = null,
         Func<IReadOnlyList<string>, string?, Zipper.ZipResult>? zipper = null,
-        Func<string, Zipper.UnzipResult>? extractor = null) =>
-        new(dialogs ?? new FakeDialogs(), new InlineWorkScheduler(), uiContext: null, zipper, extractor);
+        Func<string, IReadOnlyList<string>, Func<PasswordRequest, string?>?, Zipper.UnzipResult>? extractor = null,
+        Func<string, IReadOnlyList<string>, Zipper.ZipProbeResult>? zipProbe = null,
+        SynchronizationContext? uiContext = null) =>
+        new(dialogs ?? new FakeDialogs(), savedPasswords ?? Array.Empty<string>(), new InlineWorkScheduler(), uiContext,
+            zipper, extractor, zipProbe ?? ((path, _) => new Zipper.ZipProbeResult(path, "not_encrypted")));
 
     // ---- ported from ZipViewModelTests --------------------------------
 
@@ -250,7 +260,7 @@ public class ZipExtractViewModelTests
         using var dir = new TempDir();
         var ok = dir.File("ok.zip");
         var bad = dir.File("bad.zip");
-        var vm = MakeVm(extractor: path =>
+        var vm = MakeVm(extractor: (path, _, _) =>
             path == ok
                 ? new Zipper.UnzipResult(path, "ok", Path.Combine(dir.Path, "ok"))
                 : new Zipper.UnzipResult(path, "error", null, "not a valid zip"));
@@ -275,7 +285,7 @@ public class ZipExtractViewModelTests
         using var dir = new TempDir();
         var a = dir.File("a.zip");
         var b = dir.File("b.zip");
-        var vm = MakeVm(extractor: path => new Zipper.UnzipResult(path, "ok", path + ".out"));
+        var vm = MakeVm(extractor: (path, _, _) => new Zipper.UnzipResult(path, "ok", path + ".out"));
 
         await vm.AddPaths(new[] { a, b });
         await vm.ExtractAsync();
@@ -288,7 +298,7 @@ public class ZipExtractViewModelTests
     {
         using var dir = new TempDir();
         var a = dir.File("a.zip");
-        var vm = MakeVm(extractor: path => new Zipper.UnzipResult(path, "error", null, "nope"));
+        var vm = MakeVm(extractor: (path, _, _) => new Zipper.UnzipResult(path, "error", null, "nope"));
 
         await vm.AddPaths(new[] { a });
         await vm.ExtractAsync();
@@ -302,7 +312,7 @@ public class ZipExtractViewModelTests
         using var dir = new TempDir();
         var ok = dir.File("ok.zip");
         var bad = dir.File("bad.zip");
-        var vm = MakeVm(extractor: path =>
+        var vm = MakeVm(extractor: (path, _, _) =>
             path == ok
                 ? new Zipper.UnzipResult(path, "ok", path + ".out")
                 : new Zipper.UnzipResult(path, "error", null, "boom"));
@@ -345,7 +355,7 @@ public class ZipExtractViewModelTests
     public async Task ExtractButtonTextChangeNotifiesAfterExtractFinishes()
     {
         using var dir = new TempDir();
-        var vm = MakeVm(extractor: path => new Zipper.UnzipResult(path, "ok", path + ".out"));
+        var vm = MakeVm(extractor: (path, _, _) => new Zipper.UnzipResult(path, "ok", path + ".out"));
 
         var a = dir.File("a.zip");
         var b = dir.File("b.zip");
@@ -405,7 +415,7 @@ public class ZipExtractViewModelTests
         var a = dir.File("a.zip");
         var b = dir.File("b.zip");
         var calls = new List<string>();
-        var vm = MakeVm(extractor: path =>
+        var vm = MakeVm(extractor: (path, _, _) =>
         {
             calls.Add(path);
             return new Zipper.UnzipResult(path, "ok", path + ".out");
@@ -432,7 +442,7 @@ public class ZipExtractViewModelTests
         var a = dir.File("a.zip");
         var b = dir.File("b.zip");
         ZipExtractViewModel vm = null!;
-        vm = MakeVm(extractor: path =>
+        vm = MakeVm(extractor: (path, _, _) =>
         {
             // Deterministic stand-in for "the window closed mid-batch":
             // cancel from inside the scripted extractor for the FIRST zip,
@@ -456,7 +466,7 @@ public class ZipExtractViewModelTests
     {
         using var dir = new TempDir();
         var a = dir.File("a.zip");
-        var vm = MakeVm(extractor: path => new Zipper.UnzipResult(path, "ok", path + ".out"));
+        var vm = MakeVm(extractor: (path, _, _) => new Zipper.UnzipResult(path, "ok", path + ".out"));
         await vm.AddPaths(new[] { a });
         await vm.ExtractAsync();
         Assert.NotEqual("", vm.Status);
@@ -555,7 +565,7 @@ public class ZipExtractViewModelTests
         var pdf = dir.File("a.pdf");
         var zip = dir.File("b.zip");
         var asked = new List<string>();
-        var vm = MakeVm(extractor: p =>
+        var vm = MakeVm(extractor: (p, _, _) =>
         {
             asked.Add(p);
             return new Zipper.UnzipResult(p, "ok", Path.Combine(dir.Path, "b"));
@@ -581,6 +591,216 @@ public class ZipExtractViewModelTests
 
         Assert.Equal("folder", vm.Rows.Single().Kind);
         Assert.False(vm.ExtractCommand.CanExecute(null));
+    }
+
+    // ---- passwords ---------------------------------------------------
+
+    /// <summary>A row that needed a password is not finished: the next run
+    /// asks again. No remove-and-re-add.</summary>
+    [Fact]
+    public async Task ANeedsPasswordRowIsRunAgainByTheNextExtract()
+    {
+        using var dir = new TempDir();
+        var zip = dir.File("a.zip");
+        var calls = 0;
+        var vm = MakeVm(extractor: (p, _, _) => ++calls == 1
+            ? new Zipper.UnzipResult(p, "needs_password", null, "needs a password")
+            : new Zipper.UnzipResult(p, "ok", p + ".out"));
+        await vm.AddPaths(new[] { zip });
+
+        await vm.ExtractAsync();
+        var row = Assert.Single(vm.Rows);
+        Assert.Equal(ZipItemRowStatus.NeedsPassword, row.StatusKind);
+        Assert.Equal("Extract 1 zip", vm.ExtractButtonText);
+        Assert.True(vm.ExtractCommand.CanExecute(null));
+        Assert.Equal("1 needs a password", vm.Status);
+
+        await vm.ExtractAsync();
+        Assert.Equal(ZipItemRowStatus.Ok, row.StatusKind);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public async Task TheTallyPluralisesNeedsAPassword()
+    {
+        using var dir = new TempDir();
+        var vm = MakeVm(extractor: (p, _, _) => new Zipper.UnzipResult(p, "needs_password", null, "needs a password"));
+        await vm.AddPaths(new[] { dir.File("a.zip"), dir.File("b.zip") });
+        await vm.ExtractAsync();
+        Assert.Equal("2 need a password", vm.Status);
+    }
+
+    /// <summary>The order the extractor sees: what was typed in this window,
+    /// most recent first, then the saved list. Typed once, remembered for the
+    /// next item — the prompt is reached once, not twice.</summary>
+    [Fact]
+    public async Task ATypedPasswordIsTriedBeforeTheSavedOnesOnTheNextItemWithoutASecondPrompt()
+    {
+        using var dir = new TempDir();
+        var a = dir.File("a.zip");
+        var b = dir.File("b.zip");
+        var dialogs = new FakeDialogs();
+        dialogs.PasswordAnswers.Enqueue("typed");
+        var seen = new List<IReadOnlyList<string>>();
+        var vm = MakeVm(dialogs: dialogs, savedPasswords: new[] { "saved" }, extractor: (p, candidates, ask) =>
+        {
+            seen.Add(candidates.ToList());
+            if (candidates.Contains("typed")) return new Zipper.UnzipResult(p, "ok", p + ".out");
+            var answer = ask!(new PasswordRequest(Path.GetFileName(p), null, false));
+            return answer == "typed"
+                ? new Zipper.UnzipResult(p, "ok", p + ".out")
+                : new Zipper.UnzipResult(p, "needs_password", null, "needs a password");
+        });
+
+        await vm.AddPaths(new[] { a, b });
+        await vm.ExtractAsync();
+
+        Assert.Equal(new[] { "saved" }, seen[0]);
+        Assert.Equal(new[] { "typed", "saved" }, seen[1]);
+        Assert.Single(dialogs.PasswordRequests);
+        Assert.All(vm.Rows, r => Assert.Equal(ZipItemRowStatus.Ok, r.StatusKind));
+    }
+
+    [Fact]
+    public async Task ASkippedPromptLeavesTheRowNeedingAPasswordAndNothingElseIsTouched()
+    {
+        using var dir = new TempDir();
+        var locked = dir.File("locked.zip");
+        var plain = dir.File("plain.zip");
+        var dialogs = new FakeDialogs();   // empty queue: every prompt is skipped
+        var vm = MakeVm(dialogs: dialogs, extractor: (p, _, ask) => p == locked
+            ? (ask!(new PasswordRequest("locked.zip", null, false)) is null
+                ? new Zipper.UnzipResult(p, "needs_password", null, "needs a password")
+                : new Zipper.UnzipResult(p, "ok", p + ".out"))
+            : new Zipper.UnzipResult(p, "ok", p + ".out"));
+
+        await vm.AddPaths(new[] { locked, plain });
+        await vm.ExtractAsync();
+
+        Assert.Equal(ZipItemRowStatus.NeedsPassword, vm.Rows.Single(r => r.Path == locked).StatusKind);
+        Assert.Equal(ZipItemRowStatus.Ok, vm.Rows.Single(r => r.Path == plain).StatusKind);
+        Assert.Equal("1 extracted · 1 needs a password", vm.Status);
+    }
+
+    /// <summary>A SynchronizationContext that runs what it is handed inline
+    /// but counts HOW it was handed: the prompt must cross to the UI thread
+    /// with Send — the worker waits on the person — never Post, and never
+    /// directly. The 2026-08-19 merge shipped a marshalling gap every test
+    /// hid by passing uiContext: null; this pin exists so that cannot happen
+    /// to the prompt.</summary>
+    private sealed class SendRecordingContext : SynchronizationContext
+    {
+        public int Sends { get; private set; }
+        public int Posts { get; private set; }
+        public override void Send(SendOrPostCallback d, object? state) { Sends++; d(state); }
+        public override void Post(SendOrPostCallback d, object? state) { Posts++; d(state); }
+    }
+
+    [Fact]
+    public async Task ThePromptIsMarshalledSynchronouslyOntoTheUiContext()
+    {
+        using var dir = new TempDir();
+        var zip = dir.File("a.zip");
+        var ctx = new SendRecordingContext();
+        var dialogs = new FakeDialogs();
+        dialogs.PasswordAnswers.Enqueue("typed");
+        var vm = MakeVm(dialogs: dialogs, uiContext: ctx, extractor: (p, _, ask) =>
+            ask!(new PasswordRequest("a.zip", null, false)) is null
+                ? new Zipper.UnzipResult(p, "needs_password", null, "needs a password")
+                : new Zipper.UnzipResult(p, "ok", p + ".out"));
+        await vm.AddPaths(new[] { zip });
+
+        await vm.ExtractAsync();
+
+        Assert.Equal(1, ctx.Sends);
+        Assert.Equal(ZipItemRowStatus.Ok, vm.Rows.Single().StatusKind);
+    }
+
+    // ---- the probe on add --------------------------------------------
+
+    [Theory]
+    [InlineData("not_encrypted", ZipItemRowStatus.Pending, "")]
+    [InlineData("ready", ZipItemRowStatus.Pending, "a saved password opens this")]
+    [InlineData("needs_password", ZipItemRowStatus.NeedsPassword, "needs a password")]
+    [InlineData("unreadable", ZipItemRowStatus.Error, "not a valid zip")]
+    public async Task TheProbeVerdictLandsOnTheRowAsItIsAdded(string verdict, ZipItemRowStatus expected, string note)
+    {
+        using var dir = new TempDir();
+        var zip = dir.File("a.zip");
+        var vm = MakeVm(zipProbe: (p, _) => new Zipper.ZipProbeResult(p, verdict, verdict == "ready" ? 0 : null, "not a valid zip"));
+
+        await vm.AddPaths(new[] { zip });
+
+        var row = Assert.Single(vm.Rows);
+        Assert.Equal(expected, row.StatusKind);
+        Assert.Equal(note, row.Note);
+    }
+
+    /// <summary>The probe gets the SAVED passwords only — never the typed
+    /// ones — so "a saved password opens this" is exactly true, the same
+    /// discipline Unlock's probe keeps (risk 2 in its own doc comment).</summary>
+    [Fact]
+    public async Task OnlyZipRowsAreProbedAndOnlyWithTheSavedPasswords()
+    {
+        using var dir = new TempDir();
+        var txt = dir.File("notes.txt");
+        var zip = dir.File("a.zip");
+        var probed = new List<(string Path, IReadOnlyList<string> Saved)>();
+        var vm = MakeVm(savedPasswords: new[] { "saved" }, zipProbe: (p, saved) =>
+        {
+            probed.Add((p, saved.ToList()));
+            return new Zipper.ZipProbeResult(p, "not_encrypted");
+        });
+
+        await vm.AddPaths(new[] { txt, zip });
+
+        var one = Assert.Single(probed);
+        Assert.Equal(zip, one.Path);
+        Assert.Equal(new[] { "saved" }, one.Saved);
+    }
+
+    [Fact]
+    public async Task ClearWhileAProbeIsInFlightDropsItsVerdict()
+    {
+        using var dir = new TempDir();
+        var zip = dir.File("a.zip");
+        var scheduler = new ControlledWorkScheduler();
+        var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), scheduler, uiContext: null,
+            zipProbe: (p, _) => new Zipper.ZipProbeResult(p, "needs_password"));
+
+        var adding = vm.AddPaths(new[] { zip });
+        scheduler.ReleaseNext();   // the intake check: the row lands, its probe is queued
+        Assert.Single(vm.Rows);
+
+        vm.ClearCommand.Execute(null);
+        scheduler.ReleaseAll();    // the probe answers into a list that no longer holds the row
+        await adding;
+
+        Assert.Empty(vm.Rows);
+    }
+
+    /// <summary>The real probe on a real locked archive — the whole
+    /// difference between this file's scripted probes and the feature.</summary>
+    [Fact]
+    public async Task TheRealProbeMarksARealLockedZipAsNeedingAPassword()
+    {
+        using var dir = new TempDir();
+        var zipPath = Path.Combine(dir.Path, "locked.zip");
+        using (var fs = File.Create(zipPath))
+        using (var zos = new ZipOutputStream(fs) { Password = "secret" })
+        {
+            var bytes = "hello"u8.ToArray();
+            zos.PutNextEntry(new ZipEntry("a.txt") { Size = bytes.Length, AESKeySize = 256 });
+            zos.Write(bytes, 0, bytes.Length);
+            zos.CloseEntry();
+        }
+        var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler());
+
+        await vm.AddPaths(new[] { zipPath });
+
+        var row = Assert.Single(vm.Rows);
+        Assert.Equal(ZipItemRowStatus.NeedsPassword, row.StatusKind);
+        Assert.Equal("Extract 1 zip", vm.ExtractButtonText);
     }
 
     /// <summary>A SynchronizationContext that holds what is posted to it
@@ -618,8 +838,7 @@ public class ZipExtractViewModelTests
         using var dir = new TempDir();
         var zip = dir.File("a.zip");
         var ctx = new QueueingContext();
-        var vm = new ZipExtractViewModel(new FakeDialogs(), new InlineWorkScheduler(), ctx,
-            extractor: p => new Zipper.UnzipResult(p, "ok", Path.Combine(dir.Path, "a")));
+        var vm = MakeVm(uiContext: ctx, extractor: (p, _, _) => new Zipper.UnzipResult(p, "ok", Path.Combine(dir.Path, "a")));
         await vm.AddPaths(new[] { zip });
         ctx.Drain();
         Assert.Equal("Extract 1 zip", vm.ExtractButtonText);

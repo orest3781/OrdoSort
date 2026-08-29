@@ -20,7 +20,7 @@ public class MergePdfsViewModelTests
 {
     private static MergePdfsViewModel MakeVm(
         Func<string, PdfMerge.MergeResult>? merger = null) =>
-        new(new InlineWorkScheduler(), uiContext: null, merger);
+        new(new FakeDialogs(), new InlineWorkScheduler(), uiContext: null, merger);
 
     [Fact]
     public async Task StatusesAndNotesAreAppliedPerRowAfterAMergeRun()
@@ -296,8 +296,9 @@ public class MergePdfsViewModelTests
         using var dir = new TempDir();
         var zip = dir.File("a.zip");
         var merge = MakeVm();
-        var zipExtract = new ZipExtractViewModel(new FakeDialogs(), new InlineWorkScheduler(),
-            extractor: p => new Zipper.UnzipResult(p, "ok", Path.Combine(dir.Path, "a")));
+        var zipExtract = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(),
+            extractor: (p, _, _) => new Zipper.UnzipResult(p, "ok", Path.Combine(dir.Path, "a")),
+            zipProbe: (p, _) => new Zipper.ZipProbeResult(p, "not_encrypted"));
 
         await merge.AddPaths(new[] { zip });
         await zipExtract.AddPaths(new[] { zip });
