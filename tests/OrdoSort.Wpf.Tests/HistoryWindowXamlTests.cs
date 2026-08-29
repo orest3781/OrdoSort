@@ -8,18 +8,43 @@ using OrdoSort.Wpf.Windows;
 
 namespace OrdoSort.Wpf.Tests;
 
-/// <summary>2026-08-02 audit-remediation, Task 7 Steps 2–3: HistoryWindow's
-/// empty-state messages and the Name/Route columns' ellipsis trimming +
-/// tooltips. Built the same headless way as <see cref="DataGridStarColumnTests"/>
-/// (off-screen Show()+UpdateLayout() on the shared <see cref="HighlightContrastFixture"/>
-/// STA thread) so real Styles.xaml resources and the real production XAML are
-/// exercised, not a hand-copied stand-in.
+/// <summary>2026-08-02 audit-remediation: HistoryWindow's empty-state
+/// messages (Task 7 Steps 2–3) and the header/binding divergence that lets
+/// this grid say "Destination" while still binding <c>Route</c> (Task 9,
+/// audit finding I4) — both unaffected by, and still passing after, every
+/// column-sizing change below. Built the same headless way as
+/// <see cref="DataGridStarColumnTests"/> (off-screen Show()+UpdateLayout()
+/// on the shared <see cref="HighlightContrastFixture"/> STA thread) so real
+/// Styles.xaml resources and the real production XAML are exercised, not a
+/// hand-copied stand-in.
 ///
-/// What this suite CANNOT verify headlessly: whether the trimmed text visually
-/// renders with an actual ellipsis glyph, and whether the tooltip popup shows
-/// on real mouse hover — TextTrimming/ToolTip are asserted as properties on
-/// the generated cell content and the column's ElementStyle respectively, not
-/// as rendered pixels or an interactive hover.</summary>
+/// UPDATED 2026-08-29 (grid-autofit-wrap, Task 5): this suite used to assert
+/// Name/Destination/Original/Filed-as each carried
+/// <c>TextTrimming="CharacterEllipsis"</c> plus a <c>ToolTip</c> repeating
+/// the cell's own text. <see cref="TextColumnsWrapRatherThanTrim"/> now
+/// asserts the opposite for all four: a <c>TextWrapping="Wrap"</c> setter,
+/// and NEITHER a TextTrimming NOR a ToolTip setter — DataGridColumnCap's
+/// autofit wraps a column that gives way rather than clipping it, and a
+/// tooltip that only repeated visible text would have had nothing left to
+/// add once nothing is hidden. <see cref="WhenIsNotCappedBecauseItsContentIsBounded"/>
+/// confirms <c>When</c> was deliberately taken OUT of that governed set
+/// instead of joining the other four: its value is a timestamp History
+/// formats itself, always 16 characters, so it is sized to its own content
+/// rather than ever being asked to wrap a date — asserted as its MaxWidth
+/// reading WPF's own uncapped default, PositiveInfinity, which only holds
+/// if DataGridColumnCap genuinely never assigns it one (see that fact's own
+/// doc comment for why that isn't a vacuous default-value check).
+///
+/// What this suite CANNOT verify headlessly: it reads declared style
+/// setters (TextWrapping/TextTrimming/ToolTip) and column state (MaxWidth)
+/// off a window that is shown but off-screen, never painted on a real
+/// display — so it proves what the XAML and DataGridColumnCap DECLARE, not
+/// that wrapped text visually reflows onto a second line or that the row
+/// grows to fit it. That mechanism is measured elsewhere, off this specific
+/// window: <see cref="AutoFitColumnTests"/> (the six real windows,
+/// including this one) and <see cref="DataGridColumnCapTests"/> (the class
+/// itself, on a bare grid built in code — including the underlying WPF fact
+/// that a wrapped cell grows its own row).</summary>
 [Collection(HighlightContrastTests.Name)]
 public class HistoryWindowXamlTests
 {
