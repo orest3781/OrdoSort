@@ -215,12 +215,12 @@
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
-                        <!-- Current name: content-sized (Width="Auto"), capped
-                             in code (BulkRenameWindow.xaml.cs,
-                             DataGridColumnCap) to a share of this window's
-                             own declared Width — same mechanism and reasoning
-                             as MatchMergeWindow's analogous "File" column:
-                             this is the file's EXISTING name, the least
+                        <!-- Current name: content-sized; DataGridColumnCap
+                             gives it its content width when that fits and a
+                             proportional, wrapped share when it doesn't
+                             (2026-08-29) — same mechanism and reasoning as
+                             MatchMergeWindow's analogous "File" column: this
+                             is the file's EXISTING name, the least
                              predictable string in the row, and not what a
                              rename batch exists to verify, so it's capped
                              rather than made the filler.
@@ -253,8 +253,7 @@
                                  GridCellTextSelectionAware's own doc comment. -->
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                    <Setter Property="ToolTip" Value="{Binding Current}" />
+                                    <Setter Property="TextWrapping" Value="Wrap" />
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
@@ -268,7 +267,11 @@
                              whatever width Current name and Note don't need —
                              now ALL of the leftover, not half of it, since
                              Current name moved to a capped Auto column above
-                             instead of also being star. -->
+                             instead of also being star. It is also a
+                             participant in DataGridColumnCap's split: when
+                             the columns can't all have their content width it
+                             gets a proportional share, never under this
+                             floor, and wraps. -->
                         <DataGridTextColumn Header="New name  ·  click or press F2 to edit"
                                             Binding="{Binding NewName}" Width="*" MinWidth="120">
                             <!-- BasedOn GridCellText for the shared Theme.Text
@@ -286,11 +289,14 @@
                                  so an unchanged row picked up 1.85:1 SubtleText-
                                  on-Accent the moment it was selected. Declared
                                  last so it overrides both triggers above once
-                                 selected. -->
+                                 selected. Only this display TextBlock wraps —
+                                 the editing TextBox (click or F2) stays the
+                                 plain, single-line default DataGridTextColumn
+                                 already supplies, which is right for typing a
+                                 file name. -->
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                    <Setter Property="ToolTip" Value="{Binding NewName}" />
+                                    <Setter Property="TextWrapping" Value="Wrap" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding Changed}" Value="False">
                                             <Setter Property="Foreground"
@@ -311,9 +317,10 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Note: content-sized and capped the same way as
-                             Current name above. Was a fixed 220px regardless
-                             of what it held. -->
+                        <!-- Note: content-sized; DataGridColumnCap gives it its
+                             content width when that fits and a proportional,
+                             wrapped share when it doesn't (2026-08-29). Was a
+                             fixed 220px regardless of what it held. -->
                         <DataGridTextColumn x:Name="NoteColumn" Header="Note" Binding="{Binding Note}"
                                             IsReadOnly="True" Width="Auto">
                             <!-- BasedOn plain GridCellText, NOT
@@ -325,8 +332,7 @@
                                  in Theme/Styles.xaml. -->
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                    <Setter Property="ToolTip" Value="{Binding Note}" />
+                                    <Setter Property="TextWrapping" Value="Wrap" />
                                     <Style.Triggers>
                                         <!-- status-colour-vocabulary plan, Task 2 Step 2. Order
                                              matters: the two subtle triggers are declared first so

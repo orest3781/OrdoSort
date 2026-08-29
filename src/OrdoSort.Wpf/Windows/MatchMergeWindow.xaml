@@ -180,14 +180,10 @@
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
-                        <!-- File: content-sized (Width="Auto"), capped in code
-                             (MatchMergeWindow.xaml.cs, DataGridColumnCap) to a
-                             share of this window's own declared Width rather
-                             than a fixed pixel MaxWidth — a DataGridColumn
-                             isn't part of the visual tree, so that cap can't
-                             be expressed as a XAML binding here; see
-                             DataGridColumnCap's own class doc. Capped rather
-                             than made the filler: this is the SOURCE
+                        <!-- File: content-sized; DataGridColumnCap gives it its
+                             content width when that fits and a proportional,
+                             wrapped share when it doesn't (2026-08-29). Capped
+                             rather than made the filler: this is the SOURCE
                              filename — whatever a scanner or a person named
                              it, the least predictable string in the row —
                              while Becomes below is what the window exists to
@@ -205,8 +201,7 @@
                                  1.10:1 dark before it). -->
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                    <Setter Property="ToolTip" Value="{Binding File}" />
+                                    <Setter Property="TextWrapping" Value="Wrap" />
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
@@ -216,25 +211,29 @@
                              than collapses it). It's the roster-matched
                              result a person reviews this window to confirm,
                              so it gets whatever width File and Note don't
-                             need. -->
+                             need. It is also a participant in
+                             DataGridColumnCap's split: when the columns
+                             can't all have their content width it gets a
+                             proportional share, never under this floor, and
+                             wraps. -->
                         <DataGridTextColumn Header="Becomes" Binding="{Binding Becomes}"
                                             Width="*" MinWidth="120">
                             <!-- BasedOn GridCellTextSelectionAware — same reasoning as File above. -->
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                    <Setter Property="ToolTip" Value="{Binding Becomes}" />
+                                    <Setter Property="TextWrapping" Value="Wrap" />
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Note: content-sized and capped the same way as
-                             File above. Was a fixed 240px regardless of what
-                             it held; the status phrases it actually carries
-                             (MatchMergeViewModel.Refresh, e.g. "no roster
-                             match", "3 candidates — decide in Review
-                             matches") are well under that, so this mostly
-                             just stops reserving fixed space next to a short
-                             one. -->
+                        <!-- Note: content-sized; DataGridColumnCap gives it its
+                             content width when that fits and a proportional,
+                             wrapped share when it doesn't (2026-08-29). Was a
+                             fixed 240px regardless of what it held; the status
+                             phrases it actually carries (MatchMergeViewModel.
+                             Refresh, e.g. "no roster match", "3 candidates —
+                             decide in Review matches") are well under that, so
+                             this mostly just stops reserving fixed space next
+                             to a short one. -->
                         <DataGridTextColumn x:Name="NoteColumn" Header="Note" Binding="{Binding Note}"
                                             Width="Auto">
                             <!-- BasedOn plain GridCellText, NOT
@@ -249,8 +248,7 @@
                                  comment in Theme/Styles.xaml. -->
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                    <Setter Property="ToolTip" Value="{Binding Note}" />
+                                    <Setter Property="TextWrapping" Value="Wrap" />
                                     <Style.Triggers>
                                         <!-- status-colour-vocabulary plan, Task 2 Step 2:
                                              the working replacement for the dead RowStyle

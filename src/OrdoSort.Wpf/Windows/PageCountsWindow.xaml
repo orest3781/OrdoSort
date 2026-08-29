@@ -76,7 +76,10 @@
                              else's floor" (DataGridColumnCap), so this floor is
                              exactly what stops a long error message squeezing
                              the filename down to WPF's 20px default. 180 is the
-                             app's existing floor for a filename column. -->
+                             app's existing floor for a filename column. Since
+                             2026-08-29 the floor is this column's share floor in
+                             DataGridColumnCap's proportional split, and the name
+                             wraps rather than trims when it gives way. -->
                         <DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="*" MinWidth="180">
                             <!-- BasedOn GridCellTextSelectionAware (Theme/
                                  Styles.xaml), not plain GridCellText or the
@@ -95,7 +98,7 @@
                                  prevent, just never switched to it. -->
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="TextWrapping" Value="Wrap" />
                                     <Setter Property="ToolTip" Value="{Binding Path}" />
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
@@ -118,25 +121,26 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Note: content-sized, amber whenever a row couldn't be
-                             counted (PageCounts.Count never puts anything else
-                             there) — the base Setter below is amber, reset to
-                             plain text only for the common case (Pending or
-                             counted cleanly, Note == ""). Same recipe as
-                             BulkRenameWindow.xaml's Note column: a base
-                             Setter/DataTrigger pair here, PLUS its own trailing
-                             "let selection win" DataTrigger — GridCellText's
-                             own copy of that trigger doesn't reliably win once
-                             this style adds triggers of its own; see
-                             GridCellText's and BulkRenameWindow's Note column's
-                             doc comments for the measured contrast numbers
-                             that recipe exists to fix. -->
+                        <!-- Note: content-sized; DataGridColumnCap gives it its
+                             content width when that fits and a proportional,
+                             wrapped share when it doesn't (2026-08-29); amber
+                             whenever a row couldn't be counted (PageCounts.Count
+                             never puts anything else there) — the base Setter
+                             below is amber, reset to plain text only for the
+                             common case (Pending or counted cleanly, Note == "").
+                             Same recipe as BulkRenameWindow.xaml's Note column:
+                             a base Setter/DataTrigger pair here, PLUS its own
+                             trailing "let selection win" DataTrigger —
+                             GridCellText's own copy of that trigger doesn't
+                             reliably win once this style adds triggers of its
+                             own; see GridCellText's and BulkRenameWindow's Note
+                             column's doc comments for the measured contrast
+                             numbers that recipe exists to fix. -->
                         <DataGridTextColumn x:Name="NoteColumn" Header="Note" Binding="{Binding Note}"
                                             Width="Auto">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                    <Setter Property="ToolTip" Value="{Binding Note}" />
+                                    <Setter Property="TextWrapping" Value="Wrap" />
                                     <Setter Property="Foreground" Value="{DynamicResource Theme.StatusAmber}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding Note}" Value="">

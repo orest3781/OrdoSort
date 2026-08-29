@@ -184,7 +184,7 @@ public class AutoFitColumnTests
     });
 
     [Fact]
-    public void MatchMerge_LongFileValueStopsAtTheCapWithEllipsisAndTooltip() => _fx.Invoke(() =>
+    public void MatchMerge_LongFileValueWrapsInsideItsCap() => _fx.Invoke(() =>
     {
         var win = BuildMatchMergeWindow(fileValue: VeryLongValue, noteValue: "");
         try
@@ -196,8 +196,7 @@ public class AutoFitColumnTests
             // the grid live (DataGridColumnCap.Track), and since fix round 3
             // it also reserves room for a vertical scrollbar — see
             // ExpectedColumnCap.
-            AssertStoppedAtItsCap(win, column, "MatchMerge File");
-            AssertTrimmingAndTooltip((DataGridBoundColumn)column, "File");
+            AssertWrapsInsideItsCap(win, (DataGridBoundColumn)column, "MatchMerge File");
         }
         finally { win.Close(); }
     });
@@ -460,7 +459,7 @@ public class AutoFitColumnTests
     });
 
     [Fact]
-    public void BulkRename_LongCurrentValueStopsAtTheCapWithEllipsisAndTooltip() => _fx.Invoke(() =>
+    public void BulkRename_LongCurrentValueWrapsInsideItsCap() => _fx.Invoke(() =>
     {
         var win = BuildBulkRenameWindow(currentValue: VeryLongValue, noteValue: "");
         try
@@ -469,8 +468,7 @@ public class AutoFitColumnTests
             var column = FindColumnByHeader(win, "Current name");
             // Against the GRID's own live viewport — see MatchMerge's
             // identical comment above.
-            AssertStoppedAtItsCap(win, column, "BulkRename Current name");
-            AssertTrimmingAndTooltip((DataGridBoundColumn)column, "Current");
+            AssertWrapsInsideItsCap(win, (DataGridBoundColumn)column, "BulkRename Current name");
         }
         finally { win.Close(); }
     });
@@ -1146,15 +1144,14 @@ public class AutoFitColumnTests
     });
 
     [Fact]
-    public void PageCounts_LongNoteValueStopsAtTheCapWithEllipsisAndTooltip() => _fx.Invoke(() =>
+    public void PageCounts_LongNoteValueWrapsInsideItsCap() => _fx.Invoke(() =>
     {
         var win = BuildPageCountsWindow(VeryLongValue);
         try
         {
             ShowOffscreen(win);
             var column = FindColumnByHeader(win, "Note");
-            AssertStoppedAtItsCap(win, column, "PageCounts Note");
-            AssertTrimmingAndTooltip((DataGridBoundColumn)column, "Note");
+            AssertWrapsInsideItsCap(win, (DataGridBoundColumn)column, "PageCounts Note");
         }
         finally { win.Close(); }
     });
@@ -1539,7 +1536,21 @@ public class AutoFitColumnTests
         var row = (DataGridRow)grid.ItemContainerGenerator.ContainerFromIndex(0);
         var text = Assert.IsType<TextBlock>(column.GetCellContent(row));
         var lineHeight = text.FontSize * text.FontFamily.LineSpacing;
-        Assert.True(text.ActualHeight >= 2 * lineHeight,
+        // "- 1": the same device-pixel tolerance AssertStoppedAtItsCap's own
+        // width comparison already uses above, for the identical reason.
+        // UseLayoutRounding="True" (the base TextBlock style, Theme/
+        // Styles.xaml) snaps a realized TextBlock's height to a whole device
+        // pixel; two lines at this app's own default font metrics compute to
+        // 37.2421875px, which rounds DOWN, not up, to 37px — so a genuine,
+        // correctly-wrapped two-line cell measures a hair under "2 *
+        // lineHeight" every time, never over it. Reproduced 2026-08-29: fed
+        // an empty sibling column, MatchMerge File / BulkRename Current name
+        // / PageCounts Note each resolve a cap wide enough that VeryLongValue
+        // wraps to exactly two lines (not three, where the same rounding is
+        // nowhere near the bar) and all three landed at exactly 37px before
+        // this tolerance existed — a real wrap the assertion was rejecting,
+        // not a wrap that failed to happen.
+        Assert.True(text.ActualHeight >= 2 * lineHeight - 1,
             $"{name}: a value wider than its {column.MaxWidth}px cap should wrap onto more lines; " +
             $"the cell is {text.ActualHeight}px against a {lineHeight}px line");
         Assert.True(row.ActualHeight >= text.ActualHeight - 1,
