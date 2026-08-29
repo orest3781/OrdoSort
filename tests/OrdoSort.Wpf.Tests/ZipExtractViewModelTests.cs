@@ -7,10 +7,10 @@ using ZipFile = System.IO.Compression.ZipFile;
 
 namespace OrdoSort.Wpf.Tests;
 
-/// <summary>Task 2 (zip tools window). Ports every fact from
+/// <summary>Task 2 (the Zip and unzip window). Ports every fact from
 /// ZipViewModelTests and UnzipViewModelTests onto the merged
 /// ZipExtractViewModel (see task-2-brief.md's rename table), except
-/// UnzipViewModelTests' non-zip-rejection fact — this tab accepts loose
+/// UnzipViewModelTests' non-zip-rejection fact — this window accepts loose
 /// files by design — plus four new facts pinning behaviour neither of those
 /// suites had to cover: Zip and Extract now read their own scope off the
 /// SAME list instead of each owning a separate one.
@@ -680,6 +680,33 @@ public class ZipExtractViewModelTests
         Assert.Equal(ZipItemRowStatus.NeedsPassword, vm.Rows.Single(r => r.Path == locked).StatusKind);
         Assert.Equal(ZipItemRowStatus.Ok, vm.Rows.Single(r => r.Path == plain).StatusKind);
         Assert.Equal("1 extracted · 1 needs a password", vm.Status);
+    }
+
+    /// <summary>Cancel stops units BETWEEN, not within, so the unit already
+    /// running goes on to its end — and a second locked item in it would
+    /// otherwise raise a modal prompt for a window the user has just closed.
+    /// The extractor here cancels mid-call and then asks: the answer is a
+    /// skip, and nothing was put on screen.</summary>
+    [Fact]
+    public async Task APromptReachedAfterCancelIsSkippedWithoutBeingShown()
+    {
+        using var dir = new TempDir();
+        var dialogs = new FakeDialogs();
+        dialogs.PasswordAnswers.Enqueue("typed");   // handed over if the prompt runs at all
+        ZipExtractViewModel? vm = null;
+        string? answer = "not asked";
+        vm = MakeVm(dialogs: dialogs, extractor: (p, _, ask) =>
+        {
+            vm!.Cancel();   // the window closed while this unit was running
+            answer = ask!(new PasswordRequest("a.zip", null, false));
+            return new Zipper.UnzipResult(p, "needs_password", null, "needs a password");
+        });
+        await vm.AddPaths(new[] { dir.File("a.zip") });
+
+        await vm.ExtractAsync();
+
+        Assert.Null(answer);
+        Assert.Empty(dialogs.PasswordRequests);
     }
 
     /// <summary>A SynchronizationContext that runs what it is handed inline

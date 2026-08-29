@@ -482,4 +482,27 @@ public class PdfMergeTests : IDisposable
         Assert.Equal("error", r.Status);
         Assert.Equal("Merged.pdf", PdfMerge.DefaultName(Array.Empty<string>()));
     }
+
+    /// <summary>"Never throws" has to survive a bad LIST, not just a bad
+    /// file. Ordering the paths and the empty check ran outside MergeFiles'
+    /// try, and DefaultName had no try at all, so both could escape as an
+    /// exception instead of coming back as a result. DefaultName matters as
+    /// much as the merge: Merge to… asks it for the Save-As dialog's
+    /// suggested name BEFORE any merging starts, so a throw there loses the
+    /// dialog rather than one document.
+    ///
+    /// Each assertion below covers a different unguarded statement — the
+    /// list itself being unusable (the ordering call), and one element of it
+    /// being unusable (the path calls after it) — so neither guard can be
+    /// removed without this failing.</summary>
+    [Fact]
+    public void ABadPathListIsAnErrorNotAThrow()
+    {
+        var withNull = new string?[] { "a.pdf", null }!;
+
+        Assert.Equal("error", PdfMerge.MergeFiles(null!, null, NoPasswords, NeverAsked).Status);
+        Assert.Equal("error", PdfMerge.MergeFiles(withNull!, null, NoPasswords, NeverAsked).Status);
+        Assert.Equal("Merged.pdf", PdfMerge.DefaultName(null!));
+        Assert.Equal("Merged.pdf", PdfMerge.DefaultName(withNull!));
+    }
 }

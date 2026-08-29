@@ -21,7 +21,9 @@ namespace OrdoSort.Core;
 /// is set ONLY once the filesystem object this method is responsible for has
 /// actually been created by THIS call, and cleanup on failure — deleting the
 /// partial zip in <see cref="CreateZip"/>, deleting the partial output
-/// folder in <see cref="Extract(string)"/> — runs ONLY when that flag is set. This is
+/// folder in
+/// <see cref="Extract(string, IReadOnlyList{string}, Func{PasswordRequest, string})"/>
+/// — runs ONLY when that flag is set. This is
 /// the exact discipline PdfMerge.MergeZipCore's own `created` gate documents
 /// (2026-08 audit finding 1.2, Unlock.PlaceAndSwap's markCreated): cleanup
 /// must never touch something this call did not itself bring into existence.

@@ -29,12 +29,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Copied beside the exe so AboutWindow's "View third-party notices"
-         button (Task 1 Step 2) can open the real, shipped file via
-         AppContext.BaseDirectory instead of a repo-relative path that
-         wouldn't exist on an installed machine. Plain None+CopyToOutputDirectory,
-         not a Resource/EmbeddedResource: this needs to be a standalone file
-         on disk a shell association can open, not a WPF pack-URI resource. -->
+    <!-- Copied so the notices ship beside the exe rather than living only in
+         the repo: the MIT terms these packages carry require the notice to
+         accompany the distribution, and a build output handed to anyone is
+         one. Plain None+CopyToOutputDirectory, not a Resource/EmbeddedResource:
+         this needs to be a standalone file on disk that a shell association
+         can open, not a WPF pack-URI resource only the app can read. -->
     <None Include="..\..\THIRD-PARTY-NOTICES" Link="THIRD-PARTY-NOTICES"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

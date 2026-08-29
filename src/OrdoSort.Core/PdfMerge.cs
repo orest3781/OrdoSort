@@ -180,15 +180,26 @@ public static class PdfMerge
     public static MergeResult MergeFiles(IReadOnlyList<string> pdfPaths, string? outputPath,
         IReadOnlyList<string> candidates, Func<PasswordRequest, string?>? ask)
     {
-        var ordered = InMergeOrder(pdfPaths);
-        if (ordered.Count == 0) return new("", "error", Message: "nothing to merge");
+        // Ordering the list is INSIDE the try, not before it: it is the
+        // caller's list and it touches every element (Path.GetFileName, the
+        // comparer), so a null or otherwise unusable entry has to come back
+        // as an error result like every other failure here — the class
+        // promises "never throws", and a statement outside the try is a hole
+        // in that promise.
+        List<string>? ordered = null;
         try
         {
+            ordered = InMergeOrder(pdfPaths);
+            if (ordered.Count == 0) return new("", "error", Message: "nothing to merge");
             return MergeFilesCore(ordered, outputPath, candidates, ask);
         }
         catch (Exception ex)
         {
-            return new(ordered[0], "error", Message: $"couldn't merge: {ex.Message}");
+            // Source names the first document in merge order when there IS
+            // one; ordering itself is what failed otherwise, so there is no
+            // first document to name.
+            return new(ordered is { Count: > 0 } ? ordered[0] : "", "error",
+                Message: $"couldn't merge: {ex.Message}");
         }
     }
 
@@ -242,13 +253,24 @@ public static class PdfMerge
     /// CONTAINING the first document in merge order ("C:\Jobs\Job 4471\cover.pdf"
     /// → "Job 4471.pdf"), the same rule <see cref="Zipper.DefaultName"/>
     /// applies to a zip so the two windows guess alike. "Merged.pdf" when
-    /// that folder has no name (a drive root) or there is nothing to merge.</summary>
+    /// that folder has no name (a drive root) or there is nothing to merge.
+    /// Wrapped for the same reason <see cref="MergeFiles"/> is: this runs
+    /// BEFORE any merge — it is what fills in the Save-As dialog's suggested
+    /// name — so a list it cannot read has to fall back to the default name
+    /// rather than take the dialog down with it.</summary>
     public static string DefaultName(IReadOnlyList<string> pdfPaths)
     {
-        var ordered = InMergeOrder(pdfPaths);
-        if (ordered.Count == 0) return "Merged.pdf";
-        var parentName = Path.GetFileName(Path.GetDirectoryName(Path.GetFullPath(ordered[0])) ?? "");
-        return parentName.Length == 0 ? "Merged.pdf" : parentName + ".pdf";
+        try
+        {
+            var ordered = InMergeOrder(pdfPaths);
+            if (ordered.Count == 0) return "Merged.pdf";
+            var parentName = Path.GetFileName(Path.GetDirectoryName(Path.GetFullPath(ordered[0])) ?? "");
+            return parentName.Length == 0 ? "Merged.pdf" : parentName + ".pdf";
+        }
+        catch
+        {
+            return "Merged.pdf";
+        }
     }
 
     /// <summary>Natural sort by file name — "2.pdf" before "10.pdf", the way

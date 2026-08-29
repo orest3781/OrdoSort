@@ -170,6 +170,15 @@ public abstract class ZipListViewModel : ObservableObject
     /// read and written concurrently.</summary>
     private List<string>? _unitCandidates;
 
+    /// <summary>The run token of the unit in flight, so a prompt can tell a
+    /// live run from a cancelled one. <see cref="Cancel"/> stops units
+    /// BETWEEN, not within — a unit already under way runs to its end — so a
+    /// second locked item inside that unit would otherwise raise a prompt
+    /// for a window that has already closed. Default (never cancelled)
+    /// whenever no run is in flight, which is the honest answer: a prompt
+    /// outside a run has nothing to be cancelled by.</summary>
+    private CancellationToken _unitToken;
+
     /// <summary>How many probes run at once — the same figure and the same
     /// reasoning as UnlockViewModel.MaxConcurrentUnlocks: a probe is a real
     /// read, often over a slow share, and four overlaps most of that waiting
@@ -355,9 +364,18 @@ public abstract class ZipListViewModel : ObservableObject
     /// scheduler). ShowDialog disables the owner, so Clear and Remove cannot
     /// fire while the prompt is up. The answer also goes to the front of the
     /// list the unit in flight is working from, so the NEXT locked item in
-    /// this same unit is opened silently instead of asking again.</summary>
+    /// this same unit is opened silently instead of asking again. A run that
+    /// has been cancelled skips without showing anything (see
+    /// <see cref="_unitToken"/>).</summary>
     protected string? AskPassword(PasswordRequest request)
     {
+        // A cancelled run skips every prompt it has not already shown. Cancel
+        // stops units between, not within, so without this a unit that is
+        // already running could put a modal password prompt on screen for a
+        // window the user has just closed. A skip is what the row already
+        // means by "nobody answered", so nothing else has to change.
+        if (_unitToken.IsCancellationRequested) return null;
+
         string? answer = null;
         void Prompt()
         {
@@ -488,6 +506,7 @@ public abstract class ZipListViewModel : ObservableObject
                 // PDF (see _unitCandidates).
                 var candidates = new List<string>(Candidates());
                 _unitCandidates = candidates;
+                _unitToken = token;
                 var result = await Scheduler.Run(() => unit.Operation(candidates));
 
                 // Tallied from the result's OWN status rather than from the
@@ -507,8 +526,10 @@ public abstract class ZipListViewModel : ObservableObject
             IsBusy = false;
             // Nothing is in flight any more: a prompt raised after this (the
             // next run's, before its own unit starts) must not write into a
-            // list nobody is reading.
+            // list nobody is reading, nor be judged against a token that
+            // stopped meaning anything when this run ended.
             _unitCandidates = null;
+            _unitToken = default;
         }
 
         // Clear replaces _cts with a FRESH source rather than merely
@@ -567,7 +588,10 @@ public abstract class ZipListViewModel : ObservableObject
     }
 
     /// <summary>Stops any not-yet-started unit from starting (one already
-    /// under way finishes) and any not-yet-started probe from landing.</summary>
+    /// under way finishes) and any not-yet-started probe from landing. The
+    /// unit still running is left to finish, but its remaining password
+    /// prompts are skipped rather than shown — see
+    /// <see cref="AskPassword"/>.</summary>
     public void Cancel()
     {
         _cts.Cancel();

@@ -27,8 +27,8 @@
          "1.0.0+a961c59b..."), which would make the one property meant to
          read as the shipped version instead read as a build fingerprint,
          exactly the kind of drift-in-appearance this file exists to
-         prevent, and not something AboutWindow's user-facing display
-         should show. -->
+         prevent, and not something a user-facing version display should
+         show. -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 

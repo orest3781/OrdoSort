@@ -642,7 +642,7 @@ public class ZipperTests : IDisposable
     }
 
     /// <summary>One password per archive: the password that opens the
-    /// smallest encrypted entry is used for all of them, and an entry that
+    /// smallest non-empty encrypted entry is used for all of them, and an entry that
     /// rejects it fails the zip naming that entry — never a half-extracted
     /// folder left behind.</summary>
     [Fact]

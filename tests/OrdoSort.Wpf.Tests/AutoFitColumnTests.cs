@@ -1163,7 +1163,7 @@ public class AutoFitColumnTests
             ShowOffscreen(win);
             var column = FindColumnByHeader(win, "Result");
             Assert.True(column.ActualWidth < 100,
-                $"Zip & unzip Result column with short content is {column.ActualWidth}px, expected < 100px");
+                $"Zip and unzip Result column with short content is {column.ActualWidth}px, expected < 100px");
         }
         finally { win.Close(); }
     });
