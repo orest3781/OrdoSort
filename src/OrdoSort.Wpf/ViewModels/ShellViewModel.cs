@@ -1201,6 +1201,13 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// <summary>Raised when the name box should take focus (new document).</summary>
     public event Action? RequestNameFocus;
 
+    /// <summary>Raised once when a session starts, carrying the width-to-height
+    /// ratio of the first document's page, so the window can size the viewer
+    /// pane to what it is about to show. Not raised per document: the pane
+    /// would then move under the user's hands every time they filed
+    /// something, and a batch of scans is usually one shape anyway.</summary>
+    public event Action<double>? FitViewerToPage;
+
     public AsyncRelayCommand<int> RouteCommand { get; }
     public AsyncRelayCommand SkipCommand { get; }
     public AsyncRelayCommand UndoCommand { get; }
@@ -1314,6 +1321,21 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         ApplyFlashAll();
         await RefreshCompleterAsync();
         await LoadCurrentAsync();
+        await FitViewerToCurrentAsync();
+    }
+
+    /// <summary>Measure the document now on screen and ask the window to fit
+    /// the viewer pane to it. Silent about everything that can go wrong: an
+    /// empty session, a file that will not open, a page with no size. The
+    /// pane keeping the size it already had is a non-event, and an inbox is
+    /// exactly where unreadable files turn up.</summary>
+    private async Task FitViewerToCurrentAsync()
+    {
+        var path = _session.Current;
+        if (path is null) return;
+        // a PDF header read off an SMB inbox is a network round trip
+        var aspect = await _scheduler.Run(() => PageShape.AspectOf(path));
+        if (aspect is > 0) FitViewerToPage?.Invoke(aspect.Value);
     }
 
     private void BuildRoutes(IReadOnlyList<string> problems)

@@ -85,6 +85,7 @@ public partial class MainWindow : Window
         {
             if (e.PropertyName == nameof(ShellViewModel.Screen)) ApplyWindowMode();
         };
+        Shell.FitViewerToPage += FitViewerTo;
         WindowStartupLocation = WindowStartupLocation.Manual;
         EnterCompact(initial: true);
 
@@ -254,6 +255,35 @@ public partial class MainWindow : Window
             Left = wa.Right - Width - 12;
             Top = wa.Top + 12;
         }
+    }
+
+    /// <summary>Size the window so the viewer's document area matches the
+    /// shape of the page about to appear in it, once, as a session starts.
+    /// Only the width moves: the height is whatever the user last chose, and
+    /// fitting a page means fitting it to that height.
+    ///
+    /// Runs after <see cref="EnterNormal"/> has already applied the session
+    /// geometry — the Screen change that calls one is what eventually raises
+    /// the other — so it adjusts a real, current layout rather than
+    /// predicting one.</summary>
+    private void FitViewerTo(double aspect)
+    {
+        // The compact dashboard has no viewer to fit, and a maximized window
+        // cannot be resized without unmaximizing it first, which is a bigger
+        // surprise than a pane that does not match the page.
+        if (_compact || WindowState != WindowState.Normal) return;
+
+        // EnterNormal assigned Width moments ago; ActualWidth only catches up
+        // once a layout pass has run over that assignment, and the fit is
+        // measured from the pane as it actually is.
+        UpdateLayout();
+        if (Viewer.ActualHeight <= 0) return;
+
+        var workArea = SystemParameters.WorkArea;
+        var width = FitMath.WindowWidthFor(ActualWidth, Viewer.ActualWidth, Viewer.ActualHeight,
+            aspect, MinWidth, workArea.Width);
+        Width = width;
+        Left = FitMath.LeftFor(Left, width, workArea);
     }
 
     private void EnterNormal()
