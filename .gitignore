@@ -81,3 +81,6 @@ evidence/
 
 # Claude skills lockfile — personal tooling, not part of the app
 skills-lock.json
+
+# The prompter skill writes its interview output here — scratch, not source
+/prompts/
