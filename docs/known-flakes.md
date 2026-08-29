@@ -39,6 +39,9 @@ Recorded as unexplained rather than guessed at. Anyone with the pre-rebuild bund
 settle it; absent that, treat 660 as the real floor for `66be355` and do not read the
 2026-08-15 line as evidence a test was lost.
 
+**Baseline as of 2026-08-29** (`feature/zip-window-split` at `HEAD of feature/zip-window-split`):
+**Core 748, Wpf 1976.**
+
 **Then prove it's non-deterministic.** A test is a flake only if it passes on a re-run of the *identical binary*. If it fails twice, it is a defect. Run it in isolation too — most flakes here are parallel-schedule interference and pass alone.
 
 ---
@@ -121,6 +124,10 @@ if a run hangs, check for and kill those before diagnosing anything else.
 All five fail together with COM `Class not registered` when the **WebView2 runtime is absent or unregistered** on the machine. That is deterministic per machine, not random: they fail every run where the runtime is missing and pass every run where it is present. Filed here only because the failure looks alarming and gets mistaken for a flake.
 
 They passed in all four runs on 2026-08-15, so the runtime is registered on this machine. There is no `Skip` guard on them; `4c8fe04` made the *product* report a missing runtime, which did not change these tests.
+
+### XamlParseException resource-lookup burst after a long rebuild sequence
+
+**XamlParseException resource-lookup burst.** After a long sequence of rebuilds, the Wpf test run can fail with a burst of `XamlParseException: Cannot find resource named 'Icon'` / `'PrimaryButton'` (and similar) across unrelated views (`ReadyView`, `ZipToolsWindow`…), sometimes alongside an isolated `BulkRenameViewModelTests` failure. Observed 2026-08-28/29 on this branch, three times, never reproducible on the next run. Cleared every time by `dotnet build-server shutdown` followed by the canonical rebuild. A stale `testhost.exe` from an interrupted run can also block the rebuild with `MSB3027` — kill it and rebuild. Not a product defect.
 
 ---
 

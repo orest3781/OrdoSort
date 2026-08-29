@@ -86,7 +86,7 @@ workflow tests, builds, zips, and publishes.
   buttons render exactly as they'll appear, dashboard tiles preview against
   the real folder, naming choices show a worked example, and validation
   happens as you type. Unknown hand-edited config keys always survive.
-- **Tools** — eight utilities, each in its own window:
+- **Tools** — nine utilities, each in its own window:
   - *Unlock PDFs* — the unlocked file keeps its name and place; the locked
     original moves to a dated `locked_archive` folder beside it. Saved
     passwords are stored as plain text in the shared `config.json` so they
@@ -114,8 +114,15 @@ workflow tests, builds, zips, and publishes.
     comma-delimited line, one item per line, or joined by any delimiter you
     like, with the empty rows closed up and counted — including the cells
     that only look empty because they hold a zero-width character.
-  - *Zip and unzip* — one window, two tabs; the second merges the PDFs held
-    inside an archive.
+  - *Zip and unzip* — files and folders into one archive, or each archive
+    into its own folder beside it. A password-protected zip asks for its
+    password instead of failing, after the passwords the app already knows
+    have been tried; a skipped one stays runnable.
+  - *Merge PDFs* — loose PDFs into one document named after their folder,
+    and every PDF inside a zip into one document beside the zip. A locked
+    PDF or archive asks for its password; one unopenable document merges
+    nothing from its group rather than a document with pages quietly
+    missing.
 
 ## Structure
 
