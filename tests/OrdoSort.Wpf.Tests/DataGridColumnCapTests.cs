@@ -24,7 +24,20 @@ namespace OrdoSort.Wpf.Tests;
 /// a wrapped cell grows its row; an Auto column displays at min(desired,
 /// MaxWidth); WPF's desired width never shrinks, which is why the class
 /// caps at the MEASURED width even when everything fits — relaxing to
-/// infinity would leave a column at its old width forever.</summary>
+/// infinity would leave a column at its old width forever.
+///
+/// FIX ROUND 1 (2026-08-29 review): the facts above this note all built a
+/// grid with exactly ONE governed column beside the star — so "split the
+/// remainder equally among governed columns" (the rule this task replaced)
+/// and "split in proportion to content" (the rule it became) produce the
+/// IDENTICAL number every time, and none of them could actually tell the
+/// two rules apart. <see cref="BuildPair"/> and
+/// <see cref="TwoGovernedColumnsSplitTheShortfallInProportionToTheirContent"/>
+/// below are what close that gap. Separately, <see cref="BuildTwoStars"/>
+/// and <see cref="TwoStarColumnsSplitTheLeftoverInProportionToTheirContentRatherThanEvenly"/>
+/// prove a star column's WEIGHT (not just its rendered width) now carries
+/// its computed share — needed the moment a grid has more than one star
+/// column, which HistoryWindow alone does (Original, Filed as).</summary>
 [Collection(HighlightContrastTests.Name)]
 public class DataGridColumnCapTests
 {
@@ -72,6 +85,112 @@ public class DataGridColumnCapTests
             ShowActivated = false,
         };
         return new BareGrid(window, grid, name, note, items);
+    }
+
+    private sealed class PairRow
+    {
+        public string Name { get; init; } = "";
+        public string Note { get; init; } = "";
+        public string Extra { get; init; } = "";
+    }
+
+    private sealed record BareGridPair(
+        Window Window, DataGrid DataGrid, DataGridTextColumn Name, DataGridTextColumn Note, DataGridTextColumn Extra,
+        ObservableCollection<PairRow> Rows);
+
+    /// <summary>A grid with TWO governed columns beside the star, so a fact
+    /// can tell a proportional split from an equal one — with one governed
+    /// column the two rules produce the same number, which is why every
+    /// fact above this one is blind to the rule it is meant to prove.</summary>
+    private static BareGridPair BuildPair(double windowWidth, double nameFloor, params PairRow[] rows)
+    {
+        var items = new ObservableCollection<PairRow>(rows);
+        var grid = new DataGrid
+        {
+            ItemsSource = items, AutoGenerateColumns = false, IsReadOnly = true,
+            CanUserAddRows = false, HeadersVisibility = DataGridHeadersVisibility.Column,
+        };
+        var name = new DataGridTextColumn
+        {
+            Header = "Name", Binding = new Binding("Name"),
+            Width = new DataGridLength(1, DataGridLengthUnitType.Star), MinWidth = nameFloor,
+            ElementStyle = Wrapping(),
+        };
+        var note = new DataGridTextColumn
+        {
+            Header = "Note", Binding = new Binding("Note"), Width = DataGridLength.Auto,
+            ElementStyle = Wrapping(),
+        };
+        var extra = new DataGridTextColumn
+        {
+            Header = "Extra", Binding = new Binding("Extra"), Width = DataGridLength.Auto,
+            ElementStyle = Wrapping(),
+        };
+        grid.Columns.Add(name);
+        grid.Columns.Add(note);
+        grid.Columns.Add(extra);
+        DataGridColumnCap.Track(grid, note, extra);
+        var window = new Window
+        {
+            Width = windowWidth, Height = 400, Content = grid,
+            WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = 0,
+            ShowActivated = false,
+        };
+        return new BareGridPair(window, grid, name, note, extra, items);
+    }
+
+    private sealed class TwoStarRow
+    {
+        public string Wide { get; init; } = "";
+        public string Narrow { get; init; } = "";
+        public string Note { get; init; } = "";
+    }
+
+    private sealed record BareGridTwoStars(
+        Window Window, DataGrid DataGrid, DataGridTextColumn Wide, DataGridTextColumn Narrow, DataGridTextColumn Note,
+        ObservableCollection<TwoStarRow> Rows);
+
+    /// <summary>Two star columns beside one tracked Auto column — the shape
+    /// HistoryWindow alone has (Original, Filed as). Every other builder
+    /// above has exactly one star column, where WPF's default 1:1 leftover
+    /// split to a SINGLE recipient is indistinguishable from a proportional
+    /// one; this is the shape that can tell them apart.</summary>
+    private static BareGridTwoStars BuildTwoStars(double windowWidth, params TwoStarRow[] rows)
+    {
+        var items = new ObservableCollection<TwoStarRow>(rows);
+        var grid = new DataGrid
+        {
+            ItemsSource = items, AutoGenerateColumns = false, IsReadOnly = true,
+            CanUserAddRows = false, HeadersVisibility = DataGridHeadersVisibility.Column,
+        };
+        var wide = new DataGridTextColumn
+        {
+            Header = "Wide", Binding = new Binding("Wide"),
+            Width = new DataGridLength(1, DataGridLengthUnitType.Star), MinWidth = 60,
+            ElementStyle = Wrapping(),
+        };
+        var narrow = new DataGridTextColumn
+        {
+            Header = "Narrow", Binding = new Binding("Narrow"),
+            Width = new DataGridLength(1, DataGridLengthUnitType.Star), MinWidth = 60,
+            ElementStyle = Wrapping(),
+        };
+        var note = new DataGridTextColumn
+        {
+            Header = "Note", Binding = new Binding("Note"), Width = DataGridLength.Auto,
+            ElementStyle = Wrapping(),
+        };
+        grid.Columns.Add(wide);
+        grid.Columns.Add(narrow);
+        grid.Columns.Add(note);
+        DataGridColumnCap.Track(grid, note);
+        var window = new Window
+        {
+            Width = windowWidth, Height = 400, Content = grid,
+            WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = 0,
+            ShowActivated = false,
+        };
+        return new BareGridTwoStars(window, grid, wide, narrow, note, items);
     }
 
     private static Style Wrapping()
@@ -153,17 +272,20 @@ public class DataGridColumnCapTests
     {
         ThemeManager.Apply(_fx.App, dark: false);
         // Thirty M's against sixty: content widths in a 1:2 ratio, both far
-        // wider than a 500px window can show.
+        // wider than a 500px window can show. FIX ROUND 1 (2026-08-29
+        // review): this fact used to also recompute the expected cap as
+        // available*content/Sigma-content and assert Note's MaxWidth against
+        // it — a restatement of the production formula, and this Build()
+        // shape (one governed column beside the star) can't even tell a
+        // proportional split from an equal one (see the class doc above),
+        // so that assertion never independently proved anything.
+        // TwoGovernedColumnsSplitTheShortfallInProportionToTheirContent below
+        // is what actually tells the two rules apart; this fact keeps the
+        // behavioural assertions only.
         var g = Build(500, 40, new Row { Name = Ms(30), Note = Ms(60) });
         try
         {
             ShowAndSettle(g.Window);
-            var nameContent = ContentWidthOf(CellText(g.DataGrid, g.Name, 0)) + 1;
-            var noteContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 0)) + 1;
-            var expectedNoteShare = AvailableWidthOf(g.DataGrid) * noteContent / (nameContent + noteContent);
-            Assert.True(Math.Abs(g.Note.MaxWidth - expectedNoteShare) <= 3,
-                $"Note's cap is {g.Note.MaxWidth}px; splitting {AvailableWidthOf(g.DataGrid)}px between " +
-                $"{nameContent}px and {noteContent}px of content in proportion gives {expectedNoteShare}px");
             Assert.True(Math.Abs(g.Note.ActualWidth - g.Note.MaxWidth) <= 1,
                 $"Note should sit at its cap: {g.Note.ActualWidth}px against {g.Note.MaxWidth}px");
             Assert.True(g.Name.ActualWidth >= 150,
@@ -255,18 +377,105 @@ public class DataGridColumnCapTests
         finally { g.Window.Close(); }
     });
 
+    /// <summary>FIX ROUND 1 (2026-08-29 review): the original version of
+    /// this fact asserted <c>double.IsPositiveInfinity(g.Name.MaxWidth)</c>,
+    /// which cannot hold for ANY star column in WPF — confirmed with an
+    /// isolated, zero-dependency probe: the moment a DataGridColumn's Width
+    /// becomes a Star length, WPF itself coerces that column's own MaxWidth
+    /// to 10000, independent of this class entirely (it never assigns a
+    /// star column's MaxWidth, before or after this fix round). That made
+    /// the OLD assertion fail against both the old and the new
+    /// DataGridColumnCap for a reason unrelated to either.
+    ///
+    /// First attempt at a replacement called ColumnShares.Compute directly
+    /// as an oracle (available/natural/floors reconstructed by hand) and
+    /// compared it to Name's ActualWidth — measured 35px off, every time,
+    /// not a flake: <see cref="ColumnShares.Compute"/>'s "share" for a lone
+    /// star participant is an abstract accounting figure against an
+    /// "available" pool that reserves a scrollbar allowance and a safety
+    /// margin; neither is actually spent when nothing else claims them, so
+    /// (per this class's own doc comment) they land back in the star column
+    /// instead — exactly SafetyMargin(20) + SystemParameters.
+    /// VerticalScrollBarWidth on this machine. Reproducing that reservation
+    /// by hand in the test would be restating the production accounting,
+    /// not independently checking it. This version asserts the STRUCTURAL
+    /// promise instead, which needs none of that: the star and the governed
+    /// column between them must account for the whole grid, with nothing
+    /// wasted and nothing overflowing into a scrollbar — which is what "the
+    /// star takes what the governed column leaves, not a cap of its own"
+    /// actually means.</summary>
     [Fact]
-    public void AStarColumnIsNeverGivenACapOfItsOwn() => _fx.Invoke(() =>
+    public void AStarColumnEndsUpAtTheShareTheGovernedColumnsLeaveIt() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
         var g = Build(500, 40, new Row { Name = Ms(30), Note = Ms(60) });
         try
         {
             ShowAndSettle(g.Window);
-            // It takes what the governed columns leave; capping it too would
-            // fight WPF's own star reconciliation.
-            Assert.True(double.IsPositiveInfinity(g.Name.MaxWidth),
-                $"the star column's MaxWidth should be untouched: {g.Name.MaxWidth}");
+            Assert.True(Math.Abs((g.Name.ActualWidth + g.Note.ActualWidth) - g.DataGrid.ActualWidth) <= 3,
+                $"Name ({g.Name.ActualWidth}px) + Note ({g.Note.ActualWidth}px) should account for the whole grid " +
+                $"({g.DataGrid.ActualWidth}px) — the star should take exactly what the governed column leaves, " +
+                "not sit at some cap of its own that leaves the rest unaccounted for");
+            Assert.True(g.Name.ActualWidth > 150,
+                $"the star should get a genuine share of the room, not be starved down near its 40px floor: {g.Name.ActualWidth}px");
+            Assert.NotEqual(Visibility.Visible, HorizontalScrollbarOf(g.DataGrid));
+        }
+        finally { g.Window.Close(); }
+    });
+
+    /// <summary>FIX ROUND 1 (2026-08-29 review), item A: every fact above
+    /// this one tracks exactly ONE governed column, so "split the remainder
+    /// EQUALLY among governed columns" (the rule this task replaced) and
+    /// "split in PROPORTION to content" (the rule it became) produce the
+    /// identical number — there is only one governed column to split
+    /// anything among. Five of the six live callers track 2-3 governed
+    /// columns (HistoryWindow tracks three), so this is the shape that
+    /// actually exercises the rule this task changed, not just a shape the
+    /// old and new rule happen to agree on.</summary>
+    [Fact]
+    public void TwoGovernedColumnsSplitTheShortfallInProportionToTheirContent() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        // Sixty M's against thirty: the caps must come out about 2:1. An
+        // equal split — the rule this replaced — would make them equal, so
+        // this is the fact that tells the two rules apart.
+        var g = BuildPair(500, 40, new PairRow { Name = Ms(20), Note = Ms(60), Extra = Ms(30) });
+        try
+        {
+            ShowAndSettle(g.Window);
+            var noteContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 0));
+            var extraContent = ContentWidthOf(CellText(g.DataGrid, g.Extra, 0));
+            var expectedRatio = noteContent / extraContent;
+            var actualRatio = g.Note.MaxWidth / g.Extra.MaxWidth;
+            Assert.True(Math.Abs(actualRatio - expectedRatio) < 0.15,
+                $"Note:Extra caps are {g.Note.MaxWidth}:{g.Extra.MaxWidth} = {actualRatio:F2}, " +
+                $"but their content is {noteContent}:{extraContent} = {expectedRatio:F2} — an equal split would be 1.00");
+            Assert.True(g.Note.MaxWidth - g.Extra.MaxWidth > 40,
+                "the two caps must differ substantially; equal caps mean the split is not proportional");
+        }
+        finally { g.Window.Close(); }
+    });
+
+    /// <summary>FIX ROUND 1 (2026-08-29 review), item B: HistoryWindow tracks
+    /// three governed columns beside TWO star columns (Original, Filed as) —
+    /// every other builder in this file has exactly one star column, where
+    /// WPF's default 1:1 leftover split to a SINGLE recipient is
+    /// indistinguishable from a proportional one. Left at the flat weight
+    /// every star column starts with, two star columns split 1:1 regardless
+    /// of content — the class doc's promise of a proportional split would
+    /// silently not extend to them. This is the shape that tells the
+    /// difference.</summary>
+    [Fact]
+    public void TwoStarColumnsSplitTheLeftoverInProportionToTheirContentRatherThanEvenly() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var g = BuildTwoStars(900, new TwoStarRow { Wide = Ms(60), Narrow = Ms(15), Note = "x" });
+        try
+        {
+            ShowAndSettle(g.Window);
+            Assert.True(g.Wide.ActualWidth > 1.5 * g.Narrow.ActualWidth,
+                $"the wide-content star should end up meaningfully wider than the narrow one, not an even split: " +
+                $"Wide={g.Wide.ActualWidth}px, Narrow={g.Narrow.ActualWidth}px");
         }
         finally { g.Window.Close(); }
     });

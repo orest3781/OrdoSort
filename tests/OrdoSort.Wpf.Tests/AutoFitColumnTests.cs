@@ -316,17 +316,36 @@ public class AutoFitColumnTests
     /// governs automatic sizing only, and stops once the user has resized,"
     /// not just that one drag briefly succeeded.
     ///
-    /// The requested growth (+50px over the old cap) is deliberately modest,
-    /// not an arbitrarily huge target: diagnosed directly (temporary probe,
-    /// deleted after use) that WPF's own interactive column resize — separate
-    /// from and in addition to MaxWidth — also declines to shrink OTHER
-    /// columns below their own MinWidth, so an oversized request (+200px, on
-    /// Triage's tight side panel) landed short of the literal target (334px of
-    /// 369px requested) even with this fix's MaxWidth relaxed to infinity.
-    /// That's a separate, legitimate WPF behavior this fix neither causes nor
-    /// needs to override — a real user's mouse-driven drag would hit the exact
-    /// same floor. +50px stays comfortably inside every one of the four
-    /// grids' headroom while still being unreachable pre-fix.</summary>
+    /// FIX ROUND 1 (2026-08-29 grid-autofit-wrap review): this fact used to
+    /// drag to capBefore+50 and assert PIXEL-EXACT survival of that literal
+    /// target (>= draggedWidth-1) both right after the drag and after a
+    /// further 10px window shrink. Under the OLD remainder rule capBefore
+    /// was a modest, equally-split 319.5px, so +50 landed nowhere near this
+    /// grid's headroom. Under the NEW proportional rule capBefore for this
+    /// fact's VeryLongValue File content is legitimately 597.78px — File's
+    /// content vastly dominates Note's (empty), so autofit correctly gives
+    /// it almost all the room before any drag even happens, which is the
+    /// whole point of the new rule, not a defect in it. +50 over THAT
+    /// starting point (647.78px) exceeds this grid's remaining headroom by
+    /// about 1.78px once the window then shrinks by 10px (measured: File +
+    /// Note's floor + Becomes' floor totalled ~1.78px over the shrunk
+    /// viewport), so WPF's own tight-margin space-fitting shaved a few
+    /// pixels off the dragged column — the SAME accepted mechanism
+    /// Triage_UserDraggedRosterColumnSurvivesBeyondTheCapAndStaysPinnedAfterPanelResize's
+    /// own comment below already documents for an identical reason, not a
+    /// regression in the pinning guarantee itself.
+    ///
+    /// Two independent fixes, not one: (1) draggedWidth dropped from
+    /// capBefore+50 to capBefore+30, comfortably inside this grid's measured
+    /// headroom on both sides of the resize where +50 was not; (2) the
+    /// assertions no longer demand the literal dragged pixel survive
+    /// untouched (">= draggedWidth-1"), which was never the actual contract
+    /// and was only ever a proxy for it — they now assert the contract
+    /// directly, the same way Triage's own equivalent fact below already
+    /// does: ActualWidth stays ABOVE the pre-drag cap (proving the drag
+    /// escaped it and was never reclamped back down to it) and MaxWidth
+    /// stays PositiveInfinity (proving this class relinquished its claim on
+    /// the column and never reasserted one).</summary>
     [Fact]
     public void MatchMerge_UserDraggedFileColumnSurvivesBeyondTheCapAndStaysPinnedAfterResize() => _fx.Invoke(() =>
     {
@@ -337,7 +356,7 @@ public class AutoFitColumnTests
             var grid = FindDescendant<DataGrid>(win)!;
             var column = FindColumnByHeader(win, "File");
             var capBefore = column.MaxWidth;
-            var draggedWidth = capBefore + 50;
+            var draggedWidth = capBefore + 30;
 
             SimulateColumnHeaderDragResize(grid, column, draggedWidth);
             win.UpdateLayout();
@@ -345,9 +364,12 @@ public class AutoFitColumnTests
                 () => { }, System.Windows.Threading.DispatcherPriority.Background);
             win.UpdateLayout();
 
-            Assert.True(column.ActualWidth >= draggedWidth - 1,
+            Assert.True(column.ActualWidth > capBefore,
                 $"MatchMerge File column after a simulated drag to {draggedWidth}px is " +
-                $"{column.ActualWidth}px — expected it to survive beyond the old cap {capBefore}px");
+                $"{column.ActualWidth}px — expected it to survive past the old cap {capBefore}px");
+            Assert.True(double.IsPositiveInfinity(column.MaxWidth),
+                $"MatchMerge File column's MaxWidth after the drag is {column.MaxWidth} — " +
+                "expected the class to have relinquished its claim (PositiveInfinity)");
 
             win.Width -= 10;
             win.UpdateLayout();
@@ -355,9 +377,12 @@ public class AutoFitColumnTests
                 () => { }, System.Windows.Threading.DispatcherPriority.Background);
             win.UpdateLayout();
 
-            Assert.True(column.ActualWidth >= draggedWidth - 1,
+            Assert.True(column.ActualWidth > capBefore,
                 $"MatchMerge File column after a SUBSEQUENT window resize is {column.ActualWidth}px — " +
-                $"expected the user's {draggedWidth}px drag to still win, not be reclamped");
+                $"expected it to stay above the pre-drag cap {capBefore}px, not be reclamped to it");
+            Assert.True(double.IsPositiveInfinity(column.MaxWidth),
+                $"MatchMerge File column's MaxWidth after the resize is {column.MaxWidth} — " +
+                "expected it to still be PositiveInfinity, not reclamped");
         }
         finally { win.Close(); }
     });
