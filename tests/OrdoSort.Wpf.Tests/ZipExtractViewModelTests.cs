@@ -759,6 +759,12 @@ public class ZipExtractViewModelTests
         Assert.Equal(new[] { "saved" }, one.Saved);
     }
 
+    /// <summary>Clear detaches the row from `Rows` before the probe queued
+    /// during intake answers. `Assert.Empty(vm.Rows)` alone is Clear's own
+    /// guarantee and proves nothing about the probe — the assertions that
+    /// give this fact teeth are on `row`, captured BEFORE Clear runs and
+    /// re-checked after the probe's verdict has had its chance to land: it
+    /// must still read exactly as it did when it was added.</summary>
     [Fact]
     public async Task ClearWhileAProbeIsInFlightDropsItsVerdict()
     {
@@ -770,13 +776,43 @@ public class ZipExtractViewModelTests
 
         var adding = vm.AddPaths(new[] { zip });
         scheduler.ReleaseNext();   // the intake check: the row lands, its probe is queued
-        Assert.Single(vm.Rows);
+        var row = vm.Rows.Single();
 
         vm.ClearCommand.Execute(null);
         scheduler.ReleaseAll();    // the probe answers into a list that no longer holds the row
         await adding;
 
         Assert.Empty(vm.Rows);
+        Assert.Equal(ZipItemRowStatus.Pending, row.StatusKind);
+        Assert.Equal("", row.Note);
+    }
+
+    /// <summary>The sibling half of the guard: a row that finished — Mark
+    /// stands in for a completed run here, since ControlledWorkScheduler is
+    /// strictly FIFO and cannot let a real ExtractAsync unit run and finish
+    /// ahead of the probe that intake already queued — must not be
+    /// overwritten by a verdict answering late for a lock that no longer
+    /// describes it.</summary>
+    [Fact]
+    public async Task ARowThatAlreadyFinishedIsNotOverwrittenByALateProbeVerdict()
+    {
+        using var dir = new TempDir();
+        var zip = dir.File("a.zip");
+        var scheduler = new ControlledWorkScheduler();
+        var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), scheduler, uiContext: null,
+            zipProbe: (p, _) => new Zipper.ZipProbeResult(p, "needs_password"));
+
+        var adding = vm.AddPaths(new[] { zip });
+        scheduler.ReleaseNext();   // the intake check: the row lands, its probe is queued
+        var row = vm.Rows.Single();
+
+        row.Mark(ZipItemRowStatus.Ok, "→ a");   // stands in for a run that finished first
+
+        scheduler.ReleaseAll();   // the probe's verdict answers into an already-finished row
+        await adding;
+
+        Assert.Equal(ZipItemRowStatus.Ok, row.StatusKind);
+        Assert.Equal("→ a", row.Note);
     }
 
     /// <summary>The real probe on a real locked archive — the whole
