@@ -360,16 +360,17 @@ public class E2EHarnessTests
     /// <c>SynchronizationContext.Current at MainWindow construction =
     /// &lt;null&gt;</c>.
     ///
-    /// ShellViewModel branches on that field in five places
-    /// (ShellViewModel.cs:82-93, 517, 528): <c>FlashTick</c>,
-    /// <c>HideLastAction</c> and <c>HideToast</c> all read
+    /// ShellViewModel branches on that field once per timer callback
+    /// (ShellViewModel.cs:80-99): <c>FlashTick</c>, <c>HideLastAction</c>,
+    /// <c>HideToast</c> and <c>ExpireStatusNote</c> all read
     /// "if (_uiContext is null) DoItHere(); else _uiContext.Post(...)", and
     /// they are driven by timers, not by the dispatcher. With a null context
     /// the smoke harness ran every one of them straight off a timer thread,
     /// mutating state the window's bindings were reading — and the
     /// auto-hide behind HideLastAction is armed by the very commit and
-    /// set-aside the harness exists to exercise. It never crashed only
-    /// because the timers outlast the 25-second run.
+    /// set-aside the harness exists to exercise, as ExpireStatusNote's is by
+    /// the undo beside them. It never crashed only because the timers outlast
+    /// the 25-second run.
     ///
     /// The fix is that RoutingLoop.OpenWindow installs the context BEFORE it
     /// constructs anything, so both callers — the standalone smoke mode and

@@ -92,6 +92,11 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             if (_uiContext is null) HideToast();
             else _uiContext.Post(_ => HideToast(), null);
         });
+        _statusTimer = new System.Threading.Timer(_ =>
+        {
+            if (_uiContext is null) ExpireStatusNote();
+            else _uiContext.Post(_ => ExpireStatusNote(), null);
+        });
 
         // history_db is resolved with the SAME unconfined rule as the four
         // Config side files (ResolvePath === Config.ResolveBeside) — an
@@ -289,8 +294,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         if (_cfg.Sounds.Enabled) _sounds.Play(SoundEvent.Error, _cfg.Sounds.Error);
         UnexpectedError?.Invoke(ex);
         _dialogs.Warn(ex.Message, title);
-        StatusLine = $"{Path.GetFileName(ex.NewPath)} moved, but the history " +
-                     "database didn't record it — see the warning.";
+        ShowStatusNote($"{Path.GetFileName(ex.NewPath)} moved, but the history " +
+                       "database didn't record it — see the warning.");
     }
 
     internal Config Cfg => _cfg;
@@ -575,7 +580,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             if (added > 0)
             {
                 RaiseProgress();
-                StatusLine = $"{added} new file{(added == 1 ? "" : "s")} arrived — added to this session.";
+                ShowStatusNote($"{added} new file{(added == 1 ? "" : "s")} arrived — added to this session.");
             }
         }
         else if (Screen == Screen.Ready)
@@ -586,7 +591,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         {
             // Done: notify, don't yank — the session summary stays put
             if (snap.Scan.Error.Length == 0 && snap.Scan.Count > 0)
-                StatusLine = $"{snap.Scan.Count} file{(snap.Scan.Count == 1 ? "" : "s")} waiting in the inbox.";
+                SetStatus($"{snap.Scan.Count} file{(snap.Scan.Count == 1 ? "" : "s")} waiting in the inbox.");
         }
     }
 
@@ -1083,8 +1088,72 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private string _currentFilename = "";
     public string CurrentFilename { get => _currentFilename; private set => Set(ref _currentFilename, value); }
 
+    // ---------------------------------------------------------- status line
+    // The single line under the buttons carries two kinds of text, and they
+    // are not interchangeable. A NOTE reports something that just happened
+    // ("Undid ...", "Nothing to undo.") and goes stale the moment the next
+    // document is on screen, so it expires by itself the way the last-action
+    // card and the toast below it do. A STANDING line states a condition that
+    // is still true ("3 files waiting in the inbox" on the Done screen, which
+    // the watcher only re-states when the folder next changes) and has to
+    // stay until something replaces it.
+    //
+    // Until 2026-08-27 every one of them was a bare assignment: the line was
+    // blanked only by starting, stopping, or finishing a session, so an undo
+    // note sat there for the rest of the session describing an action several
+    // documents ago. Every write now goes through ShowStatusNote or
+    // SetStatus -- which is why the setter is private -- so no write can
+    // leave the countdown in a state that disagrees with the text.
+    internal const int DefaultStatusNoteMs = 4000;
+
+    /// <summary>How long a note stays up. Settable only by tests -- the same
+    /// seam <see cref="ShowToast"/> documents -- so the expiry can be proven
+    /// to fire without a test waiting four real seconds. Production never
+    /// assigns it.</summary>
+    internal int StatusNoteMs { get; set; } = DefaultStatusNoteMs;
+
+    private readonly System.Threading.Timer _statusTimer;
+
     private string _statusLine = "";
-    public string StatusLine { get => _statusLine; internal set => Set(ref _statusLine, value); }
+    public string StatusLine { get => _statusLine; private set => Set(ref _statusLine, value); }
+
+    /// <summary>True while the line holds a note whose expiry is armed.
+    /// Not a mirror of the timer but the thing the timer obeys: a countdown
+    /// that outlives its note finds this false and does nothing. That is what
+    /// makes a standing line safe from an older note's timer even in the
+    /// window between the two, and it lets a test tell the two kinds apart
+    /// without waiting; <c>TheUndoNoteDisappearsWithNoFurtherInput</c> is what
+    /// proves an armed countdown actually fires.</summary>
+    internal bool StatusNoteExpires { get; private set; }
+
+    /// <summary>Report something that just happened, and start its expiry.</summary>
+    private void ShowStatusNote(string text)
+    {
+        StatusLine = text;
+        StatusNoteExpires = true;
+        _statusTimer.Change(StatusNoteMs, Timeout.Infinite);
+    }
+
+    /// <summary>State a standing condition, or blank the line. Either way the
+    /// countdown is cancelled, so an older note can never blank a line
+    /// written after it.</summary>
+    private void SetStatus(string text)
+    {
+        StatusLine = text;
+        StatusNoteExpires = false;
+        _statusTimer.Change(Timeout.Infinite, Timeout.Infinite);
+    }
+
+    /// <summary>The expiry timer's own callback: blanks the line only if the
+    /// note it was armed for is still the one on screen. Internal so tests can
+    /// cause it directly, as they do with <see cref="HideLastAction"/> and
+    /// <see cref="HideToast"/>.</summary>
+    internal void ExpireStatusNote()
+    {
+        if (StatusNoteExpires) SetStatus("");
+    }
+
+    private void ClearStatus() => SetStatus("");
 
     // -------------------------------------------------- last-action card
     // A transient confirmation after every commit/set-aside, colored like the
@@ -1236,7 +1305,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         MarkRouteState();   // Enter always has a target now — mark it before the first document
         _auditFailedThisSession = false;
         Screen = Screen.Processing;
-        StatusLine = "";
+        ClearStatus();
         HideLastAction();
         // hide the dashboard while filing
         DashboardVisible = false;
@@ -1286,7 +1355,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         LogLine = !_auditFailedThisSession && _session.Filed + _session.Skipped > 0
             ? "Every move is in the log."
             : "";
-        StatusLine = "";   // mid-session notes don't belong under the summary
+        ClearStatus();   // mid-session notes don't belong under the summary
         RaiseUndoState();
         if (_cfg.Sounds.Enabled) _sounds.Play(SoundEvent.Filed, _cfg.Sounds.Filed);
     }
@@ -1321,7 +1390,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 MarkRouteState();
                 if (outcome.Vanished)
                 {
-                    StatusLine = "That file disappeared from the inbox — logged and moved on.";
+                    ShowStatusNote("That file disappeared from the inbox — logged and moved on.");
                 }
                 else
                 {
@@ -1364,7 +1433,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             {
                 var outcome = await _scheduler.Run(() => _session.SkipCurrent());
                 if (outcome.Vanished)
-                    StatusLine = "That file disappeared from the inbox — logged and moved on.";
+                    ShowStatusNote("That file disappeared from the inbox — logged and moved on.");
                 else
                 {
                     ShowLastAction("✓  Set aside for later",
@@ -1393,14 +1462,14 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     internal async Task OnUndoAsync()
     {
         if (_busy) return;
-        if (!_session.CanUndo) { StatusLine = "Nothing to undo."; return; }
+        if (!_session.CanUndo) { ShowStatusNote("Nothing to undo."); return; }
         _busy = true;
         try
         {
             try
             {
                 var (filed, original) = await _scheduler.Run(() => _session.UndoLast());
-                StatusLine = $"Undid {Path.GetFileName(filed)} → {Path.GetFileName(original)}";
+                ShowStatusNote($"Undid {Path.GetFileName(filed)} → {Path.GetFileName(original)}");
                 HideLastAction();   // the card must never claim an undone filing
             }
             catch (AuditError ex)
@@ -1917,7 +1986,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     internal void StopSession()
     {
         if (Screen != Screen.Processing || _busy) return;
-        StatusLine = "";
+        ClearStatus();
         Rescan();
     }
 
@@ -2142,6 +2211,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         _flash.Dispose();
         _lastActionTimer.Dispose();
         _toastTimer.Dispose();
+        _statusTimer.Dispose();
         _history.Dispose();
     }
 }

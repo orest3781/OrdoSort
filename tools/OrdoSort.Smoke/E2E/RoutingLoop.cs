@@ -249,6 +249,13 @@ public static class RoutingLoop
             // reappearing. A File.Exists predicate here would be answered by
             // the disk without the window ever having learned anything, which
             // is the difference between driving the app and driving the disk.
+            //
+            // That note now expires on its own (ShellViewModel.StatusNoteMs,
+            // 4s), so this has to stay a tight poll — which E2EPump.Until is.
+            // Both the predicate and the timer's clear run on this pump, and
+            // the clear is queued four seconds behind, so the wait sees the
+            // note first by orders of magnitude. Replace the poll with a
+            // fixed sleep and that stops being true.
             shell.OnUndo();
             Wait(() => shell.StatusLine.StartsWith("Undid ", StringComparison.Ordinal),
                 "the window reports the undo");
