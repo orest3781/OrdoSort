@@ -65,7 +65,7 @@ public sealed class ZipItemRow : ObservableObject
             : result.Message;
     }
 
-    internal void Apply(ZipMerge.MergeResult result)
+    internal void Apply(PdfMerge.MergeResult result)
     {
         StatusKind = result.Status switch
         {

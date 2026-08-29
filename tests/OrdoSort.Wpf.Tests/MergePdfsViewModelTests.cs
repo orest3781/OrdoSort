@@ -19,7 +19,7 @@ namespace OrdoSort.Wpf.Tests;
 public class MergePdfsViewModelTests
 {
     private static MergePdfsViewModel MakeVm(
-        Func<string, ZipMerge.MergeResult>? merger = null) =>
+        Func<string, PdfMerge.MergeResult>? merger = null) =>
         new(new InlineWorkScheduler(), uiContext: null, merger);
 
     [Fact]
@@ -30,9 +30,9 @@ public class MergePdfsViewModelTests
         var noPdfs = dir.File("nopdfs.zip");
         var bad = dir.File("bad.zip");
         var vm = MakeVm(merger: path =>
-            path == ok ? new ZipMerge.MergeResult(path, "ok", Output: Path.Combine(dir.Path, "ok.pdf"), PdfCount: 2)
-            : path == noPdfs ? new ZipMerge.MergeResult(path, "no_pdfs", Message: "no PDFs inside")
-            : new ZipMerge.MergeResult(path, "error", Message: "couldn't read 'x.pdf': bad"));
+            path == ok ? new PdfMerge.MergeResult(path, "ok", Output: Path.Combine(dir.Path, "ok.pdf"), PdfCount: 2)
+            : path == noPdfs ? new PdfMerge.MergeResult(path, "no_pdfs", Message: "no PDFs inside")
+            : new PdfMerge.MergeResult(path, "error", Message: "couldn't read 'x.pdf': bad"));
 
         await vm.AddPaths(new[] { ok, noPdfs, bad });
         await vm.MergeAsync();
@@ -61,9 +61,9 @@ public class MergePdfsViewModelTests
         var noPdfs1 = dir.File("nopdfs1.zip");
         var bad1 = dir.File("bad1.zip");
         var vm = MakeVm(merger: path =>
-            path == ok1 ? new ZipMerge.MergeResult(path, "ok", Output: path + ".out.pdf", PdfCount: 1)
-            : path == noPdfs1 ? new ZipMerge.MergeResult(path, "no_pdfs", Message: "no PDFs inside")
-            : new ZipMerge.MergeResult(path, "error", Message: "boom"));
+            path == ok1 ? new PdfMerge.MergeResult(path, "ok", Output: path + ".out.pdf", PdfCount: 1)
+            : path == noPdfs1 ? new PdfMerge.MergeResult(path, "no_pdfs", Message: "no PDFs inside")
+            : new PdfMerge.MergeResult(path, "error", Message: "boom"));
 
         await vm.AddPaths(new[] { ok1, noPdfs1, bad1 });
         await vm.MergeAsync();
@@ -78,7 +78,7 @@ public class MergePdfsViewModelTests
         var a = dir.File("a.zip");
         var b = dir.File("b.zip");
         var vm = MakeVm(merger:
-            path => new ZipMerge.MergeResult(path, "ok", Output: path + ".out.pdf", PdfCount: 1));
+            path => new PdfMerge.MergeResult(path, "ok", Output: path + ".out.pdf", PdfCount: 1));
 
         await vm.AddPaths(new[] { a, b });
         await vm.MergeAsync();
@@ -91,7 +91,7 @@ public class MergePdfsViewModelTests
     {
         using var dir = new TempDir();
         var a = dir.File("a.zip");
-        var vm = MakeVm(merger: path => new ZipMerge.MergeResult(path, "error", Message: "nope"));
+        var vm = MakeVm(merger: path => new PdfMerge.MergeResult(path, "error", Message: "nope"));
 
         await vm.AddPaths(new[] { a });
         await vm.MergeAsync();
@@ -175,7 +175,7 @@ public class MergePdfsViewModelTests
         var vm = MakeVm(merger: path =>
         {
             calls.Add(path);
-            return new ZipMerge.MergeResult(path, "ok", Output: path + ".out.pdf", PdfCount: 1);
+            return new PdfMerge.MergeResult(path, "ok", Output: path + ".out.pdf", PdfCount: 1);
         });
 
         await vm.AddPaths(new[] { a, b });
@@ -206,7 +206,7 @@ public class MergePdfsViewModelTests
             // the row it belongs to still finishes (it already started) but
             // the loop must not begin a second zip afterward.
             if (path == a) vm.Cancel();
-            return new ZipMerge.MergeResult(path, "ok", Output: path + ".out.pdf", PdfCount: 1);
+            return new PdfMerge.MergeResult(path, "ok", Output: path + ".out.pdf", PdfCount: 1);
         });
 
         await vm.AddPaths(new[] { a, b });
@@ -223,7 +223,7 @@ public class MergePdfsViewModelTests
     {
         using var dir = new TempDir();
         var a = dir.File("a.zip");
-        var vm = MakeVm(merger: path => new ZipMerge.MergeResult(path, "ok", Output: path + ".out.pdf", PdfCount: 1));
+        var vm = MakeVm(merger: path => new PdfMerge.MergeResult(path, "ok", Output: path + ".out.pdf", PdfCount: 1));
         await vm.AddPaths(new[] { a });
         await vm.MergeAsync();
         Assert.NotEqual("", vm.Status);
@@ -274,7 +274,7 @@ public class MergePdfsViewModelTests
             AddPdf("b.pdf");
         }
 
-        var vm = MakeVm();   // default merger: the real ZipMerge.MergeZip
+        var vm = MakeVm();   // default merger: the real PdfMerge.MergeZip
 
         await vm.AddPaths(new[] { zipPath });
         await vm.MergeAsync();

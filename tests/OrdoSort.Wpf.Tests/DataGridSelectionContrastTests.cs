@@ -154,7 +154,7 @@ public class DataGridSelectionContrastTests
         var row = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
         if (mergeTab)
         {
-            row.Apply(new ZipMerge.MergeResult(row.Path, "error",
+            row.Apply(new PdfMerge.MergeResult(row.Path, "error",
                 Message: "couldn't read 'entry.pdf' inside the zip — a long enough exception message to matter"));
             vm.MergePdfs.Rows.Add(row);
         }

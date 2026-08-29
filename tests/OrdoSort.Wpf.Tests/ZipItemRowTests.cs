@@ -62,7 +62,7 @@ public class ZipItemRowTests
     public void ApplyingAnOkMergeCountsThePdfs()
     {
         var row = new ZipItemRow(@"C:\in\a.zip", "zip");
-        row.Apply(new ZipMerge.MergeResult(@"C:\in\a.zip", "ok", @"C:\in\a.pdf", PdfCount: 3));
+        row.Apply(new PdfMerge.MergeResult(@"C:\in\a.zip", "ok", @"C:\in\a.pdf", PdfCount: 3));
         Assert.Equal(ZipItemRowStatus.Ok, row.StatusKind);
         Assert.Equal("→ a.pdf (3 PDFs)", row.Note);
     }
@@ -71,7 +71,7 @@ public class ZipItemRowTests
     public void ApplyingAMergeWithNoPdfsIsItsOwnStatus()
     {
         var row = new ZipItemRow(@"C:\in\a.zip", "zip");
-        row.Apply(new ZipMerge.MergeResult(@"C:\in\a.zip", "no_pdfs", Message: "no PDFs inside"));
+        row.Apply(new PdfMerge.MergeResult(@"C:\in\a.zip", "no_pdfs", Message: "no PDFs inside"));
         Assert.Equal(ZipItemRowStatus.NoPdfs, row.StatusKind);
         Assert.Equal("no PDFs inside", row.Note);
     }
@@ -82,7 +82,7 @@ public class ZipItemRowTests
     public void OnePdfIsNotPluralised()
     {
         var row = new ZipItemRow(@"C:\in\a.zip", "zip");
-        row.Apply(new ZipMerge.MergeResult(@"C:\in\a.zip", "ok", @"C:\in\a.pdf", PdfCount: 1));
+        row.Apply(new PdfMerge.MergeResult(@"C:\in\a.zip", "ok", @"C:\in\a.pdf", PdfCount: 1));
         Assert.Equal("→ a.pdf (1 PDF)", row.Note);
     }
 }

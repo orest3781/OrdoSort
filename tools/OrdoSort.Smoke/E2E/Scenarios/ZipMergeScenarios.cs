@@ -5,7 +5,7 @@ using OrdoSort.Wpf.Windows;
 namespace OrdoSort.Smoke.E2E.Scenarios;
 
 /// <summary>"Merge PDFs from zip" as the real ZipToolsWindow's Merge PDFs
-/// tab, with the `merger` seam left at its default so ZipMerge.MergeZip
+/// tab, with the `merger` seam left at its default so PdfMerge.MergeZip
 /// really opens the archives and really writes a merged document.</summary>
 public static class ZipMergeScenarios
 {
@@ -163,9 +163,9 @@ public static class ZipMergeScenarios
     }
 
     /// <summary>An encrypted document cannot be merged without its password.
-    /// ZipMerge.MergeZip fails the WHOLE zip on any entry PdfSharp can't
+    /// PdfMerge.MergeZip fails the WHOLE zip on any entry PdfSharp can't
     /// open — an encrypted one included — rather than silently dropping just
-    /// that entry from the merge (see ZipMerge's own "fail-whole-zip" doc
+    /// that entry from the merge (see PdfMerge's own "fail-whole-zip" doc
     /// comment, pinned by
     /// ZipMergeTests.AnEncryptedEntryFailsTheWholeZipAndLeavesNoOutput). So
     /// the row here is expected to come back Error, name the entry it could

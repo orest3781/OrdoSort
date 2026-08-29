@@ -241,7 +241,7 @@ public class WindowOverflowTests
             vm.ZipExtract.Rows.Add(new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf", "file"));
 
             var toMerge = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
-            toMerge.Apply(new ZipMerge.MergeResult(toMerge.Path, "error",
+            toMerge.Apply(new PdfMerge.MergeResult(toMerge.Path, "error",
                 Message: "couldn't read 'entry.pdf' inside the zip — a long enough exception message to matter"));
             vm.MergePdfs.Rows.Add(toMerge);
             return (new ZipToolsWindow(vm), null);

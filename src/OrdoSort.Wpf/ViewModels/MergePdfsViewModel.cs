@@ -12,17 +12,19 @@ namespace OrdoSort.Wpf.ViewModels;
 /// has no bearing on merging it here.</summary>
 public sealed class MergePdfsViewModel : ZipListViewModel
 {
-    private readonly Func<string, ZipMerge.MergeResult> _merger;
+    private readonly Func<string, PdfMerge.MergeResult> _merger;
 
     /// <summary>Extension set in Intake's shape (dot-less, lowercase).</summary>
     private static readonly ISet<string> Zips = new HashSet<string> { "zip" };
 
     public MergePdfsViewModel(IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null,
-        Func<string, ZipMerge.MergeResult>? merger = null)
+        Func<string, PdfMerge.MergeResult>? merger = null)
         : base(scheduler, uiContext)
     {
-        _merger = merger ?? ZipMerge.MergeZip;
+        // No passwords yet — Task 7 threads the window's candidates and its
+        // prompt through here; until then a locked PDF reports needs_password.
+        _merger = merger ?? (path => PdfMerge.MergeZip(path, Array.Empty<string>(), null));
 
         MergeCommand = new AsyncRelayCommand(MergeAsync, () => Rows.Count > 0);
     }

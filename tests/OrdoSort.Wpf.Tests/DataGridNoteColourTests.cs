@@ -289,7 +289,7 @@ public class DataGridNoteColourTests
         var row = new ZipItemRow(@"C:\inbox\a.zip", "zip");
         if (mergeTab)
         {
-            row.Apply(new ZipMerge.MergeResult(row.Path, status, Message: "some result text here"));
+            row.Apply(new PdfMerge.MergeResult(row.Path, status, Message: "some result text here"));
             vm.MergePdfs.Rows.Add(row);
         }
         else

@@ -1049,7 +1049,7 @@ public class AutoFitColumnTests
     //
     // 2026-08-09 Tools-menu utilities audit finding 2: these windows'
     // Note/Result columns render ex.Message-derived text (PageCounts.Count's
-    // own failure message; ZipMerge/Zipper's own merge/extract failure
+    // own failure message; PdfMerge/Zipper's own merge/extract failure
     // message) but never called DataGridColumnCap.Track, unlike every other
     // Auto content column in the app — BulkRenameWindow.xaml.cs:24 and
     // MatchMergeWindow.xaml.cs:23 are the reference. A long exception message
@@ -1098,7 +1098,7 @@ public class AutoFitColumnTests
         for (var i = 0; i < rowCount; i++)
         {
             var row = new ZipItemRow($@"C:\inbox\f{i}.zip", "zip");
-            if (mergeTab) row.Apply(new ZipMerge.MergeResult(row.Path, "error", Message: resultValue));
+            if (mergeTab) row.Apply(new PdfMerge.MergeResult(row.Path, "error", Message: resultValue));
             else row.Apply(new Zipper.UnzipResult(row.Path, "error", null, resultValue));
             list.Rows.Add(row);
         }

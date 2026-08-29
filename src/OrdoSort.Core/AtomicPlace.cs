@@ -24,7 +24,7 @@ namespace OrdoSort.Core;
 /// under it mid-retry (2026-08 audit finding 4a).
 ///
 /// That GUID is also why nothing here needs the "created by me" gate that
-/// Unlock.PlaceAndSwap, ZipMerge.MergeZipCore and Zipper's own created flag
+/// Unlock.PlaceAndSwap, PdfMerge.MergeZipCore and Zipper's own created flag
 /// carry: those write to a COLLISION-FREED name that a peer can legitimately
 /// own, so they must only ever clean up what they themselves put on disk.
 /// The temp file here is, by construction, a name no other call can hold —

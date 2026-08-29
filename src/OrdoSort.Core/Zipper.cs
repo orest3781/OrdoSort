@@ -9,7 +9,7 @@ namespace OrdoSort.Core;
 
 /// <summary>
 /// Build one zip from a mix of files and folders, or extract one zip back
-/// out to a sibling folder. Never throws — same discipline as ZipMerge and
+/// out to a sibling folder. Never throws — same discipline as PdfMerge and
 /// every other batch tool: every failure comes back as a result record, not
 /// an exception.
 ///
@@ -22,7 +22,7 @@ namespace OrdoSort.Core;
 /// actually been created by THIS call, and cleanup on failure — deleting the
 /// partial zip in <see cref="CreateZip"/>, deleting the partial output
 /// folder in <see cref="Extract(string)"/> — runs ONLY when that flag is set. This is
-/// the exact discipline ZipMerge.MergeZipCore's own `created` gate documents
+/// the exact discipline PdfMerge.MergeZipCore's own `created` gate documents
 /// (2026-08 audit finding 1.2, Unlock.PlaceAndSwap's markCreated): cleanup
 /// must never touch something this call did not itself bring into existence.
 ///

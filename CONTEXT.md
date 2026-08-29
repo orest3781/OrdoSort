@@ -64,7 +64,7 @@ things.
 Atomic placement owns a temp file **no other call can name**, so cleanup after
 a failure is unconditional and the destination is never touched.
 
-The **created-by-me gate** — in `Unlock.PlaceAndSwap`, `ZipMerge.MergeZipCore`
+The **created-by-me gate** — in `Unlock.PlaceAndSwap`, `PdfMerge.MergeZipCore`
 and `Zipper` — guards a *collision-freed* name, which a peer legitimately can
 own. A free name proves only that it was free at check time, so those call
 sites clean up **only what this call actually put on disk**. Deleting on that
