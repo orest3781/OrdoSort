@@ -1,5 +1,6 @@
 using System.Windows;
 using Microsoft.Win32;
+using OrdoSort.Core;
 using OrdoSort.Wpf.Windows;
 
 namespace OrdoSort.Wpf.Services;
@@ -65,4 +66,6 @@ public sealed class DialogService : IDialogService
             dlg.InitialDirectory = startAt;
         return dlg.ShowDialog(_owner) == true ? dlg.FolderName : null;
     }
+
+    public string? AskPassword(PasswordRequest request) => PasswordWindow.Ask(_owner, request);
 }

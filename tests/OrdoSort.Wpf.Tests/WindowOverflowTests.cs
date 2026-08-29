@@ -166,6 +166,14 @@ public class WindowOverflowTests
             return (new MatchMergeWindow(vm), null);
         }, MinExamined: 26),   // 34 measured
 
+        // SizeToContent: heights are 0 so the probe leaves Height alone and
+        // only drives Width between MinWidth and MaxWidth. A long item name
+        // inside a long archive name, with the failed line showing, is the
+        // widest this window gets.
+        ["PasswordWindow"] = new(380, 520, 0, 0, () => (PasswordWindow.Build(null,
+            new PasswordRequest("a-long-enough-document-name-to-matter.pdf",
+                "a-long-enough-archive-name-to-matter.zip", true)), null), MinExamined: 8),   // 10 measured
+
         ["PageCountsWindow"] = new(580, 700, 440, 560, () =>
         {
             var vm = new PageCountsViewModel(new FakeDialogs());

@@ -1,3 +1,5 @@
+using OrdoSort.Core;
+
 namespace OrdoSort.Wpf.Services;
 
 /// <summary>Every modal the app can show, behind an interface so view models
@@ -37,4 +39,15 @@ public interface IDialogService
     /// path). An open-style dialog — never the "replace it?" save prompt.</summary>
     string? AskFilePath(string filter, string suggestedName);
     string? BrowseFolder(string? startAt);
+
+    /// <summary>Ask for one locked item's password, mid-run. Null is a skip:
+    /// that item is reported as needing a password and the batch moves on.
+    /// Defaulted rather than abstract for the same reason
+    /// <see cref="AskOpenFiles"/> is: fourteen classes implement this
+    /// interface and only the real one shows a window, so the fakes,
+    /// recorders and scripted stubs inherit "skip" instead of each carrying a
+    /// throwaway override — and a scenario that never expected a prompt
+    /// fails on the needs_password row it produces, not on a missing
+    /// method.</summary>
+    string? AskPassword(PasswordRequest request) => null;
 }

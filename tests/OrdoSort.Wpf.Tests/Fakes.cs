@@ -1,3 +1,4 @@
+using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
 
 namespace OrdoSort.Wpf.Tests;
@@ -67,4 +68,18 @@ public sealed class FakeDialogs : IDialogService
         NextOpenFiles ?? (NextOpenFile is { } one ? new[] { one } : Array.Empty<string>());
     public string? AskFilePath(string filter, string suggested) => NextFilePath;
     public string? BrowseFolder(string? startAt) => NextFolder;
+
+    /// <summary>Scripted prompt answers, one per AskPassword call; an empty
+    /// queue answers null — the person skipped — so a test that never
+    /// expected a prompt sees a needs_password row rather than a hang.
+    /// Every request is recorded, so a test can assert on what was asked
+    /// and how often, not just on what came back.</summary>
+    public Queue<string?> PasswordAnswers { get; } = new();
+    public List<PasswordRequest> PasswordRequests { get; } = new();
+
+    public string? AskPassword(PasswordRequest request)
+    {
+        PasswordRequests.Add(request);
+        return PasswordAnswers.Count > 0 ? PasswordAnswers.Dequeue() : null;
+    }
 }

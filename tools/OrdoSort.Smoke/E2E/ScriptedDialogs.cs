@@ -1,3 +1,4 @@
+using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
 
 namespace OrdoSort.Smoke.E2E;
@@ -18,6 +19,7 @@ public sealed class ScriptedDialogs : IDialogService
     private readonly Queue<string?> _filePath = new();
     private readonly Queue<string?> _folder = new();
     private readonly Queue<bool> _confirm = new();
+    private readonly Queue<string?> _password = new();
 
     public List<string> Warnings { get; } = new();
     public List<string> Infos { get; } = new();
@@ -27,6 +29,7 @@ public sealed class ScriptedDialogs : IDialogService
     public ScriptedDialogs QueueFilePath(params string?[] paths) { foreach (var p in paths) _filePath.Enqueue(p); return this; }
     public ScriptedDialogs QueueFolder(params string?[] paths) { foreach (var p in paths) _folder.Enqueue(p); return this; }
     public ScriptedDialogs QueueConfirm(params bool[] answers) { foreach (var a in answers) _confirm.Enqueue(a); return this; }
+    public ScriptedDialogs QueuePassword(params string?[] answers) { foreach (var a in answers) _password.Enqueue(a); return this; }
 
     public void Warn(string message, string title) => Warnings.Add(message);
     public void Info(string message, string title) => Infos.Add(message);
@@ -42,6 +45,10 @@ public sealed class ScriptedDialogs : IDialogService
     public string? AskFilePath(string filter, string suggested) => _filePath.Count > 0 ? _filePath.Dequeue() : null;
     public string? BrowseFolder(string? startAt) => _folder.Count > 0 ? _folder.Dequeue() : null;
 
+    // An empty password queue answers null — the person skipped — so a
+    // scenario that never expected a prompt fails on the row it produces.
+    public string? AskPassword(PasswordRequest request) => _password.Count > 0 ? _password.Dequeue() : null;
+
     /// <summary>Queues with answers left over. A leftover means the scenario
     /// never reached the prompt it was written for.</summary>
     public IReadOnlyList<string> Unconsumed
@@ -53,6 +60,7 @@ public sealed class ScriptedDialogs : IDialogService
             if (_openFile.Count > 0) left.Add($"AskOpenFile ({_openFile.Count})");
             if (_filePath.Count > 0) left.Add($"AskFilePath ({_filePath.Count})");
             if (_folder.Count > 0) left.Add($"BrowseFolder ({_folder.Count})");
+            if (_password.Count > 0) left.Add($"AskPassword ({_password.Count})");
             if (_confirm.Count > 0) left.Add($"Confirm ({_confirm.Count})");
             return left;
         }
