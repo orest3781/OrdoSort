@@ -144,11 +144,31 @@ public abstract class ZipListViewModel : ObservableObject
 
     /// <summary>What was typed at the prompt in this window, most recent
     /// first, kept for the window's lifetime — a second run never re-asks
-    /// for a password the first one learned. Touched only on the UI thread,
-    /// inside <see cref="AskPassword"/>'s Send callback, and read only on the
-    /// UI thread, in <see cref="Candidates"/> just before each unit is
-    /// scheduled — so the worker never sees the live list.</summary>
+    /// for a password the first one learned. Written inside
+    /// <see cref="AskPassword"/>'s prompt, which runs on the UI thread when
+    /// there is a UiContext and on the operation's OWN thread when there is
+    /// not (every unit test, the E2E harness's inline scheduler) — so this is
+    /// NOT a UI-thread-only field, whatever an earlier comment here claimed.
+    /// It needs no lock only because units run one at a time and every unit
+    /// boundary is an await: there is never a second operation in flight to
+    /// race the one that is asking.</summary>
     private readonly List<string> _typedPasswords = new();
+
+    /// <summary>The candidate list the unit in flight is working from — the
+    /// same object Core is enumerating between prompts, so an answer typed
+    /// for one item inside the unit is a candidate for the next. Without it a
+    /// loose group of seven PDFs locked with ONE password asks seven times:
+    /// <see cref="Candidates"/> is read once per unit, and nothing typed
+    /// mid-unit could reach the list Core was already holding.
+    ///
+    /// Why writing to it under a running operation is safe:
+    /// <see cref="Passwords.Resolve"/> enumerates the candidates by index only
+    /// OUTSIDE the <c>ask</c> callback — the candidate loop for the current
+    /// item has finished before ask is called, and the next item's loop
+    /// starts only after ask returns — and the write happens on the UI thread
+    /// while the worker is blocked inside Send. The list is therefore never
+    /// read and written concurrently.</summary>
+    private List<string>? _unitCandidates;
 
     /// <summary>How many probes run at once — the same figure and the same
     /// reasoning as UnlockViewModel.MaxConcurrentUnlocks: a probe is a real
@@ -321,8 +341,9 @@ public abstract class ZipListViewModel : ObservableObject
 
     /// <summary>The order Core tries: typed in this window (most recent
     /// first), then saved. A fresh list every call, taken on the UI thread
-    /// just before a unit is scheduled — the worker gets a snapshot, never
-    /// the live list.</summary>
+    /// just before a unit is scheduled — <see cref="_typedPasswords"/> itself
+    /// is never handed to a worker; RunBatchAsync copies this into the
+    /// per-unit list it does hand over (see <see cref="_unitCandidates"/>).</summary>
     protected IReadOnlyList<string> Candidates() => _typedPasswords.Concat(_savedPasswords).ToList();
 
     /// <summary>Core's <c>ask</c> callback, invoked on the worker thread from
@@ -332,7 +353,9 @@ public abstract class ZipListViewModel : ObservableObject
     /// the front of the typed list, and hands it back. Runs inline when
     /// there is no UiContext (every unit test, the E2E harness's inline
     /// scheduler). ShowDialog disables the owner, so Clear and Remove cannot
-    /// fire while the prompt is up.</summary>
+    /// fire while the prompt is up. The answer also goes to the front of the
+    /// list the unit in flight is working from, so the NEXT locked item in
+    /// this same unit is opened silently instead of asking again.</summary>
     protected string? AskPassword(PasswordRequest request)
     {
         string? answer = null;
@@ -342,6 +365,10 @@ public abstract class ZipListViewModel : ObservableObject
             if (string.IsNullOrEmpty(answer)) return;
             _typedPasswords.Remove(answer);
             _typedPasswords.Insert(0, answer);
+            // Same move on the live per-unit list: Core is still holding it
+            // and re-reads it before the next item (see _unitCandidates).
+            _unitCandidates?.Remove(answer);
+            _unitCandidates?.Insert(0, answer);
         }
         if (UiContext is null) Prompt();
         else UiContext.Send(_ => Prompt(), null);
@@ -454,7 +481,13 @@ public abstract class ZipListViewModel : ObservableObject
 
                 var unit = units[i];
                 Status = $"{progressVerb} {i + 1} of {units.Count}…";
-                var candidates = Candidates();
+                // A list this class keeps a handle on, not the snapshot
+                // Candidates() returns: a password typed part-way through
+                // THIS unit has to reach the list Core is still enumerating,
+                // or a group of loose PDFs sharing one password asks once per
+                // PDF (see _unitCandidates).
+                var candidates = new List<string>(Candidates());
+                _unitCandidates = candidates;
                 var result = await Scheduler.Run(() => unit.Operation(candidates));
 
                 // Tallied from the result's OWN status rather than from the
@@ -472,6 +505,10 @@ public abstract class ZipListViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+            // Nothing is in flight any more: a prompt raised after this (the
+            // next run's, before its own unit starts) must not write into a
+            // list nobody is reading.
+            _unitCandidates = null;
         }
 
         // Clear replaces _cts with a FRESH source rather than merely

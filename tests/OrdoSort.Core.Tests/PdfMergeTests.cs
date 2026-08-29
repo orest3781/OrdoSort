@@ -309,6 +309,33 @@ public class PdfMergeTests : IDisposable
         Assert.Null(r.Output);
     }
 
+    /// <summary>The contract the view models' per-unit candidate list rests
+    /// on: Core holds the caller's list, it does not snapshot it, so a
+    /// password added to that list from inside <c>ask</c> is tried on the
+    /// next locked thing in the same call. One archive locked with "same"
+    /// holding one PDF locked with "same" is therefore ONE prompt, not two.</summary>
+    [Fact]
+    public void ATypedArchivePasswordIsReusedForALockedEntryInside()
+    {
+        var zip = MakeLockedZip("same.zip", "same", ("a.pdf", MakeEncryptedPdfBytes("same")));
+        var candidates = new List<string>();
+        var requests = new List<PasswordRequest>();
+
+        var r = PdfMerge.MergeZip(zip, candidates, req =>
+        {
+            requests.Add(req);
+            // What ZipListViewModel.AskPassword does to the unit's own list.
+            candidates.Remove("same");
+            candidates.Insert(0, "same");
+            return "same";
+        });
+
+        Assert.Equal("ok", r.Status);
+        var asked = Assert.Single(requests);
+        Assert.Equal("same.zip", asked.Item);   // the archive, and nothing inside it
+        Assert.Null(asked.Inside);
+    }
+
     // --------------------------------------------------- loose PDFs
 
     // "10.pdf" is created first and listed first; a merge that kept input

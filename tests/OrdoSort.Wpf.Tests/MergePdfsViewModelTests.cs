@@ -433,6 +433,40 @@ public class MergePdfsViewModelTests
         Assert.Single(dialogs.PasswordRequests);
     }
 
+    /// <summary>Typed for one PDF, remembered for the next in the SAME unit.
+    /// The loose group is one Core call over many documents, so the answer
+    /// has to reach the candidate list Core is still enumerating — the
+    /// spec's own motivating case is seven PDFs locked with one password,
+    /// and a per-unit snapshot would ask seven times.</summary>
+    [Fact]
+    public async Task APasswordTypedForOneLoosePdfServesTheNextInTheSameGroup()
+    {
+        using var dir = new TempDir();
+        var first = dir.File("a.pdf");
+        var second = dir.File("b.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.PasswordAnswers.Enqueue("typed");   // ONE answer for TWO locked PDFs
+        var vm = MakeVm(dialogs: dialogs, fileMerger: (paths, _, candidates, ask) =>
+        {
+            foreach (var path in paths)
+            {
+                // Re-read per document, exactly as PdfMerge.MergeFilesCore
+                // hands the same list to AddPdf for every path.
+                if (candidates.Contains("typed")) continue;
+                if (ask!(new PasswordRequest(Path.GetFileName(path), null, false)) != "typed")
+                    return new PdfMerge.MergeResult(paths[0], "needs_password",
+                        Message: "needs a password", Item: path);
+            }
+            return Ok(paths[0], Path.Combine(dir.Path, "Job.pdf"), paths.Count);
+        });
+
+        await vm.AddPaths(new[] { first, second });
+        await vm.MergeAsync(null);
+
+        Assert.Single(dialogs.PasswordRequests);
+        Assert.All(vm.Rows, r => Assert.Equal(ZipItemRowStatus.Ok, r.StatusKind));
+    }
+
     // ---- Merge to… ----------------------------------------------------
 
     [Fact]
