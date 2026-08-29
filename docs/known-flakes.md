@@ -11,11 +11,20 @@ This file is the canonical list. It supersedes the ones in `docs/superpowers/pla
 **Run the suite the right way.** Plain `dotnet test` has been observed to skip the entire WPF assembly and still exit 0, because Smart App Control blocks the test assembly by hash:
 
 ```
-dotnet build OrdoSort.sln -t:Rebuild -p:Deterministic=false -v minimal
+dotnet build OrdoSort.sln -t:Rebuild -v minimal
 dotnet test OrdoSort.sln --no-build -v minimal
 ```
 
-`-p:Deterministic=false` is load-bearing — do not "fix" it. The 2026-08-09 audit found the skip did *not* reproduce on that machine, so treat it as machine-state-dependent rather than universal: keep the explicit rebuild, and **always read the `Passed!` line and its count**. An exit code of 0 is not evidence that anything ran.
+`-t:Rebuild` is load-bearing — do not "fix" it. It is what forces an actual recompile:
+Debug builds get `<Deterministic>false</Deterministic>` automatically from
+`Directory.Build.targets` (since 2026-08-25), but that only moves the assembly hash when
+the compiler runs, and an incremental build with no source change skips compilation
+entirely. **Do not pass `-p:Deterministic=false` on the command line** — the older form of
+this command did, and it is now both redundant and harmful: a command-line `-p:` is a
+global property, so it overrides the targets file in *Release* too and fails
+`NonDeterministicDebugBuildTests` against a file that is innocent.
+
+The 2026-08-09 audit found the skip did *not* reproduce on that machine, so treat it as machine-state-dependent rather than universal: keep the explicit rebuild, and **always read the `Passed!` line and its count**. An exit code of 0 is not evidence that anything ran.
 
 **Baseline as of 2026-08-15** (`main` at `40b6eba`): **Core 661, Wpf 1738.**
 

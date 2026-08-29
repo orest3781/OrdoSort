@@ -26,6 +26,12 @@ namespace OrdoSort.Wpf.Tests;
 /// checked Debug would pass just as happily if the condition were deleted
 /// altogether.
 ///
+/// Only one of those halves compiles per run, so "both are asserted" is a
+/// claim about automated runs, not about this source file: ci.yml builds
+/// Release, then builds Debug and re-runs this class under a filter. Drop
+/// that second leg and the Debug assertion stops being executed anywhere,
+/// which is the state this test was written in and the reason the leg exists.
+///
 /// The assemblies inspected are the SHIPPED ones (OrdoSort.dll and
 /// OrdoSort.Core.dll, resolved through types that live in them), not
 /// OrdoSort.Wpf.Tests.dll, which <see cref="Assembly.GetExecutingAssembly"/>
@@ -59,9 +65,11 @@ public class NonDeterministicDebugBuildTests
 #else
         Assert.True(isReproducible,
             $"{Path.GetFileName(path)} was compiled non-deterministically in Release. Release is " +
-            "what publish.bat ships and its bytes must stay reproducible; the Debug-only " +
+            "what publish.bat ships and its bytes must stay reproducible. Either the Debug-only " +
             "<Deterministic>false</Deterministic> in Directory.Build.targets has leaked past its " +
-            "condition.");
+            "condition, or the build was given -p:Deterministic=false on the command line — a " +
+            "global property, which overrides the targets file in every configuration. Check for " +
+            "the flag before suspecting the file.");
 #endif
     }
 }

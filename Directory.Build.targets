@@ -3,10 +3,10 @@
   <!-- Windows Smart App Control blocks unsigned binaries by file HASH, and a
        .NET SDK build is deterministic by default: the same sources compile to
        the same bytes forever. Those two facts together make a SAC block
-       permanent. Once SAC has ruled on OrdoSort.dll's hash, every subsequent
-       build reproduces that exact hash, so rebuilding — the developer's first
-       instinct, and the thing that fixes almost everything else — provably
-       cannot clear it. Measured on 2026-08-25 with SAC in Enforced mode
+       permanent. Once SAC has ruled on OrdoSort.dll's hash, recompiling it —
+       the developer's first instinct, and the thing that fixes almost
+       everything else — reproduces that same hash and provably cannot clear
+       the block. Measured on 2026-08-25 with SAC in Enforced mode
        (HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy
        VerifiedAndReputablePolicyState = 1):
 
@@ -27,10 +27,24 @@
        and do not change when you edit code.
 
        So the one lever that works is the assembly's hash, and the only
-       supported way to move it is to turn determinism off. That is scoped to
-       Debug deliberately: Release builds are what publish.bat ships, and
-       reproducible release bytes are worth more than local convenience.
-       Release binaries need a real code-signing certificate, not this.
+       supported way to move it is to turn determinism off. Necessary, but on
+       its own not sufficient: the hash only moves when the COMPILER ACTUALLY
+       RUNS, and MSBuild's up-to-date check skips CoreCompile entirely when no
+       source has changed. Measured 2026-08-27: two back-to-back
+       `dotnet build -c Debug` runs with no edit between them left
+       OrdoSort.Core.dll on the identical SHA256; forcing a recompile moved it.
+       An incremental build — which is what run.bat does on every launch —
+       therefore clears nothing if you have not touched a source file. To
+       clear a block deliberately: edit something, or build with `-t:Rebuild`
+       (or the no-incremental flag), or delete bin+obj. A block surfaces
+       while you are mid-edit and the next build recompiles anyway; the case
+       worth recognising is a block that survives repeated run.bat launches
+       with no edits between them.
+
+       This is scoped to Debug deliberately: Release builds are what
+       publish.bat ships, and reproducible release bytes are worth more than
+       local convenience. Release binaries need a real code-signing
+       certificate, not this.
 
        This lives in Directory.Build.TARGETS rather than Directory.Build.props
        because $(Configuration) is not yet defined when props is imported —
@@ -38,7 +52,7 @@
        as "" in Directory.Build.props and as "Debug" in Directory.Build.targets,
        so the same condition written in props would silently never fire for the
        exact builds it exists to fix. NonDeterministicDebugBuildTests guards
-       both halves of this. -->
+       both halves of this, and ci.yml runs it in both configurations. -->
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
     <Deterministic>false</Deterministic>
   </PropertyGroup>

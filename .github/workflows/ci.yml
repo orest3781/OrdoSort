@@ -36,6 +36,18 @@ jobs:
         run: dotnet build --no-restore -c Release
       - name: Test
         run: dotnet test --no-build -c Release --verbosity normal
+      # NonDeterministicDebugBuildTests asserts opposite things per
+      # configuration, and #if DEBUG picks which. A Release-only CI would
+      # therefore never compile the Debug assertion, so deleting
+      # <Deterministic>false</Deterministic> from Directory.Build.targets --
+      # the fix for Smart App Control's permanent hash block -- would leave
+      # both jobs green. This leg is what makes that regression fail.
+      - name: Build Debug (for the determinism guard)
+        run: dotnet build --no-restore -c Debug
+      - name: Determinism guard (Debug)
+        run: >
+          dotnet test tests/OrdoSort.Wpf.Tests --no-build -c Debug
+          --filter NonDeterministicDebugBuild --verbosity normal
       # every push gets a downloadable portable exe (Actions run → Artifacts)
       - name: Publish portable exe
         run: >
