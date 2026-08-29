@@ -66,7 +66,7 @@ public class DataGridSizingCoverageTests
     private static readonly HashSet<string> SizingCovered = new(StringComparer.Ordinal)
     {
         "MatchMergeWindow", "BulkRenameWindow", "HistoryWindow", "TriageWindow",
-        "PageCountsWindow", "ZipToolsWindow",
+        "PageCountsWindow", "ZipToolsWindow", "MergePdfsWindow",
     };
 
     /// <summary>Known-uncovered grid windows, listed so the gap is explicit

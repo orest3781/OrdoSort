@@ -1,0 +1,169 @@
+<Window x:Class="OrdoSort.Wpf.Windows.MergePdfsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:OrdoSort.Wpf.ViewModels"
+        Title="OrdoSort — Merge PDFs" Width="700" Height="520" MinWidth="580" MinHeight="420"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" AllowDrop="True"
+        DragOver="OnDragOver" Drop="OnDrop"
+        Style="{StaticResource {x:Type Window}}">
+    <!-- One job, one list, window-level drop: the destination is the window
+         the drop landed on, so there is no routing decision left to get
+         wrong (2026-08-25 spec). -->
+    <DockPanel Margin="14">
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <Button DockPanel.Dock="Right" Content="Close" Width="96" IsCancel="True" />
+            <StackPanel Orientation="Horizontal">
+                <Button Command="{Binding MergeCommand}"
+                        Style="{StaticResource PrimaryButton}" MinWidth="120" Margin="0,0,8,0"
+                        AutomationProperties.Name="{Binding MergeButtonText}">
+                    <TextBlock Text="{Binding MergeButtonText}"
+                               Style="{StaticResource PrimaryButtonLabel}" />
+                </Button>
+                <Button Content="Merge to…" Command="{Binding MergeToCommand}" Margin="0,0,10,0" />
+                <!-- MaxWidth is load-bearing, not cosmetic: StatusText
+                     carries TextWrapping="Wrap" (Theme/Styles.xaml), and a
+                     horizontal StackPanel measures every child at infinite
+                     width, so without a finite cap the wrap never engages
+                     and the line runs off screen — the failure
+                     TextWrapCoverageTests exists to catch. -->
+                <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
+                           Style="{StaticResource StatusText}" MaxWidth="360" />
+            </StackPanel>
+        </DockPanel>
+
+        <Grid Margin="16,8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <DockPanel Margin="0,0,0,10">
+                <TextBlock DockPanel.Dock="Right" Text="{Binding AddNote}"
+                           Style="{StaticResource CaptionText}" VerticalAlignment="Center"
+                           MaxWidth="240" TextTrimming="CharacterEllipsis" />
+                <!-- WrapPanel, not a horizontal StackPanel: the buttons and
+                     the note do not fit this window's 580 MinWidth at the
+                     18px font preset, and a StackPanel would push the last
+                     button off screen rather than move it to a second row.
+                     The 4 bottom margin is the gap that second row needs. -->
+                <WrapPanel>
+                    <Button Content="Add PDFs or zips…" Click="OnAddFiles" Margin="0,0,6,4" />
+                    <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,4"
+                            IsEnabled="{Binding IsIdle}" />
+                    <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,4" />
+                </WrapPanel>
+            </DockPanel>
+
+            <Grid Grid.Row="1">
+                <DataGrid x:Name="ItemsGrid" ItemsSource="{Binding Rows}"
+                          AutomationProperties.Name="PDFs and archives to merge" AutoGenerateColumns="False"
+                          IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
+                          SelectionMode="Extended">
+                    <!-- Theme.RowHover so the hover tint stays consistent
+                         app-wide; the row ToolTip carries the full path,
+                         which no column shows. -->
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="ToolTip" Value="{Binding Path}" />
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background"
+                                            Value="{DynamicResource Theme.RowHover}" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.Columns>
+                        <!-- Item: the filler (Width="*"). GridCellTextSelectionAware
+                             for the selection-contrast reason ZipToolsWindow.xaml
+                             records (Theme.Text on Theme.Accent measured
+                             1.26:1-2.14:1 without it). MinWidth is load-bearing
+                             arithmetic: DataGridColumnCap computes the Result cap
+                             as the viewport minus everyone else's floor, so
+                             without one a long message squeezes this column to
+                             WPF's 20px default. -->
+                        <DataGridTextColumn Header="Item" Binding="{Binding Display}" Width="*" MinWidth="180">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding Path}" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <!-- Kind: "pdf"/"zip", a quiet tag rather than a status
+                             — SubtleText, with its own copy of the let-selection-win
+                             trigger, for the reason ZipToolsWindow.xaml records. -->
+                        <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="Auto">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
+                                    <Style.Triggers>
+                                        <DataTrigger Value="True">
+                                            <DataTrigger.Binding>
+                                                <Binding Path="IsSelected"
+                                                         RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                                            </DataTrigger.Binding>
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.AccentText}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <!-- Result: content-sized, capped from the code-behind
+                             by DataGridColumnCap. Error is Theme.StatusRed — a
+                             genuine failure. NoPdfs and NeedsPassword are
+                             Theme.StatusAmber — "needs attention", not done and
+                             not broken: nothing failed, there was just nothing to
+                             merge, or a password nobody knew yet
+                             (status-colour-vocabulary plan, 2026-08-08). Driven
+                             off StatusKind, an enum, hence {x:Static}. -->
+                        <DataGridTextColumn x:Name="ResultColumn" Header="Result" Binding="{Binding Note}"
+                                            Width="Auto">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding Note}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding StatusKind}"
+                                                     Value="{x:Static vm:ZipItemRowStatus.Error}">
+                                            <Setter Property="Foreground" Value="{DynamicResource Theme.StatusRed}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding StatusKind}"
+                                                     Value="{x:Static vm:ZipItemRowStatus.NoPdfs}">
+                                            <Setter Property="Foreground" Value="{DynamicResource Theme.StatusAmber}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding StatusKind}"
+                                                     Value="{x:Static vm:ZipItemRowStatus.NeedsPassword}">
+                                            <Setter Property="Foreground" Value="{DynamicResource Theme.StatusAmber}" />
+                                        </DataTrigger>
+                                        <!-- Declared last so it wins over the
+                                             triggers above once selected:
+                                             GridCellText's own copy of this
+                                             trigger does not reliably win once a
+                                             style adds triggers of its own. -->
+                                        <DataTrigger Value="True">
+                                            <DataTrigger.Binding>
+                                                <Binding Path="IsSelected"
+                                                         RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                                            </DataTrigger.Binding>
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.AccentText}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Text="Drag PDFs or zips anywhere on this window, or click Add PDFs or zips…"
+                           Style="{StaticResource EmptyStateText}"
+                           IsHitTestVisible="False">
+                    <TextBlock.Visibility>
+                        <Binding Path="Rows.Count" Converter="{StaticResource ZeroToVis}" />
+                    </TextBlock.Visibility>
+                </TextBlock>
+            </Grid>
+        </Grid>
+    </DockPanel>
+</Window>

@@ -255,6 +255,21 @@ public class WindowOverflowTests
             return (new ZipToolsWindow(vm), null);
         }, MinExamined: 38, ProbeEveryTab: true),   // 50 measured
 
+        // A failed zip and a locked PDF: the Result column's messages are the
+        // widest thing this grid ever shows.
+        ["MergePdfsWindow"] = new(580, 700, 420, 520, () =>
+        {
+            var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>());
+            var toMerge = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
+            toMerge.Apply(new PdfMerge.MergeResult(toMerge.Path, "error",
+                Message: "couldn't read 'entry.pdf' inside the zip — a long enough exception message to matter"));
+            vm.Rows.Add(toMerge);
+            var locked = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf", "pdf");
+            locked.Mark(ZipItemRowStatus.NeedsPassword, "needs a password");
+            vm.Rows.Add(locked);
+            return (new MergePdfsWindow(vm), null);
+        }, MinExamined: 19),   // 25 measured
+
         ["MainWindow"] = new(400, 470, 0, 0, () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "ordo_test_overflow_" + Guid.NewGuid());

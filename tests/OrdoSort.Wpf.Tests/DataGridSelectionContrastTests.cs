@@ -182,6 +182,26 @@ public class DataGridSelectionContrastTests
         return (win, grid);
     }
 
+    private static (MergePdfsWindow win, DataGrid grid) BuildMergePdfsWindow()
+    {
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>());
+        var row = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
+        row.Apply(new PdfMerge.MergeResult(row.Path, "error",
+            Message: "couldn't read 'entry.pdf' inside the zip — a long enough exception message to matter"));
+        vm.Rows.Add(row);
+        var win = new MergePdfsWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        win.Show();
+        win.UpdateLayout();
+        var grid = FindDescendant<DataGrid>(win)
+            ?? throw new InvalidOperationException("no DataGrid descendant under MergePdfsWindow");
+        Assert.Same(vm.Rows, grid.ItemsSource);
+        return (win, grid);
+    }
+
     private static (PageCountsWindow win, DataGrid grid) BuildPageCountsWindow()
     {
         var vm = new PageCountsViewModel(new FakeDialogs());
@@ -270,6 +290,21 @@ public class DataGridSelectionContrastTests
         {
             AssertEverySelectedColumnClearsContrast(grid, p, "ZipToolsWindow (Merge PDFs tab)");
             AssertEveryUnselectedColumnClearsContrast(grid, p, "ZipToolsWindow (Merge PDFs tab)");
+        }
+        finally { win.Close(); }
+    });
+
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void MergePdfsAllColumnsClearContrast(string schemeKey) => _fx.Invoke(() =>
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+        var (win, grid) = BuildMergePdfsWindow();
+        try
+        {
+            AssertEverySelectedColumnClearsContrast(grid, p, "MergePdfsWindow");
+            AssertEveryUnselectedColumnClearsContrast(grid, p, "MergePdfsWindow");
         }
         finally { win.Close(); }
     });

@@ -374,6 +374,22 @@ public partial class MainWindow : Window
         new Windows.ZipToolsWindow(new ZipToolsViewModel(Dialogs, SynchronizationContext.Current))
         { Owner = this }.ShowDialog();
 
+    private void OnMergePdfs(object sender, RoutedEventArgs e) =>
+        new Windows.MergePdfsWindow(new MergePdfsViewModel(Dialogs, SavedPasswordsNow(),
+            uiContext: SynchronizationContext.Current))
+        { Owner = this }.ShowDialog();
+
+    /// <summary>The Unlock tool's saved passwords, revealed, for the two
+    /// windows that try them silently before asking anyone — read once as
+    /// each window opens, through the same PasswordVault path Unlock uses.
+    /// A legacy DPAPI entry this machine cannot decrypt reveals as "" and is
+    /// skipped, not reported: Unlock already owns that conversation.</summary>
+    private IReadOnlyList<string> SavedPasswordsNow() =>
+        Shell.Cfg.SavedPasswords
+            .Select(saved => PasswordVault.Reveal(saved.Password))
+            .Where(password => password.Length > 0)
+            .ToList();
+
     private void OnSettings(object sender, RoutedEventArgs e)
     {
         if (!Shell.IsReady)

@@ -1105,6 +1105,18 @@ public class AutoFitColumnTests
         return new ZipToolsWindow(vm);
     }
 
+    private static MergePdfsWindow BuildMergePdfsWindow(string resultValue, int rowCount = 1)
+    {
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>());
+        for (var i = 0; i < rowCount; i++)
+        {
+            var row = new ZipItemRow($@"C:\inbox\f{i}.zip", "zip");
+            row.Apply(new PdfMerge.MergeResult(row.Path, "error", Message: resultValue));
+            vm.Rows.Add(row);
+        }
+        return new MergePdfsWindow(vm);
+    }
+
     /// <summary>ShowOffscreen plus the tab selection every measurement on this
     /// window depends on: a TabControl realizes ONLY the selected tab's
     /// content, so the grid under test is not in the visual tree at all until
@@ -1283,6 +1295,50 @@ public class AutoFitColumnTests
             ShowOffscreenOnTab(win, mergeTab: true, win.MinWidth);
             AssertNoHorizontalScrollbar(win,
                 $"Merge PDFs tab (at MinWidth {win.MinWidth}, {ManyRowCount} rows)");
+        }
+        finally { win.Close(); }
+    });
+
+    [Fact]
+    public void MergePdfs_ShortResultValueMeasuresNarrow() => _fx.Invoke(() =>
+    {
+        var win = BuildMergePdfsWindow(ShortValue);
+        try
+        {
+            ShowOffscreen(win);
+            var column = FindColumnByHeader(win, "Result");
+            Assert.True(column.ActualWidth < 100,
+                $"Merge PDFs Result column with short content is {column.ActualWidth}px, expected < 100px");
+        }
+        finally { win.Close(); }
+    });
+
+    [Fact]
+    public void MergePdfs_LongResultValueStopsAtTheCapWithEllipsisAndTooltip() => _fx.Invoke(() =>
+    {
+        var win = BuildMergePdfsWindow(VeryLongValue);
+        try
+        {
+            ShowOffscreen(win);
+            var column = FindColumnByHeader(win, "Result");
+            AssertStoppedAtItsCap(win, column, "Merge PDFs Result");
+            AssertTrimmingAndTooltip((DataGridBoundColumn)column, "Note");
+        }
+        finally { win.Close(); }
+    });
+
+    /// <summary>Unlike the old Merge tab's grid, this one has a Kind column
+    /// competing with the filler, so removing the code-behind's
+    /// DataGridColumnCap.Track call genuinely produces a scrollbar here —
+    /// the same shape as PageCounts_AtMinWidthNoHorizontalScrollbar.</summary>
+    [Fact]
+    public void MergePdfs_AtMinWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
+    {
+        var win = BuildMergePdfsWindow(VeryLongValue, ManyRowCount);
+        try
+        {
+            ShowOffscreenAtWidth(win, win.MinWidth);
+            AssertNoHorizontalScrollbar(win, $"Merge PDFs (at MinWidth {win.MinWidth}, {ManyRowCount} rows)");
         }
         finally { win.Close(); }
     });

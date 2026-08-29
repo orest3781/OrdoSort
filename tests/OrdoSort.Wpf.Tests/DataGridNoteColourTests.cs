@@ -364,6 +364,76 @@ public class DataGridNoteColourTests
         _fx.Invoke(() => AssertZipToolsResultColour(
             schemeKey, selected, mergeTab: true, "no_pdfs", p => p.StatusAmber));
 
+    // ------------------------------------------------------- Merge PDFs
+    //
+    // Its own window since 2026-08-28. Three statuses, two colours: Error is
+    // Theme.StatusRed (a genuine failure); NoPdfs and NeedsPassword are
+    // Theme.StatusAmber — "needs attention", not done and not broken.
+
+    private void AssertMergePdfsResultColour(string schemeKey, bool selected,
+        string status, Func<ThemePalette, Rgb> expectedUnselected)
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>());
+        var row = new ZipItemRow(@"C:\inbox\a.zip", "zip");
+        row.Apply(new PdfMerge.MergeResult(row.Path, status, Message: "some result text here"));
+        vm.Rows.Add(row);
+
+        var window = new MergePdfsWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+
+            var grid = FindDescendant<DataGrid>(window)
+                ?? throw new InvalidOperationException("no DataGrid descendant under MergePdfsWindow");
+            if (selected) { grid.SelectedIndex = 0; grid.UpdateLayout(); }
+
+            var (fg, _) = ResolveNoteCellForeground(grid, "Result");
+
+            if (selected)
+            {
+                Assert.Equal(p.AccentText, fg);
+                var ratio = ThemePalette.ContrastRatio(fg, p.Accent);
+                Assert.True(ratio >= 4.5,
+                    $"Merge PDFs Result selected, {status} ({schemeKey}): {fg} on {p.Accent} = {ratio:F2}");
+            }
+            else
+            {
+                var expected = expectedUnselected(p);
+                Assert.Equal(expected, fg);
+                var ratio = ThemePalette.ContrastRatio(fg, p.Surface);
+                Assert.True(ratio >= 4.5,
+                    $"Merge PDFs Result unselected, {status} ({schemeKey}): {fg} on {p.Surface} = {ratio:F2}");
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void MergePdfsErrorResultIsRedUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertMergePdfsResultColour(schemeKey, selected, "error", p => p.StatusRed));
+
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void MergePdfsNoPdfsResultIsAmberUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertMergePdfsResultColour(schemeKey, selected, "no_pdfs", p => p.StatusAmber));
+
+    /// <summary>The new status. Amber, like NoPdfs: a password nobody knew
+    /// yet is "needs attention" — the row is still runnable — not a failure.</summary>
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void MergePdfsNeedsPasswordResultIsAmberUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertMergePdfsResultColour(schemeKey, selected, "needs_password", p => p.StatusAmber));
+
     // -------------------------------------------------------- PDF page counts
     //
     // Not named in this task's Finding 1 (PageCountsWindow's Note column was

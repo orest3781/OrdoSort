@@ -69,11 +69,11 @@ public class DataGridWindowCoverageTests
     {
         "MatchMergeWindow", "BulkRenameWindow", "HistoryWindow", "TriageWindow",
         // Tools windows added 2026-08-09 ("five Tools-menu utilities") —
-        // this task's own coverage-gap fix. Zip, Unzip and Merge PDFs from
-        // zip became ZipToolsWindow's two tabs on 2026-08-18; its builder
-        // takes a tab flag and covers both grids' columns, so one entry here
-        // stands for what used to be three.
-        "FilenameListWindow", "PageCountsWindow", "ZipToolsWindow",
+        // this task's own coverage-gap fix. Merge PDFs got its own window on
+        // 2026-08-28 (the 2026-08-25 spec: a tab is a weak drop target), so
+        // ZipToolsWindow and MergePdfsWindow are two entries with two
+        // builders.
+        "FilenameListWindow", "PageCountsWindow", "ZipToolsWindow", "MergePdfsWindow",
     };
 
     /// <summary>Walks up from the running test assembly's own directory to
@@ -132,15 +132,15 @@ public class DataGridWindowCoverageTests
         // rename, a build config that hides types), an empty or tiny list
         // would make every fact below vacuously pass — proving nothing,
         // exactly the trap this whole task exists to close on the OTHER
-        // suites. Thirteen window types is the actual count at the time this
-        // suite was last updated, seven of which declare a DataGrid
+        // suites. Fifteen window types is the actual count at the time this
+        // suite was last updated, eight of which declare a DataGrid
         // (BulkRename/FilenameList/History/MatchMerge/PageCounts/Triage/
-        // ZipTools — LabelMakerWindow/ListReformatWindow/ManageSavedWindow/
-        // PrintPreviewWindow/SettingsWindow/UnlockWindow don't; Turnaround and
-        // Production, which also used to, were removed along with the reports
-        // feature, AboutWindow was deleted with the Help menu, and
-        // Zip/Unzip/ZipMerge became ZipToolsWindow's two tabs), so eight is a
-        // safe floor that still
+        // ZipTools/MergePdfsWindow — LabelMakerWindow/ListReformatWindow/
+        // ManageSavedWindow/PrintPreviewWindow/SettingsWindow/UnlockWindow
+        // don't; Turnaround and Production, which also used to, were removed
+        // along with the reports feature, AboutWindow was deleted with the
+        // Help menu, and Zip/Unzip/ZipMerge became ZipToolsWindow's two
+        // tabs), so eight is a safe floor that still
         // catches enumeration silently degrading without being so tight it
         // breaks on every ordinary new window.
         Assert.True(windowTypes.Count >= 8,
