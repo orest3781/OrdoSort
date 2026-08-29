@@ -24,7 +24,7 @@ public sealed class ZipToolsViewModel
         // when the windows construct their own view models with the list
         // MainWindow hands them.
         ZipExtract = new ZipExtractViewModel(dialogs, Array.Empty<string>(), scheduler, uiContext);
-        MergePdfs = new MergePdfsViewModel(dialogs, scheduler, uiContext);
+        MergePdfs = new MergePdfsViewModel(dialogs, Array.Empty<string>(), scheduler, uiContext);
     }
 
     public void Cancel()
