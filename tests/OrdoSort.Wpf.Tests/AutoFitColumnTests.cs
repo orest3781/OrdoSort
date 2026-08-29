@@ -1107,12 +1107,12 @@ public class AutoFitColumnTests
         return new PageCountsWindow(vm);
     }
 
-    private static ZipToolsWindow BuildZipToolsWindow(string resultValue, int rowCount = 1)
+    private static ZipToolsWindow BuildZipToolsWindow(string resultValue, int rowCount = 1, string? fileName = null)
     {
         var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>());
         for (var i = 0; i < rowCount; i++)
         {
-            var row = new ZipItemRow($@"C:\inbox\f{i}.zip", "zip");
+            var row = new ZipItemRow($@"C:\inbox\{fileName ?? $"f{i}.zip"}", "zip");
             row.Apply(new Zipper.UnzipResult(row.Path, "error", null, resultValue));
             vm.Rows.Add(row);
         }
@@ -1194,15 +1194,14 @@ public class AutoFitColumnTests
     });
 
     [Fact]
-    public void ZipTools_LongResultValueStopsAtTheCapWithEllipsisAndTooltip() => _fx.Invoke(() =>
+    public void ZipTools_LongResultValueWrapsInsideItsCap() => _fx.Invoke(() =>
     {
         var win = BuildZipToolsWindow(VeryLongValue);
         try
         {
             ShowOffscreen(win);
             var column = FindColumnByHeader(win, "Result");
-            AssertStoppedAtItsCap(win, column, "Zip and unzip Result");
-            AssertTrimmingAndTooltip((DataGridBoundColumn)column, "Note");
+            AssertWrapsInsideItsCap(win, (DataGridBoundColumn)column, "Zip and unzip Result");
         }
         finally { win.Close(); }
     });
@@ -1227,6 +1226,51 @@ public class AutoFitColumnTests
         finally { win.Close(); }
     });
 
+    /// <summary>The "hiding text" half of the 2026-08-29 report, at the
+    /// window's own MinWidth: a long file name AND a long result. The old
+    /// remainder rule pinned Item at exactly its 180px floor and gave
+    /// Result everything else; the proportional split gives Item a share
+    /// well above the floor while Result still wraps inside its cap and
+    /// no horizontal scrollbar appears. Star columns only resolve headlessly
+    /// after the Background drain, hence SettleStarColumns.</summary>
+    [Fact]
+    public void ZipTools_ALongNameAndALongResultShareTheWidthRatherThanStarvingTheName() => _fx.Invoke(() =>
+    {
+        var win = BuildZipToolsWindow(VeryLongValue, rowCount: 1, fileName: VeryLongValue);
+        try
+        {
+            ShowOffscreenAtWidth(win, win.MinWidth);
+            SettleStarColumns(win);
+            var item = FindColumnByHeader(win, "Item");
+            var result = FindColumnByHeader(win, "Result");
+            Assert.True(item.ActualWidth >= item.MinWidth + 40,
+                $"Item should get a share of the width, not sit at its {item.MinWidth}px floor: {item.ActualWidth}px");
+            AssertWrapsInsideItsCap(win, (DataGridBoundColumn)result, "Zip and unzip Result");
+            AssertNoHorizontalScrollbar(win, $"Zip and unzip (at MinWidth {win.MinWidth}, long name and long result)");
+        }
+        finally { win.Close(); }
+    });
+
+    /// <summary>The "readjust every time" half: once the long results are
+    /// gone the Result column shrinks back to its header, instead of
+    /// keeping the width WPF's desired width would hold forever.</summary>
+    [Fact]
+    public void ZipTools_ClearingTheListLetsTheResultColumnShrinkBack() => _fx.Invoke(() =>
+    {
+        var win = BuildZipToolsWindow(VeryLongValue, rowCount: 3);
+        try
+        {
+            ShowOffscreen(win);
+            var result = FindColumnByHeader(win, "Result");
+            Assert.True(result.ActualWidth > 200, $"precondition: long results should make Result wide ({result.ActualWidth}px)");
+            ((ZipExtractViewModel)win.DataContext).Rows.Clear();
+            SettleStarColumns(win);
+            Assert.True(result.ActualWidth < 100,
+                $"Result should shrink back to its header once the list is cleared: {result.ActualWidth}px");
+        }
+        finally { win.Close(); }
+    });
+
     [Fact]
     public void MergePdfs_ShortResultValueMeasuresNarrow() => _fx.Invoke(() =>
     {
@@ -1242,15 +1286,14 @@ public class AutoFitColumnTests
     });
 
     [Fact]
-    public void MergePdfs_LongResultValueStopsAtTheCapWithEllipsisAndTooltip() => _fx.Invoke(() =>
+    public void MergePdfs_LongResultValueWrapsInsideItsCap() => _fx.Invoke(() =>
     {
         var win = BuildMergePdfsWindow(VeryLongValue);
         try
         {
             ShowOffscreen(win);
             var column = FindColumnByHeader(win, "Result");
-            AssertStoppedAtItsCap(win, column, "Merge PDFs Result");
-            AssertTrimmingAndTooltip((DataGridBoundColumn)column, "Note");
+            AssertWrapsInsideItsCap(win, (DataGridBoundColumn)column, "Merge PDFs Result");
         }
         finally { win.Close(); }
     });
@@ -1412,6 +1455,41 @@ public class AutoFitColumnTests
         var carrier = binding.Path?.Path is { Length: > 0 } p ? p
             : binding.ConverterParameter as string ?? "";
         Assert.Contains(bindingPathContains, carrier);
+    }
+
+    /// <summary>2026-08-29 successor to AssertStoppedAtItsCap +
+    /// AssertTrimmingAndTooltip for every window except Triage: a long
+    /// value is still stopped BY its cap, but the cap now makes it wrap —
+    /// the column's ElementStyle says so, no TextTrimming setter competes,
+    /// and the realized cell is taller than one line with the row grown to
+    /// hold it. Nothing is hidden, so no tooltip repeats the text.</summary>
+    private static void AssertWrapsInsideItsCap(Window win, DataGridBoundColumn column, string name)
+    {
+        AssertStoppedAtItsCap(win, column, name);
+        Assert.NotNull(column.ElementStyle);
+        var setters = column.ElementStyle!.Setters.OfType<Setter>().ToList();
+        Assert.Contains(setters, s => s.Property == TextBlock.TextWrappingProperty && Equals(s.Value, TextWrapping.Wrap));
+        Assert.DoesNotContain(setters, s => s.Property == TextBlock.TextTrimmingProperty);
+
+        var grid = FindDescendant<DataGrid>(win)!;
+        var row = (DataGridRow)grid.ItemContainerGenerator.ContainerFromIndex(0);
+        var text = Assert.IsType<TextBlock>(column.GetCellContent(row));
+        var lineHeight = text.FontSize * text.FontFamily.LineSpacing;
+        Assert.True(text.ActualHeight >= 2 * lineHeight,
+            $"{name}: a value wider than its {column.MaxWidth}px cap should wrap onto more lines; " +
+            $"the cell is {text.ActualHeight}px against a {lineHeight}px line");
+        Assert.True(row.ActualHeight >= text.ActualHeight - 1,
+            $"{name}: the row ({row.ActualHeight}px) must grow to hold the wrapped text ({text.ActualHeight}px)");
+    }
+
+    /// <summary>ShowOffscreen plus the Background-priority drain that
+    /// reconciles star columns headlessly (see ShowOffscreenThenResizeTo).</summary>
+    private static void SettleStarColumns(Window win)
+    {
+        win.UpdateLayout();
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+            () => { }, System.Windows.Threading.DispatcherPriority.Background);
+        win.UpdateLayout();
     }
 
     /// <summary>Finds the DataGrid's own internal ScrollViewer (its

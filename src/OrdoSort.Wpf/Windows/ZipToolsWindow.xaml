@@ -91,16 +91,19 @@
                              carries no such trigger, and measured off-screen
                              without one, Theme.Text on Theme.Accent ran
                              1.26:1-2.14:1 across every scheme, nowhere near the
-                             4.5:1 floor. MinWidth is load-bearing arithmetic,
-                             not a nicety: DataGridColumnCap computes the Result
-                             cap as the viewport minus everyone else's floor, so
-                             without one a long error message squeezes this
-                             column to WPF's 20px default. See
-                             PageCountsWindow.xaml. -->
+                             4.5:1 floor. MinWidth is this column's floor in
+                             DataGridColumnCap's split: when Item and
+                             Result can't both have their content width,
+                             each gets a proportional share, never less
+                             than this. Wrap, not trim — a name that has
+                             to give way goes onto a second line rather
+                             than behind an ellipsis (2026-08-29). The
+                             ToolTip stays because it shows the full path,
+                             which no column does. -->
                         <DataGridTextColumn Header="Item" Binding="{Binding Display}" Width="*" MinWidth="180">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="TextWrapping" Value="Wrap" />
                                     <Setter Property="ToolTip" Value="{Binding Path}" />
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
@@ -135,12 +138,15 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Result: content-sized, capped from the code-behind
-                             by DataGridColumnCap. Error is Theme.StatusRed — a
-                             genuine failure, not "needs attention", so it must
-                             not borrow Theme.StatusAmber. NeedsPassword IS
-                             "needs attention" — a password nobody knew yet,
-                             and the row is still runnable — so it is amber
+                        <!-- Result: content-sized; DataGridColumnCap
+                             (code-behind) gives it its content width when that
+                             fits beside Item, and a proportional share —
+                             wrapped, never trimmed — when it doesn't. Error is
+                             Theme.StatusRed — a genuine failure, not "needs
+                             attention", so it must not borrow
+                             Theme.StatusAmber. NeedsPassword IS "needs
+                             attention" — a password nobody knew yet, and the
+                             row is still runnable — so it is amber
                              (status-colour-vocabulary plan, 2026-08-08). NoPdfs
                              is unreachable on this window; only a merge
                              produces it. -->
@@ -148,8 +154,7 @@
                                             Width="Auto">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                    <Setter Property="ToolTip" Value="{Binding Note}" />
+                                    <Setter Property="TextWrapping" Value="Wrap" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding StatusKind}"
                                                      Value="{x:Static vm:ZipItemRowStatus.Error}">

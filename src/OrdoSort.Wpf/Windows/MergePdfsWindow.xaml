@@ -75,18 +75,22 @@
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
-                        <!-- Item: the filler (Width="*"). GridCellTextSelectionAware
-                             for the selection-contrast reason ZipToolsWindow.xaml
+                        <!-- Item: the filler (Width="*").
+                             GridCellTextSelectionAware for the
+                             selection-contrast reason ZipToolsWindow.xaml
                              records (Theme.Text on Theme.Accent measured
-                             1.26:1-2.14:1 without it). MinWidth is load-bearing
-                             arithmetic: DataGridColumnCap computes the Result cap
-                             as the viewport minus everyone else's floor, so
-                             without one a long message squeezes this column to
-                             WPF's 20px default. -->
+                             1.26:1-2.14:1 without it). MinWidth is this
+                             column's floor in DataGridColumnCap's split: when
+                             Item and Result can't both have their content
+                             width, each gets a proportional share, never less
+                             than this. Wrap, not trim — a name that has to give
+                             way goes onto a second line rather than behind an
+                             ellipsis (2026-08-29). The ToolTip stays because it
+                             shows the full path, which no column does. -->
                         <DataGridTextColumn Header="Item" Binding="{Binding Display}" Width="*" MinWidth="180">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="TextWrapping" Value="Wrap" />
                                     <Setter Property="ToolTip" Value="{Binding Path}" />
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
@@ -110,20 +114,22 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Result: content-sized, capped from the code-behind
-                             by DataGridColumnCap. Error is Theme.StatusRed — a
-                             genuine failure. NoPdfs and NeedsPassword are
-                             Theme.StatusAmber — "needs attention", not done and
-                             not broken: nothing failed, there was just nothing to
-                             merge, or a password nobody knew yet
-                             (status-colour-vocabulary plan, 2026-08-08). Driven
-                             off StatusKind, an enum, hence {x:Static}. -->
+                        <!-- Result: content-sized; DataGridColumnCap
+                             (code-behind) gives it its content width when that
+                             fits beside Item, and a proportional share —
+                             wrapped, never trimmed — when it doesn't. Error is
+                             Theme.StatusRed — a genuine failure. NoPdfs and
+                             NeedsPassword are Theme.StatusAmber — "needs
+                             attention", not done and not broken: nothing
+                             failed, there was just nothing to merge, or a
+                             password nobody knew yet (status-colour-vocabulary
+                             plan, 2026-08-08). Driven off StatusKind, an enum,
+                             hence {x:Static}. -->
                         <DataGridTextColumn x:Name="ResultColumn" Header="Result" Binding="{Binding Note}"
                                             Width="Auto">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                    <Setter Property="ToolTip" Value="{Binding Note}" />
+                                    <Setter Property="TextWrapping" Value="Wrap" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding StatusKind}"
                                                      Value="{x:Static vm:ZipItemRowStatus.Error}">
