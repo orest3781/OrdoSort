@@ -19,6 +19,9 @@ public static class ZipMergeScenarios
         new Scenario(Surface, "archive mixes PDFs with other files", "awkward", MixedContent),
         new Scenario(Surface, "an encrypted PDF inside", "awkward", EncryptedInside),
         new Scenario(Surface, "one bad archive among good ones", "awkward", BatchWithOneBad),
+        new Scenario(Surface, "an encrypted PDF inside, password supplied", "clean", EncryptedInsideWithPassword),
+        new Scenario(Surface, "loose PDFs merge into one", "clean", LoosePdfs),
+        new Scenario(Surface, "a locked loose PDF is skipped", "awkward", LockedLooseSkipped),
     };
 
     private static MergePdfsViewModel NewVm(ScenarioContext ctx) =>
@@ -158,6 +161,80 @@ public static class ZipMergeScenarios
         var errors = vm.Rows.Count(r => r.StatusKind == ZipItemRowStatus.Error);
         ctx.Check("both good archives merged", ok == 2, $"got {ok}");
         ctx.Check("the bad one is reported as an error", errors == 1, $"got {errors}");
+        ctx.Capture(win);
+    }
+
+    /// <summary>EncryptedInside's sibling: the same archive, the password
+    /// queued. The prompt is reached once, the answer opens the entry, and
+    /// both documents contribute a page.</summary>
+    private static void EncryptedInsideWithPassword(ScenarioContext ctx)
+    {
+        var plain = ctx.Fx.Pdf("src/plain.pdf", "PAGE ONE");
+        var locked = ctx.Fx.EncryptedPdf("src/locked.pdf", "secret");
+        var zip = ctx.Fx.Zip("archives/has-locked.zip", ("plain.pdf", plain), ("locked.pdf", locked));
+        ctx.Dialogs.QueuePassword("secret");
+
+        var vm = NewVm(ctx);
+        var win = Merge(ctx, vm, zip);
+
+        ctx.Check("the prompt was reached exactly once", ctx.Dialogs.PasswordPrompts == 1,
+            $"prompted {ctx.Dialogs.PasswordPrompts} times");
+        ctx.Check("merged", vm.Rows[0].StatusKind == ZipItemRowStatus.Ok,
+            $"{vm.Rows[0].StatusKind} — {vm.Rows[0].Note}");
+        if (vm.Rows[0].Output is { } output)
+        {
+            ctx.FileExists(output);
+            AssertPageCount(ctx, output, 2, "both documents contributed a page");
+        }
+        ctx.Capture(win);
+    }
+
+    /// <summary>Three loose documents, one output: named after their folder
+    /// and placed beside the first, with every row pointing at it.</summary>
+    private static void LoosePdfs(ScenarioContext ctx)
+    {
+        var a = ctx.Fx.Pdf("src/a.pdf", "ONE");
+        var b = ctx.Fx.Pdf("src/b.pdf", "TWO");
+        var c = ctx.Fx.Pdf("src/c.pdf", "THREE");
+
+        var vm = NewVm(ctx);
+        var win = Merge(ctx, vm, a, b, c);
+
+        ctx.Check("every row reports the one document", vm.Rows.All(r => r.StatusKind == ZipItemRowStatus.Ok),
+            "rows: " + string.Join(", ", vm.Rows.Select(r => $"{r.Display}:{r.StatusKind}")));
+        var expected = Path.Combine(ctx.Fx.Root, "src", "src.pdf");
+        ctx.FileExists(expected);
+        ctx.Check("every row points at it",
+            vm.Rows.All(r => string.Equals(r.Output, expected, StringComparison.OrdinalIgnoreCase)),
+            "outputs: " + string.Join(", ", vm.Rows.Select(r => r.Output)));
+        AssertPageCount(ctx, expected, 3, "three one-page documents in, three pages out");
+        ctx.Capture(win);
+    }
+
+    /// <summary>Fail-whole for the loose group, end to end: one locked
+    /// document, the prompt skipped, and nothing merges — the locked row
+    /// waits for a password, the plain one says what held it back, and both
+    /// are still runnable.</summary>
+    private static void LockedLooseSkipped(ScenarioContext ctx)
+    {
+        var a = ctx.Fx.Pdf("src/a.pdf", "ONE");
+        var locked = ctx.Fx.EncryptedPdf("src/locked.pdf", "secret");
+
+        var vm = NewVm(ctx);
+        var win = Merge(ctx, vm, a, locked);
+
+        var lockedRow = vm.Rows.Single(r => r.Path == locked);
+        var plainRow = vm.Rows.Single(r => r.Path == a);
+        ctx.Check("the prompt was reached", ctx.Dialogs.PasswordPrompts == 1,
+            $"prompted {ctx.Dialogs.PasswordPrompts} times");
+        ctx.Check("the locked one is waiting for a password",
+            lockedRow.StatusKind == ZipItemRowStatus.NeedsPassword, $"{lockedRow.StatusKind} — {lockedRow.Note}");
+        ctx.Check("the plain one was held back, and says why",
+            plainRow.StatusKind == ZipItemRowStatus.Pending && plainRow.Note == "not merged — locked.pdf needs a password",
+            $"{plainRow.StatusKind} — \"{plainRow.Note}\"");
+        ctx.Check("nothing was written", !File.Exists(Path.Combine(ctx.Fx.Root, "src", "src.pdf")),
+            "a merged document appeared");
+        ctx.Check("both rows are still runnable", vm.MergeButtonText == "Merge 2 items", vm.MergeButtonText);
         ctx.Capture(win);
     }
 }

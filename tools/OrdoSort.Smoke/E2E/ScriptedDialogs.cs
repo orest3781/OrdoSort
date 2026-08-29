@@ -45,9 +45,19 @@ public sealed class ScriptedDialogs : IDialogService
     public string? AskFilePath(string filter, string suggested) => _filePath.Count > 0 ? _filePath.Dequeue() : null;
     public string? BrowseFolder(string? startAt) => _folder.Count > 0 ? _folder.Dequeue() : null;
 
+    /// <summary>How many times a run reached the prompt — answered or
+    /// skipped. A scenario about the prompt asserts this, because "the row
+    /// ended up needing a password" is also what a run that never asked
+    /// would produce.</summary>
+    public int PasswordPrompts { get; private set; }
+
     // An empty password queue answers null — the person skipped — so a
     // scenario that never expected a prompt fails on the row it produces.
-    public string? AskPassword(PasswordRequest request) => _password.Count > 0 ? _password.Dequeue() : null;
+    public string? AskPassword(PasswordRequest request)
+    {
+        PasswordPrompts++;
+        return _password.Count > 0 ? _password.Dequeue() : null;
+    }
 
     /// <summary>Queues with answers left over. A leftover means the scenario
     /// never reached the prompt it was written for.</summary>

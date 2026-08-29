@@ -1,4 +1,5 @@
 using System.Windows.Threading;
+using OrdoSort.Core;
 using OrdoSort.Smoke.E2E;
 
 namespace OrdoSort.Wpf.Tests;
@@ -118,6 +119,40 @@ public class E2EHarnessTests
 
         using var archive = System.IO.Compression.ZipFile.OpenRead(zip);
         Assert.Contains(archive.Entries, e => e.FullName.Contains("..", StringComparison.Ordinal));
+    }
+
+    /// <summary>The locked-archive fixture is genuinely encrypted: the entry
+    /// is flagged, refuses to open without a password, and gives its bytes
+    /// back with one — asserted through SharpZipLib directly, the way the
+    /// tools read it.</summary>
+    [Fact]
+    public void EncryptedZipIsActuallyEncrypted()
+    {
+        using var fx = Fixture.Create("encrypted-zip");
+        var source = fx.Text("src/a.txt", "hello");
+        var zip = fx.EncryptedZip("archives/locked.zip", "secret", ("a.txt", source));
+
+        using var archive = new ICSharpCode.SharpZipLib.Zip.ZipFile(zip);
+        var entry = archive[0];
+        Assert.True(entry.IsCrypted);
+        Assert.Throws<ICSharpCode.SharpZipLib.Zip.ZipException>(() => archive.GetInputStream(entry));
+
+        archive.Password = "secret";
+        using var reader = new StreamReader(archive.GetInputStream(entry));
+        Assert.Equal("hello", reader.ReadToEnd());
+    }
+
+    [Fact]
+    public void ScriptedDialogsAnswerQueuedPasswordsThenNullAndCountEveryPrompt()
+    {
+        var dialogs = new ScriptedDialogs().QueuePassword("a", "b");
+        var request = new PasswordRequest("x.zip", null, false);
+
+        Assert.Equal("a", dialogs.AskPassword(request));
+        Assert.Equal("b", dialogs.AskPassword(request));
+        Assert.Null(dialogs.AskPassword(request));   // the queue ran dry: a skip
+        Assert.Equal(3, dialogs.PasswordPrompts);
+        Assert.Empty(dialogs.Unconsumed);
     }
 
     /// <summary>Queued answers come back in order — a scenario that queues

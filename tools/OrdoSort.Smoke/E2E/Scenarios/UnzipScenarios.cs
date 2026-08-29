@@ -19,6 +19,8 @@ public static class UnzipScenarios
         new Scenario(Surface, "corrupt archive", "awkward", CorruptArchive),
         new Scenario(Surface, "output folder already exists", "awkward", TargetExists),
         new Scenario(Surface, "empty archive", "awkward", EmptyArchive),
+        new Scenario(Surface, "password-protected archive", "clean", LockedArchive),
+        new Scenario(Surface, "password-protected archive, prompt skipped", "awkward", LockedArchiveSkipped),
     };
 
     private static ZipExtractViewModel NewVm(ScenarioContext ctx) =>
@@ -157,6 +159,49 @@ public static class UnzipScenarios
         ctx.Check("extracted without an error", vm.Rows[0].StatusKind == ZipItemRowStatus.Ok,
             $"status was {vm.Rows[0].StatusKind} — {vm.Rows[0].Note}");
         ctx.Check("did not crash the window", win.IsLoaded, "window went away");
+        ctx.Capture(win);
+    }
+
+    /// <summary>The prompt, end to end: the archive is AES-encrypted, no
+    /// password is saved, so Extract reaches the prompt and ScriptedDialogs
+    /// answers it — through the same Send hop the real window uses, because
+    /// uiContext here is the live dispatcher context.</summary>
+    private static void LockedArchive(ScenarioContext ctx)
+    {
+        var one = ctx.Fx.Pdf("src/one.pdf", "ALPHA");
+        var zip = ctx.Fx.EncryptedZip("archives/locked.zip", "secret", ("one.pdf", one));
+        ctx.Dialogs.QueuePassword("secret");
+
+        var vm = NewVm(ctx);
+        var win = Extract(ctx, vm, zip);
+
+        ctx.Check("the prompt was reached exactly once", ctx.Dialogs.PasswordPrompts == 1,
+            $"prompted {ctx.Dialogs.PasswordPrompts} times");
+        ctx.Check("extracted", vm.Rows[0].StatusKind == ZipItemRowStatus.Ok,
+            $"{vm.Rows[0].StatusKind} — {vm.Rows[0].Note}");
+        ctx.FileExists(Path.Combine(ctx.Fx.Root, "archives", "locked", "one.pdf"));
+        ctx.Capture(win);
+    }
+
+    /// <summary>The same archive, nothing queued: the prompt is skipped, the
+    /// row waits for a password and is still runnable, and nothing at all
+    /// is written.</summary>
+    private static void LockedArchiveSkipped(ScenarioContext ctx)
+    {
+        var one = ctx.Fx.Pdf("src/one.pdf", "ALPHA");
+        var zip = ctx.Fx.EncryptedZip("archives/locked.zip", "secret", ("one.pdf", one));
+
+        var vm = NewVm(ctx);
+        var win = Extract(ctx, vm, zip);
+
+        ctx.Check("the prompt was reached", ctx.Dialogs.PasswordPrompts == 1,
+            $"prompted {ctx.Dialogs.PasswordPrompts} times");
+        ctx.Check("the row is waiting for a password, and still runnable",
+            vm.Rows[0].StatusKind == ZipItemRowStatus.NeedsPassword && vm.Rows[0].IsRunnable,
+            $"{vm.Rows[0].StatusKind} — {vm.Rows[0].Note}");
+        ctx.Check("the button still counts it", vm.ExtractButtonText == "Extract 1 zip", vm.ExtractButtonText);
+        ctx.Check("nothing was written",
+            !Directory.Exists(Path.Combine(ctx.Fx.Root, "archives", "locked")), "an output folder appeared");
         ctx.Capture(win);
     }
 }

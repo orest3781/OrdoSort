@@ -101,6 +101,26 @@ public sealed class Fixture : IDisposable
         return path;
     }
 
+    /// <summary>A password-protected archive — WinZip AES-256 through
+    /// SharpZipLib's writer, the only writer in reach that encrypts —
+    /// holding real files. What a colleague's zip tool produces, so what the
+    /// prompt has to open.</summary>
+    public string EncryptedZip(string relativePath, string password,
+        params (string entryName, string sourcePath)[] entries)
+    {
+        var path = Resolve(relativePath);
+        using var fs = File.Create(path);
+        using var zos = new ICSharpCode.SharpZipLib.Zip.ZipOutputStream(fs) { Password = password };
+        foreach (var (name, source) in entries)
+        {
+            var bytes = File.ReadAllBytes(source);
+            zos.PutNextEntry(new ICSharpCode.SharpZipLib.Zip.ZipEntry(name) { Size = bytes.Length, AESKeySize = 256 });
+            zos.Write(bytes, 0, bytes.Length);
+            zos.CloseEntry();
+        }
+        return path;
+    }
+
     public string EmptyZip(string relativePath)
     {
         var path = Resolve(relativePath);
