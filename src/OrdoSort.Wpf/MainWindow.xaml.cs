@@ -279,7 +279,12 @@ public partial class MainWindow : Window
         UpdateLayout();
         if (Viewer.ActualHeight <= 0) return;
 
-        var workArea = SystemParameters.WorkArea;
+        // The monitor this window is actually on, NOT the primary. This code
+        // moves a window the user has already placed, so measuring it against
+        // SystemParameters.WorkArea (always the primary's) relocated a window
+        // sitting on a secondary monitor onto the primary at every session
+        // start — see MonitorWorkArea for the numbers.
+        var workArea = MonitorWorkArea.For(this);
         var width = FitMath.WindowWidthFor(ActualWidth, Viewer.ActualWidth, Viewer.ActualHeight,
             aspect, MinWidth, workArea.Width);
         Width = width;

@@ -182,3 +182,129 @@ public class ViewerFitTests
         Assert.Empty(reported);
     }
 }
+
+/// <summary>Which screen the fit measures itself against.
+/// <see cref="FitMath.LeftFor"/> above is told a work area and does the right
+/// thing with whichever one it is handed; this pins the half that decides
+/// WHICH — the trap being that <see cref="SystemParameters.WorkArea"/> is
+/// always the primary monitor's, so a window on a secondary one got dragged
+/// back to the primary at every session start.
+///
+/// Needs a real HWND (MonitorFromWindow takes one), so it runs on the shared
+/// STA fixture and shows its windows off-screen, the same shape the other
+/// window suites use.</summary>
+[Collection(HighlightContrastTests.Name)]
+public class MonitorWorkAreaTests
+{
+    private readonly HighlightContrastFixture _fx;
+
+    public MonitorWorkAreaTests(HighlightContrastFixture fx) => _fx = fx;
+
+    private static Window OffScreenWindow(double left, double top) => new()
+    {
+        Left = left,
+        Top = top,
+        Width = 400,
+        Height = 300,
+        ShowActivated = false,
+        WindowStartupLocation = WindowStartupLocation.Manual,
+    };
+
+    /// <summary>Far off every screen: MONITOR_DEFAULTTONEAREST still resolves
+    /// a monitor, so the answer is a usable rectangle rather than an empty
+    /// one a caller would divide by.</summary>
+    [Fact]
+    public void AWindowPlacedOffEveryScreenStillGetsAUsableWorkArea() =>
+        _fx.Invoke(() =>
+        {
+            var window = OffScreenWindow(-20000, 0);
+            try
+            {
+                window.Show();
+                OverflowProbe.PumpRender();
+
+                var work = MonitorWorkArea.For(window);
+
+                Assert.True(work.Width > 0, $"width was {work.Width}");
+                Assert.True(work.Height > 0, $"height was {work.Height}");
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+    /// <summary>The primary monitor is the case where the old code was right,
+    /// and it has to stay right: a window sitting on the primary must resolve
+    /// to exactly what SystemParameters.WorkArea reports, DPI conversion and
+    /// all.</summary>
+    [Fact]
+    public void AWindowOnThePrimaryMonitorGetsThePrimaryWorkArea() =>
+        _fx.Invoke(() =>
+        {
+            var primary = SystemParameters.WorkArea;
+            var window = OffScreenWindow(primary.Left + 10, primary.Top + 10);
+            try
+            {
+                window.Show();
+                OverflowProbe.PumpRender();
+
+                Assert.Equal(primary, MonitorWorkArea.For(window));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+    /// <summary>No HWND yet — MonitorFromWindow has nothing to answer about,
+    /// so the caller gets the behaviour it had before this class existed
+    /// rather than an empty rectangle or a throw.</summary>
+    [Fact]
+    public void AWindowThatWasNeverShownFallsBackToThePrimaryWorkArea() =>
+        _fx.Invoke(() => Assert.Equal(SystemParameters.WorkArea, MonitorWorkArea.For(new Window())));
+
+    // ---- the arithmetic ------------------------------------------------
+    //
+    // The three facts above cannot tell "this window's monitor" apart from
+    // "the primary" on a one-monitor machine — every one of them still
+    // passes if For() is gutted back to SystemParameters.WorkArea. These do
+    // not: they are the multi-monitor and DPI cases stated as numbers, so
+    // they hold on any machine and fail the moment the conversion drifts.
+
+    /// <summary>The whole point of the fix: a monitor to the RIGHT of the
+    /// primary keeps its own origin. Folding this onto Left 0 is exactly the
+    /// defect the review found — a window at Left 2200 measured against a
+    /// work area that stops at 1920 gets dragged onto the primary.</summary>
+    [Fact]
+    public void AMonitorRightOfThePrimaryKeepsItsOwnOrigin() =>
+        Assert.Equal(new Rect(1920, 0, 1920, 1040),
+            MonitorWorkArea.ToDips(1920, 0, 3840, 1040, 1, 1));
+
+    /// <summary>And one to the LEFT, whose device coordinates are negative.</summary>
+    [Fact]
+    public void AMonitorLeftOfThePrimaryKeepsItsNegativeOrigin() =>
+        Assert.Equal(new Rect(-1920, 0, 1920, 1040),
+            MonitorWorkArea.ToDips(-1920, 0, 0, 1040, 1, 1));
+
+    /// <summary>Device pixels are not DIPs anywhere but 100%: at 150% a
+    /// 3840x2100 work area starting at device x=1920 is 2560x1400 DIPs
+    /// starting at 1280.</summary>
+    [Fact]
+    public void AScaledMonitorIsConvertedToDips() =>
+        Assert.Equal(new Rect(1280, 0, 2560, 1400),
+            MonitorWorkArea.ToDips(1920, 0, 5760, 2100, 1.5, 1.5));
+
+    /// <summary>Numbers no rectangle can be built from say so, rather than
+    /// throwing out of Rect's constructor — that is what lets
+    /// <see cref="MonitorWorkArea.For"/> promise a usable answer.</summary>
+    [Theory]
+    [InlineData(0, 0, 1920, 1040, 0, 1)]      // no DPI scale
+    [InlineData(0, 0, 1920, 1040, 1, -1)]     // nonsense DPI scale
+    [InlineData(0, 0, 0, 1040, 1, 1)]         // empty width
+    [InlineData(0, 0, 1920, 0, 1, 1)]         // empty height
+    [InlineData(1920, 0, 0, 1040, 1, 1)]      // inverted
+    public void NumbersThatCannotMakeARectangleSaySo(
+        int left, int top, int right, int bottom, double scaleX, double scaleY) =>
+        Assert.Null(MonitorWorkArea.ToDips(left, top, right, bottom, scaleX, scaleY));
+}
