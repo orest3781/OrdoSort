@@ -9,6 +9,13 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
     <PackageReference Include="PdfSharp" Version="6.1.1" />
+    <!-- Every zip READ (extract, merge, probe) goes through SharpZipLib: it
+         reads ZipCrypto and WinZip-AES archives, which System.IO.Compression
+         cannot. Zip CREATION stays on System.IO.Compression — output is never
+         encrypted, and ZipFile.Open's atomic FileMode.CreateNew created-gate
+         in Zipper.CreateZip is proven and tested. One library per direction;
+         never two per operation (2026-08-28 spec). -->
+    <PackageReference Include="SharpZipLib" Version="1.4.2" />
     <!-- CVE-2025-6965: SQLitePCLRaw floors at 2.1.6 through Microsoft.Data.Sqlite
          8.0.11 (and every 8.0.x/9.0.x release checked), which bundles a pre-3.50.2
          SQLite vulnerable to an aggregate-query integer truncation. Bumping
