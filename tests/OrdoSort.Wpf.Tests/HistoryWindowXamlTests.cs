@@ -181,34 +181,17 @@ public class HistoryWindowXamlTests
         }
     });
 
-    /// <summary>Task 7 Step 3: the two fixed-width text columns clipped
-    /// without ellipsis or any way to recover the full value. Asserted
-    /// directly on each column's ElementStyle (the column-level style WPF
-    /// applies to the generated per-cell TextBlock) rather than a realized
-    /// cell, since DataGrid virtualizes cells and this property is fixed at
-    /// the column level regardless of which rows are realized.
-    ///
-    /// Header and binding path are separate parameters because Task 9 made
-    /// them differ: the column a user reads is headed "Destination" while the
-    /// property behind it is still <c>HistoryRow.Route</c>. Collapsing them
-    /// back into one argument would quietly re-couple the label to the
-    /// internal name.
-    ///
-    /// EXTENDED 2026-08-07 (autofit-columns, Step 5) to also cover Original/
-    /// Filed-as: those two star columns never actually had TextTrimming/
-    /// ToolTip before this task despite Name/Destination's original comment
-    /// here claiming star columns "don't need this" (they were kept star
-    /// rather than switched to Auto — a 3000-row/long-path measurement found
-    /// Auto's width visibly jumps for these two specifically, see
-    /// HistoryWindow.xaml — but a star column's ASSIGNED width still clips a
-    /// value that doesn't fit it without this).</summary>
+    /// <summary>2026-08-29: the four text columns wrap instead of trimming
+    /// — DataGridColumnCap's autofit gives each its content width when that
+    /// fits and a proportional share when it doesn't, and a share is only
+    /// honest if the text it can't show on one line goes onto the next.
+    /// No tooltip repeats the cell: the whole value is on screen.</summary>
     [Theory]
-    [InlineData("Name", "Name")]
-    [InlineData("Destination", "Route")]
-    [InlineData("Original", "Original")]
-    [InlineData("Filed as", "FiledAs")]
-    public void NameAndDestinationColumnsTrimWithEllipsisAndCarryATooltip(
-        string header, string bindingPath) => _fx.Invoke(() =>
+    [InlineData("Name")]
+    [InlineData("Destination")]
+    [InlineData("Original")]
+    [InlineData("Filed as")]
+    public void TextColumnsWrapRatherThanTrim(string header) => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
         var (win, history, dbPath) = BuildWindow();
@@ -221,18 +204,29 @@ public class HistoryWindowXamlTests
                 ?? throw new InvalidOperationException($"No '{header}' column found");
 
             Assert.NotNull(column.ElementStyle);
-            var trimSetter = column.ElementStyle!.Setters
-                .OfType<Setter>()
-                .FirstOrDefault(s => s.Property == TextBlock.TextTrimmingProperty);
-            Assert.NotNull(trimSetter);
-            Assert.Equal(TextTrimming.CharacterEllipsis, trimSetter!.Value);
+            var setters = column.ElementStyle!.Setters.OfType<Setter>().ToList();
+            Assert.Contains(setters, s => s.Property == TextBlock.TextWrappingProperty && Equals(s.Value, TextWrapping.Wrap));
+            Assert.DoesNotContain(setters, s => s.Property == TextBlock.TextTrimmingProperty);
+            Assert.DoesNotContain(setters, s => s.Property == FrameworkElement.ToolTipProperty);
+        }
+        finally { Cleanup(win, history, dbPath); }
+    });
 
-            var tooltipSetter = column.ElementStyle!.Setters
-                .OfType<Setter>()
-                .FirstOrDefault(s => s.Property == FrameworkElement.ToolTipProperty);
-            Assert.NotNull(tooltipSetter);
-            var binding = Assert.IsType<Binding>(tooltipSetter!.Value);
-            Assert.Equal(bindingPath, binding.Path.Path);
+    /// <summary>When holds a timestamp History formats itself — bounded, 16
+    /// characters — so it is no longer one of the governed columns: sized
+    /// to its content, never asked to give way, never wrapped mid-date.
+    /// An uncapped column's MaxWidth is WPF's default, infinity.</summary>
+    [Fact]
+    public void WhenIsNotCappedBecauseItsContentIsBounded() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var (win, history, dbPath) = BuildWindow();
+        try
+        {
+            var grid = FindDescendant<DataGrid>(win)!;
+            var when = grid.Columns.First(c => (string)c.Header == "When");
+            Assert.True(double.IsPositiveInfinity(when.MaxWidth),
+                $"When should not be governed by DataGridColumnCap: MaxWidth is {when.MaxWidth}");
         }
         finally { Cleanup(win, history, dbPath); }
     });

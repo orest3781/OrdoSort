@@ -88,54 +88,14 @@
                      Theme/Styles.xaml on why that trigger can't just live in
                      the shared base for columns like these. -->
                 <DataGrid.Columns>
-                    <!-- 2026-08-07 autofit-columns, Step 5: this window is the
-                         one deliberate exception to "content-sized (Auto),
-                         capped, one filler" that every other grid in the app
-                         now follows (MatchMergeWindow, BulkRenameWindow,
-                         TriageWindow). MEASURED before choosing, not assumed:
-                         a history seeded with 3000 rows (one, at index 1500,
-                         holding a ~185-character path) and Original's column
-                         temporarily switched to Width="Auto" in a throwaway
-                         test — same off-screen Show()+UpdateLayout() shape as
-                         every other headless test here. Two back-to-back
-                         layout passes over the same top-of-list realized rows
-                         held steady at 173px; scrolling the long-path row
-                         into view (forcing the virtualizer to realize it)
-                         jumped the SAME column to 410px; scrolling back to the
-                         top afterward did NOT shrink it back down — it stayed
-                         at 410px. So Auto here does exactly what the brief
-                         warned it would: it measures only realized rows, and
-                         a column can visibly grow (and stay grown) as a
-                         person scrolls past a longer path — the instability
-                         "cap, then ellipsis" exists to prevent, on the two
-                         columns holding this table's least bounded values.
-                         Original/Filed-as therefore KEEP their star+MinWidth
-                         shape below rather than switching to Auto, which
-                         already satisfies both of the owner's decisions on
-                         its own (a real user resizing this window still gets
-                         a 120px floor instead of collapsing, and the two
-                         columns absorb 100% of whatever width the four
-                         bounded ones to their right don't need — no dead
-                         space). What DOES change: TextTrimming/ToolTip, which
-                         these two star columns never actually had before
-                         despite the comment two blocks below claiming they
-                         didn't need it — a short window or a long enough path
-                         could clip either one with no way to recover the full
-                         value; fixed now, matching Name/Destination.
-                         When/Name/Destination switch to content-sized Auto
-                         (capped in code — HistoryWindow.xaml.cs,
-                         DataGridColumnCap) instead of their prior fixed
-                         pixel widths, since unlike Original/Filed-as their
-                         VALUES are bounded (a formatted timestamp, a person's
-                         name, a route label) — the same jump this comment
-                         just measured for a full file path has no realistic
-                         way to happen for them. -->
+                    <!-- When: a 16-character timestamp History formats itself
+                         — bounded content, so it is sized to itself and left
+                         out of DataGridColumnCap's split (2026-08-29); the
+                         four text columns below are the participants. -->
                     <DataGridTextColumn x:Name="WhenColumn" Header="When" Binding="{Binding When}"
                                         Width="Auto">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                <Setter Property="ToolTip" Value="{Binding When}" />
                                 <Style.Triggers>
                                     <!-- the working replacement for the dead
                                          RowStyle trigger removed above — see
@@ -189,12 +149,15 @@
                          Destination are now capped-Auto rather than always
                          reserving their old full fixed width, so Original/
                          Filed-as have at least as much room to fair-share at
-                         any window size as they did before, never less. -->
+                         any window size as they did before, never less.
+                         Since 2026-08-29 the same 120px is also the floor of
+                         these two columns' share in DataGridColumnCap's
+                         proportional split, and they wrap rather than trim
+                         when they give way. -->
                     <DataGridTextColumn Header="Original" Binding="{Binding Original}" Width="*" MinWidth="120">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                <Setter Property="ToolTip" Value="{Binding Original}" />
+                                <Setter Property="TextWrapping" Value="Wrap" />
                                 <Style.Triggers>
                                     <!-- same Reverted/"let selection win" pair as
                                          the When column above. -->
@@ -215,8 +178,7 @@
                     <DataGridTextColumn Header="Filed as" Binding="{Binding FiledAs}" Width="*" MinWidth="120">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                <Setter Property="ToolTip" Value="{Binding FiledAs}" />
+                                <Setter Property="TextWrapping" Value="Wrap" />
                                 <Style.Triggers>
                                     <!-- same Reverted/"let selection win" pair as
                                          the When column above. -->
@@ -234,18 +196,15 @@
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    <!-- TextTrimming/ToolTip: Name and Destination clip
-                         without ellipsis or any way to recover the full value
-                         if they didn't have this (2026-08-02 audit-
-                         remediation, Task 7 Step 3) — still true now that
-                         they're capped-Auto rather than fixed-width, so it
-                         stays. -->
+                    <!-- Name and Destination: content-sized; DataGridColumnCap
+                         gives each its content width when the four text
+                         columns fit and a proportional share — wrapped,
+                         never trimmed — when they don't (2026-08-29). -->
                     <DataGridTextColumn x:Name="NameColumn" Header="Name" Binding="{Binding Name}"
                                         Width="Auto">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                <Setter Property="ToolTip" Value="{Binding Name}" />
+                                <Setter Property="TextWrapping" Value="Wrap" />
                                 <Style.Triggers>
                                     <!-- same Reverted/"let selection win" pair as
                                          the When column above. -->
@@ -277,8 +236,7 @@
                                         Width="Auto">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                <Setter Property="ToolTip" Value="{Binding Route}" />
+                                <Setter Property="TextWrapping" Value="Wrap" />
                                 <Style.Triggers>
                                     <!-- same Reverted/"let selection win" pair as
                                          the When column above. -->

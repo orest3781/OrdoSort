@@ -17,6 +17,6 @@ public partial class HistoryWindow : Window
     {
         InitializeComponent();
         DataContext = vm;
-        DataGridColumnCap.Track(HistoryGrid, WhenColumn, NameColumn, DestinationColumn);
+        DataGridColumnCap.Track(HistoryGrid, NameColumn, DestinationColumn);
     }
 }
