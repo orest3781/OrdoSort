@@ -1227,24 +1227,88 @@ public class AutoFitColumnTests
     });
 
     /// <summary>The "hiding text" half of the 2026-08-29 report, at the
-    /// window's own MinWidth: a long file name AND a long result. The old
-    /// remainder rule pinned Item at exactly its 180px floor and gave
-    /// Result everything else; the proportional split gives Item a share
-    /// well above the floor while Result still wraps inside its cap and
-    /// no horizontal scrollbar appears. Star columns only resolve headlessly
-    /// after the Background drain, hence SettleStarColumns.</summary>
+    /// window's own MinWidth, with a long file name AND a long result —
+    /// deliberately with content of DIFFERENT lengths, so the fact can see
+    /// the split move with content rather than just clear a floor. The old
+    /// rule capped Result at the viewport minus Item's floor and pinned
+    /// Item AT that 180px floor whatever it held; the proportional rule
+    /// gives each a share tracking its own content, and the text that has
+    /// to give way wraps instead of hiding behind an ellipsis.
+    ///
+    /// Why this fact asserts DIRECTION rather than magnitude, measured
+    /// 2026-08-29 rather than assumed: at this window's own MinWidth (580)
+    /// the grid is 504px, Kind takes 45, the vertical-scrollbar reservation
+    /// 17 — a pool of about 422px against Item's 180px floor. That caps the
+    /// content ratio this window can even express at (422-180)/180 = 1.34;
+    /// past it Item holds AT its floor and Result takes the remainder
+    /// unconditionally (measured: Item was 215px for content ratios of both
+    /// 1.68 and 3.36). Inside that range Item's own fixed overhead — the
+    /// safety margin plus the scrollbar reservation, about 36px, which is
+    /// 8.5% of a 422px pool — compresses what is left, so the rendered
+    /// ratio runs 422r/(458+36r): at a content ratio of 1.17 the true
+    /// rendered ratio is 0.985, and no tolerance can both accept that and
+    /// reject a spurious 1.0 from a content-blind cap. The magnitude proof
+    /// therefore lives where the pool isn't fighting a floor —
+    /// DataGridColumnCapTests.TwoGovernedColumnsSplitTheShortfallInProportionToTheirContent,
+    /// on a bare grid through the same production path. What this fact
+    /// proves is this WINDOW's wiring: Item is not starved to its floor
+    /// (assertion 1, which discriminates the old rule algebraically for
+    /// any content ratio, since that rule's formula pins the star column's
+    /// weight to its bare floor unconditionally), and the split moves with
+    /// content (the directional check).
+    ///
+    /// The content pair below sits at this window's own best-achievable
+    /// balance point (ratio ~1.22, both margins ~5-7px) — the actual
+    /// crossover where the two competing margins are equal, not a
+    /// razor-thin value found by chasing one of them alone; either margin
+    /// only shrinks moving away from it. Item's own name is long, not just
+    /// longer than Result — a star column's share depends only on the
+    /// RATIO to Result, not on Item's absolute length (widening Item's
+    /// content disturbs neither margin), and Result's content needs to
+    /// overflow its own cap by more than 2x to also clear a THIRD
+    /// constraint, AssertWrapsInsideItsCap's 2-line height bar: every
+    /// shorter pair tried landed at exactly 37px against a 37.24px bar —
+    /// WPF renders an exact 2-line wrap at a fixed device height regardless
+    /// of how far the content overflows one line, and across this window's
+    /// whole non-held range Result's content can mathematically never
+    /// overflow its own cap by more than ~47% (never past 2 lines), so no
+    /// shorter pair could ever clear that bar. Only lengthening ITEM's
+    /// content — which moves neither margin — pushes Result's own overflow
+    /// past 2x and into a genuine 3-line wrap.
+    ///
+    /// Item's own wrap is NOT asserted: it is the star column, and WPF
+    /// coerces a star column's own MaxWidth to its internal 10000 the
+    /// instant Width becomes a Star length — the same quirk
+    /// AStarColumnEndsUpAtTheShareTheGovernedColumnsLeaveIt documents from
+    /// Task 2's review. AssertWrapsInsideItsCap's own first assertion
+    /// compares ActualWidth to MaxWidth, so it can never apply to Item
+    /// regardless of content — a structural mismatch, not a content
+    /// shortfall.
+    ///
+    /// Star columns only resolve headlessly after the Background drain,
+    /// hence SettleStarColumns.</summary>
     [Fact]
     public void ZipTools_ALongNameAndALongResultShareTheWidthRatherThanStarvingTheName() => _fx.Invoke(() =>
     {
-        var win = BuildZipToolsWindow(VeryLongValue, rowCount: 1, fileName: VeryLongValue);
+        var shortName = "A-Very-Long-Descriptive-Archive-Folder-Name-For-The-2026-Invoice-Batch.zip";
+        var longResult = "couldn't read this entry — the archive appears damaged, please check the log for full details now";
+        var win = BuildZipToolsWindow(longResult, rowCount: 1, fileName: shortName);
         try
         {
             ShowOffscreenAtWidth(win, win.MinWidth);
             SettleStarColumns(win);
             var item = FindColumnByHeader(win, "Item");
             var result = FindColumnByHeader(win, "Result");
+
             Assert.True(item.ActualWidth >= item.MinWidth + 40,
                 $"Item should get a share of the width, not sit at its {item.MinWidth}px floor: {item.ActualWidth}px");
+
+            var itemContent = ContentWidthOfCell(win, item, 0);
+            var resultContent = ContentWidthOfCell(win, result, 0);
+            Assert.True(result.ActualWidth > item.ActualWidth,
+                $"Result holds the longer text ({resultContent}px of content against Item's {itemContent}px) " +
+                $"but rendered narrower — {result.ActualWidth}px against {item.ActualWidth}px; the split should move with content");
+
             AssertWrapsInsideItsCap(win, (DataGridBoundColumn)result, "Zip and unzip Result");
             AssertNoHorizontalScrollbar(win, $"Zip and unzip (at MinWidth {win.MinWidth}, long name and long result)");
         }
@@ -1490,6 +1554,22 @@ public class AutoFitColumnTests
         System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
             () => { }, System.Windows.Threading.DispatcherPriority.Background);
         win.UpdateLayout();
+    }
+
+    /// <summary>The rendered content width of a column's first cell —
+    /// what DataGridColumnCap measures when it decides that column's
+    /// share, restated here so a fact can talk about content ratios.</summary>
+    private static double ContentWidthOfCell(Window win, DataGridColumn column, int rowIndex)
+    {
+        var grid = FindDescendant<DataGrid>(win)!;
+        var row = (DataGridRow)grid.ItemContainerGenerator.ContainerFromIndex(rowIndex);
+        var text = (TextBlock)column.GetCellContent(row);
+        return new System.Windows.Media.FormattedText(
+            text.Text, System.Globalization.CultureInfo.CurrentUICulture, text.FlowDirection,
+            new System.Windows.Media.Typeface(text.FontFamily, text.FontStyle, text.FontWeight, text.FontStretch),
+            text.FontSize, System.Windows.Media.Brushes.Black, null!,
+            System.Windows.Media.TextOptions.GetTextFormattingMode(text),
+            System.Windows.Media.VisualTreeHelper.GetDpi(text).PixelsPerDip).WidthIncludingTrailingWhitespace;
     }
 
     /// <summary>Finds the DataGrid's own internal ScrollViewer (its
