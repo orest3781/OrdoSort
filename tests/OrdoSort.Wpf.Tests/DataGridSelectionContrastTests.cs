@@ -114,10 +114,10 @@ public class DataGridSelectionContrastTests
     // in this suite (and in DataGridNoteColourTests): DataGridSelectionContrastTests
     // ENUMERATES columns within windows it already has a builder for, so a
     // window nobody added a builder for is invisible to it — exactly what
-    // happened here for a full day after these five landed. Three of them
-    // (Zip, Unzip, Merge PDFs from zip) became ZipToolsWindow's two tabs on
-    // 2026-08-18; one builder with a tab flag stands for what used to be
-    // three. Each builder below seeds its ViewModel's Rows directly
+    // happened here for a full day after these five landed. Zip and Unzip
+    // became ZipToolsWindow on 2026-08-18; Merge PDFs got its own window on
+    // 2026-08-28 (BuildMergePdfsWindow below). Each builder below seeds its
+    // ViewModel's Rows directly
     // (ZipItemRow/PageCountRow via their own internal Apply, the same
     // internal-member access ZipExtractViewModelTests/MergePdfsViewModelTests/
     // PageCountsViewModelTests already use) rather than driving a real
@@ -137,33 +137,13 @@ public class DataGridSelectionContrastTests
     // file's own class doc for the honest scope of what "automatic" means
     // here.
 
-    /// <summary>One builder for both of ZipToolsWindow's tabs (2026-08-18:
-    /// Zip, Unzip and Merge PDFs from zip became this one window). A
-    /// TabControl realizes ONLY the selected tab's content, so the tab is
-    /// chosen after Show and layout flushed again — without that,
-    /// FindDescendant returns the OTHER tab's grid and the assertion would
-    /// pass while measuring the wrong columns.
-    ///
-    /// Each tab is seeded through the result shape its own tab actually
-    /// produces: an extract failure on Zip &amp; unzip, a merge failure on
-    /// Merge PDFs. Only the tab under test is seeded, so a failure message
-    /// can only be about the grid that was measured.</summary>
-    private static (ZipToolsWindow win, DataGrid grid) BuildZipToolsWindow(bool mergeTab)
+    private static (ZipToolsWindow win, DataGrid grid) BuildZipToolsWindow()
     {
-        var vm = new ZipToolsViewModel(new FakeDialogs());
+        var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>());
         var row = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
-        if (mergeTab)
-        {
-            row.Apply(new PdfMerge.MergeResult(row.Path, "error",
-                Message: "couldn't read 'entry.pdf' inside the zip — a long enough exception message to matter"));
-            vm.MergePdfs.Rows.Add(row);
-        }
-        else
-        {
-            row.Apply(new Zipper.UnzipResult(row.Path, "error", null,
-                "not a valid zip archive — a long enough exception message to matter"));
-            vm.ZipExtract.Rows.Add(row);
-        }
+        row.Apply(new Zipper.UnzipResult(row.Path, "error", null,
+            "not a valid zip archive — a long enough exception message to matter"));
+        vm.Rows.Add(row);
         var win = new ZipToolsWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
@@ -171,14 +151,9 @@ public class DataGridSelectionContrastTests
         };
         win.Show();
         win.UpdateLayout();
-        win.Tabs.SelectedIndex = mergeTab ? 1 : 0;
-        win.UpdateLayout();
         var grid = FindDescendant<DataGrid>(win)
             ?? throw new InvalidOperationException("no DataGrid descendant under ZipToolsWindow");
-        // The tab really did switch: both grids bind the same row property
-        // names, so a selection that silently didn't take would still find a
-        // grid, still find every column, and still pass.
-        Assert.Same(mergeTab ? vm.MergePdfs.Rows : vm.ZipExtract.Rows, grid.ItemsSource);
+        Assert.Same(vm.Rows, grid.ItemsSource);
         return (win, grid);
     }
 
@@ -258,38 +233,17 @@ public class DataGridSelectionContrastTests
         return (win, grid);
     }
 
-    /// <summary>Both tabs' columns, selected and unselected, in one pass per
-    /// tab: the two grids are separate visual trees that can only be measured
-    /// one at a time, so building the window twice per scheme (once per tab)
-    /// is what covering every column costs here. Selected and unselected run
-    /// against the SAME built window rather than two, since neither assertion
-    /// leaves state the other reads — each sets grid.SelectedIndex itself.</summary>
     [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
-    public void ZipToolsZipTabAllColumnsClearContrast(string schemeKey) => _fx.Invoke(() =>
+    public void ZipToolsAllColumnsClearContrast(string schemeKey) => _fx.Invoke(() =>
     {
         var scheme = ThemePalette.FindScheme(schemeKey)!;
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
-        var (win, grid) = BuildZipToolsWindow(mergeTab: false);
+        var (win, grid) = BuildZipToolsWindow();
         try
         {
-            AssertEverySelectedColumnClearsContrast(grid, p, "ZipToolsWindow (Zip & unzip tab)");
-            AssertEveryUnselectedColumnClearsContrast(grid, p, "ZipToolsWindow (Zip & unzip tab)");
-        }
-        finally { win.Close(); }
-    });
-
-    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
-    public void ZipToolsMergeTabAllColumnsClearContrast(string schemeKey) => _fx.Invoke(() =>
-    {
-        var scheme = ThemePalette.FindScheme(schemeKey)!;
-        var p = scheme.Palette;
-        ThemeManager.Apply(_fx.App, scheme);
-        var (win, grid) = BuildZipToolsWindow(mergeTab: true);
-        try
-        {
-            AssertEverySelectedColumnClearsContrast(grid, p, "ZipToolsWindow (Merge PDFs tab)");
-            AssertEveryUnselectedColumnClearsContrast(grid, p, "ZipToolsWindow (Merge PDFs tab)");
+            AssertEverySelectedColumnClearsContrast(grid, p, "ZipToolsWindow");
+            AssertEveryUnselectedColumnClearsContrast(grid, p, "ZipToolsWindow");
         }
         finally { win.Close(); }
     });

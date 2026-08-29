@@ -371,7 +371,8 @@ public partial class MainWindow : Window
         new Windows.ListReformatWindow(new ListReformatViewModel()) { Owner = this }.ShowDialog();
 
     private void OnZipTools(object sender, RoutedEventArgs e) =>
-        new Windows.ZipToolsWindow(new ZipToolsViewModel(Dialogs, SynchronizationContext.Current))
+        new Windows.ZipToolsWindow(new ZipExtractViewModel(Dialogs, SavedPasswordsNow(),
+            uiContext: SynchronizationContext.Current))
         { Owner = this }.ShowDialog();
 
     private void OnMergePdfs(object sender, RoutedEventArgs e) =>

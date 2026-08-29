@@ -6,323 +6,186 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False" AllowDrop="True"
         DragOver="OnDragOver" Drop="OnDrop"
         Style="{StaticResource {x:Type Window}}">
+    <!-- One job, one list, window-level drop. Merge PDFs was this window's
+         second tab until 2026-08-28; a zip dropped on the window landed in
+         whichever tab was selected, silently, and both tabs accepted it. A
+         tab is a weak drop target; a window cannot be dropped past
+         (2026-08-25 spec). -->
     <DockPanel Margin="14">
         <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
             <Button DockPanel.Dock="Right" Content="Close" Width="96" IsCancel="True" />
-            <!-- Footer swaps with the tab: each tab's own actions and its own
-                 status line, so neither can act on the other's list. -->
-            <Grid>
-                <StackPanel Orientation="Horizontal"
-                            Visibility="{Binding IsSelected, ElementName=ZipExtractTab,
-                                         Converter={StaticResource BoolToVis}}">
-                    <Button Command="{Binding ZipExtract.ZipCommand}"
-                            Style="{StaticResource PrimaryButton}" MinWidth="110" Margin="0,0,8,0"
-                            AutomationProperties.Name="{Binding ZipExtract.ZipButtonText}">
-                        <TextBlock Text="{Binding ZipExtract.ZipButtonText}"
-                                   Style="{StaticResource PrimaryButtonLabel}" />
-                    </Button>
-                    <Button Content="Zip to…" Command="{Binding ZipExtract.ZipAsCommand}" Margin="0,0,8,0" />
-                    <Button Command="{Binding ZipExtract.ExtractCommand}" MinWidth="120" Margin="0,0,10,0"
-                            AutomationProperties.Name="{Binding ZipExtract.ExtractButtonText}">
-                        <TextBlock Text="{Binding ZipExtract.ExtractButtonText}" />
-                    </Button>
-                    <!-- MaxWidth is load-bearing, not cosmetic: StatusText
-                         carries TextWrapping="Wrap" (Theme/Styles.xaml), and a
-                         horizontal StackPanel measures every child at infinite
-                         width, so without a finite cap the wrap never engages
-                         and the line runs off screen — the failure
-                         TextWrapCoverageTests exists to catch. -->
-                    <TextBlock Text="{Binding ZipExtract.Status}" VerticalAlignment="Center"
-                               Style="{StaticResource StatusText}" MaxWidth="360" />
-                </StackPanel>
-                <StackPanel Orientation="Horizontal"
-                            Visibility="{Binding IsSelected, ElementName=MergePdfsTab,
-                                         Converter={StaticResource BoolToVis}}">
-                    <Button Command="{Binding MergePdfs.MergeCommand}"
-                            Style="{StaticResource PrimaryButton}" MinWidth="120" Margin="0,0,10,0"
-                            AutomationProperties.Name="{Binding MergePdfs.MergeButtonText}">
-                        <TextBlock Text="{Binding MergePdfs.MergeButtonText}"
-                                   Style="{StaticResource PrimaryButtonLabel}" />
-                    </Button>
-                    <!-- Same infinite-width cap, same reason, as the tab above. -->
-                    <TextBlock Text="{Binding MergePdfs.Status}" VerticalAlignment="Center"
-                               Style="{StaticResource StatusText}" MaxWidth="360" />
-                </StackPanel>
-            </Grid>
+            <StackPanel Orientation="Horizontal">
+                <Button Command="{Binding ZipCommand}"
+                        Style="{StaticResource PrimaryButton}" MinWidth="110" Margin="0,0,8,0"
+                        AutomationProperties.Name="{Binding ZipButtonText}">
+                    <TextBlock Text="{Binding ZipButtonText}"
+                               Style="{StaticResource PrimaryButtonLabel}" />
+                </Button>
+                <Button Content="Zip to…" Command="{Binding ZipAsCommand}" Margin="0,0,8,0" />
+                <Button Command="{Binding ExtractCommand}" MinWidth="120" Margin="0,0,10,0"
+                        AutomationProperties.Name="{Binding ExtractButtonText}">
+                    <TextBlock Text="{Binding ExtractButtonText}" />
+                </Button>
+                <!-- MaxWidth is load-bearing, not cosmetic: StatusText
+                     carries TextWrapping="Wrap" (Theme/Styles.xaml), and a
+                     horizontal StackPanel measures every child at infinite
+                     width, so without a finite cap the wrap never engages
+                     and the line runs off screen — the failure
+                     TextWrapCoverageTests exists to catch. -->
+                <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
+                           Style="{StaticResource StatusText}" MaxWidth="360" />
+            </StackPanel>
         </DockPanel>
 
-        <TabControl x:Name="Tabs">
-            <TabItem x:Name="ZipExtractTab" Header="_Zip &amp; unzip"
-                     AutomationProperties.Name="Zip and unzip"
-                     DataContext="{Binding ZipExtract}">
-                <Grid Margin="16,8">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
+        <Grid Margin="16,8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-                    <DockPanel Margin="0,0,0,10">
-                        <TextBlock DockPanel.Dock="Right" Text="{Binding AddNote}"
-                                   Style="{StaticResource CaptionText}" VerticalAlignment="Center"
-                                   MaxWidth="240" TextTrimming="CharacterEllipsis" />
-                        <!-- WrapPanel, not a horizontal StackPanel: four
-                             buttons and the note do not fit this window's 580
-                             MinWidth at the 18px font preset, and a StackPanel
-                             would push the last button off screen rather than
-                             move it to a second row. The 4 bottom margin is the
-                             gap that second row needs. -->
-                        <WrapPanel>
-                            <Button Content="Add files…" Click="OnAddFiles" Margin="0,0,6,4" />
-                            <Button Content="Add folder…" Click="OnAddFolder" Margin="0,0,6,4" />
-                            <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,4"
-                                    IsEnabled="{Binding IsIdle}" />
-                            <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,4" />
-                        </WrapPanel>
-                    </DockPanel>
+            <DockPanel Margin="0,0,0,10">
+                <TextBlock DockPanel.Dock="Right" Text="{Binding AddNote}"
+                           Style="{StaticResource CaptionText}" VerticalAlignment="Center"
+                           MaxWidth="240" TextTrimming="CharacterEllipsis" />
+                <!-- WrapPanel, not a horizontal StackPanel: five buttons and
+                     the note do not fit this window's 580 MinWidth at the 18px
+                     font preset, and a StackPanel would push the last button
+                     off screen rather than move it to a second row. The 4
+                     bottom margin is the gap that second row needs. -->
+                <WrapPanel>
+                    <Button Content="Add files…" Click="OnAddFiles" Margin="0,0,6,4" />
+                    <Button Content="Add folder…" Click="OnAddFolder" Margin="0,0,6,4" />
+                    <Button Content="Add zips…" Click="OnAddZips" Margin="0,0,6,4" />
+                    <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,4"
+                            IsEnabled="{Binding IsIdle}" />
+                    <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,4" />
+                </WrapPanel>
+            </DockPanel>
 
-                    <Grid Grid.Row="1">
-                        <DataGrid x:Name="ItemsGrid" ItemsSource="{Binding Rows}"
-                                  AutomationProperties.Name="Files, folders and archives to process" AutoGenerateColumns="False"
-                                  IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
-                                  SelectionMode="Extended">
-                            <!-- Theme.RowHover so the hover tint stays
-                                 consistent app-wide; the row ToolTip carries
-                                 the full path, which no column shows. -->
-                            <DataGrid.RowStyle>
-                                <Style TargetType="DataGridRow">
-                                    <Setter Property="Background" Value="Transparent" />
+            <Grid Grid.Row="1">
+                <DataGrid x:Name="ItemsGrid" ItemsSource="{Binding Rows}"
+                          AutomationProperties.Name="Files, folders and archives to process" AutoGenerateColumns="False"
+                          IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
+                          SelectionMode="Extended">
+                    <!-- Theme.RowHover so the hover tint stays consistent
+                         app-wide; the row ToolTip carries the full path,
+                         which no column shows. -->
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="ToolTip" Value="{Binding Path}" />
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background"
+                                            Value="{DynamicResource Theme.RowHover}" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.Columns>
+                        <!-- Item: the filler (Width="*") — the added file,
+                             folder or archive's own name. No status trigger of
+                             its own, so GridCellTextSelectionAware's shared
+                             default plus its trailing "let selection win"
+                             DataTrigger is the whole style; plain GridCellText
+                             carries no such trigger, and measured off-screen
+                             without one, Theme.Text on Theme.Accent ran
+                             1.26:1-2.14:1 across every scheme, nowhere near the
+                             4.5:1 floor. MinWidth is load-bearing arithmetic,
+                             not a nicety: DataGridColumnCap computes the Result
+                             cap as the viewport minus everyone else's floor, so
+                             without one a long error message squeezes this
+                             column to WPF's 20px default. See
+                             PageCountsWindow.xaml. -->
+                        <DataGridTextColumn Header="Item" Binding="{Binding Display}" Width="*" MinWidth="180">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     <Setter Property="ToolTip" Value="{Binding Path}" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <!-- Kind: content-sized, "file"/"pdf"/"folder"/"zip" — a
+                             quiet tag rather than a status, so SubtleText
+                             rather than GridCellText. SubtleText's own
+                             unconditional Foreground Setter outranks whatever
+                             this TextBlock would INHERIT from its ancestor
+                             DataGridCell, the Accent/AccentText pair the cell's
+                             IsSelected trigger paints included: measured
+                             off-screen without the trailing DataTrigger below,
+                             Theme.SubtleText on Theme.Accent ran 1.07:1-1.85:1
+                             across every scheme — a selected row's own tag
+                             unreadable against its own highlight. SubtleText is
+                             a different base from GridCellText, so this cannot
+                             delegate to GridCellTextSelectionAware and carries
+                             its own copy of that trigger. -->
+                        <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="Auto">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
                                     <Style.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter Property="Background"
-                                                    Value="{DynamicResource Theme.RowHover}" />
-                                        </Trigger>
+                                        <DataTrigger Value="True">
+                                            <DataTrigger.Binding>
+                                                <Binding Path="IsSelected"
+                                                         RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                                            </DataTrigger.Binding>
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.AccentText}" />
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
-                            </DataGrid.RowStyle>
-                            <DataGrid.Columns>
-                                <!-- Item: the filler (Width="*") — the added
-                                     file, folder or archive's own name. No
-                                     status trigger of its own, so
-                                     GridCellTextSelectionAware's shared default
-                                     plus its trailing "let selection win"
-                                     DataTrigger is the whole style; plain
-                                     GridCellText carries no such trigger, and
-                                     measured off-screen without one, Theme.Text
-                                     on Theme.Accent ran 1.26:1-2.14:1 across
-                                     every scheme, nowhere near the 4.5:1 floor.
-                                     MinWidth is load-bearing arithmetic, not a
-                                     nicety: DataGridColumnCap computes the
-                                     Result cap as the viewport minus everyone
-                                     else's floor, so without one a long error
-                                     message squeezes this column to WPF's 20px
-                                     default. See PageCountsWindow.xaml. -->
-                                <DataGridTextColumn Header="Item" Binding="{Binding Display}" Width="*" MinWidth="180">
-                                    <DataGridTextColumn.ElementStyle>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
-                                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                            <Setter Property="ToolTip" Value="{Binding Path}" />
-                                        </Style>
-                                    </DataGridTextColumn.ElementStyle>
-                                </DataGridTextColumn>
-                                <!-- Kind: content-sized, "file"/"folder"/"zip"
-                                     — a quiet tag rather than a status, so
-                                     SubtleText rather than GridCellText.
-                                     SubtleText's own unconditional Foreground
-                                     Setter outranks whatever this TextBlock
-                                     would INHERIT from its ancestor
-                                     DataGridCell, the Accent/AccentText pair
-                                     the cell's IsSelected trigger paints
-                                     included: measured off-screen without the
-                                     trailing DataTrigger below, Theme.SubtleText
-                                     on Theme.Accent ran 1.07:1-1.85:1 across
-                                     every scheme — a selected row's own tag
-                                     unreadable against its own highlight.
-                                     SubtleText is a different base from
-                                     GridCellText, so this cannot delegate to
-                                     GridCellTextSelectionAware and carries its
-                                     own copy of that trigger. -->
-                                <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="Auto">
-                                    <DataGridTextColumn.ElementStyle>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
-                                            <Style.Triggers>
-                                                <DataTrigger Value="True">
-                                                    <DataTrigger.Binding>
-                                                        <Binding Path="IsSelected"
-                                                                 RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
-                                                    </DataTrigger.Binding>
-                                                    <Setter Property="Foreground"
-                                                            Value="{DynamicResource Theme.AccentText}" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </DataGridTextColumn.ElementStyle>
-                                </DataGridTextColumn>
-                                <!-- Result: content-sized, capped from the
-                                     code-behind by DataGridColumnCap. Error is
-                                     Theme.StatusRed — a genuine failure, not
-                                     "needs attention", so it must not borrow
-                                     Theme.StatusAmber (status-colour-vocabulary
-                                     plan, 2026-08-08: amber never means a merely
-                                     informational fact). NoPdfs is unreachable
-                                     on this tab — only a merge produces it, and
-                                     that runs on the Merge PDFs grid below,
-                                     which carries the amber trigger this one
-                                     deliberately omits. -->
-                                <DataGridTextColumn x:Name="ItemsResultColumn" Header="Result" Binding="{Binding Note}"
-                                                    Width="Auto">
-                                    <DataGridTextColumn.ElementStyle>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                            <Setter Property="ToolTip" Value="{Binding Note}" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding StatusKind}"
-                                                             Value="{x:Static vm:ZipItemRowStatus.Error}">
-                                                    <Setter Property="Foreground" Value="{DynamicResource Theme.StatusRed}" />
-                                                </DataTrigger>
-                                                <!-- Declared last so it wins
-                                                     over the trigger above once
-                                                     selected: GridCellText's own
-                                                     copy of this trigger does not
-                                                     reliably win once a style
-                                                     adds triggers of its own. -->
-                                                <DataTrigger Value="True">
-                                                    <DataTrigger.Binding>
-                                                        <Binding Path="IsSelected"
-                                                                 RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
-                                                    </DataTrigger.Binding>
-                                                    <Setter Property="Foreground"
-                                                            Value="{DynamicResource Theme.AccentText}" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </DataGridTextColumn.ElementStyle>
-                                </DataGridTextColumn>
-                            </DataGrid.Columns>
-                        </DataGrid>
-                        <TextBlock Text="Drag files, folders or zips anywhere on this window, or click Add files…"
-                                   Style="{StaticResource EmptyStateText}"
-                                   IsHitTestVisible="False">
-                            <TextBlock.Visibility>
-                                <Binding Path="Rows.Count" Converter="{StaticResource ZeroToVis}" />
-                            </TextBlock.Visibility>
-                        </TextBlock>
-                    </Grid>
-                </Grid>
-            </TabItem>
-            <TabItem x:Name="MergePdfsTab" Header="_Merge PDFs"
-                     AutomationProperties.Name="Merge PDFs"
-                     DataContext="{Binding MergePdfs}">
-                <Grid Margin="16,8">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-
-                    <DockPanel Margin="0,0,0,10">
-                        <TextBlock DockPanel.Dock="Right" Text="{Binding AddNote}"
-                                   Style="{StaticResource CaptionText}" VerticalAlignment="Center"
-                                   MaxWidth="240" TextTrimming="CharacterEllipsis" />
-                        <!-- Same WrapPanel reason as the tab above. -->
-                        <WrapPanel>
-                            <Button Content="Add zips…" Click="OnAddZips" Margin="0,0,6,4" />
-                            <Button Content="Remove selected" Click="OnRemoveSelectedMerge" Margin="0,0,6,4"
-                                    IsEnabled="{Binding IsIdle}" />
-                            <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,4" />
-                        </WrapPanel>
-                    </DockPanel>
-
-                    <Grid Grid.Row="1">
-                        <DataGrid x:Name="ZipsGrid" ItemsSource="{Binding Rows}"
-                                  AutomationProperties.Name="Zips to merge" AutoGenerateColumns="False"
-                                  IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
-                                  SelectionMode="Extended">
-                            <!-- Same RowStyle as the Zip &amp; unzip grid; it
-                                 matters more here because this Result column
-                                 can also paint StatusAmber. -->
-                            <DataGrid.RowStyle>
-                                <Style TargetType="DataGridRow">
-                                    <Setter Property="Background" Value="Transparent" />
-                                    <Setter Property="ToolTip" Value="{Binding Path}" />
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <!-- Result: content-sized, capped from the code-behind
+                             by DataGridColumnCap. Error is Theme.StatusRed — a
+                             genuine failure, not "needs attention", so it must
+                             not borrow Theme.StatusAmber. NeedsPassword IS
+                             "needs attention" — a password nobody knew yet,
+                             and the row is still runnable — so it is amber
+                             (status-colour-vocabulary plan, 2026-08-08). NoPdfs
+                             is unreachable on this window; only a merge
+                             produces it. -->
+                        <DataGridTextColumn x:Name="ItemsResultColumn" Header="Result" Binding="{Binding Note}"
+                                            Width="Auto">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding Note}" />
                                     <Style.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter Property="Background"
-                                                    Value="{DynamicResource Theme.RowHover}" />
-                                        </Trigger>
+                                        <DataTrigger Binding="{Binding StatusKind}"
+                                                     Value="{x:Static vm:ZipItemRowStatus.Error}">
+                                            <Setter Property="Foreground" Value="{DynamicResource Theme.StatusRed}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding StatusKind}"
+                                                     Value="{x:Static vm:ZipItemRowStatus.NeedsPassword}">
+                                            <Setter Property="Foreground" Value="{DynamicResource Theme.StatusAmber}" />
+                                        </DataTrigger>
+                                        <!-- Declared last so it wins over the
+                                             triggers above once selected:
+                                             GridCellText's own copy of this
+                                             trigger does not reliably win once a
+                                             style adds triggers of its own. -->
+                                        <DataTrigger Value="True">
+                                            <DataTrigger.Binding>
+                                                <Binding Path="IsSelected"
+                                                         RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
+                                            </DataTrigger.Binding>
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.AccentText}" />
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
-                            </DataGrid.RowStyle>
-                            <DataGrid.Columns>
-                                <!-- Zip: the filler (Width="*"). Same
-                                     GridCellTextSelectionAware reasoning and the
-                                     same measured 1.26:1-2.14:1 selection
-                                     contrast as the Item column on the other
-                                     tab, and the same load-bearing MinWidth —
-                                     the Result cap is the viewport minus
-                                     everyone else's floor. -->
-                                <DataGridTextColumn Header="Zip" Binding="{Binding Display}" Width="*" MinWidth="180">
-                                    <DataGridTextColumn.ElementStyle>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
-                                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                            <Setter Property="ToolTip" Value="{Binding Path}" />
-                                        </Style>
-                                    </DataGridTextColumn.ElementStyle>
-                                </DataGridTextColumn>
-                                <!-- Result: content-sized, capped from the
-                                     code-behind by DataGridColumnCap. NoPdfs is
-                                     amber and Error is red, and the split is
-                                     deliberate: a zip holding no PDFs is not a
-                                     failure the way an unreadable one is —
-                                     nothing failed, there was just nothing to
-                                     merge — so it gets "needs attention" rather
-                                     than the error colour (status-colour-
-                                     vocabulary plan, 2026-08-08). Driven off
-                                     StatusKind, an enum, hence {x:Static} rather
-                                     than a plain Value string. -->
-                                <DataGridTextColumn x:Name="ZipsResultColumn" Header="Result" Binding="{Binding Note}"
-                                                    Width="Auto">
-                                    <DataGridTextColumn.ElementStyle>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                            <Setter Property="ToolTip" Value="{Binding Note}" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding StatusKind}"
-                                                             Value="{x:Static vm:ZipItemRowStatus.Error}">
-                                                    <Setter Property="Foreground" Value="{DynamicResource Theme.StatusRed}" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding StatusKind}"
-                                                             Value="{x:Static vm:ZipItemRowStatus.NoPdfs}">
-                                                    <Setter Property="Foreground" Value="{DynamicResource Theme.StatusAmber}" />
-                                                </DataTrigger>
-                                                <!-- Declared last so it wins
-                                                     over both triggers above
-                                                     once selected — same trap
-                                                     and same fix as the Result
-                                                     column on the other tab. -->
-                                                <DataTrigger Value="True">
-                                                    <DataTrigger.Binding>
-                                                        <Binding Path="IsSelected"
-                                                                 RelativeSource="{RelativeSource AncestorType=DataGridCell}" />
-                                                    </DataTrigger.Binding>
-                                                    <Setter Property="Foreground"
-                                                            Value="{DynamicResource Theme.AccentText}" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </DataGridTextColumn.ElementStyle>
-                                </DataGridTextColumn>
-                            </DataGrid.Columns>
-                        </DataGrid>
-                        <TextBlock Text="Drag zips anywhere on this window, or click Add zips…"
-                                   Style="{StaticResource EmptyStateText}"
-                                   IsHitTestVisible="False">
-                            <TextBlock.Visibility>
-                                <Binding Path="Rows.Count" Converter="{StaticResource ZeroToVis}" />
-                            </TextBlock.Visibility>
-                        </TextBlock>
-                    </Grid>
-                </Grid>
-            </TabItem>
-        </TabControl>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Text="Drag files, folders or zips anywhere on this window, or click Add files…"
+                           Style="{StaticResource EmptyStateText}"
+                           IsHitTestVisible="False">
+                    <TextBlock.Visibility>
+                        <Binding Path="Rows.Count" Converter="{StaticResource ZeroToVis}" />
+                    </TextBlock.Visibility>
+                </TextBlock>
+            </Grid>
+        </Grid>
     </DockPanel>
 </Window>

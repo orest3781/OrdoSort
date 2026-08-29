@@ -60,9 +60,9 @@ public class DataGridSizingCoverageTests
     /// the "nothing competes for width" premise this entry used to rest on
     /// no longer holds. See KnownUncovered's own note.
     ///
-    /// ZipToolsWindow stands for what used to be ZipMergeWindow and
-    /// UnzipWindow: its AutoFitColumnTests facts take a tab flag and measure
-    /// both grids' Result columns.</summary>
+    /// ZipToolsWindow stands for what used to be ZipWindow and UnzipWindow;
+    /// MergePdfsWindow stands for what used to be ZipMergeWindow. Each has
+    /// its own AutoFitColumnTests facts measuring its own Result column.</summary>
     private static readonly HashSet<string> SizingCovered = new(StringComparer.Ordinal)
     {
         "MatchMergeWindow", "BulkRenameWindow", "HistoryWindow", "TriageWindow",

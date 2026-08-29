@@ -1058,12 +1058,9 @@ public class AutoFitColumnTests
     // here (Item/Zip is the star filler, and PageCounts' own Pages column is
     // a short uncapped number — see each window's own XAML comments).
     //
-    // The Merge-PDFs-from-zip and Unzip windows became ZipToolsWindow's two
-    // tabs on 2026-08-18. Their facts moved with them, one set per tab, since
-    // each tab carries its own grid with its own capped Result column — and
-    // a fact written against only one tab would leave the other's cap
-    // unmeasured, which is the coverage shape this whole file exists to
-    // avoid.
+    // Merge PDFs got its own window on 2026-08-28 (the 2026-08-25 spec: a
+    // tab is a weak drop target). Each window has one grid with one capped
+    // Result column, and each has its own facts below.
     //
     // Builders seed rows directly through each row type's own internal
     // Apply (ZipItemRow/PageCountRow — InternalsVisibleTo covers this test
@@ -1085,22 +1082,14 @@ public class AutoFitColumnTests
         return new PageCountsWindow(vm);
     }
 
-    /// <summary>One builder for both tabs. Only the tab under test is seeded:
-    /// the two lists are independent, and leaving the other one empty keeps
-    /// each fact's failure message about the grid it actually measured.
-    /// <paramref name="mergeTab"/> also picks which result shape the row
-    /// carries, since a merge and an extract write the Result column through
-    /// different overloads of ZipItemRow.Apply.</summary>
-    private static ZipToolsWindow BuildZipToolsWindow(bool mergeTab, string resultValue, int rowCount = 1)
+    private static ZipToolsWindow BuildZipToolsWindow(string resultValue, int rowCount = 1)
     {
-        var vm = new ZipToolsViewModel(new FakeDialogs());
-        var list = mergeTab ? (ZipListViewModel)vm.MergePdfs : vm.ZipExtract;
+        var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>());
         for (var i = 0; i < rowCount; i++)
         {
             var row = new ZipItemRow($@"C:\inbox\f{i}.zip", "zip");
-            if (mergeTab) row.Apply(new PdfMerge.MergeResult(row.Path, "error", Message: resultValue));
-            else row.Apply(new Zipper.UnzipResult(row.Path, "error", null, resultValue));
-            list.Rows.Add(row);
+            row.Apply(new Zipper.UnzipResult(row.Path, "error", null, resultValue));
+            vm.Rows.Add(row);
         }
         return new ZipToolsWindow(vm);
     }
@@ -1115,35 +1104,6 @@ public class AutoFitColumnTests
             vm.Rows.Add(row);
         }
         return new MergePdfsWindow(vm);
-    }
-
-    /// <summary>ShowOffscreen plus the tab selection every measurement on this
-    /// window depends on: a TabControl realizes ONLY the selected tab's
-    /// content, so the grid under test is not in the visual tree at all until
-    /// its tab is current — and FindColumnByHeader/AssertNoHorizontalScrollbar
-    /// resolve the grid by descendant search, so they would silently measure
-    /// the other tab's. Selecting after Show and flushing layout again is the
-    /// shape SettingsWindow's own tab-driven facts already use
-    /// (HighlightContrastTests). The Background-priority pump is the same one
-    /// ShowOffscreenThenResizeTo needs and for the same measured reason: the
-    /// newly realized grid's star column reconciles at that priority, and
-    /// DataGridColumnCap's remainder formula reads that column's settled
-    /// width to decide what is left for the Result cap.</summary>
-    private static void ShowOffscreenOnTab(ZipToolsWindow win, bool mergeTab, double? width = null)
-    {
-        if (width is { } w) win.Width = w;
-        ShowOffscreen(win);
-        win.Tabs.SelectedIndex = mergeTab ? 1 : 0;
-        win.UpdateLayout();
-        System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
-            () => { }, System.Windows.Threading.DispatcherPriority.Background);
-        win.UpdateLayout();
-
-        // The selection really took. Both grids carry a "Result" column, so a
-        // switch that silently didn't happen would still resolve a column and
-        // still measure something — a fact that passes while looking at the
-        // wrong grid, which is the failure this whole file exists to avoid.
-        Assert.Same(mergeTab ? win.ZipsGrid : win.ItemsGrid, FindDescendant<DataGrid>(win));
     }
 
     [Fact]
@@ -1195,12 +1155,12 @@ public class AutoFitColumnTests
     });
 
     [Fact]
-    public void ZipToolsZipTab_ShortResultValueMeasuresNarrow() => _fx.Invoke(() =>
+    public void ZipTools_ShortResultValueMeasuresNarrow() => _fx.Invoke(() =>
     {
-        var win = BuildZipToolsWindow(mergeTab: false, ShortValue);
+        var win = BuildZipToolsWindow(ShortValue);
         try
         {
-            ShowOffscreenOnTab(win, mergeTab: false);
+            ShowOffscreen(win);
             var column = FindColumnByHeader(win, "Result");
             Assert.True(column.ActualWidth < 100,
                 $"Zip & unzip Result column with short content is {column.ActualWidth}px, expected < 100px");
@@ -1209,92 +1169,35 @@ public class AutoFitColumnTests
     });
 
     [Fact]
-    public void ZipToolsZipTab_LongResultValueStopsAtTheCapWithEllipsisAndTooltip() => _fx.Invoke(() =>
+    public void ZipTools_LongResultValueStopsAtTheCapWithEllipsisAndTooltip() => _fx.Invoke(() =>
     {
-        var win = BuildZipToolsWindow(mergeTab: false, VeryLongValue);
+        var win = BuildZipToolsWindow(VeryLongValue);
         try
         {
-            ShowOffscreenOnTab(win, mergeTab: false);
+            ShowOffscreen(win);
             var column = FindColumnByHeader(win, "Result");
-            AssertStoppedAtItsCap(win, column, "Zip & unzip Result");
+            AssertStoppedAtItsCap(win, column, "Zip and unzip Result");
             AssertTrimmingAndTooltip((DataGridBoundColumn)column, "Note");
         }
         finally { win.Close(); }
     });
 
     /// <summary>Same proof as PageCounts_AtMinWidthNoHorizontalScrollbar
-    /// above, for the Zip &amp; unzip tab's own Result column — a long
-    /// extract-failure exception message, ManyRowCount rows so a vertical
-    /// scrollbar is also claiming part of the viewport, shown at this
-    /// window's own MinWidth. Verified to have teeth the same way (2026-08-18):
-    /// remove this grid's DataGridColumnCap.Track call and it fails for a
-    /// value reason — a visible scrollbar, not a render error.</summary>
+    /// above, for this window's own Result column — a long extract-failure
+    /// exception message, ManyRowCount rows so a vertical scrollbar is also
+    /// claiming part of the viewport, shown at this window's own MinWidth.
+    /// Verified to have teeth the same way (2026-08-18): remove this grid's
+    /// DataGridColumnCap.Track call and it fails for a value reason — a
+    /// visible scrollbar, not a render error.</summary>
     [Fact]
-    public void ZipToolsZipTab_AtMinWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
+    public void ZipTools_AtMinWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
     {
-        var win = BuildZipToolsWindow(mergeTab: false, VeryLongValue, ManyRowCount);
+        var win = BuildZipToolsWindow(VeryLongValue, ManyRowCount);
         try
         {
-            ShowOffscreenOnTab(win, mergeTab: false, win.MinWidth);
+            ShowOffscreenAtWidth(win, win.MinWidth);
             AssertNoHorizontalScrollbar(win,
-                $"Zip & unzip tab (at MinWidth {win.MinWidth}, {ManyRowCount} rows)");
-        }
-        finally { win.Close(); }
-    });
-
-    [Fact]
-    public void ZipToolsMergeTab_ShortResultValueMeasuresNarrow() => _fx.Invoke(() =>
-    {
-        var win = BuildZipToolsWindow(mergeTab: true, ShortValue);
-        try
-        {
-            ShowOffscreenOnTab(win, mergeTab: true);
-            var column = FindColumnByHeader(win, "Result");
-            Assert.True(column.ActualWidth < 100,
-                $"Merge PDFs Result column with short content is {column.ActualWidth}px, expected < 100px");
-        }
-        finally { win.Close(); }
-    });
-
-    [Fact]
-    public void ZipToolsMergeTab_LongResultValueStopsAtTheCapWithEllipsisAndTooltip() => _fx.Invoke(() =>
-    {
-        var win = BuildZipToolsWindow(mergeTab: true, VeryLongValue);
-        try
-        {
-            ShowOffscreenOnTab(win, mergeTab: true);
-            var column = FindColumnByHeader(win, "Result");
-            AssertStoppedAtItsCap(win, column, "Merge PDFs Result");
-            AssertTrimmingAndTooltip((DataGridBoundColumn)column, "Note");
-        }
-        finally { win.Close(); }
-    });
-
-    /// <summary>The same shape for the OTHER tab's grid — a merge-failure
-    /// exception message, ManyRowCount rows, at this window's own MinWidth.
-    ///
-    /// HONESTY CHECK, measured 2026-08-18 rather than assumed: unlike the Zip
-    /// &amp; unzip tab's identical fact above, this one does NOT fail when
-    /// ZipToolsWindow.xaml.cs's Track call for this grid is removed. Verified
-    /// by doing exactly that: the Result column rendered 301px against a
-    /// 481px viewport with the star filler pinned at its 180px floor —
-    /// 180 + 301 = the viewport exactly, because this grid has only those two
-    /// columns and WPF compresses the lone Auto one to fit rather than
-    /// overflowing. The tab above has a third (Kind) column competing, which
-    /// is why the same removal genuinely produces a scrollbar there. So read
-    /// this fact as what it is — the no-scrollbar line held at MinWidth with a
-    /// vertical scrollbar also claiming width — and not as proof of the cap;
-    /// ZipToolsMergeTab_LongResultValueStopsAtTheCapWithEllipsisAndTooltip
-    /// above is the fact that fails when this grid loses its cap.</summary>
-    [Fact]
-    public void ZipToolsMergeTab_AtMinWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
-    {
-        var win = BuildZipToolsWindow(mergeTab: true, VeryLongValue, ManyRowCount);
-        try
-        {
-            ShowOffscreenOnTab(win, mergeTab: true, win.MinWidth);
-            AssertNoHorizontalScrollbar(win,
-                $"Merge PDFs tab (at MinWidth {win.MinWidth}, {ManyRowCount} rows)");
+                $"Zip and unzip (at MinWidth {win.MinWidth}, {ManyRowCount} rows)");
         }
         finally { win.Close(); }
     });

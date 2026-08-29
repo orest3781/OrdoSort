@@ -132,17 +132,17 @@ public class DataGridWindowCoverageTests
         // rename, a build config that hides types), an empty or tiny list
         // would make every fact below vacuously pass — proving nothing,
         // exactly the trap this whole task exists to close on the OTHER
-        // suites. Fifteen window types is the actual count at the time this
+        // suites. Sixteen window types is the actual count at the time this
         // suite was last updated, eight of which declare a DataGrid
         // (BulkRename/FilenameList/History/MatchMerge/PageCounts/Triage/
         // ZipTools/MergePdfsWindow — LabelMakerWindow/ListReformatWindow/
-        // ManageSavedWindow/PrintPreviewWindow/SettingsWindow/UnlockWindow
-        // don't; Turnaround and Production, which also used to, were removed
-        // along with the reports feature, AboutWindow was deleted with the
-        // Help menu, and Zip/Unzip/ZipMerge became ZipToolsWindow's two
-        // tabs), so eight is a safe floor that still
-        // catches enumeration silently degrading without being so tight it
-        // breaks on every ordinary new window.
+        // ManageSavedWindow/MessageWindow/PrintPreviewWindow/SettingsWindow/
+        // UnlockWindow don't; Turnaround and Production, which also used to,
+        // were removed along with the reports feature, AboutWindow was
+        // deleted with the Help menu, and Zip/Unzip became ZipToolsWindow and
+        // ZipMerge became MergePdfsWindow), so eight is a safe floor that
+        // still catches enumeration silently degrading without being so
+        // tight it breaks on every ordinary new window.
         Assert.True(windowTypes.Count >= 8,
             $"only found {windowTypes.Count} Window types under OrdoSort.Wpf.Windows via reflection " +
             "— enumeration looks broken (namespace/assembly mismatch?), not that the app genuinely " +

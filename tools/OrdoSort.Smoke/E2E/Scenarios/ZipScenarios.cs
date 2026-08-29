@@ -4,8 +4,8 @@ using static OrdoSort.Smoke.E2E.Scenarios.ScenarioKit;
 
 namespace OrdoSort.Smoke.E2E.Scenarios;
 
-/// <summary>The Zip tool, driven as the real ZipToolsWindow's Zip &amp; unzip
-/// tab against real files.</summary>
+/// <summary>The Zip tool, driven as the real ZipToolsWindow's window against
+/// real files.</summary>
 public static class ZipScenarios
 {
     private const string Surface = "Zip";
@@ -27,19 +27,14 @@ public static class ZipScenarios
     /// default on purpose — every archive these scenarios assert about is
     /// written by the real Zipper.CreateZip, which is the whole difference
     /// between this suite and ZipExtractViewModelTests.</summary>
-    private static ZipToolsViewModel NewVm(ScenarioContext ctx) =>
-        new(ctx.Dialogs, SynchronizationContext.Current, new InlineScheduler());
+    private static ZipExtractViewModel NewVm(ScenarioContext ctx) =>
+        new(ctx.Dialogs, Array.Empty<string>(), new InlineScheduler(), SynchronizationContext.Current);
 
-    /// <summary>Opens the real window on the tab this surface drives. A
-    /// TabControl realizes only the selected tab's content, so the tab has to
-    /// be current before anything reads or photographs the grid — index 0 is
-    /// Zip &amp; unzip.</summary>
-    private static ZipToolsWindow Open(ZipToolsViewModel vm)
+    /// <summary>Opens the real window: one list, no tab to select.</summary>
+    private static ZipToolsWindow Open(ZipExtractViewModel vm)
     {
         var win = new ZipToolsWindow(vm);
         E2EPump.ShowOffscreen(win);
-        win.Tabs.SelectedIndex = 0;
-        win.UpdateLayout();
         return win;
     }
 
@@ -59,9 +54,8 @@ public static class ZipScenarios
         var folder = ctx.Fx.Dir("src", "nested");
         ctx.Fx.Pdf("src/nested/three.pdf", "GAMMA");
 
-        var tools = NewVm(ctx);
-        var win = Open(tools);
-        var vm = tools.ZipExtract;
+        var vm = NewVm(ctx);
+        var win = Open(vm);
 
         // AddPaths' one await is `_scheduler.Run(...)`, which InlineScheduler
         // completes synchronously — so by the time this call returns, Rows is
@@ -99,9 +93,8 @@ public static class ZipScenarios
         var target = Path.Combine(ctx.Fx.Dir("out"), "chosen-name.zip");
         ctx.Dialogs.QueueSaveFile(target);
 
-        var tools = NewVm(ctx);
-        var win = Open(tools);
-        var vm = tools.ZipExtract;
+        var vm = NewVm(ctx);
+        var win = Open(vm);
 
         _ = vm.AddPaths(new[] { a });   // synchronous under InlineScheduler — see FilesAndFolder above
         ctx.Check("the source is listed", vm.Rows.Count == 1, $"got {vm.Rows.Count}");
@@ -146,9 +139,8 @@ public static class ZipScenarios
         File.WriteAllText(taken, "I was here first");
         var before = File.ReadAllBytes(taken);
 
-        var tools = NewVm(ctx);
-        var win = Open(tools);
-        var vm = tools.ZipExtract;
+        var vm = NewVm(ctx);
+        var win = Open(vm);
 
         _ = vm.AddPaths(new[] { a });   // synchronous under InlineScheduler — see FilesAndFolder above
         ctx.Check("the source is listed", vm.Rows.Count == 1, $"got {vm.Rows.Count}");
@@ -198,9 +190,8 @@ public static class ZipScenarios
         var before = new FileInfo(target).Length;
         ctx.Dialogs.QueueSaveFile(target);
 
-        var tools = NewVm(ctx);
-        var win = Open(tools);
-        var vm = tools.ZipExtract;
+        var vm = NewVm(ctx);
+        var win = Open(vm);
 
         _ = vm.AddPaths(new[] { a });   // synchronous under InlineScheduler — see FilesAndFolder above
         ctx.Check("the source is listed", vm.Rows.Count == 1, $"got {vm.Rows.Count}");
@@ -227,9 +218,8 @@ public static class ZipScenarios
         var a = ctx.Fx.Pdf("src/rapport café — 2026.pdf", "CAFE");
         var b = ctx.Fx.Pdf("src/文件 名.pdf", "CJK");
 
-        var tools = NewVm(ctx);
-        var win = Open(tools);
-        var vm = tools.ZipExtract;
+        var vm = NewVm(ctx);
+        var win = Open(vm);
 
         _ = vm.AddPaths(new[] { a, b });   // synchronous under InlineScheduler — see FilesAndFolder above
         ctx.Check("both sources listed", vm.Rows.Count == 2, $"got {vm.Rows.Count}");
@@ -255,9 +245,8 @@ public static class ZipScenarios
 
     private static void EmptySelection(ScenarioContext ctx)
     {
-        var tools = NewVm(ctx);
-        var win = Open(tools);
-        var vm = tools.ZipExtract;
+        var vm = NewVm(ctx);
+        var win = Open(vm);
 
         ctx.Check("nothing listed", vm.Rows.Count == 0, $"got {vm.Rows.Count}");
         ctx.Check("the button reads as empty", vm.ZipButtonText == "Zip", vm.ZipButtonText);

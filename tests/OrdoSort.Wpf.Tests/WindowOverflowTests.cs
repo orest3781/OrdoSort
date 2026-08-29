@@ -234,26 +234,21 @@ public class WindowOverflowTests
             return (new UnlockWindow(vm), null);
         }, MinExamined: 17),   // 22 measured
 
-        // Both tabs are seeded and both are probed (ProbeEveryTab): only the
-        // selected tab's content exists in the visual tree, and an empty list
-        // is the one state that trivially fits — see this class's own doc.
-        // Each list gets a failed row because the Result column's own error
-        // message is the widest thing either grid ever shows.
+        // A failed zip, a locked zip and a loose PDF: the Result column's
+        // messages are the widest thing this grid ever shows.
         ["ZipToolsWindow"] = new(580, 700, 420, 520, () =>
         {
-            var vm = new ZipToolsViewModel(new FakeDialogs());
+            var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>());
             var archive = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
             archive.Apply(new Zipper.UnzipResult(archive.Path, "error", null,
                 "not a valid zip archive — a long enough exception message to matter"));
-            vm.ZipExtract.Rows.Add(archive);
-            vm.ZipExtract.Rows.Add(new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf", "file"));
-
-            var toMerge = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
-            toMerge.Apply(new PdfMerge.MergeResult(toMerge.Path, "error",
-                Message: "couldn't read 'entry.pdf' inside the zip — a long enough exception message to matter"));
-            vm.MergePdfs.Rows.Add(toMerge);
+            vm.Rows.Add(archive);
+            var locked = new ZipItemRow(@"C:\inbox\another-long-enough-filename-to-matter.zip", "zip");
+            locked.Mark(ZipItemRowStatus.NeedsPassword, "needs a password");
+            vm.Rows.Add(locked);
+            vm.Rows.Add(new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf", "pdf"));
             return (new ZipToolsWindow(vm), null);
-        }, MinExamined: 38, ProbeEveryTab: true),   // 50 measured
+        }, MinExamined: 26),   // 34 measured
 
         // A failed zip and a locked PDF: the Result column's messages are the
         // widest thing this grid ever shows.

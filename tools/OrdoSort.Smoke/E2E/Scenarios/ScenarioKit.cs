@@ -75,6 +75,24 @@ public static class ScenarioKit
             $"no status line and no warning within {timeoutMs}ms");
     }
 
+    /// <summary>Wait until everything the run POSTED to the dispatcher has
+    /// run. Under InlineScheduler a command's whole body runs synchronously
+    /// up to the Posts it issues — the probe's verdict on add, each unit's
+    /// Apply, the final OnRowsChanged — and none of those has landed when
+    /// Execute returns. A sentinel posted after them sits behind all of
+    /// them (DispatcherSynchronizationContext.Post is FIFO within a
+    /// priority), so waiting on it is waiting on the row state the
+    /// assertions read. This replaces waiting on Rows[0].Note, which the
+    /// probe on add now fills BEFORE the run and which would therefore
+    /// settle too early — exactly the already-true-predicate trap the class
+    /// doc comment above describes.</summary>
+    public static bool Drained(int timeoutMs = 15000)
+    {
+        var done = false;
+        SynchronizationContext.Current!.Post(_ => done = true, null);
+        return E2EPump.Until(() => done, timeoutMs);
+    }
+
     /// <summary>Wait for an intake call (AddFilesAsync) to cross a genuine
     /// thread-pool hop, and record that it did.
     ///

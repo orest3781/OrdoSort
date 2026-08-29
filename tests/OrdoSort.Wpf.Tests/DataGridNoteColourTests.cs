@@ -251,54 +251,27 @@ public class DataGridNoteColourTests
     // genuine failure. NoPdfs stays amber; it's still the correct "needs
     // attention" case.
     //
-    // Both of those windows became ZipToolsWindow's two tabs on 2026-08-18,
-    // and the two tabs' Result columns are SEPARATE XAML declarations with
-    // separate trigger sets — the Zip & unzip one deliberately omits the
-    // amber NoPdfs trigger, since only a merge can produce that status. So
-    // the Error case runs against BOTH tabs (a red trigger dropped from
-    // either one is a real regression), and the NoPdfs case against the
-    // Merge tab alone.
+    // Merge PDFs got its own window on 2026-08-28. Each window's Result
+    // column is its own XAML declaration with its own trigger set — Zip and
+    // unzip carries Error and NeedsPassword, Merge PDFs those two plus
+    // NoPdfs — so each is measured on its own window below.
 
-    public static IEnumerable<object[]> PalettesSelectionAndTab()
-    {
-        foreach (var s in ThemePalette.Schemes)
-        foreach (var selected in new[] { false, true })
-        foreach (var mergeTab in new[] { false, true })
-            yield return new object[] { s.Key, selected, mergeTab };
-    }
-
-    /// <summary>Shared body for both tabs' Result-column cases. Builds a real
-    /// window with one ZipItemRow driven through its own internal Apply (same
-    /// internal-member access ZipExtractViewModelTests/MergePdfsViewModelTests
-    /// already use — InternalsVisibleTo covers this test assembly), reads the
-    /// Result cell's actual TextBlock, and asserts against the vocabulary —
-    /// or, once selected, AccentText regardless of status (selection wins).
-    ///
-    /// A TabControl realizes ONLY the selected tab's content, so the tab is
-    /// chosen after Show and layout flushed again; without that,
-    /// FindDescendant resolves the other tab's grid, which also has a
-    /// "Result" column and would answer with the wrong colours.</summary>
-    private void AssertZipToolsResultColour(string schemeKey, bool selected, bool mergeTab,
+    /// <summary>Builds the real window with one ZipItemRow driven through its
+    /// own internal Apply, reads the Result cell's actual TextBlock, and
+    /// asserts against the vocabulary — or, once selected, AccentText
+    /// regardless of status (selection wins).</summary>
+    private void AssertZipToolsResultColour(string schemeKey, bool selected,
         string status, Func<ThemePalette, Rgb> expectedUnselected)
     {
         var scheme = ThemePalette.FindScheme(schemeKey)!;
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new ZipToolsViewModel(new FakeDialogs());
+        var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>());
         var row = new ZipItemRow(@"C:\inbox\a.zip", "zip");
-        if (mergeTab)
-        {
-            row.Apply(new PdfMerge.MergeResult(row.Path, status, Message: "some result text here"));
-            vm.MergePdfs.Rows.Add(row);
-        }
-        else
-        {
-            row.Apply(new Zipper.UnzipResult(row.Path, status, null, "some result text here"));
-            vm.ZipExtract.Rows.Add(row);
-        }
+        row.Apply(new Zipper.UnzipResult(row.Path, status, null, "some result text here"));
+        vm.Rows.Add(row);
 
-        var tab = mergeTab ? "Merge PDFs" : "Zip & unzip";
         var window = new ZipToolsWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
@@ -308,12 +281,9 @@ public class DataGridNoteColourTests
         {
             window.Show();
             window.UpdateLayout();
-            window.Tabs.SelectedIndex = mergeTab ? 1 : 0;
-            window.UpdateLayout();
 
             var grid = FindDescendant<DataGrid>(window)
                 ?? throw new InvalidOperationException("no DataGrid descendant under ZipToolsWindow");
-            Assert.Same(mergeTab ? vm.MergePdfs.Rows : vm.ZipExtract.Rows, grid.ItemsSource);
             if (selected) { grid.SelectedIndex = 0; grid.UpdateLayout(); }
 
             var (fg, _) = ResolveNoteCellForeground(grid, "Result");
@@ -323,7 +293,7 @@ public class DataGridNoteColourTests
                 Assert.Equal(p.AccentText, fg);
                 var ratio = ThemePalette.ContrastRatio(fg, p.Accent);
                 Assert.True(ratio >= 4.5,
-                    $"{tab} Result selected, {status} ({schemeKey}): {fg} on {p.Accent} = {ratio:F2}");
+                    $"Zip and unzip Result selected, {status} ({schemeKey}): {fg} on {p.Accent} = {ratio:F2}");
             }
             else
             {
@@ -331,7 +301,7 @@ public class DataGridNoteColourTests
                 Assert.Equal(expected, fg);
                 var ratio = ThemePalette.ContrastRatio(fg, p.Surface);
                 Assert.True(ratio >= 4.5,
-                    $"{tab} Result unselected, {status} ({schemeKey}): {fg} on {p.Surface} = {ratio:F2}");
+                    $"Zip and unzip Result unselected, {status} ({schemeKey}): {fg} on {p.Surface} = {ratio:F2}");
             }
         }
         finally
@@ -340,29 +310,15 @@ public class DataGridNoteColourTests
         }
     }
 
-    /// <summary>The literal fix the 2026-08-09 Finding 1 made, now carried on
-    /// both tabs: a genuine failure is Theme.StatusRed, not Theme.StatusAmber.
-    /// Break it on either tab (revert that column's trigger Setter to
-    /// StatusAmber, or drop the trigger while copy-pasting one grid from the
-    /// other) and this fails for a value reason — wrong brush, not a render
-    /// error.</summary>
-    [Theory, MemberData(nameof(PalettesSelectionAndTab))]
-    public void ZipToolsErrorResultIsRedUnlessSelected(string schemeKey, bool selected, bool mergeTab) =>
-        _fx.Invoke(() => AssertZipToolsResultColour(
-            schemeKey, selected, mergeTab, "error", p => p.StatusRed));
-
-    /// <summary>NoPdfs is deliberately left amber — a zip with nothing to
-    /// merge is "needs attention," not an error and not merely informational
-    /// either (someone likely wants to know). Merge tab only: nothing the Zip
-    /// &amp; unzip tab runs can produce that status, which is why that tab's
-    /// Result column carries no amber trigger at all. This case exists so a
-    /// future edit that flattens Error and NoPdfs back to the same colour (in
-    /// EITHER direction) is caught here, not just by the Error case
-    /// above.</summary>
     [Theory, MemberData(nameof(PalettesAndSelection))]
-    public void ZipToolsNoPdfsResultIsAmberUnlessSelected(string schemeKey, bool selected) =>
-        _fx.Invoke(() => AssertZipToolsResultColour(
-            schemeKey, selected, mergeTab: true, "no_pdfs", p => p.StatusAmber));
+    public void ZipToolsErrorResultIsRedUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertZipToolsResultColour(schemeKey, selected, "error", p => p.StatusRed));
+
+    /// <summary>A locked archive nobody could open is "needs attention" —
+    /// the row is still runnable — not a failure: amber, never red.</summary>
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void ZipToolsNeedsPasswordResultIsAmberUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertZipToolsResultColour(schemeKey, selected, "needs_password", p => p.StatusAmber));
 
     // ------------------------------------------------------- Merge PDFs
     //

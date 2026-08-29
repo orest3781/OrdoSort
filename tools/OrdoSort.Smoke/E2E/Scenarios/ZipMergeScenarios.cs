@@ -1,12 +1,13 @@
 using OrdoSort.Core;
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Windows;
+using static OrdoSort.Smoke.E2E.Scenarios.ScenarioKit;
 
 namespace OrdoSort.Smoke.E2E.Scenarios;
 
-/// <summary>"Merge PDFs from zip" as the real ZipToolsWindow's Merge PDFs
-/// tab, with the `merger` seam left at its default so PdfMerge.MergeZip
-/// really opens the archives and really writes a merged document.</summary>
+/// <summary>"Merge PDFs from zip" as the real MergePdfsWindow, with the
+/// `merger` seam left at its default so PdfMerge.MergeZip really opens the
+/// archives and really writes a merged document.</summary>
 public static class ZipMergeScenarios
 {
     private const string Surface = "Zip merge";
@@ -20,70 +21,24 @@ public static class ZipMergeScenarios
         new Scenario(Surface, "one bad archive among good ones", "awkward", BatchWithOneBad),
     };
 
-    private static ZipToolsViewModel NewVm(ScenarioContext ctx) =>
-        new(ctx.Dialogs, SynchronizationContext.Current, new InlineScheduler());
+    private static MergePdfsViewModel NewVm(ScenarioContext ctx) =>
+        new(ctx.Dialogs, Array.Empty<string>(), new InlineScheduler(), SynchronizationContext.Current);
 
-    /// <summary>Add every zip, run the merge, and wait for every row to leave
-    /// Pending.
-    ///
-    /// Waits on each row's own StatusKind, never on vm.Status — and that
-    /// choice is load-bearing, not cosmetic, the same trap UnzipScenarios.cs
-    /// documents for the other tab. In ZipListViewModel.RunBatchAsync, Status
-    /// is assigned DIRECTLY inside the loop body ("Merging N of M…", then the
-    /// final `Status = string.Join(...)` verdict line) — no UiContext hop
-    /// anywhere in that assignment. ZipItemRow's StatusKind/Note/Output, by
-    /// contrast, are only ever set from inside ZipItemRow.Apply, and
-    /// ZipListViewModel.ApplyOnUi only ever calls Apply from inside
-    /// `UiContext.Post(_ => apply(row, result), null)`.
-    ///
-    /// Under InlineScheduler every `Scheduler.Run(...)` awaits an
-    /// already-completed Task, so `MergeCommand.Execute(null)` — an async
-    /// void method whose body runs synchronously up to its first real
-    /// suspension point — runs MergeAsync's ENTIRE for-loop to completion,
-    /// including that final Status assignment, before returning control
-    /// here. vm.Status would therefore already read the finished verdict
-    /// line on E2EPump.Until's very first (pre-pump) check — exactly the
-    /// "predicate that's already true" trap ScenarioKit.Settle's own doc
-    /// comment warns about, except the trap here is a VIEW MODEL property,
-    /// not the filesystem. Waiting on every row's StatusKind instead
-    /// genuinely blocks until the dispatcher actually runs each queued
-    /// ApplyOnUi Post, which is the one thing that proves the marshalling
-    /// hop was exercised rather than just the underlying merge.
-    ///
-    /// This does not call ScenarioKit.Settle directly — Settle's signature
-    /// waits on ONE status string, and BatchWithOneBad drives three rows at
-    /// once — but it keeps Settle's contract: wait on a hop-guarded surface
-    /// property, and record that the wait succeeded as its own assertion.
-    ///
-    /// Index 1 is the Merge PDFs tab: a TabControl realizes only the selected
-    /// tab's content, so the tab has to be current before anything reads or
-    /// photographs the grid.</summary>
-    private static ZipToolsWindow Merge(ScenarioContext ctx, ZipToolsViewModel tools, params string[] zips)
+    /// <summary>Add every source, run the merge, and wait for every result
+    /// the run posted to land (ScenarioKit.Drained — the old wait on "every
+    /// row left Pending" can no longer end: fail-whole leaves the rows a
+    /// culprit held back Pending on purpose).</summary>
+    private static MergePdfsWindow Merge(ScenarioContext ctx, MergePdfsViewModel vm, params string[] sources)
     {
-        var win = new ZipToolsWindow(tools);
+        var win = new MergePdfsWindow(vm);
         E2EPump.ShowOffscreen(win);
-        win.Tabs.SelectedIndex = 1;
-        win.UpdateLayout();
 
-        var vm = tools.MergePdfs;
-        // AddPaths' one await is `Scheduler.Run(...)`, which InlineScheduler
-        // completes synchronously, so Rows is already populated by the time
-        // this call returns — the row-count check below is the real assertion
-        // that intake worked; see ScenarioKit's class doc comment for why an
-        // Added(ctx, ...) wrapper here could never have failed.
-        _ = vm.AddPaths(zips);
-        ctx.Check("every archive is listed", vm.Rows.Count == zips.Length,
-            $"got {vm.Rows.Count} of {zips.Length}");
+        _ = vm.AddPaths(sources);   // synchronous under InlineScheduler — see ZipScenarios
+        ctx.Check("every source is listed", vm.Rows.Count == sources.Length,
+            $"got {vm.Rows.Count} of {sources.Length}");
 
         vm.MergeCommand.Execute(null);
-
-        var settled = E2EPump.Until(
-            () => vm.Rows.Count == zips.Length
-                && vm.Rows.All(r => r.StatusKind != ZipItemRowStatus.Pending),
-            20000);
-        ctx.Check("every row reported a result", settled,
-            "rows: " + string.Join(", ", vm.Rows.Select(r => $"{r.Display}:{r.StatusKind}")));
-
+        ctx.Check("the window applied every result", Drained(), "the dispatcher queue never drained");
         return win;
     }
 
@@ -107,9 +62,8 @@ public static class ZipMergeScenarios
         var c = ctx.Fx.Pdf("src/c.pdf", "PAGE THREE");
         var zip = ctx.Fx.Zip("archives/bundle.zip", ("a.pdf", a), ("b.pdf", b), ("c.pdf", c));
 
-        var tools = NewVm(ctx);
-        var win = Merge(ctx, tools, zip);
-        var vm = tools.MergePdfs;
+        var vm = NewVm(ctx);
+        var win = Merge(ctx, vm, zip);
 
         ctx.Check("row reports ok", vm.Rows[0].StatusKind == ZipItemRowStatus.Ok,
             $"{vm.Rows[0].StatusKind} — {vm.Rows[0].Note}");
@@ -129,9 +83,8 @@ public static class ZipMergeScenarios
         var txt = ctx.Fx.Text("src/readme.txt", "no documents here");
         var zip = ctx.Fx.Zip("archives/empty-of-pdfs.zip", ("readme.txt", txt));
 
-        var tools = NewVm(ctx);
-        var win = Merge(ctx, tools, zip);
-        var vm = tools.MergePdfs;
+        var vm = NewVm(ctx);
+        var win = Merge(ctx, vm, zip);
 
         ctx.Check("reported as holding no PDFs", vm.Rows[0].StatusKind == ZipItemRowStatus.NoPdfs,
             $"{vm.Rows[0].StatusKind} — {vm.Rows[0].Note}");
@@ -148,9 +101,8 @@ public static class ZipMergeScenarios
         var zip = ctx.Fx.Zip("archives/mixed.zip",
             ("a.pdf", a), ("notes.txt", txt), ("b.pdf", b));
 
-        var tools = NewVm(ctx);
-        var win = Merge(ctx, tools, zip);
-        var vm = tools.MergePdfs;
+        var vm = NewVm(ctx);
+        var win = Merge(ctx, vm, zip);
 
         ctx.Check("merged despite the extra file", vm.Rows[0].StatusKind == ZipItemRowStatus.Ok,
             $"{vm.Rows[0].StatusKind} — {vm.Rows[0].Note}");
@@ -162,33 +114,30 @@ public static class ZipMergeScenarios
         ctx.Capture(win);
     }
 
-    /// <summary>An encrypted document cannot be merged without its password.
-    /// PdfMerge.MergeZip fails the WHOLE zip on any entry PdfSharp can't
-    /// open — an encrypted one included — rather than silently dropping just
-    /// that entry from the merge (see PdfMerge's own "fail-whole-zip" doc
-    /// comment, pinned by
-    /// ZipMergeTests.AnEncryptedEntryFailsTheWholeZipAndLeavesNoOutput). So
-    /// the row here is expected to come back Error, name the entry it could
-    /// not read, and leave no output at all — never a throw, and never a
-    /// merged document that quietly has fewer pages than it claims.</summary>
+    /// <summary>An encrypted document inside, and no password anyone knows:
+    /// PdfMerge.MergeZip asks (ScriptedDialogs, nothing queued, answers
+    /// null — a skip) and fails the WHOLE zip as needs_password, naming the
+    /// entry, with no output — fail-whole is unchanged, but the row is
+    /// runnable rather than a dead end. Task 10 adds the sibling scenario
+    /// where the password is supplied.</summary>
     private static void EncryptedInside(ScenarioContext ctx)
     {
         var plain = ctx.Fx.Pdf("src/plain.pdf", "PAGE ONE");
         var locked = ctx.Fx.EncryptedPdf("src/locked.pdf", "secret");
         var zip = ctx.Fx.Zip("archives/has-locked.zip", ("plain.pdf", plain), ("locked.pdf", locked));
 
-        var tools = NewVm(ctx);
-        var win = Merge(ctx, tools, zip);
-        var vm = tools.MergePdfs;
+        var vm = NewVm(ctx);
+        var win = Merge(ctx, vm, zip);
 
-        ctx.Check("reported as an error rather than a silent partial success",
-            vm.Rows[0].StatusKind == ZipItemRowStatus.Error,
+        ctx.Check("reported as needing a password rather than a silent partial success",
+            vm.Rows[0].StatusKind == ZipItemRowStatus.NeedsPassword,
             $"status was {vm.Rows[0].StatusKind} — {vm.Rows[0].Note}");
         ctx.Check("the outcome names the entry that could not be read",
             vm.Rows[0].Note.Contains("locked.pdf", StringComparison.Ordinal),
             $"note was \"{vm.Rows[0].Note}\"");
         ctx.Check("a failed merge writes nothing", vm.Rows[0].Output is null,
             $"wrote {vm.Rows[0].Output}");
+        ctx.Check("the row is still runnable", vm.Rows[0].IsRunnable, "it was finished");
         ctx.Capture(win);
     }
 
@@ -202,9 +151,8 @@ public static class ZipMergeScenarios
         var bad = ctx.Fx.Text("archives/bad.zip", "not a zip");
         var good2 = ctx.Fx.Zip("archives/good2.zip", ("a.pdf", a), ("b.pdf", b));
 
-        var tools = NewVm(ctx);
-        var win = Merge(ctx, tools, good1, bad, good2);
-        var vm = tools.MergePdfs;
+        var vm = NewVm(ctx);
+        var win = Merge(ctx, vm, good1, bad, good2);
 
         var ok = vm.Rows.Count(r => r.StatusKind == ZipItemRowStatus.Ok);
         var errors = vm.Rows.Count(r => r.StatusKind == ZipItemRowStatus.Error);
