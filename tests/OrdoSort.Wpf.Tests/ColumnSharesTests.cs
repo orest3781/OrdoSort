@@ -44,8 +44,9 @@ public class ColumnSharesTests
     {
         // Shares go by WANTED width — max(natural, floor) — so the first
         // column's first-pass share is 600 × 180/980 = 110, under its own
-        // 180 floor: it is held at 180, and the 420 that leaves goes to the
-        // other column rather than the 533 a straight 800/980 split would.
+        // 180 floor: it is held at 180, and the 420 that leaves is less
+        // than the 490 (600 × 800/980) the second column would have taken
+        // had the first not been held at all.
         var shares = ColumnShares.Compute(600, new[] { 100.0, 800.0 }, new[] { 180.0, 20.0 });
         Assert.Equal(180.0, shares[0], 6);
         Assert.Equal(420.0, shares[1], 6);
