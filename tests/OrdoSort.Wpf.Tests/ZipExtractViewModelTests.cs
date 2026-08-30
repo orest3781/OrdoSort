@@ -167,7 +167,11 @@ public class ZipExtractViewModelTests
     public async Task AddPathsRecordsFileAndFolderKindSeparately()
     {
         using var dir = new TempDir();
-        var file = dir.File("a.txt");
+        // .dat, not .txt: Task 7 made ZipItemRow.KindOf map every MergeTypes
+        // group's extensions to that group's name (.txt is now "text"), so
+        // this needs an extension no group recognizes at all to still prove
+        // "file" — a plain file's kind — apart from "folder".
+        var file = dir.File("a.dat");
         var folder = dir.Dir("sub");
         var vm = MakeVm();
 

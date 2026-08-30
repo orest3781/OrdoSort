@@ -34,6 +34,7 @@
         <Grid Margin="16,8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -54,7 +55,33 @@
                 </WrapPanel>
             </DockPanel>
 
-            <Grid Grid.Row="1">
+            <!-- Per-type toggles (2026-08-30 spec): which of the seven
+                 MergeTypes groups actually take part in a merge, remembered
+                 between sessions (MergePdfsViewModel persists through
+                 config on every flip). An ItemsControl bound to TypeToggles
+                 rather than seven hand-written CheckBoxes, so this row and
+                 MergeTypes.AllGroups can never drift apart. Its ItemsPanel
+                 is a WrapPanel, not a horizontal StackPanel, for the exact
+                 reason the button row above is one: seven checkboxes do not
+                 fit this window's 580 MinWidth at the 18px font preset
+                 either, and a StackPanel would push the last one off screen
+                 instead of onto a second row. -->
+            <ItemsControl Grid.Row="1" Margin="0,0,0,10" ItemsSource="{Binding TypeToggles}"
+                          AutomationProperties.Name="File types to merge">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <CheckBox Content="{Binding Label}" IsChecked="{Binding IsEnabled}"
+                                  Margin="0,0,14,4" AutomationProperties.Name="{Binding Label}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Grid Grid.Row="2">
                 <DataGrid x:Name="ItemsGrid" ItemsSource="{Binding Rows}"
                           AutomationProperties.Name="PDFs and archives to merge" AutoGenerateColumns="False"
                           IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"

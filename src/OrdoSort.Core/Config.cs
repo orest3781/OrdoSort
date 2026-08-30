@@ -114,6 +114,18 @@ public sealed class Config
     [JsonPropertyName("merge_roster")] public string MergeRoster { get; set; } = "";
     [JsonPropertyName("merge_columns")] public List<string> MergeColumns { get; set; } = new();
 
+    // Merge PDFs (a different tool from Match & merge above, despite the
+    // shared "merge" name): which of OrdoSort.Core.MergeTypes.AllGroups are
+    // switched on to merge alongside PDFs and zips, toggled in the window
+    // itself and remembered here. Always assigned MergeTypes.Save's OWN
+    // output and read back only through MergeTypes.Load — never a literal
+    // "" or a hand-built CSV — so "" means "never configured" (every group
+    // on) while an explicit all-off choice is MergeTypes.NoneStored instead,
+    // surviving a reload as all-off rather than reading as never-configured
+    // and coming back all-on (see MergeTypes.Save's own doc comment for why
+    // that distinction has to survive the round trip).
+    [JsonPropertyName("merge_types")] public string MergeTypes { get; set; } = "";
+
     // Ready dashboard: monitored-folder tiles + filename alerts
     [JsonPropertyName("watch_folders")] public List<WatchFolder> WatchFolders { get; set; } = new();
     [JsonPropertyName("alert_texts")] public List<string> AlertTexts { get; set; } = new();
@@ -513,6 +525,7 @@ public sealed class Config
         MergeHeaders ??= new();
         MergeRoster ??= "";
         MergeColumns ??= new();
+        MergeTypes ??= "";
         Extras ??= new();
 
         Sounds ??= new();

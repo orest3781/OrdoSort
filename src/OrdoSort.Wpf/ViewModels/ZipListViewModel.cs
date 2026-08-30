@@ -39,28 +39,84 @@ public sealed class ZipItemRow : ObservableObject
         Kind = kind;
     }
 
+    /// <summary>Dot-less, lowercase — the one spelling KindOf and the merge
+    /// window's own type-toggle exclusion check share (MergePdfsViewModel.
+    /// IsRowIncluded), so "what group is this" can never quietly drift from
+    /// "what Kind does the grid show", the same reasoning PdfMerge.cs's own
+    /// private copy of this spelling documents for itself.</summary>
+    internal static string ExtensionOf(string path) =>
+        System.IO.Path.GetExtension(path).TrimStart('.').ToLowerInvariant();
+
     /// <summary>Classifies a path the one way both windows agree on. Checked
-    /// in this order deliberately: a directory named "x.zip" is a folder.</summary>
+    /// in this order deliberately: a directory named "x.zip" is a folder.
+    /// Beyond zip/pdf, every other MergeTypes group's extensions map to that
+    /// group's own name — "word"/"excel"/"powerpoint"/"text" read straight
+    /// off MergeTypes' own group constants, and "images" is singularized to
+    /// "image" for the grid's Kind column (MergeTypes' group name is plural
+    /// because it names a SET of extensions; the column names one FILE).
+    /// An extension no group recognizes at all — the Zip Extract window
+    /// accepts anything, so this still has to answer for an .exe or a
+    /// extension-less file — falls back to "file", exactly as it always
+    /// has.</summary>
     public static string KindOf(string path)
     {
         if (Directory.Exists(path)) return "folder";
-        var extension = System.IO.Path.GetExtension(path);
-        if (extension.Equals(".zip", StringComparison.OrdinalIgnoreCase)) return "zip";
-        if (extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase)) return "pdf";
-        return "file";
+        return MergeTypes.GroupOf(ExtensionOf(path)) switch
+        {
+            null => "file",
+            MergeTypes.Images => "image",
+            var group => group,
+        };
     }
 
     private ZipItemRowStatus _statusKind = ZipItemRowStatus.Pending;
     public ZipItemRowStatus StatusKind { get => _statusKind; private set => Set(ref _statusKind, value); }
 
+    /// <summary>Whether the Merge PDFs window's CURRENT per-type toggles
+    /// include this row in a run — a LIVE value MergePdfsViewModel.
+    /// SetTypeEnabled recomputes on every toggle flip (and OnRowsChanged
+    /// recomputes for a freshly added row, so one dropped while its type is
+    /// already off starts excluded rather than waiting for the next
+    /// unrelated toggle), not an operation's outcome the way StatusKind is.
+    /// True by default: a row is included until something says otherwise,
+    /// which is also why the Zip Extract window — whose view model never
+    /// touches this property at all — sees no change in behaviour from its
+    /// existence. Swaps Note for a short explanation while excluded and
+    /// restores whatever was there before the instant the type is switched
+    /// back on, so a row picks up exactly where it left off rather than
+    /// looking freshly re-added.</summary>
+    private bool _isIncluded = true;
+    private string? _noteBeforeExclusion;
+    public bool IsIncluded
+    {
+        get => _isIncluded;
+        set
+        {
+            if (_isIncluded == value) return;
+            if (!value)
+            {
+                _noteBeforeExclusion = _note;
+                Note = "not included — this file type is switched off";
+            }
+            else
+            {
+                Note = _noteBeforeExclusion ?? "";
+                _noteBeforeExclusion = null;
+            }
+            Set(ref _isIncluded, value);
+        }
+    }
+
     /// <summary>A row the next run will pick up. Pending has never run;
     /// NeedsPassword ran and was skipped at the prompt — and a password is
-    /// something that can be known now that wasn't then.</summary>
-    public bool IsRunnable => StatusKind is ZipItemRowStatus.Pending or ZipItemRowStatus.NeedsPassword;
+    /// something that can be known now that wasn't then. An excluded row is
+    /// never runnable regardless of status — see IsIncluded.</summary>
+    public bool IsRunnable => IsIncluded && StatusKind is ZipItemRowStatus.Pending or ZipItemRowStatus.NeedsPassword;
 
     /// <summary>"" while Pending with nothing to say; a probe's readiness
     /// note while still Pending; the operation's own message on a failure; a
-    /// short result line on success.</summary>
+    /// short result line on success. While IsIncluded is false this instead
+    /// shows the exclusion note — see IsIncluded's own doc comment.</summary>
     private string _note = "";
     public string Note { get => _note; private set => Set(ref _note, value); }
 

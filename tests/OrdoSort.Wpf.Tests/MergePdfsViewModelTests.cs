@@ -111,20 +111,24 @@ public class MergePdfsViewModelTests
         Assert.True(vm.MergeCommand.CanExecute(null));
     }
 
+    /// <summary>Extensions widened to MergeTypes.AllExtensions (Task 7): a
+    /// .txt file is now ACCEPTED (the Text group), so this no longer proves
+    /// intake still refuses something — an .exe, which no MergeTypes group
+    /// recognizes at all, replaces it as the genuinely-unsupported case.</summary>
     [Fact]
-    public async Task ATextFileIsRefusedWithANoteButAPdfIsTaken()
+    public async Task AnUnsupportedFileIsRefusedWithANoteButAPdfIsTaken()
     {
         using var dir = new TempDir();
-        var txt = dir.File("notes.txt");
+        var exe = dir.File("installer.exe");
         var pdf = dir.File("scan.pdf");
         var vm = MakeVm();
 
-        await vm.AddPaths(new[] { txt, pdf });
+        await vm.AddPaths(new[] { exe, pdf });
 
         var row = Assert.Single(vm.Rows);
         Assert.Equal(pdf, row.Path);
         Assert.Equal("pdf", row.Kind);
-        Assert.Contains("isn't a PDF or zip", vm.AddNote);
+        Assert.Contains("isn't a PDF, document, image or zip", vm.AddNote);
     }
 
     [Fact]

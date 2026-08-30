@@ -39,6 +39,7 @@ public class ConfigNewKeysTests : IDisposable
             SavedPasswords = { new SavedPassword { Label = "Payer A", Password = "dpapi:abc" } },
             MergeRoster = @"C:\rosters\august.xlsx",
             MergeColumns = { "Last", "First", "DOB" },
+            MergeTypes = "pdf,word",
         };
         var path = Path.Combine(_dir, "t.json");
         Config.Save(cfg, path);
@@ -49,6 +50,7 @@ public class ConfigNewKeysTests : IDisposable
         Assert.Contains("\"saved_passwords\"", json);
         Assert.Contains("\"merge_roster\"", json);
         Assert.Contains("\"merge_columns\"", json);
+        Assert.Contains("\"merge_types\"", json);
         // "unlock_suffix" was retired when the unlock tool stopped having a
         // setting; it must not come back as a key the app writes
         Assert.DoesNotContain("\"unlock_suffix\"", json);
@@ -74,6 +76,7 @@ public class ConfigNewKeysTests : IDisposable
         Assert.Equal("dpapi:abc", pw.Password);
         Assert.Equal(@"C:\rosters\august.xlsx", back.MergeRoster);
         Assert.Equal(new[] { "Last", "First", "DOB" }, back.MergeColumns);
+        Assert.Equal("pdf,word", back.MergeTypes);
     }
 
     [Fact]
@@ -86,6 +89,7 @@ public class ConfigNewKeysTests : IDisposable
         Assert.Empty(cfg.SavedPasswords);
         Assert.Equal("", cfg.MergeRoster);
         Assert.Empty(cfg.MergeColumns);
+        Assert.Equal("", cfg.MergeTypes);
     }
 
     [Fact]

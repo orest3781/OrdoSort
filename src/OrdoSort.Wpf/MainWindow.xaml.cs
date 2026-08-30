@@ -382,7 +382,7 @@ public partial class MainWindow : Window
 
     private void OnMergePdfs(object sender, RoutedEventArgs e) =>
         new Windows.MergePdfsWindow(new MergePdfsViewModel(Dialogs, SavedPasswordsNow(),
-            uiContext: SynchronizationContext.Current))
+            uiContext: SynchronizationContext.Current, config: Shell.Cfg, saveConfig: Shell.SaveConfigNow))
         { Owner = this }.ShowDialog();
 
     /// <summary>The Unlock tool's saved passwords, revealed, for the two

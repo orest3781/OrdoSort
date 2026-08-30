@@ -93,7 +93,7 @@ public class ConfigNullKeysTests : IDisposable
               "inbox": null, "deferred": null, "names_file": null,
               "history_db": null, "naming_mode": null, "sort": null,
               "theme": null, "monitor_title": null, "tile_visibility": null,
-              "ui_font_family": null, "unlock_suffix": null
+              "ui_font_family": null, "unlock_suffix": null, "merge_types": null
             }
             """);
         Assert.Equal("", cfg.Inbox);
@@ -106,6 +106,7 @@ public class ConfigNullKeysTests : IDisposable
         Assert.Equal("Monitored folders", cfg.MonitorTitle);
         Assert.Equal("active", cfg.TileVisibility);
         Assert.Equal("", cfg.UiFontFamily);
+        Assert.Equal("", cfg.MergeTypes);
         // "unlock_suffix" is retired — the unlock tool has no setting now. An
         // existing config still carrying the key (null or otherwise) must load
         // without complaint rather than tripping over an unknown field, which

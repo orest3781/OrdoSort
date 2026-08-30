@@ -12,9 +12,20 @@ public class ZipItemRowTests
     [Theory]
     [InlineData(@"C:\in\a.pdf", "pdf")]
     [InlineData(@"C:\in\a.PDF", "pdf")]
-    [InlineData(@"C:\in\a.txt", "file")]
     [InlineData(@"C:\in\a.ZIP", "zip")]
     [InlineData(@"C:\in\a.zip", "zip")]
+    // Task 7: KindOf maps every MergeTypes group's own extensions to that
+    // group's name too, not just pdf/zip — this is what makes the merge
+    // window's Kind column read word/excel/powerpoint/image/text.
+    [InlineData(@"C:\in\a.docx", "word")]
+    [InlineData(@"C:\in\a.xlsx", "excel")]
+    [InlineData(@"C:\in\a.pptx", "powerpoint")]
+    [InlineData(@"C:\in\a.jpg", "image")]   // singular — MergeTypes.Images is plural, the column names one file
+    [InlineData(@"C:\in\a.txt", "text")]
+    // An extension no MergeTypes group recognizes at all still falls back
+    // to "file" — the Zip Extract window accepts anything, so this is not
+    // just a pdf/zip concern.
+    [InlineData(@"C:\in\a.exe", "file")]
     public void KindOfReadsTheExtensionForAnythingThatIsNotADirectory(string path, string expected) =>
         Assert.Equal(expected, ZipItemRow.KindOf(path));
 

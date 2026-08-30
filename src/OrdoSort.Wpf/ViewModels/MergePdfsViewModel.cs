@@ -23,15 +23,39 @@ public sealed class MergePdfsViewModel : ZipListViewModel
     private readonly Func<string, IReadOnlyList<string>, Zipper.ZipProbeResult> _zipProbe;
     private readonly Func<string, IReadOnlyList<string>, Unlock.ProbeResult> _pdfProbe;
 
-    /// <summary>Extension set in Intake's shape (dot-less, lowercase).</summary>
-    private static readonly ISet<string> PdfsAndZips = new HashSet<string> { "pdf", "zip" };
+    private readonly Config _cfg;
+    private readonly Action? _saveConfig;
+
+    /// <summary>Which MergeTypes groups are currently switched on — seeded
+    /// from config at construction and the single source of truth
+    /// SetTypeEnabled/IsTypeEnabled/IsRowIncluded all read and write; _cfg.
+    /// MergeTypes is kept in lockstep with it purely for persistence (see
+    /// SetTypeEnabled), never read back out of _cfg mid-session.</summary>
+    private readonly HashSet<string> _enabledTypes;
+
+    /// <summary>Display labels for the toggle row's checkboxes. A small,
+    /// deliberately separate mapping rather than titlecasing MergeTypes'
+    /// own lowercase group constants: "PDF" and "PowerPoint" are not what
+    /// titlecasing "pdf"/"powerpoint" would produce.</summary>
+    private static readonly IReadOnlyDictionary<string, string> GroupLabels =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [MergeTypes.Pdf] = "PDF",
+            [MergeTypes.Zip] = "Zip",
+            [MergeTypes.Word] = "Word",
+            [MergeTypes.Excel] = "Excel",
+            [MergeTypes.PowerPoint] = "PowerPoint",
+            [MergeTypes.Images] = "Images",
+            [MergeTypes.Text] = "Text",
+        };
 
     public MergePdfsViewModel(IDialogService dialogs, IReadOnlyList<string> savedPasswords,
         IWorkScheduler? scheduler = null, SynchronizationContext? uiContext = null,
         Func<string, IReadOnlyList<string>, Func<PasswordRequest, string?>?, PdfMerge.MergeResult>? zipMerger = null,
         Func<IReadOnlyList<string>, string?, IReadOnlyList<string>, Func<PasswordRequest, string?>?, PdfMerge.MergeResult>? fileMerger = null,
         Func<string, IReadOnlyList<string>, Zipper.ZipProbeResult>? zipProbe = null,
-        Func<string, IReadOnlyList<string>, Unlock.ProbeResult>? pdfProbe = null)
+        Func<string, IReadOnlyList<string>, Unlock.ProbeResult>? pdfProbe = null,
+        Config? config = null, Action? saveConfig = null)
         : base(dialogs, savedPasswords, scheduler, uiContext)
     {
         // Fix round (review finding 6): a bare method group cannot omit a
@@ -52,19 +76,106 @@ public sealed class MergePdfsViewModel : ZipListViewModel
         _zipProbe = zipProbe ?? Zipper.Probe;
         _pdfProbe = pdfProbe ?? Unlock.ProbeReadiness;
 
+        _cfg = config ?? new Config();
+        _saveConfig = saveConfig;
+        // MergeTypes.Load("") — an unconfigured _cfg.MergeTypes — is every
+        // group on, matching the "never touched a toggle" default a fresh
+        // window has to show.
+        _enabledTypes = new HashSet<string>(MergeTypes.Load(_cfg.MergeTypes), StringComparer.OrdinalIgnoreCase);
+        TypeToggles = MergeTypes.AllGroups
+            .Select(g => new MergeTypeToggle(this, g, GroupLabels.TryGetValue(g, out var label) ? label : g))
+            .ToList();
+
         MergeCommand = new AsyncRelayCommand(() => MergeAsync(null), () => RunnableRows > 0);
         MergeToCommand = new AsyncRelayCommand(MergeToAsync, () => RunnableLoosePdfs > 0);
     }
 
-    /// <summary>PDFs and archives; anything else is refused by intake with
-    /// its usual note — "that isn't a PDF or zip" is the honest answer on a
-    /// window that can only merge.</summary>
-    protected override ISet<string>? Extensions => PdfsAndZips;
+    /// <summary>Every document, image, text file and zip this window can
+    /// merge (Task 8 wires the converter that actually turns a non-PDF into
+    /// pages) — widened from PDF/zip alone so the per-type toggle row below
+    /// has something to switch off. Intake stays permissive on purpose: it
+    /// is the toggle set, not the accepted extension set, that decides what
+    /// merges — see MergePdfsWindow.xaml's toggle row and IsRowIncluded.
+    /// Anything outside every MergeTypes group is still refused by intake
+    /// with its usual note.</summary>
+    protected override ISet<string>? Extensions => MergeTypes.AllExtensions;
 
-    protected override string IntakeNoun => "PDF or zip";
+    protected override string IntakeNoun => "PDF, document, image or zip";
 
     private int RunnableRows => Rows.Count(r => r.IsRunnable);
     private int RunnableLoosePdfs => Rows.Count(r => r.IsPdf && r.IsRunnable);
+
+    /// <summary>One checkbox in the toggle row: a MergeTypes group's current
+    /// on/off state, bound two-way so ticking or unticking calls straight
+    /// back into <see cref="SetTypeEnabled"/>. A thin wrapper rather than a
+    /// plain bool because the XAML needs something to bind Content and
+    /// AutomationProperties.Name to alongside IsChecked, and because the
+    /// state has to be re-announced to WPF whenever SetTypeEnabled is called
+    /// by a route other than this checkbox's own binding — the tests call it
+    /// directly.</summary>
+    public sealed class MergeTypeToggle : ObservableObject
+    {
+        private readonly MergePdfsViewModel _owner;
+        public string Group { get; }
+        public string Label { get; }
+
+        internal MergeTypeToggle(MergePdfsViewModel owner, string group, string label)
+        {
+            _owner = owner;
+            Group = group;
+            Label = label;
+        }
+
+        public bool IsEnabled
+        {
+            get => _owner.IsTypeEnabled(Group);
+            set => _owner.SetTypeEnabled(Group, value);
+        }
+
+        internal void RaiseIsEnabledChanged() => Raise(nameof(IsEnabled));
+    }
+
+    /// <summary>The window's toggle row, one entry per MergeTypes.AllGroups,
+    /// in that group's own display order. Built once at construction — the
+    /// GROUPS never change at runtime, only which of them are switched on,
+    /// which each MergeTypeToggle reads live off this view model rather than
+    /// caching.</summary>
+    public IReadOnlyList<MergeTypeToggle> TypeToggles { get; }
+
+    public bool IsTypeEnabled(string group) => _enabledTypes.Contains(group);
+
+    /// <summary>Switches one MergeTypes group on or off. Persists the whole
+    /// set through config immediately via MergeTypes.Save — which writes its
+    /// own NoneStored sentinel for an empty set rather than "", the one
+    /// thing that lets unticking every type survive a reopen as "everything
+    /// off" instead of reading back as "never configured" and defaulting to
+    /// everything on again (MergeTypes.Load's own contract) — then folds the
+    /// new set into every row already in the list by calling OnRowsChanged,
+    /// which is also what re-raises PropertyChanged on the ROW so the grid
+    /// repaints and refreshes MergeButtonText/the commands' CanExecute the
+    /// same way any other row change does. This is the whole reason a
+    /// switched-off type's rows stay listed rather than being removed: the
+    /// exact same rows rejoin a run the instant the type is switched back
+    /// on, with no re-add.</summary>
+    public void SetTypeEnabled(string group, bool enabled)
+    {
+        if (enabled) _enabledTypes.Add(group); else _enabledTypes.Remove(group);
+        _cfg.MergeTypes = MergeTypes.Save(_enabledTypes);
+        _saveConfig?.Invoke();
+
+        foreach (var toggle in TypeToggles) toggle.RaiseIsEnabledChanged();
+        OnRowsChanged();
+    }
+
+    /// <summary>Whether the CURRENT toggle set includes this row's own type.
+    /// An extension no MergeTypes group recognizes at all is never
+    /// excludable by any toggle — the same rule PdfMerge.IsSwitchedOff
+    /// applies at merge time, kept in step here so a row's grid state never
+    /// disagrees with what a run would actually do with it. A folder row
+    /// (Extensions never lets one into THIS window, but the check is honest
+    /// either way) has no extension and so is never excluded by this either.</summary>
+    private bool IsRowIncluded(ZipItemRow row) =>
+        MergeTypes.GroupOf(ZipItemRow.ExtensionOf(row.Path)) is not { } group || _enabledTypes.Contains(group);
 
     /// <summary>Zips at archive level, loose PDFs through Unlock's own
     /// probe. PDFs INSIDE a zip are not probed here — that would read every
@@ -74,8 +185,18 @@ public sealed class MergePdfsViewModel : ZipListViewModel
         : row.IsPdf ? FromPdfProbe(_pdfProbe(row.Path, savedPasswords))
         : null;
 
+    /// <summary>Already the one place re-run after every list change (an
+    /// add, Clear, a run finishing) as well as every SetTypeEnabled call —
+    /// so re-evaluating IsIncluded here, rather than separately in
+    /// SetTypeEnabled, covers a file dropped while its type is ALREADY
+    /// switched off (excluded immediately, not just from the next unrelated
+    /// toggle) with the same one pass that covers a toggle flip. Every row's
+    /// setter is a no-op unless its own IsIncluded actually changes, so
+    /// looping every row on every call costs nothing observable.</summary>
     protected override void OnRowsChanged()
     {
+        foreach (var row in Rows) row.IsIncluded = IsRowIncluded(row);
+
         Raise(nameof(MergeButtonText));
         MergeCommand.RaiseCanExecuteChanged();
         MergeToCommand.RaiseCanExecuteChanged();
