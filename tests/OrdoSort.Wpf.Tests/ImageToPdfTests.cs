@@ -45,7 +45,7 @@ public class ImageToPdfTests
     private static (int Pages, double Width, double Height) Read(byte[] pdf)
     {
         using var stream = new MemoryStream(pdf);
-        using var doc = PdfReader.Open(stream, PdfDocumentOpenMode.InformationOnly);
+        using var doc = PdfReader.Open(stream, PdfDocumentOpenMode.Import);
         return (doc.PageCount, doc.Pages[0].Width.Point, doc.Pages[0].Height.Point);
     }
 
@@ -79,10 +79,33 @@ public class ImageToPdfTests
     public void AScanAtItsOwnDpiComesOutAtItsTrueSize() => _fx.Invoke(() =>
     {
         // 1700 x 2200 at 200 DPI is exactly 8.5 x 11 inches — 612 x 792 pt.
+        // This pins the outcome for a real letter-sized scan, but it cannot
+        // by itself prove the DPI-trust branch ran: 1700x2200 reduces to
+        // exactly the 612x792 ratio, so fitting it to Letter agrees with
+        // trusting its true DPI regardless of which branch executes. The
+        // branch itself is guarded by
+        // AnInRangeImageKeepsItsOwnSizeRatherThanBeingStretchedToLetter
+        // below, whose fixture is deliberately NOT letter-shaped.
         var r = new ImageToPdf().ToPdf(Png(1700, 2200, dpi: 200), "scan.png", Array.Empty<string>(), null);
         var (_, width, height) = Read(r.Pdf!);
         Assert.Equal(612, width, 1);
         Assert.Equal(792, height, 1);
+    });
+
+    [Fact]
+    public void AnInRangeImageKeepsItsOwnSizeRatherThanBeingStretchedToLetter() => _fx.Invoke(() =>
+    {
+        // 1200x1800 at 300 DPI is 4x6in — inside the trusted window, and
+        // deliberately NOT letter-shaped, so trusting the DPI (288x432pt)
+        // and fitting to Letter (528x792pt) give visibly different answers.
+        // The letter-shaped scan fixture above cannot tell those apart:
+        // 1700x2200 reduces to exactly the 612x792 ratio, so both branches
+        // agree on it.
+        var r = new ImageToPdf().ToPdf(Png(1200, 1800, dpi: 300), "photo.png", Array.Empty<string>(), null);
+        Assert.Equal("ok", r.Status);
+        var (_, width, height) = Read(r.Pdf!);
+        Assert.Equal(288, width, 1);
+        Assert.Equal(432, height, 1);
     });
 
     [Fact]
