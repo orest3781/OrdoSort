@@ -99,4 +99,17 @@ public class TablePagesTests
     [Fact]
     public void AHeaderOnlyTableStillProducesOnePage() =>
         Assert.Empty(Assert.Single(TablePages.Paginate(Table(["a", "b"]), 100, 100, 10, Measure)).Rows);
+
+    [Fact]
+    public void RepeatHeaderFalseKeepsRowZeroAsOrdinaryBodyContent()
+    {
+        // TextToPdf's reason for repeatHeader: a text file's first line is
+        // content, not a heading. Ten rows at ten rows-per-page fit on one
+        // page ONLY if row 0 is counted as body — the header-repeating
+        // default would drop it (treating it as the heading) and reserve a
+        // row for a header line that does not exist here, leaving 9.
+        var rows = Enumerable.Range(0, 10).Select(i => new List<string> { $"r{i}" }).ToList();
+        var page = Assert.Single(TablePages.Paginate(rows, 100, 100, 10, Measure, repeatHeader: false));
+        Assert.Equal(Enumerable.Range(0, 10), page.Rows);
+    }
 }

@@ -29,11 +29,18 @@ public static class TablePages
     /// <c>columnCount</c>. The one real infinite-loop risk in this method is
     /// <c>bodyRowsPerPage</c> reaching zero, which the <c>Math.Max</c> floor
     /// below exists to prevent; see TablePagesTests'
-    /// APageWithRoomForBarelyOneRowStillMakesProgressInsteadOfLoopingForever.</summary>
+    /// APageWithRoomForBarelyOneRowStillMakesProgressInsteadOfLoopingForever.
+    ///
+    /// <paramref name="repeatHeader"/> (default true) is what a spreadsheet
+    /// needs: row 0 is a heading repeated at the top of every page, and body
+    /// rows start at 1. A plain text file has no heading to repeat — passing
+    /// false treats every row, including row 0, as body content exactly
+    /// once, and gives the body the FULL page height rather than reserving
+    /// one row's worth for a header line. See TextToPdf.</summary>
     public static IReadOnlyList<TablePage> Paginate(
         IReadOnlyList<IReadOnlyList<string>> table,
         double pageWidth, double pageHeight, double rowHeight,
-        Func<string, double> measure)
+        Func<string, double> measure, bool repeatHeader = true)
     {
         if (table.Count == 0) return Array.Empty<TablePage>();
         var columnCount = table.Max(r => r.Count);
@@ -60,10 +67,13 @@ public static class TablePages
         }
         groups.Add(current);
 
-        // One header row is repeated on every page, so the body gets what is
-        // left of the height.
-        var bodyRowsPerPage = Math.Max(1, (int)(pageHeight / rowHeight) - 1);
-        var bodyRows = Enumerable.Range(1, table.Count - 1).ToList();
+        // One header row is repeated on every page when repeatHeader, so the
+        // body gets what is left of the height; without one, every row is
+        // body and gets the full page.
+        var bodyRowsPerPage = Math.Max(1, (int)(pageHeight / rowHeight) - (repeatHeader ? 1 : 0));
+        var bodyRows = repeatHeader
+            ? Enumerable.Range(1, table.Count - 1).ToList()
+            : Enumerable.Range(0, table.Count).ToList();
 
         var pages = new List<TablePage>();
         foreach (var group in groups)

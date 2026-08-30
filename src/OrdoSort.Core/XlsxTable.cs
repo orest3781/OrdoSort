@@ -20,7 +20,16 @@ internal static class XlsxTable
 
     internal static List<List<string>> Read(string path)
     {
-        using var zip = ZipFile.OpenRead(path);
+        using var stream = File.OpenRead(path);
+        return Read(stream);
+    }
+
+    /// <summary>The same reader over an open stream — what lets a converter
+    /// read an xlsx out of a zip entry's bytes without writing a temp
+    /// file.</summary>
+    internal static List<List<string>> Read(Stream stream)
+    {
+        using var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
 
         var shared = new List<string>();
         if (zip.GetEntry("xl/sharedStrings.xml") is { } sst)
@@ -39,8 +48,8 @@ internal static class XlsxTable
             ?? throw new InvalidDataException("no worksheet inside the workbook");
 
         var rows = new List<List<string>>();
-        using var stream = sheet.Open();
-        foreach (var row in XDocument.Load(stream).Descendants(Ns + "row"))
+        using var sheetStream = sheet.Open();
+        foreach (var row in XDocument.Load(sheetStream).Descendants(Ns + "row"))
         {
             var cells = new List<string>();
             foreach (var c in row.Elements(Ns + "c"))
