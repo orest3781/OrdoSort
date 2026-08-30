@@ -505,4 +505,153 @@ public class PdfMergeTests : IDisposable
         Assert.Equal("Merged.pdf", PdfMerge.DefaultName(null!));
         Assert.Equal("Merged.pdf", PdfMerge.DefaultName(withNull!));
     }
+
+    // ---------------------------------------------- converting non-PDFs
+
+    /// <summary>Stands in for Office: deterministic, and able to produce each
+    /// outcome the real one can. The PDF it returns is a real one-page
+    /// document, so the merge path is exercised rather than mocked.</summary>
+    private sealed class FakeConverter : IDocumentConverter
+    {
+        public string Status = "ok";
+        public int Calls;
+        public readonly List<string> Seen = new();
+        public bool Handles(string extension) => extension is "docx" or "xlsx" or "csv" or "png";
+        public ConversionResult ToPdf(byte[] source, string displayName,
+            IReadOnlyList<string> candidates, Func<PasswordRequest, string?>? ask)
+        {
+            Calls++;
+            Seen.Add(displayName);
+            return Status switch
+            {
+                "ok" => new("ok", MakePdfBytes(1)),
+                "needs_password" => new("needs_password", null, "needs a password", displayName),
+                _ => new("error", null, "couldn't convert it", displayName),
+            };
+        }
+    }
+
+    private string MakeDocFile(string name)
+    {
+        var path = Path.Combine(_dir, name);
+        File.WriteAllBytes(path, new byte[] { 1, 2, 3 });
+        return path;
+    }
+
+    private static int PageCountOf(string path)
+    {
+        using var merged = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+        return merged.PageCount;
+    }
+
+    [Fact]
+    public void ALooseWordDocumentIsConvertedAndMergedWithThePdfs()
+    {
+        var pdf = MakePdfFile("a.pdf");
+        var doc = MakeDocFile("b.docx");
+        var converter = new FakeConverter();
+        var r = PdfMerge.MergeFiles(new[] { pdf, doc }, null, NoPasswords, NeverAsked, converter);
+        Assert.Equal("ok", r.Status);
+        Assert.Equal(1, converter.Calls);
+        Assert.Equal(2, PageCountOf(r.Output!));
+    }
+
+    [Fact]
+    public void AConversionThatNeedsAPasswordFailsTheWholeUnitAndNamesTheDocument()
+    {
+        var pdf = MakePdfFile("a.pdf");
+        var doc = MakeDocFile("b.docx");
+        var r = PdfMerge.MergeFiles(new[] { pdf, doc }, null, NoPasswords, NeverAsked,
+            new FakeConverter { Status = "needs_password" });
+        Assert.Equal("needs_password", r.Status);
+        Assert.Equal(doc, r.Item);
+        Assert.Equal(new[] { pdf }, Directory.GetFiles(_dir, "*.pdf"));   // nothing written
+    }
+
+    [Fact]
+    public void AFailedConversionFailsTheWholeUnitRatherThanDroppingTheDocument()
+    {
+        var pdf = MakePdfFile("a.pdf");
+        var doc = MakeDocFile("b.docx");
+        var r = PdfMerge.MergeFiles(new[] { pdf, doc }, null, NoPasswords, NeverAsked,
+            new FakeConverter { Status = "error" });
+        Assert.Equal("error", r.Status);
+        Assert.Equal(doc, r.Item);
+    }
+
+    [Fact]
+    public void WithNoConverterANonPdfIsAClearErrorRatherThanASilentSkip()
+    {
+        var pdf = MakePdfFile("a.pdf");
+        var doc = MakeDocFile("b.docx");
+        var r = PdfMerge.MergeFiles(new[] { pdf, doc }, null, NoPasswords, NeverAsked);
+        Assert.Equal("error", r.Status);
+        Assert.Equal(doc, r.Item);
+        Assert.Contains("can't be converted", r.Message);
+    }
+
+    [Fact]
+    public void DocumentsInsideAZipAreConvertedToo()
+    {
+        var zip = MakeZip("mixed.zip", ("a.pdf", MakePdfBytes(1)), ("b.docx", new byte[] { 1, 2, 3 }));
+        var r = PdfMerge.MergeZip(zip, NoPasswords, NeverAsked, new FakeConverter());
+        Assert.Equal("ok", r.Status);
+        Assert.Equal(2, r.PdfCount);
+        Assert.Equal(0, r.SkippedEntries);
+    }
+
+    [Fact]
+    public void AZipOfOnlyDocumentsWithNoConverterStillReportsNothingToMerge()
+    {
+        var zip = MakeZip("docs.zip", ("a.docx", new byte[] { 1, 2, 3 }));
+        var r = PdfMerge.MergeZip(zip, NoPasswords, NeverAsked);
+        Assert.Equal("no_pdfs", r.Status);
+        Assert.Equal("nothing to merge inside", r.Message);
+    }
+
+    [Fact]
+    public void ConvertedDocumentsTakeTheirPlaceInTheSameNaturalSort()
+    {
+        var ten = MakePdfFile("10.pdf", widthPt: 110);
+        var two = MakeDocFile("2.docx");
+        var one = MakePdfFile("1.pdf", widthPt: 101);
+        var converter = new FakeConverter();
+        PdfMerge.MergeFiles(new[] { ten, two, one }, null, NoPasswords, NeverAsked, converter);
+        Assert.Equal(new[] { "2.docx" }, converter.Seen);
+    }
+
+    // ------------------------------------------------- the enabled-type set
+
+    [Fact]
+    public void ATypeSwitchedOffIsNotConvertedEvenThoughTheConverterHandlesIt()
+    {
+        var pdf = MakePdfFile("a.pdf");
+        var doc = MakeDocFile("b.docx");
+        var converter = new FakeConverter();
+        var onlyPdfs = new HashSet<string> { MergeTypes.Pdf };
+        var r = PdfMerge.MergeFiles(new[] { pdf, doc }, null, NoPasswords, NeverAsked, converter, onlyPdfs);
+        Assert.Equal("ok", r.Status);
+        Assert.Equal(0, converter.Calls);
+        Assert.Equal(1, PageCountOf(r.Output!));      // the PDF alone
+    }
+
+    [Fact]
+    public void EntriesOfASwitchedOffTypeAreSkippedInsideAZipAndCounted()
+    {
+        var zip = MakeZip("mixed.zip", ("a.pdf", MakePdfBytes(1)), ("b.docx", new byte[] { 1, 2, 3 }));
+        var onlyPdfs = new HashSet<string> { MergeTypes.Pdf };
+        var r = PdfMerge.MergeZip(zip, NoPasswords, NeverAsked, new FakeConverter(), onlyPdfs);
+        Assert.Equal("ok", r.Status);
+        Assert.Equal(1, r.PdfCount);
+        Assert.Equal(1, r.SkippedEntries);   // so "empty" and "filtered" stay distinguishable
+    }
+
+    [Fact]
+    public void SwitchingPdfsOffLeavesAZipWithNothingToMerge()
+    {
+        var zip = MakeZip("pdfs.zip", ("a.pdf", MakePdfBytes(1)));
+        var r = PdfMerge.MergeZip(zip, NoPasswords, NeverAsked, new FakeConverter(),
+            new HashSet<string> { MergeTypes.Word });
+        Assert.Equal("no_pdfs", r.Status);
+    }
 }

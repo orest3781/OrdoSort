@@ -34,8 +34,16 @@ public sealed class MergePdfsViewModel : ZipListViewModel
         Func<string, IReadOnlyList<string>, Unlock.ProbeResult>? pdfProbe = null)
         : base(dialogs, savedPasswords, scheduler, uiContext)
     {
-        _zipMerger = zipMerger ?? PdfMerge.MergeZip;
-        _fileMerger = fileMerger ?? PdfMerge.MergeFiles;
+        // A bare method group here would need the C# compiler to pick
+        // PdfMerge.MergeZip/MergeFiles's overload by eliding their two new
+        // trailing optional parameters (converter, includeTypes) — which
+        // works for a plain assignment but not as an operand of ??, so the
+        // lambda spells out the exact three/four-argument shape this field
+        // actually needs. Behavior is unchanged: converter and includeTypes
+        // still default to null (every type, no conversion) until this
+        // view model itself is wired to pass them through.
+        _zipMerger = zipMerger ?? ((path, mergeCandidates, ask) => PdfMerge.MergeZip(path, mergeCandidates, ask));
+        _fileMerger = fileMerger ?? ((paths, outputPath, mergeCandidates, ask) => PdfMerge.MergeFiles(paths, outputPath, mergeCandidates, ask));
         _zipProbe = zipProbe ?? Zipper.Probe;
         _pdfProbe = pdfProbe ?? Unlock.ProbeReadiness;
 
