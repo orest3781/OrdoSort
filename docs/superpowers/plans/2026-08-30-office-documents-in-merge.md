@@ -1187,7 +1187,30 @@ Force the DPI branch off (always fit to Letter) → `AScanAtItsOwnDpiComesOutAtI
 - Create: `src/OrdoSort.Wpf/Services/OfficeConverter.cs`
 - Test: `tests/OrdoSort.Wpf.Tests/OfficeConverterTests.cs`
 
-**Use Task 1's measured HRESULT and its PowerPoint findings** — the dispatch brief carries them.
+**Task 1's measured findings — build against these, do not re-derive them:**
+
+| Measured | Value |
+|---|---|
+| Word cold start / convert | 705–805 ms / 600–725 ms per file |
+| PowerPoint cold start | 475–529 ms; open 91 ms; `SaveAs` 270 ms |
+| Wrong password, **Word** | `0x800A1520` — refused in 43–51 ms, no hang |
+| Wrong password, **Excel** | `0x800A03EC` — refused in 85–91 ms. **Different from Word's; the adapter needs both.** |
+| Sentinel on an *unprotected* file | ignored, opens normally — Word and Excel both |
+| PowerPoint export | `ExportAsFixedFormat` **fails** across six calling conventions. Use `Presentation.SaveAs(path, 32)` (`ppSaveAsPDF`) — worked first try, even with `ReadOnly: true`. |
+| PowerPoint `Visible = false` | **refused** every run (COMException). Open with `WithWindow: false` instead and leave the app as it is. |
+| Excel `FitToPagesTall = false` | accepted directly, no `Type.Missing` fallback needed |
+| Excel whole-workbook export | both worksheets present (the PDF's own `/Pages /Count` read 4) |
+| Natural exit after `Quit()` | PowerPoint ~20–30 s, Excel **over 2 minutes** — neither exits inside any practical grace period |
+
+**THE SAFETY FINDING, which shapes this task more than anything else.** `Activator.CreateInstance` on these ProgIDs can **silently attach to the user's already-running Office session** — Word, Excel and PowerPoint are single-instance COM servers. Task 1 proved this rather than inferring it: a simulated user session holding unsaved work was reused by our own call, and a name-based kill then destroyed it.
+
+So the adapter must know **whether it started an instance or borrowed one**, by diffing the process list immediately before and after `CreateInstance`, and behave differently:
+
+- **Borrowed** (no new PID appeared): never `Quit()`, never force-kill, and **save and restore every app-global flag it changes** — setting `DisplayAlerts = false` on the user's own Word suppresses *their* save prompts, and `Visible = false` hides *their* window. Close only the document this class opened.
+- **Ours** (a new PID appeared): `Quit()`, `Marshal.FinalReleaseComObject`, then force-kill **that PID** after a 3–5 s grace period, because neither app exits naturally in any practical window.
+- **Kill by name is forbidden outright**, in any code path, including hang recovery.
+
+A fact must pin this: with a pre-existing instance running, the converter completes and that instance is **still alive afterwards**. If the test cannot start a second instance to simulate the user's (single-instance COM makes that awkward), assert the decision function instead — given a before/after PID pair, does it choose kill or leave? — and say in the report which route you took.
 
 - [ ] **Step 1: Write the tests (they skip without Office)**
 
@@ -1239,9 +1262,9 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable
 - `ToPdf` → write `source` to `%TEMP%/<guid>/<guid>.<ext>`; resolve the password through `Passwords.Resolve(candidates, ask, displayName, inside: null, tryWith: …)` so saved passwords are tried before any prompt, exactly as zips and PDFs do; convert; read the bytes back; delete the temp folder in a `finally`.
 - `TryOpen` returns `PasswordTry.Opened`/`WrongPassword`/`Unreadable`, mapping the spike's HRESULT to `WrongPassword`.
 - Sentinel: a constant like `"\u0001ordosort-no-password\u0001"` when the candidate is null or empty.
-- Setup: `Visible = false`, `DisplayAlerts = 0`, `AutomationSecurity = 3`. **PowerPoint may refuse `Visible = false`** — follow Task 1's finding; if it does, open with `WithWindow: false` and leave the app visible-but-unfocused rather than fighting it, and say so in the doc comment.
-- Word: `ExportAsFixedFormat(outPath, 17)`. Excel: per-worksheet `Zoom = false; FitToPagesWide = 1; FitToPagesTall = false;` then `ExportAsFixedFormat(0, outPath)` on the workbook. PowerPoint: `ExportAsFixedFormat(outPath, 2)`.
-- `Dispose` quits every app it started, `Marshal.FinalReleaseComObject`s them, and kills recorded PIDs that outlive a short grace period.
+- Setup: `DisplayAlerts = 0`, `AutomationSecurity = 3`, and `Visible = false` for Word and Excel only — **PowerPoint refuses it** (measured), so open with `WithWindow: false` there and leave the app as it is. On a BORROWED instance, read each flag first and restore it afterwards.
+- Word: `ExportAsFixedFormat(outPath, 17)`. Excel: per-worksheet `Zoom = false; FitToPagesWide = 1; FitToPagesTall = false;` then `ExportAsFixedFormat(0, outPath)` on the workbook. PowerPoint: **`SaveAs(outPath, 32)`** — `ExportAsFixedFormat` does not work there (Task 1 measured six failing conventions).
+- `Dispose` quits **only apps it started**, releases them, and force-kills those diffed PIDs after a 3-5s grace period. A borrowed instance is left running with its flags restored.
 
 - [ ] **Step 4: Run the tests, then the full check.** Record the end-to-end timing — it is the number that tells the owner whether a ten-file merge is acceptable.
 
