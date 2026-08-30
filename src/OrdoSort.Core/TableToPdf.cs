@@ -7,8 +7,13 @@ namespace OrdoSort.Core;
 /// for a PC without Office. It reads with the same readers the roster loader
 /// uses and draws a plain table: accurate values, not the spreadsheet's own
 /// look. A workbook's LATER SHEETS ARE NOT INCLUDED — XlsxTable returns the
-/// first worksheet only — which is why the caller says so in the row's note
-/// rather than letting a sheet disappear quietly.
+/// first worksheet only. When a workbook actually has more than one, the
+/// returned <see cref="ConversionResult"/> stays "ok" but carries a
+/// <c>Message</c> saying so, rather than letting the rest disappear
+/// silently — precisely what the merge's fail-whole design otherwise exists
+/// to prevent. A single-sheet workbook gets no message: there is nothing to
+/// warn about, and attaching one anyway would just be noise on the common
+/// case. CSV and TSV never carry a message; only xlsx can lose a sheet.
 ///
 /// It never prompts. There is no decryptor here, so a password could not be
 /// used even if one were typed; a protected file reports the reason instead
@@ -56,9 +61,21 @@ public sealed class TableToPdf : IDocumentConverter
         if (table.Count == 0 || table.All(r => r.Count == 0))
             return new("error", null, "there was nothing in it to merge", displayName);
 
+        // Only xlsx can have hidden sheets to lose; CSV/TSV are inherently
+        // single-table. A fresh MemoryStream, not the one Read already
+        // consumed — its position is at the end and re-wrapping the same
+        // bytes is cheap, so there is no reason to rely on rewinding it.
+        var note = "";
+        if (extension == "xlsx")
+        {
+            var sheets = XlsxTable.CountSheets(new MemoryStream(source));
+            if (sheets > 1)
+                note = $"only the first of {sheets} worksheets — install Excel to include them all";
+        }
+
         try
         {
-            return new("ok", Render(table, PageWidthPt, PageHeightPt, MarginPt, RowHeightPt, FontSizePt));
+            return new("ok", Render(table, PageWidthPt, PageHeightPt, MarginPt, RowHeightPt, FontSizePt), note);
         }
         catch (Exception ex)
         {

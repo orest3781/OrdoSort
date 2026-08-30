@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 
@@ -14,8 +15,34 @@ public class TableToPdfTests
         return doc.PageCount;
     }
 
+    // No helper in this test project returns xlsx bytes (rather than a path)
+    // or builds more than one sheet — XlsxTableTests.WriteXlsx is private,
+    // path-based and single-sheet-only — so this is a new, minimal one, local
+    // to this file. No workbook.xml/rels: XlsxTable.Read and CountSheets both
+    // fall back to scanning xl/worksheets/sheet*.xml directly, the same
+    // fallback WriteXlsx itself already relies on.
+    private const string XlsxNs = "xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"";
+
+    private static byte[] XlsxBytes(int sheetCount)
+    {
+        using var stream = new MemoryStream();
+        using (var zip = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            for (var i = 1; i <= sheetCount; i++)
+            {
+                using var w = new StreamWriter(zip.CreateEntry($"xl/worksheets/sheet{i}.xml").Open(),
+                    System.Text.Encoding.UTF8);
+                w.Write($"<worksheet {XlsxNs}><sheetData><row r=\"1\">" +
+                    $"<c r=\"A1\" t=\"inlineStr\"><is><t>Sheet {i}</t></is></c>" +
+                    "</row></sheetData></worksheet>");
+            }
+        }
+        return stream.ToArray();
+    }
+
     [Theory]
     [InlineData("csv", true)] [InlineData("tsv", true)] [InlineData("xlsx", true)]
+    [InlineData("CSV", true)]
     [InlineData("docx", false)] [InlineData("pdf", false)] [InlineData("png", false)]
     public void HandlesOnlyWhatItCanRead(string extension, bool handled) =>
         Assert.Equal(handled, Converter.Handles(extension));
@@ -78,6 +105,22 @@ public class TableToPdfTests
     public void GarbageComesBackAsAnErrorRatherThanThrowing() =>
         Assert.Equal("error",
             Converter.ToPdf([0xFF, 0xFE, 0x00], "junk.xlsx", Array.Empty<string>(), null).Status);
+
+    [Fact]
+    public void AMultiSheetWorkbookSaysWhatItIsLeavingBehind()
+    {
+        var result = Converter.ToPdf(XlsxBytes(2), "book.xlsx", Array.Empty<string>(), null);
+        Assert.Equal("ok", result.Status);
+        Assert.Contains("first of 2", result.Message);
+    }
+
+    [Fact]
+    public void ASingleSheetWorkbookSaysNothingBecauseNothingIsLost()
+    {
+        var result = Converter.ToPdf(XlsxBytes(1), "book.xlsx", Array.Empty<string>(), null);
+        Assert.Equal("ok", result.Status);
+        Assert.Empty(result.Message);
+    }
 
     [Fact]
     public void PagesComeOutLandscapeNotTextsPortrait()

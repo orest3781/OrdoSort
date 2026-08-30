@@ -16,6 +16,7 @@ public class TextToPdfTests
 
     [Theory]
     [InlineData("txt", true)] [InlineData("log", true)] [InlineData("md", true)] [InlineData("json", true)]
+    [InlineData("TXT", true)]
     [InlineData("docx", false)] [InlineData("pdf", false)] [InlineData("csv", false)]
     public void HandlesOnlyTextTypesNotSpreadsheetsOrDocuments(string extension, bool handled) =>
         Assert.Equal(handled, Converter.Handles(extension));
@@ -45,6 +46,17 @@ public class TextToPdfTests
         // merely that nothing crashed.
         var pages = PageCountOf(r.Pdf!);
         Assert.True(pages > 1, $"a 5000-char line should hard-wrap into several rows/pages, got {pages}");
+    }
+
+    [Fact]
+    public void AVeryLongLineAmongOrdinaryOnesWrapsWithoutDisturbingItsNeighbours()
+    {
+        var longLine = new string('w', 5000);
+        var text = string.Join("\n", "before", longLine, "after");
+        var r = new TextToPdf().ToPdf(System.Text.Encoding.UTF8.GetBytes(text),
+            "mixed.log", Array.Empty<string>(), null);
+        Assert.Equal("ok", r.Status);
+        Assert.True(PageCountOf(r.Pdf!) > 1);
     }
 
     [Fact]

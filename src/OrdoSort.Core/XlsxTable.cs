@@ -76,6 +76,19 @@ internal static class XlsxTable
         return rows.Where(r => r.Any(c => c.Length > 0)).ToList();
     }
 
+    /// <summary>How many worksheets the workbook has, counted from the
+    /// package's own entry names rather than by reading any of them. The
+    /// reader below returns the FIRST sheet only, so a caller that cannot
+    /// reach the rest needs to know whether it is losing anything before it
+    /// stays quiet about it.</summary>
+    internal static int CountSheets(Stream stream)
+    {
+        using var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
+        return zip.Entries.Count(e =>
+            e.FullName.StartsWith("xl/worksheets/sheet", StringComparison.OrdinalIgnoreCase)
+            && e.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase));
+    }
+
     /// <summary>The workbook's real first sheet: the first &lt;sheet&gt; listed
     /// in xl/workbook.xml, resolved through its r:id via
     /// xl/_rels/workbook.xml.rels. "sheet1.xml" is just a part name — nothing
