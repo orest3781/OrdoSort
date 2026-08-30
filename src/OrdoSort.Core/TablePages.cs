@@ -23,8 +23,13 @@ public static class TablePages
     /// all fit are split into consecutive groups, each repeated down the
     /// table's rows, so a wide sheet reads across then onward rather than
     /// being silently cropped. A single column too wide for the page still
-    /// takes a page of its own: a group is never empty, which is also what
-    /// stops this looping forever.</summary>
+    /// takes a page of its own: a group is never empty, which is what keeps
+    /// every page meaningful (a page with zero columns would show nothing).
+    /// That column loop can't run forever regardless — it is bounded by
+    /// <c>columnCount</c>. The one real infinite-loop risk in this method is
+    /// <c>bodyRowsPerPage</c> reaching zero, which the <c>Math.Max</c> floor
+    /// below exists to prevent; see TablePagesTests'
+    /// APageWithRoomForBarelyOneRowStillMakesProgressInsteadOfLoopingForever.</summary>
     public static IReadOnlyList<TablePage> Paginate(
         IReadOnlyList<IReadOnlyList<string>> table,
         double pageWidth, double pageHeight, double rowHeight,
@@ -66,12 +71,12 @@ public static class TablePages
             var groupWidths = group.Select(c => widths[c]).ToList();
             if (bodyRows.Count == 0)
             {
-                pages.Add(new TablePage(group, groupWidths, Array.Empty<int>()));
+                pages.Add(new TablePage(group, groupWidths, Array.Empty<int>(), HeaderRow: 0));
                 continue;
             }
             for (var start = 0; start < bodyRows.Count; start += bodyRowsPerPage)
                 pages.Add(new TablePage(group, groupWidths,
-                    bodyRows.Skip(start).Take(bodyRowsPerPage).ToList()));
+                    bodyRows.Skip(start).Take(bodyRowsPerPage).ToList(), HeaderRow: 0));
         }
         return pages;
     }

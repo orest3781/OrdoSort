@@ -21,11 +21,12 @@ public class MergeTypesTests
         Assert.Equal(all.Count, all.Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 
-    // NothingStoredMeansEverythingIsOn and EverythingOffIsDistinguishableFrom
-    // NothingStored together pin down the sentinel decision: null/blank
-    // (nothing ever saved) and MergeTypes.NoneStored (the user turned every
-    // group off on purpose) must load as two different things, or unticking
-    // every box would come back fully re-enabled on the next launch.
+    // NothingStoredMeansEverythingIsOn and UntickingEverythingSurvivesA
+    // RoundTripInsteadOfReadingAsNeverConfigured together pin down the
+    // sentinel decision: null/blank (nothing ever saved) and
+    // MergeTypes.NoneStored (the user turned every group off on purpose)
+    // must load as two different things, or unticking every box would come
+    // back fully re-enabled on the next launch.
 
     [Fact]
     public void NothingStoredMeansEverythingIsOn() =>
@@ -45,14 +46,15 @@ public class MergeTypesTests
         Assert.Equal(new[] { "pdf" }, MergeTypes.Load("pdf,hologram"));
 
     [Fact]
-    public void EverythingOffIsDistinguishableFromNothingStored()
+    public void UntickingEverythingSurvivesARoundTripInsteadOfReadingAsNeverConfigured()
     {
-        // Save of an empty set writes the "none" sentinel, never "" — and
-        // Load reads that sentinel back as empty, distinct from null/blank
-        // (Load(null), covered above), which loads as everything on.
-        var none = MergeTypes.Save(Array.Empty<string>());
-        Assert.Equal(MergeTypes.NoneStored, none);
-        Assert.Empty(MergeTypes.Load(none));
-        Assert.NotEmpty(MergeTypes.Load(null));
+        // The defect this guards: an empty set stored as "" is
+        // indistinguishable from "never set", so a user who unticks every
+        // type gets them all back on the next launch.
+        var stored = MergeTypes.Save(Array.Empty<string>());
+        Assert.False(string.IsNullOrWhiteSpace(stored),
+            "an empty selection must not be stored as an empty string");
+        Assert.Empty(MergeTypes.Load(stored));
+        Assert.NotEmpty(MergeTypes.Load(null));      // never configured is different
     }
 }

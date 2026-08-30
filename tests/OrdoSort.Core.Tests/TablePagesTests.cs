@@ -57,9 +57,27 @@ public class TablePagesTests
     }
 
     [Fact]
+    public void APageWithRoomForBarelyOneRowStillMakesProgressInsteadOfLoopingForever()
+    {
+        // 15pt of page against 10pt rows leaves room for one row after the
+        // header, and (int)(15/10) - 1 == 0 without the floor — a loop that
+        // never advances.
+        List<List<string>> rows = [["h"]];
+        for (var i = 0; i < 3; i++) rows.Add([$"r{i}"]);
+        var pages = TablePages.Paginate(rows, pageWidth: 100, pageHeight: 15, rowHeight: 10,
+            measure: s => s.Length);
+        Assert.Equal(3, pages.Count);                              // one body row each
+        Assert.Equal(Enumerable.Range(1, 3), pages.SelectMany(p => p.Rows));
+    }
+
+    [Fact]
     public void AColumnWiderThanThePageStillGetsAPageToItself()
     {
-        // The guard against an infinite loop: a group is never empty.
+        // A group is never empty — a page with zero columns would show
+        // nothing. (Unlike bodyRowsPerPage above, this loop is bounded by
+        // columnCount and can't run forever regardless; see
+        // APageWithRoomForBarelyOneRowStillMakesProgressInsteadOfLoopingForever
+        // for the fact covering the real infinite-loop guard.)
         var huge = new string('x', 500);
         var pages = TablePages.Paginate(Table([huge, "b"], [huge, "b"]), 100, 1000, 10, Measure);
         Assert.Equal(2, pages.Count);

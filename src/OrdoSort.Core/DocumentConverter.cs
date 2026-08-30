@@ -42,13 +42,16 @@ public static class MergeTypes
     public const string Pdf = "pdf", Zip = "zip", Word = "word",
         Excel = "excel", PowerPoint = "powerpoint", Images = "images", Text = "text";
 
-    /// <summary>What <see cref="Save"/> writes for an empty set, and the one
-    /// stored value <see cref="Load"/> reads back as empty. Null, "", and
-    /// whitespace all mean something different — "nothing was ever saved" —
-    /// and load as every group. Without this sentinel the two cases are the
-    /// same string ("", once <see cref="Save"/> joins zero groups) and a user
-    /// who unticks every type gets every type back the next time the app
-    /// starts.</summary>
+    /// <summary>What <see cref="Save"/> writes for an empty set, so the
+    /// round trip reads back as empty rather than "never configured". Needs
+    /// no special case in <see cref="Load"/>: it names no real group, so it
+    /// is dropped by the same unknown-name filter that would drop a stray
+    /// "hologram" from a later version, and an empty result comes out the
+    /// other end exactly the same way. The load-bearing half is
+    /// <see cref="Save"/> choosing this over "" — an empty string is
+    /// indistinguishable from null/whitespace, both of which mean "nothing
+    /// was ever saved" and load as every group on, so a user who unticks
+    /// every type would get every type back at the next launch.</summary>
     public const string NoneStored = "none";
 
     private static readonly Dictionary<string, string[]> ByGroup = new(StringComparer.OrdinalIgnoreCase)
@@ -97,18 +100,17 @@ public static class MergeTypes
     }
 
     /// <summary>Null, empty, or all-whitespace means "nothing was ever
-    /// saved" and loads as every group on. <see cref="NoneStored"/> is
-    /// checked first and separately, so the user's deliberate "everything
-    /// off" is never folded into that same default.</summary>
-    public static ISet<string> Load(string? stored)
-    {
-        if (string.Equals(stored, NoneStored, StringComparison.OrdinalIgnoreCase))
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        return string.IsNullOrWhiteSpace(stored)
+    /// saved" and loads as every group on — see <see cref="Save"/> for why a
+    /// stored empty set is never one of those three. <see cref="NoneStored"/>
+    /// needs no special case here: it names no real group, so it is dropped
+    /// by the same unknown-name filter below that drops a stray "hologram"
+    /// from a later version, and comes back empty exactly like any other
+    /// stored value that names zero known groups.</summary>
+    public static ISet<string> Load(string? stored) =>
+        string.IsNullOrWhiteSpace(stored)
             ? new HashSet<string>(AllGroups, StringComparer.OrdinalIgnoreCase)
             : new HashSet<string>(
                 stored.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                       .Where(g => ByGroup.ContainsKey(g)),
                 StringComparer.OrdinalIgnoreCase);
-    }
 }
