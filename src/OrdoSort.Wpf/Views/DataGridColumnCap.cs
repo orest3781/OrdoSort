@@ -94,8 +94,8 @@ namespace OrdoSort.Wpf.Views;
 /// also NARROWS again once that row scrolls back out of view: scroll a long
 /// row out, the column shrinks; scroll it back in, the column widens again.
 /// Measured directly before this class existed and plain WPF Auto was still
-/// the mechanism (2026-08-14, docs/superpowers/plans/2026-08-14-column-
-/// stability-while-scrolling.md): "a history seeded with 3000 rows (one, at
+/// the mechanism (2026-08-07 autofit-columns round, recorded in
+/// HistoryWindow.xaml): "a history seeded with 3000 rows (one, at
 /// index 1500, holding a ~185-character path) and Original's column
 /// temporarily switched to Width="Auto" in a throwaway test — same
 /// off-screen Show()+UpdateLayout() shape as every other headless test here.
@@ -112,10 +112,19 @@ namespace OrdoSort.Wpf.Views;
 /// ones the virtualizer realizes. Cap -> row height -> realized set ->
 /// measured width -> cap is a feedback path, not a one-shot calculation: a
 /// cap change can shift which rows are realized on the NEXT pass, which
-/// this class then measures again. It settles rather than oscillates only
-/// because assignment is skipped once a cap stops moving (see Recalculate's
-/// own epsilon guard) — the same mechanism that lets the LayoutUpdated cycle
-/// end at all.
+/// this class then measures again. It settles rather than oscillates because
+/// the epsilon guard in Recalculate is what lets a converged state
+/// terminate — skipping the assignment once two consecutive passes compute
+/// the same cap ends the LayoutUpdated cycle, but does not itself cause the
+/// convergence: a two-value oscillation (A -> B -> A) never reads as
+/// "unchanged" pass to pass, so the guard alone could not stop one. What
+/// actually converges is <see cref="ColumnShares.Compute"/>'s own
+/// arithmetic, because its inputs — viewport width, non-participant claims,
+/// the FormattedText-measured content strings, the floors — do not
+/// themselves feed back from the assignment this class makes. The honest
+/// caveat: the cap -> row height -> realized set -> measured width -> cap
+/// path described immediately above is the one route by which an input CAN
+/// move in response to a cap, which is why that paragraph matters.
 ///
 /// If the realized set is momentarily EMPTY while the grid still has items
 /// (mid-scroll; the instant after a bulk Clear before new rows realize),

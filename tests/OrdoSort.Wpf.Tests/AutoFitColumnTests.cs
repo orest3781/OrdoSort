@@ -695,9 +695,10 @@ public class AutoFitColumnTests
     /// fact used to assert pixel-exact survival, "&gt;= draggedWidth - 1",
     /// the form BulkRename's identical fact still uses. Raising Destination's
     /// floor to its own header width (2026-08-29 review: a column's header
-    /// never wraps, so a share computed below it clips silently — measured
-    /// here, ~49px -> ~90px; it no longer concedes everything down to
-    /// MinimumCap) leaves this grid's own margin tighter once the window then
+    /// never wraps, so a share computed below it clips silently — before this
+    /// fix a non-pinned governed column could concede all the way down to
+    /// MinimumCap, 20px; measured here, Destination's own header floor is
+    /// ~90px) leaves this grid's own margin tighter once the window then
     /// shrinks by 10px. Measured directly, not assumed, in BOTH shapes this
     /// suite runs in: isolated (single-fact filter), draggedWidth=447px
     /// (capBefore 397 + 50) landed at 444.5px, 1.5px short of the
@@ -720,7 +721,20 @@ public class AutoFitColumnTests
     /// (MaxWidth back to PositiveInfinity), which is what "the cap governs
     /// automatic sizing only" actually promises — not that WPF's own
     /// independent space-fitting never touches a pinned column by a pixel or
-    /// two under load.</summary>
+    /// two under load.
+    ///
+    /// THE MAGNITUDE, STATED PLAINLY. A pinned column's width is charged to
+    /// `claimed`, so the other participants split what is left — and their
+    /// floors just rose. In a packed window the extra pressure lands on the
+    /// dragged column as WPF's own space-fitting. The amount is the floor
+    /// increase on the non-pinned governed columns: History (Name pinned,
+    /// Destination 20px -> ~90px) up to ~70px; BulkRename (New name pinned,
+    /// Current name 20px -> ~95px) up to ~75px; MatchMerge (20px -> ~46px) up
+    /// to ~26px; PageCounts, MergePdfs and ZipTools each have a single
+    /// governed column, so pinning it leaves no other governed participant
+    /// and the effect there is ~0. The trade is deliberate — an unrecoverable
+    /// clipped header is worse than a few dozen pixels off a drag — but it is
+    /// a trade, not a rounding artifact.</summary>
     [Fact]
     public void History_UserDraggedNameColumnSurvivesBeyondTheCapAndStaysPinnedAfterResize() => _fx.Invoke(() =>
     {
@@ -742,6 +756,10 @@ public class AutoFitColumnTests
             Assert.True(column.ActualWidth > capBefore,
                 $"History Name column after a simulated drag to {draggedWidth}px is " +
                 $"{column.ActualWidth}px — expected it to survive beyond the old cap {capBefore}px");
+            Assert.True(column.ActualWidth >= draggedWidth - 5,
+                $"History Name column after a simulated drag to {draggedWidth}px reclaimed down to " +
+                $"{column.ActualWidth}px, {draggedWidth - column.ActualWidth}px short of the drag — " +
+                "more than the 5px WPF space-fitting tolerance allows");
             Assert.True(double.IsPositiveInfinity(column.MaxWidth),
                 $"History Name column's MaxWidth after the drag is {column.MaxWidth} — " +
                 "expected the class to have relinquished its claim (PositiveInfinity)");
@@ -755,6 +773,10 @@ public class AutoFitColumnTests
             Assert.True(column.ActualWidth > capBefore,
                 $"History Name column after a SUBSEQUENT window resize is {column.ActualWidth}px — " +
                 $"expected it to stay above the pre-drag cap {capBefore}px, not be reclamped to it");
+            Assert.True(column.ActualWidth >= draggedWidth - 5,
+                $"History Name column after a SUBSEQUENT window resize reclaimed down to " +
+                $"{column.ActualWidth}px, {draggedWidth - column.ActualWidth}px short of the " +
+                $"{draggedWidth}px drag — more than the 5px WPF space-fitting tolerance allows");
             Assert.True(double.IsPositiveInfinity(column.MaxWidth),
                 $"History Name column's MaxWidth after the resize is {column.MaxWidth} — " +
                 "expected it to still be PositiveInfinity, not reclamped");
