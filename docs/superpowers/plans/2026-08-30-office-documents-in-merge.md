@@ -1367,6 +1367,7 @@ Replace the sentinel with `Type.Missing` → the protected-document fact must TI
 - `Config`: a `merge_types` string property with the same `JsonPropertyName` style as its neighbours, defaulting to `""` (never set → everything on).
 - `ZipItemRow`: `IsIncluded` (settable by the view model, raising `PropertyChanged`), folded into `IsRunnable`, and a note when excluded. `KindOf` maps every group's extensions to its group name so the Kind column reads `word`/`excel`/`powerpoint`/`image`/`text` alongside `pdf`/`zip`/`folder`.
 - `MergePdfsViewModel`: `IsTypeEnabled(group)` / `SetTypeEnabled(group, bool)`; a `TypeToggles` collection the XAML binds to; on change, persist through config and re-evaluate `IsIncluded` on every row, then `OnRowsChanged()`. Pass the enabled set into `PdfMerge` via the lambda capture (**do not change the `_zipMerger`/`_fileMerger` delegate signatures** — existing tests inject through them).
+- **`Extensions` moves here from Task 8** (pre-flight ruling): `MergePdfsViewModel.Extensions` becomes `MergeTypes.AllExtensions` and `IntakeNoun` becomes "PDF, document, image or zip". Without this, every fact in THIS task fails for the wrong reason — they drop a `.docx` into the list, which intake refuses until the accepted set is widened. It also belongs with this task's `KindOf`/row work rather than with Task 8's converter chain.
 - `MergePdfsWindow.xaml`: a `WrapPanel` of `CheckBox`es above the grid, bound to `TypeToggles`, each with `AutomationProperties.Name`. Follow the window's existing button-row idiom; a `WrapPanel` because seven checkboxes will not fit the 580px minimum width on one line at the largest font preset — the same reasoning the file already records for its button row.
 
 - [ ] **Step 4: Run the Wpf suites, then the full check.**
@@ -1433,10 +1434,11 @@ Make `SetTypeEnabled` skip the per-row re-evaluation → `SwitchingTheTypeBackOn
 
 - `ConverterChain` — `Handles` true when any link handles; `ToPdf` asks the **first link that `Handles`** and returns its result whatever it is; only a link that does not handle the type at all falls through. This is the no-silent-downgrade rule.
 - `MergePdfsViewModel`:
-  - `Extensions` becomes `MergeTypes.AllExtensions`; `IntakeNoun` becomes "PDF, document, image or zip".
   - an optional `IDocumentConverter? converter = null` constructor parameter, defaulting to `new ConverterChain(new OfficeConverter(), new ImageToPdf(), new TableToPdf(), new TextToPdf())`.
   - **Sweep every `IsPdf` use in this class.** The loose-unit selection and `RunnableLoosePdfs` currently filter on `IsPdf`; they must include every non-zip included row, or a dropped `.docx` is listed and never merged — a no-op that looks like a bug. This is the likeliest miss in the whole plan.
   - `Probe`: for a row whose type is enabled but whose converter does not handle it, return `(Error, "<app> isn't installed, so this can't be converted")`.
+  - **Surface `MergeResult.Notes` on the row — this is a hard requirement, not polish.** Tasks 3 and 4 built a whole channel for things the user must be told that are not failures: "only the first of 3 worksheets — install Excel to include them all", and the names of documents this PC could not convert although their type is switched on. `MergeResult.Notes` carries them and **nothing reads it today** — `MergePdfsViewModel` discards the result's notes. If this task does not display them, that entire chain is invisible and the work was wasted. Append them to the row's `Note` (or show them beside it) on a successful run, and pin it with a fact: a merge whose result carries `Notes` shows them on the row.
+  - `Extensions`/`IntakeNoun` are NOT this task's job any more — they moved to Task 7.
 
 - [ ] **Step 3: Run everything, revert-proof (remove a group from `AllExtensions` → the acceptance fact fails; make the chain fall through on failure → the downgrade fact fails), commit** — `feat(merge): the window takes documents, images and text, not just PDFs and zips`.
 
