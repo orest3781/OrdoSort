@@ -48,6 +48,27 @@ settle it; absent that, treat 660 as the real floor for `66be355` and do not rea
 
 ## Live
 
+### `BulkRenameBatchTests.UndoHandsTheFileWorkToTheSchedulerInsteadOfDoingItOnTheClick`
+`tests/OrdoSort.Wpf.Tests/BulkRenameBatchTests.cs:394` · listed 2026-08-29, **observed twice**
+
+`Assert.Equal() Failure: Expected: 1, Actual: 2` during the 2026-08-29 grid-autofit-wrap
+fix-wave review's full-solution (`dotnet test OrdoSort.sln`) runs — Core.Tests and Wpf.Tests
+as concurrent processes. Passes in isolation both times it was re-run alone.
+
+Mechanism unknown — the name suggests a scheduler hand-off asserted by call count, the same
+shape of race SettingsViewModelTests.ValidateRouteProbeRunsOncePerPauseNotPerKeystroke (below,
+under Fixed) turned out to be, but that is a hypothesis carried over from a superficially
+similar name, not a diagnosis of this test. Recorded rather than chased, per this file's
+standing rule.
+
+### `BulkRenameProbeTests.ADiscreteToggleResolvesWithoutWaitingTheFullDebounceWindow`
+`tests/OrdoSort.Wpf.Tests/BulkRenameProbeTests.cs:151` · listed 2026-08-29, **observed once**
+
+Failed once during the same 2026-08-29 fix-wave full-solution runs; passed on an immediate
+re-run in isolation. Mechanism unknown, not diagnosed — a debounce-timing name, the same
+family of risk as the entry above and as the Fixed section's own
+SettingsViewModelTests.ValidateRouteProbeRunsOncePerPauseNotPerKeystroke, but unconfirmed.
+
 ### `TilePreviewProbeTests.EditingANonSelectedWatchFolderNeverProbesAtAll`
 `tests/OrdoSort.Wpf.Tests/TilePreviewProbeTests.cs` · listed 2026-08-22, **observed once**
 
@@ -128,6 +149,23 @@ They passed in all four runs on 2026-08-15, so the runtime is registered on this
 ### XamlParseException resource-lookup burst after a long rebuild sequence
 
 **XamlParseException resource-lookup burst.** After a long sequence of rebuilds, the Wpf test run can fail with a burst of `XamlParseException: Cannot find resource named 'Icon'` / `'PrimaryButton'` (and similar) across unrelated views (`ReadyView`, `ZipToolsWindow`…), sometimes alongside an isolated `BulkRenameViewModelTests` failure. Observed 2026-08-28/29 on this branch, three times, never reproducible on the next run. Cleared every time by `dotnet build-server shutdown` followed by the canonical rebuild. A stale `testhost.exe` from an interrupted run can also block the rebuild with `MSB3027` — kill it and rebuild. Not a product defect.
+
+### `HeaderLayoutTests` can stall the whole run instead of failing
+
+`tests/OrdoSort.Wpf.Tests/HeaderLayoutTests.cs`
+
+Intermittently hangs rather than failing outright, which is worse than a failure: a stalled
+`dotnet test` run reports only the tests that finished, with `Failed: 0` and a `Total` far
+short of the real count — indistinguishable from a genuine green run unless you read the
+`Total` and notice it's low. This is exactly the case the `Passed!`-line rule at the top of
+this file exists for.
+
+**Workaround**, if a run seems to hang on or after this class: rerun with
+`dotnet test OrdoSort.sln --no-build -v minimal --blame-hang --blame-hang-timeout 150s --blame-hang-dump-type none`
+— this kills and reports the hung test instead of blocking forever, and (`--blame-hang-dump-type none`)
+skips writing a process dump, which this stall doesn't need and which costs real time to write for
+a WPF-hosting process. Then **read the Total** on whatever did complete before deciding the run
+passed.
 
 ---
 

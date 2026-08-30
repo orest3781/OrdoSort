@@ -22,7 +22,7 @@ namespace OrdoSort.Wpf.Tests;
 /// That is the same failure mode DataGridSelectionContrastTests' own class doc
 /// calls out for columns, one level up.
 ///
-/// So these two facts are deliberately DERIVED, never hand-listed:
+/// So these three facts are deliberately DERIVED, never hand-listed:
 ///
 /// 1. <see cref="EveryWindowWithADataGridIsRegisteredForSizingCoverage"/> —
 ///    reflection finds every Window under OrdoSort.Wpf.Windows, reads its own
@@ -35,6 +35,19 @@ namespace OrdoSort.Wpf.Tests;
 ///    MinWidth. This is a source-level invariant with no layout involved, so
 ///    it holds for windows nobody has written a builder for — which is
 ///    exactly the population that keeps shipping broken.
+///
+/// 3. <see cref="EveryStarDataGridTextColumnWrapsInsteadOfTrimming"/>
+///    (2026-08-29 fix-wave review, Item 2): AutoFitColumnTests'
+///    AssertWrapsInsideItsCap only ever runs on GOVERNED columns — the ones
+///    DataGridColumnCap.Track caps. The star filler beside them (ZipTools/
+///    MergePdfs' Item, PageCounts' File, MatchMerge's Becomes, BulkRename's
+///    New name) wraps too, and is the FILENAME half of the owner's "hiding
+///    text" report — the half AutoFitColumnTests' own message-column facts
+///    don't reach — but nothing measured it: a star column's rendered width
+///    is WPF's to resolve, not a cap this app enforces, so there is no
+///    MaxWidth-vs-ActualWidth fact that could ever catch a deleted
+///    TextWrapping setter the way AssertWrapsInsideItsCap catches one on a
+///    governed column. Scans the XAML instead, same recipe as fact 2 above.
 ///
 /// What this suite deliberately does NOT do, said plainly rather than
 /// oversold: it does not measure anything. It cannot tell you a column is the
@@ -272,5 +285,73 @@ public class DataGridSizingCoverageTests
             "these star (filler) columns declare no MinWidth, so they carry WPF's 20px default — "
             + "the cap formula treats a filler's floor as the space it is entitled to keep, so "
             + "without one it can be squeezed to nothing: " + string.Join(" · ", floorless));
+    }
+
+    /// <summary>See this file's own class doc, fact 3, for why this exists:
+    /// AssertWrapsInsideItsCap (AutoFitColumnTests) proves a GOVERNED column
+    /// wraps, but never runs on the star filler beside it, and a star
+    /// column's rendered width is WPF's to resolve rather than a cap this
+    /// app assigns — so there is no MaxWidth-vs-ActualWidth fact that could
+    /// ever notice a deleted TextWrapping setter on one. This reads the XAML
+    /// instead, the same recipe <see cref="EveryStarColumnDeclaresItsOwnFloor"/>
+    /// already uses above, so it holds for every window regardless of
+    /// whether anyone has written it a builder.
+    ///
+    /// FilenameListWindow and TriageWindow are explicit, commented
+    /// exemptions, not gaps: FilenameListWindow's "File name" star column
+    /// deliberately still trims (this class's own KnownUncovered entry above
+    /// records why that window was left out of DataGridColumnCap's autofit
+    /// rule entirely — its floors already overflow at its own MinWidth, a
+    /// decision for the owner, not a defect here). TriageWindow builds its
+    /// roster columns — including its own star filler — in code
+    /// (TriageWindow.xaml.cs's ComputeRosterColumnCap overload), not XAML, so
+    /// there is no <c>&lt;DataGridTextColumn&gt;</c> for this XAML-only scan
+    /// to find there at all; the exemption is documentation, not a hole the
+    /// scan silently steps around.</summary>
+    [Fact]
+    public void EveryStarDataGridTextColumnWrapsInsteadOfTrimming()
+    {
+        // Captures the WHOLE element, opening tag through closing tag, not
+        // just the opening tag's attributes the way EveryStarColumnDeclaresItsOwnFloor's
+        // columnPattern does above — TextWrapping/TextTrimming live in a
+        // nested ElementStyle, not as attributes on the column itself, so the
+        // scan needs the element's body, not just its start tag.
+        var starTextColumnPattern = new Regex(
+            @"<DataGridTextColumn\b[^>]*Width=""\*""[^>]*>(.*?)</DataGridTextColumn>", RegexOptions.Singleline);
+        var offenders = new List<string>();
+        var windowTypes = AllWindowTypeNames();
+
+        // Same sanity floor as its two siblings above, and for the same
+        // reason: this fact reads the app entirely through that reflection
+        // call, so a namespace or assembly mismatch would empty the loop and
+        // pass vacuously.
+        Assert.True(windowTypes.Count >= 10,
+            $"only found {windowTypes.Count} Window types under OrdoSort.Wpf.Windows via reflection "
+            + "— enumeration looks broken (namespace/assembly mismatch?), not that the app genuinely "
+            + "shrank to that few windows");
+
+        foreach (var window in windowTypes.Where(XamlHasDataGrid))
+        {
+            // See this fact's own doc comment for why these two are exempt.
+            if (window is "FilenameListWindow" or "TriageWindow") continue;
+
+            foreach (Match column in starTextColumnPattern.Matches(XamlOf(window)))
+            {
+                var body = column.Groups[1].Value;
+                var header = Regex.Match(column.Value, @"Header=""([^""]*)""");
+                var label = $"{window}: {(header.Success ? header.Groups[1].Value : "<no header>")}";
+
+                var wraps = body.Contains("Property=\"TextWrapping\" Value=\"Wrap\"", StringComparison.Ordinal);
+                var trims = body.Contains("Property=\"TextTrimming\"", StringComparison.Ordinal);
+
+                if (!wraps) offenders.Add($"{label} (no TextWrapping=\"Wrap\" setter)");
+                else if (trims) offenders.Add($"{label} (still declares a TextTrimming setter)");
+            }
+        }
+
+        Assert.True(offenders.Count == 0,
+            "these star (filler) DataGridTextColumns must wrap instead of trim — a name that gives "
+            + "way belongs on a second line, not behind an ellipsis (2026-08-29): "
+            + string.Join(" · ", offenders));
     }
 }

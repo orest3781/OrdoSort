@@ -1318,7 +1318,7 @@ Run `--filter "FullyQualifiedName~HistoryWindowXamlTests"`: the four theory rows
 
 - [ ] **Step 3: Run the History suites, then the full check**
 
-`--filter "FullyQualifiedName~HistoryWindowXamlTests|FullyQualifiedName~DataGridStarColumnTests|FullyQualifiedName~AutoFitColumnTests.History"` all green (DataGridStarColumnTests' "exactly two star columns at exactly their floor" fact is unaffected: star columns are still never assigned). Then the full check: Core 750, Wpf ≥ 1989 + the new facts (7 Task 2 + 9 Task 1 + 2 Task 3 + 1 here = expect **2008**, minus nothing — the renamed facts are one-for-one).
+`--filter "FullyQualifiedName~HistoryWindowXamlTests|FullyQualifiedName~DataGridStarColumnTests|FullyQualifiedName~AutoFitColumnTests.History"` all green (DataGridStarColumnTests' "exactly two star columns at exactly their floor" fact is unaffected: star columns are still never assigned). Then the full check: Core 750, Wpf ≥ 1989 + the new facts (7 Task 2 + 9 Task 1 + 2 Task 3 + 1 here, this task's own tally) — what actually shipped ran a few facts past that tally: expect **2012**, not 2008.
 
 - [ ] **Step 4: Revert-proof**
 

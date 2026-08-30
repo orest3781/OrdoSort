@@ -27,8 +27,15 @@ namespace OrdoSort.Wpf.Tests;
 ///    content, rather than stretching to fill a fixed/star share the way the
 ///    pre-fix File/Becomes/Current name columns did.
 /// 2. A long value in a capped column stops exactly at that column's
-///    MaxWidth rather than growing without bound, and still carries
-///    TextTrimming/ToolTip so the capped-off text isn't simply lost.
+///    MaxWidth rather than growing without bound. Since 2026-08-29
+///    (AssertWrapsInsideItsCap) that's because it WRAPS onto more lines for
+///    every grid below — MatchMerge, BulkRename, PageCounts, ZipTools and
+///    MergePdfs all moved off trimming that day. Triage is the one holdout,
+///    untouched by that rule (DataGridColumnCap.cs's own class doc: Triage
+///    supplies its own budget through the separate Func&lt;double,double&gt;
+///    overload) — its own facts (AssertTrimmingAndTooltip) still prove it
+///    carries TextTrimming/ToolTip so the capped-off text isn't simply
+///    lost.
 /// 3. Every capped column in the grid can be at its LONGEST simultaneously
 ///    (the real worst case for available width) and the grid still shows no
 ///    horizontal scrollbar — proven by finding the DataGrid's own internal
@@ -344,7 +351,19 @@ public class AutoFitColumnTests
     /// does: ActualWidth stays ABOVE the pre-drag cap (proving the drag
     /// escaped it and was never reclamped back down to it) and MaxWidth
     /// stays PositiveInfinity (proving this class relinquished its claim on
-    /// the column and never reasserted one).</summary>
+    /// the column and never reasserted one).
+    ///
+    /// This fact's guarantee is therefore weaker than BulkRename's identical
+    /// fact below (still ">= draggedWidth - 1", pixel-exact) — not a
+    /// double standard, a consequence of margin: BulkRename's grid has not
+    /// (yet) been measured tight enough to need the same relief. History's
+    /// identical fact switched to this same weaker form for the same reason
+    /// in the 2026-08-29 fix-wave review's own Item 1 (a header floor added
+    /// there tightened its margin the same way the proportional rule
+    /// tightened this one here) — so as of that review, BulkRename is the
+    /// only one of the three still resting on a pixel-exact margin, and a
+    /// future change that narrows ITS headroom would face the identical
+    /// choice.</summary>
     [Fact]
     public void MatchMerge_UserDraggedFileColumnSurvivesBeyondTheCapAndStaysPinnedAfterResize() => _fx.Invoke(() =>
     {
@@ -670,7 +689,38 @@ public class AutoFitColumnTests
 
     /// <summary>Same proof as MatchMerge's identical fact above, for this
     /// window's own capped Name column — see its doc comment for the full
-    /// reasoning.</summary>
+    /// reasoning.
+    ///
+    /// FIX ROUND (2026-08-29 fix-wave review, Item 1's header floor): this
+    /// fact used to assert pixel-exact survival, "&gt;= draggedWidth - 1",
+    /// the form BulkRename's identical fact still uses. Raising Destination's
+    /// floor to its own header width (2026-08-29 review: a column's header
+    /// never wraps, so a share computed below it clips silently — measured
+    /// here, ~49px -> ~90px; it no longer concedes everything down to
+    /// MinimumCap) leaves this grid's own margin tighter once the window then
+    /// shrinks by 10px. Measured directly, not assumed, in BOTH shapes this
+    /// suite runs in: isolated (single-fact filter), draggedWidth=447px
+    /// (capBefore 397 + 50) landed at 444.5px, 1.5px short of the
+    /// "draggedWidth - 1" floor; dropping the drag to +30 then landed EXACTLY
+    /// on "draggedWidth - 1" every time in isolation (six consecutive runs) —
+    /// but under a full `dotnet test OrdoSort.sln` run (Core.Tests and
+    /// Wpf.Tests as concurrent processes, the actual check command this
+    /// review requires), the identical +30 case measured capBefore=393,
+    /// draggedWidth=423, actual=421.75 — 1.25px short. The reclaim is real
+    /// WPF tight-margin space-fitting (the same mechanism
+    /// MatchMerge_UserDraggedFileColumnSurvivesBeyondTheCapAndStaysPinnedAfterResize's
+    /// own doc comment already documents), but its exact magnitude moves with
+    /// system load in a way no fixed "-1" tolerance survives — chasing an
+    /// ever-smaller drag delta was tried and rejected: capBefore itself
+    /// jitters several px run to run (394-397px in isolation), so the
+    /// available headroom is not a number this test can pin down, only a
+    /// direction. Switched to the same contract MatchMerge's fact already
+    /// asserts instead of a fourth attempt at a magic number: the drag
+    /// survives past the OLD cap, and this class has relinquished the column
+    /// (MaxWidth back to PositiveInfinity), which is what "the cap governs
+    /// automatic sizing only" actually promises — not that WPF's own
+    /// independent space-fitting never touches a pinned column by a pixel or
+    /// two under load.</summary>
     [Fact]
     public void History_UserDraggedNameColumnSurvivesBeyondTheCapAndStaysPinnedAfterResize() => _fx.Invoke(() =>
     {
@@ -681,7 +731,7 @@ public class AutoFitColumnTests
             var grid = FindDescendant<DataGrid>(win)!;
             var column = FindColumnByHeader(win, "Name");
             var capBefore = column.MaxWidth;
-            var draggedWidth = capBefore + 50;
+            var draggedWidth = capBefore + 30;
 
             SimulateColumnHeaderDragResize(grid, column, draggedWidth);
             win.UpdateLayout();
@@ -689,9 +739,12 @@ public class AutoFitColumnTests
                 () => { }, System.Windows.Threading.DispatcherPriority.Background);
             win.UpdateLayout();
 
-            Assert.True(column.ActualWidth >= draggedWidth - 1,
+            Assert.True(column.ActualWidth > capBefore,
                 $"History Name column after a simulated drag to {draggedWidth}px is " +
                 $"{column.ActualWidth}px — expected it to survive beyond the old cap {capBefore}px");
+            Assert.True(double.IsPositiveInfinity(column.MaxWidth),
+                $"History Name column's MaxWidth after the drag is {column.MaxWidth} — " +
+                "expected the class to have relinquished its claim (PositiveInfinity)");
 
             win.Width -= 10;
             win.UpdateLayout();
@@ -699,9 +752,12 @@ public class AutoFitColumnTests
                 () => { }, System.Windows.Threading.DispatcherPriority.Background);
             win.UpdateLayout();
 
-            Assert.True(column.ActualWidth >= draggedWidth - 1,
+            Assert.True(column.ActualWidth > capBefore,
                 $"History Name column after a SUBSEQUENT window resize is {column.ActualWidth}px — " +
-                $"expected the user's {draggedWidth}px drag to still win, not be reclamped");
+                $"expected it to stay above the pre-drag cap {capBefore}px, not be reclamped to it");
+            Assert.True(double.IsPositiveInfinity(column.MaxWidth),
+                $"History Name column's MaxWidth after the resize is {column.MaxWidth} — " +
+                "expected it to still be PositiveInfinity, not reclamped");
         }
         finally { CleanupHistory(win, history, dbPath); }
     });
@@ -994,9 +1050,11 @@ public class AutoFitColumnTests
                 () => { }, System.Windows.Threading.DispatcherPriority.Background);
             win.UpdateLayout();
 
-            // NOT ">= draggedWidth - 1" here (unlike MatchMerge/BulkRename/
-            // History's identical facts above, whose far larger grids don't
-            // trigger this): even a MODEST panel shrink measurably engages
+            // NOT ">= draggedWidth - 1" here (unlike BulkRename's identical
+            // fact above, whose far larger grid doesn't trigger this —
+            // MatchMerge's and History's own equivalent facts switched off
+            // this literal form too, each for its own reason: see their doc
+            // comments): even a MODEST panel shrink measurably engages
             // WPF's own independent space-fitting on Triage's uniquely tight
             // margin (measured: 219px requested -> 214px rendered here, a
             // legitimate few-pixel WPF adjustment, not a defect — see this
@@ -1491,7 +1549,14 @@ public class AutoFitColumnTests
         var grid = FindDescendant<DataGrid>(win)!;
         Assert.True(Math.Abs(column.ActualWidth - column.MaxWidth) < 1,
             $"{name} column with long content rendered {column.ActualWidth}px against a cap of " +
-            $"{column.MaxWidth}px — expected the content to be stopped BY the cap, not to fit inside it");
+            // "sits exactly at its cap", not "stopped BY the cap, not to fit
+            // inside it": under autofit-then-wrap a column that FITS also
+            // sits exactly at its cap (the cap IS its content width in that
+            // case), so "stopped by the cap" no longer distinguishes a
+            // genuinely-constrained column from one that simply fit — this
+            // assertion (paired with the headroom check below) is what does
+            // that distinguishing now.
+            $"{column.MaxWidth}px — expected the column to sit exactly at its cap");
         Assert.True(column.MaxWidth < grid.ActualWidth,
             $"{name} column's cap is {column.MaxWidth}px against a {grid.ActualWidth}px grid — " +
             "a cap at or beyond the viewport is not capping anything");

@@ -240,7 +240,17 @@ public class HistoryWindowXamlTests
     /// <summary>When holds a timestamp History formats itself — bounded, 16
     /// characters — so it is no longer one of the governed columns: sized
     /// to its content, never asked to give way, never wrapped mid-date.
-    /// An uncapped column's MaxWidth is WPF's default, infinity.</summary>
+    /// An uncapped column's MaxWidth is WPF's default, infinity.
+    ///
+    /// Not a vacuous default-value check: <c>BuildWindow</c> does
+    /// <c>Show()</c> plus <c>UpdateLayout()</c>, which is enough to run
+    /// DataGridColumnCap's own <c>Recalculate</c> at least once — if When
+    /// were still in the governed set (put <c>WhenColumn</c> back into the
+    /// <c>Track</c> call in HistoryWindow.xaml.cs to check), that pass would
+    /// assign it a real, finite cap, not leave WPF's default standing.
+    /// Confirmed by that exact revert: a reviewer put WhenColumn back into
+    /// Track and this fact caught it with a genuine 55px MaxWidth, not
+    /// PositiveInfinity.</summary>
     [Fact]
     public void WhenIsNotCappedBecauseItsContentIsBounded() => _fx.Invoke(() =>
     {
