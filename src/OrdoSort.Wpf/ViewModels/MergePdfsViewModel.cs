@@ -34,14 +34,19 @@ public sealed class MergePdfsViewModel : ZipListViewModel
         Func<string, IReadOnlyList<string>, Unlock.ProbeResult>? pdfProbe = null)
         : base(dialogs, savedPasswords, scheduler, uiContext)
     {
-        // A bare method group here would need the C# compiler to pick
-        // PdfMerge.MergeZip/MergeFiles's overload by eliding their two new
-        // trailing optional parameters (converter, includeTypes) — which
-        // works for a plain assignment but not as an operand of ??, so the
-        // lambda spells out the exact three/four-argument shape this field
-        // actually needs. Behavior is unchanged: converter and includeTypes
-        // still default to null (every type, no conversion) until this
-        // view model itself is wired to pass them through.
+        // Fix round (review finding 6): a bare method group cannot omit a
+        // delegate's optional parameters at all — a method group conversion
+        // is only defined against candidates whose EVERY optional parameter
+        // has a corresponding one in the target delegate (ECMA-334 §10.8).
+        // `_zipMerger = PdfMerge.MergeZip;` would fail identically as a
+        // plain assignment; ?? was never the discriminator, and the CS0019
+        // this produced is just the symptom of no conversion existing at
+        // all now that MergeZip/MergeFiles carry two extra optional
+        // parameters (converter, includeTypes). The lambda spells out the
+        // exact three/four-argument shape this field actually needs.
+        // Behavior is unchanged: converter and includeTypes still default
+        // to null (every type, no conversion) until this view model itself
+        // is wired to pass them through.
         _zipMerger = zipMerger ?? ((path, mergeCandidates, ask) => PdfMerge.MergeZip(path, mergeCandidates, ask));
         _fileMerger = fileMerger ?? ((paths, outputPath, mergeCandidates, ask) => PdfMerge.MergeFiles(paths, outputPath, mergeCandidates, ask));
         _zipProbe = zipProbe ?? Zipper.Probe;

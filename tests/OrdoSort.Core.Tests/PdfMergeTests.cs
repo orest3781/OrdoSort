@@ -510,13 +510,24 @@ public class PdfMergeTests : IDisposable
 
     /// <summary>Stands in for Office: deterministic, and able to produce each
     /// outcome the real one can. The PDF it returns is a real one-page
-    /// document, so the merge path is exercised rather than mocked.</summary>
+    /// document, so the merge path is exercised rather than mocked.
+    /// <see cref="HandledExtensions"/> is settable (default docx/xlsx/csv/png,
+    /// the original hard-coded set) so a test can model "a converter is
+    /// installed, but not for this type" — the no-Word-on-this-PC shape —
+    /// distinctly from a null converter, which models "nothing installed at
+    /// all".</summary>
     private sealed class FakeConverter : IDocumentConverter
     {
+        /// <summary>Outside any test's own page-width range, so a converted
+        /// page is identifiable by width alone.</summary>
+        public const double ConvertedWidthPt = 999;
+
         public string Status = "ok";
+        public string OkMessage = "";
+        public ISet<string> HandledExtensions = new HashSet<string> { "docx", "xlsx", "csv", "png" };
         public int Calls;
         public readonly List<string> Seen = new();
-        public bool Handles(string extension) => extension is "docx" or "xlsx" or "csv" or "png";
+        public bool Handles(string extension) => HandledExtensions.Contains(extension);
         public ConversionResult ToPdf(byte[] source, string displayName,
             IReadOnlyList<string> candidates, Func<PasswordRequest, string?>? ask)
         {
@@ -524,11 +535,22 @@ public class PdfMergeTests : IDisposable
             Seen.Add(displayName);
             return Status switch
             {
-                "ok" => new("ok", MakePdfBytes(1)),
+                "ok" => new("ok", MakePdfBytes(1, ConvertedWidthPt), OkMessage),
                 "needs_password" => new("needs_password", null, "needs a password", displayName),
                 _ => new("error", null, "couldn't convert it", displayName),
             };
         }
+    }
+
+    /// <summary>A converter that violates its own "never throw" contract —
+    /// the way the real one (Office interop over a temp file) most
+    /// plausibly could. Exercises AsPdfBytes's guard around the call.</summary>
+    private sealed class ThrowingConverter : IDocumentConverter
+    {
+        public bool Handles(string extension) => extension is "docx";
+        public ConversionResult ToPdf(byte[] source, string displayName,
+            IReadOnlyList<string> candidates, Func<PasswordRequest, string?>? ask) =>
+            throw new InvalidOperationException("boom");
     }
 
     private string MakeDocFile(string name)
@@ -609,6 +631,14 @@ public class PdfMergeTests : IDisposable
         Assert.Equal("nothing to merge inside", r.Message);
     }
 
+    /// <summary>Fix round (review finding, Important): the original version
+    /// of this fact asserted only converter.Seen == ["2.docx"], which proves
+    /// a call happened but not that the converted page landed BETWEEN
+    /// 1.pdf and 10.pdf — a no-op sort still passes it. This version reads
+    /// the merged output's own page widths in sequence, the way this
+    /// class's other ordering facts do, with the converted page's width
+    /// (FakeConverter.ConvertedWidthPt) chosen well outside 101/110 so it is
+    /// identifiable by width alone.</summary>
     [Fact]
     public void ConvertedDocumentsTakeTheirPlaceInTheSameNaturalSort()
     {
@@ -616,8 +646,14 @@ public class PdfMergeTests : IDisposable
         var two = MakeDocFile("2.docx");
         var one = MakePdfFile("1.pdf", widthPt: 101);
         var converter = new FakeConverter();
-        PdfMerge.MergeFiles(new[] { ten, two, one }, null, NoPasswords, NeverAsked, converter);
+        var r = PdfMerge.MergeFiles(new[] { ten, two, one }, null, NoPasswords, NeverAsked, converter);
+        Assert.Equal("ok", r.Status);
         Assert.Equal(new[] { "2.docx" }, converter.Seen);
+        using var merged = PdfReader.Open(r.Output!, PdfDocumentOpenMode.Import);
+        Assert.Equal(3, merged.PageCount);
+        Assert.Equal(101, merged.Pages[0].Width.Point, 3);
+        Assert.Equal(FakeConverter.ConvertedWidthPt, merged.Pages[1].Width.Point, 3);
+        Assert.Equal(110, merged.Pages[2].Width.Point, 3);
     }
 
     // ------------------------------------------------- the enabled-type set
@@ -653,5 +689,112 @@ public class PdfMergeTests : IDisposable
         var r = PdfMerge.MergeZip(zip, NoPasswords, NeverAsked, new FakeConverter(),
             new HashSet<string> { MergeTypes.Word });
         Assert.Equal("no_pdfs", r.Status);
+    }
+
+    // --------------------------------------------- fix round (review pass)
+
+    /// <summary>Fix round (review finding 1, Important — regression):
+    /// IsSwitchedOn used to return false for an extension MergeTypes does
+    /// not recognize at all, which is the same false a switched-off type
+    /// returns — so a loose .exe was being silently dropped from the unit
+    /// exactly like a switched-off type, and the merge quietly succeeded
+    /// with only the PDF. An unrecognized extension is not "switched off";
+    /// it is unsupported, and unsupported has to reach AsPdfBytes and say
+    /// so, the same as it always could before this feature existed.</summary>
+    [Fact]
+    public void ALooseUnrecognizedFileFailsTheUnitAndNamesItRatherThanBeingSilentlyDropped()
+    {
+        var pdf = MakePdfFile("a.pdf");
+        var exe = Path.Combine(_dir, "thing.exe");
+        File.WriteAllBytes(exe, new byte[] { 1, 2, 3 });
+        var r = PdfMerge.MergeFiles(new[] { pdf, exe }, null, NoPasswords, NeverAsked);
+        Assert.Equal("error", r.Status);
+        Assert.Equal(exe, r.Item);
+        Assert.Contains("can't be converted", r.Message);
+    }
+
+    /// <summary>Fix round (review minor): when every chosen file is switched
+    /// off, mergeable ends up empty but ordered[0] is still in scope and
+    /// still names the unit — no reason to fall back to "".</summary>
+    [Fact]
+    public void WhenEveryChosenFileIsSwitchedOffTheResultStillNamesTheUnitsSource()
+    {
+        var doc = MakeDocFile("a.docx");
+        var r = PdfMerge.MergeFiles(new[] { doc }, null, NoPasswords, NeverAsked, new FakeConverter(),
+            new HashSet<string> { MergeTypes.Pdf });
+        Assert.Equal("error", r.Status);
+        Assert.Equal(doc, r.Source);
+    }
+
+    /// <summary>Fix round (review findings 3+4, Important): a zip's
+    /// classification loop conflated three different reasons an entry does
+    /// not merge into a single SkippedEntries count. This is the "you asked
+    /// for it and we can't" case — a converter IS installed (unlike
+    /// converter: null, which models nothing installed at all) but does not
+    /// handle Word specifically, the actual no-Word-on-this-PC shape — and
+    /// it has to be named, not just counted, or "nothing to merge inside"
+    /// is a false statement: there WAS something, this PC just couldn't.</summary>
+    [Fact]
+    public void AZipOfOnlyDocxWithAConverterThatDoesNotHandleWordNamesThemInNotes()
+    {
+        var zip = MakeZip("docs.zip", ("a.docx", new byte[] { 1, 2, 3 }), ("b.docx", new byte[] { 4, 5, 6 }));
+        var converter = new FakeConverter { HandledExtensions = new HashSet<string>() };   // installed, but no Word
+        var r = PdfMerge.MergeZip(zip, NoPasswords, NeverAsked, converter);
+        Assert.Equal("no_pdfs", r.Status);
+        Assert.Equal(new[] { "a.docx", "b.docx" }, r.Notes);
+    }
+
+    /// <summary>The quiet case has to stay quiet: converter: null models no
+    /// conversion subsystem at all, the same pre-Task-4 shape a stray
+    /// readme.txt has always had — silently counted in SkippedEntries, not
+    /// named. Naming it here would be noise, not information.</summary>
+    [Fact]
+    public void ANoConverterAtAllLeavesNotesEmptyForOrdinaryZipClutter()
+    {
+        var zip = MakeZip("mixed.zip", ("a.pdf", MakePdfBytes(1)), ("readme.txt", Encoding.UTF8.GetBytes("not a pdf")));
+        var r = PdfMerge.MergeZip(zip, NoPasswords, NeverAsked);
+        Assert.Equal("ok", r.Status);
+        Assert.Null(r.Notes);
+    }
+
+    /// <summary>The other half of findings 3+4: AsPdfBytes's "ok" branch
+    /// used to discard converted.Message outright. Task 3's TableToPdf
+    /// deliberately attaches one ("only the first of N worksheets…") when a
+    /// workbook has more sheets than this PC can reach — losing that would
+    /// be silent data loss, not just a missing nicety.</summary>
+    [Fact]
+    public void ASuccessfulConversionsAdvisoryMessageSurfacesInNotes()
+    {
+        var zip = MakeZip("mixed.zip", ("a.pdf", MakePdfBytes(1)), ("b.xlsx", new byte[] { 1, 2, 3 }));
+        var converter = new FakeConverter { OkMessage = "only the first of 3 worksheets — install Excel to include them all" };
+        var r = PdfMerge.MergeZip(zip, NoPasswords, NeverAsked, converter);
+        Assert.Equal("ok", r.Status);
+        Assert.Equal(new[] { "only the first of 3 worksheets — install Excel to include them all" }, r.Notes);
+    }
+
+    /// <summary>Fix round (review finding 5, Important): converter.ToPdf was
+    /// the one unguarded collaborator call in either loop. An unguarded
+    /// throw unwinds to the outer wrapper and blames the whole merge — with
+    /// no Item to mark the actual culprit, which defeats the entire point
+    /// of a fail-whole result that names what went wrong.</summary>
+    [Fact]
+    public void AConverterThatThrowsFailsTheWholeUnitAndNamesTheDocumentInstead()
+    {
+        var pdf = MakePdfFile("a.pdf");
+        var doc = MakeDocFile("b.docx");
+        var r = PdfMerge.MergeFiles(new[] { pdf, doc }, null, NoPasswords, NeverAsked, new ThrowingConverter());
+        Assert.Equal("error", r.Status);
+        Assert.Equal(doc, r.Item);
+        Assert.Contains("boom", r.Message);
+    }
+
+    [Fact]
+    public void AConverterThatThrowsInsideAZipNamesTheEntryInsteadOfBlamingTheZip()
+    {
+        var zip = MakeZip("mixed.zip", ("a.pdf", MakePdfBytes(1)), ("b.docx", new byte[] { 1, 2, 3 }));
+        var r = PdfMerge.MergeZip(zip, NoPasswords, NeverAsked, new ThrowingConverter());
+        Assert.Equal("error", r.Status);
+        Assert.Equal("b.docx", r.Item);
+        Assert.Contains("boom", r.Message);
     }
 }

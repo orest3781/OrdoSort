@@ -16,18 +16,33 @@ namespace OrdoSort.Core;
 ///
 /// Converting: a source that is not already a PDF is handed to the converter
 /// as bytes and comes back as bytes, never as a path — see the ZipSlip
-/// paragraph below for why. A type the user has switched OFF never reaches
-/// that exchange at all — filtered out of the unit before a single byte of
-/// it is read, so it is not an error, just absent, in EITHER shape. A type
-/// nothing can convert is where the two shapes part ways, and deliberately
-/// so: a loose file was individually CHOSEN, so one nothing can convert is
-/// an error naming the document, the same as a corrupt PDF would be — a
-/// merge that silently dropped a chosen document is indistinguishable from
-/// a complete one until someone notices. A zip's entries are found, not
+/// paragraph below for why. A RECOGNIZED type the user has switched OFF
+/// never reaches that exchange at all — filtered out of the unit before a
+/// single byte of it is read, so it is not an error, just absent, in EITHER
+/// shape. A type nothing recognizes at all (an .exe, an .mp4) is different
+/// again: not "switched off", just unsupported, and unsupported still has
+/// to reach this exchange and say so — conflating the two would drop a
+/// chosen file for a reason that has nothing to do with the user's toggles.
+/// A type nothing can CONVERT — recognized, switched on, but no converter
+/// handles it — is where the two shapes part ways, and deliberately so: a
+/// loose file was individually CHOSEN, so one nothing can convert is an
+/// error naming the document, the same as a corrupt PDF would be — a merge
+/// that silently dropped a chosen document is indistinguishable from a
+/// complete one until someone notices. A zip's entries are found, not
 /// chosen, so one of a recognized type nothing can convert is ordinary
 /// clutter, counted in <see cref="MergeResult.SkippedEntries"/> exactly like
 /// a zip entry that is not a mergeable type at all — the same treatment a
 /// zip has always given a stray non-PDF file.
+///
+/// Notes: things worth saying out loud that are not failures — a zip's
+/// recognized-but-nothing-converts-it entries (named, not just counted:
+/// SkippedEntries alone cannot tell ordinary clutter apart from "the Word
+/// documents you asked for, but nothing here can open"), and a conversion
+/// that succeeded with something left behind (a workbook's later
+/// worksheets, say) — travel in <see cref="MergeResult.Notes"/>.
+/// <see cref="MergeResult.Message"/> keeps its one existing meaning, why the
+/// unit failed, so these needed their own channel; without one they die
+/// here, and no caller downstream can retrieve what this method already knew.
 ///
 /// Passwords (2026-08-28): a locked archive, a locked loose PDF and a locked
 /// PDF inside an archive all take the caller's candidate list and its
@@ -76,9 +91,19 @@ public static class PdfMerge
     /// <summary><see cref="Source"/> is the zip, or the first loose PDF in
     /// merge order. <see cref="Item"/> is the file path (MergeFiles) or the
     /// entry name (MergeZip) that stopped a merge — what lets a caller mark
-    /// the right row — and null on ok / no_pdfs.</summary>
+    /// the right row — and null on ok / no_pdfs. <see cref="PdfCount"/>
+    /// counts every document in a successful merge, converted ones
+    /// included, not just literal PDFs. <see cref="Notes"/> is things the
+    /// caller should say out loud that are not failures: a document this PC
+    /// could not convert although its type is switched on, or a conversion
+    /// that succeeded with something left behind (a workbook's later
+    /// worksheets). <see cref="Message"/> keeps its single meaning — why
+    /// the unit failed — so these need their own channel; without one they
+    /// die here, and no caller downstream can retrieve what this method
+    /// already knew.</summary>
     public sealed record MergeResult(string Source, string Status, string? Output = null,
-        int PdfCount = 0, int SkippedEntries = 0, string Message = "", string? Item = null);
+        int PdfCount = 0, int SkippedEntries = 0, string Message = "", string? Item = null,
+        IReadOnlyList<string>? Notes = null);
     // Status: "ok" | "no_pdfs" | "needs_password" | "error" — never throws
 
     /// <summary>Merge every PDF inside <paramref name="zipPath"/> — plus,
@@ -149,22 +174,41 @@ public static class PdfMerge
             // converter offers or a type the user has switched off — counts
             // toward SkippedEntries so the caller can tell "an empty zip"
             // apart from "a zip full of things that don't take part". This is
-            // the narrower IsMergeable, not IsSwitchedOn, deliberately: a
+            // the narrower IsMergeable, not IsSwitchedOff, deliberately: a
             // zip's entries are found, not individually chosen, so a
             // recognized-but-unconvertible one (nothing offers a converter
             // for it) is exactly the kind of incidental clutter
             // SkippedEntries exists to absorb — unlike MergeFilesCore, where
-            // the same case is a chosen document and has to fail loudly.
+            // the same case is a chosen document and has to fail loudly. It
+            // is still NAMED, though (in notConvertible, below): "recognized
+            // but nothing here converts it" is worth saying even when it
+            // costs the merge nothing.
             var mergeable = new List<ZipEntry>();
+            var notConvertible = new List<string>();
             var skipped = 0;
             foreach (var entry in entries)
             {
                 if (!entry.IsFile) continue;
-                if (IsMergeable(entry.Name, converter, includeTypes)) mergeable.Add(entry);
-                else skipped++;
+                if (IsMergeable(entry.Name, converter, includeTypes))
+                {
+                    mergeable.Add(entry);
+                    continue;
+                }
+                skipped++;
+                // Named only when a converter EXISTS and specifically
+                // doesn't handle this recognized, switched-on type — "we
+                // tried, and this PC can't" (no Word installed, say). A null
+                // converter means no conversion was ever attempted for
+                // anything, which is the same quiet, pre-Task-4 shape a
+                // stray non-PDF has always had (readme.txt, an unrecognized
+                // extension, a switched-off type) — none of those get named.
+                if (converter is not null && MergeTypes.GroupOf(ExtensionOf(entry.Name)) is not null
+                    && !IsSwitchedOff(entry.Name, includeTypes))
+                    notConvertible.Add(entry.Name);
             }
             if (mergeable.Count == 0)
-                return new(zipPath, "no_pdfs", SkippedEntries: skipped, Message: "nothing to merge inside");
+                return new(zipPath, "no_pdfs", SkippedEntries: skipped, Message: "nothing to merge inside",
+                    Notes: notConvertible.Count > 0 ? notConvertible : null);
 
             // NaturalSort, not the zip's own entry order: "2.pdf" must merge
             // before "10.pdf" the same way this app lists any other batch of
@@ -175,6 +219,7 @@ public static class PdfMerge
 
             using var output = new PdfDocument();
             var openDocs = new List<IDisposable>();
+            var notes = new List<string>(notConvertible);
             try
             {
                 foreach (var entry in mergeable)
@@ -188,8 +233,9 @@ public static class PdfMerge
                     {
                         return new(zipPath, "error", Message: $"couldn't read '{entry.Name}': {ex.Message}", Item: entry.Name);
                     }
-                    var unconverted = AsPdfBytes(ref bytes, entry.Name, entry.Name, converter, candidates, ask);
+                    var unconverted = AsPdfBytes(ref bytes, entry.Name, entry.Name, converter, candidates, ask, out var note);
                     if (unconverted is not null) return unconverted with { Source = zipPath };
+                    if (note is not null) notes.Add(note);
                     var stopped = AddPdf(bytes, entry.Name, zipName, entry.Name, candidates, ask, output, openDocs);
                     if (stopped is not null) return stopped with { Source = zipPath };
                 }
@@ -197,7 +243,8 @@ public static class PdfMerge
                 var zipDir = Path.GetDirectoryName(Path.GetFullPath(zipPath))!;
                 var zipStem = Path.GetFileNameWithoutExtension(zipPath);
                 var target = pickOutput(Path.Combine(zipDir, zipStem + ".pdf"));
-                return SaveNew(output, target, zipPath, mergeable.Count, skipped);
+                return SaveNew(output, target, zipPath, mergeable.Count, skipped)
+                    with { Notes = notes.Count > 0 ? notes : null };
             }
             finally
             {
@@ -246,23 +293,24 @@ public static class PdfMerge
         IReadOnlyList<string> candidates, Func<PasswordRequest, string?>? ask,
         IDocumentConverter? converter, ISet<string>? includeTypes)
     {
-        // Switched-off (or unrecognized) is filtered out here, before a
-        // single path is read — it is not an error, it simply never enters
-        // the unit. Deliberately IsSwitchedOn, not the narrower IsMergeable:
+        // ONLY an explicitly switched-off type is filtered out here, before
+        // a single path is read — that alone is not an error, it simply
+        // never enters the unit. IsSwitchedOff, not the narrower IsMergeable:
         // these paths were each individually CHOSEN by the caller, unlike a
-        // zip's contents, which are found. A chosen document that turns out
-        // to have no working converter still has to reach AsPdfBytes and
-        // fail loudly — pre-filtering it here on convertibility would be
-        // exactly the silent short merge this class exists to refuse. Only
-        // once nothing is switched on at all does this report the same
-        // "nothing to merge" MergeFiles itself reports for a genuinely empty
-        // list.
-        var mergeable = ordered.Where(p => IsSwitchedOn(Path.GetFileName(p), includeTypes)).ToList();
-        if (mergeable.Count == 0) return new("", "error", Message: "nothing to merge");
+        // zip's contents, which are found. A chosen document of an
+        // unrecognized extension, or a recognized one nothing can convert,
+        // still has to reach AsPdfBytes and fail loudly — pre-filtering
+        // either of those here would be exactly the silent short merge this
+        // class exists to refuse. Only once nothing is left at all does this
+        // report the same "nothing to merge" MergeFiles itself reports for a
+        // genuinely empty list.
+        var mergeable = ordered.Where(p => !IsSwitchedOff(p, includeTypes)).ToList();
+        if (mergeable.Count == 0) return new(ordered[0], "error", Message: "nothing to merge");
 
         var source = mergeable[0];
         using var output = new PdfDocument();
         var openDocs = new List<IDisposable>();
+        var notes = new List<string>();
         try
         {
             foreach (var path in mergeable)
@@ -281,8 +329,9 @@ public static class PdfMerge
                 {
                     return new(source, "error", Item: path, Message: $"couldn't read it: {ex.Message}");
                 }
-                var unconverted = AsPdfBytes(ref bytes, Path.GetFileName(path), path, converter, candidates, ask);
+                var unconverted = AsPdfBytes(ref bytes, Path.GetFileName(path), path, converter, candidates, ask, out var note);
                 if (unconverted is not null) return unconverted with { Source = source };
+                if (note is not null) notes.Add(note);
                 var stopped = AddPdf(bytes, Path.GetFileName(path), null, path, candidates, ask, output, openDocs);
                 if (stopped is not null) return stopped with { Source = source };
             }
@@ -291,12 +340,14 @@ public static class PdfMerge
             {
                 if (!AtomicPlace.TryReplace(outputPath, tmp => output.Save(tmp), out var placeError))
                     return new(source, "error", Message: $"couldn't save the merged PDF: {placeError}");
-                return new(source, "ok", Output: outputPath, PdfCount: mergeable.Count);
+                return new(source, "ok", Output: outputPath, PdfCount: mergeable.Count,
+                    Notes: notes.Count > 0 ? notes : null);
             }
 
             var target = Collision.FreeFile(
                 Path.Combine(Path.GetDirectoryName(Path.GetFullPath(source))!, DefaultName(mergeable)));
-            return SaveNew(output, target, source, mergeable.Count, 0);
+            return SaveNew(output, target, source, mergeable.Count, 0)
+                with { Notes = notes.Count > 0 ? notes : null };
         }
         finally
         {
@@ -338,26 +389,43 @@ public static class PdfMerge
             .ThenBy(p => p, NaturalSort.Instance)
             .ToList();
 
-    /// <summary>Whether the user has this file's TYPE switched on at all —
-    /// a PDF or anything else <see cref="MergeTypes"/> recognizes — with no
-    /// opinion on whether a converter can actually produce a PDF from it.
-    /// <paramref name="includeTypes"/> null means every type is on. The
-    /// narrower question ("really mergeable") is <see cref="IsMergeable"/>;
-    /// this one alone is what a switched-off toggle means.</summary>
-    private static bool IsSwitchedOn(string name, ISet<string>? includeTypes)
+    /// <summary>Dot-less, lowercase, and tolerant of a full path (not just a
+    /// bare file name) — the one spelling every extension check in this
+    /// class shares, so "what counts as a PDF" and "what group is this"
+    /// can never quietly drift apart from each other.</summary>
+    private static string ExtensionOf(string name) =>
+        Path.GetExtension(name).TrimStart('.').ToLowerInvariant();
+
+    /// <summary>Whether the user has explicitly switched this file's TYPE
+    /// off — true only for a type <see cref="MergeTypes"/> recognizes AND
+    /// <paramref name="includeTypes"/> excludes. An extension nothing
+    /// recognizes at all (an .exe, an .mp4) is NOT "switched off" — that
+    /// would silently drop a chosen file this window was never going to
+    /// convert either way, regardless of any toggle, which is exactly the
+    /// defect this predicate exists to avoid. It is simply unsupported, and
+    /// unsupported has to reach <see cref="AsPdfBytes"/> and say so rather
+    /// than vanish here.</summary>
+    private static bool IsSwitchedOff(string name, ISet<string>? includeTypes)
     {
-        var extension = Path.GetExtension(name).TrimStart('.').ToLowerInvariant();
-        var group = MergeTypes.GroupOf(extension);
-        return group is not null && (includeTypes is null || includeTypes.Contains(group));
+        if (includeTypes is null) return false;
+        var group = MergeTypes.GroupOf(ExtensionOf(name));
+        return group is not null && !includeTypes.Contains(group);
     }
 
     /// <summary>A PDF, or something the converter offers to turn into one —
     /// and in both cases only when the user has that type switched on.
-    /// <paramref name="includeTypes"/> null means every type is on.</summary>
+    /// <paramref name="includeTypes"/> null means every type is on. An
+    /// extension <see cref="MergeTypes"/> does not recognize at all comes out
+    /// false here too, the same as one nothing can convert — this predicate
+    /// only ever asks "does a page come out of it", which is why
+    /// <see cref="MergeFilesCore"/> uses the narrower
+    /// <see cref="IsSwitchedOff"/> instead: a zip is allowed to silently
+    /// absorb an unrecognized entry as clutter, but a chosen loose file is
+    /// not.</summary>
     private static bool IsMergeable(string name, IDocumentConverter? converter, ISet<string>? includeTypes)
     {
-        if (!IsSwitchedOn(name, includeTypes)) return false;
-        var extension = Path.GetExtension(name).TrimStart('.').ToLowerInvariant();
+        if (IsSwitchedOff(name, includeTypes)) return false;
+        var extension = ExtensionOf(name);
         return extension == "pdf" || (converter is not null && converter.Handles(extension));
     }
 
@@ -365,26 +433,51 @@ public static class PdfMerge
     /// through when it already is one, otherwise handed to the converter with
     /// the caller's own passwords and prompt. Returns the failure to report,
     /// or null with <paramref name="bytes"/> replaced by the converted
-    /// document. A type nothing can convert is an ERROR, not a silent skip —
-    /// a merge that quietly omitted a document looks identical to a complete
+    /// document and <paramref name="note"/> set to a non-empty advisory
+    /// message the converter attached to an otherwise-successful conversion
+    /// (a workbook's later worksheets, say) — null when there is nothing to
+    /// say. A type nothing can convert is an ERROR, not a silent skip — a
+    /// merge that quietly omitted a document looks identical to a complete
     /// one until somebody notices it is missing. (A type the user switched
-    /// OFF never reaches here; it is filtered out of the unit instead.)</summary>
+    /// OFF never reaches here; it is filtered out of the unit instead. A
+    /// type nothing RECOGNIZES does reach here, and gets the same honest
+    /// "can't be converted" as one nothing can convert — from here on,
+    /// unsupported and unconvertible are the same failure.)
+    ///
+    /// The converter call itself is guarded: <see cref="IDocumentConverter"/>
+    /// promises never to throw, but the real implementation is Office
+    /// interop over a temp file, the most throw-prone dependency in this
+    /// feature, so this is defence in depth rather than distrust — the same
+    /// standard this class already applies to <see cref="Zipper"/>. An
+    /// unguarded throw here would unwind to the outer wrapper and blame the
+    /// zip or the whole merge, with no <see cref="MergeResult.Item"/> to
+    /// mark the actual culprit.</summary>
     private static MergeResult? AsPdfBytes(ref byte[] bytes, string displayName, string itemKey,
         IDocumentConverter? converter, IReadOnlyList<string> candidates,
-        Func<PasswordRequest, string?>? ask)
+        Func<PasswordRequest, string?>? ask, out string? note)
     {
-        if (displayName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) return null;
+        note = null;
+        var extension = ExtensionOf(displayName);
+        if (extension == "pdf") return null;
 
-        var extension = Path.GetExtension(displayName).TrimStart('.').ToLowerInvariant();
         if (converter is null || !converter.Handles(extension))
             return new("", "error", Item: itemKey,
                 Message: $"{displayName} can't be converted on this PC");
 
-        var converted = converter.ToPdf(bytes, displayName, candidates, ask);
+        ConversionResult converted;
+        try
+        {
+            converted = converter.ToPdf(bytes, displayName, candidates, ask);
+        }
+        catch (Exception ex)
+        {
+            return new("", "error", Item: itemKey, Message: $"couldn't convert '{displayName}': {ex.Message}");
+        }
         switch (converted.Status)
         {
             case "ok" when converted.Pdf is not null:
                 bytes = converted.Pdf;
+                if (converted.Message.Length > 0) note = converted.Message;
                 return null;
             case "needs_password":
                 return new("", "needs_password", Item: itemKey,
