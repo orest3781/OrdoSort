@@ -92,6 +92,11 @@ public class MergePdfsWindowTests
         var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(),
             zipProbe: (p, _) => new Zipper.ZipProbeResult(p, "not_encrypted"),
             pdfProbe: (p, _) => new Unlock.ProbeResult("not_encrypted", p));
+        // Word starts ON, deliberately: it is off by default now, so
+        // without this SetTypeEnabled(Word, false) below would be a no-op
+        // (already off) rather than the real ON-to-OFF transition this
+        // fact's own name promises to exercise.
+        vm.SetTypeEnabled(MergeTypes.Word, true);
         await vm.AddPaths(new[] { word, pdf });
         vm.SetTypeEnabled(MergeTypes.Word, false);
 

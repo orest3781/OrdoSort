@@ -41,20 +41,21 @@ Word has nothing to build on. Excel and CSV have readers, but only for *values*.
 6. **Late-bound COM**, not the typed Office interop packages.
 7. **Per-type toggles in the window, remembered.** A row of checkboxes in the Merge PDFs window itself, persisted to config so the choice survives a restart.
 8. **A switched-off type is listed but excluded**, greyed with a "not included" note, and joins in the moment its type is switched back on — no re-dropping. Inside a zip, entries of an excluded type are skipped and counted as skipped.
+9. **The default is PDF and Zip only — everything else starts opt-in** (owner, 2026-08-31, asked directly, superseding this document's original "nothing stored means every group on"). The conservative reading: with every new type off until deliberately ticked, the window behaves exactly as it did before this feature shipped until the user switches something on, so dropping a folder on it cannot silently sweep a stray `readme.txt`, a `thumbnail.jpg` or a minified `.json` export into a client packet. See the Amendment below.
 
 ## The types v1 handles
 
-Toggles are per **group**, not per extension — nobody wants `.jpg` and `.png` on separate switches.
+Toggles are per **group**, not per extension — nobody wants `.jpg` and `.png` on separate switches. **Only PDF and Zip start switched on** (decision 9); every other group below is opt-in from the window's own toggle row.
 
-| Group | Extensions | Converted by | Without Office |
-|---|---|---|---|
-| PDF | `pdf` | — (native) | native |
-| Zip | `zip` | — (container) | native |
-| Word | `docx`, `doc`, `docm`, `rtf`, `odt` | Word | **not available** |
-| Excel | `xlsx`, `xls`, `xlsm`, `ods`, `csv`, `tsv` | Excel | `csv`/`tsv`/`xlsx` as data tables |
-| PowerPoint | `pptx`, `ppt` | PowerPoint | **not available** |
-| Images | `jpg`, `jpeg`, `png`, `tif`, `tiff`, `bmp`, `gif` | WPF decoders + PdfSharp | **same** — no Office involved |
-| Text | `txt`, `log`, `md`, `json` | in-repo paginator | **same** — no Office involved |
+| Group | Extensions | Converted by | Without Office | Default |
+|---|---|---|---|---|
+| PDF | `pdf` | — (native) | native | **on** |
+| Zip | `zip` | — (container) | native | **on** |
+| Word | `docx`, `doc`, `docm`, `rtf`, `odt` | Word | **not available** | off |
+| Excel | `xlsx`, `xls`, `xlsm`, `ods`, `csv`, `tsv` | Excel | `csv`/`tsv`/`xlsx` as data tables | off |
+| PowerPoint | `pptx`, `ppt` | PowerPoint | **not available** | off |
+| Images | `jpg`, `jpeg`, `png`, `tif`, `tiff`, `bmp`, `gif` | WPF decoders + PdfSharp | **same** — no Office involved | off |
+| Text | `txt`, `log`, `md`, `json` | in-repo paginator | **same** — no Office involved | off |
 
 Images and Text never touch Office at all: no hang risk, no orphaned processes, no fidelity gap between the two paths.
 
@@ -231,3 +232,11 @@ The original design covered `.docx`, `.xlsx` and `.csv` with no toggles. Two own
 This document originally listed `htm`, `html` under the Word group's extensions (the table above and the "types v1 handles" table both said so). The implementation never actually shipped them: `MergeTypes.ByGroup`'s Word entry is `["docx", "doc", "docm", "rtf", "odt"]`, and `MergeTypesTests` pins `htm`/`html` as extensions with no group at all. This document is now corrected to match, rather than left claiming a wider Word group than the code has ever had.
 
 The reason, carried in the code's own comment (`DocumentConverter.cs`): opening a web document in Word fetches remote resources — both a hang surface (nothing in this class's password-sentinel or timeout machinery guards a network fetch the way it guards a modal dialog) and a beaconing surface, in a repo with a PHI history where an unexpected outbound request is exactly the kind of thing worth refusing by construction rather than trusting a setting to catch. `AutomationSecurity = ForceDisable` covers macros; it does not cover a `<link>` or an `<img src>` in an HTML file Word is asked to render. `rtf`, `odt` and `docm` stay in the Word group — a `docm`'s macros are exactly what AutomationSecurity is for.
+
+### Amendment (2026-08-31 — the first-run default flips to PDF and Zip only)
+
+This document originally specified "nothing stored means every group on" (`MergeTypes.Load(null)` returned `AllGroups`, and decision 8 above was written against that reading). Asked directly, the owner chose the opposite: **PDF and Zip switched on, everything else off, opt in deliberately.** Their reasoning is the conservative one — the window behaves exactly as it did before this feature shipped until the user ticks a type, so dropping a folder on it cannot silently sweep a stray `readme.txt`, a `thumbnail.jpg` or a minified `.json` export into a client packet.
+
+`MergeTypes.Load(null)`/`Load("")`/`Load(" ")` now return `{pdf, zip}` (`MergeTypes.DefaultGroups`) rather than `AllGroups`. The three-way distinction this feature's config format was built to keep — "never configured" (→ the default), "everything off on purpose" (→ genuinely empty, via `NoneStored`), and any explicit stored list (→ exactly that list) — is unchanged in shape; only what "never configured" resolves to moved. Decision 9 above records the new default; the type table states it per group.
+
+This was not a one-line change: several facts and E2E scenarios had silently depended on "nothing stored means everything on" to include a non-PDF/zip file without ever switching its group on — see the fix wave's final report for the full sweep (every test touched, and which ones would have kept passing vacuously — proving an exclusion or a warning-drain that never actually happened — if the default flip had landed without them being fixed too).

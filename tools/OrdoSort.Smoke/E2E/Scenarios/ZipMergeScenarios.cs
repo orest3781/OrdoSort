@@ -293,6 +293,13 @@ public static class ZipMergeScenarios
         var zip = ctx.Fx.Zip("archives/withsheet.zip", ("a.pdf", a), ("sheet.csv", sheet));
 
         var vm = NewVm(ctx);
+        // 2026-08-31: Excel is off by DEFAULT now (owner's conservative-
+        // default decision — PDF and Zip only until the user opts in), so
+        // the CSV entry would otherwise be filtered out of the zip's own
+        // contents before PdfMerge ever reads it, and this scenario's
+        // "merged despite one entry needing conversion" claim would pass
+        // for the wrong reason (nothing needing conversion was ever tried).
+        vm.SetTypeEnabled(MergeTypes.Excel, true);
         var win = Merge(ctx, vm, zip);
 
         ctx.Check("merged despite one entry needing conversion", vm.Rows[0].StatusKind == ZipItemRowStatus.Ok,
@@ -318,6 +325,12 @@ public static class ZipMergeScenarios
         var photo = WritePng(ctx.Fx, "photo.png", 200, 150);
 
         var vm = NewVm(ctx);
+        // 2026-08-31: Images is off by DEFAULT now — see SheetWithPdfs'
+        // own comment for why this scenario needs the same explicit
+        // opt-in, or the photo would never be included in the loose group
+        // at all and "the PDF and the converted image both contributed a
+        // page" would be proven with no image ever having contributed one.
+        vm.SetTypeEnabled(MergeTypes.Images, true);
         var win = Merge(ctx, vm, a, photo);
 
         ctx.Check("every row reports the one document", vm.Rows.All(r => r.StatusKind == ZipItemRowStatus.Ok),
@@ -342,6 +355,16 @@ public static class ZipMergeScenarios
         var notes = ctx.Fx.Text("src/notes.txt", "left out on purpose");
 
         var vm = NewVm(ctx);
+        // 2026-08-31: Text is off by DEFAULT now, so it has to be switched
+        // ON first, before the sources are even added — otherwise the row
+        // would start EXCLUDED already, the "the text file starts
+        // included" check just below would fail outright, and (worse, had
+        // it not failed loudly) the SetTypeEnabled(Text, false) that
+        // follows would be an off-to-off no-op: this scenario's whole name
+        // is "a type switched off", and without a real ON-to-OFF
+        // transition it would prove exclusion without ever having excluded
+        // anything.
+        vm.SetTypeEnabled(MergeTypes.Text, true);
         var win = new MergePdfsWindow(vm);
         E2EPump.ShowOffscreen(win);
 

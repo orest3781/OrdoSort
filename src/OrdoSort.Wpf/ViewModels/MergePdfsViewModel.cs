@@ -182,9 +182,10 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
 
         _cfg = config ?? new Config();
         _saveConfig = saveConfig;
-        // MergeTypes.Load("") — an unconfigured _cfg.MergeTypes — is every
-        // group on, matching the "never touched a toggle" default a fresh
-        // window has to show.
+        // MergeTypes.Load("") — an unconfigured _cfg.MergeTypes — is the
+        // conservative default (owner, 2026-08-31): PDF and Zip only,
+        // matching the "never touched a toggle" state a fresh window has to
+        // show, and everything else opt-in from here.
         _enabledTypes = new HashSet<string>(MergeTypes.Load(_cfg.MergeTypes), StringComparer.OrdinalIgnoreCase);
         // Never read from here — the default merger lambdas above are the
         // only readers of _activeIncludeTypes, and they only ever run from
@@ -269,8 +270,9 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
     /// set through config immediately via MergeTypes.Save — which writes its
     /// own NoneStored sentinel for an empty set rather than "", the one
     /// thing that lets unticking every type survive a reopen as "everything
-    /// off" instead of reading back as "never configured" and defaulting to
-    /// everything on again (MergeTypes.Load's own contract) — then folds the
+    /// off" instead of reading back as "never configured" and defaulting
+    /// back to PDF and Zip only again (MergeTypes.Load's own contract) —
+    /// then folds the
     /// new set into every row already in the list by calling OnRowsChanged,
     /// which is also what re-raises PropertyChanged on the ROW so the grid
     /// repaints and refreshes MergeButtonText/the commands' CanExecute the

@@ -642,9 +642,15 @@ public class MergePdfsViewModelTests
     [Fact]
     public async Task AListOfOnlyANonPdfDocumentReportsAndMergesTheSameCount()
     {
+        // 2026-08-31: Text is off by default (the owner's conservative
+        // default), so it has to be switched on for a lone .txt to be
+        // included at all — otherwise the row would stay excluded and
+        // Pending, and this fact's whole premise (an enabled "Merge 1 item"
+        // that actually does something) would never be reached.
         using var dir = new TempDir();
         var textPath = dir.File("notes.txt");   // TempDir.File writes non-empty content
         var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler());
+        vm.SetTypeEnabled(MergeTypes.Text, true);
 
         await vm.AddPaths(new[] { textPath });
 
@@ -673,6 +679,10 @@ public class MergePdfsViewModelTests
         var vm = MakeVm(dialogs: new FakeDialogs { NextSaveFile = chosen },
             converter: new AlwaysHandlesConverter(),
             fileMerger: (paths, output, _, _) => { seenOutput = output; return Ok(paths[0], output!, paths.Count); });
+        // Word is off by default -- without this the docx row is excluded,
+        // MergeToCommand.CanExecute is false (RunnableLooseDocuments is 0),
+        // and the very next assertion fails outright.
+        vm.SetTypeEnabled(MergeTypes.Word, true);
 
         await vm.AddPaths(new[] { docx });
         Assert.True(vm.MergeToCommand.CanExecute(null));
@@ -696,6 +706,10 @@ public class MergePdfsViewModelTests
         var vm = MakeVm(fileMerger: (paths, _, _, _) =>
             new PdfMerge.MergeResult(paths[0], "ok", Output: Path.Combine(dir.Path, "Job.pdf"), PdfCount: 1,
                 Notes: new[] { "only the first of 3 worksheets — install Excel to include them all" }));
+        // Excel is off by default -- without this the xlsx row is excluded,
+        // never selected into a unit, the fake fileMerger above is never
+        // called at all, and the row stays Pending rather than reaching Ok.
+        vm.SetTypeEnabled(MergeTypes.Excel, true);
 
         await vm.AddPaths(new[] { dir.File("a.xlsx") });
         await vm.MergeAsync(null);
@@ -779,6 +793,13 @@ public class MergePdfsViewModelTests
         converter.AddWarning("Word: couldn't restore Visible (RPC server unavailable)");
         var vm = MakeVm(converter: converter,
             fileMerger: (paths, output, _, _) => Ok(paths[0], Path.Combine(dir.Path, "Job.pdf"), paths.Count));
+        // Word is off by default -- without this the docx row is excluded,
+        // MergeAsync builds zero units, and RunBatchAsync returns before
+        // ever touching Status (DrainConverterWarnings still runs
+        // unconditionally afterward and would append the warning to an
+        // untouched "" regardless) -- this fact's own docstring, "AFTER a
+        // merge run", would then be proven by a run that never happened.
+        vm.SetTypeEnabled(MergeTypes.Word, true);
 
         await vm.AddPaths(new[] { dir.File("a.docx") });
         await vm.MergeAsync(null);
@@ -797,6 +818,16 @@ public class MergePdfsViewModelTests
         converter.AddWarning("Word: first warning");
         var vm = MakeVm(converter: converter,
             fileMerger: (paths, output, _, _) => Ok(paths[0], Path.Combine(dir.Path, "Job.pdf"), paths.Count));
+        // Word is off by default -- see the sibling fact above for why this
+        // matters here too. Without it, BOTH runs below build zero units:
+        // RunBatchAsync's own tally-overwrite of Status (the thing that
+        // resets it between runs) never executes on that early-return path,
+        // so a real bug survived here on the FIRST attempt at this fix —
+        // "first warning" persisted into the second run's Status instead of
+        // being cleared, and the DoesNotContain assertion below failed for
+        // real (Status was "first warning · second warning", not just
+        // "second warning") until Word was switched on.
+        vm.SetTypeEnabled(MergeTypes.Word, true);
         await vm.AddPaths(new[] { dir.File("a.docx") });
         await vm.MergeAsync(null);
         Assert.Contains("first warning", vm.Status);
@@ -835,6 +866,11 @@ public class MergePdfsViewModelTests
 
         using var dir = new TempDir();
         var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler());
+        // PowerPoint is off by default -- without this the probe never
+        // runs at all (Probe() skips an excluded row on purpose), so the
+        // row would read "not included" rather than exercising the
+        // ppt-specific wording this fact exists to prove.
+        vm.SetTypeEnabled(MergeTypes.PowerPoint, true);
 
         await vm.AddPaths(new[] { dir.File("deck.ppt") });
 

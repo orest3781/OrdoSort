@@ -144,7 +144,14 @@ public class MergeTypeToggleTests : IDisposable
     [Fact]
     public async Task ARowOfASwitchedOffTypeIsListedButNotIncluded()
     {
+        // 2026-08-31: Word is now off by DEFAULT (owner's conservative-
+        // default decision), so it has to be switched ON first — otherwise
+        // SetTypeEnabled(Word, false) below is a no-op (already off) and
+        // this fact would "prove" exclusion without a real ON-to-OFF
+        // transition ever happening, the same already-cannot-fail shape the
+        // whole-branch review has already found six times.
         var vm = NewViewModel();
+        vm.SetTypeEnabled(MergeTypes.Word, true);
         await vm.AddPaths([DocxPath(), PdfPath()]);
         vm.SetTypeEnabled(MergeTypes.Word, false);
         var word = vm.Rows.Single(r => r.Kind == "word");
@@ -170,7 +177,13 @@ public class MergeTypeToggleTests : IDisposable
     [Fact]
     public async Task TogglingRaisesPropertyChangedOnTheRowsSoTheGridRepaints()
     {
+        // 2026-08-31: Word must start ON so switching it off is a REAL
+        // transition — Set(ref field, value) only raises PropertyChanged
+        // when the value actually changes, so with Word off by default an
+        // off-to-off SetTypeEnabled call would raise nothing at all and
+        // this fact would fail outright, not just vacuously.
         var vm = NewViewModel();
+        vm.SetTypeEnabled(MergeTypes.Word, true);
         await vm.AddPaths([DocxPath()]);
         var row = vm.Rows.Single();
         var raised = new List<string?>();
@@ -179,17 +192,30 @@ public class MergeTypeToggleTests : IDisposable
         Assert.Contains(nameof(ZipItemRow.IsIncluded), raised);
     }
 
+    /// <summary>2026-08-31: rewritten from switching Word/Images OFF to
+    /// switching them ON. Word and Images are off by DEFAULT now (the
+    /// owner's conservative-default decision), so the old shape — tick them
+    /// off, reopen, expect them off — became a fact that could not fail: a
+    /// completely broken Save/Load pair (nothing ever persisted, at all)
+    /// would land on exactly the same conclusion, because "off" is what a
+    /// fresh, never-configured view model already shows for both groups
+    /// regardless of whether persistence ran. Switching them ON instead
+    /// means a broken persistence path is caught for real — Word/Images
+    /// would read back OFF (the default) rather than the ON this fact
+    /// demands. Excel, never touched at all, is the control: it must stay
+    /// off, proving the round trip does not just turn everything on.</summary>
     [Fact]
     public void TheChoiceIsSavedAndComesBack()
     {
         var config = new Config();
         var vm = NewViewModel(config);
-        vm.SetTypeEnabled(MergeTypes.Word, false);
-        vm.SetTypeEnabled(MergeTypes.Images, false);
+        vm.SetTypeEnabled(MergeTypes.Word, true);
+        vm.SetTypeEnabled(MergeTypes.Images, true);
         var reopened = NewViewModel(config);
-        Assert.False(reopened.IsTypeEnabled(MergeTypes.Word));
-        Assert.False(reopened.IsTypeEnabled(MergeTypes.Images));
-        Assert.True(reopened.IsTypeEnabled(MergeTypes.Pdf));
+        Assert.True(reopened.IsTypeEnabled(MergeTypes.Word));
+        Assert.True(reopened.IsTypeEnabled(MergeTypes.Images));
+        Assert.True(reopened.IsTypeEnabled(MergeTypes.Pdf));      // never touched — stays at its default, on
+        Assert.False(reopened.IsTypeEnabled(MergeTypes.Excel));   // never touched — stays at its default, off
     }
 
     [Fact]
@@ -255,15 +281,31 @@ public class MergeTypeToggleTests : IDisposable
     /// MergeTypes.AllGroups' own order, a non-empty Label) and that flipping
     /// a toggle through SetTypeEnabled — not through the checkbox itself —
     /// still reaches the SAME toggle object's IsEnabled, the way a test (or
-    /// another part of the view model) doing so must.</summary>
+    /// another part of the view model) doing so must.
+    ///
+    /// 2026-08-31: "nothing configured yet" no longer means every toggle
+    /// starts checked — the conservative default is PDF and Zip only, every
+    /// other group off — so the blanket Assert.All(..., IsEnabled) this
+    /// fact used to open with is rewritten to name the actual split.</summary>
     [Fact]
     public void TypeTogglesCoverEveryGroupInOrderAndReflectDirectChanges()
     {
         var vm = NewViewModel();
         Assert.Equal(MergeTypes.AllGroups, vm.TypeToggles.Select(t => t.Group));
         Assert.All(vm.TypeToggles, t => Assert.False(string.IsNullOrWhiteSpace(t.Label)));
-        Assert.All(vm.TypeToggles, t => Assert.True(t.IsEnabled));   // nothing configured yet
 
+        // nothing configured yet: PDF and Zip on, everything else off.
+        Assert.True(vm.TypeToggles.Single(t => t.Group == MergeTypes.Pdf).IsEnabled);
+        Assert.True(vm.TypeToggles.Single(t => t.Group == MergeTypes.Zip).IsEnabled);
+        Assert.All(vm.TypeToggles.Where(t => t.Group is not (MergeTypes.Pdf or MergeTypes.Zip)),
+            t => Assert.False(t.IsEnabled));
+
+        // Excel is off by default too, so the forward direction (does
+        // SetTypeEnabled reach the toggle object) needs a real ON-then-OFF
+        // round trip to be a genuine transition rather than an off-to-off
+        // no-op.
+        vm.SetTypeEnabled(MergeTypes.Excel, true);
+        Assert.True(vm.TypeToggles.Single(t => t.Group == MergeTypes.Excel).IsEnabled);
         vm.SetTypeEnabled(MergeTypes.Excel, false);
         Assert.False(vm.TypeToggles.Single(t => t.Group == MergeTypes.Excel).IsEnabled);
 
@@ -324,9 +366,16 @@ public class MergeTypeToggleTests : IDisposable
     [Fact]
     public async Task AToggleFlippedDuringOneUnitDoesNotChangeWhatALaterUnitInTheSameBatchSees()
     {
+        // 2026-08-31: Word must start ON, deliberately — it is off by
+        // default now, so without this the docx entries would be filtered
+        // out of BOTH zips from the very first snapshot, the converter
+        // would never be called at all (nothing left to convert), the
+        // flip-off callback would never fire, and this fact would prove
+        // nothing about the snapshot it exists to pin.
         MergePdfsViewModel? vm = null;
         var converter = new RecordingDocxConverter(onFirstConvert: () => vm!.SetTypeEnabled(MergeTypes.Word, false));
         vm = NewViewModel(converter: converter);
+        vm.SetTypeEnabled(MergeTypes.Word, true);
 
         var zip1 = ZipWithOneDocx("a.docx");
         var zip2 = ZipWithOneDocx("b.docx");
@@ -404,7 +453,13 @@ public class MergeTypeToggleTests : IDisposable
     [Fact]
     public async Task ADocumentNothingCanConvertIsMarkedWhenItIsDropped()
     {
+        // Word must be switched ON for this fact's premise to hold at all
+        // now that it is off by default: Probe() itself skips an EXCLUDED
+        // row on purpose (see its own doc comment), so without this the row
+        // would land on "not included", not the "nothing can convert it"
+        // verdict this fact exists to prove.
         var vm = NewViewModel(converter: new StubConverter(handles: null));
+        vm.SetTypeEnabled(MergeTypes.Word, true);
         await vm.AddPaths(new[] { DocxPath() });
         var row = Assert.Single(vm.Rows);
         Assert.Equal(ZipItemRowStatus.Error, row.StatusKind);

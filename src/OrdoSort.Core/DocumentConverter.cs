@@ -50,9 +50,24 @@ public static class MergeTypes
     /// other end exactly the same way. The load-bearing half is
     /// <see cref="Save"/> choosing this over "" — an empty string is
     /// indistinguishable from null/whitespace, both of which mean "nothing
-    /// was ever saved" and load as every group on, so a user who unticks
-    /// every type would get every type back at the next launch.</summary>
+    /// was ever saved" and load as <see cref="DefaultGroups"/>, not every
+    /// group, so a user who unticks every type would get the conservative
+    /// default back at the next launch, not everything re-enabled.</summary>
     public const string NoneStored = "none";
+
+    /// <summary>The conservative first-run default (owner's decision,
+    /// 2026-08-31, asked directly): PDF and Zip only. Every other group —
+    /// everything this feature added — starts switched OFF and has to be
+    /// turned on deliberately, from the window's own toggle row. This is
+    /// not the same choice as "every group on": with every new type opt-in,
+    /// the window behaves EXACTLY as it did before this feature shipped
+    /// until the user ticks something, so dropping a folder on it cannot
+    /// silently sweep a stray readme.txt, a thumbnail.jpg or a minified
+    /// .json export into a client packet the way an everything-on default
+    /// would. <see cref="Load"/> returns this whenever nothing has ever
+    /// been stored — see that method's own doc comment for how this stays
+    /// distinct from a user who explicitly unticked every box.</summary>
+    public static IReadOnlyList<string> DefaultGroups { get; } = [Pdf, Zip];
 
     // ".htm"/".html" are a deliberate v1 non-goal, not a silent omission:
     // opening a web document in Word fetches remote resources, which is
@@ -106,15 +121,19 @@ public static class MergeTypes
     }
 
     /// <summary>Null, empty, or all-whitespace means "nothing was ever
-    /// saved" and loads as every group on — see <see cref="Save"/> for why a
-    /// stored empty set is never one of those three. <see cref="NoneStored"/>
-    /// needs no special case here: it names no real group, so it is dropped
-    /// by the same unknown-name filter below that drops a stray "hologram"
-    /// from a later version, and comes back empty exactly like any other
-    /// stored value that names zero known groups.</summary>
+    /// saved" and loads as <see cref="DefaultGroups"/> — PDF and Zip only,
+    /// the conservative first-run default (owner's decision, 2026-08-31) —
+    /// NOT every group; see <see cref="Save"/> for why a stored empty set is
+    /// never one of those three, so this stays distinct from a user who
+    /// deliberately unticked every box (that loads as genuinely empty, via
+    /// <see cref="NoneStored"/> below). <see cref="NoneStored"/> needs no
+    /// special case here: it names no real group, so it is dropped by the
+    /// same unknown-name filter below that drops a stray "hologram" from a
+    /// later version, and comes back empty exactly like any other stored
+    /// value that names zero known groups.</summary>
     public static ISet<string> Load(string? stored) =>
         string.IsNullOrWhiteSpace(stored)
-            ? new HashSet<string>(AllGroups, StringComparer.OrdinalIgnoreCase)
+            ? new HashSet<string>(DefaultGroups, StringComparer.OrdinalIgnoreCase)
             : new HashSet<string>(
                 stored.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                       .Where(g => ByGroup.ContainsKey(g)),

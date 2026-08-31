@@ -1364,7 +1364,7 @@ Replace the sentinel with `Type.Missing` → the protected-document fact must TI
 
 - [ ] **Step 3: Implement**
 
-- `Config`: a `merge_types` string property with the same `JsonPropertyName` style as its neighbours, defaulting to `""` (never set → everything on).
+- `Config`: a `merge_types` string property with the same `JsonPropertyName` style as its neighbours, defaulting to `""` (never set → the conservative default, PDF and Zip only — see the spec's 2026-08-31 Amendment; this plan originally read "→ everything on", the design's own original, since-superseded default).
 - `ZipItemRow`: `IsIncluded` (settable by the view model, raising `PropertyChanged`), folded into `IsRunnable`, and a note when excluded. `KindOf` maps every group's extensions to its group name so the Kind column reads `word`/`excel`/`powerpoint`/`image`/`text` alongside `pdf`/`zip`/`folder`.
 - `MergePdfsViewModel`: `IsTypeEnabled(group)` / `SetTypeEnabled(group, bool)`; a `TypeToggles` collection the XAML binds to; on change, persist through config and re-evaluate `IsIncluded` on every row, then `OnRowsChanged()`. Pass the enabled set into `PdfMerge` via the lambda capture (**do not change the `_zipMerger`/`_fileMerger` delegate signatures** — existing tests inject through them).
 - **`Extensions` moves here from Task 8** (pre-flight ruling): `MergePdfsViewModel.Extensions` becomes `MergeTypes.AllExtensions` and `IntakeNoun` becomes "PDF, document, image or zip". Without this, every fact in THIS task fails for the wrong reason — they drop a `.docx` into the list, which intake refuses until the accepted set is widened. It also belongs with this task's `KindOf`/row work rather than with Task 8's converter chain.
