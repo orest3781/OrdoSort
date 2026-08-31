@@ -65,4 +65,63 @@ public class MergePdfsWindowTests
         }
         finally { window.Close(); }
     });
+
+    /// <summary>Task 7 review finding 3: IsIncluded fed IsRunnable, the note
+    /// and the button's count, but nothing visual — an excluded row was
+    /// indistinguishable from an ordinary pending one except for its text.
+    /// Reads the REALIZED DataGridRow's Opacity (the DataTrigger's actual,
+    /// resolved effect), not the static XAML declaration — the style this
+    /// codebase's own DataGridSelectionContrastTests/DataGridNoteColourTests
+    /// families already use for pinning a trigger's real behaviour rather
+    /// than its source text.</summary>
+    [Fact]
+    public async Task AnExcludedRowIsDimmedAndAnIncludedRowIsNot()
+    {
+        // AddPaths/SetTypeEnabled run OUTSIDE _fx.Invoke, before any window
+        // exists — MergePdfsViewModel and its Rows are plain objects with no
+        // thread affinity of their own until a WPF DataGrid starts observing
+        // them, and InlineWorkScheduler with no uiContext means nothing here
+        // needs a Dispatcher at all. This is what lets the test await
+        // naturally instead of blocking inside the STA lambda the way
+        // AutoFitColumnTests.ShowOffscreenAndDriveCurrent has to for a REAL
+        // async operation (WebView2 init) that only exists once its window
+        // is realized — no such requirement here.
+        using var dir = new TempDir();
+        var word = dir.File("a.docx");
+        var pdf = dir.File("b.pdf");
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(),
+            zipProbe: (p, _) => new Zipper.ZipProbeResult(p, "not_encrypted"),
+            pdfProbe: (p, _) => new Unlock.ProbeResult("not_encrypted", p));
+        await vm.AddPaths(new[] { word, pdf });
+        vm.SetTypeEnabled(MergeTypes.Word, false);
+
+        _fx.Invoke(() =>
+        {
+            ThemeManager.Apply(_fx.App, dark: false);
+            var window = new MergePdfsWindow(vm)
+            {
+                Left = -20000, Top = 0, ShowActivated = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+            };
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+                OverflowProbe.PumpRender();
+                window.UpdateLayout();
+
+                var grid = Assert.Single(Descendants<DataGrid>((DependencyObject)window.Content));
+                var excludedRow = vm.Rows.Single(r => r.Kind == "word");
+                var includedRow = vm.Rows.Single(r => r.Kind == "pdf");
+                var excludedContainer = grid.ItemContainerGenerator.ContainerFromItem(excludedRow) as DataGridRow
+                    ?? throw new InvalidOperationException("the excluded row was not realized");
+                var includedContainer = grid.ItemContainerGenerator.ContainerFromItem(includedRow) as DataGridRow
+                    ?? throw new InvalidOperationException("the included row was not realized");
+
+                Assert.Equal(0.5, excludedContainer.Opacity);
+                Assert.Equal(1.0, includedContainer.Opacity);
+            }
+            finally { window.Close(); }
+        });
+    }
 }

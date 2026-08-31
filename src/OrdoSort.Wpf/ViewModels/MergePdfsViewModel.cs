@@ -68,11 +68,20 @@ public sealed class MergePdfsViewModel : ZipListViewModel
         // all now that MergeZip/MergeFiles carry two extra optional
         // parameters (converter, includeTypes). The lambda spells out the
         // exact three/four-argument shape this field actually needs.
-        // Behavior is unchanged: converter and includeTypes still default
-        // to null (every type, no conversion) until this view model itself
-        // is wired to pass them through.
-        _zipMerger = zipMerger ?? ((path, mergeCandidates, ask) => PdfMerge.MergeZip(path, mergeCandidates, ask));
-        _fileMerger = fileMerger ?? ((paths, outputPath, mergeCandidates, ask) => PdfMerge.MergeFiles(paths, outputPath, mergeCandidates, ask));
+        // converter stays null (no conversion) until Task 8 wires one in.
+        // includeTypes is `_enabledTypes` itself, not a snapshot taken here:
+        // the lambda reads the FIELD at invocation time (well after this
+        // constructor returns), so a toggle flipped between AddPaths and
+        // MergeAsync is honoured. Task 7 review finding 1: this was
+        // previously left at the PdfMerge default (null = every type on),
+        // which let a merge reach past the toggles entirely — switch PDF
+        // off, leave Zip on, and PDFs inside an included zip still merged,
+        // because the archive's OWN contents were never filtered by
+        // anything but MergeTypes.AllExtensions at intake.
+        _zipMerger = zipMerger ?? ((path, mergeCandidates, ask) =>
+            PdfMerge.MergeZip(path, mergeCandidates, ask, includeTypes: _enabledTypes));
+        _fileMerger = fileMerger ?? ((paths, outputPath, mergeCandidates, ask) =>
+            PdfMerge.MergeFiles(paths, outputPath, mergeCandidates, ask, includeTypes: _enabledTypes));
         _zipProbe = zipProbe ?? Zipper.Probe;
         _pdfProbe = pdfProbe ?? Unlock.ProbeReadiness;
 

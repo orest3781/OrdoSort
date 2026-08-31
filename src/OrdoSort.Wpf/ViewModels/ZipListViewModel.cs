@@ -81,29 +81,28 @@ public sealed class ZipItemRow : ObservableObject
     /// True by default: a row is included until something says otherwise,
     /// which is also why the Zip Extract window — whose view model never
     /// touches this property at all — sees no change in behaviour from its
-    /// existence. Swaps Note for a short explanation while excluded and
-    /// restores whatever was there before the instant the type is switched
-    /// back on, so a row picks up exactly where it left off rather than
-    /// looking freshly re-added.</summary>
+    /// existence.
+    ///
+    /// Raises PropertyChanged on Note as well as its own name, because
+    /// Note's PUBLIC value is computed from this — see Note's own doc
+    /// comment for why the underlying note is only ever MASKED while
+    /// excluded, never overwritten: a probe or Apply/Mark landing on a row
+    /// that is already excluded (2026-08-30 review, Task 7 finding 2 — the
+    /// feature's own headline case: a type switched off in an earlier,
+    /// persisted session, a file of that type dropped today, its add-time
+    /// probe running after AddPaths has already set IsIncluded false) used
+    /// to permanently clobber "not included — …" with whatever the probe
+    /// said, because the old swap-on-transition design only ever captured
+    /// the note ONCE, at the moment of exclusion, with nowhere to put a
+    /// later write. Masking instead of swapping removes the transition
+    /// entirely: there is nothing to go stale.</summary>
     private bool _isIncluded = true;
-    private string? _noteBeforeExclusion;
     public bool IsIncluded
     {
         get => _isIncluded;
         set
         {
-            if (_isIncluded == value) return;
-            if (!value)
-            {
-                _noteBeforeExclusion = _note;
-                Note = "not included — this file type is switched off";
-            }
-            else
-            {
-                Note = _noteBeforeExclusion ?? "";
-                _noteBeforeExclusion = null;
-            }
-            Set(ref _isIncluded, value);
+            if (Set(ref _isIncluded, value)) Raise(nameof(Note));
         }
     }
 
@@ -115,10 +114,18 @@ public sealed class ZipItemRow : ObservableObject
 
     /// <summary>"" while Pending with nothing to say; a probe's readiness
     /// note while still Pending; the operation's own message on a failure; a
-    /// short result line on success. While IsIncluded is false this instead
-    /// shows the exclusion note — see IsIncluded's own doc comment.</summary>
+    /// short result line on success — always what Apply/Mark actually wrote,
+    /// whether or not IsIncluded is true at the time, so a verdict landing
+    /// on an excluded row (or a row excluded after it landed) is never lost,
+    /// only hidden. The PUBLIC getter substitutes a fixed explanation while
+    /// IsIncluded is false and reveals the real note again — unchanged, not
+    /// re-derived — the instant the row is switched back on.</summary>
     private string _note = "";
-    public string Note { get => _note; private set => Set(ref _note, value); }
+    public string Note
+    {
+        get => _isIncluded ? _note : "not included — this file type is switched off";
+        private set => Set(ref _note, value);
+    }
 
     private string? _output;
     public string? Output { get => _output; private set => Set(ref _output, value); }

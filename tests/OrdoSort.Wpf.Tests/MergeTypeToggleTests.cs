@@ -1,5 +1,8 @@
+using System.IO.Compression;
 using OrdoSort.Core;
 using OrdoSort.Wpf.ViewModels;
+using PdfSharp.Pdf;
+using ZipFile = System.IO.Compression.ZipFile;
 
 namespace OrdoSort.Wpf.Tests;
 
@@ -29,14 +32,33 @@ public class MergeTypeToggleTests : IDisposable
     private string PdfPath() => _dir.File($"file{_fileNumber++}.pdf");
     private string ZipPath() => _dir.File($"archive{_fileNumber++}.zip");
 
+    /// <summary>A REAL zip holding one REAL one-page PDF entry — needed only
+    /// by facts that exercise the actual PdfMerge.MergeZip path (fix 1's
+    /// fact below), where a dummy "x" file would never round-trip through a
+    /// real ZipArchive/PdfReader.</summary>
+    private string ZipWithOnePdf()
+    {
+        var zipPath = Path.Combine(_dir.Path, $"withpdf{_fileNumber++}.zip");
+        using var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create);
+        using var doc = new PdfDocument();
+        doc.AddPage();
+        using var ms = new MemoryStream();
+        doc.Save(ms, closeStream: false);
+        ms.Position = 0;
+        using var entryStream = zip.CreateEntry("a.pdf").Open();
+        ms.CopyTo(entryStream);
+        return zipPath;
+    }
+
     private static MergePdfsViewModel NewViewModel(
         Config? config = null,
         Func<string, IReadOnlyList<string>, Func<PasswordRequest, string?>?, PdfMerge.MergeResult>? zipMerger = null,
-        Func<IReadOnlyList<string>, string?, IReadOnlyList<string>, Func<PasswordRequest, string?>?, PdfMerge.MergeResult>? fileMerger = null) =>
+        Func<IReadOnlyList<string>, string?, IReadOnlyList<string>, Func<PasswordRequest, string?>?, PdfMerge.MergeResult>? fileMerger = null,
+        Func<string, IReadOnlyList<string>, Unlock.ProbeResult>? pdfProbe = null) =>
         new(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(), uiContext: null,
             zipMerger, fileMerger,
             zipProbe: (p, _) => new Zipper.ZipProbeResult(p, "not_encrypted"),
-            pdfProbe: (p, _) => new Unlock.ProbeResult("not_encrypted", p),
+            pdfProbe: pdfProbe ?? ((p, _) => new Unlock.ProbeResult("not_encrypted", p)),
             config: config);
 
     /// <summary>Records every path a fake fileMerger was handed — the
@@ -186,5 +208,84 @@ public class MergeTypeToggleTests : IDisposable
         // through IsTypeEnabled.
         vm.TypeToggles.Single(t => t.Group == MergeTypes.Excel).IsEnabled = true;
         Assert.True(vm.IsTypeEnabled(MergeTypes.Excel));
+    }
+
+    // ---- 2026-08-30 review fix round: three Important findings ----------
+
+    /// <summary>Review finding 1: the toggles governed the list but not an
+    /// archive's OWN contents — the default zipMerger/fileMerger never
+    /// passed includeTypes to PdfMerge, so it stayed null ("every type is
+    /// on") no matter what was switched off. Concrete effect this closes:
+    /// switch PDF off, leave Zip on, and a zip containing only a PDF used to
+    /// merge it anyway. Exercises the REAL PdfMerge.MergeZip (no fake
+    /// zipMerger) — a fake could not tell the fix from the bug, since the
+    /// filtering happens INSIDE PdfMerge, not in this view model.</summary>
+    [Fact]
+    public async Task ASwitchedOffTypeInsideAnIncludedZipDoesNotMerge()
+    {
+        var vm = NewViewModel();   // real zipMerger: PdfMerge.MergeZip
+        var zip = ZipWithOnePdf();
+        await vm.AddPaths([zip]);
+        vm.SetTypeEnabled(MergeTypes.Pdf, false);   // Zip itself stays ON
+
+        await vm.MergeAsync(null);
+
+        var row = vm.Rows.Single();
+        Assert.Equal(ZipItemRowStatus.NoPdfs, row.StatusKind);
+        Assert.Equal("nothing to merge inside", row.Note);
+    }
+
+    /// <summary>Review finding 2: ZipItemRow.IsIncluded's old swap-on-
+    /// transition design captured "the note before exclusion" exactly ONCE,
+    /// at the moment IsIncluded flipped to false — so a LATER direct write
+    /// to Note (Mark/Apply, called by a probe or a run, neither of which
+    /// knows or cares about IsIncluded) permanently overwrote the exclusion
+    /// message with nothing to restore it. Reachable through the feature's
+    /// own headline use case: a type switched off in an earlier, PERSISTED
+    /// session — SetTypeEnabled runs before AddPaths here, not after — so
+    /// the add-time probe lands on a row that is already excluded. The fix
+    /// (Note as a MASKED computed getter, never overwritten) is proven both
+    /// ways: the exclusion note survives the probe, and the probe's own
+    /// verdict — never actually lost, only hidden — reappears unchanged the
+    /// instant the type is switched back on.</summary>
+    [Fact]
+    public async Task AProbeLandingAfterExclusionDoesNotEraseTheExclusionNoteOrThePriorRealNote()
+    {
+        var vm = NewViewModel(pdfProbe: (p, _) => new Unlock.ProbeResult("ready", p, MatchedIndex: 0));
+        vm.SetTypeEnabled(MergeTypes.Pdf, false);
+        await vm.AddPaths([PdfPath()]);
+        var row = vm.Rows.Single();
+
+        Assert.False(row.IsIncluded);
+        Assert.Contains("not included", row.Note);   // the probe's verdict must not have erased this
+
+        vm.SetTypeEnabled(MergeTypes.Pdf, true);
+        Assert.True(row.IsIncluded);
+        Assert.Equal("a saved password opens this", row.Note);   // ...and must not have been lost either
+    }
+
+    /// <summary>Reviewer's Minor 2, folded in: the one scenario that is
+    /// fully functional today without leaning on Task 8's still-pending
+    /// IsPdf sweep (contrast <see cref="AnExcludedRowIsNotSelectedIntoTheRun"/>
+    /// above, which is honest but weak for exactly that reason) — PDF
+    /// switched off, then a REAL MergeAsync run through the real
+    /// PdfMerge.MergeFiles, not a fake fileMerger. The most realistic proof
+    /// available at this point in the plan, and previously only covered
+    /// indirectly.</summary>
+    [Fact]
+    public async Task ARealMergeRunLeavesASwitchedOffLoosePdfRowUntouched()
+    {
+        var pdf = PdfPath();
+        var vm = NewViewModel();   // real fileMerger: PdfMerge.MergeFiles
+        await vm.AddPaths([pdf]);
+        vm.SetTypeEnabled(MergeTypes.Pdf, false);
+
+        await vm.MergeAsync(null);
+
+        var row = vm.Rows.Single();
+        Assert.Equal(ZipItemRowStatus.Pending, row.StatusKind);   // never selected into a unit
+        Assert.False(row.IsIncluded);
+        Assert.Equal("Merge", vm.MergeButtonText);
+        Assert.Equal(new[] { pdf }, Directory.GetFiles(_dir.Path));   // nothing was ever written
     }
 }

@@ -98,6 +98,21 @@
                                     <Setter Property="Background"
                                             Value="{DynamicResource Theme.RowHover}" />
                                 </Trigger>
+                                <!-- Task 7 review finding 3: IsIncluded fed
+                                     IsRunnable, the note and the button's
+                                     count, but nothing visual — an excluded
+                                     row looked identical to an ordinary
+                                     pending one. 0.5 Opacity is the SAME
+                                     figure this app's own IsEnabled="False"
+                                     controls already use for "greyed out"
+                                     (Theme/Styles.xaml) — one setter dims
+                                     every column uniformly rather than
+                                     duplicating each column's own Foreground
+                                     trigger (Kind's SubtleText/AccentText,
+                                     Result's status colours). -->
+                                <DataTrigger Binding="{Binding IsIncluded}" Value="False">
+                                    <Setter Property="Opacity" Value="0.5" />
+                                </DataTrigger>
                             </Style.Triggers>
                         </Style>
                     </DataGrid.RowStyle>
