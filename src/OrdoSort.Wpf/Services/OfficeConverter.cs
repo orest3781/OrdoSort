@@ -90,7 +90,7 @@ namespace OrdoSort.Wpf.Services;
 /// merge's documents), so there is nothing concurrent to protect against
 /// yet, and a lock would be complexity guarding a scenario that does not
 /// exist in this codebase.</summary>
-public sealed class OfficeConverter : IDocumentConverter, IDisposable
+public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsRestorationWarnings
 {
     private const string WordProgId = "Word.Application";
     private const string WordProcessName = "WINWORD";

@@ -2,6 +2,21 @@ using OrdoSort.Core;
 
 namespace OrdoSort.Wpf.Services;
 
+/// <summary>Something a converter can report without being asked to convert
+/// anything — today, exactly <see cref="OfficeConverter.RestorationWarnings"/>.
+/// A small interface rather than checking for the concrete
+/// <see cref="OfficeConverter"/> type by name: keyed on a concrete type,
+/// <see cref="ConverterChain.RestorationWarnings"/> could only ever be
+/// proven against the real class (review Minor 1 — the "green fact that
+/// proves nothing" trap this repo's own history already records three
+/// times), never against a fake standing in for one in a test. Nothing else
+/// in this feature has anything analogous to report, so this stays tiny on
+/// purpose.</summary>
+public interface IReportsRestorationWarnings
+{
+    IReadOnlyList<string> RestorationWarnings { get; }
+}
+
 /// <summary>Tries each <see cref="IDocumentConverter"/> in the order it was
 /// built with and commits to the first one that claims the extension — the
 /// no-silent-downgrade rule. <see cref="Handles"/> is true when ANY link
@@ -39,7 +54,7 @@ namespace OrdoSort.Wpf.Services;
 /// <see cref="OfficeConverter"/> does (its own Quit/kill of a session it
 /// started, and the flag restoration on a session it borrowed) — without
 /// having to know which link that is or how many of them there are.</summary>
-public sealed class ConverterChain : IDocumentConverter, IDisposable
+public sealed class ConverterChain : IDocumentConverter, IDisposable, IReportsRestorationWarnings
 {
     private readonly IReadOnlyList<IDocumentConverter> _links;
 
@@ -68,17 +83,16 @@ public sealed class ConverterChain : IDocumentConverter, IDisposable
         return new("unsupported", null, $"{displayName} isn't a type this PC can convert");
     }
 
-    /// <summary>Restoration warnings from every <see cref="OfficeConverter"/>
-    /// link this chain wraps (today, at most one) — see
+    /// <summary>Restoration warnings from every link that reports them
+    /// (today, at most one <see cref="OfficeConverter"/>) — see
     /// <see cref="OfficeConverter.RestorationWarnings"/> for what these mean
-    /// and why the list is empty until that link has been disposed. Checked
-    /// by type rather than through a bespoke marker interface on
-    /// <see cref="IDocumentConverter"/> itself: nothing else in this feature
-    /// has anything analogous to report, so adding a member every converter
-    /// would have to implement — for exactly one real implementer — would be
-    /// the wrong trade.</summary>
+    /// and why the list is typically empty until that link has been
+    /// disposed. Aggregated by <see cref="IReportsRestorationWarnings"/>,
+    /// not the concrete <see cref="OfficeConverter"/> type, so a fake link in
+    /// a test can prove this aggregation actually reads through rather than
+    /// merely staying empty either way.</summary>
     public IReadOnlyList<string> RestorationWarnings =>
-        _links.OfType<OfficeConverter>().SelectMany(office => office.RestorationWarnings).ToList();
+        _links.OfType<IReportsRestorationWarnings>().SelectMany(reporter => reporter.RestorationWarnings).ToList();
 
     /// <summary>Disposes every link that needs it. The other three
     /// converters this feature ships (<see cref="ImageToPdf"/>,

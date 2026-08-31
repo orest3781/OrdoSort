@@ -124,4 +124,71 @@ public class MergePdfsWindowTests
             finally { window.Close(); }
         });
     }
+
+    private sealed class DisposableProbe : IDocumentConverter, IDisposable
+    {
+        public bool Disposed { get; private set; }
+        public bool Handles(string extension) => false;
+        public ConversionResult ToPdf(byte[] source, string displayName,
+            IReadOnlyList<string> candidates, Func<PasswordRequest, string?>? ask) =>
+            new("unsupported", null);
+        public void Dispose() => Disposed = true;
+    }
+
+    /// <summary>Review Important 2: nothing pinned the line that makes the
+    /// whole per-window Office-scoping design real. Delete `_vm.Dispose()`
+    /// from OnClosed and this is the only fact in the whole suite that
+    /// notices — every other MergePdfsWindow fact closes its window too, but
+    /// none of them ever checks that anything actually happened as a result.
+    /// Uses an injected fake specifically so this needs no real Office at
+    /// all: the WIRING (does closing the window reach the view model's
+    /// Dispose) is what's under test, not OfficeConverter's own disposal
+    /// behaviour, which OfficeConverterTests already covers.</summary>
+    [Fact]
+    public void ClosingTheWindowDisposesTheViewModelsConverter() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var converter = new DisposableProbe();
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(),
+            converter: converter);
+        var window = new MergePdfsWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        window.Show();
+        window.UpdateLayout();
+
+        window.Close();
+
+        Assert.True(converter.Disposed);
+    });
+
+    // ---- review Minor 3: the Add dialog's filter narrowing -------------
+
+    /// <summary>MergePdfsWindow.SupportedFilesFilter is internal specifically
+    /// so this can assert on the exact string without driving the real,
+    /// unautomatable Win32 OpenFileDialog. Pins the narrowing the first
+    /// Task 8 pass dropped: the old hard-coded filter offered "PDF files
+    /// only" and "Zip archives only" alongside the combined choice; the
+    /// MergeTypes-derived replacement must offer the same PER-GROUP choices,
+    /// not just "everything" and "literally anything".</summary>
+    [Fact]
+    public void SupportedFilesFilterOffersOneEntryPerGroupNotJustEverythingOrAnything()
+    {
+        var filter = MergePdfsWindow.SupportedFilesFilter();
+
+        Assert.Contains("Supported files (", filter);
+        Assert.Contains("PDF files (*.pdf)|*.pdf", filter);
+        Assert.Contains("Zip archives (*.zip)|*.zip", filter);
+        Assert.Contains("Word documents (", filter);
+        Assert.Contains("Excel spreadsheets (", filter);
+        Assert.Contains("PowerPoint presentations (", filter);
+        Assert.Contains("All files (*.*)|*.*", filter);
+        // Every group's own extension shows up somewhere, not just in the
+        // combined entry — MergeTypes.AllGroups is the single source, so a
+        // group silently dropped here would mean it lost its own narrowing.
+        Assert.Equal(MergeTypes.AllGroups.Count, MergeTypes.AllGroups.Count(g =>
+            MergeTypes.ExtensionsOf(g).All(e => filter.Contains($"*.{e}"))));
+    }
 }

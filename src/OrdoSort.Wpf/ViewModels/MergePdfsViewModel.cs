@@ -31,8 +31,37 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
     /// below. Defaults to the real chain — Office first, then the three
     /// converters that need nothing installed — so opening this window in
     /// production always gets real conversion without a caller having to
-    /// wire anything; a test supplies its own stand-in instead.</summary>
+    /// wire anything; a test supplies its own stand-in instead.
+    ///
+    /// Scoped to this VIEW MODEL's own lifetime, not to a single merge run:
+    /// the window is modal with a fresh VM per open (MainWindow.OnMergePdfs)
+    /// and OnClosed disposes it (see Dispose), so any Office session this
+    /// class starts is bounded by one dialog session, not the app's — and
+    /// opening the window itself starts nothing at all, since IsAvailable/
+    /// Handles are registry lookups only, never a CreateInstance. The honest
+    /// cost that trade accepts: a user who converts one document and then
+    /// leaves this dialog open for the rest of the afternoon holds an idle
+    /// WINWORD/EXCEL/POWERPNT process open for that whole afternoon, against
+    /// the alternative of paying a ~750ms Office cold start again on every
+    /// later merge in the same session.</summary>
     private readonly IDocumentConverter _converter;
+
+    /// <summary>Non-null only when this VM built the default converter
+    /// itself (no `converter` was injected) — kept alongside
+    /// <see cref="_converter"/> purely so <see cref="UnconvertibleReason"/>
+    /// can ask <see cref="OfficeConverter.IsAvailable"/> when choosing the
+    /// add-time probe's wording. A caller-injected converter (every test)
+    /// has no equivalent availability signal to offer, so this stays null
+    /// there and that method falls back to the generic wording those model
+    /// anyway.</summary>
+    private readonly OfficeConverter? _officeConverter;
+
+    /// <summary>How many entries of the converter's own APPEND-ONLY
+    /// RestorationWarnings list <see cref="DrainConverterWarnings"/> has
+    /// already folded into <see cref="ZipListViewModel.Status"/> — so a
+    /// second merge run's drain reports only what is new, never repeating a
+    /// warning already shown.</summary>
+    private int _warningsAlreadyReported;
 
     private readonly Config _cfg;
     private readonly Action? _saveConfig;
@@ -74,9 +103,21 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
         // toggle row, the enabled-type set) had nothing calling it yet.
         // Office first — best fidelity when installed — then the three
         // converters that need nothing installed at all; see ConverterChain
-        // for the no-silent-downgrade rule that ordering depends on.
-        _converter = converter ?? new ConverterChain(
-            new OfficeConverter(), new ImageToPdf(), new TableToPdf(), new TextToPdf());
+        // for the no-silent-downgrade rule that ordering depends on. The
+        // OfficeConverter reference is captured separately (not just
+        // recovered later via a cast) only because UnconvertibleReason needs
+        // to call IsAvailable on it directly — see _officeConverter's own
+        // doc comment.
+        if (converter is null)
+        {
+            var office = new OfficeConverter();
+            _officeConverter = office;
+            _converter = new ConverterChain(office, new ImageToPdf(), new TableToPdf(), new TextToPdf());
+        }
+        else
+        {
+            _converter = converter;
+        }
 
         // Fix round (review finding 6): a bare method group cannot omit a
         // delegate's optional parameters at all — a method group conversion
@@ -246,8 +287,32 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
         var group = MergeTypes.GroupOf(extension);
         if (group is null || !_enabledTypes.Contains(group) || _converter.Handles(extension)) return null;
 
+        return (ZipItemRowStatus.Error, UnconvertibleReason(group, extension));
+    }
+
+    /// <summary>Picks the add-time probe's wording for a switched-on type
+    /// nothing here converts (review Important 1 fix). Handles() alone
+    /// cannot tell "nothing here even tries" apart from "the app IS
+    /// installed, but this specific type is refused on purpose":
+    /// OfficeConverter.Handles deliberately returns false for ".ppt" even
+    /// when PowerPoint IS present — no safe password path exists for the
+    /// legacy binary format, so it is excluded outright rather than risking
+    /// the modal-dialog hang that class exists to prevent — so without this
+    /// check, a machine WITH PowerPoint installed would still have been told
+    /// "PowerPoint isn't installed", a false statement about that exact
+    /// machine, in red, at drop time. _officeConverter is null for an
+    /// injected converter (every test), which has no availability signal of
+    /// its own to offer, so this falls back to the generic wording those
+    /// model anyway — exactly "nothing here can convert this at all".</summary>
+    private string UnconvertibleReason(string group, string extension)
+    {
         var appName = GroupLabels.TryGetValue(group, out var label) ? label : group;
-        return (ZipItemRowStatus.Error, $"{appName} isn't installed, so this can't be converted");
+        if (_officeConverter?.IsAvailable(group) != true)
+            return $"{appName} isn't installed, so this can't be converted";
+
+        return extension.Equals("ppt", StringComparison.OrdinalIgnoreCase)
+            ? "PowerPoint 97-2003 can't be converted safely — save it as .pptx first."
+            : $"{appName} can't convert this file";
     }
 
     /// <summary>Already the one place re-run after every list change (an
@@ -308,8 +373,15 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
     /// nothing on click, silently, because the row was neither a zip nor a
     /// literal PDF. The revert-proof fact for this file is exactly that
     /// scenario: a lone non-PDF document, run for real, through the real
-    /// PdfMerge.MergeFiles.</summary>
-    internal Task MergeAsync(string? outputPath)
+    /// PdfMerge.MergeFiles.
+    ///
+    /// async, not a bare `return RunBatchAsync(...)`, specifically so
+    /// DrainConverterWarnings runs AFTER the batch settles rather than
+    /// racing it — see that method's own doc comment for why this is where
+    /// OfficeConverter.RestorationWarnings actually gets read now (the
+    /// review's Critical fix; it used to be read only from Dispose, where
+    /// nothing could ever see it).</summary>
+    internal async Task MergeAsync(string? outputPath)
     {
         var units = new List<Unit<PdfMerge.MergeResult>>();
         foreach (var row in Rows.Where(r => r.IsZip && r.IsRunnable))
@@ -325,7 +397,7 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
             units.Add(new Unit<PdfMerge.MergeResult>(loose,
                 candidates => _fileMerger(paths, outputPath, candidates, AskPassword)));
         }
-        return RunBatchAsync(units, r => r.Status, ApplyToUnit, "Merging",
+        await RunBatchAsync(units, r => r.Status, ApplyToUnit, "Merging",
             new[]
             {
                 new TallyClause("ok", "merged"),
@@ -333,6 +405,43 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
                 new TallyClause("needs_password", "needs a password", "need a password"),
                 new TallyClause("error", "failed"),
             });
+        DrainConverterWarnings();
+    }
+
+    /// <summary>Reads whatever NEW entries the converter's own
+    /// RestorationWarnings list has accumulated since the last drain and
+    /// folds them into Status — called at the end of every MergeAsync run,
+    /// while the window is still open and Status is still rendered
+    /// somewhere a person can see it.
+    ///
+    /// This is the review's Critical fix. The previous design folded
+    /// RestorationWarnings into Status inside Dispose(), which
+    /// MergePdfsWindow.OnClosed calls AFTER the window has already closed —
+    /// Status renders in exactly one TextBlock inside that window, and
+    /// nobody is looking at a closed window's view model, so "your own Word
+    /// may have been left hidden" was formatted into a string and dropped on
+    /// the floor every single time, not just in unlikely cases. Nothing
+    /// about OfficeConverter needed to change: its RestorationWarnings list
+    /// is append-only and safe to read at any point in its lifetime — the
+    /// defect was purely in WHEN this class was reading it, not in the
+    /// converter. _warningsAlreadyReported (an index into that append-only
+    /// list, not a text-based dedupe — simpler and exactly right for a list
+    /// that only ever grows) is what keeps a second run's drain from
+    /// repeating a warning this method already showed once.
+    ///
+    /// Checked via IReportsRestorationWarnings, not a cast to the concrete
+    /// ConverterChain: an injected converter (a test) can implement the
+    /// interface directly, without needing to be wrapped in a chain at all.</summary>
+    private void DrainConverterWarnings()
+    {
+        if (_converter is not IReportsRestorationWarnings reporter) return;
+        var all = reporter.RestorationWarnings;
+        if (all.Count <= _warningsAlreadyReported) return;
+
+        var fresh = all.Skip(_warningsAlreadyReported).ToList();
+        _warningsAlreadyReported = all.Count;
+        var warningText = string.Join("; ", fresh);
+        Status = Status.Length > 0 ? $"{Status} · {warningText}" : warningText;
     }
 
     /// <summary>Disposes the converter this window was built with, if it
@@ -340,30 +449,33 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
     /// the one that does: an Office session it STARTED gets Quit() and
     /// killed here; one it BORROWED (the user's own already-open Word or
     /// Excel) gets its DisplayAlerts/Visible/AutomationSecurity flags
-    /// restored. A failure to restore a borrowed session's flags is recorded
-    /// in OfficeConverter.RestorationWarnings — a channel nothing else in
-    /// this feature reads — so any warning it collects is folded into
-    /// Status here, the last place this window can still say something to
-    /// whoever is looking at it before it closes.
+    /// restored.
     ///
     /// Called from MergePdfsWindow.OnClosed, alongside Cancel(); harmless to
     /// call from a test that never opens a real window (an OfficeConverter
-    /// that never converted anything disposes as a handful of null checks),
-    /// and harmless to call twice (OfficeConverter.Dispose is idempotent).
+    /// that never converted anything disposes as a handful of null checks).
     /// A converter supplied from the outside is disposed too, exactly the
     /// same way, if it happens to implement IDisposable — this class does
     /// not know or care which converter it was given, only whether disposing
-    /// it is possible.</summary>
+    /// it is possible. Own idempotency guard (review Minor 2) rather than
+    /// relying solely on the converter's: this method has nothing else
+    /// idempotent to fall back on if it is ever asked to do more than plain
+    /// teardown again in the future.
+    ///
+    /// Deliberately does NOT read OfficeConverter.RestorationWarnings —
+    /// see DrainConverterWarnings for why that channel is read at the end of
+    /// every merge run instead, and why reading it here (the original
+    /// design) was the review's Critical finding: OnClosed runs after the
+    /// window has already closed, so nothing written to Status from this
+    /// method could ever reach anyone.</summary>
     public void Dispose()
     {
-        if (_converter is not IDisposable disposable) return;
-        disposable.Dispose();
-
-        var warnings = (_converter as ConverterChain)?.RestorationWarnings ?? Array.Empty<string>();
-        if (warnings.Count == 0) return;
-        var warningText = string.Join("; ", warnings);
-        Status = Status.Length > 0 ? $"{Status} · {warningText}" : warningText;
+        if (_disposed) return;
+        _disposed = true;
+        (_converter as IDisposable)?.Dispose();
     }
+
+    private bool _disposed;
 
     /// <summary>One result, every row of the unit. A unit of one, or any
     /// success, is the row's own Apply. A failed group is fail-whole: the

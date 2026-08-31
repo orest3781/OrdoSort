@@ -743,4 +743,99 @@ public class MergePdfsViewModelTests
 
         Assert.True(converter.Disposed);
     }
+
+    // ---- Fix round 1: the warning drain, and the .ppt probe wording -----
+
+    /// <summary>Reports whatever warnings it already holds, on demand — no
+    /// Dispose() required, unlike the real OfficeConverter. That is the
+    /// whole point: it proves MergePdfsViewModel's OWN wiring (drain after a
+    /// run, dedupe, fold into Status) independently of exactly when the real
+    /// converter happens to populate its list.</summary>
+    private sealed class WarningReportingConverter : IDocumentConverter, IReportsRestorationWarnings
+    {
+        private readonly List<string> _warnings = new();
+        public IReadOnlyList<string> RestorationWarnings => _warnings;
+        public void AddWarning(string warning) => _warnings.Add(warning);
+        public bool Handles(string extension) => true;
+        public ConversionResult ToPdf(byte[] source, string displayName,
+            IReadOnlyList<string> candidates, Func<PasswordRequest, string?>? ask) =>
+            new("ok", new byte[] { 1 });
+    }
+
+    /// <summary>The review's Critical fix, pinned directly: a converter that
+    /// reports a restoration warning must have it appear in Status AFTER a
+    /// merge run, with the window (here, just the view model — nothing about
+    /// this fact needs a real Window at all) still open. The previous design
+    /// only ever folded RestorationWarnings into Status from inside
+    /// Dispose(), which MergePdfsWindow.OnClosed calls after the window has
+    /// already closed — unreachable in every case. This fact never calls
+    /// vm.Dispose() at all, which is exactly what proves the warning was
+    /// shown some other way.</summary>
+    [Fact]
+    public async Task RestorationWarningsFromAMergeRunAppearInStatusWhileTheWindowIsStillOpen()
+    {
+        using var dir = new TempDir();
+        var converter = new WarningReportingConverter();
+        converter.AddWarning("Word: couldn't restore Visible (RPC server unavailable)");
+        var vm = MakeVm(converter: converter,
+            fileMerger: (paths, output, _, _) => Ok(paths[0], Path.Combine(dir.Path, "Job.pdf"), paths.Count));
+
+        await vm.AddPaths(new[] { dir.File("a.docx") });
+        await vm.MergeAsync(null);
+
+        Assert.Contains("couldn't restore Visible", vm.Status);
+    }
+
+    /// <summary>The other half of the same fix: the converter's warnings
+    /// list is append-only, so a SECOND run must not repeat what the first
+    /// run already showed — only genuinely new entries get folded in.</summary>
+    [Fact]
+    public async Task ASecondMergeRunOnlyReportsWarningsNotAlreadyReported()
+    {
+        using var dir = new TempDir();
+        var converter = new WarningReportingConverter();
+        converter.AddWarning("Word: first warning");
+        var vm = MakeVm(converter: converter,
+            fileMerger: (paths, output, _, _) => Ok(paths[0], Path.Combine(dir.Path, "Job.pdf"), paths.Count));
+        await vm.AddPaths(new[] { dir.File("a.docx") });
+        await vm.MergeAsync(null);
+        Assert.Contains("first warning", vm.Status);
+
+        converter.AddWarning("Excel: second warning");
+        await vm.AddPaths(new[] { dir.File("b.docx") });
+        await vm.MergeAsync(null);
+
+        Assert.Contains("second warning", vm.Status);
+        // "first warning" was folded in once, by the FIRST drain, and must
+        // not have been repeated by the second.
+        Assert.Equal(vm.Status.IndexOf("first warning", StringComparison.Ordinal),
+            vm.Status.LastIndexOf("first warning", StringComparison.Ordinal));
+    }
+
+    /// <summary>Review Important 1: OfficeConverter.Handles("ppt") is false
+    /// even when PowerPoint IS installed (its own documented exception — no
+    /// safe password path exists for the legacy binary format). Before this
+    /// fix, the probe's generic wording would have told someone with
+    /// PowerPoint installed that PowerPoint isn't installed — a false
+    /// statement about their own machine, in red, at drop time. Gated the
+    /// same way OfficeConverterTests gates its own Office-dependent facts
+    /// (PowerPointInstalled, computed once via Type.GetTypeFromProgID,
+    /// touching no COM): there is nothing to prove on a machine where
+    /// PowerPoint genuinely isn't installed, since the whole point is
+    /// proving the wording is right when the app truly is there.</summary>
+    [Fact]
+    public async Task APptFileWithPowerPointInstalledIsRefusedWithItsOwnReasonNotAFalseNotInstalledClaim()
+    {
+        if (!OfficeConverterTests.PowerPointInstalled) return;
+
+        using var dir = new TempDir();
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler());
+
+        await vm.AddPaths(new[] { dir.File("deck.ppt") });
+
+        var row = Assert.Single(vm.Rows);
+        Assert.Equal(ZipItemRowStatus.Error, row.StatusKind);
+        Assert.DoesNotContain("isn't installed", row.Note);
+        Assert.Contains("save it as .pptx", row.Note);
+    }
 }
