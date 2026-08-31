@@ -48,7 +48,7 @@
                      button off screen rather than move it to a second row.
                      The 4 bottom margin is the gap that second row needs. -->
                 <WrapPanel>
-                    <Button Content="Add PDFs or zips…" Click="OnAddFiles" Margin="0,0,6,4" />
+                    <Button Content="Add files…" Click="OnAddFiles" Margin="0,0,6,4" />
                     <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,4"
                             IsEnabled="{Binding IsIdle}" />
                     <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,4" />
@@ -204,7 +204,7 @@
                         </DataGridTextColumn>
                     </DataGrid.Columns>
                 </DataGrid>
-                <TextBlock Text="Drag PDFs or zips anywhere on this window, or click Add PDFs or zips…"
+                <TextBlock Text="Drag files anywhere on this window, or click Add files…"
                            Style="{StaticResource EmptyStateText}"
                            IsHitTestVisible="False">
                     <TextBlock.Visibility>

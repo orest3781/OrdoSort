@@ -25,11 +25,13 @@ public class MergePdfsViewModelTests
         Func<string, IReadOnlyList<string>, Func<PasswordRequest, string?>?, PdfMerge.MergeResult>? zipMerger = null,
         Func<IReadOnlyList<string>, string?, IReadOnlyList<string>, Func<PasswordRequest, string?>?, PdfMerge.MergeResult>? fileMerger = null,
         Func<string, IReadOnlyList<string>, Zipper.ZipProbeResult>? zipProbe = null,
-        Func<string, IReadOnlyList<string>, Unlock.ProbeResult>? pdfProbe = null) =>
+        Func<string, IReadOnlyList<string>, Unlock.ProbeResult>? pdfProbe = null,
+        IDocumentConverter? converter = null) =>
         new(dialogs ?? new FakeDialogs(), savedPasswords ?? Array.Empty<string>(), new InlineWorkScheduler(), uiContext: null,
             zipMerger, fileMerger,
             zipProbe ?? ((p, _) => new Zipper.ZipProbeResult(p, "not_encrypted")),
-            pdfProbe ?? ((p, _) => new Unlock.ProbeResult("not_encrypted", p)));
+            pdfProbe ?? ((p, _) => new Unlock.ProbeResult("not_encrypted", p)),
+            converter: converter);
 
     private static PdfMerge.MergeResult Ok(string source, string output, int pdfs) =>
         new(source, "ok", Output: output, PdfCount: pdfs);
@@ -602,5 +604,143 @@ public class MergePdfsViewModelTests
 
         Assert.Equal(ZipItemRowStatus.Pending, merge.Rows.Single().StatusKind);
         Assert.True(merge.MergeCommand.CanExecute(null));
+    }
+
+    // ---- Task 8: the IsPdf sweep, Notes, and disposal -------------------
+
+    /// <summary>Always claims every extension — used where a fact needs a
+    /// row to stay Pending/runnable regardless of what is actually installed
+    /// on the machine running the test (real Word/Excel/PowerPoint
+    /// availability must never decide whether a fact passes).</summary>
+    private sealed class AlwaysHandlesConverter : IDocumentConverter
+    {
+        public bool Handles(string extension) => true;
+        public ConversionResult ToPdf(byte[] source, string displayName,
+            IReadOnlyList<string> candidates, Func<PasswordRequest, string?>? ask) =>
+            new("ok", new byte[] { 1 });
+    }
+
+    private sealed class DisposableConverter : IDocumentConverter, IDisposable
+    {
+        public bool Disposed { get; private set; }
+        public bool Handles(string extension) => false;
+        public ConversionResult ToPdf(byte[] source, string displayName,
+            IReadOnlyList<string> candidates, Func<PasswordRequest, string?>? ask) =>
+            new("unsupported", null);
+        public void Dispose() => Disposed = true;
+    }
+
+    /// <summary>The button's own count, CanExecute, and a REAL run — the
+    /// real default converter and the real PdfMerge.MergeFiles, no fakes —
+    /// must all agree for a list holding only a document that needs
+    /// conversion. This is the exact defect the IsPdf sweep exists to fix:
+    /// before it, a lone .docx (a .txt here, so this fact needs nothing
+    /// installed) showed an enabled "Merge 1 item" that did nothing on
+    /// click, because MergeAsync's own loose-unit selection filtered on
+    /// IsPdf and never picked it up — revert that sweep and this fact fails,
+    /// because the row stays Pending instead of Ok.</summary>
+    [Fact]
+    public async Task AListOfOnlyANonPdfDocumentReportsAndMergesTheSameCount()
+    {
+        using var dir = new TempDir();
+        var textPath = dir.File("notes.txt");   // TempDir.File writes non-empty content
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler());
+
+        await vm.AddPaths(new[] { textPath });
+
+        Assert.Equal("Merge 1 item", vm.MergeButtonText);
+        Assert.True(vm.MergeCommand.CanExecute(null));
+
+        await vm.MergeAsync(null);
+
+        var row = Assert.Single(vm.Rows);
+        Assert.Equal(ZipItemRowStatus.Ok, row.StatusKind);
+        Assert.True(File.Exists(row.Output));
+        Assert.Equal("Merge", vm.MergeButtonText);
+    }
+
+    /// <summary>"Merge to…" — Task 8 widens it past literal loose PDFs, the
+    /// same widening MergeAsync's own unit selection gets: a document that
+    /// needs converting is just as much a candidate for a chosen Save-As
+    /// name as a loose PDF always was.</summary>
+    [Fact]
+    public async Task MergeToIncludesNonPdfDocumentsToo()
+    {
+        using var dir = new TempDir();
+        var docx = dir.File("report.docx");
+        var chosen = Path.Combine(dir.Path, "chosen.pdf");
+        string? seenOutput = "not called";
+        var vm = MakeVm(dialogs: new FakeDialogs { NextSaveFile = chosen },
+            converter: new AlwaysHandlesConverter(),
+            fileMerger: (paths, output, _, _) => { seenOutput = output; return Ok(paths[0], output!, paths.Count); });
+
+        await vm.AddPaths(new[] { docx });
+        Assert.True(vm.MergeToCommand.CanExecute(null));
+
+        await vm.MergeToAsync();
+
+        Assert.Equal(chosen, seenOutput);
+    }
+
+    /// <summary>MergeResult.Notes — a hard requirement, not polish (task
+    /// brief): "only the first of 3 worksheets" and similar advisories built
+    /// by Tasks 3/4/6 must reach the row, or that whole channel is
+    /// invisible. Appended to the row's existing verdict text, on the SAME
+    /// run that also reports the ordinary "→ file (N PDFs)" success note —
+    /// revert the Apply change and this fact fails because the note goes
+    /// back to being just the bare verdict.</summary>
+    [Fact]
+    public async Task NotesFromAResultAreAppendedToTheRowsNote()
+    {
+        using var dir = new TempDir();
+        var vm = MakeVm(fileMerger: (paths, _, _, _) =>
+            new PdfMerge.MergeResult(paths[0], "ok", Output: Path.Combine(dir.Path, "Job.pdf"), PdfCount: 1,
+                Notes: new[] { "only the first of 3 worksheets — install Excel to include them all" }));
+
+        await vm.AddPaths(new[] { dir.File("a.xlsx") });
+        await vm.MergeAsync(null);
+
+        var row = Assert.Single(vm.Rows);
+        Assert.Equal(ZipItemRowStatus.Ok, row.StatusKind);
+        Assert.Contains("→ Job.pdf", row.Note);
+        Assert.Contains("only the first of 3 worksheets", row.Note);
+    }
+
+    /// <summary>A "no_pdfs" zip can still carry Notes (PdfMerge.MergeZipCore
+    /// names what it found but couldn't convert even when nothing ended up
+    /// mergeable) — proving Notes surfaces on a non-"ok" status too, not
+    /// only the success path.</summary>
+    [Fact]
+    public async Task NotesSurfaceEvenWhenTheUnitDidNotEndInOk()
+    {
+        using var dir = new TempDir();
+        var vm = MakeVm(zipMerger: (path, _, _) =>
+            new PdfMerge.MergeResult(path, "no_pdfs", Message: "nothing to merge inside",
+                Notes: new[] { "report.docx: Word isn't installed, so this can't be converted" }));
+
+        await vm.AddPaths(new[] { dir.File("a.zip") });
+        await vm.MergeAsync(null);
+
+        var row = Assert.Single(vm.Rows);
+        Assert.Equal(ZipItemRowStatus.NoPdfs, row.StatusKind);
+        Assert.Contains("nothing to merge inside", row.Note);
+        Assert.Contains("report.docx", row.Note);
+    }
+
+    /// <summary>MergePdfsViewModel.Dispose reaches whatever converter it was
+    /// built with, generically, through IDisposable — the mechanism
+    /// MergePdfsWindow.OnClosed relies on to tear down (or restore) an
+    /// Office session without knowing the converter is a ConverterChain
+    /// wrapping an OfficeConverter at all.</summary>
+    [Fact]
+    public void DisposingTheViewModelDisposesAnInjectedDisposableConverter()
+    {
+        var converter = new DisposableConverter();
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(),
+            converter: converter);
+
+        vm.Dispose();
+
+        Assert.True(converter.Disposed);
     }
 }

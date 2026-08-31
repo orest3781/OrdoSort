@@ -154,9 +154,22 @@ public sealed class ZipItemRow : ObservableObject
             _ => ZipItemRowStatus.Error,   // "error", or anything unrecognized
         };
         Output = result.Output;
-        Note = StatusKind == ZipItemRowStatus.Ok
+        var verdict = StatusKind == ZipItemRowStatus.Ok
             ? $"→ {System.IO.Path.GetFileName(result.Output!)} ({result.PdfCount} PDF{(result.PdfCount == 1 ? "" : "s")})"
             : result.Message;
+        // Task 8: MergeResult.Notes carries things worth saying that are not
+        // failures — a workbook's later worksheets left behind, the names of
+        // documents this PC couldn't convert although their type is switched
+        // on — and until this line, nothing ever read it: the whole channel
+        // Tasks 3/4/6 built was invisible. Appended, not replacing the
+        // verdict above, and on ANY status (not only "ok") — a "no_pdfs" zip
+        // can still name what it found but couldn't convert (PdfMerge.
+        // MergeZipCore's own Notes on that branch), which is exactly the
+        // "the Word documents you asked for, but nothing here could open"
+        // case worth surfacing even though the merge itself did nothing.
+        Note = result.Notes is { Count: > 0 } notes
+            ? $"{verdict} — {string.Join("; ", notes)}"
+            : verdict;
     }
 
     /// <summary>A verdict that is not an operation's result: a probe's

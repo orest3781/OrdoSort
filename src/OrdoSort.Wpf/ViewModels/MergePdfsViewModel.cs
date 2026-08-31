@@ -4,24 +4,35 @@ using OrdoSort.Wpf.Services;
 
 namespace OrdoSort.Wpf.ViewModels;
 
-/// <summary>The Merge PDFs window: drop PDFs and zips, and one document
-/// comes out per source — every PDF inside a zip into &lt;zipname&gt;.pdf
-/// beside it, and every loose PDF in the list into one file beside the first
-/// of them. Its own window and its own list because it is a different job
-/// wearing a zip costume — it consumes archives and documents and produces
-/// a document — and because a separate list means extracting an archive in
+/// <summary>The Merge PDFs window: drop PDFs, zips, and (Task 8) Word,
+/// Excel, PowerPoint, image and text files, and one PDF comes out per
+/// source — every mergeable entry inside a zip into &lt;zipname&gt;.pdf
+/// beside it, and every loose file in the list into one file beside the
+/// first of them, converting whatever isn't already a PDF along the way.
+/// Its own window and its own list because it is a different job wearing a
+/// zip costume — it consumes archives and documents and produces a
+/// document — and because a separate list means extracting an archive in
 /// the other window has no bearing on merging it here.
 ///
 /// Units (see the base class): each runnable zip row is a unit of one; the
-/// runnable loose PDFs are one unit of many, run last. Fail-whole applies
-/// per unit: one PDF nobody can open merges nothing from its unit, and the
-/// rows it held back say so (<see cref="ApplyToUnit"/>).</summary>
-public sealed class MergePdfsViewModel : ZipListViewModel
+/// runnable loose documents — PDFs and, since Task 8, everything else this
+/// window converts too — are one unit of many, run last. Fail-whole applies
+/// per unit: one document nobody can open merges nothing from its unit, and
+/// the rows it held back say so (<see cref="ApplyToUnit"/>).</summary>
+public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
 {
     private readonly Func<string, IReadOnlyList<string>, Func<PasswordRequest, string?>?, PdfMerge.MergeResult> _zipMerger;
     private readonly Func<IReadOnlyList<string>, string?, IReadOnlyList<string>, Func<PasswordRequest, string?>?, PdfMerge.MergeResult> _fileMerger;
     private readonly Func<string, IReadOnlyList<string>, Zipper.ZipProbeResult> _zipProbe;
     private readonly Func<string, IReadOnlyList<string>, Unlock.ProbeResult> _pdfProbe;
+
+    /// <summary>Turns a non-PDF row into pages for both the probe (does
+    /// SOMETHING handle this switched-on type at all?) and the two mergers
+    /// below. Defaults to the real chain — Office first, then the three
+    /// converters that need nothing installed — so opening this window in
+    /// production always gets real conversion without a caller having to
+    /// wire anything; a test supplies its own stand-in instead.</summary>
+    private readonly IDocumentConverter _converter;
 
     private readonly Config _cfg;
     private readonly Action? _saveConfig;
@@ -55,9 +66,18 @@ public sealed class MergePdfsViewModel : ZipListViewModel
         Func<IReadOnlyList<string>, string?, IReadOnlyList<string>, Func<PasswordRequest, string?>?, PdfMerge.MergeResult>? fileMerger = null,
         Func<string, IReadOnlyList<string>, Zipper.ZipProbeResult>? zipProbe = null,
         Func<string, IReadOnlyList<string>, Unlock.ProbeResult>? pdfProbe = null,
-        Config? config = null, Action? saveConfig = null)
+        Config? config = null, Action? saveConfig = null,
+        IDocumentConverter? converter = null)
         : base(dialogs, savedPasswords, scheduler, uiContext)
     {
+        // Task 8: the machinery Tasks 2-7 built (the four converters, the
+        // toggle row, the enabled-type set) had nothing calling it yet.
+        // Office first — best fidelity when installed — then the three
+        // converters that need nothing installed at all; see ConverterChain
+        // for the no-silent-downgrade rule that ordering depends on.
+        _converter = converter ?? new ConverterChain(
+            new OfficeConverter(), new ImageToPdf(), new TableToPdf(), new TextToPdf());
+
         // Fix round (review finding 6): a bare method group cannot omit a
         // delegate's optional parameters at all — a method group conversion
         // is only defined against candidates whose EVERY optional parameter
@@ -68,7 +88,6 @@ public sealed class MergePdfsViewModel : ZipListViewModel
         // all now that MergeZip/MergeFiles carry two extra optional
         // parameters (converter, includeTypes). The lambda spells out the
         // exact three/four-argument shape this field actually needs.
-        // converter stays null (no conversion) until Task 8 wires one in.
         // includeTypes is `_enabledTypes` itself, not a snapshot taken here:
         // the lambda reads the FIELD at invocation time (well after this
         // constructor returns), so a toggle flipped between AddPaths and
@@ -77,11 +96,14 @@ public sealed class MergePdfsViewModel : ZipListViewModel
         // which let a merge reach past the toggles entirely — switch PDF
         // off, leave Zip on, and PDFs inside an included zip still merged,
         // because the archive's OWN contents were never filtered by
-        // anything but MergeTypes.AllExtensions at intake.
+        // anything but MergeTypes.AllExtensions at intake. `converter` is
+        // `_converter` itself for the same reason — read live, not
+        // snapshotted, though in practice it never changes after
+        // construction.
         _zipMerger = zipMerger ?? ((path, mergeCandidates, ask) =>
-            PdfMerge.MergeZip(path, mergeCandidates, ask, includeTypes: _enabledTypes));
+            PdfMerge.MergeZip(path, mergeCandidates, ask, converter: _converter, includeTypes: _enabledTypes));
         _fileMerger = fileMerger ?? ((paths, outputPath, mergeCandidates, ask) =>
-            PdfMerge.MergeFiles(paths, outputPath, mergeCandidates, ask, includeTypes: _enabledTypes));
+            PdfMerge.MergeFiles(paths, outputPath, mergeCandidates, ask, converter: _converter, includeTypes: _enabledTypes));
         _zipProbe = zipProbe ?? Zipper.Probe;
         _pdfProbe = pdfProbe ?? Unlock.ProbeReadiness;
 
@@ -96,7 +118,7 @@ public sealed class MergePdfsViewModel : ZipListViewModel
             .ToList();
 
         MergeCommand = new AsyncRelayCommand(() => MergeAsync(null), () => RunnableRows > 0);
-        MergeToCommand = new AsyncRelayCommand(MergeToAsync, () => RunnableLoosePdfs > 0);
+        MergeToCommand = new AsyncRelayCommand(MergeToAsync, () => RunnableLooseDocuments > 0);
     }
 
     /// <summary>Every document, image, text file and zip this window can
@@ -112,7 +134,18 @@ public sealed class MergePdfsViewModel : ZipListViewModel
     protected override string IntakeNoun => "PDF, document, image or zip";
 
     private int RunnableRows => Rows.Count(r => r.IsRunnable);
-    private int RunnableLoosePdfs => Rows.Count(r => r.IsPdf && r.IsRunnable);
+
+    /// <summary>Every runnable row that belongs to the LOOSE unit — the
+    /// group PdfMerge.MergeFiles/DefaultName treat as "everything not
+    /// inside its own zip". Renamed from "RunnableLoosePdfs" (Task 8): the
+    /// old name and its IsPdf-only filter were the likeliest miss in the
+    /// whole plan — a lone runnable .docx used to count as zero here, so
+    /// "Merge to…" (and MergeAsync's own loose-unit selection, the same
+    /// widening) silently ignored the one item the button and MergeButtonText
+    /// both claimed was ready. !IsZip, not IsPdf, is the correct test: every
+    /// row that ISN'T its own zip unit belongs to the loose group, whatever
+    /// its own type.</summary>
+    private int RunnableLooseDocuments => Rows.Count(r => !r.IsZip && r.IsRunnable);
 
     /// <summary>One checkbox in the toggle row: a MergeTypes group's current
     /// on/off state, bound two-way so ticking or unticking calls straight
@@ -188,11 +221,34 @@ public sealed class MergePdfsViewModel : ZipListViewModel
 
     /// <summary>Zips at archive level, loose PDFs through Unlock's own
     /// probe. PDFs INSIDE a zip are not probed here — that would read every
-    /// archive fully twice over a share — and are asked for during the run.</summary>
-    protected override (ZipItemRowStatus Status, string Note)? Probe(ZipItemRow row, IReadOnlyList<string> savedPasswords) =>
-        row.IsZip ? FromZipProbe(_zipProbe(row.Path, savedPasswords))
-        : row.IsPdf ? FromPdfProbe(_pdfProbe(row.Path, savedPasswords))
-        : null;
+    /// archive fully twice over a share — and are asked for during the run.
+    ///
+    /// Every OTHER row Task 7 lets in — word/excel/powerpoint/image/text —
+    /// gets a different question: not "is it locked" (none of these five
+    /// groups have a password concept this window checks up front — Office
+    /// documents ARE askable, but only during the run itself, the same as a
+    /// PDF inside a zip), but "does anything on this PC even claim this
+    /// type at all". A .docx on a machine without Word is the headline case:
+    /// without this, it would sit Pending, show as an enabled "Merge 1
+    /// item", and then merge nothing on click — found out only after
+    /// clicking Merge instead of the moment it's dropped. Only checked while
+    /// the type is switched ON: an excluded row's Note is already masked
+    /// (ZipItemRow.IsIncluded) and it never joins a run either way, so
+    /// probing it here would produce a verdict nobody can see or act on
+    /// until the type is switched back on — at which point THIS probe has
+    /// already finished and would never run again for it.</summary>
+    protected override (ZipItemRowStatus Status, string Note)? Probe(ZipItemRow row, IReadOnlyList<string> savedPasswords)
+    {
+        if (row.IsZip) return FromZipProbe(_zipProbe(row.Path, savedPasswords));
+        if (row.IsPdf) return FromPdfProbe(_pdfProbe(row.Path, savedPasswords));
+
+        var extension = ZipItemRow.ExtensionOf(row.Path);
+        var group = MergeTypes.GroupOf(extension);
+        if (group is null || !_enabledTypes.Contains(group) || _converter.Handles(extension)) return null;
+
+        var appName = GroupLabels.TryGetValue(group, out var label) ? label : group;
+        return (ZipItemRowStatus.Error, $"{appName} isn't installed, so this can't be converted");
+    }
 
     /// <summary>Already the one place re-run after every list change (an
     /// add, Clear, a run finishing) as well as every SetTypeEnabled call —
@@ -214,8 +270,8 @@ public sealed class MergePdfsViewModel : ZipListViewModel
     public AsyncRelayCommand MergeCommand { get; }
     public AsyncRelayCommand MergeToCommand { get; }
 
-    /// <summary>Counts every runnable row — a zip or a loose PDF alike —
-    /// matching MergeCommand's own CanExecute.</summary>
+    /// <summary>Counts every runnable row — a zip or a loose document alike
+    /// — matching MergeCommand's own CanExecute.</summary>
     public string MergeButtonText => RunnableRows switch
     {
         0 => "Merge",
@@ -223,12 +279,17 @@ public sealed class MergePdfsViewModel : ZipListViewModel
         var n => $"Merge {n} items",
     };
 
-    /// <summary>Merge to…: a Save-As for the loose-PDF output only — zips
-    /// already have a natural name and place. Suggests PdfMerge.DefaultName's
-    /// own pick; a cancelled dialog is a silent no-op.</summary>
+    /// <summary>Merge to…: a Save-As for the loose-document output only —
+    /// zips already have a natural name and place. "Loose" now means every
+    /// runnable row that isn't its own zip (Task 8): a Word document or an
+    /// image sitting loose in the list is exactly as much a candidate for a
+    /// chosen output name as a loose PDF always was — there is no reason
+    /// Save-As should offer to merge PDFs alone when the button beside it
+    /// merges everything. Suggests PdfMerge.DefaultName's own pick; a
+    /// cancelled dialog is a silent no-op.</summary>
     internal async Task MergeToAsync()
     {
-        var loose = Rows.Where(r => r.IsPdf && r.IsRunnable).Select(r => r.Path).ToList();
+        var loose = Rows.Where(r => !r.IsZip && r.IsRunnable).Select(r => r.Path).ToList();
         if (loose.Count == 0) return;
         var path = Dialogs.AskSaveFile("PDF (*.pdf)|*.pdf", PdfMerge.DefaultName(loose));
         if (path is null) return;
@@ -238,7 +299,16 @@ public sealed class MergePdfsViewModel : ZipListViewModel
     /// <summary>Zips first, one unit each, then the loose group as one unit
     /// — runnable rows only. <paramref name="outputPath"/> reaches the loose
     /// group alone. The candidates and the prompt are the base class's; a
-    /// merger asks only for what none of the candidates opens.</summary>
+    /// merger asks only for what none of the candidates opens.
+    ///
+    /// The loose group's own selection is !IsZip, not IsPdf (Task 8): before
+    /// this, a list holding only a runnable .docx counted as 1 in
+    /// MergeButtonText/RunnableRows (which never used IsPdf) but selected
+    /// ZERO units here — an enabled "Merge 1 item" button that merged
+    /// nothing on click, silently, because the row was neither a zip nor a
+    /// literal PDF. The revert-proof fact for this file is exactly that
+    /// scenario: a lone non-PDF document, run for real, through the real
+    /// PdfMerge.MergeFiles.</summary>
     internal Task MergeAsync(string? outputPath)
     {
         var units = new List<Unit<PdfMerge.MergeResult>>();
@@ -248,7 +318,7 @@ public sealed class MergePdfsViewModel : ZipListViewModel
             units.Add(new Unit<PdfMerge.MergeResult>(new[] { zipRow },
                 candidates => _zipMerger(zipRow.Path, candidates, AskPassword)));
         }
-        var loose = Rows.Where(r => r.IsPdf && r.IsRunnable).ToList();
+        var loose = Rows.Where(r => !r.IsZip && r.IsRunnable).ToList();
         if (loose.Count > 0)
         {
             var paths = loose.Select(r => r.Path).ToList();
@@ -263,6 +333,36 @@ public sealed class MergePdfsViewModel : ZipListViewModel
                 new TallyClause("needs_password", "needs a password", "need a password"),
                 new TallyClause("error", "failed"),
             });
+    }
+
+    /// <summary>Disposes the converter this window was built with, if it
+    /// needs disposing at all. The default chain's OfficeConverter link is
+    /// the one that does: an Office session it STARTED gets Quit() and
+    /// killed here; one it BORROWED (the user's own already-open Word or
+    /// Excel) gets its DisplayAlerts/Visible/AutomationSecurity flags
+    /// restored. A failure to restore a borrowed session's flags is recorded
+    /// in OfficeConverter.RestorationWarnings — a channel nothing else in
+    /// this feature reads — so any warning it collects is folded into
+    /// Status here, the last place this window can still say something to
+    /// whoever is looking at it before it closes.
+    ///
+    /// Called from MergePdfsWindow.OnClosed, alongside Cancel(); harmless to
+    /// call from a test that never opens a real window (an OfficeConverter
+    /// that never converted anything disposes as a handful of null checks),
+    /// and harmless to call twice (OfficeConverter.Dispose is idempotent).
+    /// A converter supplied from the outside is disposed too, exactly the
+    /// same way, if it happens to implement IDisposable — this class does
+    /// not know or care which converter it was given, only whether disposing
+    /// it is possible.</summary>
+    public void Dispose()
+    {
+        if (_converter is not IDisposable disposable) return;
+        disposable.Dispose();
+
+        var warnings = (_converter as ConverterChain)?.RestorationWarnings ?? Array.Empty<string>();
+        if (warnings.Count == 0) return;
+        var warningText = string.Join("; ", warnings);
+        Status = Status.Length > 0 ? $"{Status} · {warningText}" : warningText;
     }
 
     /// <summary>One result, every row of the unit. A unit of one, or any

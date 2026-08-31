@@ -32,6 +32,10 @@ public class MergeTypeToggleTests : IDisposable
     private string PdfPath() => _dir.File($"file{_fileNumber++}.pdf");
     private string ZipPath() => _dir.File($"archive{_fileNumber++}.zip");
 
+    /// <summary>A type no MergeTypes group recognizes at all — the foreign-
+    /// type-at-intake fact's fixture (Task 8).</summary>
+    private string ExePath() => _dir.File($"installer{_fileNumber++}.exe");
+
     /// <summary>A REAL zip holding one REAL one-page PDF entry — needed only
     /// by facts that exercise the actual PdfMerge.MergeZip path (fix 1's
     /// fact below), where a dummy "x" file would never round-trip through a
@@ -54,12 +58,27 @@ public class MergeTypeToggleTests : IDisposable
         Config? config = null,
         Func<string, IReadOnlyList<string>, Func<PasswordRequest, string?>?, PdfMerge.MergeResult>? zipMerger = null,
         Func<IReadOnlyList<string>, string?, IReadOnlyList<string>, Func<PasswordRequest, string?>?, PdfMerge.MergeResult>? fileMerger = null,
-        Func<string, IReadOnlyList<string>, Unlock.ProbeResult>? pdfProbe = null) =>
+        Func<string, IReadOnlyList<string>, Unlock.ProbeResult>? pdfProbe = null,
+        IDocumentConverter? converter = null) =>
         new(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(), uiContext: null,
             zipMerger, fileMerger,
             zipProbe: (p, _) => new Zipper.ZipProbeResult(p, "not_encrypted"),
             pdfProbe: pdfProbe ?? ((p, _) => new Unlock.ProbeResult("not_encrypted", p)),
-            config: config);
+            config: config, converter: converter);
+
+    /// <summary>Claims exactly one extension, or none at all when
+    /// <paramref name="handles"/> is null — models "nothing on this PC can
+    /// convert this type", the brief's own StubConverter shorthand.</summary>
+    private sealed class StubConverter : IDocumentConverter
+    {
+        private readonly string? _handles;
+        public StubConverter(string? handles) => _handles = handles;
+        public bool Handles(string extension) =>
+            _handles is not null && extension.Equals(_handles, StringComparison.OrdinalIgnoreCase);
+        public ConversionResult ToPdf(byte[] source, string displayName,
+            IReadOnlyList<string> candidates, Func<PasswordRequest, string?>? ask) =>
+            new("unsupported", null, $"{displayName} isn't a type this stub converts");
+    }
 
     /// <summary>Records every path a fake fileMerger was handed — the
     /// brief's own "RecordingMerger" shorthand, spelled out as a real,
@@ -287,5 +306,50 @@ public class MergeTypeToggleTests : IDisposable
         Assert.False(row.IsIncluded);
         Assert.Equal("Merge", vm.MergeButtonText);
         Assert.Equal(new[] { pdf }, Directory.GetFiles(_dir.Path));   // nothing was ever written
+    }
+
+    // ---- Task 8: probe-on-add and foreign-type refusal, the brief's own facts
+
+    /// <summary>The probe that already runs on add is what tells you at DROP
+    /// time, not after a long run: a .docx dropped where nothing on this PC
+    /// can convert it is marked immediately, before Merge is ever clicked.</summary>
+    [Fact]
+    public async Task ADocumentNothingCanConvertIsMarkedWhenItIsDropped()
+    {
+        var vm = NewViewModel(converter: new StubConverter(handles: null));
+        await vm.AddPaths(new[] { DocxPath() });
+        var row = Assert.Single(vm.Rows);
+        Assert.Equal(ZipItemRowStatus.Error, row.StatusKind);
+        Assert.Contains("Word", row.Note);
+    }
+
+    /// <summary>A type switched OFF is still listed (masked, excluded) —
+    /// this is the different case: a type no MergeTypes group recognizes AT
+    /// ALL is refused outright at intake, the same as it always was, and
+    /// never becomes a row for the probe to even look at.</summary>
+    [Fact]
+    public async Task AForeignTypeIsStillRefusedAtIntake()
+    {
+        var vm = NewViewModel();
+        await vm.AddPaths(new[] { ExePath() });
+        Assert.Empty(vm.Rows);
+    }
+
+    /// <summary>The other half of the probe-on-add fact: while the Word
+    /// group is switched OFF, the very same undroppable-anyway .docx is left
+    /// alone rather than marked Error — there is nothing useful to tell
+    /// someone about a row that will not join a run either way until they
+    /// switch the type back on, and Note is masked regardless
+    /// (ZipItemRow.IsIncluded) so a verdict written now would not even be
+    /// seen.</summary>
+    [Fact]
+    public async Task ADocumentOfASwitchedOffTypeIsNotProbedForConvertibility()
+    {
+        var vm = NewViewModel(converter: new StubConverter(handles: null));
+        vm.SetTypeEnabled(MergeTypes.Word, false);
+        await vm.AddPaths(new[] { DocxPath() });
+        var row = Assert.Single(vm.Rows);
+        Assert.Equal(ZipItemRowStatus.Pending, row.StatusKind);
+        Assert.Contains("not included", row.Note);
     }
 }
