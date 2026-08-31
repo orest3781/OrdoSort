@@ -1,3 +1,5 @@
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using OrdoSort.Core;
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Windows;
@@ -22,6 +24,9 @@ public static class ZipMergeScenarios
         new Scenario(Surface, "an encrypted PDF inside, password supplied", "clean", EncryptedInsideWithPassword),
         new Scenario(Surface, "loose PDFs merge into one", "clean", LoosePdfs),
         new Scenario(Surface, "a locked loose PDF is skipped", "awkward", LockedLooseSkipped),
+        new Scenario(Surface, "a spreadsheet merges with the PDFs", "clean", SheetWithPdfs),
+        new Scenario(Surface, "an image merges with the PDFs", "clean", ImageWithPdfs),
+        new Scenario(Surface, "a type switched off is listed but not merged", "awkward", TypeSwitchedOff),
     };
 
     private static MergePdfsViewModel NewVm(ScenarioContext ctx) =>
@@ -58,6 +63,28 @@ public static class ZipMergeScenarios
         ctx.Check(description, counted.Pages == expected, $"got {counted.Pages}");
     }
 
+    /// <summary>A tiny PNG, written under the fixture's "src" folder — the
+    /// same encode-in-process approach ImageToPdfTests.Png uses, so this
+    /// scenario carries no binary test asset. Fixture itself has no image
+    /// builder (only Pdf/Zip/Text/etc.), so this writes directly under
+    /// ctx.Fx.Dir("src") rather than growing Fixture's own surface for one
+    /// caller.</summary>
+    private static string WritePng(Fixture fx, string fileName, int width, int height)
+    {
+        var stride = width * 4;
+        var pixels = new byte[stride * height];
+        Array.Fill(pixels, (byte)200);
+        var source = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(source));
+        using var ms = new MemoryStream();
+        encoder.Save(ms);
+
+        var path = Path.Combine(fx.Dir("src"), fileName);
+        File.WriteAllBytes(path, ms.ToArray());
+        return path;
+    }
+
     private static void ThreePdfs(ScenarioContext ctx)
     {
         var a = ctx.Fx.Pdf("src/a.pdf", "PAGE ONE");
@@ -83,8 +110,14 @@ public static class ZipMergeScenarios
 
     private static void NoPdfs(ScenarioContext ctx)
     {
-        var txt = ctx.Fx.Text("src/readme.txt", "no documents here");
-        var zip = ctx.Fx.Zip("archives/empty-of-pdfs.zip", ("readme.txt", txt));
+        // .bin, not .txt: Task 8 wired TextToPdf into the default
+        // converter, so a stray .txt is no longer something this window
+        // can't merge — it would turn this into an ordinary one-page
+        // merge instead of the "nothing to merge" case this scenario
+        // exists to prove. An extension no MergeTypes group recognizes at
+        // all is what that now takes.
+        var stray = ctx.Fx.Text("src/readme.bin", "no documents here");
+        var zip = ctx.Fx.Zip("archives/empty-of-pdfs.zip", ("readme.bin", stray));
 
         var vm = NewVm(ctx);
         var win = Merge(ctx, vm, zip);
@@ -100,9 +133,15 @@ public static class ZipMergeScenarios
     {
         var a = ctx.Fx.Pdf("src/a.pdf", "PAGE ONE");
         var b = ctx.Fx.Pdf("src/b.pdf", "PAGE TWO");
-        var txt = ctx.Fx.Text("src/notes.txt", "ignore me");
+        // .bin, not .txt — see NoPdfs' comment: Task 8 made .txt a type
+        // this window merges (via TextToPdf), so it can no longer stand in
+        // for clutter nothing here recognizes. SheetWithPdfs/ImageWithPdfs
+        // below are what now prove a convertible stray file DOES take
+        // part; this scenario's own job is the sibling claim — clutter
+        // NOTHING recognizes is skipped, not merged.
+        var other = ctx.Fx.Text("src/notes.bin", "ignore me");
         var zip = ctx.Fx.Zip("archives/mixed.zip",
-            ("a.pdf", a), ("notes.txt", txt), ("b.pdf", b));
+            ("a.pdf", a), ("notes.bin", other), ("b.pdf", b));
 
         var vm = NewVm(ctx);
         var win = Merge(ctx, vm, zip);
@@ -235,6 +274,102 @@ public static class ZipMergeScenarios
         ctx.Check("nothing was written", !File.Exists(Path.Combine(ctx.Fx.Root, "src", "src.pdf")),
             "a merged document appeared");
         ctx.Check("both rows are still runnable", vm.MergeButtonText == "Merge 2 items", vm.MergeButtonText);
+        ctx.Capture(win);
+    }
+
+    /// <summary>A zip holding a PDF and a CSV: Task 8's conversion wiring,
+    /// through the ZIP path this time (SheetWithPdfs' sibling ImageWithPdfs
+    /// below covers the loose path). CSV rather than XLSX deliberately —
+    /// OfficeConverter claims ".xlsx" outright when Excel is installed (it
+    /// only excludes csv/tsv from its own Handles, see ConverterChain's own
+    /// doc comment), so an XLSX fixture would run through real Excel on any
+    /// machine that has it and stop being a smoke test. CSV always falls
+    /// through to TableToPdf, on every machine, which is the deterministic,
+    /// Office-free path this suite needs.</summary>
+    private static void SheetWithPdfs(ScenarioContext ctx)
+    {
+        var a = ctx.Fx.Pdf("src/a.pdf", "PAGE ONE");
+        var sheet = ctx.Fx.Text("src/sheet.csv", "Name,Amount\r\nWidget,12\r\nGadget,7\r\n");
+        var zip = ctx.Fx.Zip("archives/withsheet.zip", ("a.pdf", a), ("sheet.csv", sheet));
+
+        var vm = NewVm(ctx);
+        var win = Merge(ctx, vm, zip);
+
+        ctx.Check("merged despite one entry needing conversion", vm.Rows[0].StatusKind == ZipItemRowStatus.Ok,
+            $"{vm.Rows[0].StatusKind} — {vm.Rows[0].Note}");
+        if (vm.Rows[0].Output is { } output)
+        {
+            ctx.FileExists(output);
+            // The PDF contributes one page, the CSV's own small table
+            // another — proof the entry went through TableToPdf rather than
+            // being dropped as clutter the way MixedContent's stray .txt is.
+            AssertPageCount(ctx, output, 2, "the PDF and the converted spreadsheet both contributed a page");
+        }
+        ctx.Capture(win);
+    }
+
+    /// <summary>A loose PDF and a loose photo: the LOOSE path's conversion
+    /// wiring, through ImageToPdf — the one converter that is always
+    /// Office-free by construction (an image is never an Office document),
+    /// so this needs no CSV-style workaround to stay deterministic.</summary>
+    private static void ImageWithPdfs(ScenarioContext ctx)
+    {
+        var a = ctx.Fx.Pdf("src/a.pdf", "PAGE ONE");
+        var photo = WritePng(ctx.Fx, "photo.png", 200, 150);
+
+        var vm = NewVm(ctx);
+        var win = Merge(ctx, vm, a, photo);
+
+        ctx.Check("every row reports the one document", vm.Rows.All(r => r.StatusKind == ZipItemRowStatus.Ok),
+            "rows: " + string.Join(", ", vm.Rows.Select(r => $"{r.Display}:{r.StatusKind}")));
+        var expected = Path.Combine(ctx.Fx.Root, "src", "src.pdf");
+        ctx.FileExists(expected);
+        AssertPageCount(ctx, expected, 2, "the PDF and the converted image both contributed a page");
+        ctx.Capture(win);
+    }
+
+    /// <summary>Task 7's toggle row end to end: a PDF and a text file are
+    /// both listed while every type is on, Text is switched off with both
+    /// rows already in the list, and the text row is excluded LIVE — still
+    /// shown, its note masked, never joining the run — while the PDF merges
+    /// on its own. Text (not Word/Excel/PowerPoint) is the deterministic
+    /// choice here for the same reason SheetWithPdfs picks CSV over XLSX:
+    /// TextToPdf handles it on every machine, so nothing about this
+    /// scenario's outcome depends on what's installed.</summary>
+    private static void TypeSwitchedOff(ScenarioContext ctx)
+    {
+        var pdf = ctx.Fx.Pdf("src/a.pdf", "PAGE ONE");
+        var notes = ctx.Fx.Text("src/notes.txt", "left out on purpose");
+
+        var vm = NewVm(ctx);
+        var win = new MergePdfsWindow(vm);
+        E2EPump.ShowOffscreen(win);
+
+        _ = vm.AddPaths(new[] { pdf, notes });
+        ctx.Check("both sources are listed", vm.Rows.Count == 2, $"got {vm.Rows.Count}");
+
+        var textRow = vm.Rows.Single(r => r.Path == notes);
+        ctx.Check("the text file starts included", textRow.IsIncluded, "it began excluded");
+
+        vm.SetTypeEnabled(MergeTypes.Text, false);
+        ctx.Check("switching Text off excludes the row, live", !textRow.IsIncluded, "it stayed included");
+        ctx.Check("its note explains why, rather than staying blank",
+            textRow.Note == "not included — this file type is switched off", $"note was \"{textRow.Note}\"");
+        ctx.Check("the button counts only the PDF", vm.MergeButtonText == "Merge 1 item", vm.MergeButtonText);
+
+        vm.MergeCommand.Execute(null);
+        ctx.Check("the window applied every result", Drained(), "the dispatcher queue never drained");
+
+        var pdfRow = vm.Rows.Single(r => r.Path == pdf);
+        ctx.Check("the PDF merged on its own", pdfRow.StatusKind == ZipItemRowStatus.Ok,
+            $"{pdfRow.StatusKind} — {pdfRow.Note}");
+        ctx.Check("the switched-off row never ran", textRow.StatusKind == ZipItemRowStatus.Pending,
+            $"{textRow.StatusKind} — {textRow.Note}");
+        if (pdfRow.Output is { } output)
+        {
+            ctx.FileExists(output);
+            AssertPageCount(ctx, output, 1, "only the PDF contributed a page");
+        }
         ctx.Capture(win);
     }
 }

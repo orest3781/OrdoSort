@@ -119,8 +119,13 @@ workflow tests, builds, zips, and publishes.
     password instead of failing, after the passwords the app already knows
     have been tried; a skipped one stays runnable.
   - *Merge PDFs* — loose PDFs into one document named after their folder,
-    and every PDF inside a zip into one document beside the zip. A locked
-    PDF or archive asks for its password; one unopenable document merges
+    and every PDF inside a zip into one document beside the zip. Word,
+    Excel, PowerPoint, image and text files merge alongside them too —
+    loose or inside a zip — converted to PDF on the way in, through Office
+    itself when it's installed and an in-house converter when it isn't. A
+    row of per-type toggles (PDF, Zip, Word, Excel, PowerPoint, Images,
+    Text) chooses what merges, remembered between sessions. A locked PDF
+    or archive asks for its password; one unopenable document merges
     nothing from its group rather than a document with pages quietly
     missing.
 

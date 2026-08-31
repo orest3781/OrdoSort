@@ -72,3 +72,39 @@ assumption without the gate destroyed files other stations had written.
 
 One is safe because the name is private. The other is careful because the name
 is public. Don't merge them.
+
+## The converter split
+
+Where each piece of "convert a document to PDF so it can be merged" lives,
+and why it isn't all in one project.
+
+**The rule is the target framework, not taste.** `OrdoSort.Core` targets
+`net8.0` — plain, cross-platform .NET, checked by nothing more exotic than
+PdfSharp and a zip/text reader. `OrdoSort.Wpf` targets `net8.0-windows`,
+the only place this solution may reference WPF or COM. A type goes wherever
+its own dependencies force it, not wherever feels tidiest.
+
+- **`IDocumentConverter`** — `OrdoSort.Core`. The bytes-in/bytes-out,
+  never-throws contract every converter implements and `PdfMerge` calls
+  through; platform-neutral itself, so it sits beside its caller.
+- **`MergeTypes`** — `OrdoSort.Core`. The one group→extension table
+  (pdf/zip/word/excel/powerpoint/images/text) every converter, `PdfMerge`
+  and the merge window's toggle row all read, instead of each keeping a
+  copy that could drift.
+- **`TablePages`** — `OrdoSort.Core`. Pure page-layout arithmetic (which
+  cells land on which page) with no PdfSharp, fonts or I/O — shared by
+  `TableToPdf` and `TextToPdf` so both paginate identically.
+- **`TableToPdf`** — `OrdoSort.Core`. CSV/TSV/XLSX to PDF with nothing
+  installed; needs only a reader and PdfSharp, nothing Windows-only.
+- **`TextToPdf`** — `OrdoSort.Core`. Plain text (txt/log/md/json) to PDF,
+  reusing `TableToPdf.Render` — same reason, nothing here is platform-bound.
+- **`ImageToPdf`** — `OrdoSort.Wpf/Services`. Needs
+  `System.Windows.Media.Imaging.BitmapDecoder` for its per-frame reads of a
+  multi-page TIFF — a WPF type a `net8.0` project cannot reference at all.
+- **`OfficeConverter`** — `OrdoSort.Wpf/Services`. Drives Word, Excel and
+  PowerPoint over late-bound COM (`System.Runtime.InteropServices`) —
+  Windows-only by nature, so it can never move to Core.
+- **`ConverterChain`** — `OrdoSort.Wpf/Services`. Composes the other four,
+  Office first, no silent downgrade. It lives in Wpf only because two of
+  the links it's built from (`OfficeConverter`, `ImageToPdf`) already do —
+  the class itself is as platform-neutral as its two Core-side links.
