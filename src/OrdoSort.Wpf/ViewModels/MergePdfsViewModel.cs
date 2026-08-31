@@ -500,7 +500,7 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
     /// MergePdfsWindow.OnClosed calls AFTER the window has already closed —
     /// Status renders in exactly one TextBlock inside that window, and
     /// nobody is looking at a closed window's view model, so "your own Word
-    /// may have been left hidden" was formatted into a string and dropped on
+    /// may have been left muted" was formatted into a string and dropped on
     /// the floor every single time, not just in unlikely cases.
     ///
     /// A follow-up review fix changed OfficeConverter itself too: restoring
@@ -538,9 +538,14 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
     /// <summary>Disposes the converter this window was built with, if it
     /// needs disposing at all. The default chain's OfficeConverter link is
     /// the one that does: an Office session it STARTED gets Quit() and
-    /// killed here; one it BORROWED (the user's own already-open Word or
-    /// Excel) gets its DisplayAlerts/Visible/AutomationSecurity flags
-    /// restored.
+    /// killed here. A session it BORROWED (the user's own already-open Word
+    /// or Excel) is simply left running, untouched, by this call — nothing
+    /// is restored HERE any more (review follow-up, 2026-08-31): `Visible`
+    /// is never written by OfficeConverter at all now, and DisplayAlerts/
+    /// AutomationSecurity are suppressed and restored PER CONVERSION,
+    /// inside OfficeConverter's own ConvertWord/ConvertExcel/
+    /// ConvertPowerPoint, well before this method ever runs — see that
+    /// class's own doc comment.
     ///
     /// Called from MergePdfsWindow.OnClosed, alongside Cancel(); harmless to
     /// call from a test that never opens a real window (an OfficeConverter

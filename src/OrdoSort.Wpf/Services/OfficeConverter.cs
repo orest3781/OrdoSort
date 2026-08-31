@@ -579,7 +579,7 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
     private OfficeSession EnsureWord()
     {
         if (_word is not null) return _word;
-        _word = OfficeSession.Start(WordProgId, WordProcessName);
+        _word = OfficeSession.Start(WordProgId, WordProcessName, displayAlertsNoneValue: 0);
         dynamic app = _word.App;
         // DisplayAlerts/AutomationSecurity are captured here, once, but SET
         // and RESTORED per conversion (see ConvertWord) rather than for the
@@ -596,7 +596,7 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
     private OfficeSession EnsureExcel()
     {
         if (_excel is not null) return _excel;
-        _excel = OfficeSession.Start(ExcelProgId, ExcelProcessName);
+        _excel = OfficeSession.Start(ExcelProgId, ExcelProcessName, displayAlertsNoneValue: 0);
         dynamic app = _excel.App;
         // Same shape as EnsureWord -- see its own comment. Excel's
         // per-document hiding is workbook.Windows(1).Visible = false, set
@@ -609,7 +609,7 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
     private OfficeSession EnsurePowerPoint()
     {
         if (_powerPoint is not null) return _powerPoint;
-        _powerPoint = OfficeSession.Start(PowerPointProgId, PowerPointProcessName);
+        _powerPoint = OfficeSession.Start(PowerPointProgId, PowerPointProcessName, displayAlertsNoneValue: 1); // ppAlertsNone
         dynamic app = _powerPoint.App;
         // Visible is deliberately left alone (measured: refused outright,
         // every run). DisplayAlerts is captured here, once, but SET and
@@ -813,16 +813,23 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
         public dynamic App { get; }
         public bool Started { get; }
         private readonly Process? _ownProcess;
+        // This app's own "suppress alerts" value (0 for Word/Excel's
+        // WdAlertsNone/xlAlertsNone, 1 for PowerPoint's ppAlertsNone -- see
+        // EnsurePowerPoint's own comment for why PowerPoint's is not 0) --
+        // re-applied immediately before Quit() below (review follow-up,
+        // 2026-08-31). See Dispose's own doc comment for why.
+        private readonly object _displayAlertsNoneValue;
         private bool _disposed;
 
-        private OfficeSession(dynamic app, bool started, Process? ownProcess)
+        private OfficeSession(dynamic app, bool started, Process? ownProcess, object displayAlertsNoneValue)
         {
             App = app;
             Started = started;
             _ownProcess = ownProcess;
+            _displayAlertsNoneValue = displayAlertsNoneValue;
         }
 
-        public static OfficeSession Start(string progId, string processName)
+        public static OfficeSession Start(string progId, string processName, object displayAlertsNoneValue)
         {
             var before = SnapshotPids(processName);
             var type = Type.GetTypeFromProgID(progId)
@@ -845,7 +852,7 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
                 if (started && p.Id == pid) ownProcess = p; // ours: keep the handle open, held until Dispose
                 else p.Dispose(); // not ours -- a pre-existing process, or (the ambiguous multi-match case) a new one this call declined to claim
             }
-            return new OfficeSession(app, started, ownProcess);
+            return new OfficeSession(app, started, ownProcess, displayAlertsNoneValue);
         }
 
         /// <summary>BORROWED (<see cref="Started"/> false): never Quit(),
@@ -858,20 +865,37 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
         /// never to touch a session this class does not own -- ordinary GC
         /// reclaims it in time, harmlessly.
         ///
-        /// STARTED (<see cref="Started"/> true): Quit(), then
-        /// FinalReleaseComObject -- safe here, because nothing else in the
-        /// process could hold a reference to an Application object this call
-        /// itself created -- then force-kill the held process after a short
-        /// grace period. Neither app exits naturally inside any window a
-        /// merge tool can afford to wait for (measured: PowerPoint ~20-30s,
-        /// Excel over two minutes), so the kill is load-bearing, not
-        /// belt-and-braces.</summary>
+        /// STARTED (<see cref="Started"/> true): DisplayAlerts is
+        /// re-suppressed, best effort, immediately before Quit() (review
+        /// follow-up, 2026-08-31) -- restoration is now unconditional and
+        /// PER CONVERSION (the Critical fix), so by the time Dispose runs,
+        /// the LAST conversion's own finally has already put DisplayAlerts
+        /// back to this app's ordinary, un-suppressed default. ConvertExcel
+        /// dirties the workbook on every conversion (PageSetup.Zoom/
+        /// FitToPagesWide/FitToPagesTall are property writes) and relies on
+        /// Close(SaveChanges: false) to discard that -- if that close ever
+        /// throws (swallowed there, exactly the failure class the temp-file
+        /// sweep also exists for), a dirty workbook reaches Quit() with
+        /// alerts no longer suppressed, whose default behaviour is to
+        /// PROMPT to save. A modal on an invisible, automation-driven
+        /// instance blocks the Quit() COM call itself -- synchronous, on
+        /// this thread -- and ForceKillAfterGracePeriod below only ever
+        /// runs AFTER Quit() returns, so a wedged Quit() defeats the force-
+        /// kill net entirely rather than merely delaying it. Then Quit(),
+        /// then FinalReleaseComObject -- safe here, because nothing else in
+        /// the process could hold a reference to an Application object this
+        /// call itself created -- then force-kill the held process after a
+        /// short grace period. Neither app exits naturally inside any
+        /// window a merge tool can afford to wait for (measured: PowerPoint
+        /// ~20-30s, Excel over two minutes), so the kill is load-bearing,
+        /// not belt-and-braces.</summary>
         public void Dispose()
         {
             if (_disposed) return;
             _disposed = true;
             if (!Started) return;
 
+            try { App.DisplayAlerts = _displayAlertsNoneValue; } catch { /* best effort -- Quit() below is what actually needs this to have worked */ }
             try { App.Quit(); } catch { /* best effort -- the kill below is the real safety net */ }
             try { Marshal.FinalReleaseComObject(App); } catch { /* best effort */ }
 

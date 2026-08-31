@@ -165,7 +165,20 @@ public class MergeTypeToggleTests : IDisposable
     public async Task SwitchingTheTypeBackOnIncludesTheRowsAlreadyInTheListWithoutReAdding()
     {
         // The whole reason exclusion is a live property rather than a status.
-        var vm = NewViewModel();
+        //
+        // 2026-08-31 review follow-up: Word must start ON first now -- it
+        // is off by default, so the original SetTypeEnabled(Word, false)
+        // below was a silent no-op (already off), and the on-to-off-to-on
+        // round trip this fact is named for never actually happened. A
+        // stub converter that always claims ".docx", not the real default
+        // ConverterChain, is what keeps this hermetic: the re-probe the
+        // final SetTypeEnabled(Word, true) now triggers (Minor 1, the
+        // prior fix round) calls _converter.Handles("docx") for real, and
+        // the real OfficeConverter's answer to that depends on whether
+        // Word is actually installed on whatever machine runs this --
+        // exactly the environment dependency this fact must not have.
+        var vm = NewViewModel(converter: new StubConverter(handles: "docx"));
+        vm.SetTypeEnabled(MergeTypes.Word, true);
         await vm.AddPaths([DocxPath()]);
         vm.SetTypeEnabled(MergeTypes.Word, false);
         Assert.False(vm.Rows.Single().IsIncluded);

@@ -30,6 +30,59 @@ public class TextToPdfTests
         Assert.Equal(1, PageCountOf(r.Pdf!));
     }
 
+    /// <summary>Review follow-up (2026-08-31): WrapLine's own upfront
+    /// `measure(line) &lt;= maxWidth` shortcut was removed as part of the
+    /// binary-search fix, on the reasoning that the main loop reaches the
+    /// same one-chunk result on its own -- true for every non-empty line,
+    /// false for the empty string, since `while (start &lt; line.Length)`
+    /// never runs at all when the line has zero characters. Every blank
+    /// line in a converted file is exactly that empty string (ToPdf splits
+    /// on '\n' with no RemoveEmptyEntries), so the bug silently deleted
+    /// every blank line — collapsing a converted .md into a wall of text,
+    /// since blank lines ARE Markdown's paragraph separators.
+    ///
+    /// TablePages' own body-rows-per-page for TextToPdf's geometry is
+    /// (int)(792 / 14) = 56, so a document of more than 56 LINES needs a
+    /// second page. Two real paragraph lines alone fit comfortably on one
+    /// page regardless of anything else in the file; padding the file out
+    /// past the 56-line threshold using ONLY blank lines is what makes the
+    /// PAGE COUNT ITSELF the proof that every blank line survived as its
+    /// own row, not merely that the file converted at all — if a blank line
+    /// ever again turned into zero rows instead of one, the effective line
+    /// count would silently fall back to 2 and this would stay on a single
+    /// page.</summary>
+    [Fact]
+    public void BlankLinesBetweenParagraphsArePreservedNotCollapsed()
+    {
+        var lines = new List<string> { "paragraph one" };
+        lines.AddRange(Enumerable.Repeat("", 60));
+        lines.Add("paragraph two");
+        var text = string.Join("\n", lines);   // 62 lines total, 60 of them blank
+
+        var r = new TextToPdf().ToPdf(System.Text.Encoding.UTF8.GetBytes(text),
+            "notes.md", Array.Empty<string>(), null);
+
+        Assert.Equal("ok", r.Status);
+        Assert.True(PageCountOf(r.Pdf!) > 1,
+            $"62 lines (60 of them blank) should need a second page if every blank line is its own row; got {PageCountOf(r.Pdf!)}");
+    }
+
+    /// <summary>The other half of the same bug: WITHOUT the empty-line
+    /// short-circuit, WrapLine("") returned [] rather than [""], so a file
+    /// of nothing but blank lines flattened (SelectMany) into a completely
+    /// empty table, TablePages.Paginate paginated that to ZERO pages, and
+    /// Render then failed inside PdfSharp's own document.Save on a
+    /// page-less PdfDocument — reported as "couldn't lay it out", an
+    /// ERROR, not the successful (if visually blank) conversion this file
+    /// deserves.</summary>
+    [Fact]
+    public void AFileOfOnlyBlankLinesConvertsRatherThanErroring()
+    {
+        var r = new TextToPdf().ToPdf(System.Text.Encoding.UTF8.GetBytes("\n\n\n"),
+            "blanks.txt", Array.Empty<string>(), null);
+        Assert.Equal("ok", r.Status);
+    }
+
     [Fact]
     public void AVeryLongLineWrapsRatherThanRunningOffThePage()
     {

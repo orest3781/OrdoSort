@@ -133,10 +133,14 @@ public class ConverterChainTests
     [Fact]
     public void RestorationWarningsAggregatesNonEmptyEntriesFromAReportingLink()
     {
-        var reporter = new FakeWarningReporter { RestorationWarnings = new[] { "Word: couldn't restore Visible" } };
+        // "DisplayAlerts", not "Visible" -- OfficeConverter never writes
+        // Visible at all any more (review follow-up, 2026-08-31), so a
+        // restoration warning it actually emits can only ever be about
+        // DisplayAlerts or AutomationSecurity.
+        var reporter = new FakeWarningReporter { RestorationWarnings = new[] { "Word: couldn't restore DisplayAlerts" } };
         var chain = new ConverterChain(new StubConverter(handles: null), reporter);
 
-        Assert.Equal(new[] { "Word: couldn't restore Visible" }, chain.RestorationWarnings);
+        Assert.Equal(new[] { "Word: couldn't restore DisplayAlerts" }, chain.RestorationWarnings);
     }
 
     /// <summary>Companion to the fact above, not a substitute for it: proves

@@ -115,14 +115,31 @@ public sealed class TextToPdf : IDocumentConverter
     /// close to that chunk's own size, however long the line is overall.
     /// No upfront `measure(line) &lt;= maxWidth` shortcut for the common
     /// short-line case either, deliberately: that was the ORIGINAL
-    /// unbounded measure call this whole fix exists to avoid, and it is
-    /// unnecessary — the loop below already reaches the identical one-chunk
-    /// result on its own (doubling runs out of line before it ever fails to
-    /// fit, `tooWide` stays -1, the whole remainder becomes the one chunk),
-    /// in a handful of cheap, small-string measure calls even for an
-    /// ordinary short line.</summary>
+    /// unbounded measure call this whole fix exists to avoid, and for every
+    /// NON-EMPTY line it is unnecessary — the loop below already reaches the
+    /// identical one-chunk result on its own (doubling runs out of line
+    /// before it ever fails to fit, `tooWide` stays -1, the whole remainder
+    /// becomes the one chunk), in a handful of cheap, small-string measure
+    /// calls even for an ordinary short line.
+    ///
+    /// The empty string is the one case that claim does not cover (review
+    /// follow-up, 2026-08-31): `while (start &lt; line.Length)` never
+    /// executes at all when <c>line.Length == 0</c>, so without the explicit
+    /// check below an empty line would vanish — returning <c>[]</c> instead
+    /// of <c>[""]</c> — and every blank line in a converted .txt/.log/.md/
+    /// .json is exactly that, since <see cref="ToPdf"/> splits on '\n' with
+    /// no <c>RemoveEmptyEntries</c> and flattens the result with
+    /// <c>SelectMany</c>. Markdown is the sharpest case: blank lines ARE the
+    /// paragraph separators, so losing every one of them collapses a
+    /// converted .md into a wall of text; a file of nothing but blank lines
+    /// drove the page count to zero and failed at <c>Save</c> instead of
+    /// converting at all. This checks LENGTH, not content, and measures
+    /// nothing — it does not reintroduce the unbounded <c>measure(line)</c>
+    /// call the paragraph above explains removing.</summary>
     private static List<string> WrapLine(string line, double maxWidth, Func<string, double> measure)
     {
+        if (line.Length == 0) return [line];
+
         var chunks = new List<string>();
         var start = 0;
         while (start < line.Length)

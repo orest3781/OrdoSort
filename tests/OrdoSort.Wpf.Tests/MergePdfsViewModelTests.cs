@@ -790,7 +790,11 @@ public class MergePdfsViewModelTests
     {
         using var dir = new TempDir();
         var converter = new WarningReportingConverter();
-        converter.AddWarning("Word: couldn't restore Visible (RPC server unavailable)");
+        // "DisplayAlerts", not "Visible" -- OfficeConverter never writes
+        // Visible at all any more (review follow-up, 2026-08-31), so a
+        // restoration warning it actually emits can only ever be about
+        // DisplayAlerts or AutomationSecurity.
+        converter.AddWarning("Word: couldn't restore DisplayAlerts (RPC server unavailable)");
         var vm = MakeVm(converter: converter,
             fileMerger: (paths, output, _, _) => Ok(paths[0], Path.Combine(dir.Path, "Job.pdf"), paths.Count));
         // Word is off by default -- without this the docx row is excluded,
@@ -804,7 +808,7 @@ public class MergePdfsViewModelTests
         await vm.AddPaths(new[] { dir.File("a.docx") });
         await vm.MergeAsync(null);
 
-        Assert.Contains("couldn't restore Visible", vm.Status);
+        Assert.Contains("couldn't restore DisplayAlerts", vm.Status);
     }
 
     /// <summary>The other half of the same fix: the converter's warnings

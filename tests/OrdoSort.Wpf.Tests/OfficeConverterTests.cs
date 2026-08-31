@@ -701,7 +701,7 @@ public sealed class OfficeConverterTests : IClassFixture<OfficeConverterTests.Of
     {
         // "Three empty catches" was review round 1's finding: if restoring
         // a borrowed session's flags fails, the user's own Office
-        // application is left hidden/muted with no signal anywhere.
+        // application is left muted with no signal anywhere.
         // PowerPoint, not Word, for the same single-instance reasoning as
         // the two facts above -- simulating the user's session vanishing
         // WHILE this class still held it borrowed is a real failure mode
