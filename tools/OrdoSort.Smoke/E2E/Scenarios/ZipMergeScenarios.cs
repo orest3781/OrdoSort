@@ -352,6 +352,13 @@ public static class ZipMergeScenarios
         ctx.Check("the text file starts included", textRow.IsIncluded, "it began excluded");
 
         vm.SetTypeEnabled(MergeTypes.Text, false);
+        // The LIVE collection, not the captured textRow reference: exclusion
+        // mutates the row in place (ZipItemRow.IsIncluded), so every check
+        // below would keep passing even if a future change instead REMOVED
+        // the row from Rows — exactly the regression "listed but not
+        // merged" (this scenario's own name) exists to catch.
+        ctx.Check("the text row is still shown after being excluded",
+            vm.Rows.Any(r => r.Path == notes), "it was removed from the list");
         ctx.Check("switching Text off excludes the row, live", !textRow.IsIncluded, "it stayed included");
         ctx.Check("its note explains why, rather than staying blank",
             textRow.Note == "not included — this file type is switched off", $"note was \"{textRow.Note}\"");
@@ -360,6 +367,8 @@ public static class ZipMergeScenarios
         vm.MergeCommand.Execute(null);
         ctx.Check("the window applied every result", Drained(), "the dispatcher queue never drained");
 
+        ctx.Check("the text row is still shown after the merge",
+            vm.Rows.Any(r => r.Path == notes), "it was removed from the list");
         var pdfRow = vm.Rows.Single(r => r.Path == pdf);
         ctx.Check("the PDF merged on its own", pdfRow.StatusKind == ZipItemRowStatus.Ok,
             $"{pdfRow.StatusKind} — {pdfRow.Note}");

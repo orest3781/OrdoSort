@@ -121,13 +121,14 @@ workflow tests, builds, zips, and publishes.
   - *Merge PDFs* — loose PDFs into one document named after their folder,
     and every PDF inside a zip into one document beside the zip. Word,
     Excel, PowerPoint, image and text files merge alongside them too —
-    loose or inside a zip — converted to PDF on the way in, through Office
-    itself when it's installed and an in-house converter when it isn't. A
-    row of per-type toggles (PDF, Zip, Word, Excel, PowerPoint, Images,
-    Text) chooses what merges, remembered between sessions. A locked PDF
-    or archive asks for its password; one unopenable document merges
-    nothing from its group rather than a document with pages quietly
-    missing.
+    loose or inside a zip. Word, PowerPoint and most Excel formats need
+    Office itself installed to convert at all; images, text files, CSV,
+    TSV and XLSX always have a local fallback that needs no Office,
+    though XLSX still prefers the real thing when Office is there. A row
+    of per-type toggles (PDF, Zip, Word, Excel, PowerPoint, Images, Text)
+    chooses what merges, remembered between sessions. A locked PDF or
+    archive asks for its password; one unopenable document merges nothing
+    from its group rather than a document with pages quietly missing.
 
 ## Structure
 
