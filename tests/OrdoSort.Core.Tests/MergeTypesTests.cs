@@ -14,6 +14,16 @@ public class MergeTypesTests
     public void AForeignTypeHasNoGroup(string extension) =>
         Assert.Null(MergeTypes.GroupOf(extension));
 
+    // A deliberate v1 non-goal, not a silent omission: opening a web
+    // document in Word fetches remote resources, which is both a hang
+    // surface and a beaconing surface AutomationSecurity does not cover,
+    // and this repo has a PHI history. Locked in as a test so a future
+    // change cannot silently re-add them without someone noticing.
+    [Theory]
+    [InlineData("htm")] [InlineData("html")]
+    public void WebDocumentsAreNotInTheWordGroup(string extension) =>
+        Assert.Null(MergeTypes.GroupOf(extension));
+
     [Fact]
     public void NoExtensionBelongsToTwoGroups()
     {

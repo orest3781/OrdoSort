@@ -204,7 +204,18 @@ public static class PdfMerge
                 // extension, a switched-off type) — none of those get named.
                 if (converter is not null && MergeTypes.GroupOf(ExtensionOf(entry.Name)) is not null
                     && !IsSwitchedOff(entry.Name, includeTypes))
-                    notConvertible.Add(entry.Name);
+                {
+                    // Most of the time nothing here can say more than the
+                    // bare name — no converter offers this type at all, or
+                    // this PC lacks the app. ".ppt" is the one exception
+                    // today: OfficeConverter deliberately refuses it (no
+                    // safe password path exists — see its own Handles() doc
+                    // comment) even when PowerPoint IS installed and the
+                    // type IS switched on, which reads as a missing
+                    // capability unless the reason is named alongside it.
+                    var reason = SpecificRefusalReasonFor(ExtensionOf(entry.Name));
+                    notConvertible.Add(reason is null ? entry.Name : $"{entry.Name}: {reason}");
+                }
             }
             if (mergeable.Count == 0)
                 return new(zipPath, "no_pdfs", SkippedEntries: skipped, Message: "nothing to merge inside",
@@ -396,6 +407,23 @@ public static class PdfMerge
     private static string ExtensionOf(string name) =>
         Path.GetExtension(name).TrimStart('.').ToLowerInvariant();
 
+    /// <summary>The one case today where a RECOGNIZED, switched-on type is
+    /// refused for a specific, documented reason rather than "this PC lacks
+    /// the app" or "no converter offers it" — null for every other
+    /// extension. ".ppt" is OfficeConverter's own deliberate exception (see
+    /// its Handles() doc comment): PowerPoint's Presentations.Open has no
+    /// password parameter in any object-model generation, and legacy .ppt's
+    /// OLE2 container gives OfficeConverter's protected-pptx byte check
+    /// nothing to work with, so it is excluded even when PowerPoint is
+    /// installed and the type is switched on. Naming the reason here,
+    /// rather than falling into the generic "can't be converted" every
+    /// other unhandled type gets, is what keeps that refusal from reading
+    /// as a missing capability instead of a deliberate one.</summary>
+    private static string? SpecificRefusalReasonFor(string extension) =>
+        extension.Equals("ppt", StringComparison.OrdinalIgnoreCase)
+            ? "PowerPoint 97-2003 can't be opened safely — save it as .pptx."
+            : null;
+
     /// <summary>Whether the user has explicitly switched this file's TYPE
     /// off — true only for a type <see cref="MergeTypes"/> recognizes AND
     /// <paramref name="includeTypes"/> excludes. An extension nothing
@@ -462,7 +490,7 @@ public static class PdfMerge
 
         if (converter is null || !converter.Handles(extension))
             return new("", "error", Item: itemKey,
-                Message: $"{displayName} can't be converted on this PC");
+                Message: SpecificRefusalReasonFor(extension) ?? $"{displayName} can't be converted on this PC");
 
         ConversionResult converted;
         try

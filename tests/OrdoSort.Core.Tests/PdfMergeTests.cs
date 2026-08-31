@@ -772,6 +772,41 @@ public class PdfMergeTests : IDisposable
         Assert.Equal(new[] { "only the first of 3 worksheets — install Excel to include them all" }, r.Notes);
     }
 
+    /// <summary>Controller ruling (Task 6 fix round): ".ppt" is the one
+    /// case today where a recognized, switched-on type is refused for a
+    /// specific reason (OfficeConverter's own deliberate exception — no
+    /// safe password path exists for it) rather than "this PC lacks the
+    /// app". A zip entry of that type must still be ordinary, non-fatal
+    /// clutter (the whole point of AZipOfOnlyDocxWithAConverterThatDoesNot
+    /// HandleWordNamesThemInNotes above), but the note naming it must say
+    /// WHY, not just its bare filename — otherwise a deliberate refusal
+    /// reads exactly like a missing capability.</summary>
+    [Fact]
+    public void AZipOfOnlyPptWithAConverterThatDoesNotHandleItNamesTheSpecificReasonInNotes()
+    {
+        var zip = MakeZip("decks.zip", ("slides.ppt", new byte[] { 1, 2, 3 }));
+        var converter = new FakeConverter { HandledExtensions = new HashSet<string>() };   // installed, but this type is deliberately refused
+        var r = PdfMerge.MergeZip(zip, NoPasswords, NeverAsked, converter);
+        Assert.Equal("no_pdfs", r.Status);
+        Assert.Equal(new[] { "slides.ppt: PowerPoint 97-2003 can't be opened safely — save it as .pptx." }, r.Notes);
+    }
+
+    /// <summary>The loose-file counterpart: a CHOSEN .ppt fails the whole
+    /// unit (unlike the zip case above), but the MESSAGE must still name
+    /// the real reason rather than the generic "can't be converted on this
+    /// PC" every other unhandled type gets — misleading here specifically,
+    /// since the app very much could be installed and the type switched
+    /// on; the refusal is deliberate, not a missing capability.</summary>
+    [Fact]
+    public void ALoosePptFileNamesTheSpecificReasonRatherThanTheGenericMessage()
+    {
+        var ppt = MakeDocFile("slides.ppt");
+        var converter = new FakeConverter { HandledExtensions = new HashSet<string>() };
+        var r = PdfMerge.MergeFiles(new[] { ppt }, null, NoPasswords, NeverAsked, converter);
+        Assert.Equal("error", r.Status);
+        Assert.Equal("PowerPoint 97-2003 can't be opened safely — save it as .pptx.", r.Message);
+    }
+
     /// <summary>Fix round (review finding 5, Important): converter.ToPdf was
     /// the one unguarded collaborator call in either loop. An unguarded
     /// throw unwinds to the outer wrapper and blames the whole merge — with

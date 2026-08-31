@@ -54,11 +54,17 @@ public static class MergeTypes
     /// every type would get every type back at the next launch.</summary>
     public const string NoneStored = "none";
 
+    // ".htm"/".html" are a deliberate v1 non-goal, not a silent omission:
+    // opening a web document in Word fetches remote resources, which is
+    // both a hang surface and a beaconing surface that AutomationSecurity =
+    // ForceDisable does not cover, and this repo has a PHI history. rtf,
+    // odt and docm stay -- macros in a docm are covered by
+    // AutomationSecurity.
     private static readonly Dictionary<string, string[]> ByGroup = new(StringComparer.OrdinalIgnoreCase)
     {
         [Pdf] = ["pdf"],
         [Zip] = ["zip"],
-        [Word] = ["docx", "doc", "docm", "rtf", "odt", "htm", "html"],
+        [Word] = ["docx", "doc", "docm", "rtf", "odt"],
         [Excel] = ["xlsx", "xls", "xlsm", "ods", "csv", "tsv"],
         [PowerPoint] = ["pptx", "ppt"],
         [Images] = ["jpg", "jpeg", "png", "tif", "tiff", "bmp", "gif"],
