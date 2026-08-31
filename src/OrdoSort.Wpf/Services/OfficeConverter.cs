@@ -42,24 +42,45 @@ namespace OrdoSort.Wpf.Services;
 ///    there risks force-killing a third party's process, which is strictly
 ///    worse than leaking an orphan of our own.
 ///    Borrowed: never Quit(), never force-kill, never release the
-///    Application object's own COM reference (see <see cref="OfficeSession"/>),
-///    and every app-global flag this class changed (DisplayAlerts, Visible,
-///    AutomationSecurity) is restored to what it was before this class ever
-///    touched it -- set on the user's own Word, DisplayAlerts=false would
-///    suppress THEIR save prompts and Visible=false would hide THEIR
-///    window. A restoration that fails (the user closed the app while this
-///    class held it borrowed, say) is recorded in
+///    Application object's own COM reference (see <see cref="OfficeSession"/>).
+///    <c>Visible</c> is never written at all, on EITHER kind of session
+///    (review Critical fix, 2026-08-30): <c>Documents.Open</c> already takes
+///    its own <c>Visible: false</c> per document, <c>Workbooks.Open</c> gets
+///    the equivalent via <c>workbook.Windows(1).Visible = false</c> right
+///    after opening (see <see cref="ConvertExcel"/> -- Excel has no
+///    per-document parameter the way Word does), and an automation-started
+///    Application is invisible by default regardless (measured) -- so an
+///    application-level write here was never doing anything for a STARTED
+///    session and was doing exactly one thing for a BORROWED one: hiding a
+///    window that belongs to the user, for as long as this class held the
+///    session. <c>DisplayAlerts</c> and <c>AutomationSecurity</c> are
+///    suppressed and restored PER CONVERSION, not per session -- set
+///    immediately before <c>Documents.Open</c>/<c>Workbooks.Open</c>/
+///    <c>Presentations.Open</c> and restored in the same <c>finally</c> that
+///    closes the document (see <see cref="ConvertWord"/>/
+///    <see cref="ConvertExcel"/>/<see cref="ConvertPowerPoint"/>), so the
+///    window either flag is suppressed shrinks from "as long as the Merge
+///    dialog stays open" to the few hundred milliseconds this class is
+///    actually driving Office for that one document -- unconditionally, on
+///    a session this class started as well as one it borrowed, which is
+///    what makes a restoration failure on EITHER kind get recorded rather
+///    than only a borrowed one's. A restoration that fails (the user closed
+///    the app while this class held it borrowed, say, or a COM error on a
+///    session this class started) is recorded in
 ///    <see cref="RestorationWarnings"/> rather than silently swallowed --
-///    the alternative is the user's own Office left hidden or muted with
-///    nothing anywhere to say why. Only the document this class opened is
-///    closed. Started: Quit, release, then force-kill that exact PID after
-///    a short grace period, because neither app exits naturally within any
-///    practical window (measured: PowerPoint ~20-30 s, Excel over two
-///    minutes -- waiting longer does not help a merge tool that cannot sit
-///    idle for minutes per file). Kill-by-NAME is forbidden outright, in
-///    every code path -- a diffed, HELD process handle (not a bare PID
-///    number, which is not a stable identity once the grace period lets the
-///    OS potentially recycle it) is the only thing this class ever
+///    the alternative is the user's own Office left muted with nothing
+///    anywhere to say why, and because this now happens per conversion
+///    rather than at <see cref="Dispose"/>, a failure is recorded WHILE the
+///    Merge window is still open, not only after it closes (see
+///    MergePdfsViewModel.DrainConverterWarnings). Only the document this
+///    class opened is closed. Started: Quit, release, then force-kill that
+///    exact PID after a short grace period, because neither app exits
+///    naturally within any practical window (measured: PowerPoint ~20-30 s,
+///    Excel over two minutes -- waiting longer does not help a merge tool
+///    that cannot sit idle for minutes per file). Kill-by-NAME is forbidden
+///    outright, in every code path -- a diffed, HELD process handle (not a
+///    bare PID number, which is not a stable identity once the grace period
+///    lets the OS potentially recycle it) is the only thing this class ever
 ///    considered provably its own.
 /// 3. TEMP FILES. Office can only open a real file. Names are generated
 ///    here, never taken from a zip entry (that is what keeps PdfMerge's
@@ -133,30 +154,48 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
     private AppFlags? _excelFlagsBeforeThisClassTouchedThem;
     private object? _powerPointDisplayAlertsBeforeThisClassTouchedThem;
     private readonly List<string> _restorationWarnings = [];
+
+    /// <summary>Every temp folder <see cref="ToPdf"/> has generated across
+    /// this converter's lifetime, regardless of whether that call's own
+    /// finally later deleted it -- so <see cref="Dispose"/> can sweep
+    /// (Minor 5) whichever ones a failed document.Close() left behind
+    /// (Word/Excel/PowerPoint still holding the file open makes
+    /// Directory.Delete fail into an empty catch there) once the session
+    /// that was holding them has been quit and force-killed.</summary>
+    private readonly List<string> _generatedTempDirs = [];
     private bool _disposed;
 
-    /// <summary>Filled only when restoring a flag on a BORROWED session
-    /// fails -- empty in the overwhelmingly common case (a session this
-    /// class STARTED restores nothing, since it is about to be killed
-    /// outright; a successful restore on a borrowed one leaves nothing to
-    /// report either). Exists because a silent failure here is not cosmetic
-    /// the way a leftover temp file is: it leaves the user's OWN,
-    /// already-open Office application sitting in whatever mid-conversion
-    /// state this class left it in (hidden, alerts suppressed), with no
-    /// other signal anywhere that anything went wrong -- the empty
-    /// try/catch this replaced would have swallowed exactly that. This
-    /// class has no UI surface of its own to show it on, so a caller that
-    /// cares (the merge window, say) is expected to check this after
-    /// Dispose() and decide what, if anything, to tell the user.</summary>
+    /// <summary>Filled whenever restoring DisplayAlerts or AutomationSecurity
+    /// after a conversion fails -- empty in the overwhelmingly common case
+    /// (the restore succeeds). Not gated to borrowed sessions only (review
+    /// Critical fix): restoration now runs per conversion, unconditionally,
+    /// so a failure on a session this class itself started is recorded here
+    /// too, not only a borrowed one's. Exists because a silent failure here
+    /// is not cosmetic the way a leftover temp file is: on a BORROWED
+    /// session it leaves the user's OWN, already-open Office application
+    /// sitting muted with no other signal anywhere that anything went
+    /// wrong -- the empty try/catch this replaced would have swallowed
+    /// exactly that. This class has no UI surface of its own to show it on,
+    /// so a caller that cares (MergePdfsViewModel.DrainConverterWarnings) is
+    /// expected to check this -- now while the window is still open, since
+    /// the failure is recorded at the end of the very conversion that
+    /// caused it, not only after Dispose().</summary>
     public IReadOnlyList<string> RestorationWarnings => _restorationWarnings;
 
-    /// <summary>Whatever this class changed on an Application object it may
-    /// have borrowed, captured before the first change so Dispose can put it
-    /// back exactly. AutomationSecurity is nullable: unlike DisplayAlerts and
-    /// Visible (both exercised directly by Task 1), it was never measured,
-    /// so reading or writing it is wrapped defensively and a null here means
+    /// <summary>DisplayAlerts and AutomationSecurity as they stood the
+    /// moment this class first touched this Application -- captured once, at
+    /// session start (see <see cref="EnsureWord"/>/<see cref="EnsureExcel"/>),
+    /// and used as the restore target after EVERY conversion that session
+    /// runs (see <see cref="ConvertWord"/>/<see cref="ConvertExcel"/>), not
+    /// re-read before each one: re-reading would risk capturing an
+    /// already-suppressed value if a PRIOR restore in the same session had
+    /// itself failed, silently making every later restore target the wrong
+    /// thing. No <c>Visible</c> field: this class never writes that flag at
+    /// all any more (see this class's own doc comment). AutomationSecurity is
+    /// nullable: unlike DisplayAlerts, it was never measured by Task 1, so
+    /// reading or writing it is wrapped defensively and a null here means
     /// "couldn't read it, so don't try to restore it either".</summary>
-    private readonly record struct AppFlags(object DisplayAlerts, object Visible, object? AutomationSecurity);
+    private readonly record struct AppFlags(object DisplayAlerts, object? AutomationSecurity);
 
     /// <summary>Per app, not all-or-nothing -- Word may be present without
     /// PowerPoint, or vice versa. <paramref name="group"/> is one of
@@ -239,6 +278,10 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
 
         var group = MergeTypes.GroupOf(extension)!;
         var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        // Tracked before the try below can fail in any way, so Dispose's own
+        // sweep (Minor 5) knows to check this path even if THIS call's own
+        // cleanup below never gets the chance to run at all.
+        _generatedTempDirs.Add(tempDir);
         try
         {
             Directory.CreateDirectory(tempDir);
@@ -271,47 +314,66 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
         var session = EnsureWord();
         dynamic app = session.App;
 
+        // DisplayAlerts/AutomationSecurity are suppressed for exactly this
+        // one document's open-through-close cycle (review Critical fix),
+        // not the whole dialog session -- set here, immediately before the
+        // Open attempts below, and restored in the SAME finally that closes
+        // the document, so the window either flag is suppressed shrinks to
+        // the time this method is actually driving Word. Unconditional --
+        // not gated on session.Started -- both because a session this class
+        // started pays only a negligible extra COM round trip for it and
+        // because that is what makes a restoration failure on EITHER kind
+        // of session get recorded, not only a borrowed one's. There is no
+        // hang risk in the gap between conversions: nothing calls into
+        // Office there.
+        app.DisplayAlerts = 0;
+        TrySetAutomationSecurity(app, 3);
+
         dynamic? document = null;
-        var unreadableMessage = "";
-        var resolution = Passwords.Resolve(WithSentinelFirst(candidates), ask, displayName, inside: null, password =>
-        {
-            try
-            {
-                document = app.Documents.Open(
-                    FileName: inputPath,
-                    ConfirmConversions: false,
-                    ReadOnly: true,
-                    AddToRecentFiles: false,
-                    PasswordDocument: password,
-                    Visible: false);
-                return PasswordTry.Opened;
-            }
-            catch (COMException ex) when (ex.HResult == WordWrongPasswordHResult)
-            {
-                return PasswordTry.WrongPassword;
-            }
-            catch (Exception ex)
-            {
-                unreadableMessage = ex.Message;
-                return PasswordTry.Unreadable;
-            }
-        });
-
-        if (resolution.Status == "needs_password")
-            return new("needs_password", null, "needs a password", displayName);
-        if (resolution.Status == "unreadable")
-            return new("error", null, $"couldn't read it: {unreadableMessage}", displayName);
-
         try
         {
+            var unreadableMessage = "";
+            var resolution = Passwords.Resolve(WithSentinelFirst(candidates), ask, displayName, inside: null, password =>
+            {
+                try
+                {
+                    document = app.Documents.Open(
+                        FileName: inputPath,
+                        ConfirmConversions: false,
+                        ReadOnly: true,
+                        AddToRecentFiles: false,
+                        PasswordDocument: password,
+                        Visible: false);
+                    return PasswordTry.Opened;
+                }
+                catch (COMException ex) when (ex.HResult == WordWrongPasswordHResult)
+                {
+                    return PasswordTry.WrongPassword;
+                }
+                catch (Exception ex)
+                {
+                    unreadableMessage = ex.Message;
+                    return PasswordTry.Unreadable;
+                }
+            });
+
+            if (resolution.Status == "needs_password")
+                return new("needs_password", null, "needs a password", displayName);
+            if (resolution.Status == "unreadable")
+                return new("error", null, $"couldn't read it: {unreadableMessage}", displayName);
+
             document!.ExportAsFixedFormat(outputPath, 17); // wdExportFormatPDF
             return new("ok", File.ReadAllBytes(outputPath));
         }
         finally
         {
-            try { document!.Close(SaveChanges: false); } catch { /* best effort */ }
-            try { Marshal.FinalReleaseComObject(document!); }
-            catch { /* best effort -- this Document is ours alone regardless of whether the Application was borrowed */ }
+            if (document is not null)
+            {
+                try { document.Close(SaveChanges: false); } catch { /* best effort */ }
+                try { Marshal.FinalReleaseComObject(document); }
+                catch { /* best effort -- this Document is ours alone regardless of whether the Application was borrowed */ }
+            }
+            if (_wordFlagsBeforeThisClassTouchedThem is { } saved) RestoreAppFlags(app, "Word", saved);
         }
     }
 
@@ -332,39 +394,54 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
         // than assumed.
         var isEncrypted = IsCfbfEncrypted(inputPath);
 
+        // Same per-conversion scope as ConvertWord -- see that method's own
+        // comment for why unconditional, and this class's own doc comment
+        // for why Visible is never touched at the Application level here at
+        // all any more.
+        app.DisplayAlerts = 0;
+        TrySetAutomationSecurity(app, 3);
+
         dynamic? workbook = null;
-        var unreadableMessage = "";
-        var resolution = Passwords.Resolve(WithSentinelFirst(candidates), ask, displayName, inside: null, password =>
-        {
-            try
-            {
-                workbook = app.Workbooks.Open(
-                    Filename: inputPath,
-                    UpdateLinks: 0,
-                    ReadOnly: true,
-                    Password: password,
-                    IgnoreReadOnlyRecommended: true,
-                    AddToMru: false);
-                return PasswordTry.Opened;
-            }
-            catch (COMException ex) when (ex.HResult == ExcelWrongPasswordHResult && isEncrypted)
-            {
-                return PasswordTry.WrongPassword;
-            }
-            catch (Exception ex)
-            {
-                unreadableMessage = ex.Message;
-                return PasswordTry.Unreadable;
-            }
-        });
-
-        if (resolution.Status == "needs_password")
-            return new("needs_password", null, "needs a password", displayName);
-        if (resolution.Status == "unreadable")
-            return new("error", null, $"couldn't read it: {unreadableMessage}", displayName);
-
         try
         {
+            var unreadableMessage = "";
+            var resolution = Passwords.Resolve(WithSentinelFirst(candidates), ask, displayName, inside: null, password =>
+            {
+                try
+                {
+                    workbook = app.Workbooks.Open(
+                        Filename: inputPath,
+                        UpdateLinks: 0,
+                        ReadOnly: true,
+                        Password: password,
+                        IgnoreReadOnlyRecommended: true,
+                        AddToMru: false);
+                    // Workbooks.Open has no per-document Visible parameter,
+                    // unlike Documents.Open -- this is the Excel analogue,
+                    // hiding only the window THIS call opened rather than
+                    // the whole Application (review Critical fix). Wrapped
+                    // defensively: a workbook that somehow opens without a
+                    // window, or a COM hiccup here, must not fail a
+                    // conversion that otherwise succeeded.
+                    try { workbook.Windows(1).Visible = false; } catch { /* best effort */ }
+                    return PasswordTry.Opened;
+                }
+                catch (COMException ex) when (ex.HResult == ExcelWrongPasswordHResult && isEncrypted)
+                {
+                    return PasswordTry.WrongPassword;
+                }
+                catch (Exception ex)
+                {
+                    unreadableMessage = ex.Message;
+                    return PasswordTry.Unreadable;
+                }
+            });
+
+            if (resolution.Status == "needs_password")
+                return new("needs_password", null, "needs a password", displayName);
+            if (resolution.Status == "unreadable")
+                return new("error", null, $"couldn't read it: {unreadableMessage}", displayName);
+
             // Unlike TableToPdf's no-Excel fallback (first worksheet only),
             // every worksheet rides along here -- Task 1 confirmed the
             // export's own /Pages /Count reflected both sheets of a
@@ -381,9 +458,13 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
         }
         finally
         {
-            try { workbook!.Close(SaveChanges: false); } catch { /* best effort */ }
-            try { Marshal.FinalReleaseComObject(workbook!); }
-            catch { /* best effort -- ours alone, same reasoning as ConvertWord */ }
+            if (workbook is not null)
+            {
+                try { workbook.Close(SaveChanges: false); } catch { /* best effort */ }
+                try { Marshal.FinalReleaseComObject(workbook); }
+                catch { /* best effort -- ours alone, same reasoning as ConvertWord */ }
+            }
+            if (_excelFlagsBeforeThisClassTouchedThem is { } saved) RestoreAppFlags(app, "Excel", saved);
         }
     }
 
@@ -416,6 +497,10 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
 
         var session = EnsurePowerPoint();
         dynamic app = session.App;
+        // Per-conversion scope, same reasoning as ConvertWord/ConvertExcel:
+        // set immediately before Presentations.Open, restored in the SAME
+        // finally that closes the presentation, unconditionally.
+        TrySetDisplayAlerts(app, 1); // ppAlertsNone -- see EnsurePowerPoint's own comment for why 1, not 0
 
         dynamic? presentation = null;
         try
@@ -435,6 +520,7 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
                 try { presentation.Close(); } catch { /* best effort */ }
                 try { Marshal.FinalReleaseComObject(presentation); } catch { /* best effort -- ours alone */ }
             }
+            RestorePowerPointDisplayAlerts(app);
         }
     }
 
@@ -495,10 +581,15 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
         if (_word is not null) return _word;
         _word = OfficeSession.Start(WordProgId, WordProcessName);
         dynamic app = _word.App;
-        _wordFlagsBeforeThisClassTouchedThem = new AppFlags(app.DisplayAlerts, app.Visible, TryGetAutomationSecurity(app));
-        app.DisplayAlerts = 0;
-        app.Visible = false;
-        TrySetAutomationSecurity(app, 3);
+        // DisplayAlerts/AutomationSecurity are captured here, once, but SET
+        // and RESTORED per conversion (see ConvertWord) rather than for the
+        // whole session. Visible is never written at all -- see this
+        // class's own doc comment (review Critical fix): Documents.Open
+        // already gets its own per-document Visible:false, and an
+        // automation-started Application is invisible by default anyway, so
+        // the only thing writing it here ever did was hide a BORROWED
+        // session's window.
+        _wordFlagsBeforeThisClassTouchedThem = new AppFlags(app.DisplayAlerts, TryGetAutomationSecurity(app));
         return _word;
     }
 
@@ -507,10 +598,11 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
         if (_excel is not null) return _excel;
         _excel = OfficeSession.Start(ExcelProgId, ExcelProcessName);
         dynamic app = _excel.App;
-        _excelFlagsBeforeThisClassTouchedThem = new AppFlags(app.DisplayAlerts, app.Visible, TryGetAutomationSecurity(app));
-        app.DisplayAlerts = 0;
-        app.Visible = false;
-        TrySetAutomationSecurity(app, 3);
+        // Same shape as EnsureWord -- see its own comment. Excel's
+        // per-document hiding is workbook.Windows(1).Visible = false, set
+        // in ConvertExcel right after Workbooks.Open (Excel has no
+        // Documents.Open-style Visible parameter to pass there directly).
+        _excelFlagsBeforeThisClassTouchedThem = new AppFlags(app.DisplayAlerts, TryGetAutomationSecurity(app));
         return _excel;
     }
 
@@ -520,27 +612,27 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
         _powerPoint = OfficeSession.Start(PowerPointProgId, PowerPointProcessName);
         dynamic app = _powerPoint.App;
         // Visible is deliberately left alone (measured: refused outright,
-        // every run). DisplayAlerts was never exercised by Task 1 on
-        // PowerPoint specifically, but it is exactly the kind of prompt-
-        // suppression that keeps an otherwise-uncatchable modal (a format-
-        // compatibility prompt, a repair-this-file prompt) from ever
-        // appearing -- PowerPoint is the one app with no catchable
-        // password failure at all, so anything it CAN raise is a hang with
-        // no net under it. PpAlertLevel is NOT Word's WdAlertLevel: 0 is
-        // not a valid member (measured directly -- late-bound dispatch
-        // rejects it with "Cannot convert value 0 ... enumeration values
-        // that are not valid"), so this is 1 (ppAlertsNone), not 0.
-        // Wrapped defensively regardless: unmeasured by Task 1, so a build
-        // that behaves differently here degrades to a no-op rather than
-        // failing setup.
+        // every run). DisplayAlerts is captured here, once, but SET and
+        // RESTORED per conversion (see ConvertPowerPoint), the same move as
+        // Word/Excel above -- it is exactly the kind of prompt-suppression
+        // that keeps an otherwise-uncatchable modal (a format-compatibility
+        // prompt, a repair-this-file prompt) from ever appearing --
+        // PowerPoint is the one app with no catchable password failure at
+        // all, so anything it CAN raise is a hang with no net under it.
+        // PpAlertLevel is NOT Word's WdAlertLevel: 0 is not a valid member
+        // (measured directly -- late-bound dispatch rejects it with "Cannot
+        // convert value 0 ... enumeration values that are not valid"), so
+        // ConvertPowerPoint uses 1 (ppAlertsNone), not 0. Wrapped
+        // defensively regardless: unmeasured by Task 1, so a build that
+        // behaves differently here degrades to a no-op rather than failing
+        // setup.
         try { _powerPointDisplayAlertsBeforeThisClassTouchedThem = app.DisplayAlerts; } catch { /* best effort */ }
-        try { app.DisplayAlerts = 1; } catch { /* best effort -- ppAlertsNone */ }
         return _powerPoint;
     }
 
-    // AutomationSecurity is unmeasured by Task 1 (unlike DisplayAlerts and
-    // Visible, both exercised directly) -- wrapped defensively so a build
-    // that doesn't expose it degrades to a no-op rather than failing setup.
+    // AutomationSecurity is unmeasured by Task 1 (unlike DisplayAlerts,
+    // exercised directly) -- wrapped defensively so a build that doesn't
+    // expose it degrades to a no-op rather than failing setup.
     private static object? TryGetAutomationSecurity(dynamic app)
     {
         try { return app.AutomationSecurity; } catch { return null; }
@@ -551,41 +643,24 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
         try { app.AutomationSecurity = value; } catch { /* best-effort hardening only */ }
     }
 
-    /// <summary>Restores exactly what this class changed, on whichever
-    /// session it BORROWED, then disposes all three sessions -- which quits
-    /// and force-kills only the ones it STARTED (see
-    /// <see cref="OfficeSession"/>). A borrowed PowerPoint session restores
-    /// only DisplayAlerts (nothing else was ever changed on it) and neither
-    /// Word's nor Excel's restoration runs at all on a session this class
-    /// started itself -- it is about to be killed outright, so putting
-    /// flags back on it first would be wasted work.</summary>
-    public void Dispose()
+    private static void TrySetDisplayAlerts(dynamic app, object value)
     {
-        if (_disposed) return;
-        _disposed = true;
-
-        RestoreFlagsIfBorrowed(_word, _wordFlagsBeforeThisClassTouchedThem, "Word");
-        RestoreFlagsIfBorrowed(_excel, _excelFlagsBeforeThisClassTouchedThem, "Excel");
-        RestorePowerPointAlertsIfBorrowed(_powerPoint, _powerPointDisplayAlertsBeforeThisClassTouchedThem);
-
-        _word?.Dispose(); _word = null;
-        _excel?.Dispose(); _excel = null;
-        _powerPoint?.Dispose(); _powerPoint = null;
+        try { app.DisplayAlerts = value; } catch { /* best effort -- unmeasured on PowerPoint by Task 1 */ }
     }
 
-    /// <summary>Failures here are appended to <see cref="RestorationWarnings"/>,
-    /// never swallowed -- three empty catches used to sit here, and the
-    /// consequence of that was a borrowed session that failed to restore
-    /// leaving the user's own Office application hidden or muted with
-    /// nothing anywhere recording it happened.</summary>
-    private void RestoreFlagsIfBorrowed(OfficeSession? session, AppFlags? flags, string appName)
+    /// <summary>Restores DisplayAlerts and (when captured) AutomationSecurity
+    /// on <paramref name="app"/> to <paramref name="saved"/>, appending to
+    /// <see cref="_restorationWarnings"/> rather than swallowing a failure --
+    /// see that field's own doc comment for why silence here is worse than a
+    /// leftover temp file. Called from the SAME finally that closes the
+    /// document in <see cref="ConvertWord"/>/<see cref="ConvertExcel"/>, and
+    /// unconditionally -- not gated on whether the session was started or
+    /// borrowed, so a failure on either kind is recorded rather than only a
+    /// borrowed one's.</summary>
+    private void RestoreAppFlags(dynamic app, string appName, AppFlags saved)
     {
-        if (session is null || session.Started || flags is not { } saved) return;
-        dynamic app = session.App;
         try { app.DisplayAlerts = saved.DisplayAlerts; }
         catch (Exception ex) { _restorationWarnings.Add($"{appName}: couldn't restore DisplayAlerts ({ex.Message})"); }
-        try { app.Visible = saved.Visible; }
-        catch (Exception ex) { _restorationWarnings.Add($"{appName}: couldn't restore Visible ({ex.Message})"); }
         if (saved.AutomationSecurity is not null)
         {
             try { app.AutomationSecurity = saved.AutomationSecurity; }
@@ -593,11 +668,61 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
         }
     }
 
-    private void RestorePowerPointAlertsIfBorrowed(OfficeSession? session, object? savedDisplayAlerts)
+    /// <summary>PowerPoint's own narrower version of <see cref="RestoreAppFlags"/>
+    /// -- DisplayAlerts is the only flag this class ever changes on
+    /// PowerPoint. A null <see cref="_powerPointDisplayAlertsBeforeThisClassTouchedThem"/>
+    /// means EnsurePowerPoint's own capture failed (unmeasured by Task 1, so
+    /// wrapped defensively there too), in which case there is nothing known
+    /// to restore TO, so this is skipped rather than writing a guess.</summary>
+    private void RestorePowerPointDisplayAlerts(dynamic app)
     {
-        if (session is null || session.Started || savedDisplayAlerts is null) return;
-        try { session.App.DisplayAlerts = savedDisplayAlerts; }
+        if (_powerPointDisplayAlertsBeforeThisClassTouchedThem is not { } saved) return;
+        try { app.DisplayAlerts = saved; }
         catch (Exception ex) { _restorationWarnings.Add($"PowerPoint: couldn't restore DisplayAlerts ({ex.Message})"); }
+    }
+
+    /// <summary>Disposes all three sessions -- which quits and force-kills
+    /// only the ones this class STARTED (see <see cref="OfficeSession"/>);
+    /// a BORROWED one is left running, untouched, exactly as
+    /// <see cref="OfficeSession.Dispose"/> already documents. Restoring
+    /// DisplayAlerts/AutomationSecurity no longer happens here at all
+    /// (review Critical fix): that now runs per conversion, in
+    /// <see cref="ConvertWord"/>/<see cref="ConvertExcel"/>/
+    /// <see cref="ConvertPowerPoint"/>'s own finally blocks, so by the time
+    /// Dispose runs there is nothing this class left mid-conversion to put
+    /// back. What IS still this method's job: sweeping any generated temp
+    /// folder <see cref="ToPdf"/> was unable to delete itself (Minor 5) --
+    /// typically because the inner document.Close() threw and Office was
+    /// still holding the file open at that moment. The Quit()/force-kill
+    /// calls just above release that hold for a STARTED session, so a
+    /// second attempt here, after them, has a real chance the first one at
+    /// conversion time did not.</summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        _word?.Dispose(); _word = null;
+        _excel?.Dispose(); _excel = null;
+        _powerPoint?.Dispose(); _powerPoint = null;
+
+        SweepTempDirs(_generatedTempDirs);
+    }
+
+    /// <summary>Best-effort delete of every directory in
+    /// <paramref name="dirs"/> that still exists -- internal so a fact can
+    /// prove the sweep mechanism itself (a real locked file inside a real
+    /// directory, one delete attempt that fails, a second one after the lock
+    /// releases that succeeds) without needing to provoke the specific COM
+    /// failure (<see cref="ToPdf"/>'s own document.Close() throwing) that is
+    /// the only way this path is reached in production.</summary>
+    internal static void SweepTempDirs(IEnumerable<string> dirs)
+    {
+        foreach (var dir in dirs)
+        {
+            try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }
+            catch { /* best effort -- still locked (a borrowed session's own Word can keep a handle open even now), or already gone */ }
+        }
     }
 
     /// <summary>The decision hazard 2 rests on, isolated as a pure function
@@ -638,9 +763,15 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
     /// never a bare PID number re-resolved at kill time (a PID is not a
     /// stable identity: the original process could have already exited and
     /// Windows could have handed that same number to something else
-    /// entirely by the time a delayed kill runs -- holding the handle
-    /// continuously is what prevents the OS from recycling it out from
-    /// under this call). <see cref="Process.WaitForExit(int)"/> is used
+    /// entirely by the time a delayed kill runs). No `ownProcess.ProcessName
+    /// == expected` re-check precedes the Kill() below, deliberately: on
+    /// Windows, holding a Process handle open keeps the underlying kernel
+    /// process object -- and therefore its PID -- from being reused by
+    /// ANYTHING ELSE for as long as that handle stays open, which is exactly
+    /// what this method has done continuously since the original diff. A
+    /// name re-check would only ever compare the SAME still-open handle
+    /// against itself; it cannot detect a case that guarantee already rules
+    /// out. <see cref="Process.WaitForExit(int)"/> is used
     /// instead of an unconditional sleep-then-check: it returns the instant
     /// the process exits, so a Word that closes cleanly on its own well
     /// inside the grace period does not make every disposal pay the full

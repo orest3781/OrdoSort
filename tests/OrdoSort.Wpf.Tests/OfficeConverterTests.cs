@@ -198,6 +198,90 @@ public sealed class OfficeConverterTests : IClassFixture<OfficeConverterTests.Of
     }
 
     [Fact]
+    public void SweepTempDirsDeletesAnExistingDirectoryAndIgnoresOneAlreadyGone()
+    {
+        // Minor 5: OfficeConverter.Dispose sweeps whichever generated temp
+        // folders ToPdf's own finally was unable to delete -- typically
+        // because the inner document.Close() threw (swallowed) and Office
+        // was still holding the file open at that moment, which the class's
+        // own doc comment names as exactly the failure class this repo's
+        // PHI history is made of. Hermetic and Office-independent, unlike
+        // every fact below this one: proves the sweep mechanism itself
+        // without needing to provoke that specific COM failure for real,
+        // which nothing in this file can do deterministically (see
+        // ARestorationFailureIsRecordedNotSwallowed's own comment on what
+        // IS reachable here).
+        var survivor = Directory.CreateDirectory(
+            Path.Combine(Path.GetTempPath(), "officeconverter-sweep-test-" + Guid.NewGuid().ToString("N"))).FullName;
+        File.WriteAllBytes(Path.Combine(survivor, "leftover.docx"), new byte[] { 1, 2, 3 });
+        var alreadyGone = Path.Combine(Path.GetTempPath(), "officeconverter-sweep-test-" + Guid.NewGuid().ToString("N"));
+
+        OfficeConverter.SweepTempDirs(new[] { survivor, alreadyGone });
+
+        Assert.False(Directory.Exists(survivor));
+    }
+
+    [Fact]
+    public void AFreshlyAutomationStartedWordApplicationIsInvisibleByDefault()
+    {
+        // The premise behind dropping this class's own `app.Visible = false`
+        // write entirely (review Critical fix): an Application object
+        // created by COM automation -- not opened by the user through the
+        // Start Menu -- is invisible on its own, with nothing telling it to
+        // be. If this were false on this machine, the fix would leave a
+        // STARTED session's window showing, which no other fact in this
+        // file would catch (none of them ever read Visible on a session
+        // OfficeConverter itself started -- Word/Excel cannot be borrowed
+        // here at all, see this file's own class doc comment, so a fact
+        // proving the BORROWED case stays hidden is not constructible on
+        // this machine; this is the closest direct evidence available for
+        // the STARTED half of the same fix). Owns and tears down its own
+        // instance, not routed through OfficeConverter at all, so this is
+        // independent of anything the class under test does.
+        if (!WordInstalled) return; // Office not installed on this machine
+        WithTimeout(TimeSpan.FromSeconds(30), () =>
+        {
+            var before = OfficeConverter.SnapshotPids("WINWORD");
+            dynamic app = Activator.CreateInstance(Type.GetTypeFromProgID("Word.Application")!)!;
+            var pid = NewPidsSince(before, "WINWORD").Single();
+            try
+            {
+                Assert.False((bool)app.Visible);
+            }
+            finally
+            {
+                KillPretendUserProcess((object)app, pid);
+            }
+        });
+    }
+
+    [Fact]
+    public void AFreshlyAutomationStartedExcelApplicationIsInvisibleByDefault()
+    {
+        // Same premise as the Word fact above, Excel's own Application
+        // object. Excel additionally needs workbook.Windows(1).Visible =
+        // false (ConvertExcel) because Workbooks.Open has no per-document
+        // Visible parameter the way Documents.Open does; this fact only
+        // proves the APPLICATION-level default, which is what justifies
+        // never writing Application.Visible at all for Excel either.
+        if (!ExcelInstalled) return; // Office not installed on this machine
+        WithTimeout(TimeSpan.FromSeconds(30), () =>
+        {
+            var before = OfficeConverter.SnapshotPids("EXCEL");
+            dynamic app = Activator.CreateInstance(Type.GetTypeFromProgID("Excel.Application")!)!;
+            var pid = NewPidsSince(before, "EXCEL").Single();
+            try
+            {
+                Assert.False((bool)app.Visible);
+            }
+            finally
+            {
+                KillPretendUserProcess((object)app, pid);
+            }
+        });
+    }
+
+    [Fact]
     public void HandlesRecognizesTheOfficeDocumentExtensions()
     {
         if (!(WordInstalled && ExcelInstalled && PowerPointInstalled)) return; // needs all three registered to prove anything
@@ -546,11 +630,20 @@ public sealed class OfficeConverterTests : IClassFixture<OfficeConverterTests.Of
         // fact above. PowerPoint only has ONE flag this class ever changes
         // (DisplayAlerts; Visible is deliberately left alone -- measured:
         // refused outright), so this proves a narrower slice of
-        // RestoreFlagsIfBorrowed's logic than Word/Excel's three-flag
-        // AppFlags struct would, but it exercises the identical shared
-        // restoration mechanism (the same "session.Started" gate, the same
-        // write-the-property-back-then-verify logic) via the one app this
-        // technique can reliably force into a genuinely borrowed state.
+        // RestoreAppFlags's logic than Word/Excel's two-flag AppFlags
+        // struct would, but it exercises the identical shared restoration
+        // mechanism via the one app this technique can reliably force into
+        // a genuinely borrowed state.
+        //
+        // 2026-08-30 review, Critical fix: restoration now runs PER
+        // CONVERSION (set immediately before Presentations.Open, restored
+        // in the same finally that closes it), not at Dispose() -- so the
+        // load-bearing assertion here is that DisplayAlerts is ALREADY back
+        // to the user's own value the moment ToPdf returns, BEFORE
+        // converter.Dispose() ever runs. Checking only after Dispose (the
+        // old shape) would no longer distinguish this fix from the
+        // discarded at-Dispose-only design, since Dispose leaves DisplayAlerts
+        // untouched under the new design and would pass either way.
         if (!PowerPointInstalled) return; // Office not installed on this machine
         WithTimeout(TimeSpan.FromSeconds(30), () =>
         {
@@ -575,12 +668,20 @@ public sealed class OfficeConverterTests : IClassFixture<OfficeConverterTests.Of
                 {
                     var result = converter.ToPdf(File.ReadAllBytes(_fx.DeckPptxPath), "deck.pptx", Array.Empty<string>(), null);
                     Assert.Equal("ok", result.Status);
+
+                    // The per-conversion restore has already run by the time
+                    // ToPdf returns -- checked here, BEFORE Dispose(), which
+                    // is the whole point of the fix.
+                    Assert.Equal(2, (int)userPowerPoint.DisplayAlerts);
+                    Assert.Empty(converter.RestorationWarnings);
                 }
                 finally
                 {
                     converter.Dispose();
                 }
 
+                // Unchanged by Dispose(), which no longer touches this flag
+                // at all under the new design.
                 Assert.Equal(2, (int)userPowerPoint.DisplayAlerts);
                 Assert.Empty(converter.RestorationWarnings);
             }
@@ -608,8 +709,32 @@ public sealed class OfficeConverterTests : IClassFixture<OfficeConverterTests.Of
         // what proves a failure now surfaces via RestorationWarnings
         // instead of vanishing silently.
         //
+        // 2026-08-30 review, Critical fix: restoration now runs PER
+        // CONVERSION, inside ToPdf's own finally, not at Dispose() -- so
+        // this fact's ORIGINAL shape (kill the pretend user AFTER a single
+        // successful ToPdf, then expect Dispose() to fail restoring) no
+        // longer provokes anything: Dispose() does not touch DisplayAlerts
+        // any more, so nothing would ever be recorded there regardless of
+        // what the fix does. There is also no hook to kill the process
+        // MID-conversion (ToPdf is one synchronous call). The reshaped
+        // fact instead makes TWO conversions on the SAME borrowed session:
+        // the first succeeds normally (DisplayAlerts captured, suppressed,
+        // and restored without incident -- the process is alive
+        // throughout). The pretend user's process is then killed BETWEEN
+        // the two calls. The second ToPdf's own restore-in-finally now
+        // tries to set DisplayAlerts back on a session that no longer
+        // exists, which is exactly the "borrowed session vanished while
+        // held" scenario this fact exists to prove -- and the load-bearing
+        // assertion is that the warning is already present the moment the
+        // SECOND ToPdf call returns, before converter.Dispose() is ever
+        // called: proof that the failure is detected while the window
+        // (here, just this converter -- see
+        // MergePdfsViewModelTests.RestorationWarningsFromAMergeRunAppearInStatusWhileTheWindowIsStillOpen
+        // for the same proof one layer up, through DrainConverterWarnings)
+        // is still open, not only once it closes.
+        //
         // Killing the underlying process directly, not Quit(): measured
-        // directly (on this fact's original Word-based version) that
+        // directly (on an earlier, Word-based version of this fact) that
         // calling Quit() on the pretend "user" instance does not reliably
         // fail a SUBSEQUENT property set against the same RCW soon enough
         // to provoke this deterministically -- Quit() does not sever the
@@ -635,20 +760,31 @@ public sealed class OfficeConverterTests : IClassFixture<OfficeConverterTests.Of
                 // step itself fails" bug the other PowerPoint-borrow facts
                 // had (see their own comments) applied here too.
                 var userPid = NewPidsSince(before, "POWERPNT").Single();
-                var result = converter.ToPdf(File.ReadAllBytes(_fx.DeckPptxPath), "deck.pptx", Array.Empty<string>(), null);
-                Assert.Equal("ok", result.Status);
 
-                using var userProcess = Process.GetProcessById(userPid);
-                userProcess.Kill();
-                userProcess.WaitForExit(5000);
+                var firstResult = converter.ToPdf(File.ReadAllBytes(_fx.DeckPptxPath), "deck.pptx", Array.Empty<string>(), null);
+                Assert.Equal("ok", firstResult.Status);
+                Assert.Empty(converter.RestorationWarnings); // the first conversion's own restore succeeded
+
+                using (var userProcess = Process.GetProcessById(userPid))
+                {
+                    userProcess.Kill();
+                    userProcess.WaitForExit(5000);
+                }
+
+                // The second conversion's own suppress-then-restore now
+                // runs against a session that no longer exists.
+                var secondResult = converter.ToPdf(File.ReadAllBytes(_fx.DeckPptxPath), "deck.pptx", Array.Empty<string>(), null);
+                Assert.Equal("error", secondResult.Status); // Presentations.Open itself fails on a dead process
+
+                // Detected DURING the second ToPdf call, well before
+                // Dispose() -- the point of the fix.
+                Assert.NotEmpty(converter.RestorationWarnings);
             }
             finally
             {
                 converter.Dispose();
                 try { Marshal.FinalReleaseComObject(userPowerPoint); } catch { /* best effort -- the process is already gone */ }
             }
-
-            Assert.NotEmpty(converter.RestorationWarnings);
         });
     }
 
