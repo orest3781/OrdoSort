@@ -73,6 +73,30 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
     /// SetTypeEnabled), never read back out of _cfg mid-session.</summary>
     private readonly HashSet<string> _enabledTypes;
 
+    /// <summary>The enabled-type SNAPSHOT the merger lambdas actually read
+    /// (review Important 3) — reassigned to a fresh copy of
+    /// <see cref="_enabledTypes"/> at the top of every <see cref="MergeAsync"/>
+    /// call, then left alone for the rest of that run. Two things this
+    /// closes at once: the toggle row is already disabled while IsBusy
+    /// (MergePdfsWindow.xaml's IsEnabled="{Binding IsIdle}"), so nothing
+    /// SHOULD flip _enabledTypes mid-run — but PdfMerge.MergeZip/MergeFiles
+    /// read whatever this points to on a WORKER thread, and _enabledTypes
+    /// is a plain HashSet with no locking, so relying solely on a disabled
+    /// checkbox to keep that read/write pair from ever racing is exactly the
+    /// kind of implementation-detail assumption Hyrum's Law warns against —
+    /// a torn read is real UB regardless of what the UI happens to allow
+    /// today. Snapshotting also gives "units are fixed when the run starts"
+    /// one consistent meaning: a zip processed third in a batch reads the
+    /// SAME enabled set as the one processed first, even though its own
+    /// PdfMerge.MergeZip call happens well after the first zip's conversions
+    /// (and any converter side effects) have already run — not whatever
+    /// _enabledTypes happens to hold by the time its own turn comes up.
+    /// Points at _enabledTypes itself outside of a run (set once, in the
+    /// constructor, purely so this is never null) — nothing reads it there,
+    /// since the default lambdas below are the only readers and they only
+    /// ever run from inside a batch.</summary>
+    private ISet<string> _activeIncludeTypes;
+
     /// <summary>Display labels for the toggle row's checkboxes. A small,
     /// deliberately separate mapping rather than titlecasing MergeTypes'
     /// own lowercase group constants: "PDF" and "PowerPoint" are not what
@@ -129,22 +153,30 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
         // all now that MergeZip/MergeFiles carry two extra optional
         // parameters (converter, includeTypes). The lambda spells out the
         // exact three/four-argument shape this field actually needs.
-        // includeTypes is `_enabledTypes` itself, not a snapshot taken here:
-        // the lambda reads the FIELD at invocation time (well after this
+        // includeTypes is `_activeIncludeTypes`, not `_enabledTypes` itself
+        // (review Important 3, tightened from the original design): the
+        // lambda reads the FIELD at invocation time (well after this
         // constructor returns), so a toggle flipped between AddPaths and
-        // MergeAsync is honoured. Task 7 review finding 1: this was
-        // previously left at the PdfMerge default (null = every type on),
-        // which let a merge reach past the toggles entirely — switch PDF
-        // off, leave Zip on, and PDFs inside an included zip still merged,
-        // because the archive's OWN contents were never filtered by
-        // anything but MergeTypes.AllExtensions at intake. `converter` is
-        // `_converter` itself for the same reason — read live, not
-        // snapshotted, though in practice it never changes after
-        // construction.
+        // MergeAsync is still honoured — MergeAsync refreshes
+        // _activeIncludeTypes from _enabledTypes right before building that
+        // run's units — but a toggle flipped WHILE a run is already in
+        // flight is not: _activeIncludeTypes is a snapshot copy, so mutating
+        // _enabledTypes afterward cannot reach it. See
+        // _activeIncludeTypes's own doc comment for why a live read of
+        // _enabledTypes itself was no longer good enough. Task 7 review
+        // finding 1 (still the reason includeTypes is threaded through at
+        // all): this was previously left at the PdfMerge default (null =
+        // every type on), which let a merge reach past the toggles
+        // entirely — switch PDF off, leave Zip on, and PDFs inside an
+        // included zip still merged, because the archive's OWN contents
+        // were never filtered by anything but MergeTypes.AllExtensions at
+        // intake. `converter` is `_converter` itself, read live, not
+        // snapshotted — unlike the enabled set, it never changes after
+        // construction, so there is no equivalent race to close.
         _zipMerger = zipMerger ?? ((path, mergeCandidates, ask) =>
-            PdfMerge.MergeZip(path, mergeCandidates, ask, converter: _converter, includeTypes: _enabledTypes));
+            PdfMerge.MergeZip(path, mergeCandidates, ask, converter: _converter, includeTypes: _activeIncludeTypes));
         _fileMerger = fileMerger ?? ((paths, outputPath, mergeCandidates, ask) =>
-            PdfMerge.MergeFiles(paths, outputPath, mergeCandidates, ask, converter: _converter, includeTypes: _enabledTypes));
+            PdfMerge.MergeFiles(paths, outputPath, mergeCandidates, ask, converter: _converter, includeTypes: _activeIncludeTypes));
         _zipProbe = zipProbe ?? Zipper.Probe;
         _pdfProbe = pdfProbe ?? Unlock.ProbeReadiness;
 
@@ -154,6 +186,12 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
         // group on, matching the "never touched a toggle" default a fresh
         // window has to show.
         _enabledTypes = new HashSet<string>(MergeTypes.Load(_cfg.MergeTypes), StringComparer.OrdinalIgnoreCase);
+        // Never read from here — the default merger lambdas above are the
+        // only readers of _activeIncludeTypes, and they only ever run from
+        // inside MergeAsync, which reassigns this to a fresh snapshot before
+        // any of them are invoked. Pointed at _enabledTypes itself only so
+        // the field is never null in between.
+        _activeIncludeTypes = _enabledTypes;
         TypeToggles = MergeTypes.AllGroups
             .Select(g => new MergeTypeToggle(this, g, GroupLabels.TryGetValue(g, out var label) ? label : g))
             .ToList();
@@ -248,6 +286,34 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
 
         foreach (var toggle in TypeToggles) toggle.RaiseIsEnabledChanged();
         OnRowsChanged();
+
+        // Review Minor 1: a row dropped while its type was switched off is
+        // never probed at add time (Probe() itself skips an excluded row —
+        // see its own doc comment) and, until this, was never probed later
+        // either — switching the type back on left it exactly Pending, the
+        // merge button counted it, and a run failed on click, which is
+        // precisely the failure the add-time probe exists to prevent. Only
+        // still-Pending rows of THIS group qualify: an excluded row can only
+        // ever be Pending (nothing else ever writes its StatusKind while
+        // IsIncluded is false, since it never joins a unit), so this is
+        // exactly "never probed" without needing a separate flag to track
+        // it, and it costs nothing to redundantly re-confirm a row that
+        // genuinely was already probed while included. OnRowsChanged just
+        // above already recomputed IsIncluded for every row, so this reads
+        // that fresh value rather than re-deriving its own copy of
+        // IsRowIncluded. Fire-and-forget — the same idiom
+        // MergePdfsWindow.xaml.cs already uses for AddPaths — rather than
+        // making this method async: ReprobeRowsAsync resolves synchronously
+        // under InlineWorkScheduler with no UiContext (every test), so it is
+        // deterministic there with no await needed, and merely async in
+        // production, which is the correct shape either way — the checkbox
+        // binding this is called from cannot await anything regardless.
+        if (enabled)
+        {
+            var toReprobe = Rows.Where(r => r.IsIncluded && r.StatusKind == ZipItemRowStatus.Pending
+                && MergeTypes.GroupOf(ZipItemRow.ExtensionOf(r.Path)) == group).ToList();
+            if (toReprobe.Count > 0) _ = ReprobeRowsAsync(toReprobe);
+        }
     }
 
     /// <summary>Whether the CURRENT toggle set includes this row's own type.
@@ -383,6 +449,12 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
     /// nothing could ever see it).</summary>
     internal async Task MergeAsync(string? outputPath)
     {
+        // Snapshotted ONCE, here, before any unit runs (review Important 3)
+        // — see _activeIncludeTypes's own doc comment for why a live read of
+        // _enabledTypes was not good enough on its own even with the toggle
+        // row disabled for the run's duration.
+        _activeIncludeTypes = new HashSet<string>(_enabledTypes, StringComparer.OrdinalIgnoreCase);
+
         var units = new List<Unit<PdfMerge.MergeResult>>();
         foreach (var row in Rows.Where(r => r.IsZip && r.IsRunnable))
         {
@@ -401,7 +473,14 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
             new[]
             {
                 new TallyClause("ok", "merged"),
-                new TallyClause("no_pdfs", "had no PDFs"),
+                // "had nothing to merge", not "had no PDFs" (review
+                // Important 2): PdfMerge's own no_pdfs message became
+                // "nothing to merge inside" once a unit could hold
+                // documents, images and text alongside PDFs -- the spec
+                // called this wording out by name -- so the row's note and
+                // this tally clause must agree rather than describing the
+                // same event two different ways.
+                new TallyClause("no_pdfs", "had nothing to merge"),
                 new TallyClause("needs_password", "needs a password", "need a password"),
                 new TallyClause("error", "failed"),
             });
@@ -420,11 +499,21 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
     /// Status renders in exactly one TextBlock inside that window, and
     /// nobody is looking at a closed window's view model, so "your own Word
     /// may have been left hidden" was formatted into a string and dropped on
-    /// the floor every single time, not just in unlikely cases. Nothing
-    /// about OfficeConverter needed to change: its RestorationWarnings list
-    /// is append-only and safe to read at any point in its lifetime — the
-    /// defect was purely in WHEN this class was reading it, not in the
-    /// converter. _warningsAlreadyReported (an index into that append-only
+    /// the floor every single time, not just in unlikely cases.
+    ///
+    /// A follow-up review fix changed OfficeConverter itself too: restoring
+    /// DisplayAlerts/AutomationSecurity now happens PER CONVERSION, inside
+    /// ConvertWord/ConvertExcel/ConvertPowerPoint's own finally blocks,
+    /// rather than once at Dispose() (see that class's own doc comment).
+    /// That means RestorationWarnings can gain entries WHILE a merge run is
+    /// still in progress, not only once every document in it has been
+    /// converted — which is exactly what makes draining it HERE, at the end
+    /// of every MergeAsync rather than only from Dispose, both necessary (a
+    /// warning from document 1 of 5 must not wait for document 5 to finish,
+    /// let alone for the window to close) and sufficient (this method still
+    /// only needs to read an append-only list at the right moment; it does
+    /// not need to know or care exactly when within a run OfficeConverter
+    /// appended to it). _warningsAlreadyReported (an index into that append-only
     /// list, not a text-based dedupe — simpler and exactly right for a list
     /// that only ever grows) is what keeps a second run's drain from
     /// repeating a warning this method already showed once.

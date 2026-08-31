@@ -59,6 +59,32 @@ public class TextToPdfTests
         Assert.True(PageCountOf(r.Pdf!) > 1);
     }
 
+    /// <summary>Review Minor 3: the old WrapLine grew a chunk one character
+    /// at a time, re-measuring the whole prefix on every step — roughly one
+    /// MeasureString call per CHARACTER of the line. ".json" and ".log" are
+    /// default-on text types, and a minified JSON export is routinely one
+    /// multi-megabyte line with no newlines at all, which turned this into
+    /// tens of seconds to minutes of an unresponsive-looking "Merging" that
+    /// Cancel() cannot interrupt (checked only between units, and this all
+    /// happens inside one). The bound below is deliberately generous — this
+    /// pins "did not regress back to a per-character scan", not a tight
+    /// performance target — but still comfortably below what the reverted
+    /// linear scan takes on a line this size on ordinary hardware.</summary>
+    [Fact]
+    public void AMultiMegabyteSingleLineWrapsQuickly()
+    {
+        var line = new string('w', 1_500_000);
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var r = new TextToPdf().ToPdf(System.Text.Encoding.UTF8.GetBytes(line),
+            "huge.json", Array.Empty<string>(), null);
+        stopwatch.Stop();
+
+        Assert.Equal("ok", r.Status);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(20),
+            $"wrapping a {line.Length:N0}-character single line took {stopwatch.Elapsed} — " +
+            "the binary-search wrap must not regress to one MeasureString call per character");
+    }
+
     [Fact]
     public void ALongTextFileRunsToSeveralPages()
     {

@@ -50,7 +50,7 @@ Toggles are per **group**, not per extension — nobody wants `.jpg` and `.png` 
 |---|---|---|---|
 | PDF | `pdf` | — (native) | native |
 | Zip | `zip` | — (container) | native |
-| Word | `docx`, `doc`, `docm`, `rtf`, `odt`, `htm`, `html` | Word | **not available** |
+| Word | `docx`, `doc`, `docm`, `rtf`, `odt` | Word | **not available** |
 | Excel | `xlsx`, `xls`, `xlsm`, `ods`, `csv`, `tsv` | Excel | `csv`/`tsv`/`xlsx` as data tables |
 | PowerPoint | `pptx`, `ppt` | PowerPoint | **not available** |
 | Images | `jpg`, `jpeg`, `png`, `tif`, `tiff`, `bmp`, `gif` | WPF decoders + PdfSharp | **same** — no Office involved |
@@ -225,3 +225,9 @@ The original design covered `.docx`, `.xlsx` and `.csv` with no toggles. Two own
 2. **"What other files would be able to be converted and merged?"** — answered by measuring what is installed, then adding four groups: images, text, the Word/Excel sibling formats, and PowerPoint. Images are the notable one: they need no Office at all (WPF ships the decoders), they carry none of the COM hazards, and for an app that files scanned documents they are likely the most-used addition of the lot.
 
 `.msg`/`.eml` were deliberately deferred to the Outlook conversation rather than dropped.
+
+### Amendment (2026-08-30 review — `.htm`/`.html` dropped from the Word group)
+
+This document originally listed `htm`, `html` under the Word group's extensions (the table above and the "types v1 handles" table both said so). The implementation never actually shipped them: `MergeTypes.ByGroup`'s Word entry is `["docx", "doc", "docm", "rtf", "odt"]`, and `MergeTypesTests` pins `htm`/`html` as extensions with no group at all. This document is now corrected to match, rather than left claiming a wider Word group than the code has ever had.
+
+The reason, carried in the code's own comment (`DocumentConverter.cs`): opening a web document in Word fetches remote resources — both a hang surface (nothing in this class's password-sentinel or timeout machinery guards a network fetch the way it guards a modal dialog) and a beaconing surface, in a repo with a PHI history where an unexpected outbound request is exactly the kind of thing worth refusing by construction rather than trusting a setting to catch. `AutomationSecurity = ForceDisable` covers macros; it does not cover a `<link>` or an `<img src>` in an HTML file Word is asked to render. `rtf`, `odt` and `docm` stay in the Word group — a `docm`'s macros are exactly what AutomationSecurity is for.

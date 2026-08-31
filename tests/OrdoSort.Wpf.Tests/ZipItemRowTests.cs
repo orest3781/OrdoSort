@@ -72,12 +72,17 @@ public class ZipItemRowTests
     }
 
     [Fact]
-    public void ApplyingAnOkMergeCountsThePdfs()
+    public void ApplyingAnOkMergeCountsTheDocuments()
     {
+        // "document"/"documents", not "PDF"/"PDFs" (2026-08-30 review,
+        // Important 2): PdfCount's own doc comment says it counts every
+        // document in a successful merge, converted ones included, not
+        // just literal PDFs, so "3 PDFs" was wrong the moment any of the
+        // three could be a converted Word/Excel/image/text file.
         var row = new ZipItemRow(@"C:\in\a.zip", "zip");
         row.Apply(new PdfMerge.MergeResult(@"C:\in\a.zip", "ok", @"C:\in\a.pdf", PdfCount: 3));
         Assert.Equal(ZipItemRowStatus.Ok, row.StatusKind);
-        Assert.Equal("→ a.pdf (3 PDFs)", row.Note);
+        Assert.Equal("→ a.pdf (3 documents)", row.Note);
     }
 
     [Fact]
@@ -89,14 +94,14 @@ public class ZipItemRowTests
         Assert.Equal("no PDFs inside", row.Note);
     }
 
-    /// <summary>Singular/plural on the PDF count — ZipRow got this right and
-    /// the union must not lose it.</summary>
+    /// <summary>Singular/plural on the document count — ZipRow got this
+    /// right and the union must not lose it.</summary>
     [Fact]
-    public void OnePdfIsNotPluralised()
+    public void OneDocumentIsNotPluralised()
     {
         var row = new ZipItemRow(@"C:\in\a.zip", "zip");
         row.Apply(new PdfMerge.MergeResult(@"C:\in\a.zip", "ok", @"C:\in\a.pdf", PdfCount: 1));
-        Assert.Equal("→ a.pdf (1 PDF)", row.Note);
+        Assert.Equal("→ a.pdf (1 document)", row.Note);
     }
 
     [Fact]

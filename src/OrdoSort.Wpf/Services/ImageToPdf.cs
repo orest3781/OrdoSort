@@ -22,7 +22,12 @@ namespace OrdoSort.Wpf.Services;
 /// itself a UI element, only a WPF-namespaced codec — so that is safe; this
 /// class must still never be handed a live UI object (a rendered
 /// <c>Visual</c>, a screen-sourced bitmap) beyond the decoder/encoder
-/// instances it creates and disposes of within a single call.</summary>
+/// instances it creates within a single call. Neither <see cref="BitmapDecoder"/>
+/// nor <see cref="PngBitmapEncoder"/> implements <see cref="IDisposable"/> —
+/// there is nothing on either to dispose — so what actually gets cleaned up
+/// at the end of that single call, via <c>using</c>, is the streams
+/// (<see cref="MemoryStream"/>) and the PdfSharp objects
+/// (<see cref="PdfDocument"/>) built around them.</summary>
 public sealed class ImageToPdf : IDocumentConverter
 {
     private const double MinTrustedInches = 1;

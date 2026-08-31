@@ -122,6 +122,53 @@ public class TableToPdfTests
         Assert.Empty(result.Message);
     }
 
+    /// <summary>Review Minor 4: `Render`'s `if (repeatHeader) DrawRow(header
+    /// …)` block can be deleted without changing any page count —
+    /// TablePages.Paginate decides pagination from `repeatHeader`
+    /// independently of whether Render's OWN drawing loop goes on to call
+    /// DrawRow for the header — and no existing fact reads page CONTENT,
+    /// only page COUNT (see PageCountOf throughout this file), so nothing
+    /// would catch that deletion.
+    ///
+    /// Comparing repeatHeader:true against repeatHeader:false on the SAME
+    /// table would not isolate it either: Paginate's own row budget and
+    /// body-row set both depend on repeatHeader too (one fewer body row per
+    /// page when a header is reserved, and row 0 excluded from the body
+    /// range entirely), so such a comparison would keep passing for the
+    /// wrong reason even with the header-draw line deleted — the
+    /// "already-true predicate" trap.
+    ///
+    /// Isolating the header line specifically: both variants below draw the
+    /// SAME two body rows, in the same font, at the same position; the only
+    /// structural difference between them is whether "header" is ALSO drawn
+    /// once, in bold, ahead of those two rows. Both fit one page (asserted,
+    /// so a pagination difference is not silently the source of any length
+    /// difference either). If the header-draw block is deleted, `withHeader`
+    /// stops drawing row 0 at all (Paginate still treats it as the header
+    /// row and excludes it from the body range, since that call is
+    /// untouched) and its output shrinks to be indistinguishable in
+    /// substance from `bodyOnly` — the margin below is generous enough to
+    /// clear ordinary PdfSharp output jitter (its trailer's own
+    /// timestamp-derived document ID) while still catching that.</summary>
+    [Fact]
+    public void TheHeaderRowIsActuallyDrawnNotJustReservedInThePageLayout()
+    {
+        var header = new string('H', 60);
+        var withHeader = new List<List<string>>
+            { new() { header }, new() { "body one" }, new() { "body two" } };
+        var bodyOnly = new List<List<string>> { new() { "body one" }, new() { "body two" } };
+
+        var pdfWithHeader = TableToPdf.Render(withHeader, TableToPdf.PageWidthPt, TableToPdf.PageHeightPt,
+            TableToPdf.MarginPt, TableToPdf.RowHeightPt, TableToPdf.FontSizePt, repeatHeader: true);
+        var pdfBodyOnly = TableToPdf.Render(bodyOnly, TableToPdf.PageWidthPt, TableToPdf.PageHeightPt,
+            TableToPdf.MarginPt, TableToPdf.RowHeightPt, TableToPdf.FontSizePt, repeatHeader: false);
+
+        Assert.Equal(1, PageCountOf(pdfWithHeader));
+        Assert.Equal(1, PageCountOf(pdfBodyOnly));
+        Assert.True(pdfWithHeader.Length > pdfBodyOnly.Length + 20,
+            $"expected drawing the header row to add meaningfully more content than the {pdfBodyOnly.Length}-byte header-less output; got {pdfWithHeader.Length}");
+    }
+
     [Fact]
     public void PagesComeOutLandscapeNotTextsPortrait()
     {

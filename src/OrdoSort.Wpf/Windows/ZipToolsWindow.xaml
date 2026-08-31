@@ -108,8 +108,13 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Kind: content-sized, "file"/"pdf"/"folder"/"zip" — a
-                             quiet tag rather than a status, so SubtleText
+                        <!-- Kind: content-sized — ZipItemRow.KindOf returns
+                             "folder"/"zip"/"pdf"/"word"/"excel"/"powerpoint"/
+                             "image"/"text", or "file" for anything none of
+                             those groups recognizes (Task 8 widened this well
+                             past the four values this comment used to name,
+                             the same shared KindOf MergePdfsWindow.xaml uses)
+                             — a quiet tag rather than a status, so SubtleText
                              rather than GridCellText. SubtleText's own
                              unconditional Foreground Setter outranks whatever
                              this TextBlock would INHERIT from its ancestor

@@ -29,7 +29,7 @@
   |---|---|
   | `pdf` | pdf |
   | `zip` | zip |
-  | `word` | docx, doc, docm, rtf, odt, htm, html |
+  | `word` | docx, doc, docm, rtf, odt |
   | `excel` | xlsx, xls, xlsm, ods, csv, tsv |
   | `powerpoint` | pptx, ppt |
   | `images` | jpg, jpeg, png, tif, tiff, bmp, gif |
@@ -238,7 +238,7 @@ public static class MergeTypes
     {
         [Pdf] = ["pdf"],
         [Zip] = ["zip"],
-        [Word] = ["docx", "doc", "docm", "rtf", "odt", "htm", "html"],
+        [Word] = ["docx", "doc", "docm", "rtf", "odt"],
         [Excel] = ["xlsx", "xls", "xlsm", "ods", "csv", "tsv"],
         [PowerPoint] = ["pptx", "ppt"],
         [Images] = ["jpg", "jpeg", "png", "tif", "tiff", "bmp", "gif"],

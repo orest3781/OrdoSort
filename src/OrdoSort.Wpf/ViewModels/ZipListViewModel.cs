@@ -154,8 +154,13 @@ public sealed class ZipItemRow : ObservableObject
             _ => ZipItemRowStatus.Error,   // "error", or anything unrecognized
         };
         Output = result.Output;
+        // "document"/"documents", not "PDF"/"PDFs" (review Important 2):
+        // PdfCount's own doc comment says it counts every document in a
+        // successful merge, converted ones included, not just literal
+        // PDFs -- "→ src.pdf (2 PDFs)" was wrong the moment one of the two
+        // was a Word document.
         var verdict = StatusKind == ZipItemRowStatus.Ok
-            ? $"→ {System.IO.Path.GetFileName(result.Output!)} ({result.PdfCount} PDF{(result.PdfCount == 1 ? "" : "s")})"
+            ? $"→ {System.IO.Path.GetFileName(result.Output!)} ({result.PdfCount} document{(result.PdfCount == 1 ? "" : "s")})"
             : result.Message;
         // Task 8: MergeResult.Notes carries things worth saying that are not
         // failures — a workbook's later worksheets left behind, the names of
@@ -496,6 +501,20 @@ public abstract class ZipListViewModel : ObservableObject
             "in_use" => (ZipItemRowStatus.Pending, "open in another program"),
             _ => (ZipItemRowStatus.Error, result.Message),
         };
+
+    /// <summary>Re-runs the same add-time probe against rows already IN the
+    /// list — exposed so a subclass can close its own version of the same
+    /// gap AddPaths already closes for a freshly dropped row (Review Minor
+    /// 1: MergePdfsViewModel.SetTypeEnabled, a row dropped while its type
+    /// was switched off was never probed at add time — Probe() itself skips
+    /// an excluded row on purpose, see its own doc comment — and, until
+    /// that fix, never probed later either; switching the type back on is
+    /// the one remaining moment that gap can still be closed without asking
+    /// the user to remove and re-add the row). Uses the SAME probe token a
+    /// fresh add would (<see cref="_probeCts"/>), not a token the caller
+    /// invents, so Clear/OnClosed still cancel a re-probe the identical way
+    /// they already cancel an add-time one.</summary>
+    protected Task ReprobeRowsAsync(IReadOnlyList<ZipItemRow> rows) => ProbeRowsAsync(rows, _probeCts.Token);
 
     private async Task ProbeRowsAsync(IReadOnlyList<ZipItemRow> rows, CancellationToken token)
     {

@@ -66,7 +66,17 @@
                  fit this window's 580 MinWidth at the 18px font preset
                  either, and a StackPanel would push the last one off screen
                  instead of onto a second row. -->
+            <!-- IsEnabled=IsIdle (review Important 3): without it, a
+                 checkbox flipped mid-merge mutates _enabledTypes on the UI
+                 thread while PdfMerge reads it on the worker thread —
+                 worst case a torn read gives a wrong include/exclude
+                 decision. Disabling the whole row while a run is in flight
+                 is the UI half of that fix; MergePdfsViewModel.MergeAsync
+                 additionally snapshots the enabled set at the top of every
+                 run so a unit already scheduled can never see a later
+                 flip either, belt-and-braces with this. -->
             <ItemsControl Grid.Row="1" Margin="0,0,0,10" ItemsSource="{Binding TypeToggles}"
+                          IsEnabled="{Binding IsIdle}"
                           AutomationProperties.Name="File types to merge">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -83,7 +93,7 @@
 
             <Grid Grid.Row="2">
                 <DataGrid x:Name="ItemsGrid" ItemsSource="{Binding Rows}"
-                          AutomationProperties.Name="PDFs and archives to merge" AutoGenerateColumns="False"
+                          AutomationProperties.Name="Documents, images, text and archives to merge" AutoGenerateColumns="False"
                           IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
                           SelectionMode="Extended">
                     <!-- Theme.RowHover so the hover tint stays consistent
@@ -137,9 +147,13 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Kind: "pdf"/"zip", a quiet tag rather than a status
-                             — SubtleText, with its own copy of the let-selection-win
-                             trigger, for the reason ZipToolsWindow.xaml records. -->
+                        <!-- Kind: "pdf"/"zip"/"word"/"excel"/"powerpoint"/
+                             "image"/"text"/"file" — ZipItemRow.KindOf widened
+                             (Task 8) well past the two values this comment
+                             used to name — a quiet tag rather than a status,
+                             so SubtleText, with its own copy of the
+                             let-selection-win trigger, for the reason
+                             ZipToolsWindow.xaml records. -->
                         <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="Auto">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">

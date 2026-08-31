@@ -80,6 +80,51 @@ public class MergeTypeToggleTests : IDisposable
             new("unsupported", null, $"{displayName} isn't a type this stub converts");
     }
 
+    /// <summary>A REAL zip holding one REAL one-page ".docx"-named entry
+    /// (arbitrary bytes — nothing here ever reads them; a FakeConverter or
+    /// <see cref="RecordingDocxConverter"/> stands in for real conversion),
+    /// needed by <see cref="AToggleFlippedDuringOneUnitDoesNotChangeWhatALaterUnitInTheSameBatchSees"/>
+    /// below, which exercises the REAL PdfMerge.MergeZip and so needs a
+    /// REAL ZipArchive to read.</summary>
+    private string ZipWithOneDocx(string entryName)
+    {
+        var zipPath = Path.Combine(_dir.Path, $"withdocx{_fileNumber++}.zip");
+        using var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create);
+        using var entryStream = zip.CreateEntry(entryName).Open();
+        var bytes = new byte[] { 1, 2, 3 };
+        entryStream.Write(bytes, 0, bytes.Length);
+        return zipPath;
+    }
+
+    /// <summary>Converts ".docx" to a real one-page PDF (so the merge path
+    /// is genuinely exercised, the same reasoning PdfMergeTests' own
+    /// FakeConverter documents), records every name it converted in call
+    /// order, and fires <paramref name="onFirstConvert"/> exactly once, on
+    /// its first call — the hook
+    /// <see cref="AToggleFlippedDuringOneUnitDoesNotChangeWhatALaterUnitInTheSameBatchSees"/>
+    /// uses to flip a toggle WHILE the first zip's own unit is still being
+    /// processed, simulating what a mid-run checkbox click would do if the
+    /// UI did not already disable it.</summary>
+    private sealed class RecordingDocxConverter : IDocumentConverter
+    {
+        private readonly Action _onFirstConvert;
+        private bool _fired;
+        public RecordingDocxConverter(Action onFirstConvert) => _onFirstConvert = onFirstConvert;
+        public List<string> ConvertedNames { get; } = new();
+        public bool Handles(string extension) => extension.Equals("docx", StringComparison.OrdinalIgnoreCase);
+        public ConversionResult ToPdf(byte[] source, string displayName,
+            IReadOnlyList<string> candidates, Func<PasswordRequest, string?>? ask)
+        {
+            ConvertedNames.Add(displayName);
+            if (!_fired) { _fired = true; _onFirstConvert(); }
+            using var doc = new PdfDocument();
+            doc.AddPage();
+            using var ms = new MemoryStream();
+            doc.Save(ms, closeStream: false);
+            return new("ok", ms.ToArray());
+        }
+    }
+
     /// <summary>Records every path a fake fileMerger was handed — the
     /// brief's own "RecordingMerger" shorthand, spelled out as a real,
     /// non-static helper so nothing leaks state between facts.</summary>
@@ -254,6 +299,49 @@ public class MergeTypeToggleTests : IDisposable
         Assert.Equal("nothing to merge inside", row.Note);
     }
 
+    /// <summary>2026-08-30 review, Important 3: the enabled-type set the
+    /// merger lambdas read is snapshotted ONCE, at the top of MergeAsync
+    /// (MergePdfsViewModel._activeIncludeTypes), not read live off
+    /// _enabledTypes on every PdfMerge call. The toggle row is disabled in
+    /// the UI for the whole run for exactly this reason
+    /// (MergePdfsWindow.xaml's IsEnabled="{Binding IsIdle}"), but the
+    /// snapshot is what makes the guarantee hold regardless of how a toggle
+    /// got flipped — belt-and-braces, not merely a UI nicety, since
+    /// _enabledTypes is a plain HashSet a worker thread reads with no lock.
+    ///
+    /// Two zips, one docx entry each, both routed through the REAL
+    /// PdfMerge.MergeZip (no fake zipMerger — the includeTypes threading
+    /// under test happens INSIDE PdfMerge, so a fake merger could not tell
+    /// the fix from the bug it replaces). The fake CONVERTER's first call
+    /// (converting zip1's docx, mid-way through zip1's own unit) flips Word
+    /// off — simulating a toggle click while a batch is running. Zip2's own
+    /// unit runs strictly AFTER zip1's in RunBatchAsync's sequential loop,
+    /// so under the OLD live-field design zip2's own PdfMerge.MergeZip call
+    /// would already see Word disabled and report "nothing to merge inside"
+    /// for its docx entry; under the snapshot, it still sees the enabled
+    /// set as it stood when MergeAsync started, so both zips succeed
+    /// identically.</summary>
+    [Fact]
+    public async Task AToggleFlippedDuringOneUnitDoesNotChangeWhatALaterUnitInTheSameBatchSees()
+    {
+        MergePdfsViewModel? vm = null;
+        var converter = new RecordingDocxConverter(onFirstConvert: () => vm!.SetTypeEnabled(MergeTypes.Word, false));
+        vm = NewViewModel(converter: converter);
+
+        var zip1 = ZipWithOneDocx("a.docx");
+        var zip2 = ZipWithOneDocx("b.docx");
+        await vm.AddPaths([zip1, zip2]);
+
+        await vm.MergeAsync(null);
+
+        Assert.Equal(ZipItemRowStatus.Ok, vm.Rows.Single(r => r.Path == zip1).StatusKind);
+        Assert.Equal(ZipItemRowStatus.Ok, vm.Rows.Single(r => r.Path == zip2).StatusKind);
+        Assert.Equal(new[] { "a.docx", "b.docx" }, converter.ConvertedNames);
+        // The toggle flip itself is real and takes effect for the NEXT run
+        // — the snapshot is per-run, not permanent.
+        Assert.False(vm.IsTypeEnabled(MergeTypes.Word));
+    }
+
     /// <summary>Review finding 2: ZipItemRow.IsIncluded's old swap-on-
     /// transition design captured "the note before exclusion" exactly ONCE,
     /// at the moment IsIncluded flipped to false — so a LATER direct write
@@ -341,9 +429,19 @@ public class MergeTypeToggleTests : IDisposable
     /// someone about a row that will not join a run either way until they
     /// switch the type back on, and Note is masked regardless
     /// (ZipItemRow.IsIncluded) so a verdict written now would not even be
-    /// seen.</summary>
+    /// seen.
+    ///
+    /// 2026-08-30 review, Minor 1: this fact used to stop here, which PINNED
+    /// the limitation ("never probed") rather than closing it — switching
+    /// the type back on left the row exactly Pending, the merge button
+    /// counted it, and a run failed on click, which is precisely the
+    /// failure the add-time probe exists to prevent. The scenario picked is
+    /// the feature's own headline case (a PC without Word: switch Word off,
+    /// drop a .docx, switch Word back on), and the second half below is what
+    /// now proves SetTypeEnabled re-probes a row it never got the chance to
+    /// the first time.</summary>
     [Fact]
-    public async Task ADocumentOfASwitchedOffTypeIsNotProbedForConvertibility()
+    public async Task ADocumentOfASwitchedOffTypeIsNotProbedUntilItsTypeIsSwitchedBackOn()
     {
         var vm = NewViewModel(converter: new StubConverter(handles: null));
         vm.SetTypeEnabled(MergeTypes.Word, false);
@@ -351,5 +449,10 @@ public class MergeTypeToggleTests : IDisposable
         var row = Assert.Single(vm.Rows);
         Assert.Equal(ZipItemRowStatus.Pending, row.StatusKind);
         Assert.Contains("not included", row.Note);
+
+        vm.SetTypeEnabled(MergeTypes.Word, true);
+
+        Assert.Equal(ZipItemRowStatus.Error, row.StatusKind);
+        Assert.Contains("Word", row.Note);
     }
 }

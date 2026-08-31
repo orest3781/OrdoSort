@@ -59,7 +59,7 @@ public class MergePdfsViewModelTests
         Assert.Equal(ZipItemRowStatus.Ok, okRow.StatusKind);
         Assert.Equal(Path.Combine(dir.Path, "ok.pdf"), okRow.Output);
         Assert.Contains("ok.pdf", okRow.Note);
-        Assert.Contains("2 PDFs", okRow.Note);
+        Assert.Contains("2 documents", okRow.Note);
 
         var noPdfsRow = Assert.Single(vm.Rows, r => r.Path == noPdfs);
         Assert.Equal(ZipItemRowStatus.NoPdfs, noPdfsRow.StatusKind);
@@ -74,7 +74,7 @@ public class MergePdfsViewModelTests
         Assert.Equal("'x.pdf' inside needs a password", lockedRow.Note);
         Assert.True(lockedRow.IsRunnable);
 
-        Assert.Equal("1 merged · 1 had no PDFs · 1 needs a password · 1 failed", vm.Status);
+        Assert.Equal("1 merged · 1 had nothing to merge · 1 needs a password · 1 failed", vm.Status);
     }
 
     [Fact]
@@ -321,7 +321,7 @@ public class MergePdfsViewModelTests
         Assert.All(vm.Rows, r =>
         {
             Assert.Equal(ZipItemRowStatus.Ok, r.StatusKind);
-            Assert.Equal("→ Job.pdf (2 PDFs)", r.Note);
+            Assert.Equal("→ Job.pdf (2 documents)", r.Note);
             Assert.Equal(Path.Combine(dir.Path, "Job.pdf"), r.Output);
         });
         Assert.Equal("1 merged", vm.Status);
@@ -807,9 +807,14 @@ public class MergePdfsViewModelTests
 
         Assert.Contains("second warning", vm.Status);
         // "first warning" was folded in once, by the FIRST drain, and must
-        // not have been repeated by the second.
-        Assert.Equal(vm.Status.IndexOf("first warning", StringComparison.Ordinal),
-            vm.Status.LastIndexOf("first warning", StringComparison.Ordinal));
+        // not have been repeated by the second. The prior form of this
+        // assertion (IndexOf == LastIndexOf) was non-discriminating: it
+        // holds whether "first warning" appears once OR ZERO times, so it
+        // would pass just as happily if the text were missing entirely.
+        // RunBatchAsync's own tally overwrites Status at the start of every
+        // run, so the true, correct outcome here IS zero occurrences —
+        // DoesNotContain says that directly.
+        Assert.DoesNotContain("first warning", vm.Status);
     }
 
     /// <summary>Review Important 1: OfficeConverter.Handles("ppt") is false
