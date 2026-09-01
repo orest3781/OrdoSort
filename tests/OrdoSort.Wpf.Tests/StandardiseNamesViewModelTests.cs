@@ -1253,4 +1253,64 @@ public class StandardiseNamesViewModelTests : IDisposable
         Assert.Equal("Last segment restored.", vm.Status);
         Assert.False(vm.UndoCommand.CanExecute(null));
     }
+
+    /// <summary>Fix round 2, item 1 — the re-review's one actionable follow-up:
+    /// AFileLockedDuringThePeelItselfIsReportedAsFailedNotSilentlyDropped only
+    /// proves Undo stays ARMED after a click that renamed nothing; nothing
+    /// ever actually PRESSES it in that state. For a subtractive, no-preview
+    /// feature Undo IS the safety net, so "the preserved record is usable,"
+    /// not merely "present," is the actual claim worth proving. A real add
+    /// renames a file (arms Undo on the ADD path); a peel whose only
+    /// selected row is locked fails outright — renames nothing, so round 1's
+    /// own guard (item 1 there) correctly leaves the ADD's record alone
+    /// rather than overwriting it with an empty peel one; then Undo is
+    /// actually invoked, and must reverse the ADD — file back under its
+    /// ORIGINAL dropped name, row removed from the grid (add-undo's own
+    /// behaviour, not peel-undo's "keep the row") — proving the dispatch
+    /// went to UndoLastAddAsync, not UndoLastPeelAsync. The row's transient
+    /// Failed display is discarded WITH the row when the add-undo removes
+    /// it; that is correct, not something to work around.</summary>
+    [Fact]
+    public async Task UndoAfterAnAllFailedPeelActuallyReversesThePreservedAdd()
+    {
+        // Enough segments after tidying (6: date + A-B-C-D-EXTRA) that
+        // PlanPeel actually attempts the peel rather than holding it at the
+        // floor — "smith, john.pdf" would tidy to only 3 segments and never
+        // even reach Execute, which would prove nothing about a FAILED peel.
+        var src = _dir.File("A-B-C-D-EXTRA.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { src });
+        var renamed = Path.Combine(_dir.Path, "20260115-A-B-C-D-EXTRA.pdf");
+        Assert.True(File.Exists(renamed));
+        var row = vm.Results.Single();
+
+        // A peel in which the ONLY selected row is locked: Execute's own
+        // move throws, so nothing is renamed and round 1's own guard leaves
+        // the ADD's undo record untouched rather than overwriting it with
+        // an empty peel record.
+        vm.SelectedRows = new[] { row };
+        using (File.Open(renamed, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            await vm.PeelSelectedAsync();
+        }
+        Assert.Equal(StandardiseRowStatus.Failed, row.Status);
+        Assert.True(vm.UndoCommand.CanExecute(null));   // round 1's own fact — still armed
+
+        // The gap round 1 left open: actually PRESS it.
+        await vm.UndoLastBatchAsync();
+
+        // The ADD is what gets reversed: file back under its ORIGINAL
+        // dropped name, row removed from the grid, and the status line is
+        // UndoLastAddAsync's own ("Original names restored."), not
+        // UndoLastPeelAsync's ("Last segment restored.") — both together
+        // are the behavioural proof of which path the dispatch actually
+        // took, without reaching into private state to check it directly.
+        Assert.True(File.Exists(src));
+        Assert.False(File.Exists(renamed));
+        Assert.Empty(vm.Results);
+        Assert.Equal("Original names restored.", vm.Status);
+        Assert.False(vm.UndoCommand.CanExecute(null));
+    }
 }
