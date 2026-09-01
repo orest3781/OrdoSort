@@ -1212,11 +1212,12 @@ public class AutoFitColumnTests
     /// <summary>Standardise names (this task): one grid, one capped Result
     /// column beside the Current name star filler — no third column
     /// competing for width, the same shape PageCounts' own Note column has.
-    /// Rows are constructed directly (StandardiseNameRow has no internal
-    /// Apply to route through — it is written once by ApplyBatchResult, not
-    /// mutated in place), so this is a pure shortcut around the real
-    /// AddFilesAsync/date-prompt pipeline, harmless here since nothing in
-    /// this window re-derives a row's Result from anything else.</summary>
+    /// Rows are constructed directly rather than driven through the real
+    /// AddFilesAsync/date-prompt pipeline — harmless here since this suite
+    /// only ever measures the column at whatever Result value it is built
+    /// with, and never drives a peel or an undo, the only two things
+    /// (StandardiseNamesViewModel.ApplyPeelResult and UndoLastPeelAsync) that
+    /// mutate a row after construction.</summary>
     private static StandardiseNamesWindow BuildStandardiseNamesWindow(string resultValue, int rowCount = 1)
     {
         var vm = new StandardiseNamesViewModel(new FakeDialogs());
