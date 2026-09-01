@@ -133,8 +133,14 @@ public sealed class StandardiseNamesViewModel : ObservableObject
     /// (an add or a peel; see <see cref="_lastBatchKind"/>) actually renamed
     /// on disk (Execute's own successes; a held, refused, skipped, unchanged
     /// or failed row was never moved, so Revert has nothing to do for it).
-    /// Overwritten whole by the next add OR peel: one batch undo, the same
-    /// limit BulkRename's own tool accepts.</summary>
+    /// Overwritten whole by the next add OR peel — but only one that itself
+    /// renamed at least one file. Fix round 1, item 1: ApplyBatchResult and
+    /// ApplyPeelResult both guard their reset of this (and the three fields
+    /// below) on their own outcome count being non-zero, so a click or drop
+    /// that renamed NOTHING — the ordinary terminal state of a peel sequence,
+    /// since the owner clicks until nothing changes — leaves a real earlier
+    /// operation's undo record exactly as it was, rather than silently
+    /// disarming Undo for it.</summary>
     private List<RenameOutcome> _lastOutcomes = new();
 
     /// <summary>The grid rows <see cref="_lastOutcomes"/> corresponds to,
@@ -397,10 +403,18 @@ public sealed class StandardiseNamesViewModel : ObservableObject
         }
 
         foreach (var row in newRows) Results.Add(row);
-        _lastOutcomes = renamedOutcomes;
-        _lastRenamedRows = newRows.Where(r => r.Status == StandardiseRowStatus.Renamed).ToList();
-        _lastPeelEntries = new();          // this add batch is now what Undo would reverse
-        _lastBatchKind = LastBatchKind.Add;
+        // Fix round 1, item 1: guarded on this add having actually renamed
+        // something. An add where every file was skipped, unchanged or
+        // failed touched nothing on disk, so it must not overwrite a real
+        // earlier peel's undo record — the four fields stay written together
+        // so they can never drift out of sync with each other.
+        if (renamedOutcomes.Count > 0)
+        {
+            _lastOutcomes = renamedOutcomes;
+            _lastRenamedRows = newRows.Where(r => r.Status == StandardiseRowStatus.Renamed).ToList();
+            _lastPeelEntries = new();
+            _lastBatchKind = LastBatchKind.Add;
+        }
 
         Status = BuildStatus(renamed, failed, skipped, unchanged);
         UndoCommand.RaiseCanExecuteChanged();
@@ -509,10 +523,20 @@ public sealed class StandardiseNamesViewModel : ObservableObject
             }
         }
 
-        _lastOutcomes = peeledOutcomes;
-        _lastRenamedRows = new();          // this peel is now what Undo would reverse
-        _lastPeelEntries = peeledEntries;
-        _lastBatchKind = LastBatchKind.Peel;
+        // Fix round 1, item 1 — the HIGH finding: guarded on this click
+        // having actually renamed something. A click where every selected
+        // row was held at the floor or refused for a collision touched
+        // nothing on disk, and is the ORDINARY terminal state of a peel
+        // sequence (the owner clicks until nothing changes) — so it must not
+        // overwrite a real earlier add's or peel's undo record. The four
+        // fields stay written together so they can never drift out of sync.
+        if (peeledOutcomes.Count > 0)
+        {
+            _lastOutcomes = peeledOutcomes;
+            _lastRenamedRows = new();
+            _lastPeelEntries = peeledEntries;
+            _lastBatchKind = LastBatchKind.Peel;
+        }
 
         Status = BuildPeelStatus(peeled, failed, atFloor, collided);
         UndoCommand.RaiseCanExecuteChanged();

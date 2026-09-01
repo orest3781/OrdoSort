@@ -656,7 +656,12 @@ public class StandardiseNamesViewModelTests : IDisposable
         Assert.Equal(StandardiseRowStatus.Unchanged, row.Status);
         Assert.True(File.Exists(src));                 // file never moved
         Assert.Equal("Already at four segments.", vm.Status);
-        Assert.False(vm.UndoCommand.CanExecute(null));  // nothing to undo
+        // Fix round 1, item 10: a trailing CanExecute(null) == false here
+        // used to be asserted too, but it is true BEFORE this act as well
+        // (the only row ever added was this one, never renamed) — proves
+        // nothing about the peel itself. ANoOpPeelClickDoesNotDisarmUndoForAnEarlierRealPeel
+        // below is the real, non-vacuous fact for "a no-op peel leaves Undo
+        // alone," seeded so CanExecute starts true.
     }
 
     /// <summary>The second rule: a collision is refused, never countered —
@@ -781,6 +786,12 @@ public class StandardiseNamesViewModelTests : IDisposable
         await vm.AddFilesAsync(new[] { src });
         var row = vm.Results.Single();
         var pathBeforePeel = row.CurrentPath;
+        var resultBeforePeel = row.Result;   // fix round 1, item 10: captured so the
+                                              // assertion below proves Result CHANGED,
+                                              // not merely that it is non-empty (the
+                                              // pre-peel filename is also non-empty,
+                                              // so that check passed even with the
+                                              // failure branch deleted)
 
         using (File.Open(pathBeforePeel, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
@@ -789,12 +800,18 @@ public class StandardiseNamesViewModelTests : IDisposable
         }
 
         Assert.Equal(StandardiseRowStatus.Failed, row.Status);
-        Assert.NotEqual("", row.Result);
+        Assert.NotEqual(resultBeforePeel, row.Result);   // the error text, not the untouched pre-peel name
         Assert.Equal(pathBeforePeel, row.CurrentPath);   // never moved
         Assert.True(File.Exists(pathBeforePeel));
         Assert.Contains("failed", vm.Status);
-        // nothing was actually moved, so there is nothing for Undo to do
-        Assert.False(vm.UndoCommand.CanExecute(null));
+        // Fix round 1, item 1's own guard reads "did THIS click rename
+        // anything" (peeledOutcomes.Count > 0), which is false here whether
+        // every row was held/refused OR — this test's own case — every row's
+        // Execute attempt failed: none of those renamed anything either. So
+        // this failed peel must not wipe the ADD's own real undo record —
+        // Undo is still armed, and would reverse the ADD (which genuinely
+        // renamed this file), not this peel (which moved nothing).
+        Assert.True(vm.UndoCommand.CanExecute(null));
     }
 
     /// <summary>PlanPeel's own doc comment names the one gap its plan-time
@@ -855,5 +872,385 @@ public class StandardiseNamesViewModelTests : IDisposable
 
         Assert.Equal("20260115-A-B-C-D-2.pdf", row.Result);
         Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115-A-B-C-D-2.pdf")));
+    }
+
+    // -------------------------------------------------- Fix round 1 additions
+
+    /// <summary>Fix round 1, item 1(a) — the HIGH finding's own first fact: a
+    /// click that peels NOTHING must not wipe a real earlier peel's undo
+    /// record. Two rows: one already at the floor, one peelable. Peel the
+    /// peelable row (arms Undo), then select and peel ONLY the at-floor row
+    /// (a genuine no-op click) — Undo must still be armed, and must still
+    /// reverse the FIRST peel, not have been silently disarmed by the
+    /// second, empty one.</summary>
+    [Fact]
+    public async Task ANoOpPeelClickDoesNotDisarmUndoForAnEarlierRealPeel()
+    {
+        var atFloor = _dir.File("20260115-SMITH-JOHN-A12.pdf");   // already 4 segments
+        var peelable = _dir.File("A-B-C-D-EXTRA.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { atFloor, peelable });
+        var atFloorRow = vm.Results.Single(r => r.Current == "20260115-SMITH-JOHN-A12.pdf");
+        var peelableRow = vm.Results.Single(r => r.Current == "A-B-C-D-EXTRA.pdf");
+
+        vm.SelectedRows = new[] { peelableRow };
+        await vm.PeelSelectedAsync();
+        var peeledPath = peelableRow.CurrentPath;
+        Assert.Equal("20260115-A-B-C-D.pdf", peelableRow.Result);
+        Assert.True(vm.UndoCommand.CanExecute(null));
+
+        // The no-op click: only the at-floor row selected, held, nothing renamed.
+        vm.SelectedRows = new[] { atFloorRow };
+        await vm.PeelSelectedAsync();
+        Assert.Equal("Already at four segments.", vm.Status);
+
+        // Undo must still be armed, and must still reverse the FIRST peel.
+        Assert.True(vm.UndoCommand.CanExecute(null));
+        await vm.UndoLastBatchAsync();
+
+        Assert.Equal("20260115-A-B-C-D-EXTRA.pdf", peelableRow.Result);
+        Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115-A-B-C-D-EXTRA.pdf")));
+        Assert.False(File.Exists(peeledPath));
+        Assert.Equal("Last segment restored.", vm.Status);
+    }
+
+    /// <summary>Fix round 1, item 1(b): the same guard, the other direction —
+    /// a no-op ADD (every dropped file already standardised) must not wipe a
+    /// real earlier PEEL's undo record either.</summary>
+    [Fact]
+    public async Task ANoOpAddAfterARealPeelLeavesThePeelUndoable()
+    {
+        var peelable = _dir.File("A-B-C-D-EXTRA.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { peelable });
+        var row = vm.Results.Single();
+
+        vm.SelectedRows = new[] { row };
+        await vm.PeelSelectedAsync();
+        Assert.True(vm.UndoCommand.CanExecute(null));
+
+        // The no-op add: already exactly standardised for this date, so
+        // PlanTidy's own idempotence (TidyStemTests.ReapplyingWithTheSameDateIsANoOp)
+        // means this renames nothing.
+        var alreadyTidy = _dir.File("20260115-DOE-JANE.pdf");
+        dialogs.DateAnswers.Enqueue("20260115");
+        await vm.AddFilesAsync(new[] { alreadyTidy });
+        Assert.Contains(vm.Results,
+            r => r.Current == "20260115-DOE-JANE.pdf" && r.Status == StandardiseRowStatus.Unchanged);
+
+        // The earlier peel is still undoable.
+        Assert.True(vm.UndoCommand.CanExecute(null));
+        await vm.UndoLastBatchAsync();
+
+        Assert.Equal("20260115-A-B-C-D-EXTRA.pdf", row.Result);
+        Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115-A-B-C-D-EXTRA.pdf")));
+        Assert.Equal("Last segment restored.", vm.Status);
+    }
+
+    /// <summary>Fix round 1, item 3 — the most valuable coverage gap: making
+    /// the row observable was the entire structural change this feature
+    /// made, and the grid binds Result (text) and Status (the Foreground
+    /// triggers) live. Replacing either internal setter's Set(...) call with
+    /// a plain field assignment would pass every value-only assertion
+    /// elsewhere in this file while silently freezing the grid. Same
+    /// convention as ListReformatViewModelTests.IsCustomDelimiterRaisesPropertyChangedWhenTheShapeChanges
+    /// and FilenameListViewModelTests.TheSaveLabelNamesTheFormatSaveWillActuallyWrite.
+    /// Covers both directions: the peel itself, and the undo-of-a-peel
+    /// restore. The row starts Unchanged (not Renamed) deliberately —
+    /// ObservableObject.Set suppresses a no-op re-assignment of the SAME
+    /// enum value, so peeling a row that started life Renamed would never
+    /// actually exercise Status's own raise.</summary>
+    [Fact]
+    public async Task PropertyChangedFiresForResultAndStatusOnBothThePeelAndItsUndo()
+    {
+        var src = _dir.File("20260115-SMITH-JOHN-A12345-SCAN.pdf");   // already tidy: 5 segments, Unchanged
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { src });
+        var row = vm.Results.Single();
+        Assert.Equal(StandardiseRowStatus.Unchanged, row.Status);
+        Assert.Equal("already standardised", row.Result);   // ApplyBatchResult's own literal for Unchanged, not a filename
+
+        var raisedByPeel = new List<string?>();
+        row.PropertyChanged += (_, e) => raisedByPeel.Add(e.PropertyName);
+
+        vm.SelectedRows = new[] { row };
+        await vm.PeelSelectedAsync();
+
+        Assert.Equal("20260115-SMITH-JOHN-A12345.pdf", row.Result);
+        Assert.Equal(StandardiseRowStatus.Renamed, row.Status);   // an actual value change
+        Assert.Contains(nameof(row.Result), raisedByPeel);
+        Assert.Contains(nameof(row.Status), raisedByPeel);
+
+        var raisedByUndo = new List<string?>();
+        row.PropertyChanged += (_, e) => raisedByUndo.Add(e.PropertyName);
+
+        await vm.UndoLastBatchAsync();
+
+        // Restored to the exact PRE-peel Result PeelUndoEntry captured —
+        // "already standardised" again, not a re-derived filename.
+        Assert.Equal("already standardised", row.Result);
+        Assert.Equal(StandardiseRowStatus.Unchanged, row.Status);   // back to where it started: another actual change
+        Assert.Contains(nameof(row.Result), raisedByUndo);
+        Assert.Contains(nameof(row.Status), raisedByUndo);
+    }
+
+    /// <summary>Fix round 1, item 4: every OTHER peel test selects every row
+    /// in the grid, so "acts on the selection" was indistinguishable from
+    /// "acts on everything." Two rows with NON-colliding peeled targets, only
+    /// one selected — if a future change ever swapped SelectedRows for
+    /// Results.ToList(), the unselected row's Result would visibly change
+    /// too (there is no collision to coincidentally leave it looking
+    /// untouched), so this actually catches that regression rather than
+    /// merely gesturing at it.</summary>
+    [Fact]
+    public async Task OnlyTheSelectedRowIsPeeledTheOtherIsCompletelyUntouched()
+    {
+        var a = _dir.File("A-B-C-D-ONE.pdf");
+        var b = _dir.File("W-X-Y-Z-TWO.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { a, b });
+        var rowOne = vm.Results.Single(r => r.Current == "A-B-C-D-ONE.pdf");
+        var rowTwo = vm.Results.Single(r => r.Current == "W-X-Y-Z-TWO.pdf");
+        var twosResultBefore = rowTwo.Result;
+        var twosPathBefore = rowTwo.CurrentPath;
+        var twosStatusBefore = rowTwo.Status;
+
+        vm.SelectedRows = new[] { rowOne };   // only ONE of the two rows in the grid
+        await vm.PeelSelectedAsync();
+
+        Assert.Equal("20260115-A-B-C-D.pdf", rowOne.Result);
+
+        Assert.Equal(twosResultBefore, rowTwo.Result);
+        Assert.Equal(twosPathBefore, rowTwo.CurrentPath);
+        Assert.Equal(twosStatusBefore, rowTwo.Status);
+        Assert.True(File.Exists(twosPathBefore));
+
+        // Exact match, not Contains: acting on everything would ALSO attempt
+        // rowTwo and report it somehow (even a no-op still isn't THIS exact
+        // single-row message), so this string is itself part of the proof.
+        Assert.Equal("Removed the last segment from 1 file.", vm.Status);
+    }
+
+    /// <summary>Fix round 1, item 5: PeelCommand's own OnError, the sibling
+    /// fact to UndoCommandReportsAnUnexpectedSchedulerFailureInsteadOfGoingSilent
+    /// above. Driven through PeelCommand.Execute itself, not a direct
+    /// PeelSelectedAsync call — a direct call bypasses the very
+    /// AsyncRelayCommand catch-and-route this guards.</summary>
+    [Fact]
+    public async Task PeelCommandReportsAnUnexpectedSchedulerFailureInsteadOfGoingSilent()
+    {
+        var src = _dir.File("A-B-C-D-EXTRA.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        // Call 1: AddFilesAsync's own intake dispatch. Call 2: its Execute
+        // dispatch. Call 3: the peel's own PlanPeel dispatch — the one this
+        // fact needs to fail.
+        var scheduler = new FailsOnNthCallScheduler(failOnCall: 3);
+        var vm = new StandardiseNamesViewModel(dialogs, scheduler);
+        await vm.AddFilesAsync(new[] { src });
+        var row = vm.Results.Single();
+        vm.SelectedRows = new[] { row };
+        Assert.True(vm.PeelCommand.CanExecute(null));
+
+        vm.PeelCommand.Execute(null);
+        await vm.PeelCommand.Completion;
+
+        Assert.Contains("unexpectedly", vm.Status);
+        Assert.False(vm.IsBusy);
+    }
+
+    /// <summary>Fix round 1, item 6: the undo slot must switch back to Add
+    /// after a peel. Add -> Peel -> Add -> Undo: the SECOND add is what
+    /// Undo reverses (its own row removed), and the peeled row from the
+    /// FIRST operation is left completely alone — proving _lastBatchKind
+    /// tracks the MOST RECENT operation, not just "whichever kind ran
+    /// first."</summary>
+    [Fact]
+    public async Task TheUndoSlotSwitchesBackFromPeelToAdd()
+    {
+        var a = _dir.File("A-B-C-D-EXTRA.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { a });   // Add
+        var rowA = vm.Results.Single();
+
+        vm.SelectedRows = new[] { rowA };
+        await vm.PeelSelectedAsync();   // Peel
+        var peeledResult = rowA.Result;
+        var peeledPath = rowA.CurrentPath;
+
+        var b = _dir.File("smith, john.pdf");
+        dialogs.DateAnswers.Enqueue("20260115");
+        await vm.AddFilesAsync(new[] { b });   // Add again
+        var renamedB = Path.Combine(_dir.Path, "20260115-SMITH-JOHN.pdf");
+        Assert.True(File.Exists(renamedB));
+
+        await vm.UndoLastBatchAsync();   // Undo
+
+        // The SECOND add is what got reversed.
+        Assert.True(File.Exists(b));
+        Assert.False(File.Exists(renamedB));
+        Assert.DoesNotContain(vm.Results, r => r.Current == "smith, john.pdf");
+        Assert.False(vm.UndoCommand.CanExecute(null));
+
+        // The peeled row from the FIRST operation is left completely alone.
+        Assert.Equal(peeledResult, rowA.Result);
+        Assert.Equal(peeledPath, rowA.CurrentPath);
+        Assert.Contains(vm.Results, r => ReferenceEquals(r, rowA));
+        Assert.True(File.Exists(peeledPath));
+    }
+
+    /// <summary>Fix round 1, item 7: nothing proved Undo reverses only the
+    /// LAST peel rather than cascading back to the very first name. Peel 6
+    /// segments down to 5, then 5 down to 4 (two separate clicks), then Undo
+    /// once: must land back at the post-click-1 (5-segment) name, not the
+    /// original.</summary>
+    [Fact]
+    public async Task UndoAfterTwoPeelsLandsAtTheClickOneStateNotTheOriginal()
+    {
+        var src = _dir.File("A-B-C-D-E.pdf");   // tidies to 6 segments
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { src });
+        var row = vm.Results.Single();
+        var originalResult = row.Result;
+        Assert.Equal("20260115-A-B-C-D-E.pdf", originalResult);
+
+        vm.SelectedRows = new[] { row };
+        await vm.PeelSelectedAsync();   // click 1: 6 -> 5 segments
+        var afterClick1 = row.Result;
+        Assert.Equal("20260115-A-B-C-D.pdf", afterClick1);
+
+        await vm.PeelSelectedAsync();   // click 2: 5 -> 4 segments
+        Assert.Equal("20260115-A-B-C.pdf", row.Result);
+
+        await vm.UndoLastBatchAsync();   // undoes ONLY click 2
+
+        Assert.Equal(afterClick1, row.Result);        // the click-1 state
+        Assert.NotEqual(originalResult, row.Result);   // NOT cascaded all the way back
+        Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115-A-B-C-D.pdf")));
+        Assert.False(File.Exists(Path.Combine(_dir.Path, "20260115-A-B-C.pdf")));
+        Assert.False(vm.UndoCommand.CanExecute(null));   // one step of undo only
+    }
+
+    /// <summary>Fix round 1, item 8: all four outcome categories in ONE
+    /// click — held, collision-refused, succeeded, failed — interleaved so a
+    /// held row sits between the collision pair and the collision LOSER sits
+    /// between the collision winner and the locked row. This is exactly the
+    /// shape that would expose an outcomeIndex off-by-one (ApplyPeelResult
+    /// only advances it for a Changed plan, so a held/refused row sitting
+    /// between two Changed ones is what actually proves the skip is correct,
+    /// rather than merely untested) — its symptom would be a name, or an
+    /// error message, landing on the wrong row.</summary>
+    [Fact]
+    public async Task AMixedOutcomeBatchInOneClickAssignsEachResultToTheRightRow()
+    {
+        var held = _dir.File("20260115-SMITH-JOHN-A12.pdf");   // already 4 segments
+        var winner = _dir.File("P-Q-R-S-ALPHA.pdf");
+        var loser = _dir.File("P-Q-R-S-BETA.pdf");              // collides with winner's peeled target
+        var locked = _dir.File("M-N-O-P-Q.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { held, winner, loser, locked });
+
+        var heldRow = vm.Results.Single(r => r.Current == "20260115-SMITH-JOHN-A12.pdf");
+        var winnerRow = vm.Results.Single(r => r.Current == "P-Q-R-S-ALPHA.pdf");
+        var loserRow = vm.Results.Single(r => r.Current == "P-Q-R-S-BETA.pdf");
+        var lockedRow = vm.Results.Single(r => r.Current == "M-N-O-P-Q.pdf");
+
+        var heldResultBefore = heldRow.Result;
+        var loserResultBefore = loserRow.Result;
+        var loserPathBefore = loserRow.CurrentPath;
+
+        // Interleaved deliberately: held, winner, loser, locked — a
+        // held/refused row on each side of a Changed one.
+        vm.SelectedRows = new[] { heldRow, winnerRow, loserRow, lockedRow };
+
+        using (File.Open(lockedRow.CurrentPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            await vm.PeelSelectedAsync();
+        }
+
+        // held: completely untouched.
+        Assert.Equal(heldResultBefore, heldRow.Result);
+        Assert.Equal(StandardiseRowStatus.Unchanged, heldRow.Status);
+
+        // winner: peeled successfully to its OWN, correct target.
+        Assert.Equal("20260115-P-Q-R-S.pdf", winnerRow.Result);
+        Assert.Equal(StandardiseRowStatus.Renamed, winnerRow.Status);
+        Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115-P-Q-R-S.pdf")));
+
+        // loser: refused, completely untouched (not "-2", not winner's name).
+        Assert.Equal(loserResultBefore, loserRow.Result);
+        Assert.Equal(loserPathBefore, loserRow.CurrentPath);
+        Assert.True(File.Exists(loserPathBefore));
+
+        // locked: attempted, Execute itself failed — its OWN error, not the
+        // winner's name or anything belonging to another row.
+        Assert.Equal(StandardiseRowStatus.Failed, lockedRow.Status);
+        Assert.NotEqual("20260115-P-Q-R-S.pdf", lockedRow.Result);
+        Assert.NotEqual(loserResultBefore, lockedRow.Result);
+
+        Assert.Contains("Removed the last segment from 1", vm.Status);
+        Assert.Contains("1 already at four segments", vm.Status);
+        Assert.Contains("1 name already taken", vm.Status);
+        Assert.Contains("1 failed", vm.Status);
+    }
+
+    /// <summary>Fix round 1, item 9 (correctness review's own finding 3): a
+    /// peel that partly failed, then Undo. Two selected rows in one click —
+    /// one succeeds, one is locked and fails — then Undo: only the succeeded
+    /// row's peel is undoable (a Failed row was never moved, so Revert has
+    /// nothing to reverse for it), and it must keep its Failed status and
+    /// error text straight through the Undo, not be silently reset.</summary>
+    [Fact]
+    public async Task APeelThatPartlyFailedThenUndoOnlyRestoresTheSucceededRow()
+    {
+        var ok = _dir.File("A-B-C-D-ONE.pdf");
+        var locked = _dir.File("W-X-Y-Z-TWO.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { ok, locked });
+        var okRow = vm.Results.Single(r => r.Current == "A-B-C-D-ONE.pdf");
+        var lockedRow = vm.Results.Single(r => r.Current == "W-X-Y-Z-TWO.pdf");
+        var okResultBeforePeel = okRow.Result;
+
+        vm.SelectedRows = new[] { okRow, lockedRow };
+        using (File.Open(lockedRow.CurrentPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            await vm.PeelSelectedAsync();
+        }
+
+        Assert.Equal("20260115-A-B-C-D.pdf", okRow.Result);
+        Assert.Equal(StandardiseRowStatus.Failed, lockedRow.Status);
+        var lockedErrorAfterPeel = lockedRow.Result;
+        Assert.NotEqual("", lockedErrorAfterPeel);
+        Assert.True(vm.UndoCommand.CanExecute(null));
+
+        await vm.UndoLastBatchAsync();
+
+        // Only the succeeded row restores.
+        Assert.Equal(okResultBeforePeel, okRow.Result);
+        Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115-A-B-C-D-ONE.pdf")));
+
+        // The failed row keeps its Failed status and error text straight
+        // through the Undo.
+        Assert.Equal(StandardiseRowStatus.Failed, lockedRow.Status);
+        Assert.Equal(lockedErrorAfterPeel, lockedRow.Result);
+
+        Assert.Equal("Last segment restored.", vm.Status);
+        Assert.False(vm.UndoCommand.CanExecute(null));
     }
 }
