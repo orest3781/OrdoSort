@@ -1001,12 +1001,67 @@ public class BulkRenameViewModelTests : IDisposable
     private static void WaitFor(Func<bool> condition, string because, int timeoutMs = 3000)
     {
         var sw = Stopwatch.StartNew();
-        while (!condition())
+        while (true)
         {
+            bool result;
+            try
+            {
+                result = condition();
+            }
+            // Fix round 2, item 2(b): a predicate reading a live
+            // ObservableCollection (e.g. vm.Preview) while a background
+            // thread is mid-mutation (Clear then re-Add) can throw INSIDE
+            // the read rather than just observe a stale-but-valid value —
+            // Count and an indexer read are not atomic with each other, so
+            // a collection that shrinks or clears between the two throws
+            // ArgumentOutOfRangeException, and enumerating one that is
+            // structurally modified mid-enumeration throws
+            // InvalidOperationException. Both are the SAME "not true yet"
+            // outcome a plain false would be — the state being observed
+            // simply isn't settled — so they are retried, not surfaced.
+            // Nothing else is caught: a predicate that throws for a REAL
+            // reason (a bug, a bad cast, an assertion inside the lambda)
+            // must still fail the test immediately.
+            catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException)
+            {
+                result = false;
+            }
+            if (result) return;
             if (sw.ElapsedMilliseconds > timeoutMs)
                 Assert.Fail($"condition never became true within {timeoutMs}ms: {because}");
             Thread.Sleep(5);
         }
+    }
+
+    /// <summary>Fix round 2, item 2(b)'s own guarding fact for WaitFor's new
+    /// exception policy — this is test infrastructure, not production code,
+    /// but it is exactly the kind of behaviour worth its own test: a plain
+    /// `while (!condition())` regression here would silently reintroduce
+    /// the flake this round exists to close. Written against THIS file's
+    /// own WaitFor copy only, not duplicated across all seven files it was
+    /// applied to — they are byte-for-byte identical, so this proves the
+    /// shared logic once rather than testing the C# compiler seven
+    /// times.</summary>
+    [Fact]
+    public void WaitForRetriesPastACollectionRaceButSurfacesAnyOtherException()
+    {
+        var attempts = 0;
+        // ArgumentOutOfRangeException then InvalidOperationException, then
+        // true — WaitFor must retry through both rather than let either
+        // propagate as a test failure.
+        WaitFor(() =>
+        {
+            attempts++;
+            if (attempts == 1) throw new ArgumentOutOfRangeException();
+            if (attempts == 2) throw new InvalidOperationException("Collection was modified");
+            return true;
+        }, "should retry past a collection-race exception rather than propagate it");
+        Assert.Equal(3, attempts);
+
+        // Anything else must still surface immediately — not blanket-swallowed.
+        var ex = Record.Exception(() =>
+            WaitFor(() => throw new FormatException("not a race"), "unused", timeoutMs: 50));
+        Assert.IsType<FormatException>(ex);
     }
 
     /// <summary>Counts how many times the injected scheduler is actually asked
@@ -1229,8 +1284,20 @@ public class BulkRenameViewModelTests : IDisposable
         await vm.AddFilesAsync(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf") });
         vm.ReceivedDate = new DateTime(2024, 1, 26);
         vm.ReviewMode = true;
-        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "20240126-BROWN-ADAM.pdf",
-            "the preview should eventually reflect the review-mode rebuild");
+        // Fix round 2, item 2(b): snapshot Preview into a local list FIRST,
+        // rather than reading .Count then [0] off the live, still-mutating
+        // ObservableCollection directly — the two reads are not atomic with
+        // each other, so a background rebuild landing between them could
+        // shrink or clear the collection out from under the indexer. This
+        // was the actual flake (ArgumentOutOfRangeException from inside the
+        // predicate); WaitFor's own updated catch is the backstop for
+        // whatever a snapshot can't fully rule out (ToList() itself can
+        // still race the SAME rebuild while enumerating).
+        WaitFor(() =>
+        {
+            var snapshot = vm.Preview.ToList();
+            return snapshot.Count == 1 && snapshot[0].NewName == "20240126-BROWN-ADAM.pdf";
+        }, "the preview should eventually reflect the review-mode rebuild");
     }
 
     [Fact]

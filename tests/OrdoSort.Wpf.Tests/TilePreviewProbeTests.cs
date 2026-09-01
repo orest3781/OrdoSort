@@ -32,12 +32,101 @@ public class TilePreviewProbeTests : IDisposable
     private static void WaitFor(Func<bool> condition, string because, int timeoutMs = 3000)
     {
         var sw = Stopwatch.StartNew();
-        while (!condition())
+        while (true)
         {
+            bool result;
+            try
+            {
+                result = condition();
+            }
+            // Fix round 2, item 2(b) — same fix as SettingsViewModelTests.WaitFor/
+            // ToolViewModelTests.WaitFor's own copy: a predicate reading a
+            // collection that a background thread is mid-mutating can throw
+            // INSIDE the read rather than just observe a stale-but-valid
+            // value. Both exceptions below are the SAME "not true yet"
+            // outcome a plain false would be, so they are retried, not
+            // surfaced. Nothing else is caught: a predicate that throws for
+            // a REAL reason must still fail the test immediately.
+            catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException)
+            {
+                result = false;
+            }
+            if (result) return;
             if (sw.ElapsedMilliseconds > timeoutMs)
                 Assert.Fail($"condition never became true within {timeoutMs}ms: {because}");
             Thread.Sleep(5);
         }
+    }
+
+    /// <summary>The mirror image of WaitFor: that one polls for a condition
+    /// to become true; this one polls for a VALUE to settle down (stop
+    /// changing) before it is safe to read as a baseline. Fix round 2, item
+    /// 2(a): EditingANonSelectedWatchFolderNeverProbesAtAll used to bracket
+    /// its measurement with two fixed Thread.Sleep(700) calls — under load,
+    /// 700ms was not always enough for every setup probe to land, so a
+    /// still-pending one could fire AFTER the fixed window ended and get
+    /// miscounted as caused by whatever the test did next. Resetting the
+    /// stability clock every time the value changes means this naturally
+    /// adapts to load instead of racing a fixed guess against it.</summary>
+    private static int WaitForStable(Func<int> value, string because, int stableForMs = 300, int timeoutMs = 5000)
+    {
+        var overall = Stopwatch.StartNew();
+        var last = value();
+        var sinceChange = Stopwatch.StartNew();
+        while (sinceChange.ElapsedMilliseconds < stableForMs)
+        {
+            if (overall.ElapsedMilliseconds > timeoutMs)
+                Assert.Fail($"value never stabilised within {timeoutMs}ms: {because}");
+            Thread.Sleep(5);
+            var current = value();
+            if (current != last)
+            {
+                last = current;
+                sinceChange.Restart();
+            }
+        }
+        return last;
+    }
+
+    /// <summary>The other half of the mirror: a NEGATIVE assertion ("this
+    /// never happens") bounded by a generous polling window instead of one
+    /// blind sleep-then-check — every poll is itself an assertion, so a
+    /// probe that fires at any point during the window is caught the
+    /// instant it happens, with the real before/after counts in the
+    /// failure message, rather than only at one fixed checkpoint.</summary>
+    private static void AssertStaysAt(Func<int> value, int expected, string because, int timeoutMs = 1500)
+    {
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < timeoutMs)
+        {
+            Assert.True(value() == expected, $"{because} (expected {expected}, now {value()})");
+            Thread.Sleep(5);
+        }
+    }
+
+    /// <summary>Fix round 2, item 2(a)'s own guarding facts for the two new
+    /// helpers that replaced the fixed sleeps — these are test
+    /// infrastructure, not production code, but a helper that always passes
+    /// (or always waits out its full timeout regardless of the real value)
+    /// would make EditingANonSelectedWatchFolderNeverProbesAtAll pass for
+    /// the wrong reason, exactly the trap this whole exercise exists to
+    /// close.</summary>
+    [Fact]
+    public void AssertStaysAtFailsWhenTheValueActuallyChanges()
+    {
+        var calls = 0;
+        int Flaky() { calls++; return calls < 3 ? 0 : 5; }   // changes on the third read
+        var ex = Record.Exception(() => AssertStaysAt(Flaky, 0, "should catch a real change", timeoutMs: 200));
+        Assert.NotNull(ex);
+    }
+
+    [Fact]
+    public void WaitForStableSettlesOnTheFinalValueOnceChangesStop()
+    {
+        var calls = 0;
+        int Settling() { calls++; return calls < 5 ? calls : 7; }   // changes for the first 4 reads, then holds at 7
+        var result = WaitForStable(Settling, "should settle once changes stop", stableForMs: 30);
+        Assert.Equal(7, result);
     }
 
     // ---- 1. the UI thread does not do the enumeration ---------------------
@@ -88,12 +177,14 @@ public class TilePreviewProbeTests : IDisposable
         var other = vm.WatchFolders[1];   // freshly added; briefly selected by AddWatchCommand itself
         vm.SelectedWatch = selected;      // re-select the first row — `other` is now definitely NOT selected
 
-        // let every probe triggered by the setup above (selected.Path,
-        // the two AddWatchCommand calls, the re-selection) fully settle
-        // before taking the baseline, so a late-arriving legitimate probe
-        // can't be misread as one caused by editing `other` below
-        Thread.Sleep(700);
-        var callsBeforeEditingOther = calls;
+        // Wait for every probe triggered by the setup above (selected.Path,
+        // the two AddWatchCommand calls, the re-selection) to genuinely
+        // settle before taking the baseline — a fixed sleep here raced
+        // system load: a still-pending setup probe landing just after a
+        // fixed window ended got miscounted as caused by editing `other`
+        // below (fix round 2, item 2(a)).
+        var callsBeforeEditingOther = WaitForStable(() => calls,
+            "the setup probes (two adds, the path edit, the reselect) should settle before the baseline is taken");
 
         // exactly the fields the audit named: label, path, colour, filetype
         other.Path = _dir;
@@ -102,8 +193,10 @@ public class TilePreviewProbeTests : IDisposable
         other.Recursive = true;
         other.Filetypes = "pdf";
 
-        Thread.Sleep(700);   // generous: long past the debounce window and any probe duration
-        Assert.Equal(callsBeforeEditingOther, calls);   // zero NEW probe invocations from the unselected row
+        // generous, bounded window: long past the debounce window and any
+        // probe duration, but a poll rather than one blind sleep-then-check.
+        AssertStaysAt(() => calls, callsBeforeEditingOther,
+            "editing the unselected row must never trigger a new probe");
     }
 
     // ---- 3. the preview still becomes correct (this is not "never probe") -
