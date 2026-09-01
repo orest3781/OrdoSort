@@ -74,6 +74,24 @@ public class StandardiseNamesViewModelTests : IDisposable
         Assert.False(vm.UndoCommand.CanExecute(null));
     }
 
+    /// <summary>Audit gap: AddNote's own content was asserted nowhere, though
+    /// every sibling tool's view-model tests pin it. One real file and one
+    /// path that doesn't exist, in a single add, exercises Intake.Added's
+    /// own Missing-count wording end to end.</summary>
+    [Fact]
+    public async Task AddNotePinsWhatTheDropContained()
+    {
+        var real = _dir.File("smith.pdf");
+        var missing = Path.Combine(_dir.Path, "does-not-exist.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+
+        await vm.AddFilesAsync(new[] { real, missing });
+
+        Assert.Equal("1 added · 1 ignored (1 doesn't exist)", vm.AddNote);
+    }
+
     [Fact]
     public async Task AnAlreadyStandardisedFileIsReportedAsUnchangedAndLeftAlone()
     {
@@ -90,6 +108,54 @@ public class StandardiseNamesViewModelTests : IDisposable
         Assert.Equal("already standardised", row.Result);
         Assert.Equal("Already standardised.", vm.Status);
         Assert.False(vm.UndoCommand.CanExecute(null));   // nothing was renamed, so nothing to undo
+    }
+
+    /// <summary>Fix round 1, item 4, through the full view model: a file
+    /// already named "20260115-smith.pdf" for today's date is NOT already
+    /// standardised — TidyStem's own step 2 promises uppercase — so this
+    /// must rename it on disk and report Renamed, not Unchanged. Verified
+    /// against the TRUE on-disk name via Directory.GetFiles, since
+    /// File.Exists is case-insensitive on Windows and could not tell
+    /// "smith.pdf" from "SMITH.pdf" at the same path.</summary>
+    [Fact]
+    public async Task ACaseOnlyDifferenceRenamesOnDiskAndReportsRenamedNotUnchanged()
+    {
+        var src = _dir.File("20260115-smith.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+
+        await vm.AddFilesAsync(new[] { src });
+
+        var row = Assert.Single(vm.Results);
+        Assert.Equal(StandardiseRowStatus.Renamed, row.Status);
+        Assert.Equal("20260115-SMITH.pdf", row.Result);
+
+        var actualName = Path.GetFileName(Directory.GetFiles(_dir.Path).Single());
+        Assert.Equal("20260115-SMITH.pdf", actualName);
+    }
+
+    /// <summary>Audit gap: ApplyBatchResult's Skipped branch was only ever
+    /// reached at the Core level or through hand-built rows — never end to
+    /// end. FakeDialogs.AskDate does not validate its scripted answer (it
+    /// just returns it), so an illegal date reaches PlanTidy exactly as an
+    /// unvalidated caller's would, and Naming.RejectIllegal turns it away
+    /// readably inside PlanTidy.</summary>
+    [Fact]
+    public async Task AnIllegalDateProducesASkippedRowDrivenEndToEnd()
+    {
+        var src = _dir.File("smith.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("2026:01:15");   // not validated by the fake — Core's own guard must catch it
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+
+        await vm.AddFilesAsync(new[] { src });
+
+        Assert.True(File.Exists(src));   // never touched
+        var row = Assert.Single(vm.Results);
+        Assert.Equal(StandardiseRowStatus.Skipped, row.Status);
+        Assert.Contains(":", row.Result);
+        Assert.Contains("skipped", vm.Status);
     }
 
     /// <summary>The brief's own wrinkle, proven through the FULL view model —
@@ -137,6 +203,61 @@ public class StandardiseNamesViewModelTests : IDisposable
         Assert.False(vm.UndoCommand.CanExecute(null));   // one batch undo, same limit as Bulk rename
     }
 
+    /// <summary>Fix round 1, item 1 — the review's HIGH finding: before this
+    /// fix, UndoLastBatchAsync reset _lastOutcomes/_lastRenamedRows
+    /// unconditionally after ANY Revert call, so a single locked file among
+    /// several renamed ones made the WHOLE batch's undo record vanish —
+    /// the healthy rows' Result names went stale in the grid forever, and
+    /// the locked file could never be retried from the UI, since
+    /// UndoCommand.CanExecute depends on _lastOutcomes being non-empty.
+    /// Renames two files, locks ONE of the two RENAMED files (FileShare.Read
+    /// — no delete/rename share, the real mechanism, not a simulated
+    /// error), then Undoes: the healthy row must be gone, the locked row
+    /// must remain, Undo must stay armed, and a SECOND Undo (after the lock
+    /// is released) must finish the job.</summary>
+    [Fact]
+    public async Task UndoOfAPartlyRevertedBatchKeepsTheUnrestoredFileArmedForRetry()
+    {
+        var a = _dir.File("smith.pdf");
+        var b = _dir.File("jones.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { a, b });
+
+        var renamedA = Path.Combine(_dir.Path, "20260115-SMITH.pdf");
+        var renamedB = Path.Combine(_dir.Path, "20260115-JONES.pdf");
+        Assert.True(File.Exists(renamedA));
+        Assert.True(File.Exists(renamedB));
+
+        using (File.Open(renamedA, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            await vm.UndoLastBatchAsync();
+        }
+
+        // The healthy one (jones) restored and its row is gone.
+        Assert.True(File.Exists(b));
+        Assert.False(File.Exists(renamedB));
+        Assert.DoesNotContain(vm.Results, r => r.Current == "jones.pdf");
+
+        // The locked one (smith) is still renamed, its row still shows it,
+        // and Undo is still armed for a retry.
+        Assert.True(File.Exists(renamedA));
+        Assert.False(File.Exists(a));
+        Assert.Contains(vm.Results, r => r.Current == "smith.pdf");
+        Assert.True(vm.UndoCommand.CanExecute(null));
+        Assert.Contains("Couldn't restore", vm.Status);
+
+        // Retry, now that the lock is released (the using block above).
+        await vm.UndoLastBatchAsync();
+
+        Assert.True(File.Exists(a));
+        Assert.False(File.Exists(renamedA));
+        Assert.DoesNotContain(vm.Results, r => r.Current == "smith.pdf");
+        Assert.False(vm.UndoCommand.CanExecute(null));
+        Assert.Equal("Original names restored.", vm.Status);
+    }
+
     [Fact]
     public void UndoCommandCannotExecuteWithNothingToUndo()
     {
@@ -180,6 +301,56 @@ public class StandardiseNamesViewModelTests : IDisposable
         await vm.UndoLastBatchAsync();
         Assert.True(File.Exists(locked));   // never moved, so still exactly where it was
         Assert.True(File.Exists(ok));       // restored by the undo
+    }
+
+    /// <summary>Fix round 1, item 5: throws on a specific call number rather
+    /// than the queue-and-fail-next shape BulkRenameBatchTests.QueuedWorkScheduler
+    /// uses, since this test needs AddFilesAsync's own two dispatches
+    /// (intake, then Execute) to succeed normally and only Undo's dispatch
+    /// to fail.</summary>
+    private sealed class FailsOnNthCallScheduler : IWorkScheduler
+    {
+        private int _callCount;
+        private readonly int _failOnCall;
+        public FailsOnNthCallScheduler(int failOnCall) => _failOnCall = failOnCall;
+
+        public Task<T> Run<T>(Func<T> work)
+        {
+            _callCount++;
+            if (_callCount == _failOnCall)
+                throw new InvalidOperationException("the scheduler is unavailable");
+            return Task.FromResult(work());
+        }
+
+        public Task Run(Action work) => Run(() => { work(); return true; });
+    }
+
+    /// <summary>Fix round 1, item 5: the constructor wired UndoCommand but
+    /// never subscribed OnError, so AsyncRelayCommand routed a faulted
+    /// UndoLastBatchAsync run to a no-op subscriber — IsBusy cleared and
+    /// nothing was said. Revert itself is already per-outcome fail-soft (it
+    /// reports through Status on its own), so this fires only on something
+    /// Revert does not catch — here, the scheduler dispatch itself
+    /// failing.</summary>
+    [Fact]
+    public async Task UndoCommandReportsAnUnexpectedSchedulerFailureInsteadOfGoingSilent()
+    {
+        var src = _dir.File("smith, john.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        // Call 1: AddFilesAsync's own intake dispatch. Call 2: its Execute
+        // dispatch. Call 3: UndoLastBatchAsync's own Revert dispatch — the
+        // one this fact needs to fail.
+        var scheduler = new FailsOnNthCallScheduler(failOnCall: 3);
+        var vm = new StandardiseNamesViewModel(dialogs, scheduler);
+        await vm.AddFilesAsync(new[] { src });
+        Assert.True(vm.UndoCommand.CanExecute(null));
+
+        vm.UndoCommand.Execute(null);
+        await vm.UndoCommand.Completion;
+
+        Assert.Contains("unexpectedly", vm.Status);
+        Assert.False(vm.IsBusy);
     }
 
     /// <summary>A gate around every IWorkScheduler.Run call: the FIRST

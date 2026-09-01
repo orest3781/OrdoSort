@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using Microsoft.Win32;
 using OrdoSort.Wpf.ViewModels;
@@ -15,6 +16,27 @@ public partial class StandardiseNamesWindow : Window
         _vm = vm;
         DataContext = vm;
         DataGridColumnCap.Track(ResultsGrid, ResultColumn);
+    }
+
+    /// <summary>Refuses the close outright while a batch is running, rather
+    /// than plumbing cancellation through BulkRename.Execute/Revert — Core
+    /// methods Bulk rename and MatchMerge also call, so threading a token
+    /// through them would be a disproportionate change for what this tool
+    /// needs. Unlike MergePdfsWindow.OnClosed's cancel-on-close (built for
+    /// work measured in minutes), a batch here is a handful of File.Moves
+    /// inside one directory — sub-second — so blocking the close for that
+    /// long is the honest trade, and it honours the same rule
+    /// MergePdfsWindow's own comment states — a closed window must not keep
+    /// moving files — by making sure this window is never closed while
+    /// files still are.</summary>
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (_vm.IsBusy)
+        {
+            e.Cancel = true;
+            _vm.ExplainCloseWasRefused();
+        }
+        base.OnClosing(e);
     }
 
     private void OnAddFiles(object sender, RoutedEventArgs e)

@@ -88,6 +88,15 @@ public sealed class StandardiseNamesViewModel : ObservableObject
         _dialogs = dialogs;
         _scheduler = scheduler ?? new TaskWorkScheduler();
         UndoCommand = new AsyncRelayCommand(UndoLastBatchAsync, () => _lastOutcomes.Count > 0 && !IsBusy);
+        // AsyncRelayCommand routes a faulted run here and then swallows it
+        // with no subscriber — the same vanishing-failure shape
+        // FireAndForgetGuardTests exists for, and the reason
+        // BulkRenameViewModel wires both of its own commands this way.
+        // UndoLastBatchAsync's own try/finally has no catch (Revert is
+        // already per-outcome fail-soft), so anything reaching here is
+        // unexpected — a scheduler failure, not a file-move problem Revert
+        // already reports through Status on its own.
+        UndoCommand.OnError += ex => Status = $"Undo stopped unexpectedly: {ex.Message}";
     }
 
     private bool _isBusy;
@@ -125,6 +134,16 @@ public sealed class StandardiseNamesViewModel : ObservableObject
     public string AddNote { get => _addNote; private set => Set(ref _addNote, value); }
 
     public AsyncRelayCommand UndoCommand { get; }
+
+    /// <summary>Called by StandardiseNamesWindow.OnClosing when it refuses
+    /// a close because <see cref="IsBusy"/> is true — see that method's own
+    /// doc comment for why the window blocks the close outright rather than
+    /// threading a cancellation token through Execute/Revert. Puts the
+    /// refusal in the same Status line everything else here reports
+    /// through, so it reads as explained rather than the window simply
+    /// ignoring the click.</summary>
+    internal void ExplainCloseWasRefused() =>
+        Status = "Still renaming — please wait for this batch to finish before closing.";
 
     /// <summary>Drop files (or Add files…) → prompt for the date → rename
     /// immediately. Cancelling the prompt returns before anything is added
@@ -276,13 +295,20 @@ public sealed class StandardiseNamesViewModel : ObservableObject
     /// reason Execute is. Runs the whole batch through Revert in one
     /// off-thread hop (unlike BulkRenameViewModel's per-file loop, which
     /// needs that granularity for a resumable, cancellable undo): this
-    /// tool's batches are the size of one drop and carry no Cancel button,
-    /// so the simpler, coarser call is the right amount of machinery for
-    /// what it actually has to do. The trade that accepts: if Revert reports
-    /// ANY problem, none of the batch's rows are removed from the grid
-    /// (rather than guessing which ones it actually restored) — Status still
-    /// says exactly what went wrong, and the rows stay as an honest record
-    /// pending a retry.</summary>
+    /// tool's batches are the size of one drop and carry no Cancel button.
+    ///
+    /// Revert's own return value is a list of PROBLEM MESSAGES, not a
+    /// per-outcome verdict, so on a partial failure this works out on disk
+    /// which outcomes actually moved: one whose Final no longer exists was
+    /// restored (File.Move succeeded, whatever happened to any OTHER
+    /// outcome in the same batch); one still sitting at Final was not,
+    /// whichever of Revert's own reasons is why (the "exists again" guard,
+    /// a caught IOException, or anything else). Restored rows come out of
+    /// the grid and out of the undo record; UNrestored ones stay in both —
+    /// so a locked file that failed to revert keeps its row, keeps
+    /// UndoCommand armed, and a second Undo can retry exactly it, rather
+    /// than the whole batch's undo record vanishing the instant any single
+    /// file in it can't be moved back.</summary>
     internal async Task UndoLastBatchAsync()
     {
         if (_lastOutcomes.Count == 0) return;
@@ -291,18 +317,29 @@ public sealed class StandardiseNamesViewModel : ObservableObject
         {
             var batch = _lastOutcomes;
             var rows = _lastRenamedRows;
-            var problems = await _scheduler.Run(() => Revert(batch));
-            if (problems.Count == 0)
+
+            var (problems, restored) = await _scheduler.Run(() =>
             {
-                foreach (var row in rows) Results.Remove(row);
-                Status = "Original names restored.";
-            }
-            else
+                var problems = Revert(batch);
+                var restored = batch.Select(o => !File.Exists(o.Final)).ToList();
+                return (problems, restored);
+            });
+
+            var outstandingOutcomes = new List<RenameOutcome>();
+            var outstandingRows = new List<StandardiseNameRow>();
+            for (var i = 0; i < batch.Count; i++)
             {
-                Status = string.Join("; ", problems);
+                if (restored[i]) Results.Remove(rows[i]);
+                else
+                {
+                    outstandingOutcomes.Add(batch[i]);
+                    outstandingRows.Add(rows[i]);
+                }
             }
-            _lastOutcomes = new List<RenameOutcome>();
-            _lastRenamedRows = new List<StandardiseNameRow>();
+            _lastOutcomes = outstandingOutcomes;
+            _lastRenamedRows = outstandingRows;
+
+            Status = problems.Count == 0 ? "Original names restored." : string.Join("; ", problems);
         }
         finally
         {
