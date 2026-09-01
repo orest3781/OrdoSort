@@ -258,6 +258,40 @@ public class StandardiseNamesViewModelTests : IDisposable
         Assert.Equal("Original names restored.", vm.Status);
     }
 
+    /// <summary>Fix round 2, item 2 — a correction to my own round-1 ruling,
+    /// not something the implementer got wrong: "restored" was decided by
+    /// "Final no longer exists" alone, which is too loose. If the RENAMED
+    /// file is deleted (or moved away) by something else before Undo runs,
+    /// Final is gone for a reason that is not a successful revert — Revert
+    /// itself reports a real problem (File.Move's source is gone, so it
+    /// throws FileNotFoundException, an IOException Revert's own catch
+    /// already turns into a message), but the old heuristic still called it
+    /// restored and silently dropped the row — Status naming a failure
+    /// while the grid quietly disagreed with it. Restored now also requires
+    /// File.Exists(o.Source): the file has to actually BE back, not merely
+    /// be gone from where it was.</summary>
+    [Fact]
+    public async Task UndoOfARenamedFileDeletedOutFromUnderItKeepsTheRowAndReportsTheFailure()
+    {
+        var src = _dir.File("smith, john.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { src });
+
+        var renamed = Path.Combine(_dir.Path, "20260115-SMITH-JOHN.pdf");
+        Assert.True(File.Exists(renamed));
+
+        File.Delete(renamed);   // something else removes the renamed file before Undo runs
+
+        await vm.UndoLastBatchAsync();
+
+        Assert.False(File.Exists(src));   // never came back — there was nothing left to move
+        Assert.Contains(vm.Results, r => r.Current == "smith, john.pdf");   // row stays: honest record
+        Assert.True(vm.UndoCommand.CanExecute(null));   // still armed for a retry
+        Assert.Contains("Couldn't restore", vm.Status);   // names the real problem
+    }
+
     [Fact]
     public void UndoCommandCannotExecuteWithNothingToUndo()
     {

@@ -102,10 +102,14 @@ public sealed class StandardiseNamesViewModel : ObservableObject
     private bool _isBusy;
 
     /// <summary>True while an add's rename batch, or an undo, is running —
-    /// gates Add files… and Undo alike, the same reason BulkRenameViewModel's
-    /// own IsBusy does: either one touching the file list while the other is
-    /// mid-flight is exactly the kind of overlap QC-05 named in three other
-    /// tools.</summary>
+    /// gates Add files… and Undo alike here, so neither can touch the same
+    /// state the other is mid-flight on: exactly the kind of overlap QC-05
+    /// named in three other tools, and the same underlying reason
+    /// BulkRenameViewModel's own IsBusy gates its own file-list-touching
+    /// actions (Undo, Clear, Remove selected — that class has no equivalent
+    /// guard on Add, since Bulk rename's own AddFilesAsync only ever appends
+    /// to a list Refresh then re-renders, nothing this class's own
+    /// self-contained-batch design needs to protect the same way).</summary>
     public bool IsBusy
     {
         get => _isBusy;
@@ -173,9 +177,12 @@ public sealed class StandardiseNamesViewModel : ObservableObject
                 // The window calls this as `_ = AddFilesAsync(…)`, and a
                 // discarded Task discards its failure with it — the same
                 // vanishing-failure defect FireAndForgetGuardTests exists
-                // for in BulkRenameViewModel. Caught here so it reports
-                // instead, through the line that already carries intake
-                // feedback.
+                // for (that file's own examples are ShellViewModel's
+                // Initialize/StartProcessing/ApplySettings, not this one —
+                // the SAME class of defect, caught the same way
+                // BulkRenameViewModel.AddFilesAsync already catches it for
+                // itself). Caught here so it reports instead, through the
+                // line that already carries intake feedback.
                 AddNote = $"Couldn't read what was dropped: {ex.Message}";
                 return;
             }
@@ -299,16 +306,25 @@ public sealed class StandardiseNamesViewModel : ObservableObject
     ///
     /// Revert's own return value is a list of PROBLEM MESSAGES, not a
     /// per-outcome verdict, so on a partial failure this works out on disk
-    /// which outcomes actually moved: one whose Final no longer exists was
-    /// restored (File.Move succeeded, whatever happened to any OTHER
-    /// outcome in the same batch); one still sitting at Final was not,
-    /// whichever of Revert's own reasons is why (the "exists again" guard,
-    /// a caught IOException, or anything else). Restored rows come out of
-    /// the grid and out of the undo record; UNrestored ones stay in both —
-    /// so a locked file that failed to revert keeps its row, keeps
-    /// UndoCommand armed, and a second Undo can retry exactly it, rather
-    /// than the whole batch's undo record vanishing the instant any single
-    /// file in it can't be moved back.</summary>
+    /// which outcomes actually moved. Fix round 2, item 2 corrected the
+    /// first cut of this check: "restored" is NOT simply "Final no longer
+    /// exists" — a renamed file that was deleted or moved away by something
+    /// ELSE between the rename and the Undo also leaves Final gone, but
+    /// that is not a successful revert (Revert's own File.Move(Final,
+    /// Source) throws FileNotFoundException in that case, which its
+    /// existing IOException catch already turns into a real problem
+    /// message). An outcome counts as restored only when the file is
+    /// actually sitting AT Source again: both Final gone AND Source
+    /// present. One still sitting at Final, or gone from both without ever
+    /// landing at Source, was not restored, whichever of Revert's own
+    /// reasons is why (the "exists again" guard, a caught IOException from
+    /// a lock, this new not-there-to-move-back case, or anything else).
+    /// Restored rows come out of the grid and out of the undo record;
+    /// UNrestored ones stay in both — so a locked (or vanished) file that
+    /// failed to revert keeps its row, keeps UndoCommand armed, and the
+    /// grid never contradicts what Status just said — rather than the
+    /// whole batch's undo record vanishing the instant any single file in
+    /// it can't be moved back.</summary>
     internal async Task UndoLastBatchAsync()
     {
         if (_lastOutcomes.Count == 0) return;
@@ -321,7 +337,7 @@ public sealed class StandardiseNamesViewModel : ObservableObject
             var (problems, restored) = await _scheduler.Run(() =>
             {
                 var problems = Revert(batch);
-                var restored = batch.Select(o => !File.Exists(o.Final)).ToList();
+                var restored = batch.Select(o => File.Exists(o.Source) && !File.Exists(o.Final)).ToList();
                 return (problems, restored);
             });
 

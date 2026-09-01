@@ -22,13 +22,17 @@ public partial class StandardiseNamesWindow : Window
     /// than plumbing cancellation through BulkRename.Execute/Revert — Core
     /// methods Bulk rename and MatchMerge also call, so threading a token
     /// through them would be a disproportionate change for what this tool
-    /// needs. Unlike MergePdfsWindow.OnClosed's cancel-on-close (built for
-    /// work measured in minutes), a batch here is a handful of File.Moves
-    /// inside one directory — sub-second — so blocking the close for that
-    /// long is the honest trade, and it honours the same rule
-    /// MergePdfsWindow's own comment states — a closed window must not keep
-    /// moving files — by making sure this window is never closed while
-    /// files still are.</summary>
+    /// needs. Unlike MergePdfsWindow.OnClosed's cancel-on-close (its own doc
+    /// comment: "a closed window must not keep working invisibly" — built
+    /// for Office conversion work that can run for minutes), a batch here is
+    /// a handful of File.Moves inside one directory — sub-second — so
+    /// blocking the close for that long is the honest trade. It reaches the
+    /// same "a closed window must not keep moving files" rule
+    /// UnlockViewModel.CancelUnlock's own doc comment states (echoed in
+    /// BulkRenameViewModel's _batchCts field comment too) by a different
+    /// route than either: not by cancelling the work, but by making sure it
+    /// never starts running detached from a closed window in the first
+    /// place.</summary>
     protected override void OnClosing(CancelEventArgs e)
     {
         if (_vm.IsBusy)

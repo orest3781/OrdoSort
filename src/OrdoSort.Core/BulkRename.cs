@@ -76,15 +76,19 @@ public static partial class BulkRename
     public sealed record RenameOutcome(string Source, string? Final, string Error = "");
 
     /// <summary>How Execute spells a taken name's disambiguating counter.
-    /// Parenthesized — Explorer's own convention (" (2)", " (3)", …) — is
-    /// the default, because every OTHER caller of Execute (the Bulk rename
-    /// tool, and MatchMerge.cs's own two calls in ExecuteMerges/MergeOne,
-    /// both with no argument) must keep seeing exactly that, unchanged. The
-    /// Standardise names tool passes Dashed instead: Execute's counter is
-    /// the one place a collision can hand back a name containing a space
-    /// and parentheses — the two characters TidyStem exists to strip out —
-    /// so for that tool alone the suffix has to look like the rest of the
-    /// name it is attached to.</summary>
+    /// The RULE, not a roster of callers — naming every call site here has
+    /// already gone stale twice in two rounds (first missed MatchMerge.cs
+    /// entirely, then missed MatchMergeViewModel.DoMerge too), which is the
+    /// signal that enumerating them in a comment is the wrong shape: it
+    /// goes stale the moment someone adds a caller, silently, since nothing
+    /// forces this comment to be touched when that happens. Parenthesized
+    /// (Explorer's own " (2)", " (3)", … convention) is the default, and
+    /// every caller that passes no argument keeps seeing exactly that,
+    /// unchanged. Standardise names is the single caller that opts into
+    /// Dashed: Execute's counter is the one place a collision could hand
+    /// back a name containing the space and parentheses TidyStem exists to
+    /// strip, so for that caller alone the suffix has to look like the
+    /// rest of the name it is attached to.</summary>
     public enum CollisionSuffixStyle { Parenthesized, Dashed }
 
     private static string CollisionSuffix(CollisionSuffixStyle style, int counter) =>

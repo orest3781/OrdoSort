@@ -1,7 +1,7 @@
-using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Input;
+using OrdoSort.Core;
 
 namespace OrdoSort.Wpf.Windows;
 
@@ -68,15 +68,18 @@ public partial class StandardiseDateWindow : Window
 
     /// <summary>Refuses anything that isn't a real calendar date spelled as
     /// exactly 8 digits — wrong length, non-digits, and an impossible date
-    /// (month 13, Feb 30) are all "nonsense" the brief says to refuse, and
-    /// TryParseExact rejects all three in one call rather than needing a
-    /// hand-rolled length/regex/range check that could disagree with it.
-    /// Internal, not private, so a window test can pin the exact boundary
-    /// without driving the real dialog — the same testability reason
+    /// (month 13, Feb 30) are all "nonsense" the brief says to refuse.
+    /// Delegates to BulkRename.IsRealDate — the same test TidyStem's own
+    /// step 1 uses to decide whether a leading digit run in a dropped
+    /// filename is a date — so this window and TidyStem share one
+    /// definition of "date" rather than two that could quietly drift apart.
+    /// Only the <c>.Trim()</c> stays here: it is this window's own concern
+    /// (a person can type leading/trailing whitespace; Core never receives
+    /// untrimmed input from anywhere else that calls it). Internal, not
+    /// private, so a window test can pin the exact boundary without driving
+    /// the real dialog — the same testability reason
     /// MergePdfsWindow.SupportedFilesFilter is internal.</summary>
-    internal static bool IsValidDate(string text) =>
-        DateTime.TryParseExact(text.Trim(), "yyyyMMdd",
-            CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
+    internal static bool IsValidDate(string text) => BulkRename.IsRealDate(text.Trim());
 
     /// <summary>Nothing usable typed is not an answer: the window stays,
     /// rather than "renaming" with a date Core would only reject and
