@@ -413,7 +413,8 @@ public class DataGridNoteColourTests
 
         var vm = new StandardiseNamesViewModel(new FakeDialogs());
         vm.Results.Add(new StandardiseNameRow(
-            "a-long-enough-filename-to-matter.pdf", "some result text here", status));
+            "a-long-enough-filename-to-matter.pdf", "some result text here",
+            @"C:\inbox\a-long-enough-filename-to-matter.pdf", status));
 
         var window = new StandardiseNamesWindow(vm)
         {

@@ -202,6 +202,7 @@ public class DataGridSelectionContrastTests
         vm.Results.Add(new StandardiseNameRow(
             "a-long-enough-filename-to-matter.pdf",
             "in use by another program — a long enough message to matter",
+            @"C:\inbox\a-long-enough-filename-to-matter.pdf",
             StandardiseRowStatus.Failed));
         var win = new StandardiseNamesWindow(vm)
         {

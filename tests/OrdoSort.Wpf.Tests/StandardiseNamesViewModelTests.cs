@@ -476,4 +476,384 @@ public class StandardiseNamesViewModelTests : IDisposable
         Assert.Single(dialogs.DateRequests);   // only the first batch ever prompted
         Assert.True(File.Exists(b));           // the second file was never touched
     }
+
+    // ------------------------------------------------------- Remove last segment
+
+    [Fact]
+    public async Task PeelCommandIsDisabledWithNoSelectionAndEnabledOnceARowIsSelected()
+    {
+        var src = _dir.File("A-B-C-D-E.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { src });
+
+        Assert.False(vm.PeelCommand.CanExecute(null));   // nothing selected yet
+
+        vm.SelectedRows = new[] { vm.Results.Single() };
+        Assert.True(vm.PeelCommand.CanExecute(null));
+
+        vm.SelectedRows = Array.Empty<StandardiseNameRow>();
+        Assert.False(vm.PeelCommand.CanExecute(null));
+    }
+
+    /// <summary>A WPF Button bound to a Command relies on CanExecuteChanged
+    /// firing to know when to re-enable itself — CanExecute alone (proven
+    /// above) is not enough for the real button, only for a test calling it
+    /// directly. This is what makes the SelectedRows setter's own
+    /// PeelCommand.RaiseCanExecuteChanged() call load-bearing rather than
+    /// redundant with the CanExecute check itself.</summary>
+    [Fact]
+    public void SettingSelectedRowsRaisesPeelCommandCanExecuteChanged()
+    {
+        var vm = new StandardiseNamesViewModel(new FakeDialogs());
+        var raised = 0;
+        vm.PeelCommand.CanExecuteChanged += (_, _) => raised++;
+
+        vm.SelectedRows = new[]
+        {
+            new StandardiseNameRow("a.pdf", "a.pdf", @"C:\a.pdf", StandardiseRowStatus.Unchanged),
+        };
+
+        Assert.True(raised > 0);
+    }
+
+    /// <summary>IsBusy is the one flag both Add files… and Remove last
+    /// segment share (see IsBusy's own doc comment) — proven here the same
+    /// way ASecondAddWhileABatchIsRunningIsIgnored above proves the Add side,
+    /// reusing the same GatedScheduler: while an add is genuinely in flight,
+    /// PeelCommand must already read as disabled, and a direct call must be
+    /// the same defensive no-op AddFilesAsync's own IsBusy check is.</summary>
+    [Fact]
+    public async Task PeelIsIgnoredWhileAnAddIsStillRunning()
+    {
+        var a = _dir.File("A-B-C-D-ONE.pdf");
+        var scheduler = new GatedScheduler();
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, scheduler);
+        // A selection already armed BEFORE the add starts, so the guard
+        // under test is genuinely IsBusy alone — with an empty selection,
+        // PeelSelectedAsync's OWN "nothing selected" guard would return
+        // early too, and this fact would keep passing even if the IsBusy
+        // guard were ever deleted.
+        vm.SelectedRows = new[]
+        {
+            new StandardiseNameRow("x.pdf", "x.pdf", _dir.File("x-y-z-w-v.pdf"), StandardiseRowStatus.Unchanged),
+        };
+        // Subscribed only AFTER SelectedRows above (which itself raises
+        // CanExecuteChanged) — otherwise that earlier raise alone would
+        // satisfy the "raised > 0" check below even if IsBusy's OWN raise
+        // call were ever deleted, exactly the trap a shared counter set up
+        // too early falls into.
+        var raised = 0;
+        vm.PeelCommand.CanExecuteChanged += (_, _) => raised++;
+
+        var addTask = vm.AddFilesAsync(new[] { a });
+        var deadline = DateTime.UtcNow.AddSeconds(3);
+        while (scheduler.DispatchCount == 0 && DateTime.UtcNow < deadline) await Task.Delay(5);
+        Assert.True(vm.IsBusy);
+        Assert.True(raised > 0, "IsBusy becoming true should have raised PeelCommand.CanExecuteChanged");
+        Assert.False(vm.PeelCommand.CanExecute(null));
+
+        // Fired without a direct await, same reasoning and same bounded-poll
+        // shape as ASecondAddWhileABatchIsRunningIsIgnored above: if the
+        // IsBusy guard were ever missing, this call would itself dispatch to
+        // the same gated scheduler and block on the very gate this test only
+        // releases below — a direct `await` would hang the whole test
+        // process rather than fail it.
+        var dispatchCountBeforePeelAttempt = scheduler.DispatchCount;
+        var peelTask = vm.PeelSelectedAsync();
+        var peelDeadline = DateTime.UtcNow.AddMilliseconds(500);
+        while (!peelTask.IsCompleted && DateTime.UtcNow < peelDeadline) await Task.Delay(5);
+        Assert.True(peelTask.IsCompleted,
+            "a peel attempted while an add is already running must return immediately, not queue more work");
+        // Never even tried to plan: the dispatch count the gated add itself
+        // caused did not grow.
+        Assert.Equal(dispatchCountBeforePeelAttempt, scheduler.DispatchCount);
+
+        scheduler.Release();
+        await addTask;
+    }
+
+    /// <summary>The owner's own worked example, verbatim, driven through the
+    /// full view model rather than PlanPeel alone. The three files are
+    /// dropped ALREADY in their final tidy form with a date that matches
+    /// their own leading date, so PlanTidy's idempotence (TidyStemTests.
+    /// ReapplyingWithTheSameDateIsANoOp) lands them as Unchanged rows,
+    /// untouched on disk, with CurrentPath equal to their own path — the
+    /// cleanest way to seed exact, known filenames for peeling without
+    /// reasoning about what TidyStem itself would produce.</summary>
+    [Fact]
+    public async Task TheOwnersWorkedExampleBothClicksThroughTheFullViewModel()
+    {
+        var a = _dir.File("20260115-SMITH-JOHN-A12345-SCAN-001.pdf");
+        var b = _dir.File("20260115-DOE-JANE-B9-COPY.pdf");
+        var c = _dir.File("20260115-LEE-SAM-C77-SCAN-002-A.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { a, b, c });
+        Assert.Equal(3, vm.Results.Count);
+        Assert.All(vm.Results, r => Assert.Equal(StandardiseRowStatus.Unchanged, r.Status));
+
+        var rowA = vm.Results.Single(r => r.Current == "20260115-SMITH-JOHN-A12345-SCAN-001.pdf");
+        var rowB = vm.Results.Single(r => r.Current == "20260115-DOE-JANE-B9-COPY.pdf");
+        var rowC = vm.Results.Single(r => r.Current == "20260115-LEE-SAM-C77-SCAN-002-A.pdf");
+
+        vm.SelectedRows = new[] { rowA, rowB, rowC };
+        await vm.PeelSelectedAsync();
+
+        Assert.Equal("20260115-SMITH-JOHN-A12345-SCAN.pdf", rowA.Result);
+        Assert.Equal("20260115-DOE-JANE-B9.pdf", rowB.Result);
+        Assert.Equal("20260115-LEE-SAM-C77-SCAN-002.pdf", rowC.Result);
+        // all three were actually renamed by this click, including rowB and
+        // rowC, which started life Unchanged — a peel that renames a row
+        // sets Renamed regardless of what it was before (StandardiseRowStatus's
+        // own doc comment).
+        Assert.All(new[] { rowA, rowB, rowC }, r => Assert.Equal(StandardiseRowStatus.Renamed, r.Status));
+        Assert.Equal("Removed the last segment from 3 files.", vm.Status);
+
+        // click 2: same three selected again
+        vm.SelectedRows = new[] { rowA, rowB, rowC };
+        await vm.PeelSelectedAsync();
+
+        Assert.Equal("20260115-SMITH-JOHN-A12345.pdf", rowA.Result);
+        Assert.Equal("20260115-LEE-SAM-C77-SCAN.pdf", rowC.Result);
+
+        // rowB is held at exactly four segments — completely untouched by
+        // click 2, so it keeps click 1's own Result/Status, not reset to
+        // anything new.
+        Assert.Equal("20260115-DOE-JANE-B9.pdf", rowB.Result);
+        Assert.Equal(StandardiseRowStatus.Renamed, rowB.Status);
+
+        Assert.Contains("Removed the last segment from 2", vm.Status);
+        Assert.Contains("1 already at four segments", vm.Status);
+
+        Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115-SMITH-JOHN-A12345.pdf")));
+        Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115-DOE-JANE-B9.pdf")));
+        Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115-LEE-SAM-C77-SCAN.pdf")));
+    }
+
+    [Fact]
+    public async Task ARowAtTheFourSegmentFloorIsHeldAndReportedSeparately()
+    {
+        var src = _dir.File("20260115-SMITH-JOHN-A12.pdf");   // already 4 segments, matches the date
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { src });
+        var row = vm.Results.Single();
+        Assert.Equal(StandardiseRowStatus.Unchanged, row.Status);
+        var resultBefore = row.Result;
+        var pathBefore = row.CurrentPath;
+
+        vm.SelectedRows = new[] { row };
+        await vm.PeelSelectedAsync();
+
+        Assert.Equal(resultBefore, row.Result);       // completely untouched
+        Assert.Equal(pathBefore, row.CurrentPath);
+        Assert.Equal(StandardiseRowStatus.Unchanged, row.Status);
+        Assert.True(File.Exists(src));                 // file never moved
+        Assert.Equal("Already at four segments.", vm.Status);
+        Assert.False(vm.UndoCommand.CanExecute(null));  // nothing to undo
+    }
+
+    /// <summary>The second rule: a collision is refused, never countered —
+    /// through the full view model this time, not just PlanPeel in
+    /// isolation. Two files whose ADD already gave them distinct names both
+    /// peel down to the SAME shorter name; the first (in selection order)
+    /// claims it, the second is refused outright — no "-2".</summary>
+    [Fact]
+    public async Task ACollisionIsRefusedNotCounteredAndReportedInTheStatusLine()
+    {
+        var a = _dir.File("A-B-C-D-ONE.pdf");
+        var b = _dir.File("A-B-C-D-TWO.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { a, b });
+        var rowOne = vm.Results.Single(r => r.Current == "A-B-C-D-ONE.pdf");
+        var rowTwo = vm.Results.Single(r => r.Current == "A-B-C-D-TWO.pdf");
+        var twosPathBeforePeel = rowTwo.CurrentPath;
+        var twosResultBeforePeel = rowTwo.Result;
+
+        vm.SelectedRows = new[] { rowOne, rowTwo };
+        await vm.PeelSelectedAsync();
+
+        Assert.Equal("20260115-A-B-C-D.pdf", rowOne.Result);
+        Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115-A-B-C-D.pdf")));
+
+        // rowTwo was refused: left exactly as it was, file untouched.
+        Assert.Equal(twosResultBeforePeel, rowTwo.Result);
+        Assert.Equal(twosPathBeforePeel, rowTwo.CurrentPath);
+        Assert.True(File.Exists(twosPathBeforePeel));
+
+        Assert.Contains("Removed the last segment from 1", vm.Status);
+        Assert.Contains("already taken", vm.Status);
+    }
+
+    [Fact]
+    public async Task UndoOfAPeelKeepsTheRowAndRestoresResultAndCurrentPath()
+    {
+        var src = _dir.File("A-B-C-D-EXTRA.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { src });
+        var row = vm.Results.Single();
+        var resultBeforePeel = row.Result;
+        var pathBeforePeel = row.CurrentPath;
+
+        vm.SelectedRows = new[] { row };
+        await vm.PeelSelectedAsync();
+        Assert.NotEqual(resultBeforePeel, row.Result);
+        Assert.True(vm.UndoCommand.CanExecute(null));
+        var peeledPath = row.CurrentPath;   // captured before Undo puts it back
+
+        await vm.UndoLastBatchAsync();
+
+        Assert.Equal(resultBeforePeel, row.Result);
+        Assert.Equal(pathBeforePeel, row.CurrentPath);
+        Assert.Contains(vm.Results, r => ReferenceEquals(r, row));   // KEPT — not removed like an add-undo
+        Assert.True(File.Exists(pathBeforePeel));
+        Assert.False(File.Exists(peeledPath));   // the peeled name is gone, not just present under a new one
+        Assert.Equal("Last segment restored.", vm.Status);
+        Assert.False(vm.UndoCommand.CanExecute(null));
+    }
+
+    /// <summary>The peel-side mirror of UndoOfAPartlyRevertedBatchKeepsTheUnrestoredFileArmedForRetry
+    /// above: a real FileShare.Read lock (no delete/rename share) on the
+    /// PEELED file makes File.Move throw, so the row cannot be put back on
+    /// the first try. It must stay exactly as the peel left it, stay in the
+    /// grid, and stay armed for a retry — then a second Undo, once the lock
+    /// is released, finishes the job.</summary>
+    [Fact]
+    public async Task UndoOfAPeelThatCannotBeRestoredKeepsTheRowArmedForRetry()
+    {
+        var src = _dir.File("A-B-C-D-EXTRA.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { src });
+        var row = vm.Results.Single();
+        var resultBeforePeel = row.Result;
+
+        vm.SelectedRows = new[] { row };
+        await vm.PeelSelectedAsync();
+        var peeledPath = row.CurrentPath;
+        Assert.NotEqual(resultBeforePeel, row.Result);
+
+        using (File.Open(peeledPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            await vm.UndoLastBatchAsync();
+        }
+
+        Assert.NotEqual(resultBeforePeel, row.Result);          // still the post-peel name
+        Assert.Equal(peeledPath, row.CurrentPath);
+        Assert.Contains(vm.Results, r => ReferenceEquals(r, row));
+        Assert.True(vm.UndoCommand.CanExecute(null));
+        Assert.Contains("Couldn't restore", vm.Status);
+
+        // retry, now that the lock is released (the using block above)
+        await vm.UndoLastBatchAsync();
+
+        Assert.Equal(resultBeforePeel, row.Result);
+        Assert.False(vm.UndoCommand.CanExecute(null));
+        Assert.Equal("Last segment restored.", vm.Status);
+    }
+
+    /// <summary>Execute is already per-file fail-soft for a peel, the same
+    /// as it is for an add (BulkRename.Execute's own IOException/
+    /// UnauthorizedAccessException catch) — this proves ApplyPeelResult
+    /// surfaces that failure on the row rather than silently leaving it
+    /// looking untouched. A real FileShare.Read lock (no delete/rename
+    /// share) on the file BEFORE the peel is what actually makes File.Move
+    /// throw — the same mechanism AFileInUseIsReportedAsFailedRatherThanVanishing
+    /// uses for the add side.</summary>
+    [Fact]
+    public async Task AFileLockedDuringThePeelItselfIsReportedAsFailedNotSilentlyDropped()
+    {
+        var src = _dir.File("A-B-C-D-EXTRA.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { src });
+        var row = vm.Results.Single();
+        var pathBeforePeel = row.CurrentPath;
+
+        using (File.Open(pathBeforePeel, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            vm.SelectedRows = new[] { row };
+            await vm.PeelSelectedAsync();
+        }
+
+        Assert.Equal(StandardiseRowStatus.Failed, row.Status);
+        Assert.NotEqual("", row.Result);
+        Assert.Equal(pathBeforePeel, row.CurrentPath);   // never moved
+        Assert.True(File.Exists(pathBeforePeel));
+        Assert.Contains("failed", vm.Status);
+        // nothing was actually moved, so there is nothing for Undo to do
+        Assert.False(vm.UndoCommand.CanExecute(null));
+    }
+
+    /// <summary>PlanPeel's own doc comment names the one gap its plan-time
+    /// refusal cannot see: a target claimed between planning and the actual
+    /// move. This forces exactly that race — a file appears at the peeled
+    /// target in the instant between the peel's PlanPeel dispatch and its
+    /// Execute dispatch — and proves two things at once: Execute's own
+    /// counter really does catch what PlanPeel could not, and PeelSelectedAsync
+    /// really does pass CollisionSuffixStyle.Dashed to it (a Parenthesized
+    /// fallback would land "A-B-C-D (2).pdf", not "A-B-C-D-2.pdf").</summary>
+    private sealed class CreatesFileBeforeNthCallScheduler : IWorkScheduler
+    {
+        private readonly int _triggerOnCall;
+        private readonly Action _createRaceFile;
+        private int _callCount;
+
+        public CreatesFileBeforeNthCallScheduler(int triggerOnCall, Action createRaceFile)
+        {
+            _triggerOnCall = triggerOnCall;
+            _createRaceFile = createRaceFile;
+        }
+
+        public Task<T> Run<T>(Func<T> work)
+        {
+            _callCount++;
+            if (_callCount == _triggerOnCall) _createRaceFile();
+            return Task.FromResult(work());
+        }
+
+        public Task Run(Action work) => Run(() => { work(); return true; });
+    }
+
+    [Fact]
+    public async Task ARaceBetweenPlanningAndMovingStillGetsADashedCounterNotParenthesized()
+    {
+        // AddFilesAsync's own PlanTidy prepends the batch date first (this
+        // source has no leading date of its own), so the row this peel acts
+        // on is "20260115-A-B-C-D-EXTRA.pdf" — the peeled TARGET is
+        // therefore "20260115-A-B-C-D.pdf", not the bare "A-B-C-D.pdf" the
+        // source's own name might suggest.
+        var src = _dir.File("A-B-C-D-EXTRA.pdf");
+        var racePath = Path.Combine(_dir.Path, "20260115-A-B-C-D.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        // Call 1: AddFilesAsync's own intake dispatch. Call 2: its Execute
+        // dispatch. Call 3: the peel's own PlanPeel dispatch (must see the
+        // target as free). Call 4: the peel's own Execute dispatch — the
+        // race file appears immediately before this one runs, after
+        // PlanPeel has already returned its (correct, at the time) plan.
+        var scheduler = new CreatesFileBeforeNthCallScheduler(
+            triggerOnCall: 4, () => File.WriteAllText(racePath, "x"));
+        var vm = new StandardiseNamesViewModel(dialogs, scheduler);
+        await vm.AddFilesAsync(new[] { src });
+        var row = vm.Results.Single();
+
+        vm.SelectedRows = new[] { row };
+        await vm.PeelSelectedAsync();
+
+        Assert.Equal("20260115-A-B-C-D-2.pdf", row.Result);
+        Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115-A-B-C-D-2.pdf")));
+    }
 }

@@ -37,15 +37,31 @@
                 <TextBlock DockPanel.Dock="Right" Text="{Binding AddNote}"
                            Style="{StaticResource CaptionText}" VerticalAlignment="Center"
                            MaxWidth="240" TextTrimming="CharacterEllipsis" />
-                <Button Content="Add files…" Click="OnAddFiles" HorizontalAlignment="Left"
-                        IsEnabled="{Binding IsIdle}" AutomationProperties.Name="Add files" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                    <Button Content="Add files…" Click="OnAddFiles" Margin="0,0,10,0"
+                            IsEnabled="{Binding IsIdle}" AutomationProperties.Name="Add files" />
+                    <!-- Counts from the END, one click per segment — see
+                         BulkRename.PlanPeel's own doc comment for the two
+                         rules (the four-segment floor, a refused collision).
+                         Unlike BulkRenameWindow's own Delete-segments
+                         checkboxes (which count from the LEFT and need a
+                         separate Rename click to apply), this acts
+                         immediately on whatever is selected — the same "the
+                         click IS the action" shape every button in this
+                         window already has. No IsEnabled binding: PeelCommand's
+                         own CanExecute (selection non-empty and idle) already
+                         disables the button through the Command binding, the
+                         same way Undo last batch needs none either. -->
+                    <Button Content="Remove last segment" Command="{Binding PeelCommand}"
+                            AutomationProperties.Name="Remove last segment" />
+                </StackPanel>
             </DockPanel>
 
             <Grid Grid.Row="1">
                 <DataGrid x:Name="ResultsGrid" ItemsSource="{Binding Results}" AutoGenerateColumns="False"
                           AutomationProperties.Name="Standardised files"
                           IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
-                          SelectionMode="Extended">
+                          SelectionMode="Extended" SelectionChanged="OnSelectionChanged">
                     <!-- Theme.RowHover so the hover tint stays consistent
                          app-wide, same as ZipToolsWindow/MergePdfsWindow. -->
                     <DataGrid.RowStyle>

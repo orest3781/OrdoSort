@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
 using Microsoft.Win32;
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Views;
@@ -51,6 +52,16 @@ public partial class StandardiseNamesWindow : Window
         // same idiom as every sibling tool's own OnAddFiles.
         if (dlg.ShowDialog(this) == true) _ = _vm.AddFilesAsync(dlg.FileNames);
     }
+
+    /// <summary>Pushes the grid's live selection down into the view model —
+    /// DataGrid.SelectedItems is not bindable, the same reason
+    /// BulkRenameWindow.OnSelectionChanged exists. Rows here, not paths (see
+    /// StandardiseNamesViewModel.SelectedRows's own doc comment): unlike
+    /// BulkRenameWindow, there is no SelectionRestored counterpart to wire up
+    /// here, because nothing in this window ever rebuilds Results out from
+    /// under the grid's own selection.</summary>
+    private void OnSelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        _vm.SelectedRows = ResultsGrid.SelectedItems.OfType<StandardiseNameRow>().ToList();
 
     private void OnDragOver(object sender, DragEventArgs e)
     {

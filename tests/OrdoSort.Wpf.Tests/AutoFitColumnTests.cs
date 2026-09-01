@@ -1221,7 +1221,8 @@ public class AutoFitColumnTests
     {
         var vm = new StandardiseNamesViewModel(new FakeDialogs());
         for (var i = 0; i < rowCount; i++)
-            vm.Results.Add(new StandardiseNameRow($"f{i}.pdf", resultValue, StandardiseRowStatus.Failed));
+            vm.Results.Add(new StandardiseNameRow(
+                $"f{i}.pdf", resultValue, $@"C:\inbox\f{i}.pdf", StandardiseRowStatus.Failed));
         return new StandardiseNamesWindow(vm);
     }
 

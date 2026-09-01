@@ -176,4 +176,56 @@ public class StandardiseNamesWindowTests
             Assert.False(window.IsVisible, "closing once idle should succeed");
         });
     }
+
+    /// <summary>The new wiring this task adds: ResultsGrid's SelectionChanged
+    /// pushes into StandardiseNamesViewModel.SelectedRows (OnSelectionChanged,
+    /// code-behind), which is what PeelCommand's own CanExecute reads. Proven
+    /// through a REAL DataGrid selection, not by setting SelectedRows
+    /// directly the way the view-model-only tests do — that would prove
+    /// PeelCommand reacts to the property, not that the grid ever reaches it.
+    /// InlineWorkScheduler makes PeelCommand.Execute's own async run complete
+    /// synchronously (same reasoning as OneGridNoTabsAndADroppedFileLandsInItAfterTheDatePromptIsAnswered's
+    /// own comment on AddFilesAsync), so the row's Result is safe to assert
+    /// immediately after Execute returns.</summary>
+    [Fact]
+    public void SelectingAGridRowArmsRemoveLastSegmentAndItPeelsTheSelectedRow()
+    {
+        using var dir = new TempDir();
+        var src = dir.File("A-B-C-D-EXTRA.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        _fx.Invoke(() =>
+        {
+            ThemeManager.Apply(_fx.App, dark: false);
+            var window = new StandardiseNamesWindow(vm)
+            {
+                Left = -20000, Top = 0, ShowActivated = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+            };
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+
+                window.AcceptDrop(new DataObject(DataFormats.FileDrop, new[] { src }));
+                var grid = Assert.Single(Descendants<DataGrid>((DependencyObject)window.Content));
+                Assert.Same(vm.Results, grid.ItemsSource);
+
+                Assert.False(vm.PeelCommand.CanExecute(null));   // nothing selected yet
+
+                grid.SelectedIndex = 0;
+                grid.UpdateLayout();
+
+                Assert.True(vm.PeelCommand.CanExecute(null));
+
+                vm.PeelCommand.Execute(null);
+
+                var row = Assert.Single(vm.Results);
+                Assert.Equal("20260115-A-B-C-D.pdf", row.Result);
+                Assert.True(File.Exists(Path.Combine(dir.Path, "20260115-A-B-C-D.pdf")));
+            }
+            finally { window.Close(); }
+        });
+    }
 }
