@@ -258,8 +258,7 @@ public class StandardiseNamesViewModelTests : IDisposable
         Assert.Equal("Original names restored.", vm.Status);
     }
 
-    /// <summary>Fix round 2, item 2 — a correction to my own round-1 ruling,
-    /// not something the implementer got wrong: "restored" was decided by
+    /// <summary>Fix round 2, item 2: "restored" was first decided by
     /// "Final no longer exists" alone, which is too loose. If the RENAMED
     /// file is deleted (or moved away) by something else before Undo runs,
     /// Final is gone for a reason that is not a successful revert — Revert
