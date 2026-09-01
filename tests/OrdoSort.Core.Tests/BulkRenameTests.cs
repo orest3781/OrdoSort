@@ -452,3 +452,168 @@ public class PlanTidyFsTests : IDisposable
         Assert.All(names, n => Assert.DoesNotContain("(", n));
     }
 }
+
+/// <summary>PlanPeel — Standardise names' own "Remove last segment" button.
+/// All facts here are filesystem-based, the same as PlanTidyFsTests above:
+/// PlanPeel calls File.Exists directly (no injected predicate, same as
+/// Plan()), so there is no way to exercise its collision rule without a real
+/// directory.</summary>
+public class PlanPeelFsTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "brpeeltest_" + Guid.NewGuid());
+
+    public PlanPeelFsTests() => Directory.CreateDirectory(_dir);
+    public void Dispose() => Directory.Delete(_dir, recursive: true);
+
+    private string Touch(string name)
+    {
+        var p = Path.Combine(_dir, name);
+        File.WriteAllText(p, "x");
+        return p;
+    }
+
+    /// <summary>The owner's own worked example, verbatim, both clicks. Three
+    /// files with different segment counts; one click removes one segment
+    /// from each; the second click holds the one that reached exactly four
+    /// segments on the first click.</summary>
+    [Fact]
+    public void TheOwnersWorkedExampleBothClicks()
+    {
+        var a = Touch("20260115-SMITH-JOHN-A12345-SCAN-001.pdf");
+        var b = Touch("20260115-DOE-JANE-B9-COPY.pdf");
+        var c = Touch("20260115-LEE-SAM-C77-SCAN-002-A.pdf");
+
+        var click1 = PlanPeel(new[] { a, b, c });
+        Assert.All(click1, p => Assert.True(p.Changed));
+        Assert.Equal("20260115-SMITH-JOHN-A12345-SCAN.pdf", Path.GetFileName(click1[0].Target));
+        Assert.Equal("20260115-DOE-JANE-B9.pdf", Path.GetFileName(click1[1].Target));
+        Assert.Equal("20260115-LEE-SAM-C77-SCAN-002.pdf", Path.GetFileName(click1[2].Target));
+        var afterClick1 = Execute(click1, CollisionSuffixStyle.Dashed);
+
+        var paths2 = afterClick1.Select(o => o.Final!).ToList();
+        var click2 = PlanPeel(paths2);
+        Assert.True(click2[0].Changed);
+        Assert.Equal("20260115-SMITH-JOHN-A12345.pdf", Path.GetFileName(click2[0].Target));
+
+        Assert.False(click2[1].Changed);   // DOE-JANE-B9: already at four segments, held
+        Assert.Equal(paths2[1], click2[1].Target);
+        Assert.Equal(PeelAtFloorNote, click2[1].Note);
+
+        Assert.True(click2[2].Changed);
+        Assert.Equal("20260115-LEE-SAM-C77-SCAN.pdf", Path.GetFileName(click2[2].Target));
+    }
+
+    [Theory]
+    [InlineData("A-B-C-D.pdf")]        // exactly four: held
+    [InlineData("A-B-C.pdf")]          // fewer than four: held
+    [InlineData("A.pdf")]              // one segment: held
+    public void AStemAtOrBelowFourSegmentsIsHeldUntouched(string name)
+    {
+        var src = Touch(name);
+        var pr = PlanPeel(new[] { src })[0];
+        Assert.False(pr.Changed);
+        Assert.Equal(src, pr.Target);
+        Assert.Equal(PeelAtFloorNote, pr.Note);
+    }
+
+    [Fact]
+    public void AStemWithExactlyFiveSegmentsPeelsToFour()
+    {
+        var src = Touch("A-B-C-D-E.pdf");
+        var pr = PlanPeel(new[] { src })[0];
+        Assert.True(pr.Changed);
+        Assert.Equal("A-B-C-D.pdf", Path.GetFileName(pr.Target));
+        Assert.Equal("", pr.Note);
+    }
+
+    /// <summary>DeleteSegmentsFromStem's own doc comment: "empties kept —
+    /// 'a--b' is three segments." A trailing dash on an otherwise four-
+    /// segment stem is a FIFTH (empty) segment, so PlanPeel must not hold it
+    /// — and removing that empty last segment is what strips the trailing
+    /// dash.</summary>
+    [Fact]
+    public void ATrailingEmptySegmentCountsTowardTheFloorLikeAnyOther()
+    {
+        var src = Touch("A-B-C-D-.pdf");
+        var pr = PlanPeel(new[] { src })[0];
+        Assert.True(pr.Changed);
+        Assert.Equal("A-B-C-D.pdf", Path.GetFileName(pr.Target));
+    }
+
+    [Fact]
+    public void TheExtensionSurvivesThePeelUntouched()
+    {
+        var src = Touch("A-B-C-D-E.PDF");
+        var pr = PlanPeel(new[] { src })[0];
+        Assert.Equal("A-B-C-D.PDF", Path.GetFileName(pr.Target));
+    }
+
+    /// <summary>The second rule: a collision is refused, never countered.
+    /// Two sources in the same batch peel to the same target — the first
+    /// claims it, the second is refused outright rather than getting "-2".</summary>
+    [Fact]
+    public void ABatchCollisionIsRefusedNotCountered()
+    {
+        var a = Touch("A-B-C-D-ONE.pdf");
+        var b = Touch("A-B-C-D-TWO.pdf");
+
+        var plans = PlanPeel(new[] { a, b });
+
+        Assert.True(plans[0].Changed);
+        Assert.Equal("A-B-C-D.pdf", Path.GetFileName(plans[0].Target));
+
+        Assert.False(plans[1].Changed);
+        Assert.Equal(b, plans[1].Target);        // left exactly where it was
+        Assert.NotEqual("", plans[1].Note);
+        Assert.DoesNotContain("-2", Path.GetFileName(plans[1].Target));
+    }
+
+    /// <summary>Same rule, against a file already on disk rather than
+    /// another file in the same batch.</summary>
+    [Fact]
+    public void ADiskCollisionIsRefusedNotCountered()
+    {
+        Touch("A-B-C-D.pdf");
+        var src = Touch("A-B-C-D-EXTRA.pdf");
+
+        var pr = PlanPeel(new[] { src })[0];
+
+        Assert.False(pr.Changed);
+        Assert.Equal(src, pr.Target);
+        Assert.NotEqual("", pr.Note);
+    }
+
+    /// <summary>A held row and a refused row must not be confused with each
+    /// other by whatever reads Note afterward — their two reasons are
+    /// genuinely different text.</summary>
+    [Fact]
+    public void TheFloorNoteAndTheCollisionNoteAreDistinctText()
+    {
+        Touch("A-B-C-D.pdf");
+        var atFloor = Touch("W-X-Y-Z.pdf");
+        var collides = Touch("A-B-C-D-EXTRA.pdf");
+
+        var plans = PlanPeel(new[] { atFloor, collides });
+
+        Assert.Equal(PeelAtFloorNote, plans[0].Note);
+        Assert.NotEqual(PeelAtFloorNote, plans[1].Note);
+        Assert.NotEqual("", plans[1].Note);
+    }
+
+    [Fact]
+    public void PlanExecuteRevertRoundTripsBackToTheOriginalName()
+    {
+        var src = Touch("A-B-C-D-EXTRA.pdf");
+        var plans = PlanPeel(new[] { src });
+
+        var outcomes = Execute(plans, CollisionSuffixStyle.Dashed);
+        var renamed = Path.Combine(_dir, "A-B-C-D.pdf");
+        Assert.True(File.Exists(renamed));
+        Assert.False(File.Exists(src));
+
+        var problems = Revert(outcomes);
+        Assert.Empty(problems);
+        Assert.True(File.Exists(src));
+        Assert.False(File.Exists(renamed));
+    }
+}

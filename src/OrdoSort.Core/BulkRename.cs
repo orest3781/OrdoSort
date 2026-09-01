@@ -373,6 +373,97 @@ public static partial class BulkRename
         return planned;
     }
 
+    /// <summary>PlanPeel's own Note text when the four-segment floor holds a
+    /// file — exposed (not just a literal inside PlanPeel) so a caller can
+    /// tell that reason apart from PlanPeel's only other reason to leave a
+    /// file untouched, a refused collision, without parsing prose. The same
+    /// "small, genuine, single-purpose contract" reasoning as IsRealDate
+    /// above, for the same structural reason: OrdoSort.Core has no
+    /// InternalsVisibleTo grant to OrdoSort.Wpf.</summary>
+    public const string PeelAtFloorNote = "already at four segments";
+
+    /// <summary>Standardise names' "Remove last segment" button: one click's
+    /// worth of "strip the trailing dash-separated segment" plans, one per
+    /// selected file's CURRENT path on disk (not necessarily its original
+    /// dropped name — a file already peeled once has moved). Modelled on
+    /// Plan's own taken-set-plus-File.Exists collision shape, but for the two
+    /// rules that button exists to enforce:
+    ///
+    /// 1. THE FOUR-SEGMENT FLOOR. DATE-LASTNAME-FIRSTNAME-CONTROLID — what
+    ///    this whole window exists to produce — is four segments, so a stem
+    ///    already at or below that is left alone entirely: Changed = false,
+    ///    Note = <see cref="PeelAtFloorNote"/>. Checked BEFORE anything is
+    ///    removed, by splitting the stem on '-' — the same count
+    ///    DeleteSegmentsFromStem's own doc comment defines ("empties kept —
+    ///    'a--b' is three segments"), so a trailing empty segment counts
+    ///    toward the floor exactly as it counts everywhere else in this file.
+    ///
+    /// 2. A COLLISION IS REFUSED, NOT COUNTERED. Plan's own taken-set-plus-
+    ///    File.Exists check decides whether a target is free, reused here
+    ///    verbatim — but where Plan responds to "not free" by appending a
+    ///    counter and trying again, this refuses outright: Changed = false,
+    ///    Note explains it. Appending a counter here would hand back a name
+    ///    with one MORE trailing segment than the file started with — exactly
+    ///    what this button exists to remove — so the next click would peel
+    ///    the counter straight back off and collide again, forever. Refusing
+    ///    is the honest answer. This plan-time refusal is not the only
+    ///    collision guard left in the system: the caller's own Execute call
+    ///    still carries its ordinary counter (CollisionSuffixStyle) for the
+    ///    genuinely rare race a plan can never see — a target claimed between
+    ///    this method returning and the actual File.Move — the same gap
+    ///    Execute's counter already covers for every other caller in this
+    ///    file.
+    ///
+    /// A file that survives both checks has its stem's last segment removed
+    /// by the EXISTING, already-tested DeleteSegmentsFromStem — no new
+    /// deletion logic. Because the floor already guarantees more than four
+    /// segments (hence more than one), the result is always shorter than the
+    /// input, so — unlike Plan — there is no "transform produced the same
+    /// name" case to guard against here. There is likewise no RejectIllegal
+    /// guard: removing a whole segment can only drop characters the source's
+    /// own, already-legal name already had, never introduce one, so that
+    /// check (real and necessary in PlanTidy, whose input is a caller-
+    /// supplied date rather than the source name itself) has no path to fire
+    /// here.</summary>
+    public static List<PlannedRename> PlanPeel(IEnumerable<string> paths)
+    {
+        var planned = new List<PlannedRename>();
+        var taken = new Dictionary<string, HashSet<string>>();
+
+        foreach (var source in paths)
+        {
+            var dir = Path.GetDirectoryName(source) ?? "";
+            var ext = Path.GetExtension(source);
+            var stem = Path.GetFileNameWithoutExtension(source);
+
+            if (stem.Split('-').Length <= 4)
+            {
+                planned.Add(new PlannedRename(source, source, false, PeelAtFloorNote));
+                continue;
+            }
+
+            var newStem = DeleteSegmentsFromStem(stem, Array.Empty<int>(), deleteLast: true);
+            var candidate = Path.Combine(dir, newStem + ext);
+
+            if (!taken.TryGetValue(dir.ToLowerInvariant(), out var claimed))
+                taken[dir.ToLowerInvariant()] = claimed = new(StringComparer.OrdinalIgnoreCase);
+
+            bool Free(string p) =>
+                !claimed.Contains(Path.GetFileName(p)) &&
+                (!File.Exists(p) || SameFile(p, source));
+
+            if (!Free(candidate))
+            {
+                planned.Add(new PlannedRename(source, source, false, "name already taken — left unchanged"));
+                continue;
+            }
+
+            claimed.Add(Path.GetFileName(candidate));
+            planned.Add(new PlannedRename(source, candidate, true));
+        }
+        return planned;
+    }
+
     /// <summary>Rename everything changed, per-file fail-soft. A target that
     /// appeared since planning gets the counter bumped at the last instant.
     /// <paramref name="suffixStyle"/> is the counter's own shape — see
