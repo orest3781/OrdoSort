@@ -196,6 +196,26 @@ public class DataGridSelectionContrastTests
         return (win, grid);
     }
 
+    private static (StandardiseNamesWindow win, DataGrid grid) BuildStandardiseNamesWindow()
+    {
+        var vm = new StandardiseNamesViewModel(new FakeDialogs());
+        vm.Results.Add(new StandardiseNameRow(
+            "a-long-enough-filename-to-matter.pdf",
+            "in use by another program — a long enough message to matter",
+            StandardiseRowStatus.Failed));
+        var win = new StandardiseNamesWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        win.Show();
+        win.UpdateLayout();
+        var grid = FindDescendant<DataGrid>(win)
+            ?? throw new InvalidOperationException("no DataGrid descendant under StandardiseNamesWindow");
+        Assert.Same(vm.Results, grid.ItemsSource);
+        return (win, grid);
+    }
+
     private static (FilenameListWindow win, DataGrid grid) BuildFilenameListWindow()
     {
         var vm = new FilenameListViewModel(new FakeDialogs())
@@ -259,6 +279,21 @@ public class DataGridSelectionContrastTests
         {
             AssertEverySelectedColumnClearsContrast(grid, p, "MergePdfsWindow");
             AssertEveryUnselectedColumnClearsContrast(grid, p, "MergePdfsWindow");
+        }
+        finally { win.Close(); }
+    });
+
+    [Theory, MemberData(nameof(SchemeTheoryData.SchemeKeys), MemberType = typeof(SchemeTheoryData))]
+    public void StandardiseNamesAllColumnsClearContrast(string schemeKey) => _fx.Invoke(() =>
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+        var (win, grid) = BuildStandardiseNamesWindow();
+        try
+        {
+            AssertEverySelectedColumnClearsContrast(grid, p, "StandardiseNamesWindow");
+            AssertEveryUnselectedColumnClearsContrast(grid, p, "StandardiseNamesWindow");
         }
         finally { win.Close(); }
     });

@@ -40,4 +40,18 @@ public class DialogServiceContractTests
         var dialogs = new FakeDialogs { NextOpenFiles = new[] { @"C:\a.pdf", @"C:\b.pdf" } };
         Assert.Equal(2, ((IDialogService)dialogs).AskOpenFiles("*.*").Length);
     }
+
+    /// <summary>AskDate ships with the same kind of default (Standardise
+    /// names' own addition) — most IDialogService implementers never open
+    /// that window, so they inherit "cancel" rather than each needing a
+    /// throwaway override. Same reasoning as the AskOpenFiles facts above,
+    /// pinned the same way: through a minimal implementer that never
+    /// overrides it, not through FakeDialogs (which DOES override it, to
+    /// script real answers for StandardiseNamesViewModelTests).</summary>
+    [Fact]
+    public void TheDefaultAskDateCancelsRatherThanHanging()
+    {
+        IDialogService dialogs = new OneFileDialogs();
+        Assert.Null(dialogs.AskDate("20260115", 3));
+    }
 }

@@ -352,6 +352,10 @@ public partial class MainWindow : Window
         vm.Dispose();   // cancel any still-armed preview probe now the dialog is closing
     }
 
+    private void OnStandardiseNames(object sender, RoutedEventArgs e) =>
+        new Windows.StandardiseNamesWindow(new StandardiseNamesViewModel(Dialogs))
+        { Owner = this }.ShowDialog();
+
     private void OnMatchMerge(object sender, RoutedEventArgs e) =>
         new Windows.MatchMergeWindow(new MatchMergeViewModel(
             Shell.Cfg, Shell.SaveMergeHeaders, Dialogs, Shell.SaveConfigNow))

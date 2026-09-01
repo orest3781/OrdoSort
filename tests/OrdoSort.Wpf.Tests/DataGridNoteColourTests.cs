@@ -390,6 +390,84 @@ public class DataGridNoteColourTests
     public void MergePdfsNeedsPasswordResultIsAmberUnlessSelected(string schemeKey, bool selected) =>
         _fx.Invoke(() => AssertMergePdfsResultColour(schemeKey, selected, "needs_password", p => p.StatusAmber));
 
+    // ------------------------------------------------------ Standardise names
+    //
+    // The tool's own Result column: Failed is Theme.StatusRed (Execute's
+    // per-file IOException/UnauthorizedAccessException catch — a genuine
+    // failure). Skipped is Theme.StatusAmber ("needs attention" — PlanTidy's
+    // RejectIllegal guard turned a name away; see that method's own doc
+    // comment for why a legally-named source can only reach this through a
+    // bad date). Unchanged is Theme.SubtleText (informational — the file was
+    // already exactly right, not a problem, the same treatment BulkRename's
+    // own "(no change)" gets). Renamed, the ordinary successful case, fires
+    // no trigger at all and so needs no colour coverage here — the same
+    // untested-because-nothing-fired shape every OTHER window's own
+    // successful row already has in this suite.
+
+    private void AssertStandardiseNamesResultColour(string schemeKey, bool selected,
+        StandardiseRowStatus status, Func<ThemePalette, Rgb> expectedUnselected)
+    {
+        var scheme = ThemePalette.FindScheme(schemeKey)!;
+        var p = scheme.Palette;
+        ThemeManager.Apply(_fx.App, scheme);
+
+        var vm = new StandardiseNamesViewModel(new FakeDialogs());
+        vm.Results.Add(new StandardiseNameRow(
+            "a-long-enough-filename-to-matter.pdf", "some result text here", status));
+
+        var window = new StandardiseNamesWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+
+            var grid = FindDescendant<DataGrid>(window)
+                ?? throw new InvalidOperationException("no DataGrid descendant under StandardiseNamesWindow");
+            if (selected) { grid.SelectedIndex = 0; grid.UpdateLayout(); }
+
+            var (fg, _) = ResolveNoteCellForeground(grid, "Result");
+
+            if (selected)
+            {
+                Assert.Equal(p.AccentText, fg);
+                var ratio = ThemePalette.ContrastRatio(fg, p.Accent);
+                Assert.True(ratio >= 4.5,
+                    $"Standardise names Result selected, {status} ({schemeKey}): {fg} on {p.Accent} = {ratio:F2}");
+            }
+            else
+            {
+                var expected = expectedUnselected(p);
+                Assert.Equal(expected, fg);
+                var ratio = ThemePalette.ContrastRatio(fg, p.Surface);
+                Assert.True(ratio >= 4.5,
+                    $"Standardise names Result unselected, {status} ({schemeKey}): {fg} on {p.Surface} = {ratio:F2}");
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void StandardiseNamesFailedResultIsRedUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertStandardiseNamesResultColour(
+            schemeKey, selected, StandardiseRowStatus.Failed, p => p.StatusRed));
+
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void StandardiseNamesSkippedResultIsAmberUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertStandardiseNamesResultColour(
+            schemeKey, selected, StandardiseRowStatus.Skipped, p => p.StatusAmber));
+
+    [Theory, MemberData(nameof(PalettesAndSelection))]
+    public void StandardiseNamesUnchangedResultIsSubtleUnlessSelected(string schemeKey, bool selected) =>
+        _fx.Invoke(() => AssertStandardiseNamesResultColour(
+            schemeKey, selected, StandardiseRowStatus.Unchanged, p => p.SubtleText));
+
     // -------------------------------------------------------- PDF page counts
     //
     // Not named in this task's Finding 1 (PageCountsWindow's Note column was

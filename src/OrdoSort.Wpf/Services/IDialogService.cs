@@ -50,4 +50,17 @@ public interface IDialogService
     /// fails on the needs_password row it produces, not on a missing
     /// method.</summary>
     string? AskPassword(PasswordRequest request) => null;
+
+    /// <summary>Ask for the batch date (YYYYMMDD) the Standardise names
+    /// tool stamps onto every file in one add — <paramref name="defaultDate"/>
+    /// pre-fills the box (today the first time in a session, whatever was
+    /// last accepted afterward; see StandardiseNamesViewModel), and
+    /// <paramref name="fileCount"/> is only for the prompt's own wording.
+    /// Null is a cancel: the caller adds nothing and renames nothing
+    /// (StandardiseNamesViewModel.AddFilesAsync). Defaulted rather than
+    /// abstract for the same reason <see cref="AskPassword"/> is: most
+    /// implementers of this interface never open a Standardise names
+    /// window, so they inherit "cancel" instead of each carrying a
+    /// throwaway override.</summary>
+    string? AskDate(string defaultDate, int fileCount) => null;
 }

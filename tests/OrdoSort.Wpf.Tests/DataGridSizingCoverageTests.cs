@@ -80,6 +80,10 @@ public class DataGridSizingCoverageTests
     {
         "MatchMergeWindow", "BulkRenameWindow", "HistoryWindow", "TriageWindow",
         "PageCountsWindow", "ZipToolsWindow", "MergePdfsWindow",
+        // Standardise names (this task): same one-capped-column-beside-the-
+        // filler shape as PageCountsWindow; AutoFitColumnTests'
+        // StandardiseNames_* facts measure it the same way.
+        "StandardiseNamesWindow",
     };
 
     /// <summary>Known-uncovered grid windows, listed so the gap is explicit

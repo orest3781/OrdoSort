@@ -82,4 +82,20 @@ public sealed class FakeDialogs : IDialogService
         PasswordRequests.Add(request);
         return PasswordAnswers.Count > 0 ? PasswordAnswers.Dequeue() : null;
     }
+
+    /// <summary>Scripted date-prompt answers, one per AskDate call — the
+    /// same shape as PasswordAnswers/PasswordRequests above, for the same
+    /// reason: an empty queue answers null (the prompt was cancelled), so a
+    /// test that never expected one to be asked sees "nothing added" rather
+    /// than a hang, and every request is recorded (the default offered, and
+    /// how many files it covered) so a test can assert on what was asked,
+    /// not just on what came back.</summary>
+    public Queue<string?> DateAnswers { get; } = new();
+    public List<(string DefaultDate, int FileCount)> DateRequests { get; } = new();
+
+    public string? AskDate(string defaultDate, int fileCount)
+    {
+        DateRequests.Add((defaultDate, fileCount));
+        return DateAnswers.Count > 0 ? DateAnswers.Dequeue() : null;
+    }
 }

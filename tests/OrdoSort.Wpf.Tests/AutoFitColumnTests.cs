@@ -1209,6 +1209,68 @@ public class AutoFitColumnTests
         return new MergePdfsWindow(vm);
     }
 
+    /// <summary>Standardise names (this task): one grid, one capped Result
+    /// column beside the Current name star filler — no third column
+    /// competing for width, the same shape PageCounts' own Note column has.
+    /// Rows are constructed directly (StandardiseNameRow has no internal
+    /// Apply to route through — it is written once by ApplyBatchResult, not
+    /// mutated in place), so this is a pure shortcut around the real
+    /// AddFilesAsync/date-prompt pipeline, harmless here since nothing in
+    /// this window re-derives a row's Result from anything else.</summary>
+    private static StandardiseNamesWindow BuildStandardiseNamesWindow(string resultValue, int rowCount = 1)
+    {
+        var vm = new StandardiseNamesViewModel(new FakeDialogs());
+        for (var i = 0; i < rowCount; i++)
+            vm.Results.Add(new StandardiseNameRow($"f{i}.pdf", resultValue, StandardiseRowStatus.Failed));
+        return new StandardiseNamesWindow(vm);
+    }
+
+    [Fact]
+    public void StandardiseNames_ShortResultValueMeasuresNarrow() => _fx.Invoke(() =>
+    {
+        var win = BuildStandardiseNamesWindow(ShortValue);
+        try
+        {
+            ShowOffscreen(win);
+            var column = FindColumnByHeader(win, "Result");
+            Assert.True(column.ActualWidth < 100,
+                $"Standardise names Result column with short content is {column.ActualWidth}px, expected < 100px");
+        }
+        finally { win.Close(); }
+    });
+
+    [Fact]
+    public void StandardiseNames_LongResultValueWrapsInsideItsCap() => _fx.Invoke(() =>
+    {
+        var win = BuildStandardiseNamesWindow(VeryLongValue);
+        try
+        {
+            ShowOffscreen(win);
+            var column = FindColumnByHeader(win, "Result");
+            AssertWrapsInsideItsCap(win, (DataGridBoundColumn)column, "Standardise names Result");
+        }
+        finally { win.Close(); }
+    });
+
+    /// <summary>Same proof as PageCounts_AtMinWidthNoHorizontalScrollbar
+    /// above, for this window's own Result column: a long failure message,
+    /// ManyRowCount rows so a vertical scrollbar also claims part of the
+    /// viewport, shown at this window's own MinWidth. Remove
+    /// StandardiseNamesWindow.xaml.cs's DataGridColumnCap.Track call and this
+    /// fails for a value reason — a visible scrollbar, not a render error.</summary>
+    [Fact]
+    public void StandardiseNames_AtMinWidthNoHorizontalScrollbar() => _fx.Invoke(() =>
+    {
+        var win = BuildStandardiseNamesWindow(VeryLongValue, ManyRowCount);
+        try
+        {
+            ShowOffscreenAtWidth(win, win.MinWidth);
+            AssertNoHorizontalScrollbar(win,
+                $"Standardise names (at MinWidth {win.MinWidth}, {ManyRowCount} rows)");
+        }
+        finally { win.Close(); }
+    });
+
     [Fact]
     public void PageCounts_ShortNoteValueMeasuresNarrow() => _fx.Invoke(() =>
     {

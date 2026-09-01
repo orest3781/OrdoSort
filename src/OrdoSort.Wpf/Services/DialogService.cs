@@ -68,4 +68,7 @@ public sealed class DialogService : IDialogService
     }
 
     public string? AskPassword(PasswordRequest request) => PasswordWindow.Ask(_owner, request);
+
+    public string? AskDate(string defaultDate, int fileCount) =>
+        StandardiseDateWindow.Ask(_owner, defaultDate, fileCount);
 }
