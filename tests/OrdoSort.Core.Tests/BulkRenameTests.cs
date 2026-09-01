@@ -132,6 +132,66 @@ public class BulkRenameParserTests
     }
 }
 
+/// <summary>TidyStem is pure, so this table is cheap and is where the real
+/// risk in the Standardise names feature lives — see the method's own doc
+/// comment for the five-step order this pins. Each row's expected value was
+/// hand-traced step by step against that order before being written down
+/// here, not derived from running the code and copying its output.</summary>
+public class TidyStemTests
+{
+    [Theory]
+    // ---- the owner's own worked examples, verbatim -------------------
+    [InlineData("smith, john_A12345", "20260115", "20260115-SMITH-JOHN-A12345")]
+    [InlineData("20251201-SMITH-JOHN-A12345", "20260115", "20260115-SMITH-JOHN-A12345")]  // old date replaced, not stacked
+    [InlineData("DOE,  JANE__B9", "20260115", "20260115-DOE-JANE-B9")]                    // double separators collapse
+    // ---- step 1: leading date, with and without its own dash ---------
+    [InlineData("20251201SMITH", "20260115", "20260115-SMITH")]                           // no dash after the date
+    [InlineData("2025120-SMITH", "20260115", "20260115-2025120-SMITH")]                   // only 7 digits: NOT a date, kept verbatim
+    [InlineData("202512011SMITH", "20260115", "20260115-1SMITH")]                         // 9 digits: only the first 8 are the date
+    // ---- step 3's binding constraint: ONLY space/comma/underscore ----
+    [InlineData("o'brien", "20260115", "20260115-O'BRIEN")]                               // apostrophe untouched
+    [InlineData("smith.jr", "20260115", "20260115-SMITH.JR")]                             // period untouched
+    [InlineData("smith (jr)", "20260115", "20260115-SMITH-(JR)")]                         // parens untouched, space -> dash
+    [InlineData("...", "20260115", "20260115-...")]                                       // punctuation OUTSIDE the set survives whole
+    // ---- step 4: collapse and trim ------------------------------------
+    [InlineData("SMITH-JONES", "20260115", "20260115-SMITH-JONES")]                       // an existing single dash is untouched
+    [InlineData(" SMITH_JOHN_", "20260115", "20260115-SMITH-JOHN")]                       // leading/trailing separators trimmed away
+    [InlineData("-SMITH", "20260115", "20260115-SMITH")]                                  // leading dash (not from a date) trimmed
+    [InlineData("SMITH-", "20260115", "20260115-SMITH")]                                  // trailing dash trimmed
+    // ---- step 5's degenerate-input rule: date alone, never "date-" ---
+    [InlineData("---", "20260115", "20260115")]                                           // only dashes
+    [InlineData("___", "20260115", "20260115")]                                           // only underscores
+    [InlineData("   ", "20260115", "20260115")]                                           // only spaces
+    [InlineData(" , _ ", "20260115", "20260115")]                                         // a mix of all three
+    [InlineData("20251201", "20260115", "20260115")]                                      // stem IS only a date
+    [InlineData("", "20260115", "20260115")]                                              // empty stem
+    // ---- already exactly in the target form: a true no-op ------------
+    [InlineData("20260115-SMITH-JOHN-A12345", "20260115", "20260115-SMITH-JOHN-A12345")]
+    public void FollowsTheFiveStepsInOrder(string stem, string date, string expected) =>
+        Assert.Equal(expected, TidyStem(stem, date));
+
+    [Theory]
+    [InlineData("smith, john_A12345")]
+    [InlineData("DOE,  JANE__B9")]
+    [InlineData("O'Brien Jr.")]
+    [InlineData("---")]
+    public void ReapplyingWithTheSameDateIsANoOp(string messyStem)
+    {
+        var once = TidyStem(messyStem, "20260115");
+        var twice = TidyStem(once, "20260115");
+        Assert.Equal(once, twice);
+    }
+
+    [Fact]
+    public void ReapplyingWithADifferentDateReplacesRatherThanStacks()
+    {
+        var firstPass = TidyStem("smith, john", "20251201");
+        var secondPass = TidyStem(firstPass, "20260115");
+        Assert.Equal("20260115-SMITH-JOHN", secondPass);
+        Assert.DoesNotContain("20251201", secondPass);
+    }
+}
+
 public class BulkRenameFsTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "brtest_" + Guid.NewGuid());
@@ -199,5 +259,119 @@ public class BulkRenameFsTests : IDisposable
         var src = Touch("BROWN_ADAM_4_25_1966_ACME_R.pdf");
         var pr = Plan(new[] { src }, new RenameOp(ReceivedDate: "20240126"))[0];
         Assert.Equal("20240126-BROWN-ADAM.pdf", Path.GetFileName(pr.Target));
+    }
+}
+
+/// <summary>PlanTidy (Standardise names' own entry point, straight from
+/// TidyStem — see PlanTidy's own doc comment for why it bypasses Plan) and
+/// Execute's Dashed suffix style, the "wrinkle" that tool has to handle
+/// without touching what the Bulk rename tool sees.</summary>
+public class PlanTidyFsTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "brtidytest_" + Guid.NewGuid());
+
+    public PlanTidyFsTests() => Directory.CreateDirectory(_dir);
+    public void Dispose() => Directory.Delete(_dir, recursive: true);
+
+    private string Touch(string name)
+    {
+        var p = Path.Combine(_dir, name);
+        File.WriteAllText(p, "x");
+        return p;
+    }
+
+    [Fact]
+    public void ComputesTheStandardisedTarget()
+    {
+        var src = Touch("smith, john_A12345.pdf");
+        var pr = PlanTidy(new[] { src }, "20260115")[0];
+        Assert.True(pr.Changed);
+        Assert.Equal("20260115-SMITH-JOHN-A12345.pdf", Path.GetFileName(pr.Target));
+    }
+
+    [Fact]
+    public void AnAlreadyStandardisedFileIsLeftUnchanged()
+    {
+        var src = Touch("20260115-SMITH-JOHN-A12345.pdf");
+        var pr = PlanTidy(new[] { src }, "20260115")[0];
+        Assert.False(pr.Changed);
+        Assert.Equal(src, pr.Target);
+        Assert.Equal("", pr.Note);
+    }
+
+    /// <summary>TidyStem itself never returns an empty or illegal stem (see
+    /// its own doc comment) — the only way RejectIllegal's guard in
+    /// PlanTidy can actually fire is a caller handing over a DATE that
+    /// isn't the well-formed 8 digits the window's own prompt guarantees.
+    /// Exercised directly, bypassing that prompt, which is exactly what a
+    /// Core-level test should do: prove the guard is real, not just
+    /// present.</summary>
+    [Fact]
+    public void ADateCarryingAnIllegalCharacterSkipsReadablyInsteadOfCrashing()
+    {
+        var src = Touch("smith.pdf");
+        var pr = PlanTidy(new[] { src }, "2026:0115")[0];
+        Assert.False(pr.Changed);
+        Assert.Equal(src, pr.Target);
+        Assert.Contains(":", pr.Note);
+    }
+
+    /// <summary>The brief's own wrinkle: Execute's default collision counter
+    /// (" (2)") hands back a space and parentheses — the exact two things
+    /// TidyStem exists to strip — so for this tool it has to be "-2" (and
+    /// "-3", …) instead. Two sources that tidy to the same name both still
+    /// land, and neither final name contains a space or a parenthesis.</summary>
+    [Fact]
+    public void TwoFilesThatTidyToTheSameNameBothLandWithADashedCounter()
+    {
+        var a = Touch("smith, john.pdf");
+        var b = Touch("SMITH_JOHN.pdf");
+        var plans = PlanTidy(new[] { a, b }, "20260115");
+
+        var outcomes = Execute(plans, CollisionSuffixStyle.Dashed);
+
+        Assert.Equal(2, outcomes.Count);
+        Assert.All(outcomes, o => Assert.NotNull(o.Final));
+        var names = outcomes.Select(o => Path.GetFileName(o.Final!)).ToList();
+        Assert.Contains("20260115-SMITH-JOHN.pdf", names);
+        Assert.Contains("20260115-SMITH-JOHN-2.pdf", names);
+        Assert.All(names, n => Assert.DoesNotContain(" ", n));
+        Assert.All(names, n => Assert.DoesNotContain("(", n));
+    }
+
+    /// <summary>The other half of the wrinkle: Execute's DEFAULT stays the
+    /// Bulk rename tool's own " (2)" — this only proves the default,
+    /// through PlanTidy's own plans, so a future change to the default
+    /// parameter value is caught here too, not only by BulkRenameFsTests'
+    /// existing (untouched) facts.</summary>
+    [Fact]
+    public void ExecuteWithNoStyleArgumentStillUsesTheParenthesizedDefault()
+    {
+        var a = Touch("smith, john.pdf");
+        var b = Touch("SMITH_JOHN.pdf");
+        var plans = PlanTidy(new[] { a, b }, "20260115");
+
+        var outcomes = Execute(plans);   // no suffixStyle argument at all
+
+        var names = outcomes.Select(o => Path.GetFileName(o.Final!)).ToList();
+        Assert.Contains("20260115-SMITH-JOHN.pdf", names);
+        Assert.Contains("20260115-SMITH-JOHN (2).pdf", names);
+    }
+
+    [Fact]
+    public void PlanExecuteRevertRoundTripsBackToTheOriginalName()
+    {
+        var src = Touch("smith, john_A12345.pdf");
+        var plans = PlanTidy(new[] { src }, "20260115");
+
+        var outcomes = Execute(plans, CollisionSuffixStyle.Dashed);
+        var renamed = Path.Combine(_dir, "20260115-SMITH-JOHN-A12345.pdf");
+        Assert.True(File.Exists(renamed));
+        Assert.False(File.Exists(src));
+
+        var problems = Revert(outcomes);
+        Assert.Empty(problems);
+        Assert.True(File.Exists(src));
+        Assert.False(File.Exists(renamed));
     }
 }
