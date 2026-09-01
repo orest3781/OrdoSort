@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace OrdoSort.Core;
@@ -34,12 +35,28 @@ public static partial class BulkRename
         RegexOptions.IgnoreCase)]
     private static partial Regex ReviewRegex();
 
-    // TidyStem step 1: a leading 8-digit date, and the dash right after it
-    // if there is one — see TidyStem's own doc comment for why exactly 8,
-    // no more and no fewer, is what makes a name this tool already
-    // produced idempotent under a second drop.
-    [GeneratedRegex(@"^\d{8}-?")]
+    // TidyStem step 1: a CANDIDATE leading 8-digit run, and the dash right
+    // after it if there is one — captured separately so the digits can be
+    // checked against IsRealDate before anything is stripped. See
+    // TidyStem's own doc comment for why exactly 8, no more and no fewer,
+    // is what makes a name this tool already produced idempotent under a
+    // second drop, and for why "candidate" — not every 8-digit run is one.
+    [GeneratedRegex(@"^(?<digits>\d{8})-?")]
     private static partial Regex LeadingDateRegex();
+
+    /// <summary>Whether <paramref name="yyyyMMdd"/> is a real calendar date
+    /// in that exact 8-digit shape — the one test that decides both what
+    /// TidyStem's step 1 is allowed to strip and what the Standardise names
+    /// date prompt is allowed to accept (StandardiseDateWindow.IsValidDate
+    /// delegates here), so the two can never quietly disagree about what
+    /// counts as a date. Public, not internal: OrdoSort.Core has no
+    /// InternalsVisibleTo grant to OrdoSort.Wpf (only to its own test
+    /// assembly), and this is a genuine, small, single-purpose contract —
+    /// not an implementation detail — so a public surface is the honest
+    /// shape rather than a workaround.</summary>
+    public static bool IsRealDate(string yyyyMMdd) =>
+        DateTime.TryParseExact(yyyyMMdd, "yyyyMMdd",
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
 
     // TidyStem step 4: collapse a run of two or more dashes (what step 3's
     // substitution leaves behind at "DOE,  JANE" -> "DOE--JANE") to one.
@@ -61,11 +78,12 @@ public static partial class BulkRename
     /// <summary>How Execute spells a taken name's disambiguating counter.
     /// Parenthesized — Explorer's own convention (" (2)", " (3)", …) — is
     /// the default, because every OTHER caller of Execute (the Bulk rename
-    /// tool) must keep seeing exactly that, unchanged. The Standardise
-    /// names tool passes Dashed instead: Execute's counter is the one
-    /// place a collision can hand back a name containing a space and
-    /// parentheses — the two characters TidyStem exists to strip out — so
-    /// for that tool alone the suffix has to look like the rest of the
+    /// tool, and MatchMerge.cs's own two calls in ExecuteMerges/MergeOne,
+    /// both with no argument) must keep seeing exactly that, unchanged. The
+    /// Standardise names tool passes Dashed instead: Execute's counter is
+    /// the one place a collision can hand back a name containing a space
+    /// and parentheses — the two characters TidyStem exists to strip out —
+    /// so for that tool alone the suffix has to look like the rest of the
     /// name it is attached to.</summary>
     public enum CollisionSuffixStyle { Parenthesized, Dashed }
 
@@ -139,11 +157,23 @@ public static partial class BulkRename
     /// produced a no-op rather than a guess.
     ///
     /// Applied in exactly this order:
-    ///  1. Drop a leading 8-digit date, and the dash right after it if
-    ///     there is one. This is what makes step 5 idempotent: a name this
-    ///     tool already produced starts with a date, and without this step
-    ///     a second drop would stack "20260115-20251201-SMITH" onto it
-    ///     rather than replace it.
+    ///  1. Drop a leading 8-digit run, and the dash right after it if there
+    ///     is one — but ONLY when those 8 digits parse as a real calendar
+    ///     date (IsRealDate: the same DateTime.TryParseExact "yyyyMMdd"
+    ///     test StandardiseDateWindow.IsValidDate applies to what the owner
+    ///     types). A stem's own case or claim number can happen to be 8
+    ///     digits long too, and "the requirements say drop a leading
+    ///     8-digit DATE" is read strictly on purpose: stripping any 8
+    ///     digits unconditionally would silently and irreversibly destroy
+    ///     an ID that isn't a date the moment this tool touches the file,
+    ///     with no way to notice from the result alone. When the run is not
+    ///     a real date it is left alone as ordinary content, so
+    ///     "12345678-REPORT" + "20260901" becomes "20260901-12345678-REPORT"
+    ///     — visible and undoable — never "20260901-REPORT" with the ID
+    ///     gone. This is still what makes step 5 idempotent: a name this
+    ///     tool already produced starts with the batch's own REAL date, and
+    ///     without this step a second drop would stack
+    ///     "20260115-20251201-SMITH" onto it rather than replace it.
     ///  2. Uppercase, invariant — a filename, not prose, so this must not
     ///     vary by the machine's culture (Turkish "İ"/"ı" is the classic
     ///     trap: current-culture upper/lowercasing depends on the Windows
@@ -180,7 +210,11 @@ public static partial class BulkRename
     ///     anywhere else.</summary>
     public static string TidyStem(string stem, string date)
     {
-        var outp = LeadingDateRegex().Replace(stem, "");
+        var outp = stem;
+        var leadingRun = LeadingDateRegex().Match(stem);
+        if (leadingRun.Success && IsRealDate(leadingRun.Groups["digits"].Value))
+            outp = stem[leadingRun.Length..];
+
         outp = outp.ToUpperInvariant();
         outp = outp.Replace(' ', '-').Replace(',', '-').Replace('_', '-');
         outp = DashRunRegex().Replace(outp, "-").Trim('-');
@@ -317,7 +351,19 @@ public static partial class BulkRename
             }
 
             var target = Path.Combine(dir, newStem + ext);
-            var changed = !SameFile(Path.GetFileName(target), Path.GetFileName(source));
+            // Ordinal, case-SENSITIVE — deliberately NOT SameFile, which is
+            // case-insensitive by design for the on-disk collision checks
+            // Plan/Execute still need (and still get: this comparison only
+            // decides PlanTidy's own Changed verdict, nothing about how
+            // Execute picks a target when one is taken). A file already
+            // sitting at "20260115-smith.pdf" for today's date must still
+            // be renamed to "20260115-SMITH.pdf" — TidyStem's own step 2
+            // promises uppercase, and SameFile's case-insensitivity was
+            // quietly reporting that promise as already kept when it
+            // wasn't, leaving the file lowercase and calling it "already
+            // standardised."
+            var changed = !string.Equals(
+                Path.GetFileName(target), Path.GetFileName(source), StringComparison.Ordinal);
             planned.Add(new PlannedRename(source, changed ? target : source, changed));
         }
         return planned;

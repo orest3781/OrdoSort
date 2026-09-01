@@ -148,6 +148,12 @@ public class TidyStemTests
     [InlineData("20251201SMITH", "20260115", "20260115-SMITH")]                           // no dash after the date
     [InlineData("2025120-SMITH", "20260115", "20260115-2025120-SMITH")]                   // only 7 digits: NOT a date, kept verbatim
     [InlineData("202512011SMITH", "20260115", "20260115-1SMITH")]                         // 9 digits: only the first 8 are the date
+    // ---- step 1, fix round 1: a leading 8-digit run that is NOT a real
+    // date (month/day out of range) is ordinary content, not a date, and
+    // must survive — a case or claim number is not the owner's to lose.
+    [InlineData("12345678-REPORT", "20260901", "20260901-12345678-REPORT")]               // month 56: not a date, kept, with its own dash intact
+    [InlineData("99999999", "20260901", "20260901-99999999")]                             // month 99, day 99: not a date, kept whole
+    [InlineData("12345678REPORT", "20260901", "20260901-12345678REPORT")]                 // same non-date run, no dash after it either
     // ---- step 3's binding constraint: ONLY space/comma/underscore ----
     [InlineData("o'brien", "20260115", "20260115-O'BRIEN")]                               // apostrophe untouched
     [InlineData("smith.jr", "20260115", "20260115-SMITH.JR")]                             // period untouched
@@ -189,6 +195,27 @@ public class TidyStemTests
         var secondPass = TidyStem(firstPass, "20260115");
         Assert.Equal("20260115-SMITH-JOHN", secondPass);
         Assert.DoesNotContain("20251201", secondPass);
+    }
+
+    /// <summary>Fix round 1, item 2's own "prove it, do not assume it":
+    /// idempotence has to survive a stem that ONCE carried a non-date digit
+    /// run too. TidyStem's own output always starts with the batch's own
+    /// REAL date (never with the preserved non-date run, which only ever
+    /// appears AFTER it), so a second pass with the SAME date strips
+    /// exactly that real date and nothing else — the preserved case number
+    /// is not re-examined a second time and is not eaten belatedly.</summary>
+    [Fact]
+    public void ANonDateLeadingRunSurvivesIdempotentlyAndARealDateStillReplaces()
+    {
+        var firstPass = TidyStem("12345678-REPORT", "20260901");
+        Assert.Equal("20260901-12345678-REPORT", firstPass);
+
+        var reapplied = TidyStem(firstPass, "20260901");
+        Assert.Equal(firstPass, reapplied);   // same date: no change on a second pass
+
+        var redated = TidyStem(firstPass, "20261225");
+        Assert.Equal("20261225-12345678-REPORT", redated);   // different date: the REAL date replaces
+        Assert.Contains("12345678", redated);                 // the case number is untouched either way
     }
 }
 
@@ -373,5 +400,55 @@ public class PlanTidyFsTests : IDisposable
         Assert.Empty(problems);
         Assert.True(File.Exists(src));
         Assert.False(File.Exists(renamed));
+    }
+
+    /// <summary>Fix round 1, item 4: PlanTidy's own Changed verdict has to
+    /// be case-SENSITIVE, unlike SameFile (case-insensitive, correct for
+    /// the on-disk collision checks Plan/Execute still use). A file already
+    /// named "20260115-smith.pdf" is NOT already standardised — TidyStem's
+    /// own step 2 promises uppercase — so this must plan a real rename, and
+    /// Execute (unaffected by this fix; SameFile's collision loop stays
+    /// exactly as it was) really does perform a same-path case-only
+    /// File.Move here — verified against the true on-disk name via
+    /// Directory.GetFiles rather than File.Exists, which is case-insensitive
+    /// on Windows and so could not tell a "smith.pdf" from a "SMITH.pdf" at
+    /// the same path.</summary>
+    [Fact]
+    public void ACaseOnlyDifferenceIsStillARenameNotAnAlreadyStandardisedNoOp()
+    {
+        var src = Touch("20260115-smith.pdf");
+        var pr = PlanTidy(new[] { src }, "20260115")[0];
+        Assert.True(pr.Changed);
+        Assert.Equal("20260115-SMITH.pdf", Path.GetFileName(pr.Target));
+
+        var outcomes = Execute(new[] { pr }, CollisionSuffixStyle.Dashed);
+        Assert.NotNull(Assert.Single(outcomes).Final);
+
+        var actualName = Path.GetFileName(Directory.GetFiles(_dir).Single());
+        Assert.Equal("20260115-SMITH.pdf", actualName);
+    }
+
+    /// <summary>The audit's own gap: every existing collision fact drives
+    /// exactly two files, so the counter was only ever observed landing on
+    /// "-2" — a hardcoded "-2" (rather than a real counter) would have
+    /// passed the whole suite. Three sources that all tidy to the same
+    /// target must land as the bare name, "-2" and "-3", in that order.</summary>
+    [Fact]
+    public void ThreeFilesThatTidyToTheSameNameLandBareThenDashTwoThenDashThree()
+    {
+        var a = Touch("smith, john.pdf");
+        var b = Touch("SMITH_JOHN.pdf");
+        var c = Touch("Smith,John.pdf");
+        var plans = PlanTidy(new[] { a, b, c }, "20260115");
+
+        var outcomes = Execute(plans, CollisionSuffixStyle.Dashed);
+
+        Assert.Equal(3, outcomes.Count);
+        var names = outcomes.Select(o => Path.GetFileName(o.Final!)).ToList();
+        Assert.Contains("20260115-SMITH-JOHN.pdf", names);
+        Assert.Contains("20260115-SMITH-JOHN-2.pdf", names);
+        Assert.Contains("20260115-SMITH-JOHN-3.pdf", names);
+        Assert.All(names, n => Assert.DoesNotContain(" ", n));
+        Assert.All(names, n => Assert.DoesNotContain("(", n));
     }
 }
