@@ -228,4 +228,45 @@ public class StandardiseNamesWindowTests
             finally { window.Close(); }
         });
     }
+
+    /// <summary>Rule 7: Undo last batch moved into the toolbar, immediately
+    /// after Remove last segment — it used to sit in the footer beside the
+    /// status line. Pinned by container membership and declaration order
+    /// within that container's Children, not by screen position (which an
+    /// off-screen probe window makes an unreliable signal): the button's
+    /// logical Parent must be the SAME StackPanel Remove last segment's is,
+    /// and it must come immediately after it. "Exactly one button anywhere
+    /// in the window carries this Content" is the other half of the brief —
+    /// MOVE it, don't leave a second copy in the footer.</summary>
+    [Fact]
+    public void UndoLastBatchLivesInTheToolbarImmediatelyAfterRemoveLastSegment()
+    {
+        var vm = new StandardiseNamesViewModel(new FakeDialogs());
+        _fx.Invoke(() =>
+        {
+            ThemeManager.Apply(_fx.App, dark: false);
+            var window = new StandardiseNamesWindow(vm)
+            {
+                Left = -20000, Top = 0, ShowActivated = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+            };
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+
+                var allButtons = Descendants<Button>((DependencyObject)window.Content).ToList();
+                var undo = Assert.Single(allButtons, b => b.Content as string == "Undo last batch");
+                var removeLastSegment = Assert.Single(allButtons, b => b.Content as string == "Remove last segment");
+
+                var toolbar = Assert.IsType<StackPanel>(removeLastSegment.Parent);
+                Assert.Same(toolbar, undo.Parent);
+
+                var order = toolbar.Children.OfType<Button>().Select(b => (string)b.Content).ToList();
+                var removeIndex = order.IndexOf("Remove last segment");
+                Assert.Equal(removeIndex + 1, order.IndexOf("Undo last batch"));
+            }
+            finally { window.Close(); }
+        });
+    }
 }
