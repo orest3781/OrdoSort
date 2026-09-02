@@ -711,7 +711,16 @@ public class DataGridColumnCapTests
     /// blank takes the width of the column immediately to its LEFT rather
     /// than collapsing to its own header. BuildPair's own visual order is
     /// Name (star) | Note (governed) | Extra (governed), so Extra's left
-    /// neighbour is Note.</summary>
+    /// neighbour is Note.
+    ///
+    /// Asserts ActualWidth, not MaxWidth (fix round 1, the CRITICAL this
+    /// rule shipped inert with): MaxWidth is a ceiling, and an Auto column
+    /// renders at min(desired, MaxWidth) — an empty column's own DESIRED
+    /// width is its bare header, already under any cap this rule could ever
+    /// raise, so a version of this fact that only checked the cap passed
+    /// while nothing moved on screen. The exact trap this task's own
+    /// revert-proof row 2b already caught once, for Rule 3's cap, before
+    /// this same mistake was carried into Rule 5 by habit.</summary>
     [Fact]
     public void AnEmptyColumnMatchesTheWidthOfTheColumnToItsLeft() => _fx.Invoke(() =>
     {
@@ -730,9 +739,9 @@ public class DataGridColumnCapTests
                 $"floor ({ownHeaderFloor}px) — otherwise matching the neighbour and merely flooring at " +
                 "the header would look identical");
 
-            Assert.True(Math.Abs(g.Extra.MaxWidth - noteContent) <= 2,
-                $"Extra is empty; its cap ({g.Extra.MaxWidth}px) should match its LEFT neighbour " +
-                $"Note's own content width ({noteContent}px), not collapse to its own " +
+            Assert.True(Math.Abs(g.Extra.ActualWidth - noteContent) <= 2,
+                $"Extra is empty; its RENDERED width ({g.Extra.ActualWidth}px) should match its LEFT " +
+                $"neighbour Note's own content width ({noteContent}px), not collapse to its own " +
                 $"{ownHeaderFloor}px header");
         }
         finally { g.Window.Close(); }
@@ -742,7 +751,8 @@ public class DataGridColumnCapTests
     /// empty, matches the one to its RIGHT instead — BuildLeading's own
     /// shape (a governed column first, the star filler second) is what
     /// makes this branch reachable at all; every star-first builder above
-    /// can only ever exercise the "matches its left neighbour" branch.</summary>
+    /// can only ever exercise the "matches its left neighbour" branch.
+    /// ActualWidth, not MaxWidth — see the sibling fact above for why.</summary>
     [Fact]
     public void AnEmptyFirstColumnMatchesTheWidthOfTheColumnToItsRight() => _fx.Invoke(() =>
     {
@@ -761,10 +771,83 @@ public class DataGridColumnCapTests
                 $"floor ({ownHeaderFloor}px) — otherwise matching the neighbour and merely flooring at " +
                 "the header would look identical");
 
-            Assert.True(Math.Abs(g.First.MaxWidth - nameContent) <= 2,
-                $"First is empty and is the FIRST column, so it matches its RIGHT neighbour Name's " +
-                $"own content width ({nameContent}px), not its own {ownHeaderFloor}px header: got " +
-                $"{g.First.MaxWidth}px");
+            Assert.True(Math.Abs(g.First.ActualWidth - nameContent) <= 2,
+                $"First is empty and is the FIRST column, so its RENDERED width should match its RIGHT " +
+                $"neighbour Name's own content width ({nameContent}px), not its own {ownHeaderFloor}px " +
+                $"header: got {g.First.ActualWidth}px");
+        }
+        finally { g.Window.Close(); }
+    });
+
+    /// <summary>Table-rules, Rule 5's own trap (fix round 1): AutofitCaps'
+    /// own <c>floors</c> reads each governed column's MinWidth, and this
+    /// rule now WRITES a blank column's MinWidth to force its adopted width
+    /// to actually render (see the sibling fact above). Reading that write
+    /// back live on the next pass would ratchet the floor up forever —
+    /// proved here by borrowing a WIDE width, then narrowing the SAME
+    /// neighbour and confirming Extra tracks it back down rather than
+    /// staying pinned at the width it once borrowed.</summary>
+    [Fact]
+    public void AnEmptyColumnDoesNotRatchetWhenItsBorrowedFromNeighbourShrinks() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var g = BuildPair(2000, 40, new PairRow { Name = "x", Note = Ms(50), Extra = "" });
+        try
+        {
+            ShowAndSettle(g.Window);
+            var wideNoteContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 0));
+            Assert.True(Math.Abs(g.Extra.ActualWidth - wideNoteContent) <= 2,
+                $"precondition: Extra should adopt Note's own {wideNoteContent}px while Note is wide " +
+                $"— got {g.Extra.ActualWidth}px");
+
+            // Replace the row (PairRow's properties are init-only) with a
+            // MUCH shorter Note, Extra still blank.
+            g.Rows.Clear();
+            g.Rows.Add(new PairRow { Name = "x", Note = Ms(5), Extra = "" });
+            Settle(g.Window);
+
+            var narrowNoteContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 0));
+            Assert.True(narrowNoteContent < wideNoteContent - 20,
+                $"this fact needs the new Note ({narrowNoteContent}px) meaningfully narrower than the " +
+                $"old one ({wideNoteContent}px), or a ratchet and a correct shrink would look identical");
+
+            Assert.True(Math.Abs(g.Extra.ActualWidth - narrowNoteContent) <= 2,
+                $"Extra should track Note's CURRENT (narrower) width, {narrowNoteContent}px, not stay " +
+                $"stuck at the {wideNoteContent}px it borrowed before Note shrank: got " +
+                $"{g.Extra.ActualWidth}px — a ratchet, if MinWidth's own floor fed back into itself");
+        }
+        finally { g.Window.Close(); }
+    });
+
+    /// <summary>Test gap 7 (churn audit): two ADJACENT blank columns.
+    /// ApplyEmptyColumnNeighbourRule reads every neighbour width from a
+    /// snapshot taken before any column's own substitution runs, specifically
+    /// so two blank columns beside each other cannot chain — Extra's own
+    /// left neighbour, Note, is ALSO blank here, so Extra must fall back to
+    /// its own header floor rather than inheriting whatever Note borrowed
+    /// from Name.</summary>
+    [Fact]
+    public void TwoAdjacentBlankColumnsDoNotChainThroughEachOther() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var g = BuildPair(2000, 40, new PairRow { Name = Ms(30), Note = "", Extra = "" });
+        try
+        {
+            ShowAndSettle(g.Window);
+
+            var header = FindAllDescendants<DataGridColumnHeader>(g.DataGrid).First(h => h.Column == g.Extra);
+            var headerText = FindDescendant<TextBlock>(header)!;
+            var extraOwnHeaderFloor = ContentWidthOf(headerText) + header.Padding.Left + header.Padding.Right;
+
+            Assert.True(g.Note.ActualWidth > extraOwnHeaderFloor + 20,
+                $"this fact needs Note's own adopted width ({g.Note.ActualWidth}px, borrowed from " +
+                $"Name) meaningfully wider than Extra's own header floor ({extraOwnHeaderFloor}px), or " +
+                "a wrongly-chained Extra would be indistinguishable from a correctly-floored one");
+
+            Assert.True(Math.Abs(g.Extra.ActualWidth - extraOwnHeaderFloor) <= 2,
+                $"Extra's own left neighbour, Note, is ALSO blank — Extra must fall back to its own " +
+                $"{extraOwnHeaderFloor}px header floor, not chain through to Note's borrowed width " +
+                $"({g.Note.ActualWidth}px): got {g.Extra.ActualWidth}px");
         }
         finally { g.Window.Close(); }
     });
@@ -794,10 +877,10 @@ public class DataGridColumnCapTests
                 $"({nameContent}px) to differ meaningfully, or Rule 3's answer and Rule 5's would be " +
                 "indistinguishable");
 
-            Assert.True(Math.Abs(g.Note.MaxWidth - filledContent) <= 2,
+            Assert.True(Math.Abs(g.Note.ActualWidth - filledContent) <= 2,
                 $"two of Note's three rows are blank but one is filled — not empty, so Rule 5 must " +
-                $"not apply: Note's cap ({g.Note.MaxWidth}px) should be its OWN percentile " +
-                $"({filledContent}px, the maximum of three), not Name's width ({nameContent}px)");
+                $"not apply: Note's RENDERED width ({g.Note.ActualWidth}px) should be its OWN " +
+                $"percentile ({filledContent}px, the maximum of three), not Name's width ({nameContent}px)");
         }
         finally { g.Window.Close(); }
     });

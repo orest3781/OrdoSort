@@ -105,12 +105,16 @@ namespace OrdoSort.Wpf.Views;
 /// realized rows typically moves the percentile little or not at all — by
 /// design; that damping IS Rule 3 — so "scroll a long row into view, watch
 /// the column jump to match it" is no longer generally true the way it was
-/// before this change. It is still true in the DEGENERATE case this class's
-/// own percentile function handles explicitly: with the realized set at or
-/// below four rows, the percentile picks the row's own maximum (see
-/// <see cref="ContentWidths.PercentileOf"/>), so a small, typical grid still
-/// visibly reacts to a single long value scrolling in — only a LARGER
-/// realized set damps it the way Rule 3 intends.
+/// before this change. It is still true with the realized set at or below
+/// four rows, where the percentile picks the row's own maximum — not
+/// because the function branches on that range specially (only zero rows
+/// and exactly one are actual explicit branches; see
+/// <see cref="ContentWidths.PercentileOf"/> for both), but because
+/// nearest-rank's own formula, ceil(0.8 × count), lands on the top rank for
+/// any count from one through four and only starts landing below it at
+/// five — so a small, typical grid still visibly reacts to a single long
+/// value scrolling in — only a LARGER realized set damps it the way Rule 3
+/// intends.
 ///
 /// Measured directly before this class existed and plain WPF Auto was still
 /// the mechanism (2026-08-07 autofit-columns round, recorded in
@@ -254,6 +258,20 @@ internal static class DataGridColumnCap
     {
         var pinned = new HashSet<DataGridColumn>();
         var widths = new ContentWidths();
+        // Fix round 1 (correctness review), table-rules Rule 5: captured
+        // ONCE, before this class ever writes to a governed column's own
+        // MinWidth (see the Rule 5 write-back below), so AutofitCaps' own
+        // floors computation can keep using each column's TRUE declared
+        // floor even after a later pass raises MinWidth to force a blank
+        // column's adopted width to actually render. Reading column.MinWidth
+        // LIVE there instead would ratchet: a raised MinWidth becomes the
+        // very next pass's own floor input, permanently locking in the
+        // highest value this class has ever written — never able to shrink
+        // back down even once a borrowed-from neighbour narrows or the
+        // column's own blankness ends. Keyed by reference (DataGridColumn
+        // overrides neither Equals nor GetHashCode), the same identity
+        // every other lookup in this file already relies on.
+        var declaredMinWidth = columns.ToDictionary(c => c, c => c.MinWidth);
 
         void Recalculate()
         {
@@ -267,20 +285,51 @@ internal static class DataGridColumnCap
                 .ToArray();
             if (governed.Length == 0) return;
 
-            var caps = computeCap is not null
-                ? Enumerable.Repeat(computeCap(columnViewportWidth), governed.Length).ToArray()
-                : AutofitCaps(grid, columnViewportWidth, governed, widths);
+            if (computeCap is not null)
+            {
+                // TriageWindow's own budget: no Rule 5 concept here at all
+                // (that overload is untouched by the autofit rule — see the
+                // class doc), so MinWidth is never written, only MaxWidth.
+                var cap = computeCap(columnViewportWidth);
+                for (var i = 0; i < governed.Length; i++)
+                    if (Math.Abs(governed[i].MaxWidth - cap) > 0.5) governed[i].MaxWidth = cap;
+                return;
+            }
+
+            var result = AutofitCaps(grid, columnViewportWidth, governed, widths, declaredMinWidth);
             // null: the realized set is momentarily empty while the grid
             // still has items (mid-scroll, or the instant after a Clear
             // before new rows realize) — keep every cap exactly where it
             // was rather than collapse to header widths and snap back.
-            if (caps is null) return;
+            if (result is null) return;
+            var (caps, blankSubstituted) = result.Value;
 
             // Assign only what moved: an assignment invalidates layout, which
             // raises LayoutUpdated, which recomputes — so unconditional
             // assignment would never let the cycle end.
             for (var i = 0; i < governed.Length; i++)
+            {
                 if (Math.Abs(governed[i].MaxWidth - caps[i]) > 0.5) governed[i].MaxWidth = caps[i];
+
+                // Fix round 1, table-rules Rule 5: MaxWidth alone is a
+                // ceiling, and an Auto column displays at min(desired,
+                // MaxWidth) — a blank column's own DESIRED width is its bare
+                // header, already well under any cap this class would ever
+                // compute, so raising the ceiling alone changes nothing on
+                // screen (the CRITICAL this fix round found: Rule 5 was
+                // inert). Forcing MinWidth up to the SAME adopted cap is what
+                // actually moves the rendered width — MinWidth is a hard
+                // floor WPF's own column-width resolution cannot undercut
+                // the way it can ignore a MaxWidth ceiling nothing is
+                // pressing against. Written EVERY pass, for every governed
+                // column, one way or the other: a column that stops being
+                // blank-substituted (borrowed content arrived, or a
+                // still-blank column's own substitution lapsed) resets to
+                // ITS OWN declared MinWidth in the same breath, so nothing
+                // here can outlive the condition that set it.
+                var wantedMinWidth = blankSubstituted.Contains(i) ? caps[i] : declaredMinWidth[governed[i]];
+                if (Math.Abs(governed[i].MinWidth - wantedMinWidth) > 0.5) governed[i].MinWidth = wantedMinWidth;
+            }
         }
 
         (grid.GetValue(DetachProperty) as Action)?.Invoke();
@@ -335,17 +384,19 @@ internal static class DataGridColumnCap
         DependencyProperty.RegisterAttached(
             "Detach", typeof(Action), typeof(DataGridColumnCap), new PropertyMetadata(null));
 
-    /// <summary>One cap per governed column, in the same order — or null if
-    /// the realized-rows guard (see the class doc) says to skip this pass
-    /// entirely. As a side effect, also sets each STAR participant's own
-    /// Width factor to the share <see cref="ColumnShares"/> computed for it,
-    /// so a grid with more than one star column (HistoryWindow) splits its
-    /// leftover in proportion to content rather than evenly, and applies
-    /// table-rules Rule 5 (<see cref="ApplyEmptyColumnNeighbourRule"/>) to
-    /// every participant's own desired width before <see
-    /// cref="ColumnShares.Compute"/> ever sees it.</summary>
-    private static double[]? AutofitCaps(
-        DataGrid grid, double viewportWidth, DataGridColumn[] governed, ContentWidths widths)
+    /// <summary>One cap per governed column, in the same order, PLUS the
+    /// subset of governed indices Rule 5 blank-substituted this pass (see
+    /// <see cref="ApplyEmptyColumnNeighbourRule"/>) — the caller needs to
+    /// know which ones to also force via MinWidth, not just cap via
+    /// MaxWidth. Null if the realized-rows guard (see the class doc) says to
+    /// skip this pass entirely. As a side effect, also sets each STAR
+    /// participant's own Width factor to the share <see cref="ColumnShares"/>
+    /// computed for it, so a grid with more than one star column
+    /// (HistoryWindow) splits its leftover in proportion to content rather
+    /// than evenly.</summary>
+    private static (double[] Caps, HashSet<int> BlankSubstituted)? AutofitCaps(
+        DataGrid grid, double viewportWidth, DataGridColumn[] governed, ContentWidths widths,
+        Dictionary<DataGridColumn, double> declaredMinWidth)
     {
         var rows = widths.RealizedRows(grid);
         if (rows.Count == 0 && grid.Items.Count > 0) return null;
@@ -380,7 +431,7 @@ internal static class DataGridColumnCap
         // collapsing toward its bare header — see this method's own doc
         // comment for the full rule and why it runs here, on "natural",
         // rather than after the split below.
-        ApplyEmptyColumnNeighbourRule(grid, participants, natural, rows);
+        var blankSubstituted = ApplyEmptyColumnNeighbourRule(grid, participants, natural, rows);
         // Floor #3, added 2026-08-29 review: a column's own header never
         // wraps or trims (DataGridColumnHeader hard-clips), so a share
         // computed below the header's width would clip it silently. Without
@@ -389,8 +440,18 @@ internal static class DataGridColumnCap
         // whose only "wanted" width IS its header (empty or short cells) —
         // and MinimumCap/MinWidth alone (20px on every governed column in
         // this app; none declares a MinWidth) did nothing to stop it.
+        // declaredMinWidth, not column.MinWidth: see that dictionary's own
+        // doc comment (TrackCore) for the ratchet a live read would cause,
+        // now that Rule 5 (below) writes a governed column's MinWidth back.
+        // A star participant is never a key in it (only ever built from the
+        // GOVERNED columns Track() was called with), so the live read is
+        // still exactly right for one — this class never writes a star
+        // column's MinWidth, only its Width factor, so there is nothing for
+        // it to ratchet against.
         var floors = participants
-            .Select((column, i) => Math.Max(Math.Max(MinimumCap, column.MinWidth), headerWidths[i]))
+            .Select((column, i) => Math.Max(
+                Math.Max(MinimumCap, declaredMinWidth.TryGetValue(column, out var d) ? d : column.MinWidth),
+                headerWidths[i]))
             .ToList();
         var shares = ColumnShares.Compute(available, natural, floors);
 
@@ -425,7 +486,7 @@ internal static class DataGridColumnCap
                 column.Width = new DataGridLength(share, DataGridLengthUnitType.Star);
         }
 
-        return shares.Take(governed.Length).ToArray();
+        return (shares.Take(governed.Length).ToArray(), blankSubstituted);
     }
 
     /// <summary>Table-rules, Rule 5: a column whose realized cells are ALL
@@ -465,11 +526,24 @@ internal static class DataGridColumnCap
     /// row and it happens to hold nothing for this column. A column with
     /// SOME blank cells and some filled ones is not empty either — see
     /// <see cref="IsBlank"/> — and is left to Rule 3's percentile exactly as
-    /// before.</summary>
-    private static void ApplyEmptyColumnNeighbourRule(
+    /// before.
+    ///
+    /// Returns the PARTICIPANT indices this call actually substituted —
+    /// AutofitCaps' own caller (TrackCore) needs to know which governed
+    /// columns to also force via MinWidth, since a cap alone (MaxWidth) is a
+    /// ceiling a blank column's own small desired width never presses
+    /// against (fix round 1, the CRITICAL this rule shipped inert with).
+    /// Two ADJACENT blank columns still cannot chain through each other even
+    /// though both end up in this set: the second reads the first's own
+    /// PRE-substitution (near-zero) figure from <c>original</c>, which then
+    /// floors at the second column's own header downstream — substituted in
+    /// name, but not in any way that moves its final width away from where
+    /// it would have landed anyway.</summary>
+    private static HashSet<int> ApplyEmptyColumnNeighbourRule(
         DataGrid grid, List<DataGridColumn> participants, List<double> natural, List<DataGridRow> rows)
     {
-        if (rows.Count == 0) return;
+        var substituted = new HashSet<int>();
+        if (rows.Count == 0) return substituted;
         var original = natural.ToList();
         var visualOrder = grid.Columns
             .Where(c => c.Visibility == Visibility.Visible)
@@ -494,8 +568,13 @@ internal static class DataGridColumnCap
             var neighbour = position > 0 ? visualOrder[position - 1]
                 : position + 1 < visualOrder.Count ? visualOrder[position + 1]
                 : null;
-            if (neighbour is not null && NeighbourWidth(neighbour) is { } width) natural[i] = width;
+            if (neighbour is not null && NeighbourWidth(neighbour) is { } width)
+            {
+                natural[i] = width;
+                substituted.Add(i);
+            }
         }
+        return substituted;
     }
 
     /// <summary>Rule 5's own definition of "empty": every rendered value in
