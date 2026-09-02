@@ -22,9 +22,11 @@ namespace OrdoSort.Wpf.Views;
 /// column cut names down to their floor and trimmed itself with an
 /// ellipsis, and every window reopened with the same squeeze.
 ///
-/// SIX windows depend on this class through <see cref="Track(DataGrid,
+/// SEVEN windows depend on this class through <see cref="Track(DataGrid,
 /// DataGridColumn[])"/>: History, MatchMerge, BulkRename, PageCounts,
-/// ZipTools and MergePdfs. Triage supplies its own budget through the
+/// ZipTools, MergePdfs and StandardiseNames (the last joined after this
+/// count was first written — flagged here rather than left to go stale a
+/// second time). Triage supplies its own budget through the
 /// <see cref="Func{Double,Double}"/> overload and is untouched by the
 /// autofit rule. FilenameListWindow calls neither.
 ///
@@ -72,27 +74,44 @@ namespace OrdoSort.Wpf.Views;
 /// that much WIDER than its own computed share, every time neither
 /// reservation is actually needed.)
 ///
-/// MEASURED, NOT READ BACK. A column's content width is the widest realized
-/// cell's text — FormattedText in that cell's own font, cached per string —
-/// or its header, whichever is wider. WPF's own Width.DesiredValue would be
-/// cheaper, but it only ever grows (measured 2026-08-29: 802px after the
-/// long row was removed), so a class that read it could never shrink a
-/// column back. Measuring is exact (801.53px against WPF's 802px for the
-/// same string; the default DataGridCell template applies no padding), and
-/// <see cref="MeasureSlack"/> covers the rounding so a one-line cell is
-/// never wrapped by its own cap. Capping at the measured width in the fit
-/// case — rather than relaxing to infinity — is the whole shrink-back
-/// mechanism: an Auto column displays at min(desired, MaxWidth).
+/// MEASURED, NOT READ BACK. A column's DESIRED width (table-rules, Rule 3)
+/// is the <see cref="AutofitPercentile"/> of its realized cells' own
+/// measured widths — FormattedText in each cell's own font, cached per
+/// string — NOT the widest one any more, and NOT folded together with the
+/// header any more either: the header floor is enforced once, separately,
+/// in <c>floors</c> (<see cref="AutofitCaps"/>), the same number this
+/// figure used to also seed itself with redundantly. WPF's own
+/// Width.DesiredValue would be cheaper than measuring at all, but it only
+/// ever grows (measured 2026-08-29: 802px after the long row was removed),
+/// so a class that read it could never shrink a column back. Measuring is
+/// exact (801.53px against WPF's 802px for the same string; the default
+/// DataGridCell template applies no padding), and <see cref="MeasureSlack"/>
+/// covers the rounding so a one-line cell is never wrapped by its own cap.
+/// Capping at the measured width in the fit case — rather than relaxing to
+/// infinity — is the whole shrink-back mechanism: an Auto column displays
+/// at min(desired, MaxWidth).
 ///
 /// Only realized rows are measured, the same population WPF sizes an Auto
 /// column from — and this cuts BOTH ways, unlike plain WPF Auto (which only
-/// ever grows; see MEASURED, NOT READ BACK above). A column widens as a
-/// longer row scrolls into view — the pre-existing behaviour docs/
-/// superpowers/plans/2026-08-14-column-stability-while-scrolling.md measured
-/// and left alone — and, because this class re-measures the realized set
-/// from scratch every pass rather than remembering a high-water mark, it
-/// also NARROWS again once that row scrolls back out of view: scroll a long
-/// row out, the column shrinks; scroll it back in, the column widens again.
+/// ever grows; see MEASURED, NOT READ BACK above). A column can still widen
+/// or narrow as the realized set changes while scrolling — this class
+/// re-measures that set from scratch every pass rather than remembering a
+/// high-water mark, the pre-existing behaviour docs/superpowers/plans/
+/// 2026-08-14-column-stability-while-scrolling.md measured and left alone —
+/// but Rule 3 changes how much any ONE row can move it: under the OLD rule
+/// (widest cell wins) a single outlier scrolling into view immediately
+/// widened the column to match it, and scrolling it back out immediately
+/// narrowed it again. Under the percentile, a lone outlier among several
+/// realized rows typically moves the percentile little or not at all — by
+/// design; that damping IS Rule 3 — so "scroll a long row into view, watch
+/// the column jump to match it" is no longer generally true the way it was
+/// before this change. It is still true in the DEGENERATE case this class's
+/// own percentile function handles explicitly: with the realized set at or
+/// below four rows, the percentile picks the row's own maximum (see
+/// <see cref="ContentWidths.PercentileOf"/>), so a small, typical grid still
+/// visibly reacts to a single long value scrolling in — only a LARGER
+/// realized set damps it the way Rule 3 intends.
+///
 /// Measured directly before this class existed and plain WPF Auto was still
 /// the mechanism (2026-08-07 autofit-columns round, recorded in
 /// HistoryWindow.xaml): "a history seeded with 3000 rows (one, at
@@ -203,6 +222,20 @@ internal static class DataGridColumnCap
     /// that fits on one line.</summary>
     private const double MeasureSlack = 1;
 
+    /// <summary>Table-rules, Rule 3: a column's desired width is this
+    /// percentile of its realized cells' measured widths, not the maximum —
+    /// the fix for the governing defect the owner reported ("i simply want
+    /// to prevent 1 really long filename to make the column too wide"), so
+    /// one outlier no longer sets the whole column's width. 0.80 is the
+    /// controller's own ruling in requirements.md: the owner asked for
+    /// roughly the longest 10-20% to be the ones that overflow, and the 80th
+    /// percentile is the middle of that range. THIS IS A TUNING KNOB, not a
+    /// derived constant — the one number in this whole feature the owner is
+    /// expected to want adjusted after seeing it against real data, which is
+    /// exactly why it lives here, alone, named, rather than inlined into the
+    /// arithmetic that uses it (<see cref="ContentWidths.PercentileOf"/>).</summary>
+    private const double AutofitPercentile = 0.80;
+
     /// <summary>Autofit-then-wrap for <paramref name="columns"/> — the
     /// grid's Auto text columns that may wrap. Star columns are found from
     /// the grid itself and need not be passed.</summary>
@@ -307,7 +340,10 @@ internal static class DataGridColumnCap
     /// entirely. As a side effect, also sets each STAR participant's own
     /// Width factor to the share <see cref="ColumnShares"/> computed for it,
     /// so a grid with more than one star column (HistoryWindow) splits its
-    /// leftover in proportion to content rather than evenly.</summary>
+    /// leftover in proportion to content rather than evenly, and applies
+    /// table-rules Rule 5 (<see cref="ApplyEmptyColumnNeighbourRule"/>) to
+    /// every participant's own desired width before <see
+    /// cref="ColumnShares.Compute"/> ever sees it.</summary>
     private static double[]? AutofitCaps(
         DataGrid grid, double viewportWidth, DataGridColumn[] governed, ContentWidths widths)
     {
@@ -333,11 +369,18 @@ internal static class DataGridColumnCap
         // Header width computed ONCE per participant per pass, not twice:
         // HeaderWidthOf's own header-TO-column lookup is cached, but the
         // FindDescendant<TextBlock> walk from a cached header down to its
-        // text is not (see that method's own doc comment) — calling it a
-        // second time here, after Of() already calls it once to seed
-        // "natural", would silently double that walk every pass.
+        // text is not (see that method's own doc comment) — calling it here
+        // AND inside Of() would silently double that walk every pass. Of()
+        // no longer needs it at all (table-rules, Rule 3) — this is now the
+        // header's only consumer.
         var headerWidths = participants.Select(column => widths.HeaderWidthOf(grid, column)).ToList();
-        var natural = participants.Select((column, i) => widths.Of(column, rows, headerWidths[i])).ToList();
+        var natural = participants.Select(column => widths.Of(column, rows)).ToList();
+        // Table-rules, Rule 5: a column whose realized cells are ALL blank
+        // matches its visual neighbour's own desired width instead of
+        // collapsing toward its bare header — see this method's own doc
+        // comment for the full rule and why it runs here, on "natural",
+        // rather than after the split below.
+        ApplyEmptyColumnNeighbourRule(grid, participants, natural, rows);
         // Floor #3, added 2026-08-29 review: a column's own header never
         // wraps or trims (DataGridColumnHeader hard-clips), so a share
         // computed below the header's width would clip it silently. Without
@@ -385,6 +428,87 @@ internal static class DataGridColumnCap
         return shares.Take(governed.Length).ToArray();
     }
 
+    /// <summary>Table-rules, Rule 5: a column whose realized cells are ALL
+    /// blank (<see cref="IsBlank"/>) collapses to its own header width
+    /// today — a bare Math.Max(0, floor) once "natural" is 0 — which leaves
+    /// the header row looking uneven next to a full column beside it.
+    /// Substitutes such a column's entry in <paramref name="natural"/>, IN
+    /// PLACE, with the DESIRED width of the column immediately to its LEFT
+    /// in the grid's own on-screen order (<see
+    /// cref="DataGridColumn.DisplayIndex"/>, so a user's own column drag is
+    /// respected) — or its RIGHT if it is the first visible column in the
+    /// grid. One hop, exactly what the rule says, not a walk past a
+    /// neighbour that is ALSO blank: every neighbour width this method reads
+    /// comes from a SNAPSHOT of <paramref name="natural"/> taken before any
+    /// substitution runs, so two adjacent blank columns never chain through
+    /// each other — the second one simply reads the first's own
+    /// pre-substitution (near-zero) figure and falls back to ITS OWN header
+    /// floor downstream, exactly as if this rule had never run for it. This
+    /// never lowers a column below its own header either way: <c>floors</c>,
+    /// computed by the caller AFTER this returns, still applies
+    /// Math.Max(natural, floor) per column regardless of where "natural"
+    /// came from — Rule 3's floor guarantee is unconditional on Rule 5
+    /// having touched a column or not.
+    ///
+    /// The neighbour can be a fellow PARTICIPANT (governed or star — its own
+    /// entry in <paramref name="natural"/>) or an ordinary claimed column
+    /// this class does not govern at all (PageCountsWindow's own Pages sits
+    /// between its star filler and its governed Note, exactly this second
+    /// case) — read off that column's own live rendered width, the same
+    /// number AutofitCaps' own "claimed" accounting above already uses for
+    /// a non-participant.
+    ///
+    /// A genuinely empty GRID (zero rows) is left alone entirely — every
+    /// cell is vacuously "blank" with no rows to call blank, and a header-
+    /// only sizing is the correct answer for that case, not a neighbour
+    /// match; this rule only ever engages once there is at least one REAL
+    /// row and it happens to hold nothing for this column. A column with
+    /// SOME blank cells and some filled ones is not empty either — see
+    /// <see cref="IsBlank"/> — and is left to Rule 3's percentile exactly as
+    /// before.</summary>
+    private static void ApplyEmptyColumnNeighbourRule(
+        DataGrid grid, List<DataGridColumn> participants, List<double> natural, List<DataGridRow> rows)
+    {
+        if (rows.Count == 0) return;
+        var original = natural.ToList();
+        var visualOrder = grid.Columns
+            .Where(c => c.Visibility == Visibility.Visible)
+            .OrderBy(c => c.DisplayIndex)
+            .ToList();
+
+        double? NeighbourWidth(DataGridColumn neighbour)
+        {
+            var participantIndex = participants.IndexOf(neighbour);
+            return participantIndex >= 0
+                ? original[participantIndex]
+                : neighbour.Width.IsAbsolute ? neighbour.Width.Value : neighbour.ActualWidth;
+        }
+
+        for (var i = 0; i < participants.Count; i++)
+        {
+            if (!IsBlank(participants[i], rows)) continue;
+
+            var position = visualOrder.IndexOf(participants[i]);
+            if (position < 0) continue;   // not laid out yet this pass — the header floor alone is correct
+
+            var neighbour = position > 0 ? visualOrder[position - 1]
+                : position + 1 < visualOrder.Count ? visualOrder[position + 1]
+                : null;
+            if (neighbour is not null && NeighbourWidth(neighbour) is { } width) natural[i] = width;
+        }
+    }
+
+    /// <summary>Rule 5's own definition of "empty": every rendered value in
+    /// <paramref name="column"/>, across every realized row, is null or
+    /// whitespace — not merely the empty string, so a column of single-space
+    /// placeholders reads as empty too. A row whose cell is not a TextBlock
+    /// at all (never happens for a governed column in this app today; see
+    /// <see cref="ContentWidths.Of"/>'s own matching comment) counts as NOT
+    /// blank rather than guessed at — the same conservative default that
+    /// method already applies for content it cannot classify.</summary>
+    private static bool IsBlank(DataGridColumn column, List<DataGridRow> rows) =>
+        rows.All(row => column.GetCellContent(row) is TextBlock text && string.IsNullOrWhiteSpace(text.Text));
+
     /// <summary>Content widths from the realized cells and the header,
     /// cached per string so a layout pass costs a dictionary lookup per
     /// visible cell. Font properties are part of the key: BulkRename bolds
@@ -430,14 +554,17 @@ internal static class DataGridColumnCap
             return rows;
         }
 
-        /// <summary><paramref name="headerWidth"/> is passed in rather than
-        /// measured here — the caller (AutofitCaps) needs the same number
-        /// for the floor computation and must not measure it twice; see
-        /// <see cref="HeaderWidthOf"/>'s own doc comment for the walk that
-        /// would otherwise double.</summary>
-        public double Of(DataGridColumn column, List<DataGridRow> rows, double headerWidth)
+        /// <summary>Table-rules, Rule 3: this column's DESIRED width is the
+        /// <see cref="AutofitPercentile"/> of <paramref name="rows"/>' own
+        /// measured cell widths — no longer folded together with the
+        /// header's own width the way this method used to seed "widest"
+        /// with it (AutofitCaps' own <c>floors</c> is where the header floor
+        /// lives now, the one place it needs to). See
+        /// <see cref="PercentileOf"/> for the percentile itself, including
+        /// its two degenerate cases (no rows, exactly one row).</summary>
+        public double Of(DataGridColumn column, List<DataGridRow> rows)
         {
-            var widest = headerWidth;
+            var widths = new List<double>(rows.Count);
             foreach (var row in rows)
             {
                 var width = column.GetCellContent(row) switch
@@ -454,9 +581,35 @@ internal static class DataGridColumnCap
                     FrameworkElement other => other.DesiredSize.Width,
                     _ => 0,
                 };
-                widest = Math.Max(widest, width);
+                widths.Add(width);
             }
-            return widest;
+            return PercentileOf(widths);
+        }
+
+        /// <summary>The 80th percentile (table-rules, Rule 3's own named
+        /// constant, <see cref="AutofitPercentile"/>) of a column's realized
+        /// cell widths, nearest-rank on the SORTED widths: rank =
+        /// ceil(percentile × count), one-based, clamped into [1, count] —
+        /// i.e. the value that has at least 80% of the sample at or below
+        /// it, the smallest such value when several tie. Two degenerate
+        /// cases, handled explicitly rather than left to fall out of the
+        /// general formula by accident: zero widths (nothing realized —
+        /// AutofitCaps' own header floor is the only thing that should size
+        /// this column, so 0 here lets it) returns 0, and exactly one width
+        /// returns that width itself (unambiguous — there is nothing to take
+        /// a percentile OF). The general formula would in fact compute the
+        /// same two answers on its own (ceil(0.8×1) = 1, the only rank there
+        /// is), so these branches change no behaviour — they exist so
+        /// neither case has to rely on an empty or singleton list surviving
+        /// the general sort-and-index path unharmed, and so a reader can see
+        /// both boundaries stated rather than infer them from the formula.</summary>
+        private static double PercentileOf(List<double> widths)
+        {
+            if (widths.Count == 0) return 0;
+            if (widths.Count == 1) return widths[0];
+            var sorted = widths.OrderBy(w => w).ToList();
+            var rank = Math.Clamp((int)Math.Ceiling(AutofitPercentile * sorted.Count), 1, sorted.Count);
+            return sorted[rank - 1];
         }
 
         /// <summary>The header's own text plus the header's padding, measured
@@ -469,14 +622,17 @@ internal static class DataGridColumnCap
         /// rather than trusting a stale hit.
         ///
         /// Public, not private: AutofitCaps calls this directly (2026-08-29
-        /// review, header floor) to get the same number <see cref="Of"/>
-        /// needs for "natural" and the floor computation needs independently
-        /// — calling it twice per participant per pass rather than once
-        /// would double the ONE walk this method does NOT cache, the
-        /// FindDescendant&lt;TextBlock&gt; below: the header lookup above is
-        /// cached in <c>_headerByColumn</c>, but the header's own child
-        /// TextBlock is re-found on every call regardless of that cache
-        /// hitting.</summary>
+        /// review, header floor) for its own <c>floors</c> computation — the
+        /// ONLY place this number feeds any more (table-rules, Rule 3: <see
+        /// cref="Of"/> no longer folds the header into a column's "natural"
+        /// width at all, so there is no second caller left to double-walk
+        /// for). Kept public rather than folded back to private regardless,
+        /// since AutofitCaps is still the one place that needs it and a
+        /// second caller returning would only need to double-walk the ONE
+        /// thing this method does NOT cache, the FindDescendant&lt;TextBlock&gt;
+        /// below: the header lookup above is cached in
+        /// <c>_headerByColumn</c>, but the header's own child TextBlock is
+        /// re-found on every call regardless of that cache hitting.</summary>
         public double HeaderWidthOf(DataGrid grid, DataGridColumn column)
         {
             if (!_headerByColumn.TryGetValue(column, out var header) || header.Column != column)

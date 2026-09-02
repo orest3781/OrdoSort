@@ -193,6 +193,54 @@ public class DataGridColumnCapTests
         return new BareGridTwoStars(window, grid, wide, narrow, note, items);
     }
 
+    private sealed class LeadingRow
+    {
+        public string First { get; init; } = "";
+        public string Name { get; init; } = "";
+    }
+
+    private sealed record BareGridLeading(
+        Window Window, DataGrid DataGrid, DataGridTextColumn First, DataGridTextColumn Name,
+        ObservableCollection<LeadingRow> Rows);
+
+    /// <summary>A GOVERNED column first, the star filler second —
+    /// BulkRenameWindow's own visual order (Current name, then New name),
+    /// not the star-first shape every other builder above uses. Table-rules
+    /// Rule 5's "the FIRST column, if empty, matches the one to its right"
+    /// branch needs exactly this shape to exercise at all: every other
+    /// builder here would only ever exercise the "matches its left
+    /// neighbour" branch.</summary>
+    private static BareGridLeading BuildLeading(double windowWidth, double nameFloor, params LeadingRow[] rows)
+    {
+        var items = new ObservableCollection<LeadingRow>(rows);
+        var grid = new DataGrid
+        {
+            ItemsSource = items, AutoGenerateColumns = false, IsReadOnly = true,
+            CanUserAddRows = false, HeadersVisibility = DataGridHeadersVisibility.Column,
+        };
+        var first = new DataGridTextColumn
+        {
+            Header = "First", Binding = new Binding("First"), Width = DataGridLength.Auto,
+            ElementStyle = Wrapping(),
+        };
+        var name = new DataGridTextColumn
+        {
+            Header = "Name", Binding = new Binding("Name"),
+            Width = new DataGridLength(1, DataGridLengthUnitType.Star), MinWidth = nameFloor,
+            ElementStyle = Wrapping(),
+        };
+        grid.Columns.Add(first);
+        grid.Columns.Add(name);
+        DataGridColumnCap.Track(grid, first);
+        var window = new Window
+        {
+            Width = windowWidth, Height = 400, Content = grid,
+            WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = 0,
+            ShowActivated = false,
+        };
+        return new BareGridLeading(window, grid, first, name, items);
+    }
+
     private static Style Wrapping()
     {
         var style = new Style(typeof(TextBlock));
@@ -553,6 +601,203 @@ public class DataGridColumnCapTests
             Assert.True(g.Wide.ActualWidth > 1.5 * g.Narrow.ActualWidth,
                 $"the wide-content star should end up meaningfully wider than the narrow one, not an even split: " +
                 $"Wide={g.Wide.ActualWidth}px, Narrow={g.Narrow.ActualWidth}px");
+        }
+        finally { g.Window.Close(); }
+    });
+
+    // ---- Table-rules Rule 3: 80th percentile, not the maximum ----------
+
+    /// <summary>Table-rules, Rule 3 — the governing defect the owner
+    /// reported: "i simply want to prevent 1 really long filename to make
+    /// the column too wide." Four short rows and one very long outlier:
+    /// nearest-rank on five sorted widths picks rank ceil(0.8×5)=4, the
+    /// FOURTH-smallest — one of the four short rows, never the outlier at
+    /// rank 5. A window wide enough that nothing is held at a floor isolates
+    /// the percentile arithmetic itself from the proportional-split branch
+    /// TwoGovernedColumnsSplitTheShortfallInProportionToTheirContent already
+    /// covers.</summary>
+    [Fact]
+    public void ASingleOutlierAmongSeveralRowsDoesNotSetTheColumnsWidth() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var g = Build(2000, 40,
+            new Row { Name = "a", Note = Ms(15) },
+            new Row { Name = "b", Note = Ms(15) },
+            new Row { Name = "c", Note = Ms(15) },
+            new Row { Name = "d", Note = Ms(15) },
+            new Row { Name = "e", Note = Ms(80) });   // the one very long outlier
+        try
+        {
+            ShowAndSettle(g.Window);
+            var shortContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 0));
+            var longContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 4));
+            Assert.True(longContent > 3 * shortContent,
+                $"the outlier ({longContent}px) needs to be dramatically longer than the short rows " +
+                $"({shortContent}px), or this fact cannot tell the percentile from the maximum");
+
+            Assert.True(Math.Abs(g.Note.MaxWidth - shortContent) <= 2,
+                $"Note's cap is {g.Note.MaxWidth}px; the 80th percentile of four {shortContent}px rows " +
+                $"and one {longContent}px outlier should sit at the short rows' own width");
+            Assert.True(g.Note.MaxWidth < longContent / 2,
+                $"Note's cap ({g.Note.MaxWidth}px) should be nowhere near the outlier's content " +
+                $"({longContent}px) — a single long value must not set the column's width");
+        }
+        finally { g.Window.Close(); }
+    });
+
+    /// <summary>Table-rules, Rule 3's own degenerate case: exactly one row.
+    /// Nearest-rank's formula (ceil(0.8×1)=1) already resolves this to the
+    /// row's own width without a special branch, but the brief asks for the
+    /// boundary handled EXPLICITLY, so this fact pins it by name rather than
+    /// leaving it to be inferred from a fact (like almost every other one in
+    /// this file, all built on a single row) whose own point is something
+    /// else.</summary>
+    [Fact]
+    public void APercentileOfExactlyOneRowIsThatRowsOwnWidth() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var g = Build(900, 40, new Row { Name = "a.pdf", Note = "a solitary note" });
+        try
+        {
+            ShowAndSettle(g.Window);
+            var content = ContentWidthOf(CellText(g.DataGrid, g.Note, 0));
+            // MaxWidth (the cap PercentileOf computes), not ActualWidth: a
+            // cap inflated well past what "a solitary note" actually needs
+            // would still leave ActualWidth sitting at the content's own
+            // natural size (WPF's Auto column renders at min(desired,
+            // MaxWidth), and desired never NEEDS the inflated cap here) —
+            // measured directly reverting this fact's own guard: an
+            // inflated cap of 435px against ~88px of content left
+            // ActualWidth at 87px, an innocent-looking pass that proved
+            // nothing about the percentile itself. MaxWidth is the number
+            // this fact actually needs to pin.
+            Assert.True(Math.Abs(g.Note.MaxWidth - content) <= 2,
+                $"with exactly one realized row, the 80th percentile must be that row's own width: " +
+                $"Note's cap is {g.Note.MaxWidth}px for {content}px of content");
+        }
+        finally { g.Window.Close(); }
+    });
+
+    /// <summary>Table-rules, Rule 3's other degenerate case: no rows at all.
+    /// The percentile of an empty list (0, this fact's whole point) has
+    /// nothing to contribute, so the column's cap comes entirely from its
+    /// own header floor — the SAME number
+    /// AColumnWithEmptyContentIsFlooredAtItsOwnHeaderWidthNotBelowIt already
+    /// measures for a different reason (a column whose rows are all blank,
+    /// not a column with no rows to begin with); this fact is what proves
+    /// the percentile function itself never throws or misbehaves on an
+    /// empty sample, which that one does not exercise.</summary>
+    [Fact]
+    public void APercentileOfNoRowsAtAllFloorsAtTheHeaderWidth() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var g = Build(900, 40);   // no rows
+        try
+        {
+            ShowAndSettle(g.Window);
+            var header = FindAllDescendants<DataGridColumnHeader>(g.DataGrid).First(h => h.Column == g.Note);
+            var headerText = FindDescendant<TextBlock>(header)!;
+            var expectedFloor = ContentWidthOf(headerText) + header.Padding.Left + header.Padding.Right;
+            Assert.True(Math.Abs(g.Note.MaxWidth - expectedFloor) <= 2,
+                $"with no rows at all the percentile is 0 and contributes nothing; Note's cap " +
+                $"({g.Note.MaxWidth}px) should sit exactly at its own header floor ({expectedFloor}px)");
+        }
+        finally { g.Window.Close(); }
+    });
+
+    // ---- Table-rules Rule 5: an empty column matches its neighbour ------
+
+    /// <summary>Table-rules, Rule 5: a column whose realized cells are ALL
+    /// blank takes the width of the column immediately to its LEFT rather
+    /// than collapsing to its own header. BuildPair's own visual order is
+    /// Name (star) | Note (governed) | Extra (governed), so Extra's left
+    /// neighbour is Note.</summary>
+    [Fact]
+    public void AnEmptyColumnMatchesTheWidthOfTheColumnToItsLeft() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var g = BuildPair(2000, 40, new PairRow { Name = "x", Note = Ms(50), Extra = "" });
+        try
+        {
+            ShowAndSettle(g.Window);
+            var noteContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 0));
+
+            var header = FindAllDescendants<DataGridColumnHeader>(g.DataGrid).First(h => h.Column == g.Extra);
+            var headerText = FindDescendant<TextBlock>(header)!;
+            var ownHeaderFloor = ContentWidthOf(headerText) + header.Padding.Left + header.Padding.Right;
+            Assert.True(noteContent > ownHeaderFloor + 20,
+                $"this fact needs Note ({noteContent}px) meaningfully wider than Extra's own header " +
+                $"floor ({ownHeaderFloor}px) — otherwise matching the neighbour and merely flooring at " +
+                "the header would look identical");
+
+            Assert.True(Math.Abs(g.Extra.MaxWidth - noteContent) <= 2,
+                $"Extra is empty; its cap ({g.Extra.MaxWidth}px) should match its LEFT neighbour " +
+                $"Note's own content width ({noteContent}px), not collapse to its own " +
+                $"{ownHeaderFloor}px header");
+        }
+        finally { g.Window.Close(); }
+    });
+
+    /// <summary>Table-rules, Rule 5's other branch: the FIRST column, if
+    /// empty, matches the one to its RIGHT instead — BuildLeading's own
+    /// shape (a governed column first, the star filler second) is what
+    /// makes this branch reachable at all; every star-first builder above
+    /// can only ever exercise the "matches its left neighbour" branch.</summary>
+    [Fact]
+    public void AnEmptyFirstColumnMatchesTheWidthOfTheColumnToItsRight() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var g = BuildLeading(2000, 40, new LeadingRow { First = "", Name = Ms(50) });
+        try
+        {
+            ShowAndSettle(g.Window);
+            var nameContent = ContentWidthOf(CellText(g.DataGrid, g.Name, 0));
+
+            var header = FindAllDescendants<DataGridColumnHeader>(g.DataGrid).First(h => h.Column == g.First);
+            var headerText = FindDescendant<TextBlock>(header)!;
+            var ownHeaderFloor = ContentWidthOf(headerText) + header.Padding.Left + header.Padding.Right;
+            Assert.True(nameContent > ownHeaderFloor + 20,
+                $"this fact needs Name ({nameContent}px) meaningfully wider than First's own header " +
+                $"floor ({ownHeaderFloor}px) — otherwise matching the neighbour and merely flooring at " +
+                "the header would look identical");
+
+            Assert.True(Math.Abs(g.First.MaxWidth - nameContent) <= 2,
+                $"First is empty and is the FIRST column, so it matches its RIGHT neighbour Name's " +
+                $"own content width ({nameContent}px), not its own {ownHeaderFloor}px header: got " +
+                $"{g.First.MaxWidth}px");
+        }
+        finally { g.Window.Close(); }
+    });
+
+    /// <summary>Table-rules, Rule 5's own boundary: a column with SOME
+    /// blank cells and some filled ones is not empty, and is left to Rule
+    /// 3's percentile exactly as if Rule 5 did not exist. Three rows, two
+    /// blank and one filled: nearest-rank on three sorted widths ([0, 0,
+    /// filled]) picks rank ceil(0.8×3)=3 — the filled row's OWN width, the
+    /// maximum of the three — never Name's width, which is what Rule 5
+    /// would have produced had it wrongly treated this column as empty.</summary>
+    [Fact]
+    public void AColumnWithSomeBlankAndSomeFilledCellsIsNotEmptyAndFollowsThePercentileNormally() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var g = Build(2000, 40,
+            new Row { Name = Ms(3), Note = "" },
+            new Row { Name = Ms(3), Note = "" },
+            new Row { Name = Ms(3), Note = Ms(50) });
+        try
+        {
+            ShowAndSettle(g.Window);
+            var filledContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 2));
+            var nameContent = ContentWidthOf(CellText(g.DataGrid, g.Name, 0));
+            Assert.True(Math.Abs(filledContent - nameContent) > 20,
+                $"this fact needs Note's own filled content ({filledContent}px) and Name's content " +
+                $"({nameContent}px) to differ meaningfully, or Rule 3's answer and Rule 5's would be " +
+                "indistinguishable");
+
+            Assert.True(Math.Abs(g.Note.MaxWidth - filledContent) <= 2,
+                $"two of Note's three rows are blank but one is filled — not empty, so Rule 5 must " +
+                $"not apply: Note's cap ({g.Note.MaxWidth}px) should be its OWN percentile " +
+                $"({filledContent}px, the maximum of three), not Name's width ({nameContent}px)");
         }
         finally { g.Window.Close(); }
     });
