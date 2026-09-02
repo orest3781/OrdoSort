@@ -183,6 +183,20 @@ public class TilePreviewProbeTests : IDisposable
         // system load: a still-pending setup probe landing just after a
         // fixed window ended got miscounted as caused by editing `other`
         // below (fix round 2, item 2(a)).
+        // WaitForStable alone is not enough, and this is the third pass at
+        // this test: it starts its stability clock immediately, so if the
+        // selected row's own debounced probe has not STARTED within the
+        // stability window it returns a baseline of 0 — "settled" and "never
+        // began" look identical to it. The setup probe then lands during the
+        // measurement below and is counted as caused by editing `other`.
+        // Observed exactly that: baseline 0, then "now 1".
+        // So wait for the setup to genuinely probe FIRST. This is also a real
+        // assertion in its own right: selected.Path points at an existing
+        // folder on the SELECTED row, so it must probe — if it ever stops,
+        // that is a product regression this test should catch rather than
+        // quietly measure against zero.
+        WaitFor(() => calls >= 1,
+            "the selected row's own path edit must actually probe before a baseline means anything");
         var callsBeforeEditingOther = WaitForStable(() => calls,
             "the setup probes (two adds, the path edit, the reselect) should settle before the baseline is taken");
 
