@@ -20,7 +20,7 @@
        dotnet build. Keep it in step with the latest tag so a local publish
        does not quietly report an older version than the one shipping. -->
   <PropertyGroup>
-    <Version>1.4.0</Version>
+    <Version>1.5.0</Version>
     <!-- The SDK's built-in source-control integration otherwise appends
          "+<git-sha>" to InformationalVersion on any build made inside this
          git repo (confirmed empirically: a plain build here produced
