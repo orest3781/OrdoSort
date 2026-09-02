@@ -34,6 +34,23 @@ public class DialogServiceContractTests
         Assert.Empty(dialogs.AskOpenFiles("*.*"));
     }
 
+    /// <summary>The 2-arg AskOpenFile (filter + an initial directory) ships
+    /// with the same kind of default as AskOpenFiles above — most
+    /// IDialogService implementers never care where a real dialog would
+    /// have started, so they inherit the single-arg behaviour rather than
+    /// each needing a throwaway override. Pinned through a minimal
+    /// implementer that never overrides it (same reasoning as the two facts
+    /// above): the directory argument is silently dropped, which is correct
+    /// for a fake but would be the exact relay hazard MainWindow.DialogRelay's
+    /// own Confirm override guards against if a real, wrapping IDialogService
+    /// ever relied on this default instead of forwarding explicitly.</summary>
+    [Fact]
+    public void TheDefaultTwoArgAskOpenFileIgnoresTheDirectoryAndFallsBackToTheSingleArgPicker()
+    {
+        IDialogService dialogs = new OneFileDialogs { Answer = @"C:\in\report.pdf" };
+        Assert.Equal(@"C:\in\report.pdf", dialogs.AskOpenFile("*.*", @"C:\some\folder"));
+    }
+
     [Fact]
     public void FakeDialogsCanScriptSeveralFiles()
     {

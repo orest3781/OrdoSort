@@ -64,6 +64,23 @@ public sealed class FakeDialogs : IDialogService
     }
     public string? AskSaveFile(string filter, string suggested) => NextSaveFile;
     public string? AskOpenFile(string filter) => NextOpenFile;
+
+    /// <summary>What the last <see cref="AskOpenFile(string, string?)"/> call
+    /// asked to start in — recorded, not just forwarded, so a test can prove
+    /// a caller opens the picker in a specific folder. Overridden explicitly
+    /// rather than left to IDialogService's default (which would silently
+    /// drop the argument by calling the single-arg overload instead, the
+    /// same relay hazard MainWindow.DialogRelay's own Confirm override
+    /// documents) — a default nobody can observe here would be a directory
+    /// argument no test in this suite could ever verify was passed.</summary>
+    public string? LastOpenFileInitialDirectory { get; private set; }
+
+    public string? AskOpenFile(string filter, string? initialDirectory)
+    {
+        LastOpenFileInitialDirectory = initialDirectory;
+        return NextOpenFile;
+    }
+
     public string[] AskOpenFiles(string filter) =>
         NextOpenFiles ?? (NextOpenFile is { } one ? new[] { one } : Array.Empty<string>());
     public string? AskFilePath(string filter, string suggested) => NextFilePath;

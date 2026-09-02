@@ -27,6 +27,18 @@ public interface IDialogService
     string? AskSaveFile(string filter, string suggestedName);
     string? AskOpenFile(string filter);
 
+    /// <summary>Like <see cref="AskOpenFile(string)"/>, but opens the dialog
+    /// showing <paramref name="initialDirectory"/> when one is given, rather
+    /// than the shell's own remembered last-used folder — for a picker whose
+    /// natural starting point is a specific known folder (the Settings "Data
+    /// files" Browse... buttons, which start beside config.json). Defaulted
+    /// rather than abstract for the same reason <see cref="AskOpenFiles"/>
+    /// is: none of the fakes, recorders or scripted stubs in this app care
+    /// where a real dialog would have started, so they inherit the existing
+    /// single-arg behaviour instead of each carrying a throwaway
+    /// override.</summary>
+    string? AskOpenFile(string filter, string? initialDirectory) => AskOpenFile(filter);
+
     /// <summary>Pick one or more existing files. Empty when cancelled, never
     /// null. Defaulted rather than abstract on purpose: ten classes implement
     /// this interface and only two care about multi-select, so the rest inherit

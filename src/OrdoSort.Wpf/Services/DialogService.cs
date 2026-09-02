@@ -42,6 +42,17 @@ public sealed class DialogService : IDialogService
         return dlg.ShowDialog(_owner) == true ? dlg.FileName : null;
     }
 
+    // Same startAt-if-it-exists guard as BrowseFolder below: an initial
+    // directory that no longer exists (a removable share, a moved config)
+    // must not throw, it must just fall back to the shell's own default.
+    public string? AskOpenFile(string filter, string? initialDirectory)
+    {
+        var dlg = new OpenFileDialog { Filter = filter };
+        if (!string.IsNullOrWhiteSpace(initialDirectory) && Directory.Exists(initialDirectory))
+            dlg.InitialDirectory = initialDirectory;
+        return dlg.ShowDialog(_owner) == true ? dlg.FileName : null;
+    }
+
     public string[] AskOpenFiles(string filter)
     {
         var dlg = new OpenFileDialog { Filter = filter, Multiselect = true };
