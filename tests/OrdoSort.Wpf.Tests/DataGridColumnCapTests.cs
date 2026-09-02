@@ -739,9 +739,23 @@ public class DataGridColumnCapTests
                 $"floor ({ownHeaderFloor}px) — otherwise matching the neighbour and merely flooring at " +
                 "the header would look identical");
 
-            Assert.True(Math.Abs(g.Extra.ActualWidth - noteContent) <= 2,
+            // Compare the two RENDERED widths to each other, not to Note's
+            // CONTENT width. The rule is "the empty column matches its
+            // neighbour", and that holds in both of ColumnShares' branches:
+            // when the wanted widths fit, both render at Note's content; when
+            // they don't, both carry the same wanted width into the
+            // proportional split and so take the same reduced share. Asserting
+            // the content width instead silently required the fit branch — and
+            // a CI runner whose screen is narrower than this 2000px window
+            // clamps it, engaging the split and failing a correct
+            // implementation (Extra rendered 468px beside a 629px content
+            // measurement; it had borrowed correctly, both were just squeezed).
+            Assert.True(g.Extra.ActualWidth > ownHeaderFloor + 20,
+                $"Extra must not merely be sitting at its own {ownHeaderFloor}px header floor: " +
+                $"{g.Extra.ActualWidth}px");
+            Assert.True(Math.Abs(g.Extra.ActualWidth - g.Note.ActualWidth) <= 2,
                 $"Extra is empty; its RENDERED width ({g.Extra.ActualWidth}px) should match its LEFT " +
-                $"neighbour Note's own content width ({noteContent}px), not collapse to its own " +
+                $"neighbour Note's own RENDERED width ({g.Note.ActualWidth}px), not collapse to its own " +
                 $"{ownHeaderFloor}px header");
         }
         finally { g.Window.Close(); }
@@ -757,7 +771,17 @@ public class DataGridColumnCapTests
     public void AnEmptyFirstColumnMatchesTheWidthOfTheColumnToItsRight() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var g = BuildLeading(2000, 40, new LeadingRow { First = "", Name = Ms(50) });
+        // 800px window and short content, deliberately: First's RIGHT
+        // neighbour here is the STAR column, which expands to fill, so its
+        // rendered width is NOT its content width and the two cannot be
+        // compared to each other the way the two governed columns are in the
+        // left-neighbour fact. That leaves the content-width assertion below,
+        // which only holds in ColumnShares' fit branch — so the fixture has to
+        // guarantee that branch on any screen. A 2000px window does not: a CI
+        // runner narrower than the window clamps it, and First + the star's
+        // own wanted width (2 x ~630px at Ms(50)) no longer fit, engaging the
+        // proportional split and failing a correct implementation.
+        var g = BuildLeading(800, 40, new LeadingRow { First = "", Name = Ms(15) });
         try
         {
             ShowAndSettle(g.Window);
@@ -771,6 +795,9 @@ public class DataGridColumnCapTests
                 $"floor ({ownHeaderFloor}px) — otherwise matching the neighbour and merely flooring at " +
                 "the header would look identical");
 
+            Assert.True(g.First.ActualWidth > ownHeaderFloor + 20,
+                $"First must not merely be sitting at its own {ownHeaderFloor}px header floor: " +
+                $"{g.First.ActualWidth}px");
             Assert.True(Math.Abs(g.First.ActualWidth - nameContent) <= 2,
                 $"First is empty and is the FIRST column, so its RENDERED width should match its RIGHT " +
                 $"neighbour Name's own content width ({nameContent}px), not its own {ownHeaderFloor}px " +
@@ -796,9 +823,10 @@ public class DataGridColumnCapTests
         {
             ShowAndSettle(g.Window);
             var wideNoteContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 0));
-            Assert.True(Math.Abs(g.Extra.ActualWidth - wideNoteContent) <= 2,
-                $"precondition: Extra should adopt Note's own {wideNoteContent}px while Note is wide " +
-                $"— got {g.Extra.ActualWidth}px");
+            var wideExtra = g.Extra.ActualWidth;
+            Assert.True(Math.Abs(wideExtra - g.Note.ActualWidth) <= 2,
+                $"precondition: Extra should adopt Note's own rendered {g.Note.ActualWidth}px while " +
+                $"Note is wide — got {wideExtra}px");
 
             // Replace the row (PairRow's properties are init-only) with a
             // MUCH shorter Note, Extra still blank.
@@ -811,10 +839,12 @@ public class DataGridColumnCapTests
                 $"this fact needs the new Note ({narrowNoteContent}px) meaningfully narrower than the " +
                 $"old one ({wideNoteContent}px), or a ratchet and a correct shrink would look identical");
 
-            Assert.True(Math.Abs(g.Extra.ActualWidth - narrowNoteContent) <= 2,
-                $"Extra should track Note's CURRENT (narrower) width, {narrowNoteContent}px, not stay " +
-                $"stuck at the {wideNoteContent}px it borrowed before Note shrank: got " +
+            Assert.True(g.Extra.ActualWidth < wideExtra - 20,
+                $"Extra should have SHRUNK from the {wideExtra}px it borrowed while Note was wide: got " +
                 $"{g.Extra.ActualWidth}px — a ratchet, if MinWidth's own floor fed back into itself");
+            Assert.True(Math.Abs(g.Extra.ActualWidth - g.Note.ActualWidth) <= 2,
+                $"Extra should track Note's CURRENT (narrower) rendered width, {g.Note.ActualWidth}px: " +
+                $"got {g.Extra.ActualWidth}px");
         }
         finally { g.Window.Close(); }
     });
