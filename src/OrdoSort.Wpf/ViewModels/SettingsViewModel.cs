@@ -1143,7 +1143,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private readonly DebouncedProbe<FieldNote> _destinationsFileProbe;
 
     private void RecomputeDestinationsFileNote(bool immediate = false) =>
-        RecomputeDataFileNote(DestinationsFile,
+        RecomputeDataFileNote(DestinationsFile, "destinations_file",
             sp => (Config.ReadDoc<DestinationsDoc>(_cfgPath!, sp) ?? new DestinationsDoc()).Routes.Count,
             _destinationsFileProbe, immediate);
 
@@ -1154,7 +1154,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private readonly DebouncedProbe<FieldNote> _monitoredFoldersFileProbe;
 
     private void RecomputeMonitoredFoldersFileNote(bool immediate = false) =>
-        RecomputeDataFileNote(MonitoredFoldersFile,
+        RecomputeDataFileNote(MonitoredFoldersFile, "monitored_folders_file",
             sp => (Config.ReadDoc<MonitoredFoldersDoc>(_cfgPath!, sp) ?? new MonitoredFoldersDoc()).WatchFolders.Count,
             _monitoredFoldersFileProbe, immediate);
 
@@ -1165,7 +1165,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private readonly DebouncedProbe<FieldNote> _alertsFileProbe;
 
     private void RecomputeAlertsFileNote(bool immediate = false) =>
-        RecomputeDataFileNote(AlertsFile,
+        RecomputeDataFileNote(AlertsFile, "alerts_file",
             sp => (Config.ReadDoc<AlertsDoc>(_cfgPath!, sp) ?? new AlertsDoc()).AlertTexts.Count,
             _alertsFileProbe, immediate);
 
@@ -1176,7 +1176,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private readonly DebouncedProbe<FieldNote> _boxLabelsFileProbe;
 
     private void RecomputeBoxLabelsFileNote(bool immediate = false) =>
-        RecomputeDataFileNote(BoxLabelsFile,
+        RecomputeDataFileNote(BoxLabelsFile, "box_labels_file",
             sp => (Config.ReadDoc<BoxLabelsDoc>(_cfgPath!, sp) ?? new BoxLabelsDoc()).LabelClients.Count,
             _boxLabelsFileProbe, immediate);
 
@@ -1254,14 +1254,34 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     /// <summary>Shared live-note logic for the four section-file path boxes:
     /// blank means the section default: not resolvable (no config path to
-    /// resolve beside) reads as an unusable path; missing means it'll be
-    /// created from the in-memory list on save; present means show what's
-    /// really in it (or the readable parse error, rather than a crash). Only
-    /// the File.Exists gate and the read itself touch disk, so only those
-    /// run on <paramref name="probe"/>, off the UI thread — the fast-path
-    /// branches resolve through <see cref="DebouncedProbe{T}.Resolve"/>,
-    /// which cancels any probe a longer-lived value already armed.</summary>
-    private void RecomputeDataFileNote(string sectionPath, Func<string, int> countEntries,
+    /// resolve beside) reads as an unusable path; a value <see
+    /// cref="Config.ResolveBesideForWrite"/> would refuse is a Problem
+    /// naming that same reason, so an already-configured bad value (from a
+    /// hand edit, or from before the Browse... picker guard existed) is
+    /// findable here instead of only surfacing as a warning at save time;
+    /// missing means it'll be created from the in-memory list on save;
+    /// present means show what's really in it (or the readable parse
+    /// error, rather than a crash).
+    ///
+    /// The confinement check is resolved through
+    /// <see cref="Config.ResolveBesideForWrite"/> itself — the exact method
+    /// <see cref="Config.Save"/>/<see cref="Config.TrySave"/> call — rather
+    /// than a parallel containment check reimplemented here, so this note
+    /// can never drift from the rule the writer actually applies. It needs
+    /// no disk I/O (pure path arithmetic), so unlike the entry-count/exists
+    /// check below it is decided as <see cref="DebouncedProbe{T}.Resolve"/>'s
+    /// <c>fastPathResult</c>, applied synchronously and independent of
+    /// <paramref name="immediate"/> (which only paces the debounced,
+    /// off-thread probe below) — the moment a bad value is typed, pasted,
+    /// or already present when Settings opens, the note reflects it with
+    /// no probe delay at all.
+    ///
+    /// Only the File.Exists gate and the read itself touch disk, so only
+    /// those run on <paramref name="probe"/>, off the UI thread — the
+    /// fast-path branches resolve through
+    /// <see cref="DebouncedProbe{T}.Resolve"/>, which cancels any probe a
+    /// longer-lived value already armed.</summary>
+    private void RecomputeDataFileNote(string sectionPath, string keyName, Func<string, int> countEntries,
         DebouncedProbe<FieldNote> probe, bool immediate)
     {
         var p = sectionPath.Trim();
@@ -1271,16 +1291,18 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         else if (_cfgPath is not { } cfgPath) fastPath = FieldNote.Problem("not a usable path");
         else
         {
-            try { full = Config.ResolveBeside(cfgPath, p); fastPath = null; }
+            try { full = Config.ResolveBesideForWrite(cfgPath, p, keyName); fastPath = null; }
+            catch (ConfigException ex) { fastPath = FieldNote.Problem(ex.Message); }
             catch (Exception) { fastPath = FieldNote.Problem("not a usable path"); }
         }
         probe.Resolve(fastPath, FieldNote.Clear, () =>
         {
             if (!_fileExists(full))
                 return FieldNote.Info("will be created on save — the current list is written there");
-            // A ConfigException message here is a real, broken file the user
-            // must fix before OK will work — the one branch of the four that
-            // earns amber.
+            // A ConfigException message here is a real, broken file (bad
+            // JSON) the user must fix before OK will work — the other of
+            // the two branches, alongside the confinement check in the
+            // fast path above, that earns amber for these four fields.
             try { return FieldNote.Info($"{countEntries(p)} entries"); }
             catch (ConfigException ex) { return FieldNote.Problem(ex.Message); }
         }, immediate);

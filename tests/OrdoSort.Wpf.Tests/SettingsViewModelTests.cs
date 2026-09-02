@@ -531,6 +531,86 @@ public class SettingsViewModelTests : IDisposable
         }
     }
 
+    // -------------------------------------- an already-configured bad value
+    // (from a hand edit, or from before this fix existed) is visible in
+    // Settings, not just refused silently at the next Save. Fixing the
+    // picker above does nothing for a value that got in some OTHER way —
+    // these three pin the note side of that, using DIRECT property sets
+    // (never BrowseDestinationsFileCommand) so the confinement-refused value
+    // arrives the same way a hand edit or a pre-fix config would.
+
+    [Fact]
+    public void AnAlreadyConfiguredOutsideAbsolutePathShowsAsNeedingAttention()
+    {
+        var cfgPath = Path.Combine(_dir, "config.json");
+        Config.Save(new Config(), cfgPath);
+        var cfg = Config.Load(cfgPath);
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
+
+        var outsideDir = Directory.CreateDirectory(
+            Path.Combine(Path.GetTempPath(), "ordoset_outside_" + Guid.NewGuid())).FullName;
+        try
+        {
+            // Config.Load happily reads an absolute path outside the config
+            // directory (READ keeps an already-working station's data
+            // loadable on purpose) — but a Save would refuse it. The note
+            // must say so without the user ever touching Save, in the same
+            // words the save-time refusal uses.
+            vm.DestinationsFile = Path.Combine(outsideDir, "evil-destinations.json");
+
+            Assert.True(vm.DestinationsFileNoteNeedsAttention);
+            Assert.Contains("destinations_file", vm.DestinationsFileNote);
+            Assert.Contains("must stay beside the config file", vm.DestinationsFileNote);
+        }
+        finally
+        {
+            try { Directory.Delete(outsideDir, true); } catch { /* best effort */ }
+        }
+    }
+
+    [Fact]
+    public void AnAbsolutePathInsideTheConfigDirectoryIsNotFlaggedSinceASaveWouldSucceed()
+    {
+        // Guards the other direction: the note must track EXACTLY what
+        // ResolveBesideForWrite refuses, not merely "looks like an absolute
+        // path" — an absolute-but-inside spelling (a hand edit, or a value
+        // from before this fix's picker guard existed) saves just fine, so
+        // flagging it would be a false alarm nobody could clear.
+        var cfgPath = Path.Combine(_dir, "config.json");
+        Config.Save(new Config(), cfgPath);
+        var cfg = Config.Load(cfgPath);
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
+
+        vm.DestinationsFile = Path.Combine(_dir, "destinations.json");
+
+        Assert.False(vm.DestinationsFileNoteNeedsAttention);
+    }
+
+    [Fact]
+    public void FixingAnOutsidePathBackToARelativeOneClearsTheAttentionFlag()
+    {
+        var cfgPath = Path.Combine(_dir, "config.json");
+        Config.Save(new Config(), cfgPath);
+        var cfg = Config.Load(cfgPath);
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
+
+        var outsideDir = Directory.CreateDirectory(
+            Path.Combine(Path.GetTempPath(), "ordoset_outside_" + Guid.NewGuid())).FullName;
+        try
+        {
+            vm.DestinationsFile = Path.Combine(outsideDir, "evil-destinations.json");
+            Assert.True(vm.DestinationsFileNoteNeedsAttention);
+
+            vm.DestinationsFile = "destinations.json";
+
+            Assert.False(vm.DestinationsFileNoteNeedsAttention);
+        }
+        finally
+        {
+            try { Directory.Delete(outsideDir, true); } catch { /* best effort */ }
+        }
+    }
+
     [Fact]
     public void BrowsingWithNoConfigPathYetKeepsTheCurrentValueInsteadOfAcceptingTheRawPick()
     {
