@@ -144,6 +144,73 @@ public class AtomicPlaceTests : IDisposable
         Assert.Empty(StrayTempFiles());
     }
 
+    /// <summary>The whole point of moving writeTemp inside the retry loop:
+    /// a transient failure while WRITING must get the same second chance a
+    /// transient failure during the move always has. Before this, nothing
+    /// exercised it — Place called writeTemp exactly once, so a write that
+    /// failed on its first try had no second one to succeed on.</summary>
+    [Fact]
+    public void ReplaceRidesOutATransientWriteFailure()
+    {
+        var dest = Dest("config.json");
+        var calls = 0;
+
+        var ok = AtomicPlace.TryReplace(dest, tmp =>
+        {
+            calls++;
+            if (calls <= 2) throw new IOException("network stall");
+            File.WriteAllText(tmp, "new");
+        }, out var error);
+
+        Assert.True(ok);
+        Assert.Equal("", error);
+        Assert.Equal("new", File.ReadAllText(dest));
+        Assert.Equal(3, calls);   // failed twice, landed on the third
+        Assert.Empty(StrayTempFiles());
+    }
+
+    /// <summary>A retried write must not inherit a partial file. This
+    /// delegate appends instead of truncating — the shape a stream opened
+    /// the wrong way could take — so it would land "partialpartial" if a
+    /// failed attempt's bytes were still sitting at tmp when the next
+    /// attempt began instead of Place clearing them first.</summary>
+    [Fact]
+    public void ARetriedWriteNeverBuildsOnAPreviousAttemptsPartialBytes()
+    {
+        var dest = Dest("config.json");
+        var calls = 0;
+
+        Assert.True(AtomicPlace.TryReplace(dest, tmp =>
+        {
+            calls++;
+            File.AppendAllText(tmp, "partial");
+            if (calls == 1) throw new IOException("network stall");
+        }, out _));
+
+        Assert.Equal("partial", File.ReadAllText(dest));   // not "partialpartial"
+    }
+
+    /// <summary>Mirrors ReplaceGivesUpAfterTheBudgetAndSaysSoWithoutLosingTheOldFile
+    /// above, but for the write instead of the move — proof that the write
+    /// now shares the SAME budget rather than getting a single, unretried
+    /// shot the way it used to.</summary>
+    [Fact]
+    public void AWriteThatKeepsFailingSpendsTheFullRetryBudgetBeforeGivingUp()
+    {
+        var dest = Dest("config.json");
+        File.WriteAllText(dest, "old");
+        var attempts = 0;
+        AtomicPlace.BeforeAttempt = (path, _) => { if (path == dest) attempts++; };
+
+        var ok = AtomicPlace.TryReplace(dest, _ => throw new IOException("network stall"), out var error);
+
+        Assert.False(ok);
+        Assert.NotEqual("", error);
+        Assert.Equal(AtomicPlace.Attempts, attempts);
+        Assert.Equal("old", File.ReadAllText(dest));   // the point: still intact
+        Assert.Empty(StrayTempFiles());
+    }
+
     // ---------------------------------------------------------- create-new
 
     [Fact]
@@ -223,6 +290,31 @@ public class AtomicPlaceTests : IDisposable
         Assert.True(AtomicPlace.TryReplace(dest, record, out _));
 
         Assert.Equal(2, names.Distinct().Count());
+    }
+
+    // ------------------------------------------------------- retry delay
+
+    /// <summary>Escalation, not the old flat 10ms. Pinned so a
+    /// "simplification" that flattens the ramp back out fails loudly instead
+    /// of quietly becoming a worse budget nobody notices.</summary>
+    [Fact]
+    public void TheRetryDelayEscalatesWithTheAttemptIndex()
+    {
+        Assert.Equal(10, AtomicPlace.DelayMs(0));
+        Assert.Equal(20, AtomicPlace.DelayMs(1));
+        Assert.True(AtomicPlace.DelayMs(10) > AtomicPlace.DelayMs(1),
+            "later attempts must wait longer than early ones");
+    }
+
+    /// <summary>The escalation caps rather than growing without bound, and
+    /// the full budget lands in the 2-3 second range ShellViewModel's
+    /// synchronous save can afford — see AtomicPlace.Attempts.</summary>
+    [Fact]
+    public void TheFullRetryBudgetTotalsTwoToThreeSeconds()
+    {
+        var totalMs = Enumerable.Range(0, AtomicPlace.Attempts - 1).Sum(AtomicPlace.DelayMs);
+
+        Assert.InRange(totalMs, 2000, 3000);
     }
 }
 

@@ -34,18 +34,62 @@ namespace OrdoSort.Core;
 /// </summary>
 internal static class AtomicPlace
 {
-    /// <summary>Attempts, not an elapsed-time budget: a deadline makes
-    /// "did it retry enough" depend on how loaded the machine is, which this
-    /// repo already learned the hard way in its test suite (41ae2f7 tore a
-    /// 2000ms budget out of the probe tests for exactly that reason). Both
-    /// loops this replaced already used 50 × 10ms, so nothing changes.</summary>
+    /// <summary>Governs how many times the WHOLE placement — the write and
+    /// the move alike, see <see cref="Place"/> — is attempted, and therefore,
+    /// together with <see cref="DelayMs"/>, the worst-case time retrying can
+    /// cost. That worst case matters because Place runs synchronously on the
+    /// UI thread: these are ShellViewModel.SaveConfigNow's saves, and the
+    /// TrySave/TrySaveMain calls around it. Two to three seconds of a
+    /// stalled window beats a spurious "settings not saved" warning; thirty
+    /// seconds would not. Raise this, or <see cref="MaxRetrySleepMs"/>, only
+    /// after moving those saves off the UI thread — NOT part of this change
+    /// — or the extra budget lands as a longer freeze, not a safer save.
+    ///
+    /// Attempts, not an elapsed-time budget: a deadline makes "did it retry
+    /// enough" depend on how loaded the machine is, which this repo already
+    /// learned the hard way in its test suite (41ae2f7 tore a 2000ms budget
+    /// out of the probe tests for exactly that reason). Both loops this
+    /// replaced already used 50 attempts, so the count carries over — only
+    /// what it covers and the delay between attempts have changed; see
+    /// <see cref="DelayMs"/> and <see cref="Place"/>.</summary>
     internal const int Attempts = 50;
-    internal const int RetrySleepMs = 10;
 
-    /// <summary>Test seam: fired immediately before each placement attempt
-    /// with the destination path and the zero-based attempt number. Settable
-    /// only by tests, inert in production — the same shape as the hooks it
-    /// replaces (Config.OnRetryForTests, Config.BeforeCreateOnlyMove) and as
+    /// <summary>The delay before the first retry, and the step the ramp in
+    /// <see cref="DelayMs"/> climbs by. Matches the flat delay this replaced,
+    /// so the common case — a local antivirus or indexer holding the
+    /// destination for a few milliseconds — clears exactly as fast as it
+    /// always did.</summary>
+    internal const int InitialRetrySleepMs = 10;
+
+    /// <summary>Caps the ramp <see cref="DelayMs"/> computes, so a run of
+    /// failures spends the budget spread across many attempts rather than a
+    /// handful of huge sleeps, and so the total across <see cref="Attempts"/>
+    /// lands in the 2-3 second range that constant's doc comment describes
+    /// instead of growing unbounded.</summary>
+    internal const int MaxRetrySleepMs = 60;
+
+    /// <summary>Delay before retrying the given zero-based attempt: ramps
+    /// from <see cref="InitialRetrySleepMs"/> up by that same step each
+    /// attempt, capped at <see cref="MaxRetrySleepMs"/>. Early attempts stay
+    /// fast because the common transient really is a millisecond-scale local
+    /// lock — a flat fast retry serves that well, so this starts exactly
+    /// where the old flat delay did. Later attempts back off, because a
+    /// dropped network session takes seconds, not milliseconds, to recover
+    /// from, and there is no point spending the whole budget re-knocking
+    /// every 10ms.
+    ///
+    /// A pure function of the attempt index alone — never of elapsed time —
+    /// for the same reason <see cref="Attempts"/> is a count and not a
+    /// deadline: "how long did this wait" must not depend on how loaded the
+    /// machine running the test is.</summary>
+    internal static int DelayMs(int attempt) =>
+        Math.Min(InitialRetrySleepMs * (attempt + 1), MaxRetrySleepMs);
+
+    /// <summary>Test seam: fired immediately before each placement attempt —
+    /// the write and the move together, see <see cref="Place"/> — with the
+    /// destination path and the zero-based attempt number. Settable only by
+    /// tests, inert in production — the same shape as the hooks it replaces
+    /// (Config.OnRetryForTests, Config.BeforeCreateOnlyMove) and as
     /// Commit.RaceHookForTests / Unlock.RaceHookForTests.
     ///
     /// It carries the PATH rather than firing blind because the hook is
@@ -73,6 +117,9 @@ internal static class AtomicPlace
     /// Retries a destination that is briefly held open — Config.Load reads
     /// with File.ReadAllText and no FileShare.Delete, so a reader really can
     /// block the replace for a moment — giving that reader time to let go.
+    /// The same retry now also covers writing the temp file itself: a
+    /// dropped network session can just as easily interrupt that as it can
+    /// the move.
     ///
     /// Must NOT be used where the destination belongs to whoever created it;
     /// see <see cref="TryCreateNew"/>.</summary>
@@ -95,8 +142,15 @@ internal static class AtomicPlace
     /// silently replace freshly written counters with a stale snapshot, and a
     /// box number already printed on a physical box got reissued.
     ///
-    /// There is deliberately no retry here. A peer holding the destination is
-    /// not a transient condition to wait out; it is the answer.</summary>
+    /// A peer holding the destination costs none of Place's retry budget —
+    /// MoveOnlyIfAbsent (below) turns it into success internally, so Place's
+    /// loop never even sees an exception for it to retry. That is
+    /// deliberate: a peer holding the destination is not a transient
+    /// condition to wait out; it is the answer. A failure here for any OTHER
+    /// reason — the write, or the move itself failing in some way that
+    /// isn't the destination already existing — gets the same retry
+    /// TryReplace gets; there is no peer-race distinction left to make by
+    /// that point.</summary>
     internal static bool TryCreateNew(string destination, Action<string> writeTemp, out string error) =>
         Place(destination, writeTemp, replaceExisting: false, out error);
 
@@ -104,59 +158,65 @@ internal static class AtomicPlace
         string destination, Action<string> writeTemp, bool replaceExisting, out string error)
     {
         var tmp = $"{destination}.{Guid.NewGuid():N}.tmp";
-        try
-        {
-            // Inside the try (2026-08 audit finding 4b): a disk-full failure
-            // while writing used to strand a partial temp outside any
-            // cleanup path.
-            writeTemp(tmp);
-
-            if (replaceExisting) MoveOverExisting(tmp, destination);
-            else MoveOnlyIfAbsent(tmp, destination);
-
-            error = "";
-            return true;
-        }
-        catch (Exception ex)
-        {
-            // Only ever the temp — never the destination. The GUID means no
-            // other call can own this name, so there is nothing here to be
-            // careful about deleting.
-            RemoveQuietly(tmp);
-            error = ex.Message;
-            return false;
-        }
-    }
-
-    private static void MoveOverExisting(string tmp, string destination)
-    {
         for (var attempt = 0; ; attempt++)
         {
             BeforeAttempt?.Invoke(destination, attempt);
             try
             {
-                // File.Replace preserves the destination's ACLs and is the
-                // strongest primitive Windows offers, but it REQUIRES the
-                // destination to exist — hence the fallback for first
-                // creation.
-                if (File.Exists(destination))
-                    File.Replace(tmp, destination, destinationBackupFileName: null);
-                else
-                    File.Move(tmp, destination);
-                return;
+                // Never build on a previous attempt's wreckage. The GUID
+                // means only THIS call could own tmp, so removing it first
+                // is always safe — and it means a writeTemp that appends, or
+                // otherwise doesn't truncate on its own, still starts every
+                // attempt from nothing instead of resurrecting a partial
+                // file an earlier transient failure left behind.
+                RemoveQuietly(tmp);
+
+                // Inside the try (2026-08 audit finding 4b): a disk-full
+                // failure while writing used to strand a partial temp
+                // outside any cleanup path. Retried on the same terms as the
+                // move below — a dropped network session can interrupt
+                // either one, not just the move.
+                writeTemp(tmp);
+
+                if (replaceExisting) MoveOverExisting(tmp, destination);
+                else MoveOnlyIfAbsent(tmp, destination);
+
+                error = "";
+                return true;
             }
             // On the final attempt these guards stop matching and the
-            // exception escapes to Place's catch, which cleans up the temp
+            // exception falls to the catch below, which cleans up the temp
             // and reports the failure.
             catch (IOException) when (attempt < Attempts - 1) { }
             catch (UnauthorizedAccessException) when (attempt < Attempts - 1) { }
-            Thread.Sleep(RetrySleepMs);
+            catch (Exception ex)
+            {
+                // Only ever the temp — never the destination. The GUID means
+                // no other call can own this name, so there is nothing here
+                // to be careful about deleting.
+                RemoveQuietly(tmp);
+                error = ex.Message;
+                return false;
+            }
+            Thread.Sleep(DelayMs(attempt));
         }
+    }
+
+    private static void MoveOverExisting(string tmp, string destination)
+    {
+        // File.Replace preserves the destination's ACLs and is the
+        // strongest primitive Windows offers, but it REQUIRES the
+        // destination to exist — hence the fallback for first creation. A
+        // single attempt: Place's loop above is what retries it, on the
+        // same terms as a failed write.
+        if (File.Exists(destination))
+            File.Replace(tmp, destination, destinationBackupFileName: null);
+        else
+            File.Move(tmp, destination);
     }
 
     private static void MoveOnlyIfAbsent(string tmp, string destination)
     {
-        BeforeAttempt?.Invoke(destination, 0);
         try
         {
             // File.Move has no overwrite fallback: it fails outright when the
@@ -167,7 +227,8 @@ internal static class AtomicPlace
         catch (IOException) when (File.Exists(destination))
         {
             // Someone else won. Their content stands; ours is discarded.
-            // This is success.
+            // This is success — and it costs none of Place's retry budget,
+            // because the exception never escapes this catch.
             File.Delete(tmp);
         }
     }
