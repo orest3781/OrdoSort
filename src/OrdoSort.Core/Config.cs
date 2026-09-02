@@ -633,10 +633,12 @@ public sealed class Config
     /// station down until someone repaired it by hand (2026-08-04 audit 2.3).
     ///
     /// The temp file is a sibling, never %TEMP%: replace is only atomic
-    /// within one volume, and the config can live on a share. Retries up to
-    /// 500ms if the destination is held open for reading (Config.Load uses
-    /// File.ReadAllText with no FileShare.Delete), allowing readers to
-    /// release the handle so the atomic replace completes.
+    /// within one volume, and the config can live on a share. Retries — now
+    /// covering the write as well as the replace, see AtomicPlace.Attempts
+    /// for the budget and why it's sized the way it is — if the destination
+    /// is held open for reading (Config.Load uses File.ReadAllText with no
+    /// FileShare.Delete) or a transient failure interrupts the write itself,
+    /// giving either a reader or a dropped connection time to let go.
     ///
     /// This is for files where a newer replacement is always correct — the
     /// main config and the destinations/monitored-folders/alerts side files,

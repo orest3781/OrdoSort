@@ -90,14 +90,16 @@ public class AtomicWriteTests : IDisposable
     }
 
     /// <summary>When the destination is held open beyond the retry budget
-    /// (~500ms), the write fails loudly and leaves no .tmp sibling.</summary>
+    /// (a few seconds — see AtomicPlace.Attempts), the write fails loudly
+    /// and leaves no .tmp sibling.</summary>
     [Fact]
     public void WriteFailsAndCleansUpWhenRetryBudgetExhausted()
     {
         var path = Path.Combine(_dir, "config.json");
         File.WriteAllText(path, "{\"initial\":\"content\"}");
 
-        // Hold the destination open for longer than the retry budget (500ms).
+        // Hold the destination open for the whole test: longer than any
+        // retry budget AtomicPlace could reasonably use.
         using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read,
             FileShare.Read, bufferSize: 4096, useAsync: false))
         {
