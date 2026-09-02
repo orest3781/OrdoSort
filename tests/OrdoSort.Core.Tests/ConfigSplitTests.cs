@@ -165,8 +165,11 @@ public class ConfigSplitTests : IDisposable
         // clobber each other's ASSIGNMENT — a different problem, see
         // AtomicPlaceTests.Name.
         //
-        // Attempt 0 because create-only never retries: a peer holding the
-        // destination is the answer, not something to wait out.
+        // Attempt 0 because a peer winning the race is resolved on the
+        // first attempt, without spending any retry budget: a peer holding
+        // the destination is the answer, not something to wait out. (A
+        // genuinely transient failure here, unlike this one, does retry —
+        // see AtomicPlace.TryCreateNew's doc comment.)
         AtomicPlace.BeforeAttempt = (destination, attempt) =>
         {
             if (destination == labelsPath && attempt == 0)

@@ -127,7 +127,7 @@ public class AtomicWriteTests : IDisposable
     ///
     /// The release is gated on AtomicPlace.BeforeAttempt, fired synchronously
     /// from inside the retry loop, rather than on a Task.Run'd Thread.Sleep
-    /// racing the loop's real 500ms budget on an independent clock (2026-08
+    /// racing the loop's real budget on an independent clock (2026-08
     /// CI audit: that version flaked on GitHub Actions' windows-latest runner
     /// because the releaser's own Task.Run dispatch has no guaranteed upper
     /// bound under shared-runner thread-pool contention). Releasing on

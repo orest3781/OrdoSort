@@ -706,9 +706,11 @@ public sealed class Config
 
     // BeforeCreateOnlyMove lived here. Its job — let a test plant a peer's
     // file in the gap between a caller's File.Exists guard and this write
-    // landing — is now AtomicPlace.BeforeAttempt's, fired on attempt 0. It
-    // still carries the destination path for the reason this seam always
-    // did: the hook is process-wide and xUnit runs other classes' saves
+    // landing — is now AtomicPlace.BeforeAttempt's: that peer-race scenario
+    // is exercised on attempt 0, though BeforeAttempt itself fires before
+    // every attempt of every placement, not only the first. It still
+    // carries the destination path for the reason this seam always did:
+    // the hook is process-wide and xUnit runs other classes' saves
     // concurrently, so a test must be able to ignore writes it doesn't own.
 
     // OnRetryForTests lived here. The retry loop it hooked moved to
