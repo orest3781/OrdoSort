@@ -46,8 +46,29 @@ namespace OrdoSort.Wpf.Views;
 /// the SAME ActualWidth as the row it used to display — no resize, so no
 /// SizeChanged — which is why Text is watched separately, through a
 /// DependencyPropertyDescriptor, rather than trusting SizeChanged alone to
-/// catch every case that can change what "trimmed" means for a cell.</summary>
-public static class TrimmedTextTooltip
+/// catch every case that can change what "trimmed" means for a cell.
+///
+/// LOADED/UNLOADED, NOT A PERMANENT HOOK (fix round 1, the HIGH this class
+/// shipped with): <see cref="DependencyPropertyDescriptor.AddValueChanged"/>
+/// stores its per-object handler in a table the STATIC descriptor instance
+/// holds for the life of the process — a strong reference from that
+/// process-lifetime static straight through to every TextBlock ever handed
+/// to it, and the string each one is bound to, unless something calls
+/// <see cref="DependencyPropertyDescriptor.RemoveValueChanged"/> back. With
+/// <c>Enabled=True</c> arriving via GridCellText's own Setter, that is
+/// effectively every cell in every grid window in the app: open and close a
+/// tool window over a working day and the heap would grow monotonically,
+/// every realized cell TextBlock ever shown still pinned by a table nothing
+/// ever unhooks. Hooking/unhooking both watches (SizeChanged too, for the
+/// same reason) from Loaded/Unloaded instead — rather than once, for good,
+/// from OnEnabledChanged — means a TextBlock is only ever watched while it
+/// is actually in the visual tree: a DataGrid recycling a virtualized
+/// container unloads it while off-screen (freeing both watches) and reloads
+/// it once reused (re-establishing them, and refreshing immediately — see
+/// <see cref="Hook"/> — since the recycled container may already carry its
+/// final text and size by the time Loaded fires), and a closed window
+/// unloads its whole tree the same way.</summary>
+internal static class TrimmedTextTooltip
 {
     public static readonly DependencyProperty EnabledProperty =
         DependencyProperty.RegisterAttached(
@@ -70,14 +91,23 @@ public static class TrimmedTextTooltip
     /// exactly what lets an opt-out column's own <c>Enabled="False"</c>
     /// Setter (equal to this property's <c>false</c> default) stay a true
     /// no-op: this callback never runs for it at all, so this class never
-    /// wires anything to that TextBlock and never touches its ToolTip.</summary>
+    /// wires anything to that TextBlock and never touches its ToolTip.
+    ///
+    /// Subscribes to Loaded/Unloaded here, not SizeChanged/TextDescriptor
+    /// directly — see the class doc's own LOADED/UNLOADED paragraph for why.
+    /// The immediate <c>if (text.IsLoaded)</c> hook covers the one case
+    /// Loaded itself cannot: Enabled becoming True on an element already in
+    /// the tree (never happens from a Style Setter, which resolves before
+    /// Loaded fires, but this attached property's own contract does not
+    /// assume that of every future caller).</summary>
     private static void OnEnabledChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is not TextBlock text) return;
         if ((bool)e.NewValue)
         {
-            text.SizeChanged += Refresh;
-            TextDescriptor.AddValueChanged(text, Refresh);
+            text.Loaded += OnLoaded;
+            text.Unloaded += OnUnloaded;
+            if (text.IsLoaded) Hook(text);
         }
         else
         {
@@ -87,10 +117,44 @@ public static class TrimmedTextTooltip
             // sees a True-to-False transition. Kept anyway so the attached
             // property's own contract is correct on its own terms, not only
             // for how this app happens to use it today.
-            text.SizeChanged -= Refresh;
-            TextDescriptor.RemoveValueChanged(text, Refresh);
+            text.Loaded -= OnLoaded;
+            text.Unloaded -= OnUnloaded;
+            Unhook(text);
             text.ClearValue(FrameworkElement.ToolTipProperty);
         }
+    }
+
+    private static void OnLoaded(object sender, RoutedEventArgs e) => Hook((TextBlock)sender);
+    private static void OnUnloaded(object sender, RoutedEventArgs e) => Unhook((TextBlock)sender);
+
+    /// <summary>Unhooks first, unconditionally: WPF can raise Loaded more
+    /// than once for the same element without an intervening Unloaded in
+    /// some reparenting scenarios, and both SizeChanged's <c>+=</c> and
+    /// AddValueChanged would otherwise double-subscribe, firing Refresh
+    /// twice per real change — not a leak on its own (Unloaded still cleans
+    /// up whatever is currently subscribed), but a needless extra
+    /// measurement per cell per pass this idempotent order avoids for free.
+    /// Refreshes immediately rather than waiting for the first SizeChanged/
+    /// TextChanged: see the class doc's own recycled-container paragraph
+    /// for why a freshly re-hooked cell cannot simply wait.</summary>
+    private static void Hook(TextBlock text)
+    {
+        Unhook(text);
+        text.SizeChanged += Refresh;
+        TextDescriptor.AddValueChanged(text, Refresh);
+        Refresh(text, EventArgs.Empty);
+    }
+
+    /// <summary>Safe to call on a TextBlock that is not currently hooked —
+    /// both <c>-=</c> on an unsubscribed event and RemoveValueChanged for an
+    /// unregistered handler are documented no-ops — which is what lets
+    /// <see cref="Hook"/> call this unconditionally before it (re-)subscribes,
+    /// and what lets OnUnloaded fire this safely even for an element that
+    /// somehow unloads without ever having loaded.</summary>
+    private static void Unhook(TextBlock text)
+    {
+        text.SizeChanged -= Refresh;
+        TextDescriptor.RemoveValueChanged(text, Refresh);
     }
 
     private static void Refresh(object? sender, EventArgs e)

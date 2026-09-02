@@ -127,4 +127,41 @@ public class TrimmedTextTooltipTests
         }
         finally { host.Close(); }
     });
+
+    /// <summary>Fix round 1, the HIGH this class shipped with:
+    /// DependencyPropertyDescriptor.AddValueChanged stores its per-object
+    /// handler in a table the STATIC descriptor holds for the process'
+    /// whole life — a leak, unless something calls RemoveValueChanged back.
+    /// Proves the fix actually unhooks, not just that hooking/unhooking
+    /// exists as code: an unloaded TextBlock (removed from the tree, the
+    /// same event a DataGrid fires on a recycled container and a closed
+    /// window fires through its whole tree) must not react to its own Text
+    /// changing afterward. Text, not a resize: a disconnected element gets
+    /// no further layout pass to raise SizeChanged from, so only the
+    /// DependencyPropertyDescriptor watch — which fires on the property
+    /// system alone, tree membership irrelevant — can actually prove the
+    /// unhook here. If it were still subscribed, "short" would clear the
+    /// tooltip (it never trims); the assertion is that nothing changes at
+    /// all.</summary>
+    [Fact]
+    public void AnUnloadedTextBlockDoesNotReEvaluateWhenItsTextChanges() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var (host, text) = BuildTextBlock(LongText, 60, enabled: true);
+        try
+        {
+            Assert.Equal(LongText, text.ToolTip as string);   // precondition: hooked, trimmed, tooltip present
+
+            host.Content = null;   // detaches text from the tree
+            host.UpdateLayout();
+            // Unloaded is dispatched at DispatcherPriority.Loaded, the same
+            // priority OverflowProbe.PumpRender already exists to drain for
+            // Loaded itself — needed here for the symmetric event.
+            OverflowProbe.PumpRender();
+
+            text.Text = "short";
+            Assert.Equal(LongText, text.ToolTip as string);
+        }
+        finally { host.Close(); }
+    });
 }
