@@ -252,9 +252,7 @@
                                  File/Becomes columns; see
                                  GridCellTextSelectionAware's own doc comment. -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
-                                    <Setter Property="TextWrapping" Value="Wrap" />
-                                </Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
                         <!-- New name: the filler (Width="*", MinWidth="120" —
@@ -271,7 +269,8 @@
                              participant in DataGridColumnCap's split: when
                              the columns can't all have their content width it
                              gets a proportional share, never under this
-                             floor, and wraps. -->
+                             floor, and trims with an ellipsis (table-rules
+                             Rule 4 — used to wrap). -->
                         <DataGridTextColumn Header="New name  ·  click or press F2 to edit"
                                             Binding="{Binding NewName}" Width="*" MinWidth="120">
                             <!-- BasedOn GridCellText for the shared Theme.Text
@@ -289,14 +288,14 @@
                                  so an unchanged row picked up 1.85:1 SubtleText-
                                  on-Accent the moment it was selected. Declared
                                  last so it overrides both triggers above once
-                                 selected. Only this display TextBlock wraps —
-                                 the editing TextBox (click or F2) stays the
+                                 selected. Only this display TextBlock trims
+                                 (table-rules Rule 4 — used to wrap) — the
+                                 editing TextBox (click or F2) stays the
                                  plain, single-line default DataGridTextColumn
                                  already supplies, which is right for typing a
                                  file name. -->
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                    <Setter Property="TextWrapping" Value="Wrap" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding Changed}" Value="False">
                                             <Setter Property="Foreground"
@@ -332,7 +331,6 @@
                                  in Theme/Styles.xaml. -->
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                    <Setter Property="TextWrapping" Value="Wrap" />
                                     <Style.Triggers>
                                         <!-- status-colour-vocabulary plan, Task 2 Step 2. Order
                                              matters: the two subtle triggers are declared first so

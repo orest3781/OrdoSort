@@ -77,15 +77,16 @@
                     <DataGrid.Columns>
                         <!-- Current name: the filler (Width="*") — the
                              file's name as it was AT DROP TIME, the least
-                             predictable string in the row. Wrap, not trim,
-                             same reasoning as every sibling tool's own
-                             Item/Current name column. -->
+                             predictable string in the row. Used to wrap, not
+                             trim; table-rules Rule 4 reverses that app-wide —
+                             trims with an ellipsis instead, and shows the
+                             full name as a tooltip once it actually is
+                             trimmed, both now inherited from
+                             GridCellTextSelectionAware's own base. -->
                         <DataGridTextColumn Header="Current name" Binding="{Binding Current}"
                                             Width="*" MinWidth="180">
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
-                                    <Setter Property="TextWrapping" Value="Wrap" />
-                                </Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
                         <!-- Result: content-sized; DataGridColumnCap
@@ -107,7 +108,6 @@
                                             Width="Auto">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                    <Setter Property="TextWrapping" Value="Wrap" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding Status}"
                                                      Value="{x:Static vm:StandardiseRowStatus.Failed}">

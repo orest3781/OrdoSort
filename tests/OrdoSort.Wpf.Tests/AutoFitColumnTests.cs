@@ -27,15 +27,20 @@ namespace OrdoSort.Wpf.Tests;
 ///    content, rather than stretching to fill a fixed/star share the way the
 ///    pre-fix File/Becomes/Current name columns did.
 /// 2. A long value in a capped column stops exactly at that column's
-///    MaxWidth rather than growing without bound. Since 2026-08-29
-///    (AssertWrapsInsideItsCap) that's because it WRAPS onto more lines for
-///    every grid below — MatchMerge, BulkRename, PageCounts, ZipTools and
-///    MergePdfs all moved off trimming that day. Triage is the one holdout,
-///    untouched by that rule (DataGridColumnCap.cs's own class doc: Triage
-///    supplies its own budget through the separate Func&lt;double,double&gt;
-///    overload) — its own facts (AssertTrimmingAndTooltip) still prove it
-///    carries TextTrimming/ToolTip so the capped-off text isn't simply
-///    lost.
+///    MaxWidth rather than growing without bound. Between 2026-08-29 and
+///    table-rules (this branch) that was because it WRAPPED onto more
+///    lines for every grid below except Triage — MatchMerge, BulkRename,
+///    PageCounts, ZipTools and MergePdfs all moved off trimming that day,
+///    and Triage was the one holdout the whole time, its own roster
+///    columns never having moved off TextTrimming/ToolTip in the first
+///    place (DataGridColumnCap.cs's own class doc: Triage supplies its own
+///    budget through the separate Func&lt;double,double&gt; overload,
+///    untouched by the autofit-then-wrap rule either way). Table-rules Rule
+///    4 reverses THAT decision app-wide: every grid, Triage included, now
+///    trims with an ellipsis and shows the full value as a tooltip once it
+///    is actually cut off (AssertTrimsInsideItsCap/AssertTrimsWithTooltip)
+///    — the capped-off text isn't lost, it just reaches the tooltip instead
+///    of a second line.
 /// 3. Every capped column in the grid can be at its LONGEST simultaneously
 ///    (the real worst case for available width) and the grid still shows no
 ///    horizontal scrollbar — proven by finding the DataGrid's own internal
@@ -191,7 +196,7 @@ public class AutoFitColumnTests
     });
 
     [Fact]
-    public void MatchMerge_LongFileValueWrapsInsideItsCap() => _fx.Invoke(() =>
+    public void MatchMerge_LongFileValueTrimsInsideItsCap() => _fx.Invoke(() =>
     {
         var win = BuildMatchMergeWindow(fileValue: VeryLongValue, noteValue: "");
         try
@@ -203,7 +208,7 @@ public class AutoFitColumnTests
             // the grid live (DataGridColumnCap.Track), and since fix round 3
             // it also reserves room for a vertical scrollbar — see
             // ExpectedColumnCap.
-            AssertWrapsInsideItsCap(win, (DataGridBoundColumn)column, "MatchMerge File");
+            AssertTrimsInsideItsCap(win, (DataGridBoundColumn)column, "MatchMerge File");
         }
         finally { win.Close(); }
     });
@@ -478,7 +483,7 @@ public class AutoFitColumnTests
     });
 
     [Fact]
-    public void BulkRename_LongCurrentValueWrapsInsideItsCap() => _fx.Invoke(() =>
+    public void BulkRename_LongCurrentValueTrimsInsideItsCap() => _fx.Invoke(() =>
     {
         var win = BuildBulkRenameWindow(currentValue: VeryLongValue, noteValue: "");
         try
@@ -487,7 +492,7 @@ public class AutoFitColumnTests
             var column = FindColumnByHeader(win, "Current name");
             // Against the GRID's own live viewport — see MatchMerge's
             // identical comment above.
-            AssertWrapsInsideItsCap(win, (DataGridBoundColumn)column, "BulkRename Current name");
+            AssertTrimsInsideItsCap(win, (DataGridBoundColumn)column, "BulkRename Current name");
         }
         finally { win.Close(); }
     });
@@ -857,7 +862,7 @@ public class AutoFitColumnTests
             Assert.True(column.ActualWidth == expectedCap,
                 $"Triage Control ID column with long content is {column.ActualWidth}px, " +
                 $"expected exactly its cap {expectedCap}px");
-            AssertTrimmingAndTooltip((DataGridBoundColumn)column, "Control ID");
+            AssertTrimsWithTooltip(win, column, rowIndex: 0, "Triage Control ID");
         }
         finally { win.Close(); }
     });
@@ -1242,14 +1247,14 @@ public class AutoFitColumnTests
     });
 
     [Fact]
-    public void StandardiseNames_LongResultValueWrapsInsideItsCap() => _fx.Invoke(() =>
+    public void StandardiseNames_LongResultValueTrimsInsideItsCap() => _fx.Invoke(() =>
     {
         var win = BuildStandardiseNamesWindow(VeryLongValue);
         try
         {
             ShowOffscreen(win);
             var column = FindColumnByHeader(win, "Result");
-            AssertWrapsInsideItsCap(win, (DataGridBoundColumn)column, "Standardise names Result");
+            AssertTrimsInsideItsCap(win, (DataGridBoundColumn)column, "Standardise names Result");
         }
         finally { win.Close(); }
     });
@@ -1288,14 +1293,14 @@ public class AutoFitColumnTests
     });
 
     [Fact]
-    public void PageCounts_LongNoteValueWrapsInsideItsCap() => _fx.Invoke(() =>
+    public void PageCounts_LongNoteValueTrimsInsideItsCap() => _fx.Invoke(() =>
     {
         var win = BuildPageCountsWindow(VeryLongValue);
         try
         {
             ShowOffscreen(win);
             var column = FindColumnByHeader(win, "Note");
-            AssertWrapsInsideItsCap(win, (DataGridBoundColumn)column, "PageCounts Note");
+            AssertTrimsInsideItsCap(win, (DataGridBoundColumn)column, "PageCounts Note");
         }
         finally { win.Close(); }
     });
@@ -1335,14 +1340,14 @@ public class AutoFitColumnTests
     });
 
     [Fact]
-    public void ZipTools_LongResultValueWrapsInsideItsCap() => _fx.Invoke(() =>
+    public void ZipTools_LongResultValueTrimsInsideItsCap() => _fx.Invoke(() =>
     {
         var win = BuildZipToolsWindow(VeryLongValue);
         try
         {
             ShowOffscreen(win);
             var column = FindColumnByHeader(win, "Result");
-            AssertWrapsInsideItsCap(win, (DataGridBoundColumn)column, "Zip and unzip Result");
+            AssertTrimsInsideItsCap(win, (DataGridBoundColumn)column, "Zip and unzip Result");
         }
         finally { win.Close(); }
     });
@@ -1405,26 +1410,22 @@ public class AutoFitColumnTests
     /// only shrinks moving away from it. Item's own name is long, not just
     /// longer than Result — a star column's share depends only on the
     /// RATIO to Result, not on Item's absolute length (widening Item's
-    /// content disturbs neither margin), and Result's content needs to
-    /// overflow its own cap by more than 2x to also clear a THIRD
-    /// constraint, AssertWrapsInsideItsCap's 2-line height bar: every
-    /// shorter pair tried landed at exactly 37px against a 37.24px bar —
-    /// WPF renders an exact 2-line wrap at a fixed device height regardless
-    /// of how far the content overflows one line, and across this window's
-    /// whole non-held range Result's content can mathematically never
-    /// overflow its own cap by more than ~47% (never past 2 lines), so no
-    /// shorter pair could ever clear that bar. Only lengthening ITEM's
-    /// content — which moves neither margin — pushes Result's own overflow
-    /// past 2x and into a genuine 3-line wrap.
+    /// content disturbs neither margin). Result's own extreme length used
+    /// to also have to clear a THIRD constraint here, AssertWrapsInsideItsCap's
+    /// 2-line wrap bar — table-rules Rule 4 retired that constraint app-wide
+    /// (this column trims with an ellipsis now, never wraps, so there is no
+    /// height bar left to clear), but the string was left exactly as this
+    /// paragraph's OWN balance-point reasoning still needs it: changing
+    /// either string risks moving the ratio off its measured ~1.22 crossover,
+    /// which is what this fact actually depends on, wrap bar or not.
     ///
-    /// Item's own wrap is NOT asserted: it is the star column, and WPF
+    /// Item's own trimming is NOT asserted: it is the star column, and WPF
     /// coerces a star column's own MaxWidth to its internal 10000 the
     /// instant Width becomes a Star length — the same quirk
     /// AStarColumnEndsUpAtTheShareTheGovernedColumnsLeaveIt documents from
-    /// Task 2's review. AssertWrapsInsideItsCap's own first assertion
-    /// compares ActualWidth to MaxWidth, so it can never apply to Item
-    /// regardless of content — a structural mismatch, not a content
-    /// shortfall.
+    /// Task 2's review. AssertStoppedAtItsCap's own first assertion compares
+    /// ActualWidth to MaxWidth, so it can never apply to Item regardless of
+    /// content — a structural mismatch, not a content shortfall.
     ///
     /// Star columns only resolve headlessly after the Background drain,
     /// hence SettleStarColumns.</summary>
@@ -1450,7 +1451,7 @@ public class AutoFitColumnTests
                 $"Result holds the longer text ({resultContent}px of content against Item's {itemContent}px) " +
                 $"but rendered narrower — {result.ActualWidth}px against {item.ActualWidth}px; the split should move with content");
 
-            AssertWrapsInsideItsCap(win, (DataGridBoundColumn)result, "Zip and unzip Result");
+            AssertTrimsInsideItsCap(win, (DataGridBoundColumn)result, "Zip and unzip Result");
             AssertNoHorizontalScrollbar(win, $"Zip and unzip (at MinWidth {win.MinWidth}, long name and long result)");
         }
         finally { win.Close(); }
@@ -1491,14 +1492,14 @@ public class AutoFitColumnTests
     });
 
     [Fact]
-    public void MergePdfs_LongResultValueWrapsInsideItsCap() => _fx.Invoke(() =>
+    public void MergePdfs_LongResultValueTrimsInsideItsCap() => _fx.Invoke(() =>
     {
         var win = BuildMergePdfsWindow(VeryLongValue);
         try
         {
             ShowOffscreen(win);
             var column = FindColumnByHeader(win, "Result");
-            AssertWrapsInsideItsCap(win, (DataGridBoundColumn)column, "Merge PDFs Result");
+            AssertTrimsInsideItsCap(win, (DataGridBoundColumn)column, "Merge PDFs Result");
         }
         finally { win.Close(); }
     });
@@ -1648,64 +1649,63 @@ public class AutoFitColumnTests
             "a cap at or beyond the viewport is not capping anything");
     }
 
-    private static void AssertTrimmingAndTooltip(DataGridBoundColumn column, string bindingPathContains)
+    /// <summary>Table-rules Rule 4's own successor to what
+    /// AssertTrimmingAndTooltip/AssertWrapsInsideItsCap used to check by
+    /// walking <c>column.ElementStyle.Setters</c> directly: that collection
+    /// only ever holds a Style's OWN, directly-declared Setters, and Rule 4
+    /// moved BOTH TextTrimming and the tooltip mechanism off individual
+    /// columns onto GridCellText's own shared BasedOn parent (Theme/
+    /// Styles.xaml) — a Setter walk that never followed BasedOn would find
+    /// neither one on almost every column in the app any more, which is
+    /// exactly the false negative that motivated reading the REALIZED
+    /// TextBlock's own effective properties instead: correct regardless of
+    /// which Style in a BasedOn chain actually supplied them.
+    ///
+    /// A value long enough to be trimmed (every caller here uses
+    /// VeryLongValue) both stays on ONE line — trimming, not wrapping, is
+    /// what absorbs the overflow now, and a uniform row height is part of
+    /// what table-rules Rule 4 promises — and exposes its own full text as
+    /// a ToolTip, verified by exact equality with the cell's own Text: every
+    /// caller here is a plain cell, never one of the app's two documented
+    /// full-PATH-tooltip exceptions (ZipToolsWindow/MergePdfsWindow/
+    /// PageCountsWindow's Item/File, FilenameListWindow's Pages), so its
+    /// tooltip is never anything other than a repeat of what the ellipsis
+    /// just cut off.</summary>
+    private static void AssertTrimsWithTooltip(Window win, DataGridColumn column, int rowIndex, string name)
     {
-        Assert.NotNull(column.ElementStyle);
-        var trimSetter = column.ElementStyle!.Setters.OfType<Setter>()
-            .FirstOrDefault(s => s.Property == TextBlock.TextTrimmingProperty);
-        Assert.NotNull(trimSetter);
-        Assert.Equal(TextTrimming.CharacterEllipsis, trimSetter!.Value);
+        var grid = FindDescendant<DataGrid>(win)!;
+        var row = (DataGridRow)grid.ItemContainerGenerator.ContainerFromIndex(rowIndex);
+        var text = Assert.IsType<TextBlock>(column.GetCellContent(row));
 
-        var tooltipSetter = column.ElementStyle!.Setters.OfType<Setter>()
-            .FirstOrDefault(s => s.Property == FrameworkElement.ToolTipProperty);
-        Assert.NotNull(tooltipSetter);
-        var binding = Assert.IsType<Binding>(tooltipSetter!.Value);
-        // Triage's roster columns stopped interpolating the header into the
-        // Path (a comma there parses as a two-argument indexer — see
-        // RosterCellLookup); the header now rides ConverterParameter, so the
-        // identity check accepts either shape.
-        var carrier = binding.Path?.Path is { Length: > 0 } p ? p
-            : binding.ConverterParameter as string ?? "";
-        Assert.Contains(bindingPathContains, carrier);
+        Assert.Equal(TextTrimming.CharacterEllipsis, text.TextTrimming);
+        Assert.Equal(TextWrapping.NoWrap, text.TextWrapping);
+
+        var lineHeight = text.FontSize * text.FontFamily.LineSpacing;
+        // "1.5 *", not "2 *": AssertStoppedAtItsCap's own former sibling
+        // used to look for a row that GREW past one line; here the whole
+        // point is that it does not, so a generous single-line ceiling
+        // (rather than an exact match, which device-pixel rounding could
+        // trip) is what actually proves "did not wrap" without also being
+        // fooled by a cell that silently grew to two lines and happened to
+        // still read as "not quite two full lines" under a tighter bound.
+        Assert.True(text.ActualHeight < 1.5 * lineHeight,
+            $"{name}: a trimmed cell should stay on one line, not wrap onto more — " +
+            $"the cell is {text.ActualHeight}px against a {lineHeight}px line");
+        Assert.True(row.ActualHeight < 1.5 * lineHeight,
+            $"{name}: the row should stay one line tall — trimming, not wrapping, absorbs the " +
+            $"overflow now — the row is {row.ActualHeight}px against a {lineHeight}px line");
+
+        Assert.Equal(text.Text, text.ToolTip as string);
     }
 
-    /// <summary>2026-08-29 successor to AssertStoppedAtItsCap +
-    /// AssertTrimmingAndTooltip for every window except Triage: a long
-    /// value is still stopped BY its cap, but the cap now makes it wrap —
-    /// the column's ElementStyle says so, no TextTrimming setter competes,
-    /// and the realized cell is taller than one line with the row grown to
-    /// hold it. Nothing is hidden, so no tooltip repeats the text.</summary>
-    private static void AssertWrapsInsideItsCap(Window win, DataGridBoundColumn column, string name)
+    /// <summary>AssertStoppedAtItsCap plus AssertTrimsWithTooltip for row 0
+    /// — the shape every non-Triage caller in this file needs (Triage calls
+    /// AssertTrimsWithTooltip directly: its own cap check is an exact-match
+    /// assertion at the call site, not this helper's looser one).</summary>
+    private static void AssertTrimsInsideItsCap(Window win, DataGridBoundColumn column, string name)
     {
         AssertStoppedAtItsCap(win, column, name);
-        Assert.NotNull(column.ElementStyle);
-        var setters = column.ElementStyle!.Setters.OfType<Setter>().ToList();
-        Assert.Contains(setters, s => s.Property == TextBlock.TextWrappingProperty && Equals(s.Value, TextWrapping.Wrap));
-        Assert.DoesNotContain(setters, s => s.Property == TextBlock.TextTrimmingProperty);
-
-        var grid = FindDescendant<DataGrid>(win)!;
-        var row = (DataGridRow)grid.ItemContainerGenerator.ContainerFromIndex(0);
-        var text = Assert.IsType<TextBlock>(column.GetCellContent(row));
-        var lineHeight = text.FontSize * text.FontFamily.LineSpacing;
-        // "- 1": the same device-pixel tolerance AssertStoppedAtItsCap's own
-        // width comparison already uses above, for the identical reason.
-        // UseLayoutRounding="True" (the base TextBlock style, Theme/
-        // Styles.xaml) snaps a realized TextBlock's height to a whole device
-        // pixel; two lines at this app's own default font metrics compute to
-        // 37.2421875px, which rounds DOWN, not up, to 37px — so a genuine,
-        // correctly-wrapped two-line cell measures a hair under "2 *
-        // lineHeight" every time, never over it. Reproduced 2026-08-29: fed
-        // an empty sibling column, MatchMerge File / BulkRename Current name
-        // / PageCounts Note each resolve a cap wide enough that VeryLongValue
-        // wraps to exactly two lines (not three, where the same rounding is
-        // nowhere near the bar) and all three landed at exactly 37px before
-        // this tolerance existed — a real wrap the assertion was rejecting,
-        // not a wrap that failed to happen.
-        Assert.True(text.ActualHeight >= 2 * lineHeight - 1,
-            $"{name}: a value wider than its {column.MaxWidth}px cap should wrap onto more lines; " +
-            $"the cell is {text.ActualHeight}px against a {lineHeight}px line");
-        Assert.True(row.ActualHeight >= text.ActualHeight - 1,
-            $"{name}: the row ({row.ActualHeight}px) must grow to hold the wrapped text ({text.ActualHeight}px)");
+        AssertTrimsWithTooltip(win, column, rowIndex: 0, name);
     }
 
     /// <summary>ShowOffscreen plus the Background-priority drain that

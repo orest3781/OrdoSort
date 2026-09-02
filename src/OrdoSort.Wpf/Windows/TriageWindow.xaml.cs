@@ -23,31 +23,42 @@ public partial class TriageWindow : Window
     /// (rather than a literal at both call sites) so the roster-column
     /// budget computed in the constructor and the column ShowCurrentAsync
     /// actually builds can never drift out of sync with each other. NOT
-    /// capped/resized the way roster columns are: it already avoids
-    /// horizontal growth by wrapping its (prose, "a match you can't explain
-    /// is one you can't trust") content instead of ellipsizing, since a
-    /// truncated reason is far less useful than a taller row — but its own
-    /// fixed FOOTPRINT still has to be budgeted for, which the first version
-    /// of this fix (2026-08-07) missed: it reasoned about Why's content, not
-    /// its column width, and left the roster-column budget unaware Why could
-    /// ever be on screen at the same time.
+    /// capped/resized the way roster columns are: its own FOOTPRINT is
+    /// fixed regardless of what its content does, which is why the
+    /// roster-column budget below has to know about it at all — the first
+    /// version of this fix (2026-08-07) missed exactly that, reasoning about
+    /// Why's content rather than its column width, and left the budget
+    /// unaware Why could ever be on screen at the same time.
+    ///
+    /// Used to avoid horizontal growth by wrapping its (prose, "a match you
+    /// can't explain is one you can't trust") content instead of
+    /// ellipsizing, on the reasoning that a truncated reason is far less
+    /// useful than a taller row — table-rules Rule 4 overrides that
+    /// column-specific reasoning app-wide: this is a genuine DataGrid cell,
+    /// same as every roster column beside it, so it trims with an ellipsis
+    /// now and shows the full reason as a tooltip once it actually is
+    /// trimmed, rather than growing the row. The width below is unaffected
+    /// either way — it governs the column's FOOTPRINT, not how its own
+    /// overflow is handled, and the reasoning that set it (immediately
+    /// below) predates and is independent of which of the two this column
+    /// does with what doesn't fit.
     ///
     /// FIX ROUND 5 (2026-08-08, "columns can't be moved and are hiding text"
     /// task): was 260. Measured off-screen at the default 440px panel width
     /// with the app's default 2-header roster pick ("First name"/"Control
     /// ID"): 260 left the one capped roster column (Control ID) at a 76px
     /// cap — roughly 8-9 characters before ellipsizing, the "hidden text"
-    /// the owner reported. Why's own content WRAPS rather than ellipsizing —
-    /// narrowing it costs only row height, never information — while the
-    /// roster columns ellipsize, and the roster is what a person actually
-    /// reads to make the match/merge decision; Why is supporting context,
-    /// not the primary content the window exists to show. Cut to 150: still
-    /// comfortable for the short reason phrases MatchMerge.cs's token pass
-    /// actually generates ("token match on last name" et al. — well under
-    /// two wrapped lines at this width, not a wall of near-vertical text),
-    /// while raising the default 2-header roster cap from 76px to 169px and
-    /// the 3-header cap (AutoFitColumnTests' own worst case) from ~38px to
-    /// 84.5px — both re-measured after this change, see AutoFitColumnTests.</summary>
+    /// the owner reported. The roster is what a person actually reads to
+    /// make the match/merge decision; Why is supporting context, not the
+    /// primary content the window exists to show, so it gave up the room
+    /// instead. Cut to 150: still comfortable for the short reason phrases
+    /// MatchMerge.cs's token pass actually generates ("token match on last
+    /// name" et al. — at the time this was measured, well under two wrapped
+    /// lines at this width; today it stays on one and ellipsizes instead if
+    /// it ever runs longer than that), while raising the default 2-header
+    /// roster cap from 76px to 169px and the 3-header cap (AutoFitColumnTests'
+    /// own worst case) from ~38px to 84.5px — both re-measured after this
+    /// change, see AutoFitColumnTests.</summary>
     private const double WhyColumnWidth = 150;
 
     /// <summary>Headroom subtracted from the roster-column budget for the
@@ -303,14 +314,18 @@ public partial class TriageWindow : Window
                 // shared selection-aware style now makes this column's story
                 // identical to every other plain one instead of relying on
                 // the absence of a Setter to stay correct by accident.
-                ElementStyle = new Style(typeof(TextBlock), GridCellTextSelectionAwareStyle)
-                {
-                    Setters =
-                    {
-                        new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis),
-                        new Setter(FrameworkElement.ToolTipProperty, RosterCellBinding(h)),
-                    },
-                },
+                //
+                // TextTrimming and the trimmed-only ToolTip both used to be
+                // set explicitly right here — CharacterEllipsis, plus an
+                // UNCONDITIONAL ToolTip bound to this same cell's own text
+                // (RosterCellBinding(h), identical to the Binding above).
+                // Both now come from GridCellTextSelectionAware's own base
+                // (Theme/Styles.xaml's GridCellText, table-rules Rule 4)
+                // instead: trimming is unchanged, but the tooltip only shows
+                // once the cell is ACTUALLY trimmed, where the old Setter
+                // showed the same text a second time even when nothing was
+                // cut off — exactly the noise Rule 4 exists to stop.
+                ElementStyle = new Style(typeof(TextBlock), GridCellTextSelectionAwareStyle),
             };
             ApplySortPath(column, h);
             if (isFiller) column.MinWidth = FillerMinWidth;
@@ -421,7 +436,6 @@ public partial class TriageWindow : Window
                 {
                     Setters =
                     {
-                        new Setter(TextBlock.TextWrappingProperty, TextWrapping.Wrap),
                         // status-colour-vocabulary plan (2026-08-08), Task 2 Step 2:
                         // every row here is the same kind of message — a token-pass
                         // suggestion's reason, purely informational (nothing to fix,

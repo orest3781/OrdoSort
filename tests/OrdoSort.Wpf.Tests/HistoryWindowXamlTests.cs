@@ -18,33 +18,33 @@ namespace OrdoSort.Wpf.Tests;
 /// Styles.xaml resources and the real production XAML are exercised, not a
 /// hand-copied stand-in.
 ///
-/// UPDATED 2026-08-29 (grid-autofit-wrap, Task 5): this suite used to assert
-/// Name/Destination/Original/Filed-as each carried
-/// <c>TextTrimming="CharacterEllipsis"</c> plus a <c>ToolTip</c> repeating
-/// the cell's own text. <see cref="TextColumnsWrapRatherThanTrim"/> now
-/// asserts the opposite for all four: a <c>TextWrapping="Wrap"</c> setter,
-/// and NEITHER a TextTrimming NOR a ToolTip setter — DataGridColumnCap's
-/// autofit wraps a column that gives way rather than clipping it, and a
-/// tooltip that only repeated visible text would have had nothing left to
-/// add once nothing is hidden. <see cref="WhenIsNotCappedBecauseItsContentIsBounded"/>
-/// confirms <c>When</c> was deliberately taken OUT of that governed set
-/// instead of joining the other four: its value is a timestamp History
-/// formats itself, always 16 characters, so it is sized to its own content
-/// rather than ever being asked to wrap a date — asserted as its MaxWidth
+/// UPDATED for table-rules (this branch), Rule 4: between 2026-08-29 and
+/// here, this suite asserted Name/Destination/Original/Filed-as each
+/// carried a <c>TextWrapping="Wrap"</c> setter and neither TextTrimming
+/// nor a ToolTip. <see cref="TextColumnsTrimRatherThanWrap"/> now asserts
+/// the opposite for all four, reading the REALIZED cell rather than
+/// declared Setters (see that fact's own doc comment for why): trimmed with
+/// an ellipsis, one line, and the full value reachable as a ToolTip —
+/// DataGridColumnCap's autofit still gives each its content width when
+/// that fits and a proportional share when it doesn't, but the share that
+/// can't hold its content now cuts it off instead of growing the row.
+/// <see cref="WhenIsNotCappedBecauseItsContentIsBounded"/> confirms
+/// <c>When</c> was deliberately taken OUT of that governed set instead of
+/// joining the other four: its value is a timestamp History formats
+/// itself, always 16 characters, so it is sized to its own content rather
+/// than ever needing to trim or wrap a date — asserted as its MaxWidth
 /// reading WPF's own uncapped default, PositiveInfinity, which only holds
 /// if DataGridColumnCap genuinely never assigns it one (see that fact's own
 /// doc comment for why that isn't a vacuous default-value check).
 ///
-/// What this suite CANNOT verify headlessly: it reads declared style
-/// setters (TextWrapping/TextTrimming/ToolTip) and column state (MaxWidth)
-/// off a window that is shown but off-screen, never painted on a real
-/// display — so it proves what the XAML and DataGridColumnCap DECLARE, not
-/// that wrapped text visually reflows onto a second line or that the row
-/// grows to fit it. That mechanism is measured elsewhere, off this specific
-/// window: <see cref="AutoFitColumnTests"/> (the six real windows,
-/// including this one) and <see cref="DataGridColumnCapTests"/> (the class
-/// itself, on a bare grid built in code — including the underlying WPF fact
-/// that a wrapped cell grows its own row).</summary>
+/// What this suite CANNOT verify: that the four columns' own row heights on
+/// a REAL, on-screen display look uniform end to end — TextColumnsTrimRatherThanWrap
+/// measures ActualHeight on an off-screen window, which reflects real WPF
+/// layout, just never painted; a person visually scanning the grid is not
+/// what this proves. <see cref="AutoFitColumnTests"/> (this window's own
+/// column-cap facts) and <see cref="DataGridColumnCapTests"/> (the class
+/// itself, on a bare grid built in code) are the suites that exercise the
+/// same underlying mechanism from other angles.</summary>
 [Collection(HighlightContrastTests.Name)]
 public class HistoryWindowXamlTests
 {
@@ -206,20 +206,57 @@ public class HistoryWindowXamlTests
         }
     });
 
-    /// <summary>2026-08-29: the four text columns wrap instead of trimming
-    /// — DataGridColumnCap's autofit gives each its content width when that
-    /// fits and a proportional share when it doesn't, and a share is only
-    /// honest if the text it can't show on one line goes onto the next.
-    /// No tooltip repeats the cell: the whole value is on screen.</summary>
+    /// <summary>Long enough to overflow any of the four governed columns'
+    /// caps at this window's own default width, at any reasonable font
+    /// size — the same reasoning AutoFitColumnTests.VeryLongValue documents
+    /// for itself, restated locally since this class doesn't share that
+    /// one.</summary>
+    private const string VeryLongValue =
+        "A-Very-Long-History-Derived-Value-That-Keeps-Going-Well-Past-Any-Sensible-Column-Width-000000000000.pdf";
+
+    /// <summary>Table-rules Rule 4 (this branch) reverses the 2026-08-29
+    /// decision this fact used to assert: the four text columns trimmed
+    /// with an ellipsis before that date, moved to wrapping that day, and
+    /// move BACK to trimming here — DataGridColumnCap's autofit still gives
+    /// each its content width when that fits and a proportional share when
+    /// it doesn't, but a share that can't hold its content now cuts it off
+    /// with "…" rather than growing the row, and the cell's own full text
+    /// reaches a ToolTip on hover instead of being left off screen.
+    ///
+    /// Read off the REALIZED cell on a seeded row carrying
+    /// <see cref="VeryLongValue"/> in every governed field, not out of
+    /// column.ElementStyle.Setters the way this fact used to: Rule 4 moved
+    /// both TextTrimming and the tooltip mechanism onto GridCellText's own
+    /// shared BasedOn base (Theme/Styles.xaml), so a Setter walk that never
+    /// followed BasedOn would find neither on any of these four columns any
+    /// more — the realized TextBlock's own effective properties are correct
+    /// regardless of which Style in the chain actually supplied them, and
+    /// checking them on an ACTUALLY-overflowing value proves the tooltip
+    /// mechanism really fires here, not just that the property is set.</summary>
     [Theory]
     [InlineData("Name")]
     [InlineData("Destination")]
     [InlineData("Original")]
     [InlineData("Filed as")]
-    public void TextColumnsWrapRatherThanTrim(string header) => _fx.Invoke(() =>
+    public void TextColumnsTrimRatherThanWrap(string header) => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var (win, history, dbPath) = BuildWindow();
+        var dbPath = Path.Combine(Path.GetTempPath(), "ordo_test_history_" + Guid.NewGuid() + ".sqlite");
+        var history = new History(dbPath);
+        // originalName -> Original, newName -> FiledAs, nameEntered -> Name,
+        // routeLabel -> Route/Destination (HistoryRow.From's own mapping) —
+        // long in all four so every InlineData case exercises a genuinely
+        // overflowing value, not just the one the current case names.
+        history.LogCommit("c:\\in\\a.pdf", VeryLongValue, VeryLongValue, VeryLongValue,
+            "insert", "", VeryLongValue, "c:\\out", tagged: false, "");
+        var vm = new HistoryViewModel(history, new FakeDialogs(), new InlineWorkScheduler());
+        var win = new HistoryWindow(vm)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20000, Top = 0, ShowActivated = false,
+        };
+        win.Show();
+        win.UpdateLayout();
         try
         {
             var grid = FindDescendant<DataGrid>(win)
@@ -227,12 +264,21 @@ public class HistoryWindowXamlTests
             var column = grid.Columns.OfType<DataGridTextColumn>()
                 .FirstOrDefault(c => (string)c.Header == header)
                 ?? throw new InvalidOperationException($"No '{header}' column found");
+            var row = (DataGridRow)grid.ItemContainerGenerator.ContainerFromIndex(0);
+            var text = Assert.IsType<TextBlock>(column.GetCellContent(row));
 
-            Assert.NotNull(column.ElementStyle);
-            var setters = column.ElementStyle!.Setters.OfType<Setter>().ToList();
-            Assert.Contains(setters, s => s.Property == TextBlock.TextWrappingProperty && Equals(s.Value, TextWrapping.Wrap));
-            Assert.DoesNotContain(setters, s => s.Property == TextBlock.TextTrimmingProperty);
-            Assert.DoesNotContain(setters, s => s.Property == FrameworkElement.ToolTipProperty);
+            Assert.Equal(TextTrimming.CharacterEllipsis, text.TextTrimming);
+            Assert.Equal(TextWrapping.NoWrap, text.TextWrapping);
+
+            var lineHeight = text.FontSize * text.FontFamily.LineSpacing;
+            Assert.True(text.ActualHeight < 1.5 * lineHeight,
+                $"{header}: a trimmed cell should stay on one line, not wrap onto more — " +
+                $"the cell is {text.ActualHeight}px against a {lineHeight}px line");
+            Assert.True(row.ActualHeight < 1.5 * lineHeight,
+                $"{header}: the row should stay one line tall — trimming, not wrapping, " +
+                $"absorbs the overflow now — the row is {row.ActualHeight}px against a {lineHeight}px line");
+
+            Assert.Equal(text.Text, text.ToolTip as string);
         }
         finally { Cleanup(win, history, dbPath); }
     });

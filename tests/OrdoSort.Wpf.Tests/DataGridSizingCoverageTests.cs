@@ -36,18 +36,18 @@ namespace OrdoSort.Wpf.Tests;
 ///    it holds for windows nobody has written a builder for — which is
 ///    exactly the population that keeps shipping broken.
 ///
-/// 3. <see cref="EveryStarDataGridTextColumnWrapsInsteadOfTrimming"/>
-///    (2026-08-29 fix-wave review, Item 2): AutoFitColumnTests'
-///    AssertWrapsInsideItsCap only ever runs on GOVERNED columns — the ones
-///    DataGridColumnCap.Track caps. The star filler beside them (ZipTools/
-///    MergePdfs' Item, PageCounts' File, MatchMerge's Becomes, BulkRename's
-///    New name) wraps too, and is the FILENAME half of the owner's "hiding
-///    text" report — the half AutoFitColumnTests' own message-column facts
-///    don't reach — but nothing measured it: a star column's rendered width
-///    is WPF's to resolve, not a cap this app enforces, so there is no
-///    MaxWidth-vs-ActualWidth fact that could ever catch a deleted
-///    TextWrapping setter the way AssertWrapsInsideItsCap catches one on a
-///    governed column. Scans the XAML instead, same recipe as fact 2 above.
+/// 3. <see cref="EveryStarDataGridTextColumnTrimsInsteadOfWrapping"/>
+///    (originally 2026-08-29 fix-wave review, Item 2, inverted by
+///    table-rules Rule 4): AutoFitColumnTests' AssertTrimsInsideItsCap only
+///    ever runs on GOVERNED columns — the ones DataGridColumnCap.Track
+///    caps. The star filler beside them (ZipTools/MergePdfs' Item,
+///    PageCounts' File, MatchMerge's Becomes, BulkRename's New name,
+///    StandardiseNames' Current name) needs the same guarantee — a star
+///    column's rendered width is WPF's to resolve, not a cap this app
+///    enforces, so there is no MaxWidth-vs-ActualWidth fact that could ever
+///    catch a re-added TextWrapping setter the way AssertTrimsInsideItsCap
+///    catches one missing on a governed column. Scans the XAML instead,
+///    same recipe as fact 2 above.
 ///
 /// What this suite deliberately does NOT do, said plainly rather than
 /// oversold: it does not measure anything. It cannot tell you a column is the
@@ -292,33 +292,38 @@ public class DataGridSizingCoverageTests
     }
 
     /// <summary>See this file's own class doc, fact 3, for why this exists:
-    /// AssertWrapsInsideItsCap (AutoFitColumnTests) proves a GOVERNED column
-    /// wraps, but never runs on the star filler beside it, and a star
+    /// AssertTrimsInsideItsCap (AutoFitColumnTests) proves a GOVERNED column
+    /// trims, but never runs on the star filler beside it, and a star
     /// column's rendered width is WPF's to resolve rather than a cap this
     /// app assigns — so there is no MaxWidth-vs-ActualWidth fact that could
-    /// ever notice a deleted TextWrapping setter on one. This reads the XAML
-    /// instead, the same recipe <see cref="EveryStarColumnDeclaresItsOwnFloor"/>
+    /// ever notice a re-added TextWrapping setter on one. This reads the
+    /// XAML instead, the same recipe <see cref="EveryStarColumnDeclaresItsOwnFloor"/>
     /// already uses above, so it holds for every window regardless of
     /// whether anyone has written it a builder.
     ///
-    /// FilenameListWindow and TriageWindow are explicit, commented
-    /// exemptions, not gaps: FilenameListWindow's "File name" star column
-    /// deliberately still trims (this class's own KnownUncovered entry above
-    /// records why that window was left out of DataGridColumnCap's autofit
-    /// rule entirely — its floors already overflow at its own MinWidth, a
-    /// decision for the owner, not a defect here). TriageWindow builds its
-    /// roster columns — including its own star filler — in code
-    /// (TriageWindow.xaml.cs's ComputeRosterColumnCap overload), not XAML, so
-    /// there is no <c>&lt;DataGridTextColumn&gt;</c> for this XAML-only scan
-    /// to find there at all; the exemption is documentation, not a hole the
-    /// scan silently steps around.</summary>
+    /// Table-rules Rule 4 inverted this fact's own rule (every star column
+    /// used to have to WRAP; now none may) and, with it, retired
+    /// FilenameListWindow's old exemption here: that window's "File name"
+    /// star column already trimmed rather than wrapped under the OLD rule
+    /// (this class's own KnownUncovered entry above records why the window
+    /// was left out of DataGridColumnCap's autofit rule entirely — its
+    /// floors already overflow at its own MinWidth), which made it an
+    /// exception then and makes it an ordinary, already-compliant window
+    /// now — nothing left to exempt it from.
+    ///
+    /// TriageWindow remains the one genuine exemption: it builds its roster
+    /// columns — including its own star filler — in code
+    /// (TriageWindow.xaml.cs's ComputeRosterColumnCap overload), not XAML,
+    /// so there is no <c>&lt;DataGridTextColumn&gt;</c> for this XAML-only
+    /// scan to find there at all; the exemption is documentation, not a hole
+    /// the scan silently steps around.</summary>
     [Fact]
-    public void EveryStarDataGridTextColumnWrapsInsteadOfTrimming()
+    public void EveryStarDataGridTextColumnTrimsInsteadOfWrapping()
     {
         // Captures the WHOLE element, opening tag through closing tag, not
         // just the opening tag's attributes the way EveryStarColumnDeclaresItsOwnFloor's
-        // columnPattern does above — TextWrapping/TextTrimming live in a
-        // nested ElementStyle, not as attributes on the column itself, so the
+        // columnPattern does above — TextWrapping lives in a nested
+        // ElementStyle, not as an attribute on the column itself, so the
         // scan needs the element's body, not just its start tag.
         var starTextColumnPattern = new Regex(
             @"<DataGridTextColumn\b[^>]*Width=""\*""[^>]*>(.*?)</DataGridTextColumn>", RegexOptions.Singleline);
@@ -336,8 +341,8 @@ public class DataGridSizingCoverageTests
 
         foreach (var window in windowTypes.Where(XamlHasDataGrid))
         {
-            // See this fact's own doc comment for why these two are exempt.
-            if (window is "FilenameListWindow" or "TriageWindow") continue;
+            // See this fact's own doc comment for why TriageWindow alone is exempt.
+            if (window is "TriageWindow") continue;
 
             foreach (Match column in starTextColumnPattern.Matches(XamlOf(window)))
             {
@@ -345,17 +350,22 @@ public class DataGridSizingCoverageTests
                 var header = Regex.Match(column.Value, @"Header=""([^""]*)""");
                 var label = $"{window}: {(header.Success ? header.Groups[1].Value : "<no header>")}";
 
-                var wraps = body.Contains("Property=\"TextWrapping\" Value=\"Wrap\"", StringComparison.Ordinal);
-                var trims = body.Contains("Property=\"TextTrimming\"", StringComparison.Ordinal);
-
-                if (!wraps) offenders.Add($"{label} (no TextWrapping=\"Wrap\" setter)");
-                else if (trims) offenders.Add($"{label} (still declares a TextTrimming setter)");
+                // Not a TextTrimming presence check: table-rules Rule 4 moved
+                // trimming onto GridCellText's shared BasedOn base (Theme/
+                // Styles.xaml), so a compliant column's own XAML no longer
+                // declares TextTrimming locally at all — checking for its
+                // ABSENCE here would flag every column in the app, which is
+                // exactly the false positive this rewrite exists to avoid.
+                // The one thing still checkable at the source level is a
+                // REGRESSION back to wrapping.
+                if (body.Contains("Property=\"TextWrapping\" Value=\"Wrap\"", StringComparison.Ordinal))
+                    offenders.Add($"{label} (still declares TextWrapping=\"Wrap\")");
             }
         }
 
         Assert.True(offenders.Count == 0,
-            "these star (filler) DataGridTextColumns must wrap instead of trim — a name that gives "
-            + "way belongs on a second line, not behind an ellipsis (2026-08-29): "
+            "these star (filler) DataGridTextColumns must trim instead of wrap (table-rules Rule 4 — "
+            + "cut-off text reaches a tooltip on hover, and every row stays a uniform height): "
             + string.Join(" · ", offenders));
     }
 }

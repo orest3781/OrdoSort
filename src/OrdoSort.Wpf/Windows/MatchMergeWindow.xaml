@@ -182,7 +182,8 @@
                     <DataGrid.Columns>
                         <!-- File: content-sized; DataGridColumnCap gives it its
                              content width when that fits and a proportional,
-                             wrapped share when it doesn't (2026-08-29). Capped
+                             trimmed share (table-rules Rule 4 — used to say
+                             "wrapped" here) when it doesn't. Capped
                              rather than made the filler: this is the SOURCE
                              filename — whatever a scanner or a person named
                              it, the least predictable string in the row —
@@ -200,9 +201,7 @@
                                  comment for the bug this closes (measured
                                  1.10:1 dark before it). -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
-                                    <Setter Property="TextWrapping" Value="Wrap" />
-                                </Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
                         <!-- Becomes: the filler (Width="*", MinWidth="120" —
@@ -215,19 +214,19 @@
                              DataGridColumnCap's split: when the columns
                              can't all have their content width it gets a
                              proportional share, never under this floor, and
-                             wraps. -->
+                             trims with an ellipsis (table-rules Rule 4 —
+                             used to wrap). -->
                         <DataGridTextColumn Header="Becomes" Binding="{Binding Becomes}"
                                             Width="*" MinWidth="120">
                             <!-- BasedOn GridCellTextSelectionAware — same reasoning as File above. -->
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
-                                    <Setter Property="TextWrapping" Value="Wrap" />
-                                </Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
                         <!-- Note: content-sized; DataGridColumnCap gives it its
                              content width when that fits and a proportional,
-                             wrapped share when it doesn't (2026-08-29). Was a
+                             trimmed share (table-rules Rule 4 — used to say
+                             "wrapped" here) when it doesn't. Was a
                              fixed 240px regardless of what it held; the status
                              phrases it actually carries (MatchMergeViewModel.
                              Refresh, e.g. "no roster match", "3 candidates —
@@ -248,7 +247,6 @@
                                  comment in Theme/Styles.xaml. -->
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                    <Setter Property="TextWrapping" Value="Wrap" />
                                     <Style.Triggers>
                                         <!-- status-colour-vocabulary plan, Task 2 Step 2:
                                              the working replacement for the dead RowStyle

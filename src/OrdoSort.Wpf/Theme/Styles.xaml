@@ -1671,6 +1671,13 @@
         <Setter Property="GridLinesVisibility" Value="Horizontal" />
     </Style>
 
+    <!-- HorizontalContentAlignment="Left" (table-rules, Rule 1): every column
+         header in the app aligns left, no exceptions — the owner's own
+         instruction covers even a column that would have a "genuine reason"
+         to differ (a numeric column, say). Made explicit here rather than
+         left to whatever WPF's stock DataGridColumnHeader control template
+         happens to default to, so the rule is a real, testable declaration
+         instead of an accident this file never actually decided. -->
     <Style TargetType="DataGridColumnHeader">
         <Setter Property="Background" Value="{DynamicResource Theme.WindowBg}" />
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
@@ -1678,10 +1685,16 @@
         <Setter Property="BorderThickness" Value="0,0,1,1" />
         <Setter Property="Padding" Value="8,6" />
         <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
     </Style>
 
+    <!-- Padding "12,4" (table-rules, Rule 2): horizontal only, left at "8,4"
+         until now — 12px on each side of a cell puts 24px between the text
+         in two neighbouring columns, so words in adjacent columns never
+         visually touch. The vertical 4 is untouched; this is a horizontal
+         gap, not a taller row. -->
     <Style TargetType="DataGridCell">
-        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="Padding" Value="12,4" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="Background" Value="Transparent" />
@@ -1720,11 +1733,35 @@
          highlight.
 
          BasedOn the app-level implicit TextBlock style (same Theme.Text
-         default every other TextBlock in the app gets) — TextTrimming/
-         ToolTip plumbing only. NO selection-contrast trigger lives here;
+         default every other TextBlock in the app gets), plus three more
+         Setters every DataGrid cell in the app now shares (table-rules):
+         HorizontalAlignment="Left" (Rule 1 — belt-and-braces alongside
+         DataGridColumnHeader's own HorizontalContentAlignment above; a cell
+         whose ElementStyle sets no alignment of its own already rendered
+         left by TextBlock's own default, but this makes the rule a real,
+         checkable declaration rather than an accident this file happened
+         to produce), TextTrimming="CharacterEllipsis" (Rule 4 — trims
+         instead of wrapping; TextWrapping is no longer set anywhere in
+         this style precisely because trimming is now the default every
+         cell gets unless a column opts back into wrapping itself, which
+         only the star filler columns still forbidden by
+         DataGridSizingCoverageTests' EveryStarDataGridTextColumnTrimsInsteadOfWrapping
+         from doing so), and views:TrimmedTextTooltip.Enabled="True" (Rule
+         4's other half — a tooltip of the cell's own full text, but only
+         once CharacterEllipsis has actually trimmed it; see that class's
+         own doc comment for why WPF's TextBlock has no IsTextTrimmed
+         property to lean on instead, and for the two columns — ZipTools/
+         MergePdfs/PageCounts' own full-PATH tooltip, which shows different
+         text than the cell displays, not a repeat of it — that opt back
+         out with their own Enabled="False" and keep their existing
+         ToolTip Setter instead). NO selection-contrast trigger lives here;
          see GridCellTextSelectionAware immediately below for that, and for
          which columns use which key and why. -->
-    <Style x:Key="GridCellText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}" />
+    <Style x:Key="GridCellText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        <Setter Property="views:TrimmedTextTooltip.Enabled" Value="True" />
+    </Style>
 
     <!-- GridCellTextSelectionAware: GridCellText plus the ONE trailing
          DataTrigger that reverts a cell's TextBlock to Theme.AccentText once

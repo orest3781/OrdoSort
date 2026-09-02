@@ -1,6 +1,7 @@
 <Window x:Class="OrdoSort.Wpf.Windows.PageCountsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:OrdoSort.Wpf.Views"
         Title="OrdoSort — PDF page counts" Width="700" Height="560" MinWidth="580" MinHeight="440"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False" AllowDrop="True"
         DragOver="OnDragOver" Drop="OnDrop"
@@ -78,8 +79,10 @@
                              the filename down to WPF's 20px default. 180 is the
                              app's existing floor for a filename column. Since
                              2026-08-29 the floor is this column's share floor in
-                             DataGridColumnCap's proportional split, and the name
-                             wraps rather than trims when it gives way. -->
+                             DataGridColumnCap's proportional split; the name
+                             used to wrap rather than trim when it gave way,
+                             reversed app-wide by table-rules Rule 4 — it trims
+                             with an ellipsis now, like every other cell. -->
                         <DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="*" MinWidth="180">
                             <!-- BasedOn GridCellTextSelectionAware (Theme/
                                  Styles.xaml), not plain GridCellText or the
@@ -95,35 +98,50 @@
                                  ranged 1.26:1-2.14:1 across every scheme — this
                                  window shipped with the exact selection-contrast
                                  bug GridCellTextSelectionAware exists to
-                                 prevent, just never switched to it. -->
+                                 prevent, just never switched to it.
+                                 TrimmedTextTooltip.Enabled is turned back off
+                                 (table-rules Rule 4): this cell's own ToolTip
+                                 deliberately shows the row's full PATH, not a
+                                 repeat of the trimmed filename — a genuinely
+                                 different field, so it keeps its own Setter
+                                 rather than the shared trimmed-only one, which
+                                 would otherwise silently take over ToolTip for
+                                 this cell (its own Enabled default is True). -->
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
-                                    <Setter Property="TextWrapping" Value="Wrap" />
+                                    <Setter Property="views:TrimmedTextTooltip.Enabled" Value="False" />
                                     <Setter Property="ToolTip" Value="{Binding Path}" />
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Pages: content-sized and right-aligned — a column of
-                             numbers reads fastest lined up on the ones place.
-                             Blank for a row that's still Pending or that
-                             couldn't be counted at all (Note carries the
-                             explanation for the latter). BasedOn
-                             GridCellTextSelectionAware for the same reason as
-                             File above — no status trigger of its own, and the
-                             same measured selection-contrast failure applied
-                             here too before this fix (a selected row's page
-                             count is just as unreadable as its filename would
-                             have been). -->
+                        <!-- Pages: content-sized. Used to be right-aligned — a
+                             column of numbers reads fastest lined up on the
+                             ones place — but table-rules Rule 1 is explicit
+                             that every column aligns left with no exceptions,
+                             numeric columns named as the example of a
+                             "genuine reason" that still doesn't win. Left-
+                             aligned now, like every other column in the app;
+                             GridCellTextSelectionAware's own default already
+                             gets it there, so no ElementStyle override is
+                             needed for alignment at all any more. Blank for a
+                             row that's still Pending or that couldn't be
+                             counted at all (Note carries the explanation for
+                             the latter). BasedOn GridCellTextSelectionAware
+                             for the same reason as File above — no status
+                             trigger of its own, and the same measured
+                             selection-contrast failure applied here too
+                             before that fix (a selected row's page count is
+                             just as unreadable as its filename would have
+                             been). -->
                         <DataGridTextColumn Header="Pages" Binding="{Binding Pages}" Width="Auto">
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
-                                    <Setter Property="HorizontalAlignment" Value="Right" />
-                                </Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
                         <!-- Note: content-sized; DataGridColumnCap gives it its
                              content width when that fits and a proportional,
-                             wrapped share when it doesn't (2026-08-29); amber
+                             trimmed share (table-rules Rule 4 — used to say
+                             "wrapped" here) when it doesn't; amber
                              whenever a row couldn't be counted (PageCounts.Count
                              never puts anything else there) — the base Setter
                              below is amber, reset to plain text only for the
@@ -140,7 +158,6 @@
                                             Width="Auto">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
-                                    <Setter Property="TextWrapping" Value="Wrap" />
                                     <Setter Property="Foreground" Value="{DynamicResource Theme.StatusAmber}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding Note}" Value="">
