@@ -6,13 +6,21 @@ using System.Windows.Media;
 
 namespace OrdoSort.Wpf.Views;
 
-/// <summary>Autofit for a DataGrid's text columns: every column gets its
-/// content width when the total fits the grid, and when it doesn't, the
-/// shortfall is shared in proportion to content width — no column below
-/// its MinWidth — with the text in the columns that gave way wrapping onto
-/// extra lines (each column's own ElementStyle carries the TextWrapping).
-/// No horizontal scrollbar, nothing hidden behind an ellipsis, nothing
-/// for the user to readjust.
+/// <summary>Autofit for a DataGrid's text columns: every column gets the
+/// width most of its content needs when the total fits the grid, and when
+/// it doesn't, the shortfall is shared in proportion to content width — no
+/// column below its MinWidth, and none below its own header. A column takes
+/// the 80th percentile of its content rather than its widest cell, so one
+/// very long value cannot drag it wide at every other column's expense.
+/// Content that still doesn't fit is trimmed with an ellipsis and carries
+/// its full text as a tooltip (GridCellText's shared Setters, plus
+/// TrimmedTextTooltip) — so nothing is lost, it is one hover away. No
+/// horizontal scrollbar, nothing for the user to readjust.
+///
+/// Cells used to WRAP instead, which is what this paragraph described until
+/// the table-rules change of 2026-09-02: the owner asked for the opposite
+/// once one outlier filename had widened a column too far, and uniform row
+/// heights turned out to be half of what "janky" meant.
 ///
 /// Until 2026-08-29 this class capped the message column at whatever was
 /// left after the name column's floor, and the name column got the
