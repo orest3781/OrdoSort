@@ -206,6 +206,37 @@ public class WindowOverflowTests
             return (new SettingsWindow(vm), null);
         }, MinExamined: 245, ProbeEveryTab: true),   // 326 measured
 
+        // Item A (table-rules review): the one window of fifteen missing from
+        // this registry — ZipToolsWindow/MergePdfsWindow/PageCountsWindow,
+        // its own closest siblings, were already covered. Two real files,
+        // plus a missing path and a case-only duplicate in the SAME add, so
+        // AddNote reports a genuinely long "N added · N ignored (...)" note —
+        // wide enough to hit its own 240px MaxWidth cap, the worst case this
+        // probe needs, not a short note that would under-test the row.
+        // AddFilesAsync is real, not stubbed: AddNote's setter is private
+        // (StandardiseNamesViewModel.cs), so driving the real add flow is the
+        // only way to seed it — the same reasoning
+        // StandardiseNamesViewModelTests.AddNotePinsWhatTheDropContained
+        // already established. InlineWorkScheduler keeps every awaited step
+        // synchronous, so blocking on the Task here (TriageWindow's own
+        // ShowCurrentAsync().GetAwaiter().GetResult() pattern, below) never
+        // risks a deadlock.
+        ["StandardiseNamesWindow"] = new(580, 700, 420, 520, () =>
+        {
+            var dir = new TempDir();
+            var first = dir.File("smith, john_A12345.pdf");
+            var second = dir.File("jones-report.pdf");
+            var missing = Path.Combine(dir.Path, "does-not-exist-anymore.pdf");
+            var duplicate = Path.Combine(dir.Path, "SMITH, JOHN_A12345.PDF");   // case-only dup of `first`
+            var dialogs = new FakeDialogs();
+            dialogs.DateAnswers.Enqueue("20260115");
+            var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+#pragma warning disable xUnit1031 // safe: InlineWorkScheduler runs every awaited step synchronously
+            vm.AddFilesAsync(new[] { first, second, missing, duplicate }).GetAwaiter().GetResult();
+#pragma warning restore xUnit1031
+            return (new StandardiseNamesWindow(vm), () => dir.Dispose());
+        }, MinExamined: 15),   // 19 measured
+
         ["TriageWindow"] = new(900, 1150, 560, 720, () =>
         {
             var item = new MatchMerge.MatchResult(@"C:\inbox\doc.pdf", "suggested", "SMITH", "JOHN",
