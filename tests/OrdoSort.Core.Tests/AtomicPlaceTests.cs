@@ -35,6 +35,7 @@ public class AtomicPlaceTests : IDisposable
     public void Dispose()
     {
         AtomicPlace.BeforeAttempt = null;   // process-wide seam — never leak it to another test
+        AtomicPlace.Sleep = Thread.Sleep;   // ditto — restore the real sleep
         try { Directory.Delete(_dir, true); } catch { /* best effort */ }
     }
 
@@ -211,6 +212,41 @@ public class AtomicPlaceTests : IDisposable
         Assert.Empty(StrayTempFiles());
     }
 
+    /// <summary>The regression this guards against: Place used to re-run
+    /// writeTemp on every attempt, even once the write had already landed
+    /// and only the MOVE needed retrying. Harmless for Config's
+    /// File.WriteAllText, but Zipper's writeTemp rebuilds the whole archive
+    /// and PdfMerge's re-saves the document — expensive at best, and for
+    /// PdfMerge a second Save on the same instance was never proven safe to
+    /// call at all. Once the write has succeeded, a move-only retry must
+    /// reuse it.</summary>
+    [Fact]
+    public void AMovePhaseRetryDoesNotRerunTheWrite()
+    {
+        var dest = Dest("config.json");
+        File.WriteAllText(dest, "old");
+
+        var holder = new FileStream(dest, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var attemptsSeen = new List<int>();
+        AtomicPlace.BeforeAttempt = (path, attempt) =>
+        {
+            if (path != dest) return;
+            attemptsSeen.Add(attempt);
+            if (attempt == 2) holder.Dispose();
+        };
+        var writeCalls = 0;
+
+        Assert.True(AtomicPlace.TryReplace(dest, tmp =>
+        {
+            writeCalls++;
+            File.WriteAllText(tmp, "new");
+        }, out _));
+
+        Assert.Equal("new", File.ReadAllText(dest));
+        Assert.True(attemptsSeen.Count > 1, "it should have taken more than one attempt to land");
+        Assert.Equal(1, writeCalls);   // the move retried; the write did not
+    }
+
     // ---------------------------------------------------------- create-new
 
     [Fact]
@@ -247,9 +283,11 @@ public class AtomicPlaceTests : IDisposable
 
     /// <summary>A peer holding the destination is the answer, not a transient
     /// condition to wait out — so this must not spend the retry budget
-    /// discovering that.</summary>
+    /// discovering that. (Named for that one case, not for create-only as a
+    /// whole: CreateNewRidesOutATransientMoveFailureThatIsNotAPeerWinning,
+    /// below, is the same method retrying for a different reason.)</summary>
     [Fact]
-    public void CreateNewNeverRetries()
+    public void CreateNewSpendsNoRetryBudgetWhenAPeerWins()
     {
         var dest = Dest("box-labels.json");
         File.WriteAllText(dest, "already here");
@@ -260,6 +298,37 @@ public class AtomicPlaceTests : IDisposable
 
         Assert.Equal(1, attempts);
         Assert.Equal("already here", File.ReadAllText(dest));
+    }
+
+    /// <summary>TryCreateNew's doc comment promises a transient failure that
+    /// ISN'T a peer winning gets the same retry TryReplace gets. Nothing
+    /// pinned that before this test: every create-only test passed even if
+    /// this path reverted to single-shot. Blocks the rename itself — there
+    /// is no destination yet for a peer to hold — by holding tmp open
+    /// without FileShare.Delete, the mechanism
+    /// ReplaceRidesOutADestinationHeldOpenBriefly uses on the destination.</summary>
+    [Fact]
+    public void CreateNewRidesOutATransientMoveFailureThatIsNotAPeerWinning()
+    {
+        var dest = Dest("box-labels.json");
+        FileStream? holder = null;
+        var attemptsSeen = new List<int>();
+        AtomicPlace.BeforeAttempt = (path, attempt) =>
+        {
+            if (path != dest) return;
+            attemptsSeen.Add(attempt);
+            if (attempt == 2) holder?.Dispose();
+        };
+
+        Assert.True(AtomicPlace.TryCreateNew(dest, tmp =>
+        {
+            File.WriteAllText(tmp, "mine");
+            holder = new FileStream(tmp, FileMode.Open, FileAccess.Read, FileShare.Read);
+        }, out var error));
+
+        Assert.Equal("", error);
+        Assert.Equal("mine", File.ReadAllText(dest));
+        Assert.True(attemptsSeen.Count > 1, "it should have taken more than one attempt to land");
     }
 
     // ------------------------------------------------------- the temp file
@@ -315,6 +384,28 @@ public class AtomicPlaceTests : IDisposable
         var totalMs = Enumerable.Range(0, AtomicPlace.Attempts - 1).Sum(AtomicPlace.DelayMs);
 
         Assert.InRange(totalMs, 2000, 3000);
+    }
+
+    /// <summary>DelayMs is pinned as a pure function
+    /// (TheRetryDelayEscalatesWithTheAttemptIndex) and its sum is pinned
+    /// (TheFullRetryBudgetTotalsTwoToThreeSeconds), but nothing observed the
+    /// loop actually calling it before this: mutate the production
+    /// Sleep(DelayMs(attempt)) to Thread.Sleep(10) and the whole suite still
+    /// passed. No wall-clock assertion — this records what the loop asks
+    /// the clock for, not how long it actually took.</summary>
+    [Fact]
+    public void TheLoopSleepsForExactlyWhatDelayMsComputesEachAttempt()
+    {
+        var dest = Dest("config.json");
+        File.WriteAllText(dest, "old");
+        using var holder = new FileStream(dest, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var slept = new List<int>();
+        AtomicPlace.Sleep = ms => slept.Add(ms);
+
+        Assert.False(AtomicPlace.TryReplace(dest, Writes("new"), out _));
+
+        var expected = Enumerable.Range(0, AtomicPlace.Attempts - 1).Select(AtomicPlace.DelayMs);
+        Assert.Equal(expected, slept);
     }
 }
 

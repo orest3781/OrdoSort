@@ -108,6 +108,16 @@ internal static class AtomicPlace
     /// unchanged.</summary>
     internal static Action<string, int>? BeforeAttempt;
 
+    /// <summary>Test seam over the actual sleep between attempts, defaulting
+    /// to <see cref="Thread.Sleep(int)"/>. The same shape, and the same
+    /// process-wide hazard, as <see cref="BeforeAttempt"/> — settable only
+    /// by tests, reset in Dispose. <see cref="DelayMs"/> is proven a pure
+    /// function on its own (a table of attempt -> delay), but nothing
+    /// observed <see cref="Place"/> actually calling it until this existed:
+    /// mutate the loop's <c>Sleep(DelayMs(attempt))</c> to
+    /// <c>Thread.Sleep(10)</c> and every other fact still passes.</summary>
+    internal static Action<int> Sleep = Thread.Sleep;
+
     /// <summary>For files where a newer replacement is always correct: the
     /// main config, the destinations/monitored-folders/alerts side files, and
     /// a zip Save-As where the user has already confirmed the overwrite. The
@@ -158,25 +168,45 @@ internal static class AtomicPlace
         string destination, Action<string> writeTemp, bool replaceExisting, out string error)
     {
         var tmp = $"{destination}.{Guid.NewGuid():N}.tmp";
+        var wroteTemp = false;
         for (var attempt = 0; ; attempt++)
         {
             BeforeAttempt?.Invoke(destination, attempt);
             try
             {
-                // Never build on a previous attempt's wreckage. The GUID
-                // means only THIS call could own tmp, so removing it first
-                // is always safe — and it means a writeTemp that appends, or
-                // otherwise doesn't truncate on its own, still starts every
-                // attempt from nothing instead of resurrecting a partial
-                // file an earlier transient failure left behind.
-                RemoveQuietly(tmp);
+                // Re-run the write only when this attempt doesn't already
+                // have a good one to move: the first attempt, a previous
+                // attempt whose WRITE itself failed (wroteTemp is still
+                // false, so its wreckage — if any — still needs clearing
+                // below), or the File.Exists fallback for a failed move that
+                // unexpectedly consumed tmp anyway. A move-phase retry must
+                // NOT reach writeTemp again: two of this module's three
+                // callers hand it real work (Zipper rebuilds the whole
+                // archive, PdfMerge re-saves the document), and PdfMerge's
+                // second Save on the same instance was never proven safe to
+                // invoke at all. File.Replace/File.Move are supposed to
+                // leave a failed attempt's source untouched — which is what
+                // lets a move-only retry reuse tmp below — but nothing
+                // guarantees that in every failure mode, hence the guard
+                // rather than trusting wroteTemp alone.
+                if (!wroteTemp || !File.Exists(tmp))
+                {
+                    // Never build on a previous attempt's wreckage. The GUID
+                    // means only THIS call could own tmp, so removing it
+                    // first is always safe — and it means a writeTemp that
+                    // appends, or otherwise doesn't truncate on its own,
+                    // still starts from nothing instead of resurrecting a
+                    // partial file an earlier transient failure left behind.
+                    RemoveQuietly(tmp);
 
-                // Inside the try (2026-08 audit finding 4b): a disk-full
-                // failure while writing used to strand a partial temp
-                // outside any cleanup path. Retried on the same terms as the
-                // move below — a dropped network session can interrupt
-                // either one, not just the move.
-                writeTemp(tmp);
+                    // Inside the try (2026-08 audit finding 4b): a disk-full
+                    // failure while writing used to strand a partial temp
+                    // outside any cleanup path. Retried on the same terms as
+                    // the move below — a dropped network session can
+                    // interrupt either one, not just the move.
+                    writeTemp(tmp);
+                    wroteTemp = true;
+                }
 
                 if (replaceExisting) MoveOverExisting(tmp, destination);
                 else MoveOnlyIfAbsent(tmp, destination);
@@ -198,7 +228,7 @@ internal static class AtomicPlace
                 error = ex.Message;
                 return false;
             }
-            Thread.Sleep(DelayMs(attempt));
+            Sleep(DelayMs(attempt));
         }
     }
 
