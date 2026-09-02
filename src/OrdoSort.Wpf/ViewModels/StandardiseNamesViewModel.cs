@@ -27,7 +27,7 @@ namespace OrdoSort.Wpf.ViewModels;
 /// successfully peels (a peel IS a rename) and Failed on one whose peel
 /// Execute call itself failed — the same two outcomes an add batch already
 /// reports, through the same vocabulary. A row BulkRename.PlanPeel holds at
-/// the four-segment floor or refuses for a collision is left exactly as it
+/// the one-segment floor or refuses for a collision is left exactly as it
 /// was — Unchanged and Skipped are never something a peel itself
 /// produces.</summary>
 public enum StandardiseRowStatus { Renamed, Unchanged, Skipped, Failed }
@@ -154,7 +154,7 @@ public sealed class StandardiseNamesViewModel : ObservableObject
     /// <summary>One row's Result/CurrentPath/Status immediately before a
     /// peel that actually renamed it — captured so UndoLastPeelAsync can put
     /// them back exactly, rather than trying to reverse-derive them from the
-    /// row's post-peel state (which the four-segment floor makes lossy: a
+    /// row's post-peel state (which the one-segment floor makes lossy: a
     /// peeled row's PRIOR name could itself have had any number of segments,
     /// not always one more than what is left).</summary>
     private sealed record PeelUndoEntry(
@@ -469,7 +469,7 @@ public sealed class StandardiseNamesViewModel : ObservableObject
 
     /// <summary>Turns one peel click's plans and outcomes into row updates,
     /// the running undo state, and the status line — ApplyBatchResult's own
-    /// counterpart for Remove last segment. A held row (PlanPeel's four-
+    /// counterpart for Remove last segment. A held row (PlanPeel's one-
     /// segment floor) or a refused one (its collision rule) is left
     /// completely untouched, per the brief: nothing happened to it, so
     /// nothing about its row changes. A row Execute itself failed to move
@@ -492,7 +492,7 @@ public sealed class StandardiseNamesViewModel : ObservableObject
 
             if (!plan.Changed)
             {
-                // PlanPeel's own doc comment: the four-segment floor and a
+                // PlanPeel's own doc comment: the one-segment floor and a
                 // refused collision are the ONLY two reasons it leaves a
                 // file untouched, so anything that isn't the floor's own
                 // Note is the collision refusal by elimination — no second
@@ -553,11 +553,11 @@ public sealed class StandardiseNamesViewModel : ObservableObject
             return $"Removed the last segment from {peeled} file{(peeled == 1 ? "" : "s")}.";
         if (peeled == 0 && failed == 0 && collided == 0)
             return atFloor == 1
-                ? "Already at four segments."
-                : $"All {atFloor} files were already at four segments.";
+                ? "Already at one segment."
+                : $"All {atFloor} files were already at one segment.";
 
         var parts = new List<string> { $"Removed the last segment from {peeled}" };
-        if (atFloor > 0) parts.Add($"{atFloor} already at four segments");
+        if (atFloor > 0) parts.Add($"{atFloor} already at one segment");
         if (collided > 0) parts.Add($"{collided} name{(collided == 1 ? "" : "s")} already taken");
         if (failed > 0) parts.Add($"{failed} failed");
         return string.Join("; ", parts) + ".";

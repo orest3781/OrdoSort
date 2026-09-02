@@ -474,8 +474,9 @@ public class PlanPeelFsTests : IDisposable
 
     /// <summary>The owner's own worked example, verbatim, both clicks. Three
     /// files with different segment counts; one click removes one segment
-    /// from each; the second click holds the one that reached exactly four
-    /// segments on the first click.</summary>
+    /// from each. With the floor now at one segment, nothing is held on the
+    /// second click either — DOE-JANE-B9 (four segments after click one)
+    /// keeps peeling right along with the other two.</summary>
     [Fact]
     public void TheOwnersWorkedExampleBothClicks()
     {
@@ -495,25 +496,68 @@ public class PlanPeelFsTests : IDisposable
         Assert.True(click2[0].Changed);
         Assert.Equal("20260115-SMITH-JOHN-A12345.pdf", Path.GetFileName(click2[0].Target));
 
-        Assert.False(click2[1].Changed);   // DOE-JANE-B9: already at four segments, held
-        Assert.Equal(paths2[1], click2[1].Target);
-        Assert.Equal(PeelAtFloorNote, click2[1].Note);
+        Assert.True(click2[1].Changed);   // DOE-JANE-B9: four segments is well above the new one-segment floor
+        Assert.Equal("20260115-DOE-JANE.pdf", Path.GetFileName(click2[1].Target));
 
         Assert.True(click2[2].Changed);
         Assert.Equal("20260115-LEE-SAM-C77-SCAN.pdf", Path.GetFileName(click2[2].Target));
     }
 
     [Theory]
-    [InlineData("A-B-C-D.pdf")]        // exactly four: held
-    [InlineData("A-B-C.pdf")]          // fewer than four: held
-    [InlineData("A.pdf")]              // one segment: held
-    public void AStemAtOrBelowFourSegmentsIsHeldUntouched(string name)
+    [InlineData("A.pdf")]              // one segment, no dash at all: at the floor already
+    [InlineData("REPORT.pdf")]         // same shape, a realistic no-dash stem
+    public void AStemAtOneSegmentIsHeldUntouched(string name)
     {
         var src = Touch(name);
         var pr = PlanPeel(new[] { src })[0];
         Assert.False(pr.Changed);
         Assert.Equal(src, pr.Target);
         Assert.Equal(PeelAtFloorNote, pr.Note);
+    }
+
+    /// <summary>The old four-segment floor is gone: a stem that used to be
+    /// held here now keeps peeling, one segment per call, same as any other
+    /// stem above the (new, much lower) floor.</summary>
+    [Theory]
+    [InlineData("A-B-C-D.pdf", "A-B-C.pdf")]   // held under the old floor; peels now
+    [InlineData("A-B-C.pdf", "A-B.pdf")]       // held under the old floor; peels now
+    public void AStemThatUsedToBeHeldAtTheOldFourSegmentFloorNowPeels(string name, string expected)
+    {
+        var src = Touch(name);
+        var pr = PlanPeel(new[] { src })[0];
+        Assert.True(pr.Changed);
+        Assert.Equal(expected, Path.GetFileName(pr.Target));
+        Assert.Equal("", pr.Note);
+    }
+
+    /// <summary>The brief's own example, run to the end: "20260115-SMITH-
+    /// JOHN-A12345 can be reduced all the way to 20260115." Every call
+    /// removes one more segment; the fourth call reaches the one-segment
+    /// floor and holds.</summary>
+    [Fact]
+    public void RepeatedCallsPeelAllTheWayToOneSegmentThenHold()
+    {
+        var src = Touch("20260115-SMITH-JOHN-A12345.pdf");
+
+        var click1 = PlanPeel(new[] { src })[0];
+        Assert.True(click1.Changed);
+        Assert.Equal("20260115-SMITH-JOHN.pdf", Path.GetFileName(click1.Target));
+        var afterClick1 = Execute(new[] { click1 }, CollisionSuffixStyle.Dashed)[0].Final!;
+
+        var click2 = PlanPeel(new[] { afterClick1 })[0];
+        Assert.True(click2.Changed);
+        Assert.Equal("20260115-SMITH.pdf", Path.GetFileName(click2.Target));
+        var afterClick2 = Execute(new[] { click2 }, CollisionSuffixStyle.Dashed)[0].Final!;
+
+        var click3 = PlanPeel(new[] { afterClick2 })[0];
+        Assert.True(click3.Changed);
+        Assert.Equal("20260115.pdf", Path.GetFileName(click3.Target));
+        var afterClick3 = Execute(new[] { click3 }, CollisionSuffixStyle.Dashed)[0].Final!;
+
+        var click4 = PlanPeel(new[] { afterClick3 })[0];
+        Assert.False(click4.Changed);
+        Assert.Equal(afterClick3, click4.Target);
+        Assert.Equal(PeelAtFloorNote, click4.Note);
     }
 
     [Fact]
@@ -590,7 +634,7 @@ public class PlanPeelFsTests : IDisposable
     public void TheFloorNoteAndTheCollisionNoteAreDistinctText()
     {
         Touch("A-B-C-D.pdf");
-        var atFloor = Touch("W-X-Y-Z.pdf");
+        var atFloor = Touch("SOLO.pdf");
         var collides = Touch("A-B-C-D-EXTRA.pdf");
 
         var plans = PlanPeel(new[] { atFloor, collides });

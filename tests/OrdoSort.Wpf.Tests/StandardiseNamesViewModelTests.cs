@@ -621,24 +621,22 @@ public class StandardiseNamesViewModelTests : IDisposable
         Assert.Equal("20260115-SMITH-JOHN-A12345.pdf", rowA.Result);
         Assert.Equal("20260115-LEE-SAM-C77-SCAN.pdf", rowC.Result);
 
-        // rowB is held at exactly four segments — completely untouched by
-        // click 2, so it keeps click 1's own Result/Status, not reset to
-        // anything new.
-        Assert.Equal("20260115-DOE-JANE-B9.pdf", rowB.Result);
+        // The floor is now one segment, not four: rowB keeps peeling right
+        // past where it used to be held, exactly like rowA and rowC.
+        Assert.Equal("20260115-DOE-JANE.pdf", rowB.Result);
         Assert.Equal(StandardiseRowStatus.Renamed, rowB.Status);
 
-        Assert.Contains("Removed the last segment from 2", vm.Status);
-        Assert.Contains("1 already at four segments", vm.Status);
+        Assert.Equal("Removed the last segment from 3 files.", vm.Status);
 
         Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115-SMITH-JOHN-A12345.pdf")));
-        Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115-DOE-JANE-B9.pdf")));
+        Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115-DOE-JANE.pdf")));
         Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115-LEE-SAM-C77-SCAN.pdf")));
     }
 
     [Fact]
-    public async Task ARowAtTheFourSegmentFloorIsHeldAndReportedSeparately()
+    public async Task ARowAtTheOneSegmentFloorIsHeldAndReportedSeparately()
     {
-        var src = _dir.File("20260115-SMITH-JOHN-A12.pdf");   // already 4 segments, matches the date
+        var src = _dir.File("20260115.pdf");   // already one segment, matches the date
         var dialogs = new FakeDialogs();
         dialogs.DateAnswers.Enqueue("20260115");
         var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
@@ -655,13 +653,51 @@ public class StandardiseNamesViewModelTests : IDisposable
         Assert.Equal(pathBefore, row.CurrentPath);
         Assert.Equal(StandardiseRowStatus.Unchanged, row.Status);
         Assert.True(File.Exists(src));                 // file never moved
-        Assert.Equal("Already at four segments.", vm.Status);
+        Assert.Equal("Already at one segment.", vm.Status);
         // Fix round 1, item 10: a trailing CanExecute(null) == false here
         // used to be asserted too, but it is true BEFORE this act as well
         // (the only row ever added was this one, never renamed) — proves
         // nothing about the peel itself. ANoOpPeelClickDoesNotDisarmUndoForAnEarlierRealPeel
         // below is the real, non-vacuous fact for "a no-op peel leaves Undo
         // alone," seeded so CanExecute starts true.
+    }
+
+    /// <summary>The brief's own example, driven through the full view
+    /// model all the way to the end: "20260115-SMITH-JOHN-A12345 can be
+    /// reduced all the way to 20260115." Three real clicks each strip one
+    /// segment; a fourth reaches the one-segment floor and holds — the same
+    /// fact ARowAtTheOneSegmentFloorIsHeldAndReportedSeparately proves in
+    /// isolation, here reached by repeated peeling instead of a seeded
+    /// fixture.</summary>
+    [Fact]
+    public async Task RepeatedClicksPeelAllTheWayDownToOneSegmentThenHold()
+    {
+        var src = _dir.File("20260115-SMITH-JOHN-A12345.pdf");
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { src });
+        var row = vm.Results.Single();
+
+        vm.SelectedRows = new[] { row };
+        await vm.PeelSelectedAsync();
+        Assert.Equal("20260115-SMITH-JOHN.pdf", row.Result);
+
+        vm.SelectedRows = new[] { row };
+        await vm.PeelSelectedAsync();
+        Assert.Equal("20260115-SMITH.pdf", row.Result);
+
+        vm.SelectedRows = new[] { row };
+        await vm.PeelSelectedAsync();
+        Assert.Equal("20260115.pdf", row.Result);
+        Assert.Equal(StandardiseRowStatus.Renamed, row.Status);
+        Assert.True(File.Exists(Path.Combine(_dir.Path, "20260115.pdf")));
+
+        // a fourth click: the floor holds.
+        vm.SelectedRows = new[] { row };
+        await vm.PeelSelectedAsync();
+        Assert.Equal("20260115.pdf", row.Result);
+        Assert.Equal("Already at one segment.", vm.Status);
     }
 
     /// <summary>The second rule: a collision is refused, never countered —
@@ -886,13 +922,13 @@ public class StandardiseNamesViewModelTests : IDisposable
     [Fact]
     public async Task ANoOpPeelClickDoesNotDisarmUndoForAnEarlierRealPeel()
     {
-        var atFloor = _dir.File("20260115-SMITH-JOHN-A12.pdf");   // already 4 segments
+        var atFloor = _dir.File("20260115.pdf");   // already one segment
         var peelable = _dir.File("A-B-C-D-EXTRA.pdf");
         var dialogs = new FakeDialogs();
         dialogs.DateAnswers.Enqueue("20260115");
         var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
         await vm.AddFilesAsync(new[] { atFloor, peelable });
-        var atFloorRow = vm.Results.Single(r => r.Current == "20260115-SMITH-JOHN-A12.pdf");
+        var atFloorRow = vm.Results.Single(r => r.Current == "20260115.pdf");
         var peelableRow = vm.Results.Single(r => r.Current == "A-B-C-D-EXTRA.pdf");
 
         vm.SelectedRows = new[] { peelableRow };
@@ -904,7 +940,7 @@ public class StandardiseNamesViewModelTests : IDisposable
         // The no-op click: only the at-floor row selected, held, nothing renamed.
         vm.SelectedRows = new[] { atFloorRow };
         await vm.PeelSelectedAsync();
-        Assert.Equal("Already at four segments.", vm.Status);
+        Assert.Equal("Already at one segment.", vm.Status);
 
         // Undo must still be armed, and must still reverse the FIRST peel.
         Assert.True(vm.UndoCommand.CanExecute(null));
@@ -1155,7 +1191,7 @@ public class StandardiseNamesViewModelTests : IDisposable
     [Fact]
     public async Task AMixedOutcomeBatchInOneClickAssignsEachResultToTheRightRow()
     {
-        var held = _dir.File("20260115-SMITH-JOHN-A12.pdf");   // already 4 segments
+        var held = _dir.File("20260115.pdf");   // already one segment
         var winner = _dir.File("P-Q-R-S-ALPHA.pdf");
         var loser = _dir.File("P-Q-R-S-BETA.pdf");              // collides with winner's peeled target
         var locked = _dir.File("M-N-O-P-Q.pdf");
@@ -1164,7 +1200,7 @@ public class StandardiseNamesViewModelTests : IDisposable
         var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
         await vm.AddFilesAsync(new[] { held, winner, loser, locked });
 
-        var heldRow = vm.Results.Single(r => r.Current == "20260115-SMITH-JOHN-A12.pdf");
+        var heldRow = vm.Results.Single(r => r.Current == "20260115.pdf");
         var winnerRow = vm.Results.Single(r => r.Current == "P-Q-R-S-ALPHA.pdf");
         var loserRow = vm.Results.Single(r => r.Current == "P-Q-R-S-BETA.pdf");
         var lockedRow = vm.Results.Single(r => r.Current == "M-N-O-P-Q.pdf");
@@ -1203,7 +1239,7 @@ public class StandardiseNamesViewModelTests : IDisposable
         Assert.NotEqual(loserResultBefore, lockedRow.Result);
 
         Assert.Contains("Removed the last segment from 1", vm.Status);
-        Assert.Contains("1 already at four segments", vm.Status);
+        Assert.Contains("1 already at one segment", vm.Status);
         Assert.Contains("1 name already taken", vm.Status);
         Assert.Contains("1 failed", vm.Status);
     }
@@ -1275,8 +1311,9 @@ public class StandardiseNamesViewModelTests : IDisposable
     {
         // Enough segments after tidying (6: date + A-B-C-D-EXTRA) that
         // PlanPeel actually attempts the peel rather than holding it at the
-        // floor — "smith, john.pdf" would tidy to only 3 segments and never
-        // even reach Execute, which would prove nothing about a FAILED peel.
+        // floor — a bare "20260115.pdf" would already BE the one-segment
+        // floor and never even reach Execute, which would prove nothing
+        // about a FAILED peel.
         var src = _dir.File("A-B-C-D-EXTRA.pdf");
         var dialogs = new FakeDialogs();
         dialogs.DateAnswers.Enqueue("20260115");
