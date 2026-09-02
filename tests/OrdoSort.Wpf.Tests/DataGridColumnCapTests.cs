@@ -1149,6 +1149,72 @@ public class DataGridColumnCapTests
         finally { g.Window.Close(); }
     });
 
+    /// <summary>Re-review finding: dragInProgress = false is the FIRST
+    /// statement of dragCompleted. Delete it and dragInProgress stays stuck
+    /// true forever after the FIRST drag anywhere in the window ever
+    /// completes — nothing else ever resets it — so Recalculate no-ops for
+    /// the REST OF THE WINDOW'S LIFE: every governed column stops
+    /// autofitting, silently, no exception.
+    ///
+    /// None of the facts above this one catch it. Each one drags a column
+    /// and then asserts about THAT SAME column — which dragCompleted has
+    /// just added to `pinned`, and a pinned column is excluded from
+    /// Recalculate's own `governed` set regardless of whether Recalculate
+    /// ever runs again or not. A completely no-op Recalculate (exactly what
+    /// a stuck-true flag produces) is indistinguishable from a correctly-
+    /// working one when the only thing being watched is the column that
+    /// just left the governed set either way.
+    ///
+    /// The only way to tell them apart: drag Note to completion through its
+    /// own real header Thumb (pinning it, same as the facts above), THEN
+    /// change something that should independently move a DIFFERENT,
+    /// still-governed, non-pinned column's cap — Extra is never dragged, so
+    /// it stays governed throughout. Shrinking the window is the stimulus:
+    /// with Note now a fixed claim rather than a shared participant, Extra
+    /// is the grid's only remaining governed column, so a meaningfully
+    /// narrower window must shrink Extra's own cap if, and only if,
+    /// Recalculate is still genuinely running. Well within any CI runner's
+    /// screen either way — 500px already passed, and this only goes
+    /// narrower.</summary>
+    [Fact]
+    public void RecalculateKeepsRunningForOtherColumnsAfterADragPinsADifferentOne() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var g = BuildPair(500, 40, new PairRow { Name = Ms(10), Note = Ms(60), Extra = "" });
+        try
+        {
+            ShowAndSettle(g.Window);
+
+            var noteHeader = FindAllDescendants<DataGridColumnHeader>(g.DataGrid).First(h => h.Column == g.Note);
+            var noteThumb = FindDescendant<Thumb>(noteHeader);
+            Assert.NotNull(noteThumb);
+            noteThumb!.RaiseEvent(new DragStartedEventArgs(0, 0));
+            g.Note.Width = new DataGridLength(250, DataGridLengthUnitType.Pixel);
+            noteThumb.RaiseEvent(new DragCompletedEventArgs(0, 0, false));
+
+            Assert.True(g.Note.Width.IsAbsolute && Math.Abs(g.Note.Width.Value - 250) < 0.5,
+                $"precondition: Note should be pinned at the 250px it was dragged to — got {g.Note.Width}");
+            var extraCapAfterPin = g.Extra.MaxWidth;
+
+            // The stimulus: a DIFFERENT change from the drag itself, well
+            // after DragCompleted's own tail Recalculate call has already
+            // run once — proving Recalculate keeps responding going
+            // forward, not just immediately after this one pin.
+            g.Window.Width = 300;
+            Settle(g.Window);
+
+            Assert.True(extraCapAfterPin - g.Extra.MaxWidth > 30,
+                $"Extra's cap should have shrunk meaningfully once the window narrowed — was " +
+                $"{extraCapAfterPin}px, now {g.Extra.MaxWidth}px. A stuck dragInProgress (dragCompleted's " +
+                "own reset deleted) freezes Recalculate for the rest of the window's life and would leave " +
+                "this number completely unchanged — the same final state a correctly-working Recalculate " +
+                "that simply excludes the now-pinned Note would also produce for NOTE itself, which is " +
+                "exactly why a fact that only watches the dragged column cannot tell the two apart, and " +
+                "this one watches Extra instead");
+        }
+        finally { g.Window.Close(); }
+    });
+
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
     {
         var count = VisualTreeHelper.GetChildrenCount(root);
