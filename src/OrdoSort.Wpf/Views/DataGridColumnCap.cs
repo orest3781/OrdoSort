@@ -360,17 +360,56 @@ internal static class DataGridColumnCap
         // handledEventsToo: nothing in this app's column templates marks
         // these handled today; a future template that did would silently
         // break the drag fix otherwise.
+        //
+        // Fix round 2 (review), two edges Rule 5's forced MinWidth (above)
+        // introduced. Edge 1: relaxing MaxWidth alone stops a drag from
+        // being clamped from ABOVE, but a blank-substituted column's
+        // MinWidth is a hard floor too — left untouched, the user could
+        // never drag such a column narrower than the width it had borrowed
+        // from its neighbour, where before Rule 5 existed the drag went all
+        // the way down to the 20px default. Relaxed back to the SAME
+        // declaredMinWidth this column's own floor computation already
+        // trusts (TrackCore, above) — not column.MinWidth read live, for
+        // the identical ratchet reason that dictionary exists at all. A
+        // column that is still genuinely blank and not under the user's
+        // cursor gets this floor forced right back up on the very next
+        // Recalculate pass (the wantedMinWidth branch there) — relaxing it
+        // here does not let Rule 5 stop working for anything except the
+        // column actually being dragged.
         var dragStarted = new DragStartedEventHandler((_, _) =>
         {
             foreach (var column in columns)
-                if (!pinned.Contains(column)) column.MaxWidth = double.PositiveInfinity;
+                if (!pinned.Contains(column))
+                {
+                    column.MaxWidth = double.PositiveInfinity;
+                    column.MinWidth = declaredMinWidth[column];
+                }
         });
         grid.AddHandler(Thumb.DragStartedEvent, dragStarted, true);
 
         var dragCompleted = new DragCompletedEventHandler((_, _) =>
         {
             foreach (var column in columns)
-                if (!pinned.Contains(column) && column.Width.IsAbsolute) pinned.Add(column);
+                if (!pinned.Contains(column) && column.Width.IsAbsolute)
+                {
+                    // Edge 2: Recalculate's own reset arm walks `governed`,
+                    // which excludes pinned columns by construction — so a
+                    // column pinned here while its MinWidth still held a
+                    // Rule 5 forced value (a Recalculate pass landing
+                    // between DragStarted and here still reads a still-
+                    // blank, not-yet-pinned column as governed and can
+                    // force it right back up, same as the relaxed MaxWidth
+                    // above would be) carried that stale floor for the
+                    // window's REST OF ITS LIFE — Recalculate never touches
+                    // a pinned column's MinWidth again to correct it, even
+                    // once real content later arrives. Pinning is the last
+                    // moment this class ever writes to the column's
+                    // MinWidth, so it is the last chance to put back its
+                    // own declared floor instead of whatever it happened to
+                    // be holding at that instant.
+                    pinned.Add(column);
+                    column.MinWidth = declaredMinWidth[column];
+                }
             Recalculate();
         });
         grid.AddHandler(Thumb.DragCompletedEvent, dragCompleted, true);
