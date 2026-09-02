@@ -109,14 +109,23 @@ internal static class AtomicPlace
     internal static Action<string, int>? BeforeAttempt;
 
     /// <summary>Test seam over the actual sleep between attempts, defaulting
-    /// to <see cref="Thread.Sleep(int)"/>. The same shape, and the same
-    /// process-wide hazard, as <see cref="BeforeAttempt"/> — settable only
-    /// by tests, reset in Dispose. <see cref="DelayMs"/> is proven a pure
-    /// function on its own (a table of attempt -> delay), but nothing
+    /// to <see cref="Thread.Sleep(int)"/>. <see cref="DelayMs"/> is proven a
+    /// pure function on its own (a table of attempt -> delay), but nothing
     /// observed <see cref="Place"/> actually calling it until this existed:
-    /// mutate the loop's <c>Sleep(DelayMs(attempt))</c> to
-    /// <c>Thread.Sleep(10)</c> and every other fact still passes.</summary>
-    internal static Action<int> Sleep = Thread.Sleep;
+    /// mutate the loop's <c>Sleep(destination, DelayMs(attempt))</c> to
+    /// <c>Thread.Sleep(10)</c> and every other fact still passes.
+    ///
+    /// Carries the destination for the exact reason <see
+    /// cref="BeforeAttempt"/> does (this field IS the same process-wide
+    /// hazard, settable only by tests, reset in Dispose): a recorder with
+    /// no way to filter cannot tell its own call's sleeps from another
+    /// test's. An earlier version of this seam was <c>Action&lt;int&gt;</c>
+    /// — delay only — and a test built on it passed alone and failed under
+    /// parallel load, picking up sleeps from whichever other class's
+    /// placement happened to retry at the same moment. The
+    /// <see cref="BeforeAttempt"/> tests already show the fix: filter by
+    /// destination, the same way every one of them does.</summary>
+    internal static Action<string, int> Sleep = (_, delayMs) => Thread.Sleep(delayMs);
 
     /// <summary>For files where a newer replacement is always correct: the
     /// main config, the destinations/monitored-folders/alerts side files, and
@@ -199,6 +208,22 @@ internal static class AtomicPlace
                     // partial file an earlier transient failure left behind.
                     RemoveQuietly(tmp);
 
+                    // This attempt's write is unproven until writeTemp
+                    // actually returns — cleared here, not just left at
+                    // whatever an EARLIER attempt's success last set it to.
+                    // Without this line wroteTemp stays true from a prior
+                    // success while this call throws partway through
+                    // (writeTemp is not itself atomic: a network stall mid-
+                    // File.WriteAllText, mid-Save, or mid-BuildArchive can
+                    // leave real, truncated bytes at tmp), and the NEXT
+                    // attempt's guard above would then see wroteTemp==true
+                    // and File.Exists(tmp)==true and skip straight to moving
+                    // those truncated bytes onto the destination — the exact
+                    // "bricked every station" failure this module exists to
+                    // prevent, just reached through the retry loop instead
+                    // of the original single write.
+                    wroteTemp = false;
+
                     // Inside the try (2026-08 audit finding 4b): a disk-full
                     // failure while writing used to strand a partial temp
                     // outside any cleanup path. Retried on the same terms as
@@ -228,7 +253,7 @@ internal static class AtomicPlace
                 error = ex.Message;
                 return false;
             }
-            Sleep(DelayMs(attempt));
+            Sleep(destination, DelayMs(attempt));
         }
     }
 

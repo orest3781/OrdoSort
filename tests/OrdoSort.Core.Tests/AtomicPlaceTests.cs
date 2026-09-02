@@ -34,8 +34,8 @@ public class AtomicPlaceTests : IDisposable
 
     public void Dispose()
     {
-        AtomicPlace.BeforeAttempt = null;   // process-wide seam — never leak it to another test
-        AtomicPlace.Sleep = Thread.Sleep;   // ditto — restore the real sleep
+        AtomicPlace.BeforeAttempt = null;                        // process-wide seam — never leak it to another test
+        AtomicPlace.Sleep = (_, delayMs) => Thread.Sleep(delayMs);   // ditto — restore the real sleep
         try { Directory.Delete(_dir, true); } catch { /* best effort */ }
     }
 
@@ -247,6 +247,52 @@ public class AtomicPlaceTests : IDisposable
         Assert.Equal(1, writeCalls);   // the move retried; the write did not
     }
 
+    /// <summary>The compound case the File.Exists(tmp) fallback exists to
+    /// handle, and the exact shape that breaks if wroteTemp is only ever
+    /// set true and never reset: a write succeeds, the move then fails and
+    /// (as far as Place can tell) consumes tmp, forcing a genuine rewrite —
+    /// and THAT rewrite fails partway, leaving known, truncated bytes
+    /// behind. AMovePhaseRetryDoesNotRerunTheWrite locks dest, not tmp, so
+    /// it never drives this branch; this test forces it directly by
+    /// deleting the captured tmp path from inside BeforeAttempt, standing
+    /// in for a move that failed and took tmp with it. Revert-proof against
+    /// the missing reset: without it, the next attempt sees a stale
+    /// wroteTemp==true together with the truncated leftovers now sitting at
+    /// tmp, skips the rewrite, and moves the truncated bytes onto the
+    /// destination — the exact "bricked every station" failure this module
+    /// exists to prevent.</summary>
+    [Fact]
+    public void ARewriteTriggeredByAConsumedTempNeverLandsATruncatedFile()
+    {
+        var dest = Dest("config.json");
+        File.WriteAllText(dest, "old");
+
+        var holder = new FileStream(dest, FileMode.Open, FileAccess.Read, FileShare.Read);
+        string? tmp = null;
+        AtomicPlace.BeforeAttempt = (path, attempt) =>
+        {
+            if (path != dest) return;
+            if (attempt == 1 && tmp is not null) File.Delete(tmp);   // stand in for a move that consumed it
+            if (attempt == 2) holder.Dispose();                       // let the eventual good write land
+        };
+        var calls = 0;
+
+        Assert.True(AtomicPlace.TryReplace(dest, t =>
+        {
+            tmp = t;
+            calls++;
+            if (calls == 2)
+            {
+                File.WriteAllText(t, "TRUNCATED");
+                throw new IOException("network stall mid-write");
+            }
+            File.WriteAllText(t, "good");
+        }, out _));
+
+        Assert.Equal("good", File.ReadAllText(dest));   // never the truncated attempt
+        Assert.Equal(3, calls);   // succeeded, forced to rewrite, failed partway, rewrote again
+    }
+
     // ---------------------------------------------------------- create-new
 
     [Fact]
@@ -390,9 +436,16 @@ public class AtomicPlaceTests : IDisposable
     /// (TheRetryDelayEscalatesWithTheAttemptIndex) and its sum is pinned
     /// (TheFullRetryBudgetTotalsTwoToThreeSeconds), but nothing observed the
     /// loop actually calling it before this: mutate the production
-    /// Sleep(DelayMs(attempt)) to Thread.Sleep(10) and the whole suite still
-    /// passed. No wall-clock assertion — this records what the loop asks
-    /// the clock for, not how long it actually took.</summary>
+    /// Sleep(destination, DelayMs(attempt)) to Thread.Sleep(10) and the
+    /// whole suite still passed. No wall-clock assertion — this records
+    /// what the loop asks the clock for, not how long it actually took.
+    ///
+    /// Filtered by destination like every BeforeAttempt test here, and for
+    /// the identical reason: Sleep is process-wide, and xUnit runs other
+    /// test classes' placements concurrently. An earlier version of this
+    /// test recorded through an unfiltered Action&lt;int&gt; and picked up
+    /// sleeps from whichever other class's retry happened to land in the
+    /// same window — passed alone, failed under parallel load.</summary>
     [Fact]
     public void TheLoopSleepsForExactlyWhatDelayMsComputesEachAttempt()
     {
@@ -400,7 +453,7 @@ public class AtomicPlaceTests : IDisposable
         File.WriteAllText(dest, "old");
         using var holder = new FileStream(dest, FileMode.Open, FileAccess.Read, FileShare.Read);
         var slept = new List<int>();
-        AtomicPlace.Sleep = ms => slept.Add(ms);
+        AtomicPlace.Sleep = (path, ms) => { if (path == dest) slept.Add(ms); };
 
         Assert.False(AtomicPlace.TryReplace(dest, Writes("new"), out _));
 
