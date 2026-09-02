@@ -165,11 +165,22 @@ namespace OrdoSort.Wpf.Views;
 /// only sizing is correct and still happens.
 ///
 /// A user's drag still wins: DragStarted relaxes every not-yet-pinned
-/// governed column so WPF's live clamp can't block the gesture;
-/// DragCompleted reads "Width became absolute" as "this one was dragged"
-/// and pins it for the window's lifetime — out of the governed set, in
-/// with the fixed claims. Track is idempotent per grid: a second call
-/// detaches the first call's handlers before subscribing its own.
+/// governed column's MaxWidth to no ceiling, and — where the routed
+/// event's own source resolves to the column actually under the cursor —
+/// that column's own MinWidth back to its declared floor, so a column
+/// Rule 5 (above) had floored at a borrowed width can still be dragged
+/// narrower than that floor (fix round 3, 2026-09-02 review). A
+/// `dragInProgress` flag (TrackCore) holds Recalculate off for the WHOLE
+/// gesture, not just until the next layout pass: LayoutUpdated fires after
+/// every layout pass anywhere in the app, and a drag's own DragDelta steps
+/// invalidate layout continuously, so without it a still-blank, still-
+/// unpinned column reads as governed on the very next pass and has its
+/// clamp forced straight back up before the gesture is anywhere near
+/// done. DragCompleted reads "Width became absolute" as "this one was
+/// dragged," turns dragInProgress back off, and pins the column for the
+/// window's lifetime — out of the governed set, in with the fixed claims.
+/// Track is idempotent per grid: a second call detaches the first call's
+/// handlers before subscribing its own.
 ///
 /// SCOPE OF THE GUARANTEE. "No horizontal scrollbar" holds for AUTOMATIC
 /// sizing, which is all this class governs — it does not survive a column
@@ -281,8 +292,25 @@ internal static class DataGridColumnCap
         // every other lookup in this file already relies on.
         var declaredMinWidth = columns.ToDictionary(c => c, c => c.MinWidth);
 
+        // Fix round 3 (review): LayoutUpdated fires after EVERY layout pass
+        // anywhere in the app (see the class doc), and a drag's own
+        // DragDelta steps invalidate layout continuously — so without this,
+        // a still-blank, still-unpinned column is read as governed exactly
+        // as it would be at rest on the very next pass, and Recalculate
+        // forces its MaxWidth/MinWidth straight back up before the user's
+        // next mouse-move even lands. dragStarted's own one-shot relaxation
+        // below then held for exactly one layout pass, not the gesture —
+        // this flag is what makes it hold for the whole thing: true from
+        // the moment a drag starts to the moment it ends, checked first
+        // thing in Recalculate, the same shape as the `recomputing`
+        // reentrancy guard just below it (a different problem — reentrancy
+        // within one pass, not a clamp surviving many passes — solved the
+        // same way).
+        var dragInProgress = false;
+
         void Recalculate()
         {
+            if (dragInProgress) return;
             // 0 before the grid's first layout pass — nothing to size
             // against yet; SizeChanged fires the moment a real width exists.
             if (grid.ActualWidth <= 0) return;
@@ -362,51 +390,89 @@ internal static class DataGridColumnCap
         // break the drag fix otherwise.
         //
         // Fix round 2 (review), two edges Rule 5's forced MinWidth (above)
-        // introduced. Edge 1: relaxing MaxWidth alone stops a drag from
-        // being clamped from ABOVE, but a blank-substituted column's
-        // MinWidth is a hard floor too — left untouched, the user could
-        // never drag such a column narrower than the width it had borrowed
-        // from its neighbour, where before Rule 5 existed the drag went all
-        // the way down to the 20px default. Relaxed back to the SAME
+        // introduced, both closed here where declaredMinWidth is already in
+        // scope. Edge 1: relaxing MaxWidth alone stops a drag from being
+        // clamped from ABOVE, but a blank-substituted column's MinWidth is
+        // a hard floor too — left untouched, the user could never drag
+        // such a column narrower than the width it had borrowed from its
+        // neighbour, where before Rule 5 existed the drag went all the way
+        // down to the 20px default. Relaxed back to the SAME
         // declaredMinWidth this column's own floor computation already
-        // trusts (TrackCore, above) — not column.MinWidth read live, for
-        // the identical ratchet reason that dictionary exists at all. A
+        // trusts — not column.MinWidth read live, for the identical
+        // ratchet reason that dictionary exists at all.
+        //
+        // Fix round 3 (review): this comment used to end here with "a
         // column that is still genuinely blank and not under the user's
         // cursor gets this floor forced right back up on the very next
-        // Recalculate pass (the wantedMinWidth branch there) — relaxing it
-        // here does not let Rule 5 stop working for anything except the
-        // column actually being dragged.
-        var dragStarted = new DragStartedEventHandler((_, _) =>
+        // Recalculate pass — relaxing it here does not let Rule 5 stop
+        // working for anything except the column actually being dragged."
+        // That was false the moment it was written — it contradicted
+        // dragCompleted's OWN comment below, which correctly described a
+        // Recalculate pass landing mid-gesture forcing the clamp straight
+        // back up — and reproduced edge 1's exact symptom mid-drag: the
+        // "very next Recalculate pass" it described is not confined to the
+        // column NOT being dragged, LayoutUpdated fires after every layout
+        // pass anywhere in the app (class doc, above) and a drag's own
+        // DragDelta steps invalidate layout continuously, so the DRAGGED
+        // column's own relaxation was undone within a frame too.
+        // dragInProgress (above) is the actual fix for that — Recalculate
+        // is a no-op for the whole gesture now, not just until the next
+        // layout pass.
+        //
+        // With Recalculate no longer self-correcting one frame later, an
+        // unscoped MinWidth relaxation would leave every OTHER blank
+        // column sitting at its bare header for the entire gesture, not
+        // just a frame — so MinWidth's relaxation is scoped to the column
+        // actually under the user's cursor where the routed event's own
+        // OriginalSource resolves to one. MaxWidth stays unscoped: it only
+        // ever lifts a ceiling, which is inert for a column nothing is
+        // pressing against, so there is nothing for a non-dragged column's
+        // relaxed MaxWidth to visibly change. Falls back to relaxing every
+        // unpinned column's MinWidth, same as fix round 2, when the source
+        // can't be resolved to a column's own header (a synthetic event
+        // with no real visual-tree source, or a future template that
+        // restructures the resize thumb) — the safe direction to fail in,
+        // since the fallback can only widen what this protects, never
+        // narrow it.
+        var dragStarted = new DragStartedEventHandler((_, e) =>
         {
+            dragInProgress = true;
+            var draggedColumn = FindAncestor<DataGridColumnHeader>(e.OriginalSource as DependencyObject)?.Column;
             foreach (var column in columns)
                 if (!pinned.Contains(column))
                 {
                     column.MaxWidth = double.PositiveInfinity;
-                    column.MinWidth = declaredMinWidth[column];
+                    if (draggedColumn is null || ReferenceEquals(column, draggedColumn))
+                        column.MinWidth = declaredMinWidth[column];
                 }
         });
         grid.AddHandler(Thumb.DragStartedEvent, dragStarted, true);
 
         var dragCompleted = new DragCompletedEventHandler((_, _) =>
         {
+            dragInProgress = false;
             foreach (var column in columns)
                 if (!pinned.Contains(column) && column.Width.IsAbsolute)
                 {
-                    // Edge 2: Recalculate's own reset arm walks `governed`,
-                    // which excludes pinned columns by construction — so a
-                    // column pinned here while its MinWidth still held a
-                    // Rule 5 forced value (a Recalculate pass landing
-                    // between DragStarted and here still reads a still-
-                    // blank, not-yet-pinned column as governed and can
-                    // force it right back up, same as the relaxed MaxWidth
-                    // above would be) carried that stale floor for the
-                    // window's REST OF ITS LIFE — Recalculate never touches
-                    // a pinned column's MinWidth again to correct it, even
-                    // once real content later arrives. Pinning is the last
-                    // moment this class ever writes to the column's
-                    // MinWidth, so it is the last chance to put back its
-                    // own declared floor instead of whatever it happened to
-                    // be holding at that instant.
+                    // Edge 2, fix round 2: written so a column pinned while
+                    // its MinWidth still held a Rule 5 forced value would
+                    // not carry that stale floor for the window's rest of
+                    // its life — Recalculate's own reset arm walks
+                    // `governed`, which excludes pinned columns by
+                    // construction, so nothing else ever corrects it again.
+                    //
+                    // Fix round 3: dragInProgress (above) now holds the
+                    // dragged column's MinWidth at its declared floor for
+                    // the WHOLE gesture, not just the instant right after
+                    // DragStarted — so by the time a column that went
+                    // through that relaxation reaches here, this write is
+                    // redundant, not load-bearing. Left in anyway, as a
+                    // defensive backstop unreachable through today's real
+                    // seam: it only still matters if some future caller
+                    // pins a column without going through DragStarted's own
+                    // relaxation first, or the column resolution above
+                    // fails to match the one actually dragged. Costs
+                    // nothing on the path that no longer needs it.
                     pinned.Add(column);
                     column.MinWidth = declaredMinWidth[column];
                 }
@@ -829,5 +895,24 @@ internal static class DataGridColumnCap
             results.AddRange(FindDescendants<T>(child));
         }
         return results;
+    }
+
+    /// <summary>Walks UP the visual tree from <paramref name="node"/>
+    /// (inclusive) to the nearest ancestor of type <typeparamref name="T"/>
+    /// — the mirror of <see cref="FindDescendant{T}"/>'s downward walk,
+    /// needed once (dragStarted, TrackCore, fix round 3) to recover WHICH
+    /// column's own header a routed drag event actually originated from:
+    /// <see cref="RoutedEventArgs.OriginalSource"/> is the deepest element
+    /// in the gesture — the resize Thumb itself, or one of ITS OWN
+    /// template children — never the header, so this walks back up to
+    /// it.</summary>
+    private static T? FindAncestor<T>(DependencyObject? node) where T : DependencyObject
+    {
+        while (node is not null)
+        {
+            if (node is T match) return match;
+            node = VisualTreeHelper.GetParent(node);
+        }
+        return null;
     }
 }

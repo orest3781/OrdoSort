@@ -916,25 +916,33 @@ public class DataGridColumnCapTests
     });
 
     // ---- Review edges: Rule 5's forced MinWidth vs. a user's drag -------
+    // (fix round 2: the one-shot relaxation; fix round 3: making it hold
+    // for the whole gesture, and scoping it to the dragged column)
 
-    /// <summary>Review edge 1: DragStartedEvent already relaxed MaxWidth to
-    /// PositiveInfinity for every unpinned column so a WIDENING drag is
-    /// never clamped from above — but left MinWidth untouched, so a blank-
-    /// substituted column's Rule 5 floor (forced to its borrowed
-    /// neighbour's width; see AnEmptyColumnMatchesTheWidthOfTheColumnToItsLeft)
-    /// survived the start of a drag intact, and the user could never drag
-    /// such a column narrower than the width it had merely borrowed — where
-    /// before Rule 5 existed the drag went all the way to the 20px default.
+    /// <summary>Review edge 1 (fix round 2): DragStartedEvent already
+    /// relaxed MaxWidth to PositiveInfinity for every unpinned column so a
+    /// WIDENING drag is never clamped from above — but left MinWidth
+    /// untouched, so a blank-substituted column's Rule 5 floor (forced to
+    /// its borrowed neighbour's width; see
+    /// AnEmptyColumnMatchesTheWidthOfTheColumnToItsLeft) survived the start
+    /// of a drag intact, and the user could never drag such a column
+    /// narrower than the width it had merely borrowed — where before Rule 5
+    /// existed the drag went all the way to the 20px default.
     ///
-    /// Driving a real column-header-thumb drag headlessly is not practical
-    /// (there is no real mouse delta to raise), so this exercises the same
-    /// routed event TrackCore's own handler is wired to
-    /// (Thumb.DragStartedEvent, handledEventsToo) and asserts the state
-    /// transition it causes, immediately and with nothing settled in
-    /// between — MinWidth relaxing back to the column's own declared floor
-    /// — the discrete, production-reachable half of the fix a headless test
-    /// can actually drive; the sibling fact below covers what happens once
-    /// a drag actually completes.</summary>
+    /// This exercises the same routed event TrackCore's own handler is
+    /// wired to (Thumb.DragStartedEvent, handledEventsToo) and asserts the
+    /// state transition it causes, immediately and with nothing settled in
+    /// between — MinWidth relaxing back to the column's own declared floor.
+    /// Raised directly on the grid rather than a real header's own Thumb:
+    /// with no real visual-tree source to resolve a specific column from
+    /// (fix round 3's own scoping, below), the relaxation falls back to
+    /// every unpinned column, which still covers Extra, the only blank
+    /// column this fixture has — <see
+    /// cref="DraggingOneColumnDoesNotRelaxADifferentBlankColumnsMinWidth"/>
+    /// below is what actually drives the scoped path through a real Thumb.
+    /// This fact only proves the instant right after DragStarted; <see
+    /// cref="ARecalculatePassDuringTheGestureDoesNotRestoreTheClamp"/> is
+    /// what proves that instant isn't the whole story.</summary>
     [Fact]
     public void DragStartedRelaxesABlankSubstitutedColumnsForcedMinWidthBackToItsDeclaredFloor() => _fx.Invoke(() =>
     {
@@ -964,28 +972,24 @@ public class DataGridColumnCapTests
         finally { g.Window.Close(); }
     });
 
-    /// <summary>Review edge 2: Recalculate's own MinWidth reset arm walks
-    /// `governed`, which excludes pinned columns by construction — so once
-    /// a blank-substituted column is dragged (DragCompletedEvent reads
-    /// "Width became absolute" as "this one was dragged" and pins it for
-    /// the window's lifetime), its Rule 5 forced MinWidth was never reset
-    /// again even after real content later arrived, flooring every
-    /// subsequent drag at the old borrowed width.
-    ///
-    /// The precondition re-forces MinWidth with a settled layout pass AFTER
-    /// DragStarted (still blank, still not pinned) rather than relying on
-    /// DragStarted's own relaxation to still be in effect — otherwise this
-    /// fact would pass on DragStarted's relaxation alone and never actually
-    /// exercise DragCompleted's own reset, the specific edge this fact
-    /// exists to catch independent of the sibling fact above. Width is set
-    /// absolute directly rather than raising DragDelta a mouse-move at a
-    /// time: what a real drag leaves behind before DragCompletedEvent fires
-    /// is exactly an absolute Width (the class doc's own "a column the user
-    /// has dragged is absolute, and theirs") — the same state
-    /// TrackCore's own handler keys off (column.Width.IsAbsolute), reached
-    /// here without a real mouse delta to raise.</summary>
+    /// <summary>Fix round 3, the defect this whole round exists to close.
+    /// The class doc's own words: LayoutUpdated fires after EVERY layout
+    /// pass anywhere in the app, and a real drag's own DragDelta steps
+    /// invalidate layout continuously — so a Recalculate pass landing
+    /// mid-gesture, before DragCompleted, used to read a still-blank,
+    /// still-unpinned column as governed exactly as it would be at rest,
+    /// and force its MaxWidth/MinWidth clamp straight back up within a
+    /// single frame. Fix round 2's own relaxation (the sibling fact above)
+    /// was real but held for exactly one layout pass, not the gesture —
+    /// this is that exact symptom, reproduced directly: Settle(g.Window)
+    /// mid-gesture is the same "force a pass to actually run" call
+    /// AnEmptyColumnDoesNotRatchetWhenItsBorrowedFromNeighbourShrinks and
+    /// others already lean on elsewhere in this file to prove Recalculate
+    /// DID run after a change; asserting it changed NOTHING here is the
+    /// fact fix round 2 alone could not make true. dragInProgress
+    /// (TrackCore) is what makes it true now.</summary>
     [Fact]
-    public void PinningABlankSubstitutedColumnResetsItsMinWidthToItsDeclaredFloor() => _fx.Invoke(() =>
+    public void ARecalculatePassDuringTheGestureDoesNotRestoreTheClamp() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
         var g = BuildPair(500, 40, new PairRow { Name = Ms(10), Note = Ms(60), Extra = "" });
@@ -993,31 +997,149 @@ public class DataGridColumnCapTests
         try
         {
             ShowAndSettle(g.Window);
-            g.DataGrid.RaiseEvent(new DragStartedEventArgs(0, 0));
-            // A mid-drag layout pass: Extra is still blank and still not
-            // pinned, so Recalculate forces MinWidth right back up — this
-            // is what makes the precondition below independent of
-            // DragStarted's own relaxation.
-            Settle(g.Window);
-            Assert.True(g.Extra.MinWidth > declaredMinWidth + 20,
-                $"precondition: a settled pass between DragStarted and DragCompleted should re-force " +
-                $"Extra's MinWidth up from its declared {declaredMinWidth}px floor while it is still " +
-                $"blank and still unpinned — got {g.Extra.MinWidth}px, so this fact cannot tell a " +
-                "reset floor from one that was never forced in the first place");
+            var forcedMinWidth = g.Extra.MinWidth;
+            var forcedMaxWidth = g.Extra.MaxWidth;
+            Assert.True(forcedMinWidth > declaredMinWidth + 20,
+                $"precondition: Extra is blank and should have borrowed Note's width, forcing its " +
+                $"MinWidth up from its declared {declaredMinWidth}px floor — got {forcedMinWidth}px, so " +
+                "this fact cannot tell a restored clamp from one that was never forced");
 
-            g.Extra.Width = new DataGridLength(90, DataGridLengthUnitType.Pixel);
-            g.DataGrid.RaiseEvent(new DragCompletedEventArgs(0, 0, false));
+            g.DataGrid.RaiseEvent(new DragStartedEventArgs(0, 0));
+            Assert.True(Math.Abs(g.Extra.MinWidth - declaredMinWidth) < 0.5 &&
+                double.IsPositiveInfinity(g.Extra.MaxWidth),
+                $"precondition: DragStarted should have relaxed Extra's clamp before this fact's own " +
+                $"mid-gesture pass runs — MinWidth {g.Extra.MinWidth}px, MaxWidth {g.Extra.MaxWidth}px");
+
+            // The defect: a layout pass landing HERE, before DragCompleted,
+            // used to read Extra as governed and still blank, and force
+            // the clamp straight back up within this one pass.
+            Settle(g.Window);
 
             Assert.True(Math.Abs(g.Extra.MinWidth - declaredMinWidth) < 0.5,
-                $"once pinned, Extra drops out of the governed set Recalculate resets MinWidth for — " +
-                $"pinning itself must put back Extra's own declared {declaredMinWidth}px floor, not " +
-                $"leave it at whatever Rule 5 had most recently forced: got {g.Extra.MinWidth}px, which " +
-                "would floor every later drag at the width Extra merely borrowed while blank");
+                $"a Recalculate pass mid-gesture must not restore MinWidth to the {forcedMinWidth}px " +
+                $"floor it was forced to before the drag — got {g.Extra.MinWidth}px, exactly what " +
+                "dragInProgress exists to prevent");
+            Assert.True(double.IsPositiveInfinity(g.Extra.MaxWidth),
+                $"a Recalculate pass mid-gesture must not restore MaxWidth to the {forcedMaxWidth}px " +
+                $"cap it was forced to before the drag either — got {g.Extra.MaxWidth}px");
+        }
+        finally { g.Window.Close(); }
+    });
+
+    /// <summary>Two smaller things (fix round 3 review): with Recalculate
+    /// no longer self-correcting one frame later (the fact above), an
+    /// UNSCOPED MinWidth relaxation — every unpinned column, not just the
+    /// one under the cursor — would leave every OTHER blank column sitting
+    /// at its bare header for the entire gesture the moment ANY column's
+    /// drag starts, not just a frame. dragStarted now resolves the
+    /// specific column from the routed event's own OriginalSource and
+    /// scopes MinWidth's relaxation to it; MaxWidth stays unscoped (a
+    /// ceiling nothing is pressing against is inert for a column that
+    /// isn't being resized, so there is nothing there to fix).
+    ///
+    /// Driven through Note's own real header Thumb rather than a synthetic
+    /// grid-level RaiseEvent, because THAT is what this fact needs to tell
+    /// apart from the fallback path: a source-less event (as the sibling
+    /// facts above raise) can't be resolved to a specific column at all, so
+    /// it deliberately falls back to relaxing everything — which would
+    /// make this exact assertion pass for the wrong reason. Only a drag
+    /// with a real column to resolve exercises the scoped branch this fact
+    /// is actually about.</summary>
+    [Fact]
+    public void DraggingOneColumnDoesNotRelaxADifferentBlankColumnsMinWidth() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var g = BuildPair(500, 40, new PairRow { Name = Ms(10), Note = Ms(60), Extra = "" });
+        var declaredMinWidth = g.Extra.MinWidth;
+        try
+        {
+            ShowAndSettle(g.Window);
+            Assert.True(g.Extra.MinWidth > declaredMinWidth + 20,
+                $"precondition: Extra is blank and should have borrowed Note's width, forcing its " +
+                $"MinWidth up from its declared {declaredMinWidth}px floor — got {g.Extra.MinWidth}px");
+            var forcedExtraMinWidth = g.Extra.MinWidth;
+
+            // Drag NOTE's own thumb, not Extra's — Extra is the innocent
+            // bystander this fact is about, and must never be touched by a
+            // drag on a DIFFERENT column.
+            var noteHeader = FindAllDescendants<DataGridColumnHeader>(g.DataGrid).First(h => h.Column == g.Note);
+            var noteThumb = FindDescendant<Thumb>(noteHeader);
+            Assert.NotNull(noteThumb);
+            noteThumb!.RaiseEvent(new DragStartedEventArgs(0, 0));
+
+            Assert.True(Math.Abs(g.Extra.MinWidth - forcedExtraMinWidth) < 0.5,
+                $"dragging Note must not relax a DIFFERENT column's MinWidth — Extra should still be " +
+                $"held at its forced {forcedExtraMinWidth}px floor, not relaxed toward its declared " +
+                $"{declaredMinWidth}px one: got {g.Extra.MinWidth}px, which would let Extra visibly " +
+                "shrink toward its bare header for the rest of Note's drag");
+        }
+        finally { g.Window.Close(); }
+    });
+
+    /// <summary>Review edge 2 (fix round 2): Recalculate's own MinWidth
+    /// reset arm walks `governed`, which excludes pinned columns by
+    /// construction — so a blank-substituted column pinned while its
+    /// MinWidth still held a Rule 5 forced value would carry that stale
+    /// floor for the window's rest of its life. dragCompleted's own
+    /// explicit reset closed it.
+    ///
+    /// Fix round 3 changes what this fact can actually prove.
+    /// dragInProgress (TrackCore) now holds a dragged column's MinWidth at
+    /// its declared floor for the WHOLE gesture, not just the instant after
+    /// DragStarted — so by the time a column that went through
+    /// DragStarted's own (now scoped) relaxation reaches here, it is
+    /// ALREADY holding that floor, and dragCompleted's own write is a
+    /// defensive backstop rather than something a real drag through the
+    /// production seam still needs (see that handler's own comment for
+    /// why it stays anyway). This fact is rewritten to assert what is
+    /// honestly still true end-to-end: driven through Extra's own real
+    /// header Thumb (needed now that the relaxation is scoped — a
+    /// source-less grid-level RaiseEvent would no longer target Extra
+    /// specifically), a full drag-then-release leaves Extra pinned at its
+    /// own declared floor, and it stays there. It does NOT independently
+    /// prove dragCompleted's own write is load-bearing any more — deleting
+    /// that write leaves this fact green, because dragInProgress plus the
+    /// scoped relaxation above already keep MinWidth correct for the whole
+    /// gesture before pinning ever runs. It still depends on pinning
+    /// itself (Recalculate's `governed` filter excluding a pinned column)
+    /// working correctly: break that, and the final Recalculate call
+    /// dragCompleted makes would read Extra as still-governed and
+    /// still-blank, and force it right back up.</summary>
+    [Fact]
+    public void PinningABlankSubstitutedColumnLeavesItAtItsDeclaredMinWidth() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var g = BuildPair(500, 40, new PairRow { Name = Ms(10), Note = Ms(60), Extra = "" });
+        var declaredMinWidth = g.Extra.MinWidth;
+        try
+        {
+            ShowAndSettle(g.Window);
+            Assert.True(g.Extra.MinWidth > declaredMinWidth + 20,
+                $"precondition: Extra is blank and should have borrowed Note's width, forcing its " +
+                $"MinWidth up from its declared {declaredMinWidth}px floor — got {g.Extra.MinWidth}px");
+
+            var header = FindAllDescendants<DataGridColumnHeader>(g.DataGrid).First(h => h.Column == g.Extra);
+            var thumb = FindDescendant<Thumb>(header);
+            Assert.NotNull(thumb);
+            thumb!.RaiseEvent(new DragStartedEventArgs(0, 0));
+
+            // What a real drag leaves behind before DragCompletedEvent
+            // fires: WPF converts Width to an absolute pixel value the
+            // moment the drag starts (class doc's own "a column the user
+            // has dragged is absolute, and theirs") — assigned directly
+            // since there is no real mouse delta to raise headlessly.
+            g.Extra.Width = new DataGridLength(90, DataGridLengthUnitType.Pixel);
+            thumb.RaiseEvent(new DragCompletedEventArgs(0, 0, false));
+
+            Assert.True(Math.Abs(g.Extra.MinWidth - declaredMinWidth) < 0.5,
+                $"once pinned, Extra should hold its own declared {declaredMinWidth}px floor, not " +
+                $"whatever Rule 5 had forced before the drag: got {g.Extra.MinWidth}px, which would " +
+                "floor every later drag at the width Extra merely borrowed while blank");
 
             // The floor must hold going forward, too — not just survive the
             // one instant right after pinning: a later settled pass must
             // not re-force it, which is the actual "for the window's
-            // lifetime" half of the bug this fact exists to catch.
+            // lifetime" half of the original bug.
             Settle(g.Window);
             Assert.True(Math.Abs(g.Extra.MinWidth - declaredMinWidth) < 0.5,
                 $"a later layout pass must not re-force a PINNED column's MinWidth even though Extra " +
