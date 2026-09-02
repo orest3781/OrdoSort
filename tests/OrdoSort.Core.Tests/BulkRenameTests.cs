@@ -506,6 +506,14 @@ public class PlanPeelFsTests : IDisposable
     [Theory]
     [InlineData("A.pdf")]              // one segment, no dash at all: at the floor already
     [InlineData("REPORT.pdf")]         // same shape, a realistic no-dash stem
+    // The empty-stem boundary: Path.GetFileNameWithoutExtension(".pdf") is
+    // "" (.NET treats a name with no text before its only dot as entirely
+    // extension), and "".Split('-') is a one-element array holding "" —
+    // length 1, so this sits AT the new floor exactly, not one below it.
+    // Never covered before: the four-segment floor this replaced held it
+    // for the same reason a merely-short stem did, so this specific
+    // boundary never distinguished the old rule from the new one.
+    [InlineData(".pdf")]
     public void AStemAtOneSegmentIsHeldUntouched(string name)
     {
         var src = Touch(name);
