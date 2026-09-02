@@ -523,6 +523,35 @@ public class AutoFitColumnTests
         finally { win.Close(); }
     });
 
+    /// <summary>Test gap 8 from fix round 1's churn audit: every
+    /// AssertTrimsWithTooltip call in this file up to this point exercises a
+    /// capped (Auto, MaxWidth) column — none proves the SAME trim/tooltip
+    /// behaviour on a star/filler column, which reaches its own too-narrow
+    /// state by running out of the window's leftover space rather than
+    /// hitting a MaxWidth. GridCellText's shared TextTrimming/
+    /// TrimmedTextTooltip.Enabled plumbing (Theme/Styles.xaml) doesn't
+    /// distinguish the two — New name's own ElementStyle is BasedOn
+    /// GridCellText exactly like every capped column's (see its XAML
+    /// comment) — so this is the one realized-element fact closing that gap
+    /// app-wide, on the same star column BulkRename_HasExactlyOneStarFiller
+    /// Column just above identifies. A headless Show() clamps a star column
+    /// to its declared MinWidth regardless of window size (this file's own
+    /// class doc, and DataGridStarColumnTests'), so VeryLongValue overflows
+    /// it deterministically without needing ShowOffscreenAtWidth.</summary>
+    [Fact]
+    public void BulkRename_LongNewNameValueOnTheStarColumnTrimsWithATooltip() => _fx.Invoke(() =>
+    {
+        var win = BuildBulkRenameWindow(currentValue: ShortValue, noteValue: "", newNameValue: VeryLongValue);
+        try
+        {
+            ShowOffscreen(win);
+            var grid = FindDescendant<DataGrid>(win)!;
+            var star = Assert.Single(grid.Columns.Where(c => c.Width.IsStar));
+            AssertTrimsWithTooltip(win, star, rowIndex: 0, "BulkRename New name");
+        }
+        finally { win.Close(); }
+    });
+
     /// <summary>Fix round 2: pre-fix, this measured 694px of columns against
     /// a 656px grid at this window's own declared MinWidth (700).
     ///
@@ -594,12 +623,24 @@ public class AutoFitColumnTests
         finally { win.Close(); }
     });
 
-    private static BulkRenameWindow BuildBulkRenameWindow(string currentValue, string noteValue, int rowCount = 1)
+    /// <summary><paramref name="newNameValue"/> feeds the ONE star (filler)
+    /// column this window has — everywhere but the one fact that needs it
+    /// long (test gap 8, churn audit: no realized-element trim+tooltip
+    /// proof existed anywhere for a star column, only the source-level
+    /// "doesn't declare Wrap" scan DataGridSizingCoverageTests already
+    /// covers, which the audit separately found is now one-sided — a star
+    /// column declaring NEITHER wrap nor trim would pass that scan
+    /// silently), it stays short on purpose: New name is what the window
+    /// exists to let someone TYPE, and every other fact in this class needs
+    /// it to stay out of the way of whatever Current name/Note are actually
+    /// testing.</summary>
+    private static BulkRenameWindow BuildBulkRenameWindow(
+        string currentValue, string noteValue, int rowCount = 1, string newNameValue = "SOMETHING-SHORT.pdf")
     {
         var vm = new BulkRenameViewModel();
         for (var i = 0; i < rowCount; i++)
-            vm.Preview.Add(new RenameRow($"src{i}.pdf", currentValue, "SOMETHING-SHORT.pdf", noteValue,
-                changed: true, manual: false, needsName: false, editSeed: "SOMETHING-SHORT.pdf",
+            vm.Preview.Add(new RenameRow($"src{i}.pdf", currentValue, newNameValue, noteValue,
+                changed: true, manual: false, needsName: false, editSeed: newNameValue,
                 noteIsProblem: false));
         return new BulkRenameWindow(vm);
     }
@@ -867,6 +908,31 @@ public class AutoFitColumnTests
         finally { win.Close(); }
     });
 
+    /// <summary>Test gap 6 from fix round 1's churn audit: the Why column
+    /// (ShowCurrentAsync, TriageWindow.xaml.cs) is real production behaviour
+    /// this task added — a per-suggestion reason at a fixed WhyColumnWidth
+    /// (150px) — but until now nothing in this suite exercised anything
+    /// about it beyond its presence (Triage_DefaultTwoRosterColumnsWithWhy
+    /// PresentStillFitWithNoHorizontalScrollbar below only asserts the
+    /// column exists and the grid doesn't overflow). This is the missing
+    /// realized-element proof: a reason too long for 150px trims with an
+    /// ellipsis, stays on one line, and carries its own full text as a
+    /// tooltip — the same AssertTrimsWithTooltip already proves for roster
+    /// columns, here against Why's own ElementStyle instead (BasedOn
+    /// GridCellText — see ShowCurrentAsync's own comment).</summary>
+    [Fact]
+    public void Triage_LongWhyReasonTrimsWithATooltip() => _fx.Invoke(() =>
+    {
+        var win = BuildTriageWindowWithWhyReason(new[] { "First name", "Control ID" }, VeryLongValue);
+        try
+        {
+            ShowOffscreenAndDriveCurrent(win);
+            var column = win.Candidates.Columns.First(c => (string)c.Header == "Why");
+            AssertTrimsWithTooltip(win, column, rowIndex: 0, "Triage Why");
+        }
+        finally { win.Close(); }
+    });
+
     [Fact]
     public void Triage_FirstRosterColumnIsTheStarFillerColumn() => _fx.Invoke(() =>
     {
@@ -1123,6 +1189,30 @@ public class AutoFitColumnTests
         };
     }
 
+    /// <summary>Like BuildTriageWindow(suggested: true, ...), but with a
+    /// caller-chosen Why reason instead of the fixed "token match" every
+    /// other suggested-item fact in this file uses — needed for test gap 6
+    /// (fix round 1's churn audit): the Why column is real production
+    /// behaviour (ShowCurrentAsync, TriageWindow.xaml.cs) with a fixed
+    /// WhyColumnWidth (150px), but nothing in this suite exercised anything
+    /// about it beyond its PRESENCE. Roster columns all get ShortValue —
+    /// isolates the Why column's own trim/tooltip behaviour from the roster
+    /// caps this file's other Triage facts already cover.</summary>
+    private static TriageWindow BuildTriageWindowWithWhyReason(string[] headers, string reason)
+    {
+        var row = new Dictionary<string, string> { [headers[0]] = "Pat" };
+        for (var i = 1; i < headers.Length; i++) row[headers[i]] = ShortValue;
+        var candidate = new MatchMerge.Candidate("1", row);
+
+        var item = new MatchMerge.MatchResult("doc.pdf", "suggested",
+            Suggestions: new List<MatchMerge.Suggestion> { new(candidate, reason) });
+
+        return new TriageWindow(new List<MatchMerge.MatchResult> { item }, headers)
+        {
+            Dialogs = new FakeDialogs(),
+        };
+    }
+
     /// <summary>Like BuildTriageWindow, but the CURRENT item carries
     /// <paramref name="candidateCount"/> candidates/suggestions instead of
     /// one — needed to force a vertical scrollbar (Triage_AtMinPanelWidthNo
@@ -1274,6 +1364,74 @@ public class AutoFitColumnTests
             ShowOffscreenAtWidth(win, win.MinWidth);
             AssertNoHorizontalScrollbar(win,
                 $"Standardise names (at MinWidth {win.MinWidth}, {ManyRowCount} rows)");
+        }
+        finally { win.Close(); }
+    });
+
+    /// <summary>Fix round 1, the MEDIUM: at this window's own MinWidth
+    /// (580), the toolbar row's three buttons used to sit AFTER AddNote in
+    /// the DockPanel's own child declaration order — AddNote (Dock="Right")
+    /// was arranged first, and the buttons StackPanel — the un-Dock'd,
+    /// LAST/fill child — was arranged into whatever remained. A Panel does
+    /// not clip its own children to that arranged size, so the buttons'
+    /// own natural, cumulative layout (each one positioned by its own
+    /// desired width, not by how much the panel was actually given) could
+    /// still extend past it — into where AddNote itself was drawn. Nothing
+    /// escaped the WINDOW (WindowOverflowTests' own probe for this window
+    /// stayed clean — see item A's own finding, which measures escape past
+    /// the window edge, not one element painting over another), which is
+    /// exactly why this needs its own direct, geometric fact rather than
+    /// relying on that probe. Reordering the StackPanel to be declared
+    /// FIRST (Dock="Left") gives it the DockPanel's OWN full remaining
+    /// space unconditionally, before AddNote (now the fill child, trimming
+    /// into whatever's left) is even considered.
+    ///
+    /// Proven with real on-screen rectangles, not a size proxy: measured
+    /// directly against the pre-fix XAML (temporarily restored, off-screen,
+    /// during this fact's own development), Undo last batch's own rendered
+    /// rect and AddNote's genuinely overlapped by roughly 119px
+    /// horizontally, entirely within their shared vertical band — "painted
+    /// across the caption," not a near-miss. This fact asserts the two
+    /// don't share any horizontal space at all, using TransformToAncestor
+    /// against the WINDOW itself so both rects are in the same coordinate
+    /// space regardless of which panel actually contains each one. A
+    /// genuinely long AddNote — the same real AddFilesAsync recipe
+    /// WindowOverflowTests' own StandardiseNamesWindow registration uses,
+    /// since AddNote's setter is private — is what makes this fact capable
+    /// of failing at all; a short or empty note leaves both elements far
+    /// apart regardless of which one is arranged first.</summary>
+    [Fact]
+    public void StandardiseNames_ToolbarButtonsDoNotOverlapALongNoteAtMinWidth() => _fx.Invoke(() =>
+    {
+        using var dir = new TempDir();
+        var first = dir.File("smith, john_A12345.pdf");
+        var second = dir.File("jones-report.pdf");
+        var missing = System.IO.Path.Combine(dir.Path, "does-not-exist-anymore.pdf");
+        var duplicate = System.IO.Path.Combine(dir.Path, "SMITH, JOHN_A12345.PDF");   // case-only dup of `first`
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+#pragma warning disable xUnit1031 // safe: InlineWorkScheduler runs every awaited step synchronously
+        vm.AddFilesAsync(new[] { first, second, missing, duplicate }).GetAwaiter().GetResult();
+#pragma warning restore xUnit1031
+        Assert.True(vm.AddNote.Length > 20,
+            $"precondition: AddNote should be a genuinely long note, not a short one that would " +
+            $"leave the buttons and the note far apart regardless of layout order — got \"{vm.AddNote}\"");
+
+        var win = new StandardiseNamesWindow(vm);
+        try
+        {
+            ShowOffscreenAtWidth(win, win.MinWidth);
+            var undoButton = FindAllDescendants<Button>(win).First(b => Equals(b.Content, "Undo last batch"));
+            var noteText = FindAllDescendants<TextBlock>(win).First(t => t.Text == vm.AddNote);
+            var undoRight = undoButton.TransformToAncestor(win)
+                .TransformBounds(new Rect(0, 0, undoButton.ActualWidth, undoButton.ActualHeight)).Right;
+            var noteLeft = noteText.TransformToAncestor(win)
+                .TransformBounds(new Rect(0, 0, noteText.ActualWidth, noteText.ActualHeight)).Left;
+
+            Assert.True(undoRight <= noteLeft + 0.5,
+                $"the last button (Undo last batch, right edge at {undoRight}px) overlaps AddNote " +
+                $"(left edge at {noteLeft}px) instead of sitting entirely before it");
         }
         finally { win.Close(); }
     });

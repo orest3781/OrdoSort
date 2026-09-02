@@ -217,8 +217,9 @@
                     <DataGrid.Columns>
                         <!-- Current name: content-sized; DataGridColumnCap
                              gives it its content width when that fits and a
-                             proportional, wrapped share when it doesn't
-                             (2026-08-29) — same mechanism and reasoning as
+                             proportional, trimmed share (table-rules Rule 4 —
+                             used to say "wrapped" here) when it doesn't —
+                             same mechanism and reasoning as
                              MatchMergeWindow's analogous "File" column: this
                              is the file's EXISTING name, the least
                              predictable string in the row, and not what a
@@ -318,7 +319,8 @@
                         </DataGridTextColumn>
                         <!-- Note: content-sized; DataGridColumnCap gives it its
                              content width when that fits and a proportional,
-                             wrapped share when it doesn't (2026-08-29). Was a
+                             trimmed share (table-rules Rule 4 — used to say
+                             "wrapped" here) when it doesn't. Was a
                              fixed 220px regardless of what it held. -->
                         <DataGridTextColumn x:Name="NoteColumn" Header="Note" Binding="{Binding Note}"
                                             IsReadOnly="True" Width="Auto">

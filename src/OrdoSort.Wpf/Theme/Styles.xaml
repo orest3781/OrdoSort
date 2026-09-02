@@ -1750,11 +1750,13 @@
          4's other half — a tooltip of the cell's own full text, but only
          once CharacterEllipsis has actually trimmed it; see that class's
          own doc comment for why WPF's TextBlock has no IsTextTrimmed
-         property to lean on instead, and for the two columns — ZipTools/
-         MergePdfs/PageCounts' own full-PATH tooltip, which shows different
-         text than the cell displays, not a repeat of it — that opt back
-         out with their own Enabled="False" and keep their existing
-         ToolTip Setter instead). NO selection-contrast trigger lives here;
+         property to lean on instead. A column whose OWN tooltip shows
+         something other than a repeat of the cell's own trimmed text — a
+         different field entirely, such as the row's full path or a count
+         failure's own reason — opts back out with its own, more-derived
+         Enabled="False" Setter and keeps its existing ToolTip Setter
+         instead; ordinary WPF Style precedence, not a rule this style
+         itself has any part in. NO selection-contrast trigger lives here;
          see GridCellTextSelectionAware immediately below for that, and for
          which columns use which key and why. -->
     <Style x:Key="GridCellText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
