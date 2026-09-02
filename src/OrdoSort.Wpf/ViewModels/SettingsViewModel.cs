@@ -1183,7 +1183,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// <summary>Browse... for one of the four side-file keys (destinations/
     /// monitored-folders/alerts/box-labels), then refuse the result up
     /// front if it can never actually be saved to. Microsoft.Win32.
-    /// OpenFileDialog (behind <see cref="IDialogService.AskOpenFile"/>)
+    /// OpenFileDialog (behind <see cref="IDialogService.AskOpenFile(string)"/>)
     /// always hands back a fully-qualified absolute path, and a side-file
     /// WRITE refuses anything that resolves outside the config's own
     /// directory (<see cref="Config.ResolveBesideForWrite"/>, the 2026-08
@@ -1204,10 +1204,25 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// no known path yet (<see cref="_cfgPath"/> null — Settings opened
     /// with no file on disk to resolve beside) both fall through to keep
     /// the field's current value unchanged, same as every other Browse...
-    /// command in this file.</summary>
+    /// command in this file.
+    ///
+    /// A choice that resolves INSIDE the config directory is stored
+    /// RELATIVE to it (a plain filename, or a subfolder-relative path) —
+    /// never the dialog's absolute answer. This deployment shares one
+    /// config.json across stations; an absolute path is only ever correct
+    /// on the station that Browsed it and wrong on every other one, which
+    /// is the same class of bug as the outright refusal above, just one
+    /// that only announces itself later, from a DIFFERENT station's Save.
+    /// The dialog itself starts beside the config file (see the initial-
+    /// directory argument below), so the common case — picking a file that
+    /// is already there — needs no relativizing arithmetic to reach a
+    /// plain filename by construction.</summary>
     private string PickSideFile(string current, string keyName)
     {
-        var picked = _dialogs.AskOpenFile("JSON files (*.json)|*.json|All files (*.*)|*.*");
+        var configDir = _cfgPath is { } cfgPathForDialog
+            ? Path.GetDirectoryName(Path.GetFullPath(cfgPathForDialog))
+            : null;
+        var picked = _dialogs.AskOpenFile("JSON files (*.json)|*.json|All files (*.*)|*.*", configDir);
         if (picked is null) return current;
         // No config path to resolve beside means no way to run the same
         // confinement check a save would — NOT license to skip it and hand
@@ -1218,9 +1233,10 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         // always constructs SettingsViewModel with a real cfgPath) but
         // exercised by tools/OrdoSort.Smoke/DialogCheck.cs, which does not.
         if (_cfgPath is not { } cfgPath) return current;
+        string full;
         try
         {
-            Config.ResolveBesideForWrite(cfgPath, picked, keyName);
+            full = Config.ResolveBesideForWrite(cfgPath, picked, keyName);
         }
         catch (ConfigException ex)
         {
@@ -1230,7 +1246,10 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 "OrdoSort — can't use that location");
             return current;
         }
-        return picked;
+        // configDir is guaranteed non-null here: it was computed from this
+        // same _cfgPath above, and the branch just above already proved
+        // _cfgPath is non-null (the "not license to skip it" comment).
+        return Path.GetRelativePath(configDir!, full);
     }
 
     /// <summary>Shared live-note logic for the four section-file path boxes:

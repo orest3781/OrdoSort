@@ -443,8 +443,14 @@ public class SettingsViewModelTests : IDisposable
     // three Browse*FileCommands share the exact same PickSideFile body.
 
     [Fact]
-    public void BrowsingToAPathInsideTheConfigDirectoryIsAccepted()
+    public void BrowsingToAPathInsideTheConfigDirectoryStoresItAsAPlainFilename()
     {
+        // Round 2 fix: this used to assert the DIALOG's absolute answer was
+        // stored verbatim. On a deployment that shares one config.json
+        // across stations, an absolute path is only ever correct on the
+        // station that Browsed it — wrong (and eventually refused-on-write,
+        // same bug class as the outside-the-directory case below) on every
+        // other one. Stored relative to the config directory instead.
         var cfgPath = Path.Combine(_dir, "config.json");
         Config.Save(new Config(), cfgPath);
         var cfg = Config.Load(cfgPath);
@@ -454,8 +460,49 @@ public class SettingsViewModelTests : IDisposable
         _dialogs.NextOpenFile = insidePath;
         vm.BrowseDestinationsFileCommand.Execute(null);
 
-        Assert.Equal(insidePath, vm.DestinationsFile);
+        Assert.Equal("picked-destinations.json", vm.DestinationsFile);
         Assert.Empty(_dialogs.Warnings);
+    }
+
+    [Fact]
+    public void BrowsingToAFileInASubfolderOfTheConfigDirectoryStoresTheSubfolderRelativePath()
+    {
+        var cfgPath = Path.Combine(_dir, "config.json");
+        Config.Save(new Config(), cfgPath);
+        var cfg = Config.Load(cfgPath);
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
+
+        var insidePath = Path.Combine(_dir, "archive", "picked-destinations.json");
+        _dialogs.NextOpenFile = insidePath;
+        vm.BrowseDestinationsFileCommand.Execute(null);
+
+        var expected = Path.Combine("archive", "picked-destinations.json");
+        Assert.Equal(expected, vm.DestinationsFile);
+        Assert.Empty(_dialogs.Warnings);
+
+        // The whole point of storing it relative: reading it back beside
+        // THIS config file resolves to the exact same physical path a save
+        // would have written it to — round-trips through a subfolder too,
+        // not just a plain filename.
+        Assert.Equal(Path.GetFullPath(insidePath),
+            Config.ResolveBesideForRead(cfgPath, vm.DestinationsFile, "destinations_file"));
+    }
+
+    [Fact]
+    public void BrowsingOpensThePickerBesideTheConfigFile()
+    {
+        // The dialog itself starts in the config directory — so the common
+        // case (picking a file that's already sitting beside config.json)
+        // needs no relativizing arithmetic to land on a plain filename.
+        var cfgPath = Path.Combine(_dir, "config.json");
+        Config.Save(new Config(), cfgPath);
+        var cfg = Config.Load(cfgPath);
+        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
+
+        _dialogs.NextOpenFile = Path.Combine(_dir, "picked-destinations.json");
+        vm.BrowseDestinationsFileCommand.Execute(null);
+
+        Assert.Equal(Path.GetFullPath(_dir), _dialogs.LastOpenFileInitialDirectory);
     }
 
     [Fact]

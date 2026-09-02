@@ -386,10 +386,18 @@ public sealed class Config
     /// otherwise point one of the four side-file keys at any file on every
     /// other station's disk and have it overwritten at that station's next
     /// Save. There is no backward-compatibility carve-out on write — even
-    /// though the Settings "Data files" Browse... buttons can produce an
-    /// absolute path (they use Microsoft.Win32.OpenFileDialog with no
-    /// containment check of their own), an absolute destination is exactly
-    /// the capability being withdrawn here. See <see cref="ResolveBesideForRead"/>
+    /// though the Settings "Data files" Browse... buttons themselves now
+    /// refuse a choice this method would refuse, and store an accepted one
+    /// relative to the config directory rather than handing back an
+    /// absolute path (SettingsViewModel.PickSideFile, which asks THIS
+    /// method to decide, so that guard can never drift from the rule
+    /// enforced here — see its own doc comment). That guard only covers a
+    /// value picked through Browse... from here on: Microsoft.Win32.
+    /// OpenFileDialog itself has no containment check of its own, and a
+    /// hand-edited config.json, or one carrying a value saved by a build
+    /// from before that guard existed, can still hold an absolute
+    /// destination — which is exactly the capability being withdrawn here,
+    /// regardless of how it arrived. See <see cref="ResolveBesideForRead"/>
     /// for the read-side half of the split that keeps an already-configured
     /// absolute path loadable.</summary>
     public static string ResolveBesideForWrite(string configPath, string sectionPath, string keyName) =>
