@@ -5,6 +5,7 @@
         xmlns:theme="clr-namespace:OrdoSort.Wpf.Theme"
         Title="OrdoSort — Settings" Width="880" Height="820" MinWidth="760" MinHeight="560"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        KeyDown="OnWindowKeyDown"
         Style="{StaticResource {x:Type Window}}">
     <Window.Resources>
         <!-- KvpValueTemplate lives in Theme/Styles.xaml now (a real,

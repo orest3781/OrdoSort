@@ -24,6 +24,21 @@ public partial class SettingsWindow : Window
         if (_vm.TryBuildResult()) DialogResult = true;
     }
 
+    /// <summary>Enter in a single-line text box means "done with this
+    /// field", not "OK the whole dialog": through OK's IsDefault it used to
+    /// validate all seven tabs mid-edit and, when they happened to be valid,
+    /// save and close with edits the user had not finished (UX-03). This
+    /// runs on the BUBBLING event, so a box that handles Enter itself — the
+    /// hotkey capture, the section editor, the alert-term KeyBinding — has
+    /// already claimed it and never arrives here; only an unclaimed Enter
+    /// is stopped from reaching the default button. Buttons, checkboxes and
+    /// combos still answer Enter with OK, as every Windows dialog does.</summary>
+    private void OnWindowKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Return && e.OriginalSource is TextBox { AcceptsReturn: false })
+            e.Handled = true;
+    }
+
     /// <summary>Seven tabs of editing used to vanish on Esc without a word.
     /// Esc is safe in every other window in this app, which is exactly why
     /// reaching for it here was so easy (UI-06).
