@@ -81,7 +81,15 @@ public class BoxLabelStoreTests : IDisposable
         var ex = Assert.Throws<ConfigException>(() =>
             BoxLabelStore.Mutate(p, d => 0, maxWaitMs: 700));
         Assert.Contains("another station", ex.Message);
-        Assert.True(sw.ElapsedMilliseconds >= 600, "should have retried before failing");
+        // 550, not 600: the retry loop's guard is
+        // `elapsed + RetryDelayMs <= maxWaitMs` with RetryDelayMs = 150, so it
+        // legitimately stops the moment elapsed passes 700 - 150 = 550. A
+        // sleep that overshoots enough to land in the 550-600 window is a
+        // CORRECT exit that the old 600 floor called a failure — it did
+        // exactly that on a loaded CI runner and failed a release build. 550
+        // still proves the retrying happened: an implementation that gave up
+        // immediately returns in single-digit milliseconds.
+        Assert.True(sw.ElapsedMilliseconds >= 550, "should have retried before failing");
     }
 
     [Fact]
@@ -114,7 +122,16 @@ public class BoxLabelStoreTests : IDisposable
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var ex = Assert.Throws<ConfigException>(() => BoxLabelStore.Read(p, maxWaitMs: 700));
         Assert.Contains("another station", ex.Message);
-        Assert.True(sw.ElapsedMilliseconds >= 600);
+        // 550, not 600: the retry loop's guard is
+        // `elapsed + RetryDelayMs <= maxWaitMs` with RetryDelayMs = 150, so it
+        // legitimately stops the moment elapsed passes 700 - 150 = 550. A
+        // sleep that overshoots enough to land in the 550-600 window is a
+        // CORRECT exit that the old 600 floor called a failure — it did
+        // exactly that on a loaded CI runner and failed a release build. 550
+        // still proves the retrying happened: an implementation that gave up
+        // immediately returns in single-digit milliseconds.
+        Assert.True(sw.ElapsedMilliseconds >= 550,
+            "should have retried before failing");
     }
 
     [Fact]
