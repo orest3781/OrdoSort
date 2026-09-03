@@ -60,6 +60,12 @@ crash.log
 # That drop also produced loose archives at docs/*.zip (PAPER, c, i, sl).
 # Not ignored here, deliberately — narrow rule, asked for narrowly. Widen it
 # if that shape recurs.
+#
+# MOVED 2026-09-02: the 412 files / 23 MB are now at S:\OrdoSort-samples\sample,
+# beside those same archives, which had already been moved there. The rule stays
+# — it is now a guard against the folder coming back, not a description of what
+# is here. Nothing in code, tests or scripts referenced the path; only planning
+# docs mention it, and they say not to read it.
 docs/sample/
 
 # Agent/skill tooling state dropped into the repo by installers and the
