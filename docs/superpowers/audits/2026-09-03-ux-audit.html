@@ -1,0 +1,638 @@
+<title>OrdoSort UX Audit</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground: #ECEEEA;
+    --surface: #FFFFFF;
+    --surface-2: #F5F6F3;
+    --ink: #1B211D;
+    --ink-2: #3D453F;
+    --muted: #5B645E;
+    --rule: #D3D7D1;
+    --accent: #8A5A2B;
+    --accent-ink: #FFFFFF;
+    --critical: #A8231B;
+    --critical-bg: #F9E9E7;
+    --major: #9A5B00;
+    --major-bg: #F8EFDC;
+    --minor: #3F6485;
+    --minor-bg: #E6EEF4;
+    --ok: #3B6B45;
+    --ok-bg: #E6F0E7;
+    --code-bg: #EEF0EC;
+    --focus: #8A5A2B;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #161917;
+      --surface: #1F2321;
+      --surface-2: #262B28;
+      --ink: #E7E9E3;
+      --ink-2: #C5CAC3;
+      --muted: #98A19A;
+      --rule: #343A36;
+      --accent: #CD9A5F;
+      --accent-ink: #1B211D;
+      --critical: #F19A93;
+      --critical-bg: #3A2320;
+      --major: #E4AE58;
+      --major-bg: #3A2F1A;
+      --minor: #90B4D2;
+      --minor-bg: #1F2E3A;
+      --ok: #9CC7A4;
+      --ok-bg: #1F3124;
+      --code-bg: #262B28;
+      --focus: #CD9A5F;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #161917;
+    --surface: #1F2321;
+    --surface-2: #262B28;
+    --ink: #E7E9E3;
+    --ink-2: #C5CAC3;
+    --muted: #98A19A;
+    --rule: #343A36;
+    --accent: #CD9A5F;
+    --accent-ink: #1B211D;
+    --critical: #F19A93;
+    --critical-bg: #3A2320;
+    --major: #E4AE58;
+    --major-bg: #3A2F1A;
+    --minor: #90B4D2;
+    --minor-bg: #1F2E3A;
+    --ok: #9CC7A4;
+    --ok-bg: #1F3124;
+    --code-bg: #262B28;
+    --focus: #CD9A5F;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  code, .mono {
+    font-family: "IBM Plex Mono", Consolas, "Courier New", monospace;
+    font-size: 0.86em;
+  }
+  code { background: var(--code-bg); padding: 0.08em 0.35em; border-radius: 3px; }
+
+  .page { max-width: 1040px; margin: 0 auto; padding: 40px 24px 96px; }
+  .reading { max-width: 72ch; }
+
+  h1, h2, h3 {
+    font-family: "Bricolage Grotesque", "IBM Plex Sans", "Segoe UI", sans-serif;
+    text-wrap: balance;
+    margin: 0;
+    line-height: 1.15;
+  }
+  h1 { font-size: clamp(30px, 4.6vw, 44px); font-weight: 700; letter-spacing: -0.01em; }
+  h2 { font-size: 24px; font-weight: 700; margin: 56px 0 14px; }
+  h3 { font-size: 17px; font-weight: 600; }
+  p { margin: 0 0 12px; }
+  .eyebrow {
+    font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600;
+  }
+
+  header .meta {
+    display: flex; flex-wrap: wrap; gap: 8px 22px;
+    color: var(--muted); font-size: 14px; margin: 14px 0 22px;
+  }
+  header .meta b { color: var(--ink-2); font-weight: 500; }
+
+  .counts {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px; margin: 26px 0 8px;
+  }
+  .count {
+    background: var(--surface); border-top: 3px solid var(--rule);
+    padding: 14px 16px 12px; min-width: 0;
+  }
+  .count .n {
+    font-family: "Bricolage Grotesque", sans-serif; font-size: 34px; font-weight: 700;
+    line-height: 1; font-variant-numeric: tabular-nums;
+  }
+  .count .l { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .count.critical { border-top-color: var(--critical); }
+  .count.major { border-top-color: var(--major); }
+  .count.minor { border-top-color: var(--minor); }
+  .count.total { border-top-color: var(--accent); }
+
+  .lede { font-size: 17px; color: var(--ink-2); }
+
+  .note {
+    background: var(--surface-2); border-left: 3px solid var(--accent);
+    padding: 12px 16px; margin: 18px 0; font-size: 15px;
+  }
+  .note p:last-child { margin: 0; }
+  .note ol { margin: 6px 0 0; padding-left: 1.2em; }
+  .note li { margin-bottom: 6px; }
+
+  ol.corrections, ul.solid { padding-left: 1.2em; margin: 0; }
+  ol.corrections li, ul.solid li { margin-bottom: 8px; }
+
+  .tablewrap { overflow-x: auto; margin: 14px 0 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; background: var(--surface); }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--surface-2); }
+  td.verdict { white-space: nowrap; }
+  .pill {
+    display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+    line-height: 1.6; white-space: nowrap;
+  }
+  .pill.yes { background: var(--ok-bg); color: var(--ok); }
+  .pill.no { background: var(--critical-bg); color: var(--critical); }
+  .pill.half { background: var(--major-bg); color: var(--major); }
+  .pill.design { background: var(--minor-bg); color: var(--minor); }
+  td .ref { color: var(--muted); font-size: 13px; }
+
+  .filters {
+    position: sticky; top: 0; z-index: 2;
+    background: var(--ground); padding: 12px 0 10px; margin: 24px 0 8px;
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    border-bottom: 1px solid var(--rule);
+  }
+  .chip {
+    font: inherit; font-size: 14px; font-weight: 500;
+    background: var(--surface); color: var(--ink-2);
+    border: 1px solid var(--rule); border-radius: 999px; padding: 5px 14px; cursor: pointer;
+  }
+  .chip[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .chip .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; }
+  .chip.critical .dot { background: var(--critical); }
+  .chip.major .dot { background: var(--major); }
+  .chip.minor .dot { background: var(--minor); }
+  .filters input {
+    font: inherit; font-size: 14px; padding: 6px 12px; min-width: 240px; flex: 1 1 200px;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px;
+  }
+  .filters .shown { color: var(--muted); font-size: 13.5px; margin-left: auto; font-variant-numeric: tabular-nums; }
+
+  .tier-head { margin: 34px 0 10px; display: flex; align-items: baseline; gap: 12px; }
+  .tier-head h2 { margin: 0; }
+  .tier-head .def { color: var(--muted); font-size: 14px; }
+
+  .finding {
+    background: var(--surface);
+    border-left: 4px solid var(--rule);
+    padding: 16px 20px 14px 18px;
+    margin: 0 0 10px;
+  }
+  .finding[data-tier="critical"] { border-left-color: var(--critical); }
+  .finding[data-tier="major"] { border-left-color: var(--major); }
+  .finding[data-tier="minor"] { border-left-color: var(--minor); }
+  .finding[hidden] { display: none; }
+  .finding .top { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; margin-bottom: 6px; }
+  .finding .id { font-family: "IBM Plex Mono", monospace; font-size: 13px; font-weight: 500; color: var(--muted); }
+  .finding .surface { font-size: 13px; color: var(--muted); }
+  .finding .law { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; color: var(--accent); margin-left: auto; }
+  .finding .qc { font-size: 12px; font-weight: 600; color: var(--ok); background: var(--ok-bg); padding: 0 7px; border-radius: 999px; }
+  .finding h3 { margin-bottom: 8px; }
+  .finding .marks { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--muted); margin-left: 6px; font-weight: 400; }
+  .finding p { font-size: 15px; color: var(--ink-2); }
+  .finding p.fix { color: var(--ink); margin-bottom: 0; }
+  .finding p.fix b { font-weight: 600; }
+
+  .batches { padding-left: 1.2em; margin: 0; }
+  .batches li { margin-bottom: 10px; }
+  .batches b { font-weight: 600; }
+
+  .empty { color: var(--muted); padding: 24px 0; display: none; }
+  .empty.show { display: block; }
+
+  @media (max-width: 720px) {
+    .counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .finding .law { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .chip { transition: background-color 120ms ease; }
+  }
+</style>
+
+<div class="page">
+  <header>
+    <div class="eyebrow">Audit · 2026-09-03 · QC-checked the same day</div>
+    <h1 style="margin-top:8px">OrdoSort UX Audit</h1>
+    <div class="meta">
+      <span><b>Tree</b> main @ 8e77436 (v1.5.4)</span>
+      <span><b>Scope</b> 21 XAML surfaces + view models</span>
+      <span><b>Source of truth</b> <code>docs/superpowers/audits/2026-09-03-ux-audit.md</code></span>
+    </div>
+    <div class="counts">
+      <div class="count total"><div class="n">38</div><div class="l">findings, UX-01 … UX-38 — nothing fixed yet</div></div>
+      <div class="count critical"><div class="n">2</div><div class="l">Critical — blocks the task or yields a wrong result</div></div>
+      <div class="count major"><div class="n">17</div><div class="l">Major — measurable friction</div></div>
+      <div class="count minor"><div class="n">19</div><div class="l">Minor — polish</div></div>
+    </div>
+  </header>
+
+  <section class="reading">
+    <p class="lede" style="margin-top:20px">One question per screen: what is the one thing the user came here to do, and does the screen make it unmistakable, fast, forgiving, and well-ended? Each answer is scored against the cognitive laws that predict where people fail. This is a different lens from the August defect and chrome audits.</p>
+    <p>Six read-only sweeps, one per surface group, each required to cite file and line for every claim and to grep the tracker first; every Critical and Major was then re-read in source. A same-day QC pass by five further agents re-opened every citation, hunted for misses, and de-duplicated against the tracker: all 32 original findings stand, eleven details were corrected, one finding was narrowed, and six were added (UX-33 to UX-38). No live pass was run: every finding is a code path, so all carry <span class="mono">[V]</span>; the two whose consequence deserves a running app also carry <span class="mono">[U]</span> with the thing to measure.</p>
+    <div class="note">
+      <p><b>Tracker corrections.</b></p>
+      <ol>
+        <li>UI-06 (fixed in <code>40b5ec0</code>) and UI-08 are fixed; the 08-22 status line already counts them, but their headings lack the FIXED marker.</li>
+        <li>UI-23 and UI-24 are stale the other way: <code>1ffc9f5</code> removed the Help menu and About box entirely (UX-18).</li>
+        <li>UX-07 is the feedback half of open QC-31; UX-15 was narrowed because its Zip part is QC-31 and its Match-and-merge part is Q2-02. Cite both when adopting. Every other finding is new to the records.</li>
+        <li>DW-63 looks done: <code>SavePdfAsync</code> already offloads the claim. The call still on the UI thread is <code>Print()</code>, which is UX-05.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section>
+    <h2>Primary action, per surface</h2>
+    <p class="reading" style="color:var(--muted)">The pattern is the finding: the routing loop is excellent, the tools are uneven. QC re-counted every window's primary button; all twenty rows held.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Surface</th><th>The one thing the user came to do</th><th>Unmistakable?</th></tr></thead>
+        <tbody>
+          <tr><td>Ready</td><td>Start processing</td><td class="verdict"><span class="pill yes">Yes</span> <span class="ref">Enter does nothing · UX-19</span></td></tr>
+          <tr><td>Processing</td><td>Name the document, press its destination</td><td class="verdict"><span class="pill yes">Yes</span> <span class="ref">name box, live preview, buttons stacked; ⏎ badge on the Enter route</span></td></tr>
+          <tr><td>Done</td><td>Back to inbox</td><td class="verdict"><span class="pill yes">Yes</span> <span class="ref">Enter does nothing · UX-19; the pane beside it is blank · UX-34</span></td></tr>
+          <tr><td>Settings</td><td>OK</td><td class="verdict"><span class="pill half">Too eager</span> <span class="ref">Enter anywhere fires it · UX-03</span></td></tr>
+          <tr><td>History</td><td>Find a filing</td><td class="verdict"><span class="pill yes">Yes</span> <span class="ref">filter box; two empty states; no initial focus · UX-37</span></td></tr>
+          <tr><td>Unlock PDFs</td><td>Unlock</td><td class="verdict"><span class="pill yes">Yes</span></td></tr>
+          <tr><td>Manage saved passwords</td><td>Add a password</td><td class="verdict"><span class="pill no">No</span> <span class="ref">Add and Remove identical · UX-08</span></td></tr>
+          <tr><td>Password prompt</td><td>Open</td><td class="verdict"><span class="pill yes">Yes</span> <span class="ref">Skip subordinate</span></td></tr>
+          <tr><td>Zip and unzip</td><td>Zip <i>or</i> Extract</td><td class="verdict"><span class="pill half">Half</span> <span class="ref">only Zip is styled · UX-16</span></td></tr>
+          <tr><td>Merge PDFs</td><td>Merge</td><td class="verdict"><span class="pill yes">Yes</span></td></tr>
+          <tr><td>Match and merge</td><td>Merge</td><td class="verdict"><span class="pill yes">Yes</span> <span class="ref">buckets and counts explain every disabled state</span></td></tr>
+          <tr><td>Bulk rename</td><td>Rename N files</td><td class="verdict"><span class="pill yes">Yes</span></td></tr>
+          <tr><td>Filename list</td><td>Copy or Save</td><td class="verdict"><span class="pill no">No</span> <span class="ref">equal weight · UX-17</span></td></tr>
+          <tr><td>PDF page counts</td><td>Copy or Save</td><td class="verdict"><span class="pill no">No</span> <span class="ref">equal weight · UX-17</span></td></tr>
+          <tr><td>List reformatter</td><td>Paste &amp; copy</td><td class="verdict"><span class="pill yes">Yes</span></td></tr>
+          <tr><td>Standardise names</td><td>Drop = rename</td><td class="verdict"><span class="pill design">By design</span> <span class="ref">documented in the XAML</span></td></tr>
+          <tr><td>Date prompt</td><td>Rename</td><td class="verdict"><span class="pill yes">Yes</span> <span class="ref">defaults to the last date used</span></td></tr>
+          <tr><td>Box labels</td><td>Print…</td><td class="verdict"><span class="pill yes">Yes</span> <span class="ref">but it can freeze · UX-05</span></td></tr>
+          <tr><td>Print preview</td><td>Print</td><td class="verdict"><span class="pill yes">Yes</span></td></tr>
+          <tr><td>Triage</td><td>Use selected id</td><td class="verdict"><span class="pill yes">Yes</span> <span class="ref">"n / N" shown</span></td></tr>
+          <tr><td>Message dialog</td><td>(building block)</td><td class="verdict"><span class="pill yes">Safe default</span> <span class="ref">everywhere</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="reading">
+    <h2>What is already solid</h2>
+    <p style="color:var(--muted)">QC verified every bullet against source; none was overstated.</p>
+    <ul class="solid">
+      <li><b>The routing loop's feedback is proportional and inline.</b> A route-coloured card below the buttons expires itself; a new arrival mid-session joins the queue with a note; Done says "N filed, M set aside" and claims a complete log only when true; Undo from Done re-enters Processing.</li>
+      <li><b>Every question dialog defaults to the safe answer</b>, handles Esc once, uses verb labels, and all six Confirm call sites guard something genuinely irreversible. Nothing should be an undo instead.</li>
+      <li><b>Standardise names is the cleanest window in the app</b>: the drop is the action, every row shows before → after with the refusal reason, Undo is scoped to what reverted, the date prompt remembers the last date.</li>
+      <li><b>Match and merge explains itself</b>: bucket line and count-bearing buttons, so a disabled button is never unexplained.</li>
+      <li><b>Empty states are designed</b> and tell "nothing here" from "nothing matches" in History, Filename list, Ready and Page counts.</li>
+      <li><b>Merge PDFs asks for the output location before the work</b>, ships new file types off, and reports a missing Office app at drop time.</li>
+      <li><b>Unlock's wrong-password loop is inline</b>, with "save it as…" right there; Zip promotes a typed password for the rest of the run.</li>
+      <li><b>The WebView2 failure messages are the model for error copy</b>: they say what still works and what to install, and send the detail to the crash log. UX-33 is about the sites that do not follow them.</li>
+      <li><b>Keyboard focus is visibly distinct from hover</b> on every control, and every tool window opens the same way.</li>
+    </ul>
+  </section>
+
+  <section id="findings">
+    <h2>Findings</h2>
+    <div class="filters" role="group" aria-label="Filter findings">
+      <button class="chip" type="button" data-tier="all" aria-pressed="true">All</button>
+      <button class="chip critical" type="button" data-tier="critical" aria-pressed="false"><span class="dot"></span>Critical</button>
+      <button class="chip major" type="button" data-tier="major" aria-pressed="false"><span class="dot"></span>Major</button>
+      <button class="chip minor" type="button" data-tier="minor" aria-pressed="false"><span class="dot"></span>Minor</button>
+      <input id="q" type="search" placeholder="Filter by window, law, or ID (e.g. Settings, Doherty, UX-07)" aria-label="Filter findings by text">
+      <span class="shown" id="shown">38 of 38</span>
+    </div>
+
+    <div class="tier-head" data-tier-head="critical"><h2 style="margin:0">Critical</h2><span class="def">blocks the task or yields a wrong result</span></div>
+
+    <article class="finding" data-tier="critical" data-surface="Processing">
+      <div class="top"><span class="id">UX-01</span><span class="surface">Processing</span><span class="law">Peak-End</span></div>
+      <h3>A failed filing wipes the name the user just typed <span class="marks">[V]</span></h3>
+      <p><code>LoadCurrentAsync</code> resets the box unconditionally (<code>ShellViewModel.cs:1360</code>). Both <code>CommitError</code> catches reload through it (<code>:1436-1437</code>, <code>:1471-1477</code>), and the session only advances on success, so the same PDF comes back with an empty box after the modal. Route buttons are enabled by route validity, not name validity, so an illegal name (<code>Naming.cs:102</code>, rewrapped at <code>Commit.cs:103</code>) or an unreachable folder reaches this path with the name typed. No test asserts the name survives.</p>
+      <p class="fix"><b>Fix:</b> keep <code>TypedName</code> when the document is unchanged (a "same document" refresh path). <b>Pin:</b> a commit that throws leaves <code>TypedName</code> intact — fails today.</p>
+    </article>
+
+    <article class="finding" data-tier="critical" data-surface="Bulk rename">
+      <div class="top"><span class="id">UX-02</span><span class="surface">Bulk rename</span><span class="law">Zeigarnik</span></div>
+      <h3>Sorting the preview breaks "next file needing a name" <span class="marks">[V] [U]</span></h3>
+      <p><code>PreviewGrid</code> is sortable (no <code>CanUserSortColumns="False"</code>). The navigator reads a view-order index (<code>BulkRenameWindow.xaml.cs:60-66</code>, <code>:128-137</code>), walks <code>Preview</code> in insertion order (<code>BulkRenameViewModel.cs:457-465</code>), then indexes the view again. WPF sorts the view, never the source, so after any header click Enter or F2 opens an arbitrary row and seeds it, in the type-Enter rhythm the code designs for. Existing tests exercise the walk unsorted only.</p>
+      <p class="fix"><b>Measure:</b> sort by Result, press Enter on a stray, read which row opens. <b>Fix:</b> <code>CanUserSortColumns="False"</code>, or navigate by row identity. <b>Pin:</b> with a sort applied, the row in edit has <code>NeedsName</code> — fails today.</p>
+    </article>
+
+    <div class="tier-head" data-tier-head="major"><h2 style="margin:0">Major</h2><span class="def">measurable friction</span></div>
+
+    <article class="finding" data-tier="major" data-surface="Settings">
+      <div class="top"><span class="id">UX-03</span><span class="surface">Settings</span><span class="law">Jakob</span></div>
+      <h3>Enter in almost any text box commits and closes all seven tabs <span class="marks">[V]</span></h3>
+      <p>OK is <code>IsDefault</code> (<code>SettingsWindow.xaml:156</code>). Only the hotkey box, the section editor and the alert-term box intercept Return; every other text box (paths, route fields, poll seconds, font size) lets it reach OK, which validates every tab and closes on success. Mid-edit Enter pops a dialog about other tabs, or saves half-reviewed edits.</p>
+      <p class="fix"><b>Fix:</b> swallow Return in the window's text boxes (the Manage-saved fix, inverted), or drop <code>IsDefault</code> from OK. <b>Pin:</b> Enter in the Inbox box leaves the window open — fails today.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="Merge PDFs">
+      <div class="top"><span class="id">UX-04</span><span class="surface">Merge PDFs</span><span class="law">Doherty</span><span class="qc">QC-corrected</span></div>
+      <h3>An Office-document merge is one frozen status line, and the only way out is unlabelled <span class="marks">[V]</span></h3>
+      <p>Every loose document goes into one unit (<code>MergePdfsViewModel.cs:467-473</code>); "Merging 1 of 1…" is written once and cancellation is checked only between units (<code>ZipListViewModel.cs:591-596</code>). Eight Word documents show one unchanging line until all eight have gone through Office. QC correction: the view model inherits <code>Cancel()</code> and the window fires it on close, dropping queued units, so Close is an escape hatch, unlabelled as one; what is missing is a labelled Cancel and progress finer than "1 of 1".</p>
+      <p class="fix"><b>Fix:</b> one unit per document, so "n of N" and between-unit Cancel apply for free; add a Cancel button wired to the existing <code>Cancel()</code>. <b>Pin:</b> three loose files raise three distinct Status values — fails today.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="Box labels">
+      <div class="top"><span class="id">UX-05</span><span class="surface">Box labels</span><span class="law">Doherty</span></div>
+      <h3>Print can freeze the window for five seconds with no busy state <span class="marks">[V]</span></h3>
+      <p><code>Print</code> calls <code>ClaimNumbers</code> synchronously on the UI thread (<code>LabelMakerViewModel.cs:489</code>); the method's own comment says so, and the store retries a contended file for 5 s (<code>BoxLabelStore.cs:12</code>). The command is a plain <code>RelayCommand</code> with no busy state; the primary button simply stops answering. DW-63 asked for this in Save PDF, which already has it.</p>
+      <p class="fix"><b>Fix:</b> go through <code>_scheduler.Run(ClaimNumbersCore)</code> as <code>SavePdfAsync</code> already does; disable Print while claiming.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="History">
+      <div class="top"><span class="id">UX-06</span><span class="surface">History</span><span class="law">Doherty</span></div>
+      <h3>A blank grid during a slow load, and Show all can run twice <span class="marks">[V]</span></h3>
+      <p>The class warns that a query on a share "takes seconds" (<code>HistoryViewModel.cs:38-42</code>), yet has no <code>IsBusy</code>; rows clear after the query and the empty-state text only appears after load, so the wait shows nothing. <code>ShowAllCommand</code> is a plain command gated on <code>!_showedAll</code> only (<code>:79</code>), which is set at the end of the load.</p>
+      <p class="fix"><b>Fix:</b> <code>IsBusy</code> driving a Loading row and gating Show all. <b>Pin:</b> Show all cannot execute while a load is in flight — fails today.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="Zip and unzip">
+      <div class="top"><span class="id">UX-07</span><span class="surface">Zip and unzip · sibling of QC-31</span><span class="law">Doherty</span></div>
+      <h3>Building a zip shows nothing until it is finished <span class="marks">[V]</span></h3>
+      <p><code>ZipAsync</code> (<code>ZipExtractViewModel.cs:88-97</code>) writes <code>Status</code> only after the run and never sets <code>IsBusy</code>; its sibling Extract does both through <code>RunBatchAsync</code>. Open tracker row QC-31 records the same method from the lifecycle side (it ignores cancellation, so closing mid-zip leaves it running); this is the feedback side. Cite both.</p>
+      <p class="fix"><b>Fix:</b> route <code>ZipAsync</code> through <code>RunBatchAsync</code> as one unit, which closes QC-31 too. <b>Pin:</b> Status changes before the zipper stub completes — fails today.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="Manage saved passwords">
+      <div class="top"><span class="id">UX-08</span><span class="surface">Manage saved passwords</span><span class="law">Jakob</span></div>
+      <h3>Removing a saved password is instant, permanent, and looks like Add <span class="marks">[V]</span></h3>
+      <p>Every platform the user knows confirms an irreversible delete or offers undo. <code>RemoveSelectedSaved</code> (<code>UnlockViewModel.cs:485-500</code>) removes, persists and re-probes with no confirm and no undo; the password is recoverable from nowhere. Add and Remove share the plain style side by side.</p>
+      <p class="fix"><b>Fix:</b> "Removed 'label' · Undo" for a few seconds, or a one-line confirm naming the label; plus UX-10's style.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="Settings">
+      <div class="top"><span class="id">UX-09</span><span class="surface">Settings</span><span class="law">Occam</span></div>
+      <h3>Removing a destination or watched folder has no undo but Cancel-everything <span class="marks">[V]</span></h3>
+      <p>Remove disposes the row on click (<code>SettingsViewModel.cs:707-709</code>, <code>:737-739</code>) with no undo anywhere in the class; it sits in the same plain style between Duplicate and ↑ on Destinations and between Add section and ↑ on Monitored folders. The only recovery is Cancel, which discards every other edit across seven tabs.</p>
+      <p class="fix"><b>Fix:</b> a local "Removed 'Legal' · Undo", or at minimum a destructive style and a gap.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="App-wide">
+      <div class="top"><span class="id">UX-10</span><span class="surface">App-wide · 11 windows</span><span class="law">Similarity</span></div>
+      <h3>No destructive button style exists, though the palette defines the tokens <span class="marks">[V]</span></h3>
+      <p><code>Theme.Danger</code> and <code>Theme.DangerText</code> are wired (<code>ThemeManager.cs:149-150</code>) and used only by alerting tiles; every other mention in the tree is a comment about a decision not to use them. Every Remove, Clear, Delete and Reset button in eleven windows renders exactly like Undo, Cancel and Browse.</p>
+      <p class="fix"><b>Fix:</b> a <code>DestructiveButton</code> style on those tokens, applied at the eleven sites. <b>Pin:</b> a lint in the <code>PrimaryButtonLabel</code> shape — fails today at all eleven.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="App-wide">
+      <div class="top"><span class="id">UX-11</span><span class="surface">App-wide · motion</span><span class="law">Aesthetic-Usability</span><span class="qc">QC-corrected</span></div>
+      <h3>No animation honours reduced motion, and the code says so <span class="marks">[V]</span></h3>
+      <p><code>ReadyView.xaml:18-24</code> records "zero hits" for <code>SystemParameters.ClientAreaAnimation</code>; it is still the only mention. Four sites run regardless of the OS setting: the tile cascade (<code>ReadyView.xaml:48-163</code>), the notice-rail slide (<code>MainWindow.xaml:64-72</code>) and a second fade there (<code>:402-407</code>), and the confirmation-card fade (<code>ProcessingView.xaml:169-180</code>). UI-19's converter refactor of the cascade is the same change.</p>
+      <p class="fix"><b>Fix:</b> one <code>AnimationsEnabled</code> gate reading the system parameter, applied at the four sites.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="Merge PDFs">
+      <div class="top"><span class="id">UX-12</span><span class="surface">Merge PDFs</span><span class="law">Tesler</span></div>
+      <h3>Merge order is drop order with no way to change it <span class="marks">[V]</span></h3>
+      <p>The output follows <code>Rows</code> order, rows are appended on drop, and the window has no move or reorder control. Fixing an order means remove and re-add in sequence.</p>
+      <p class="fix"><b>Fix:</b> Move up / Move down on the selection, as Settings' route list already has.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="Settings">
+      <div class="top"><span class="id">UX-13</span><span class="surface">Settings</span><span class="law">Parkinson</span></div>
+      <h3>Validation only on OK, pooled into one dialog, while live validity is computed and discarded <span class="marks">[V]</span></h3>
+      <p><code>HardErrors()</code> is the only check and its result is one dialog with no tab switch or focus. <code>ColorValid</code> raises on every keystroke on both editors and is bound nowhere; the swatch paints an invalid colour transparent, which looks like "none chosen".</p>
+      <p class="fix"><b>Fix:</b> bind <code>ColorValid</code> to the colour boxes; on OK failure select the tab and focus the first offender.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="Settings">
+      <div class="top"><span class="id">UX-14</span><span class="surface">Settings</span><span class="law">Postel</span></div>
+      <h3>Path fields reject Explorer's "Copy as path" <span class="marks">[V]</span></h3>
+      <p>Every path assignment is <code>.Trim()</code> only and nothing strips quotes anywhere in Wpf or Core. A pasted quoted path looks right and the probe says the folder does not exist, with no hint why.</p>
+      <p class="fix"><b>Fix:</b> strip one matching pair of quotes in the shared normaliser. <b>Pin:</b> a quoted path normalises to the bare path — fails today.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="Zip and unzip">
+      <div class="top"><span class="id">UX-16</span><span class="surface">Zip and unzip</span><span class="law">Von Restorff</span></div>
+      <h3>Zip is the primary while Extract is plain, in a window named for both <span class="marks">[V]</span></h3>
+      <p><code>ZipToolsWindow.xaml:19-29</code>: Zip is <code>PrimaryButton</code>, Extract is default, though both are gated (<code>ZipExtractViewModel.cs:35-37</code>) and counted the same way. A user who dropped zips searches past the accented button for a plain one.</p>
+      <p class="fix"><b>Fix:</b> style whichever action the dropped content makes live as primary, or both.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="Filename list">
+      <div class="top"><span class="id">UX-17</span><span class="surface">Filename list · PDF page counts</span><span class="law">Von Restorff</span></div>
+      <h3>Two list tools have no primary action <span class="marks">[V]</span></h3>
+      <p>Copy to clipboard and Save as… sit at equal weight in both windows and neither file uses <code>PrimaryButton</code> at all. Standardise names documents why it has none; these two have a terminal action and no such note.</p>
+      <p class="fix"><b>Fix:</b> pick one (Save is the durable half) and give it <code>PrimaryButton</code>.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="MainWindow">
+      <div class="top"><span class="id">UX-18</span><span class="surface">MainWindow · menu</span><span class="law">Jakob</span></div>
+      <h3>No Help or About: the app cannot show its version or its shortcuts <span class="marks">[V]</span></h3>
+      <p><code>1ffc9f5</code> removed the Help menu and About box and nothing replaced them. The shortcuts exist only as inline hints on their own windows. This was a deliberate removal and an open question in memory; this is the UX case for the minimal replacement.</p>
+      <p class="fix"><b>Fix:</b> one About item carrying the version and the shortcut list.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="App-wide">
+      <div class="top"><span class="id">UX-33</span><span class="surface">App-wide · nine sites</span><span class="law">Peak-End</span><span class="qc">QC addition</span></div>
+      <h3>Catch-all handlers show the raw exception text with no next step <span class="marks">[V]</span></h3>
+      <p>At least nine user-facing sites concatenate <code>ex.Message</code> from a catch-all straight into a status line or dialog (<code>StandardiseNamesViewModel.cs:186,194,339</code>, <code>BulkRenameViewModel.cs:169-170,333</code>, <code>HistoryViewModel.cs:153</code>, <code>LabelMakerViewModel.cs:530</code>, <code>PageCountsViewModel.cs:271</code>, <code>FilenameListViewModel.cs:664</code>, <code>PrintPreviewWindow.xaml.cs:137</code>, <code>MatchMerge.cs:434</code>). Exporting History while the CSV is open in Excel shows "The process cannot access the file…" with no hint to close it. The Core result lines carry the same raw tail into the grids. UI-27 fixed only the config path; the authored messages are not the problem.</p>
+      <p class="fix"><b>Fix:</b> one shared friendly-failure formatter with cause-specific advice for the common types, technical text to the crash log as the WebView2 messages already do.</p>
+    </article>
+
+    <article class="finding" data-tier="major" data-surface="Done">
+      <div class="top"><span class="id">UX-34</span><span class="surface">Done · MainWindow</span><span class="law">Peak-End</span><span class="qc">QC addition</span></div>
+      <h3>Done keeps the split layout and blanks the viewer, so the session's end shows a large empty pane <span class="marks">[V] [U]</span></h3>
+      <p><code>ShowDone</code> (<code>ShellViewModel.cs:1370-1373</code>) navigates the viewer to <code>about:blank</code>; <code>ApplyWindowMode</code> (<code>MainWindow.xaml.cs:215-219</code>) compacts only on Ready, so the star-width viewer column (<code>MainWindow.xaml:379</code>) stays beside the 430 px summary panel. Nothing sets the WebView2 background colour, so the blank pane paints white — in a dark scheme, a white rectangle beside the Done card.</p>
+      <p class="fix"><b>Measure:</b> end a session in a dark scheme and look at the pane. <b>Fix:</b> compact on Done as on Ready (<code>IsDone</code> exists), or keep the last document's preview; either way set a themed background colour.</p>
+    </article>
+
+    <div class="tier-head" data-tier-head="minor"><h2 style="margin:0">Minor</h2><span class="def">polish</span></div>
+
+    <article class="finding" data-tier="minor" data-surface="Standardise names">
+      <div class="top"><span class="id">UX-15</span><span class="surface">Standardise names · Merge PDFs</span><span class="law">Doherty</span><span class="qc">QC-narrowed</span></div>
+      <h3>Standardise names has no cancellation path; Merge PDFs has one but no button <span class="marks">[V]</span></h3>
+      <p>Narrowed from four windows to two: Zip's missing cancel is QC-31, and Match and merge's merge runs synchronously on the UI thread, which is Q2-02 (High), so a cancel there needs the async move first. Labelled Cancel exists in Unlock and Bulk rename only; Merge PDFs inherits <code>Cancel()</code> and fires it on close (UX-04 carries the button); Standardise names has no token at all, but its batches are file renames.</p>
+      <p class="fix"><b>Fix:</b> the Unlock pattern, when the rename batches ever grow past a second.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="Ready">
+      <div class="top"><span class="id">UX-19</span><span class="surface">Ready · Done</span><span class="law">Jakob</span></div>
+      <h3>Enter does nothing on Ready and Done <span class="marks">[V]</span></h3>
+      <p>Start processing and Back to inbox carry no <code>IsDefault</code>, MainWindow binds no Enter, while Processing makes Enter the commit.</p>
+      <p class="fix"><b>Fix:</b> <code>IsDefault="True"</code> on both.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="Message dialog">
+      <div class="top"><span class="id">UX-20</span><span class="surface">Message dialog</span><span class="law">Doherty</span></div>
+      <h3>The Copy button is silent on success and on failure <span class="marks">[V]</span></h3>
+      <p>Every action gets an acknowledgment proportional to its weight; this one gets none, on every error dialog in the app. <code>MessageWindow.xaml.cs:183-187</code> swallows both outcomes; every sibling Copy reports.</p>
+      <p class="fix"><b>Fix:</b> "Copied" for 2 s; "Clipboard busy, try again" on the catch.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="Unlock PDFs">
+      <div class="top"><span class="id">UX-21</span><span class="surface">Unlock · Zip · Merge PDFs</span><span class="law">Peak-End</span></div>
+      <h3>Batch end states offer no next action <span class="marks">[V]</span></h3>
+      <p>Each ends in a specific status line with nothing to click; <code>OpenFolder</code> exists but is wired only to the notice rail and Settings.</p>
+      <p class="fix"><b>Fix:</b> Open folder, or double-click a finished row to open its output.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="Zip and unzip">
+      <div class="top"><span class="id">UX-22</span><span class="surface">Zip · Merge PDFs · Match and merge</span><span class="law">Jakob</span></div>
+      <h3>The primary button is not the default <span class="marks">[V]</span></h3>
+      <p>Unlock, Box labels, Print preview and the date prompt wire <code>IsDefault</code>; these three do not, though all three commands already gate on rows.</p>
+      <p class="fix"><b>Fix:</b> three attributes.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="Password prompt">
+      <div class="top"><span class="id">UX-23</span><span class="surface">Password prompt</span><span class="law">Goal-Gradient</span></div>
+      <h3>The prompt never says how many more will ask <span class="marks">[V]</span></h3>
+      <p><code>PasswordRequest</code> carries item, container and a retry flag only; the batch loop that knows "i of N" never passes them on. A zip with six passwords asks six times with no "3 of 6".</p>
+      <p class="fix"><b>Fix:</b> thread position and count from the batch loop.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="Print preview">
+      <div class="top"><span class="id">UX-24</span><span class="surface">Print preview · Triage</span><span class="law">Similarity</span><span class="qc">QC-corrected</span></div>
+      <h3>Three words for "dismiss, nothing pending" <span class="marks">[V]</span></h3>
+      <p>Close in twelve windows; Cancel in Print preview, where "Cancel" elsewhere means stop a running batch; Stop reviewing in Triage, which is defensible.</p>
+      <p class="fix"><b>Fix:</b> Close in Print preview.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="Print preview">
+      <div class="top"><span class="id">UX-25</span><span class="surface">Print preview · Box labels</span><span class="law">Jakob</span><span class="qc">QC-corrected</span></div>
+      <h3>An Enter-Enter path prints after the label numbers are already claimed <span class="marks">[V]</span></h3>
+      <p>Two comments are each literally true and together describe the path: Box labels says nothing spools without a second Print; Print preview makes that second Print the default with no initial focus and spools directly. So a reflex second Enter prints, after the counter is claimed (QC-15). Enter confirming a print dialog is conventional, hence Minor; the substance is that the first comment frames a gate the second window does not provide.</p>
+      <p class="fix"><b>Fix:</b> decide which, then correct the other window.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="App-wide">
+      <div class="top"><span class="id">UX-26</span><span class="surface">App-wide · batch tools</span><span class="law">Doherty</span></div>
+      <h3>No progress bar anywhere; progress is text, and one tool has none <span class="marks">[V]</span></h3>
+      <p>Zero <code>ProgressBar</code> across all XAML. Unlock, Bulk rename, Extract and Merge write "n of N…" text, which meets the bar; Zip writes nothing (UX-07). Corrected from the sweep's "no operation shows progress".</p>
+      <p class="fix"><b>Fix:</b> a shared bar bound to busy and n/N, once UX-04 and UX-07 land.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="Settings">
+      <div class="top"><span class="id">UX-27</span><span class="surface">Settings</span><span class="law">Pareto</span></div>
+      <h3>Data files is a peer of Destinations <span class="marks">[V]</span></h3>
+      <p>One tab style for all seven, so four side-file paths get the same weight as the buttons the loop presses on every file; the 08-22 audit itself missed the tab.</p>
+      <p class="fix"><b>Fix:</b> fold it under an Advanced disclosure.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="Processing">
+      <div class="top"><span class="id">UX-28</span><span class="surface">Processing</span><span class="law">Doherty</span></div>
+      <h3>A disabled route's hotkey does nothing, silently <span class="marks">[V]</span></h3>
+      <p><code>RouteCommand</code> has no <code>CanExecute</code> and the guard returns silently (<code>ShellViewModel.cs:1399</code>); the reason already exists as the tooltip. Borderline Major for a keyboard-first screen.</p>
+      <p class="fix"><b>Fix:</b> show the disabled reason as a status note.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="Processing">
+      <div class="top"><span class="id">UX-29</span><span class="surface">Processing</span><span class="law">Miller</span></div>
+      <h3>Destination buttons are one flat list <span class="marks">[V]</span></h3>
+      <p>Buttons are scanned by colour, label and hotkey rather than held in memory, so this only bites past roughly eight routes. <code>Route</code> has no <code>Section</code> while <code>WatchFolder</code> does; the demo workbench builds ten.</p>
+      <p class="fix"><b>Fix, when wanted:</b> a <code>Section</code> on <code>Route</code> reusing Ready's tile groups.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="Filename list">
+      <div class="top"><span class="id">UX-30</span><span class="surface">Filename list</span><span class="law">Similarity</span></div>
+      <h3>The summary line is styled as a caption; Page counts' identical line is the result <span class="marks">[V]</span></h3>
+      <p><code>SubtleText</code> here, <code>StatusText</code> there (<code>PageCountsWindow.xaml:19-20</code>), with a comment naming the convention.</p>
+      <p class="fix"><b>Fix:</b> <code>StatusText</code>.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="List reformatter">
+      <div class="top"><span class="id">UX-31</span><span class="surface">List reformatter</span><span class="law">Jakob</span></div>
+      <h3>"Space after separator" stays enabled where it has no effect <span class="marks">[V]</span></h3>
+      <p>The delimiter box disables itself when irrelevant; this checkbox does not, and the flag is ignored for one-per-line output.</p>
+      <p class="fix"><b>Fix:</b> bind <code>IsEnabled</code> to the shape.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="App-wide">
+      <div class="top"><span class="id">UX-32</span><span class="surface">Six tool windows</span><span class="law">Jakob</span><span class="qc">QC-corrected</span></div>
+      <h3>Delete removes a selected row in only one tool window <span class="marks">[V]</span></h3>
+      <p>Handled in the Filename list (and Settings); absent in the six other windows that have a Remove selected button: Bulk rename, Page counts, Unlock, Zip, Merge, Match and merge. Standardise names has no pending list, so it is out of scope.</p>
+      <p class="fix"><b>Fix:</b> the same key branch calling each window's existing remove handler.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="Bulk rename">
+      <div class="top"><span class="id">UX-35</span><span class="surface">Bulk rename</span><span class="law">Postel</span><span class="qc">QC addition</span></div>
+      <h3>Prefix and Suffix are not trimmed, unlike the per-row override <span class="marks">[V]</span></h3>
+      <p><code>BulkRenameViewModel.cs:209</code> and <code>:212</code> take the values raw; <code>SetOverride</code> three lines away trims. A prefix pasted with a leading space lands in every filename; one with a trailing newline makes every row skip with a reason. Find and Replace should stay untrimmed.</p>
+      <p class="fix"><b>Fix:</b> trim in the two setters.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="Password prompt">
+      <div class="top"><span class="id">UX-36</span><span class="surface">Password prompt</span><span class="law">Jakob</span><span class="qc">QC addition</span></div>
+      <h3>The Show toggle resets on every prompt in a run <span class="marks">[V]</span></h3>
+      <p>A new window is built per locked item (<code>PasswordWindow.xaml.cs:51</code>) and the toggle is unbound, so a user transcribing from a note re-clicks Show six times in a six-password zip. Unlock's inline retry keeps one window and so keeps the state.</p>
+      <p class="fix"><b>Fix:</b> carry the toggle in the per-run state UX-23's count would also travel in.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="History">
+      <div class="top"><span class="id">UX-37</span><span class="surface">History</span><span class="law">Fitts</span><span class="qc">QC addition</span></div>
+      <h3>The Find box does not take initial focus <span class="marks">[V]</span></h3>
+      <p>The window never calls <code>Focus()</code> and the filter box is unnamed, while every other text-first window focuses its field explicitly. The box is the window's stated job.</p>
+      <p class="fix"><b>Fix:</b> name the box and focus it on Loaded.</p>
+    </article>
+
+    <article class="finding" data-tier="minor" data-surface="Filename list">
+      <div class="top"><span class="id">UX-38</span><span class="surface">Filename list</span><span class="law">Postel</span><span class="qc">QC addition</span></div>
+      <h3>Find does not trim a pasted term <span class="marks">[V]</span></h3>
+      <p><code>FilenameListViewModel.cs:446-448</code> matches case-insensitively but never trims, so a term pasted with a trailing space finds nothing, with no indication why.</p>
+      <p class="fix"><b>Fix:</b> trim before the match.</p>
+    </article>
+
+    <p class="empty" id="empty">Nothing matches that filter.</p>
+  </section>
+
+  <section class="reading">
+    <h2>Recommended order</h2>
+    <ol class="batches">
+      <li><b>The loop and the one-liners.</b> UX-01, UX-02, UX-03, UX-07, UX-06, UX-05, UX-19, UX-22, UX-20, UX-31, UX-32, UX-35, UX-37, UX-38, UX-36. Every one is a single-file change with a pin.</li>
+      <li><b>Destructive actions.</b> UX-10 (the style) first, then UX-08 and UX-09 (undo).</li>
+      <li><b>Long operations.</b> UX-04, then UX-26 if wanted.</li>
+      <li><b>Needs a decision from you.</b> UX-16 (which zip action is primary), UX-17 (Copy or Save), UX-18 (About), UX-12 (reorder UI), UX-34 (compact on Done, or keep the preview), UX-27, UX-29.</li>
+    </ol>
+    <p style="margin-top:12px;color:var(--muted)">Remaining, any order: UX-11, UX-13, UX-14, UX-15, UX-21, UX-23, UX-24, UX-25, UX-28, UX-30, UX-33.</p>
+
+    <h2>QC pass</h2>
+    <p>Same day, five read-only agents that had not written the audit: three adversarial re-verifications of every citation, one hunt for misses on the thinly covered surfaces, and one de-duplication against the five record documents. All 32 original findings stand; none refuted; UX-15 narrowed and moved to Minor; eleven details corrected (marked above); six findings added. The one real defect in the audit was its claim that nothing was already tracked: UX-07 and UX-15 overlap QC-31 and Q2-02, which are indexed by method name rather than window name. The markdown carries the full correction list.</p>
+  </section>
+</div>
+
+<script>
+(function () {
+  var chips = Array.prototype.slice.call(document.querySelectorAll('.chip'));
+  var input = document.getElementById('q');
+  var shown = document.getElementById('shown');
+  var empty = document.getElementById('empty');
+  var findings = Array.prototype.slice.call(document.querySelectorAll('.finding'));
+  var heads = Array.prototype.slice.call(document.querySelectorAll('[data-tier-head]'));
+  var tier = 'all';
+
+  function apply() {
+    var q = (input.value || '').trim().toLowerCase();
+    var visible = 0;
+    var perTier = { critical: 0, major: 0, minor: 0 };
+    findings.forEach(function (f) {
+      var okTier = tier === 'all' || f.getAttribute('data-tier') === tier;
+      var okText = !q || f.textContent.toLowerCase().indexOf(q) !== -1;
+      var show = okTier && okText;
+      f.hidden = !show;
+      if (show) { visible++; perTier[f.getAttribute('data-tier')]++; }
+    });
+    heads.forEach(function (h) { h.hidden = perTier[h.getAttribute('data-tier-head')] === 0; });
+    shown.textContent = visible + ' of ' + findings.length;
+    empty.classList.toggle('show', visible === 0);
+  }
+
+  chips.forEach(function (c) {
+    c.addEventListener('click', function () {
+      tier = c.getAttribute('data-tier');
+      chips.forEach(function (x) { x.setAttribute('aria-pressed', x === c ? 'true' : 'false'); });
+      apply();
+    });
+  });
+  input.addEventListener('input', apply);
+  apply();
+})();
+</script>
