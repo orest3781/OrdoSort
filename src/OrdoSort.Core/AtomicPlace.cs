@@ -373,8 +373,9 @@ internal static class AtomicPlace
     /// won" success <see cref="MoveOnlyIfAbsent"/> reports — never on
     /// failure: a sweep is a nice-to-have with no business running when the
     /// save itself didn't work. Runs at most once per destination per
-    /// process (<see cref="SweptDestinations"/>), and the whole body below is
-    /// wrapped in one try/catch: a directory enumeration is a network round
+    /// process (<see cref="SweptDestinations"/>), and the remaining body
+    /// below — everything past the TryAdd gate above — is wrapped in one
+    /// try/catch: a directory enumeration is a network round
     /// trip on the shares this app targets, and — like <see
     /// cref="RemoveQuietly"/> a few lines up — a sweep that throws must never
     /// turn a successful save into a reported failure. That same catch is
@@ -391,7 +392,7 @@ internal static class AtomicPlace
     /// enumerated.</summary>
     private static void SweepStaleTemps(string destination)
     {
-        if (!SweptDestinations.TryAdd(destination, 0)) return;   // already swept this process; see SweptDestinations
+        if (!SweptDestinations.TryAdd(destination, 0)) return;   // already claimed this process; see SweptDestinations
 
         try
         {
@@ -439,7 +440,11 @@ internal static class AtomicPlace
     /// destination's name, the characters immediately before ".tmp" are
     /// always the literal "unlocking", and its last character, 'g', is not a
     /// hex digit — so <see cref="Guid.TryParseExact"/> below refuses it
-    /// before anything about the destination's own name is even considered.
+    /// independently of anything about the destination's own name (in
+    /// practice the length check further below is what actually rejects a
+    /// real Unlock temp first, for every destination this app uses today —
+    /// this paragraph's claim is about the GUID check alone, not about
+    /// which check runs first).
     ///
     /// A sibling destination's own temp is excluded the same structural way:
     /// e.g. "destinations.json.&lt;guid&gt;.tmp" does not start with

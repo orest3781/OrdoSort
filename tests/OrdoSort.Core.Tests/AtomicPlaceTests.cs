@@ -478,7 +478,18 @@ public class AtomicPlaceTests : IDisposable
     /// length, because the 32 characters immediately before ".tmp" would
     /// still end in the literal "unlocking" and 'g' is not a hex digit — and
     /// a sibling destination's own temp in the same directory never matches
-    /// either.</summary>
+    /// either.
+    ///
+    /// Two rows exist only to pin a check the other rows happen to leave
+    /// unexercised: every wrong-prefix case above is ALSO the wrong length
+    /// (e.g. "destinations.json" is 17 chars against "config.json"'s 11), so
+    /// deleting the StartsWith check entirely would still pass every row but
+    /// these — the length gate alone would keep rejecting the others. The
+    /// same is true in reverse for the suffix check: no row above has the
+    /// right length AND the right prefix AND a valid 32-hex middle but the
+    /// wrong tail. Both are the already-true-predicate trap this repo has
+    /// been bitten by before: a check with nothing that fails when it is
+    /// deleted is not actually pinned by the suite around it.</summary>
     [Theory]
     [InlineData("config.json.0123456789abcdef0123456789abcdef.tmp", "config.json", true)]
     [InlineData("config.json.0123456789ABCDEF0123456789ABCDEF.tmp", "config.json", true)]
@@ -491,6 +502,8 @@ public class AtomicPlaceTests : IDisposable
     [InlineData("config.json.0123456789abcdef0123456789abcde.tmp", "config.json", false)]   // 31 hex chars, one short
     [InlineData("config.json.0123456789abcdef0123456789abcdefa.tmp", "config.json", false)] // 33 hex chars, one too many
     [InlineData("config.json.0123456789abcdef0123456789abcdeg.tmp", "config.json", false)]  // 32 chars, but 'g' is not hex
+    [InlineData("alerts.json.0123456789abcdef0123456789abcdef.tmp", "config.json", false)]  // equal-length foreign prefix — only StartsWith rejects this
+    [InlineData("config.json.0123456789abcdef0123456789abcdef.bak", "config.json", false)]  // right prefix, right guid, wrong suffix — only EndsWith rejects this
     public void SweepPatternMatchesOnlyThisDestinationsOwnGuidTempName(
         string fileName, string destinationFileName, bool expected)
     {
@@ -607,6 +620,35 @@ public class AtomicPlaceTests : IDisposable
         Assert.Equal("", error);
         Assert.Equal("new", File.ReadAllText(dest));
     }
+
+    /// <summary>Run it only after a successful placement, never on the
+    /// failure path: a save that exhausts its whole retry budget and still
+    /// fails must never sweep at all. Proves it three ways at once — the
+    /// call reports failure, a genuinely stale orphan is left untouched
+    /// (not just coincidentally, since the sweep never even started), and a
+    /// destination-filtered BeforeSweep recorder never fires.</summary>
+    [Fact]
+    public void SweepNeverRunsWhenThePlacementFails()
+    {
+        var dest = Dest("config.json");
+        File.WriteAllText(dest, "old");
+        var orphan = Dest(OrphanNameFor("config.json"));
+        File.WriteAllText(orphan, "stranded by a crash");
+        File.SetLastWriteTimeUtc(orphan, DateTime.UtcNow - AtomicPlace.StaleTempAge - TimeSpan.FromMinutes(1));
+
+        // Never released: the same mechanism
+        // ReplaceGivesUpAfterTheBudgetAndSaysSoWithoutLosingTheOldFile uses
+        // to exhaust the whole retry budget and end in failure.
+        using var holder = new FileStream(dest, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var sweepInvoked = false;
+        AtomicPlace.BeforeSweep = path => { if (path == dest) sweepInvoked = true; };
+
+        var ok = AtomicPlace.TryReplace(dest, Writes("new"), out _);
+
+        Assert.False(ok);
+        Assert.True(File.Exists(orphan));   // never touched — the sweep did not run at all
+        Assert.False(sweepInvoked, "the sweep must never run on the failure path");
+    }
 }
 
 /// <summary>Declares the collection <see cref="AtomicPlaceTests.Name"/> names.
@@ -622,12 +664,17 @@ public class AtomicPlaceSeamCollection
 /// UnlockThresholdTestCollectionMembershipTests: a race on a single field
 /// assignment can't be forced on demand, so a timing-based regression test
 /// would either always pass or be flaky. What CAN be asserted is the thing
-/// the fix actually relies on — that every class assigning
-/// AtomicPlace.BeforeAttempt declares the same [Collection] name.
+/// the fix actually relies on — that every class assigning any of
+/// AtomicPlace's process-wide seams declares the same [Collection] name.
+/// There are three of them now: <see cref="AtomicPlace.BeforeAttempt"/>,
+/// <see cref="AtomicPlace.Sleep"/> and <see cref="AtomicPlace.BeforeSweep"/>
+/// — a class assigning only one of the newer two would dodge a check that
+/// grepped for just the first.
 ///
-/// Add a class to this list when it starts assigning the seam. A grep for
-/// <c>AtomicPlace.BeforeAttempt =</c> across tests/ confirms the list below
-/// is the complete set.</summary>
+/// Add a class to this list when it starts assigning any of those three. A
+/// grep for <c>AtomicPlace.BeforeAttempt =</c>, <c>AtomicPlace.Sleep =</c>
+/// and <c>AtomicPlace.BeforeSweep =</c> across tests/ confirms the list
+/// below is the complete set.</summary>
 public class AtomicPlaceSeamMembershipTests
 {
     private static string? CollectionNameOf(Type t) =>
