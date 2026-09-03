@@ -59,10 +59,10 @@ public partial class BulkRenameWindow : Window
 
     private void OnJumpToNextStray(object sender, RoutedEventArgs e)
     {
-        var from = PreviewGrid.SelectedItem is RenameRow r
-            ? PreviewGrid.Items.IndexOf(r) : -1;
-        var next = _vm.IndexOfNextNeedingName(from);
-        if (next >= 0 && PreviewGrid.Items[next] is RenameRow target) BeginEdit(target);
+        // By source path, not by grid position: the grid may be sorted
+        // (UX-02), and only the view model's insertion order is stable.
+        var next = _vm.NextNeedingName((PreviewGrid.SelectedItem as RenameRow)?.Source);
+        if (next is not null) BeginEdit(next);
     }
 
     /// <summary>Reads the selection the view model preserved, not the
@@ -125,16 +125,14 @@ public partial class BulkRenameWindow : Window
         // route the hand edit through the view model (it strips extensions,
         // clears on empty, and rebuilds the preview)
         var text = box.Text;
-        var wasAt = PreviewGrid.Items.IndexOf(row);
         Dispatcher.BeginInvoke(() =>
         {
             _vm.SetOverride(row.Source, text);
             // straight on to the next file still waiting on a name: fixing six
             // strays out of seventy-five should be type-Enter-type-Enter, not a
             // hunt through the rows that are already right
-            var next = _vm.IndexOfNextNeedingName(wasAt);
-            if (next >= 0 && PreviewGrid.Items[next] is RenameRow target)
-                BeginEdit(target);
+            var next = _vm.NextNeedingName(row.Source);
+            if (next is not null) BeginEdit(next);
         });
     }
 

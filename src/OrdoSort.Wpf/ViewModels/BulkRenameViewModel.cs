@@ -464,6 +464,25 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         return -1;
     }
 
+    /// <summary>The next row still waiting on a name after the row whose
+    /// source path this is, wrapping; from the top when the path is null or
+    /// no longer in the batch. Identity, not position: the grid the window
+    /// shows may be sorted, and a view index fed into Preview's insertion
+    /// order opens the wrong row (UX-02). Null when nothing needs a name.</summary>
+    public RenameRow? NextNeedingName(string? afterSource)
+    {
+        var after = -1;
+        if (afterSource is not null)
+        {
+            for (var i = 0; i < Preview.Count; i++)
+            {
+                if (Preview[i].Source == afterSource) { after = i; break; }
+            }
+        }
+        var next = IndexOfNextNeedingName(after);
+        return next >= 0 ? Preview[next] : null;
+    }
+
     /// <summary>Snapshot the current op/files/overrides on the UI thread (all
     /// three are cheap, no-I/O reads) and (re)arm the plan probe. The compute
     /// closure below captures only these snapshots — never <c>this</c>,

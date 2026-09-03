@@ -154,7 +154,7 @@
             <DockPanel Grid.Row="2" Margin="0,0,0,8">
                 <!-- the counts are also the way in: when files are waiting on a
                      name, this jumps to the first one and opens it for typing -->
-                <Button DockPanel.Dock="Right" Click="OnJumpToNextStray"
+                <Button x:Name="NextStrayButton" DockPanel.Dock="Right" Click="OnJumpToNextStray"
                         Cursor="Hand" BorderThickness="0" Background="Transparent"
                         Padding="8,4" VerticalAlignment="Center"
                         ToolTip="Go to the next file that still needs a name"

@@ -1216,6 +1216,21 @@ public class BulkRenameViewModelTests : IDisposable
         Assert.Equal(1, vm.IndexOfNextNeedingName(3));   // wraps around
     }
 
+    /// <summary>UX-02: the window's grid can be sorted, so "the next stray
+    /// after this row" has to be answered by identity (the row's source
+    /// path), never by a position that means one thing in the view and
+    /// another in Preview.</summary>
+    [Fact]
+    public async Task NextStrayIsFoundByIdentityNotPosition()
+    {
+        var vm = await BatchWithStrays();
+
+        Assert.Same(vm.Preview[1], vm.NextNeedingName(null));                   // from the top
+        Assert.Same(vm.Preview[3], vm.NextNeedingName(vm.Preview[1].Source));  // skips row 2
+        Assert.Same(vm.Preview[1], vm.NextNeedingName(vm.Preview[3].Source));  // wraps
+        Assert.Same(vm.Preview[1], vm.NextNeedingName("not-a-row"));           // unknown = from the top
+    }
+
     [Fact]
     public async Task FixingAStrayByHandRemovesItFromTheCount()
     {
