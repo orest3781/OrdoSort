@@ -46,6 +46,12 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private SectionFingerprint? _settingsSnapshot;
     private History _history;          // re-opened if history_db changes
     private Session _session;
+    /// <summary>The document LoadCurrentAsync last put on screen. A reload of
+    /// the SAME path — a filing that was refused, a set-aside that failed —
+    /// keeps what was typed (UX-01); only a new path starts from an empty
+    /// box. Cleared whenever the session ends or returns to Ready, so a
+    /// later session never inherits a name typed in an earlier one.</summary>
+    private string? _loadedPath;
     private readonly IPdfViewer _viewer;
     private readonly IDialogService _dialogs;
     private readonly FolderWatchService _watch;
@@ -518,6 +524,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     public void Rescan()
     {
+        _loadedPath = null;
         Screen = Screen.Ready;
         _viewer.Blank();
         _ = RefreshFoldersAsync(showErrors: true);
@@ -1354,12 +1361,16 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         if (path is null) { ShowDone(); return; }
         RaiseProgress();
         CurrentFilename = Path.GetFileName(path);
-        // the FIELD, not the property — so the setter's bookkeeping is skipped
-        // and the frozen suggestion walk has to be cleared by hand, or the
-        // next ↓ would offer this document the previous one's names
-        _typedName = "";
-        ResetCycle();
-        Raise(nameof(TypedName));
+        if (path != _loadedPath)
+        {
+            _loadedPath = path;
+            // the FIELD, not the property — so the setter's bookkeeping is skipped
+            // and the frozen suggestion walk has to be cleared by hand, or the
+            // next ↓ would offer this document the previous one's names
+            _typedName = "";
+            ResetCycle();
+            Raise(nameof(TypedName));
+        }
         RefreshSuggestions();
         UpdatePreview();
         RaiseUndoState();
@@ -1369,6 +1380,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     private void ShowDone()
     {
+        _loadedPath = null;
         Screen = Screen.Done;
         _viewer.Blank();
         CountLine = "Session complete";

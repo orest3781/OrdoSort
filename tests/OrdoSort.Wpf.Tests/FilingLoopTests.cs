@@ -207,6 +207,42 @@ public class FilingLoopTests
         Assert.StartsWith("⚠", fx.Shell.Preview);
     }
 
+    /// <summary>UX-01: a filing the app refuses (here an illegal name — a
+    /// colon — that Naming.RejectIllegal turns into a CommitError) used to
+    /// come back with an empty name box, because the reload after the
+    /// warning went through LoadCurrentAsync's unconditional reset. The
+    /// document has not moved and the user is about to fix the name, not
+    /// retype it, so the same document keeps what was typed.</summary>
+    [Fact]
+    public async Task ARefusedFilingKeepsTheTypedName()
+    {
+        using var fx = Started("20240115--111111.pdf");
+        fx.Shell.TypedName = "A:B";
+
+        await fx.Shell.OnRouteAsync(0);
+
+        Assert.Single(fx.Dialogs.Warnings);
+        Assert.Equal("A:B", fx.Shell.TypedName);
+        Assert.Equal("20240115--111111.pdf", fx.Shell.CurrentFilename);
+        Assert.Single(Directory.GetFiles(fx.Inbox));   // nothing moved
+    }
+
+    /// <summary>The other direction, so the same-document guard added for
+    /// UX-01 cannot leak one document's name onto the next: a filing that
+    /// succeeds still opens the next document with an empty box. (Passes
+    /// before the fix too; kept because the fix touches this branch.)</summary>
+    [Fact]
+    public async Task TheNextDocumentStillStartsWithAnEmptyName()
+    {
+        using var fx = Started("20240115--111111.pdf", "20240115--222222.pdf");
+        fx.Shell.TypedName = "SMITH JOHN";
+
+        await fx.Shell.OnRouteAsync(0);
+
+        Assert.Equal("", fx.Shell.TypedName);
+        Assert.Equal("20240115--222222.pdf", fx.Shell.CurrentFilename);
+    }
+
     [Fact]
     public async Task PreviewAgreesWithWhatEnterActuallyFiles()
     {
