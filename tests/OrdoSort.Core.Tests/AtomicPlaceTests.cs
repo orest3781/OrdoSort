@@ -36,6 +36,7 @@ public class AtomicPlaceTests : IDisposable
     {
         AtomicPlace.BeforeAttempt = null;                        // process-wide seam — never leak it to another test
         AtomicPlace.Sleep = (_, delayMs) => Thread.Sleep(delayMs);   // ditto — restore the real sleep
+        AtomicPlace.BeforeSweep = null;                          // ditto — never leak a sweep hook either
         try { Directory.Delete(_dir, true); } catch { /* best effort */ }
     }
 
@@ -45,6 +46,12 @@ public class AtomicPlaceTests : IDisposable
 
     private string[] StrayTempFiles() =>
         Directory.GetFiles(_dir, "*.tmp").Select(Path.GetFileName).ToArray()!;
+
+    /// <summary>A plausible crash-orphaned temp name for <paramref
+    /// name="destinationFileName"/> — the exact shape Place itself stamps
+    /// out, built the same way AtomicPlace.IsOwnTempFileName expects.</summary>
+    private static string OrphanNameFor(string destinationFileName) =>
+        $"{destinationFileName}.{Guid.NewGuid():N}.tmp";
 
     // ------------------------------------------------------------- replace
 
@@ -459,6 +466,146 @@ public class AtomicPlaceTests : IDisposable
 
         var expected = Enumerable.Range(0, AtomicPlace.Attempts - 1).Select(AtomicPlace.DelayMs);
         Assert.Equal(expected, slept);
+    }
+
+    // -------------------------------------------------- stale-temp sweep
+
+    /// <summary>Pins AtomicPlace.IsOwnTempFileName's own doc comment case by
+    /// case, including the two claims that matter most: Unlock's
+    /// "&lt;stem&gt;.unlocking.tmp" can never match, for any stem — not just
+    /// the obvious length mismatch, but even a stem manufactured so the
+    /// total length coincidentally lines up with this destination's pattern
+    /// length, because the 32 characters immediately before ".tmp" would
+    /// still end in the literal "unlocking" and 'g' is not a hex digit — and
+    /// a sibling destination's own temp in the same directory never matches
+    /// either.</summary>
+    [Theory]
+    [InlineData("config.json.0123456789abcdef0123456789abcdef.tmp", "config.json", true)]
+    [InlineData("config.json.0123456789ABCDEF0123456789ABCDEF.tmp", "config.json", true)]
+    [InlineData("config.json", "config.json", false)]                          // the destination itself
+    [InlineData("config.json.tmp", "config.json", false)]                      // .tmp but no GUID at all
+    [InlineData("destinations.json.0123456789abcdef0123456789abcdef.tmp", "config.json", false)]  // a sibling destination's own temp
+    [InlineData("config.unlocking.tmp", "config.json", false)]                 // Unlock's real shape for a "config.json" source
+    [InlineData("config.json.unlocking.tmp", "config.json", false)]            // shaped to look closer; still not ours
+    [InlineData("config.json.01234567890123456789abcunlocking.tmp", "config.json", false)]  // 32 chars, right length, tail is literally "unlocking"
+    [InlineData("config.json.0123456789abcdef0123456789abcde.tmp", "config.json", false)]   // 31 hex chars, one short
+    [InlineData("config.json.0123456789abcdef0123456789abcdefa.tmp", "config.json", false)] // 33 hex chars, one too many
+    [InlineData("config.json.0123456789abcdef0123456789abcdeg.tmp", "config.json", false)]  // 32 chars, but 'g' is not hex
+    public void SweepPatternMatchesOnlyThisDestinationsOwnGuidTempName(
+        string fileName, string destinationFileName, bool expected)
+    {
+        Assert.Equal(expected, AtomicPlace.IsOwnTempFileName(fileName, destinationFileName));
+    }
+
+    /// <summary>The fact the whole feature exists to establish: nothing
+    /// before this ever swept a crash-orphaned temp, so on a share used for
+    /// months they simply accumulated beside the real file. This is the
+    /// ordinary case — genuinely old, genuinely stranded — where deleting it
+    /// is correct.</summary>
+    [Fact]
+    public void SweepDeletesAnOrphanOlderThanTheStaleThreshold()
+    {
+        var dest = Dest("config.json");
+        var orphan = Dest(OrphanNameFor("config.json"));
+        File.WriteAllText(orphan, "stranded by a crash");
+        File.SetLastWriteTimeUtc(orphan, DateTime.UtcNow - AtomicPlace.StaleTempAge - TimeSpan.FromMinutes(1));
+
+        Assert.True(AtomicPlace.TryReplace(dest, Writes("new"), out _));
+
+        Assert.False(File.Exists(orphan));
+        Assert.Equal("new", File.ReadAllText(dest));   // the destination itself is what actually matters here
+    }
+
+    /// <summary>The single most important fact in this file: another station
+    /// can be mid-write RIGHT NOW, and its temp is byte-for-byte
+    /// indistinguishable from an orphan except by age. A temp under the
+    /// stale threshold must survive even though its name matches the
+    /// pattern exactly — this is what stops a sweep from ever breaking a
+    /// peer's in-flight save.</summary>
+    [Fact]
+    public void SweepLeavesARecentOrphanAloneBecauseItMightBeAPeerMidWrite()
+    {
+        var dest = Dest("config.json");
+        var recent = Dest(OrphanNameFor("config.json"));
+        File.WriteAllText(recent, "maybe a peer, mid-write");   // fresh LastWriteTimeUtc: right now
+
+        Assert.True(AtomicPlace.TryReplace(dest, Writes("new"), out _));
+
+        Assert.True(File.Exists(recent), "a temp under the stale threshold must never be swept");
+        Assert.Equal("new", File.ReadAllText(dest));
+    }
+
+    /// <summary>Two more files that sit right beside a genuinely stale orphan
+    /// and are just as old, but must survive anyway: a .tmp that never had
+    /// the GUID shape at all, and another destination's own temp in the very
+    /// same directory — config.json and destinations.json really do live
+    /// side by side (see Config.Save). Both prove the PATTERN match, not
+    /// just the age check, is what gates every delete.</summary>
+    [Fact]
+    public void SweepLeavesANonMatchingTmpAndASiblingDestinationsTempAlone()
+    {
+        var dest = Dest("config.json");
+        var staleUtc = DateTime.UtcNow - AtomicPlace.StaleTempAge - TimeSpan.FromMinutes(1);
+
+        var notGuidShaped = Dest("config.json.tmp");
+        File.WriteAllText(notGuidShaped, "not ours to touch");
+        File.SetLastWriteTimeUtc(notGuidShaped, staleUtc);
+
+        var siblingsTemp = Dest(OrphanNameFor("destinations.json"));
+        File.WriteAllText(siblingsTemp, "destinations.json's own orphan");
+        File.SetLastWriteTimeUtc(siblingsTemp, staleUtc);
+
+        Assert.True(AtomicPlace.TryReplace(dest, Writes("new"), out _));
+
+        Assert.True(File.Exists(notGuidShaped));
+        Assert.True(File.Exists(siblingsTemp));
+    }
+
+    /// <summary>Config saves happen often — tool windows persist their own
+    /// state — and the sweep is a directory enumeration: a network round
+    /// trip on a share. Paying that more than once per destination per
+    /// process would be waste for no benefit, since orphans only ever appear
+    /// on a crash: whatever the first sweep found is everything there was to
+    /// find.</summary>
+    [Fact]
+    public void SweepRunsOnlyOnceForTheSameDestinationEvenAcrossMultipleSaves()
+    {
+        var dest = Dest("config.json");
+        var staleUtc = DateTime.UtcNow - AtomicPlace.StaleTempAge - TimeSpan.FromMinutes(1);
+
+        var firstOrphan = Dest(OrphanNameFor("config.json"));
+        File.WriteAllText(firstOrphan, "old #1");
+        File.SetLastWriteTimeUtc(firstOrphan, staleUtc);
+
+        Assert.True(AtomicPlace.TryReplace(dest, Writes("first"), out _));
+        Assert.False(File.Exists(firstOrphan));   // swept on this, the first save for this destination
+
+        var secondOrphan = Dest(OrphanNameFor("config.json"));
+        File.WriteAllText(secondOrphan, "old #2");
+        File.SetLastWriteTimeUtc(secondOrphan, staleUtc);
+
+        Assert.True(AtomicPlace.TryReplace(dest, Writes("second"), out _));
+        Assert.True(File.Exists(secondOrphan),
+            "the sweep already ran once for this destination in this process; it must not run a second time");
+    }
+
+    /// <summary>Best-effort and silent, like RemoveQuietly: a sweep that
+    /// fails — the share drops mid-enumeration, antivirus holds a file open —
+    /// must never turn a successful save into a reported failure.</summary>
+    [Fact]
+    public void ASweepThatThrowsDoesNotFailTheSave()
+    {
+        var dest = Dest("config.json");
+        AtomicPlace.BeforeSweep = path =>
+        {
+            if (path == dest) throw new InvalidOperationException("share dropped mid-enumeration");
+        };
+
+        var ok = AtomicPlace.TryReplace(dest, Writes("new"), out var error);
+
+        Assert.True(ok);
+        Assert.Equal("", error);
+        Assert.Equal("new", File.ReadAllText(dest));
     }
 }
 

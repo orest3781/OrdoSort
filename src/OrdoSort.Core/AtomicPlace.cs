@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace OrdoSort.Core;
 
 /// <summary>
@@ -127,6 +129,49 @@ internal static class AtomicPlace
     /// destination, the same way every one of them does.</summary>
     internal static Action<string, int> Sleep = (_, delayMs) => Thread.Sleep(delayMs);
 
+    /// <summary>How old one of this destination's own leftover temp files
+    /// must be before <see cref="SweepStaleTemps"/> will delete it.
+    /// Generously wide on purpose: a whole placement — the write and the
+    /// move together, across every attempt in <see cref="Attempts"/>,
+    /// including a Zipper archive rebuild — is seconds, so an hour leaves
+    /// enormous headroom over the slowest real save. Nothing pushes the
+    /// other way: an orphan nothing else ever sweeps is exactly as stale a
+    /// minute from now as an hour from now, so there is no reason to cut
+    /// this finer just to reclaim disk sooner.
+    ///
+    /// The comparison (in <see cref="SweepStaleTemps"/>) uses each
+    /// candidate's own last-write timestamp, which on the shares this app
+    /// targets is stamped by the SERVER, while the clock it is compared
+    /// against is LOCAL to whichever station is doing the sweep. A server
+    /// clock running AHEAD of this station only makes a fresh temp look
+    /// newer than it is — harmless, since that only makes this skip it. One
+    /// running BEHIND could in principle make a fresh temp look older than
+    /// it is, but closing that gap to under an hour would take clock skew
+    /// between stations on the same share that this app has never observed.
+    ///
+    /// Picking this generously wide is this project's second chance at a
+    /// mistake it only gets to make once for real: see the class doc
+    /// comment's "took every station down" incident for what deleting the
+    /// wrong file on a shared folder already cost, once, before this
+    /// existed.</summary>
+    internal static readonly TimeSpan StaleTempAge = TimeSpan.FromHours(1);
+
+    /// <summary>Test seam: invoked with the destination path immediately
+    /// before <see cref="SweepStaleTemps"/> does its real work — enumerating
+    /// the directory and deleting whatever qualifies. Settable only by
+    /// tests, inert in production; same "carries the destination so a test
+    /// can filter" shape as <see cref="BeforeAttempt"/> and <see
+    /// cref="Sleep"/>, and for the identical reason — this hook is
+    /// process-wide too, and xUnit runs other test classes' placements, and
+    /// therefore other classes' sweeps, concurrently.
+    ///
+    /// What it is for: forcing the sweep to throw for one specific
+    /// destination without touching the filesystem, to prove <see
+    /// cref="Place"/> still reports success no matter what the sweep runs
+    /// into — see SweepStaleTemps's own doc comment for why that has to be
+    /// true.</summary>
+    internal static Action<string>? BeforeSweep;
+
     /// <summary>For files where a newer replacement is always correct: the
     /// main config, the destinations/monitored-folders/alerts side files, and
     /// a zip Save-As where the user has already confirmed the overwrite. The
@@ -236,6 +281,12 @@ internal static class AtomicPlace
                 if (replaceExisting) MoveOverExisting(tmp, destination);
                 else MoveOnlyIfAbsent(tmp, destination);
 
+                // Only after a real success — including the "a peer already
+                // won" success MoveOnlyIfAbsent reports — never on the
+                // failure path below. See SweepStaleTemps's own doc comment
+                // for why this can never turn this success into a failure.
+                SweepStaleTemps(destination);
+
                 error = "";
                 return true;
             }
@@ -291,5 +342,124 @@ internal static class AtomicPlace
     private static void RemoveQuietly(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { /* best effort */ }
+    }
+
+    /// <summary>Which destinations this process has already swept for stale
+    /// temps, so a destination saved over and over — tool windows persist
+    /// their own state constantly — pays the sweep's directory enumeration
+    /// (a network round trip on a share) at most once per process. TryAdd is
+    /// the entire mechanism: several tool windows can save the same or
+    /// different destinations concurrently, and whichever thread's TryAdd
+    /// returns true is the one that sweeps; every other thread's TryAdd for
+    /// that same key returns false and moves on immediately. No separate
+    /// lock is needed — "run this exactly once" is already everything TryAdd
+    /// itself guarantees.
+    ///
+    /// Keyed on the destination string exactly as the caller passed it, the
+    /// same identity <see cref="Place"/> uses everywhere else in this file —
+    /// case-insensitively, because the shares this app targets are Windows
+    /// shares.</summary>
+    private static readonly ConcurrentDictionary<string, byte> SweptDestinations =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Best-effort cleanup of THIS destination's own crash-orphaned
+    /// temp files — the ones <see cref="Place"/> itself cannot clean up
+    /// because nothing ran to move or delete them: the process that wrote
+    /// them died first. Nothing before this ever swept them, so on a share
+    /// several stations have used for months they simply accumulate beside
+    /// the real file.
+    ///
+    /// Called only from Place's SUCCESS path — including the "a peer already
+    /// won" success <see cref="MoveOnlyIfAbsent"/> reports — never on
+    /// failure: a sweep is a nice-to-have with no business running when the
+    /// save itself didn't work. Runs at most once per destination per
+    /// process (<see cref="SweptDestinations"/>), and the whole body below is
+    /// wrapped in one try/catch: a directory enumeration is a network round
+    /// trip on the shares this app targets, and — like <see
+    /// cref="RemoveQuietly"/> a few lines up — a sweep that throws must never
+    /// turn a successful save into a reported failure. That same catch is
+    /// what makes <see cref="BeforeSweep"/> safe for a test to throw from.
+    ///
+    /// The one rule everything here serves: another station can be mid-write
+    /// RIGHT NOW, and its temp file is indistinguishable from an orphan
+    /// except by age. Only a file that (a) matches this destination's own
+    /// "&lt;destination file name&gt;.&lt;32 hex&gt;.tmp" shape — see <see
+    /// cref="IsOwnTempFileName"/> — AND (b) has sat untouched longer than
+    /// <see cref="StaleTempAge"/> is ever deleted. Everything else in the
+    /// directory, including the destination itself, is left exactly alone.
+    /// Never recurses: only this destination's own directory is ever
+    /// enumerated.</summary>
+    private static void SweepStaleTemps(string destination)
+    {
+        if (!SweptDestinations.TryAdd(destination, 0)) return;   // already swept this process; see SweptDestinations
+
+        try
+        {
+            BeforeSweep?.Invoke(destination);
+
+            var directory = Path.GetDirectoryName(destination);
+            if (string.IsNullOrEmpty(directory)) return;
+
+            var destinationFileName = Path.GetFileName(destination);
+            var cutoffUtc = DateTime.UtcNow - StaleTempAge;
+
+            foreach (var path in Directory.EnumerateFiles(directory))
+            {
+                if (!IsOwnTempFileName(Path.GetFileName(path), destinationFileName)) continue;
+
+                // Age is the ONLY signal that tells a peer's in-flight temp
+                // apart from a genuine orphan once the name already matches
+                // — see StaleTempAge's doc comment. Younger than the cutoff
+                // is left alone no matter how exactly the name matches.
+                if (File.GetLastWriteTimeUtc(path) >= cutoffUtc) continue;
+
+                RemoveQuietly(path);
+            }
+        }
+        catch
+        {
+            // Best-effort: see this method's own doc comment above.
+        }
+    }
+
+    /// <summary>True when <paramref name="fileName"/> is exactly the shape
+    /// <see cref="Place"/> stamps out for <paramref
+    /// name="destinationFileName"/>: "&lt;destination file
+    /// name&gt;.&lt;32 hex chars&gt;.tmp", where the hex segment is a GUID in
+    /// "N" format — the identical format specifier Place uses to build
+    /// <c>tmp</c>, so this check can never quietly drift out of sync with
+    /// what it is meant to be checking against.
+    ///
+    /// Deliberately strict, never a "*.tmp" glob: a glob would also catch
+    /// other applications' unrelated temp files and — the specific case this
+    /// was built to rule out — Unlock's own "&lt;stem&gt;.unlocking.tmp" swap
+    /// file, a completely different mechanism with its own created-by-me
+    /// gate (see Unlock.PlaceAndSwap and its RaceHookForTests). That file can
+    /// never satisfy this check for any destination: whatever the
+    /// destination's name, the characters immediately before ".tmp" are
+    /// always the literal "unlocking", and its last character, 'g', is not a
+    /// hex digit — so <see cref="Guid.TryParseExact"/> below refuses it
+    /// before anything about the destination's own name is even considered.
+    ///
+    /// A sibling destination's own temp is excluded the same structural way:
+    /// e.g. "destinations.json.&lt;guid&gt;.tmp" does not start with
+    /// "config.json.", so it never even reaches the GUID check. And the
+    /// destination file itself can never match: a match requires strictly
+    /// MORE characters after the destination's own name (a dot, 32 hex
+    /// digits, then ".tmp"), so the destination's bare name is always
+    /// shorter than anything this accepts — true even for a hypothetical
+    /// destination whose own name happens to end in ".tmp" already.</summary>
+    internal static bool IsOwnTempFileName(string fileName, string destinationFileName)
+    {
+        const string suffix = ".tmp";
+        const int guidLength = 32;   // Guid.ToString("N") is always exactly 32 hex characters
+        var prefix = destinationFileName + ".";
+
+        if (fileName.Length != prefix.Length + guidLength + suffix.Length) return false;
+        if (!fileName.StartsWith(prefix, StringComparison.Ordinal)) return false;
+        if (!fileName.EndsWith(suffix, StringComparison.Ordinal)) return false;
+
+        var middle = fileName.Substring(prefix.Length, guidLength);
+        return Guid.TryParseExact(middle, "N", out _);
     }
 }
