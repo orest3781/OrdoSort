@@ -443,9 +443,12 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         IEnumerable<FilenameList.FileRow> visible =
             _allRows.Where(r => !_excluded.Contains(r.FullPath));
 
-        if (NameFilter.Length > 0)
+        // Trimmed at use, not in the setter: a pasted term often carries a
+        // trailing space or newline, and neither is in any filename (UX-38).
+        var filter = NameFilter.Trim();
+        if (filter.Length > 0)
             visible = visible.Where(r =>
-                r.Name.Contains(NameFilter, StringComparison.OrdinalIgnoreCase));
+                r.Name.Contains(filter, StringComparison.OrdinalIgnoreCase));
 
         var projected = visible.ToList();
         if (Descending) projected.Reverse();

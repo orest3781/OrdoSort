@@ -400,6 +400,25 @@ public class FilenameListViewModelTests : IDisposable
         Assert.Equal("invoice.pdf", vm.Rows[0].Name);
     }
 
+    /// <summary>UX-38: the filter matched case-insensitively but never
+    /// trimmed, so a term pasted with a trailing space or newline found
+    /// nothing, with no indication why.</summary>
+    [Fact]
+    public void AFilterPastedWithWhitespaceStillMatches()
+    {
+        var dialogs = new FakeDialogs { NextFolder = _dir };
+        Touch("invoice.pdf"); Touch("report.pdf");
+        var vm = MakeVm(dialogs);
+        vm.BrowseFolderCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        vm.NameFilter = " inv\n";
+
+        Assert.Single(vm.Rows);
+        Assert.Equal("invoice.pdf", vm.Rows[0].Name);
+        Assert.False(vm.NoMatches);
+    }
+
     /// <summary>The Find box made a previously-rare state easy to reach, and
     /// the window's empty-state text was bound to Rows.Count — so filtering a
     /// 200-file listing down to nothing told the user to drag in files they
