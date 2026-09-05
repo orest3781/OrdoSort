@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Theme;
 using OrdoSort.Wpf.ViewModels;
@@ -308,6 +309,23 @@ public class HistoryWindowXamlTests
             var when = grid.Columns.First(c => (string)c.Header == "When");
             Assert.True(double.IsPositiveInfinity(when.MaxWidth),
                 $"When should not be governed by DataGridColumnCap: MaxWidth is {when.MaxWidth}");
+        }
+        finally { Cleanup(win, history, dbPath); }
+    });
+
+    /// <summary>UX-37: the window's stated job is the Find box, and every
+    /// other text-first window focuses its field explicitly (the password
+    /// prompt, the date prompt, the name box); History alone left the user
+    /// to Tab or click first. Asserted as the focus scope's focused element
+    /// because the test window is shown inactive.</summary>
+    [Fact]
+    public void TheFindBoxHasFocusOnOpen() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var (win, history, dbPath) = BuildWindow();
+        try
+        {
+            Assert.Same(win.FindBox, FocusManager.GetFocusedElement(win));
         }
         finally { Cleanup(win, history, dbPath); }
     });

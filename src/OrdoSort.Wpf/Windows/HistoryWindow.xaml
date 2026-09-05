@@ -7,7 +7,7 @@
     <DockPanel Margin="14">
         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
             <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,0,8,0" />
-            <TextBox Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}"
+            <TextBox x:Name="FindBox" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.Name="Find in history" />
         </DockPanel>
 
