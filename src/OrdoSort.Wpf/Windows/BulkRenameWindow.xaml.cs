@@ -78,7 +78,10 @@ public partial class BulkRenameWindow : Window
     private void OnGridKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         // Delete = the Remove selected button, as in the Filename list (UX-32);
-        // never while a cell editor is open, where Delete edits text.
+        // never while a cell editor is open, where Delete edits text —
+        // _editing now comes from the grid's own BeginningEdit, so this
+        // covers an editor opened by double-click or type-to-edit too, not
+        // only the ones this window's BeginEdit helper started.
         if (!_editing && e.Key == System.Windows.Input.Key.Delete)
         {
             _vm.RemoveSelected();
@@ -104,8 +107,7 @@ public partial class BulkRenameWindow : Window
         if (column is null) return;
         PreviewGrid.CurrentCell = new DataGridCellInfo(row, column);
         PreviewGrid.ScrollIntoView(row, column);
-        _editing = true;
-        PreviewGrid.BeginEdit();
+        PreviewGrid.BeginEdit();   // OnBeginningEdit below sets _editing
         // the editor exists only after BeginEdit, so seed on the next beat
         Dispatcher.BeginInvoke(() =>
         {
@@ -120,6 +122,13 @@ public partial class BulkRenameWindow : Window
             as TextBox;
 
     private bool _editing;
+
+    /// <summary>The grid reports every way into a cell editor — double-click,
+    /// type-to-edit, F2 — where the window's own BeginEdit helper knew only
+    /// its own. Delete and Enter consult this flag, and Delete removes rows,
+    /// so it has to be true whenever an editor is open, not only when this
+    /// code opened it.</summary>
+    private void OnBeginningEdit(object sender, DataGridBeginningEditEventArgs e) => _editing = true;
 
     private void OnCellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
     {

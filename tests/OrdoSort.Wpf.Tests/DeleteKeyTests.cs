@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using OrdoSort.Wpf.Theme;
@@ -99,6 +100,52 @@ public class DeleteKeyTests : IDisposable
                 WaitForProbeToSettle(() => vm.Preview.Count == 1, "the preview should settle after removing the selected row");
                 Assert.Single(vm.Preview);
                 Assert.EndsWith("b.pdf", vm.Preview[0].Source);
+            }
+            finally { try { win.Close(); } catch { /* best effort */ } }
+        });
+    }
+
+    /// <summary>The Delete branch must never fire inside a cell editor, and
+    /// an editor can open by double-click or type-to-edit — paths the
+    /// window's own BeginEdit helper never saw. The grid's BeginningEdit is
+    /// the one signal that covers them all.</summary>
+    [Fact]
+    public void DeleteInsideACellEditorEditsTextNotTheBatch()
+    {
+        var a = Path.Combine(_dir, "a.pdf"); File.WriteAllText(a, "pdf");
+        var b = Path.Combine(_dir, "b.pdf"); File.WriteAllText(b, "pdf");
+
+        _fx.Invoke(() =>
+        {
+            ThemeManager.Apply(_fx.App, dark: false);
+            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler(),
+                uiContext: SynchronizationContext.Current);
+            vm.AddFilesAsync(new[] { a, b }).GetAwaiter().GetResult();
+            WaitForProbeToSettle(() => vm.Preview.Count == 2, "the preview should settle after adding two files");
+            Assert.Equal(2, vm.Preview.Count);
+
+            var win = new BulkRenameWindow(vm)
+            {
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20000, Top = 0, ShowActivated = false,
+            };
+            try
+            {
+                win.Show();
+                win.UpdateLayout();
+                win.PreviewGrid.SelectedItem = vm.Preview[0];
+                win.PreviewGrid.UpdateLayout();
+
+                var column = win.PreviewGrid.Columns.First(c => !c.IsReadOnly);
+                win.PreviewGrid.CurrentCell = new DataGridCellInfo(vm.Preview[0], column);
+                win.PreviewGrid.BeginEdit();
+
+                var args = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(win.PreviewGrid)!, 0, Key.Delete)
+                { RoutedEvent = UIElement.PreviewKeyDownEvent };
+                win.PreviewGrid.RaiseEvent(args);
+
+                Assert.False(args.Handled);
+                Assert.Equal(2, vm.Preview.Count);
             }
             finally { try { win.Close(); } catch { /* best effort */ } }
         });

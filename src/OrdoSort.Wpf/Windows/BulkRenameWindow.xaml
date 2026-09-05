@@ -177,7 +177,7 @@
                 <DataGrid x:Name="PreviewGrid" ItemsSource="{Binding Preview}" AutoGenerateColumns="False"
                           AutomationProperties.Name="Rename preview"
                           CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column"
-                          CellEditEnding="OnCellEditEnding" SelectionMode="Extended"
+                          BeginningEdit="OnBeginningEdit" CellEditEnding="OnCellEditEnding" SelectionMode="Extended"
                           SelectionChanged="OnSelectionChanged"
                           PreviewKeyDown="OnGridKeyDown">
                     <DataGrid.RowStyle>
