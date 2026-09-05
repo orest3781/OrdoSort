@@ -35,8 +35,7 @@
          one. Plain None+CopyToOutputDirectory, not a Resource/EmbeddedResource:
          this needs to be a standalone file on disk that a shell association
          can open, not a WPF pack-URI resource only the app can read. -->
-    <None Include="..\..\THIRD-PARTY-NOTICES" Link="THIRD-PARTY-NOTICES"
-          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\THIRD-PARTY-NOTICES" Link="THIRD-PARTY-NOTICES" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -47,6 +46,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OrdoSort.Core\OrdoSort.Core.csproj" />
+    <ProjectReference Include="..\OrdoSort.Ui\OrdoSort.Ui.csproj" />
   </ItemGroup>
 
   <ItemGroup>

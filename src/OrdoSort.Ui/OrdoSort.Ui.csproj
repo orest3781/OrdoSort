@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The UI OrdoSort.exe and BoxLabels.exe both draw on: the theme, the MVVM
+       base classes, the shared windows, and the box-label feature itself.
+
+       Deliberately NOT a general "shared code" bucket — that is how these
+       libraries rot. It holds what more than one app needs and nothing else;
+       anything used by exactly one app belongs in that app.
+
+       RootNamespace stays OrdoSort.Wpf on purpose. A namespace and an
+       assembly are independent in .NET, so the types that moved here keep the
+       names every existing `using` already spells, and the extraction stayed a
+       file move instead of a rename across the whole app. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>OrdoSort.Wpf</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- the WPF SDK drops the System.IO implicit using (Shapes.Path clash);
+         same restoration OrdoSort.Wpf makes, for the same reason -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OrdoSort.Core\OrdoSort.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OrdoSort.Wpf.Tests" />
+    <InternalsVisibleTo Include="OrdoSort.Smoke" />
+  </ItemGroup>
+
+</Project>
