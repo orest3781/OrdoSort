@@ -27,9 +27,9 @@ public class SettingsEnterKeyTests
     {
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
         {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T t) yield return t;
-            foreach (var d in Descendants<T>(child)) yield return d;
+            var dependencyObject = VisualTreeHelper.GetChild(root, i);
+            if (dependencyObject is T match) yield return match;
+            foreach (var descendant in Descendants<T>(dependencyObject)) yield return descendant;
         }
     }
 

@@ -902,6 +902,7 @@ public class LabelMakerViewModelTests : IDisposable
 
         Assert.Contains("99 999 999", Assert.Single(_dialogs.Warnings).Message);
         Assert.Equal(BoxLabels.MaxNumber - 1, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+        Assert.Equal("", vm.Status);   // warned and halted, not warned and printed anyway
     }
 
     // ----------------------------------------------------------- date style

@@ -108,9 +108,10 @@ public sealed class LabelMakerViewModel : ObservableObject
     // written.
     private readonly Dictionary<LabelClientVm, string> _originId = new();
 
-    // Set while ClaimNumbers pushes its post-claim number onto the VM: that
-    // update is display-only (the store already holds the advanced number),
-    // so it must NOT be mistaken for a user edit and dirty the client.
+    // Set while SetClaimedNumber pushes its post-claim number onto the VM:
+    // that update is display-only (the store already holds the advanced
+    // number), so it must NOT be mistaken for a user edit and dirty the
+    // client.
     private bool _suppressDirty;
 
     public LabelMakerViewModel(Config cfg, string boxLabelsPath, IDialogService dialogs,
@@ -470,6 +471,10 @@ public sealed class LabelMakerViewModel : ObservableObject
 
     internal void Print() => _ = PrintAsync();
 
+    /// <summary>The claim (<see cref="ClaimNumbersCore"/>) runs off the UI
+    /// thread, so this whole method is async; <see cref="Print"/> is the
+    /// fire-and-forget wrapper PrintCommand actually calls, matching the
+    /// RelayCommand shape every other command in this view model uses.</summary>
     internal async Task PrintAsync()
     {
         if (BuildBatch() is not { } b) return;
@@ -508,6 +513,10 @@ public sealed class LabelMakerViewModel : ObservableObject
 
     internal void SavePdf() => _ = SavePdfAsync();
 
+    /// <summary>The claim (<see cref="ClaimNumbersCore"/>) and the PDF render
+    /// both run off the UI thread, so this whole method is async; <see
+    /// cref="SavePdf"/> is the fire-and-forget wrapper SavePdfCommand
+    /// actually calls, matching <see cref="PrintAsync"/>'s shape.</summary>
     internal async Task SavePdfAsync()
     {
         if (BuildBatch() is not { } b) return;
