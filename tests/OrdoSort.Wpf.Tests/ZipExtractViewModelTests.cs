@@ -124,6 +124,37 @@ public class ZipExtractViewModelTests
         Assert.Equal("", vm.Status);
     }
 
+    /// <summary>UX-07: Zip wrote Status only when the archive was finished
+    /// and never raised IsBusy, so compressing a large folder was silent
+    /// with every button still live — while Extract, two methods down, says
+    /// "Extracting n of N…" through RunBatchAsync. The zipper stub reads the
+    /// view model DURING the run, which the inline scheduler makes
+    /// synchronous.</summary>
+    [Fact]
+    public async Task ZipSaysItIsWorkingWhileTheArchiveIsBuilt()
+    {
+        using var dir = new TempDir();
+        var file = dir.File("a.txt");
+        string? statusDuring = null;
+        bool? busyDuring = null;
+        ZipExtractViewModel? vm = null;
+        vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(), uiContext: null,
+            zipper: (_, _) =>
+            {
+                statusDuring = vm!.Status;
+                busyDuring = vm.IsBusy;
+                return new Zipper.ZipResult("ok", Path.Combine(dir.Path, "a.zip"));
+            });
+        await vm.AddPaths(new[] { file });
+
+        await vm.ZipAsync(null);
+
+        Assert.Equal("Zipping 1 item…", statusDuring);
+        Assert.True(busyDuring);
+        Assert.False(vm.IsBusy);
+        Assert.StartsWith("Created a.zip", vm.Status);
+    }
+
     [Fact]
     public async Task AddPathsDedupesDropsMissingPathsAndSetsAddNote()
     {

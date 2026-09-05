@@ -90,10 +90,23 @@ public sealed class ZipExtractViewModel : ZipListViewModel
         if (Rows.Count == 0) return;
         var paths = Rows.Select(r => r.Path).ToList();
         var itemCount = paths.Count;
-        var result = await Scheduler.Run(() => _zipper(paths, outputPath));
-        RunOnUi(() => Status = result.Status == "ok"
-            ? $"Created {System.IO.Path.GetFileName(result.Output!)} · {itemCount} item{(itemCount == 1 ? "" : "s")}"
-            : result.Message);
+        // Busy and a status line BEFORE the work, as RunBatchAsync does for
+        // Extract: a large folder takes seconds to compress, and the window
+        // used to give no sign of it (UX-07). IsBusy also parks Remove
+        // selected (IsIdle) for the duration.
+        IsBusy = true;
+        Status = $"Zipping {itemCount} item{(itemCount == 1 ? "" : "s")}…";
+        try
+        {
+            var result = await Scheduler.Run(() => _zipper(paths, outputPath));
+            RunOnUi(() => Status = result.Status == "ok"
+                ? $"Created {System.IO.Path.GetFileName(result.Output!)} · {itemCount} item{(itemCount == 1 ? "" : "s")}"
+                : result.Message);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     /// <summary>Asks where to save, suggesting Zipper.DefaultName's own pick,

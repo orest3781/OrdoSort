@@ -352,11 +352,13 @@ public abstract class ZipListViewModel : ObservableObject
     /// snapshotted it, then leave nothing visible to explain the result.
     /// Deliberately does NOT gate Clear: unlike Remove selected, Clear has
     /// to stay reachable during a run, since pressing it is what actually
-    /// stops one (see ClearCommand above).</summary>
+    /// stops one (see ClearCommand above). Protected so a subclass operation
+    /// that does not go through RunBatchAsync — ZipAsync — can still declare
+    /// itself busy.</summary>
     public bool IsBusy
     {
         get => _isBusy;
-        private set { if (Set(ref _isBusy, value)) Raise(nameof(IsIdle)); }
+        protected set { if (Set(ref _isBusy, value)) Raise(nameof(IsIdle)); }
     }
 
     /// <summary>The inverse of IsBusy — Remove selected is a Click handler
