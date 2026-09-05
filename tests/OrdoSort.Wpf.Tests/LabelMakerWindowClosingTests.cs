@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using OrdoSort.Core;
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Windows;
