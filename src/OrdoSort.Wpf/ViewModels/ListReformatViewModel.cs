@@ -54,6 +54,7 @@ public sealed class ListReformatViewModel : ObservableObject
         {
             if (!Set(ref _shape, value)) return;
             Raise(nameof(IsCustomDelimiter));
+            Raise(nameof(SpaceAfterApplies));
             Recompute();
         }
     }
@@ -71,6 +72,11 @@ public sealed class ListReformatViewModel : ObservableObject
     /// <summary>IsEnabled for the delimiter box — dead weight under either of
     /// the other two shapes.</summary>
     public bool IsCustomDelimiter => Shape == ListReformat.OutputShape.CustomDelimiter;
+
+    /// <summary>IsEnabled for "Space after separator" — one item per line has
+    /// no separator to put a space after, so the box is dead weight there,
+    /// exactly as the delimiter box is under the other two shapes (UX-31).</summary>
+    public bool SpaceAfterApplies => Shape != ListReformat.OutputShape.OnePerLine;
 
     public static readonly KeyValuePair<ListReformat.OutputShape, string>[] ShapeChoices =
     {

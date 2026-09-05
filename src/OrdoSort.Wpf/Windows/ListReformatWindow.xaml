@@ -43,6 +43,7 @@
                 <CheckBox Content="Quote each item" IsChecked="{Binding Quote}"
                           VerticalAlignment="Center" Margin="0,4,14,4" />
                 <CheckBox Content="Space after separator" IsChecked="{Binding SpaceAfterComma}"
+                          IsEnabled="{Binding SpaceAfterApplies}"
                           VerticalAlignment="Center" Margin="0,4,14,4" />
                 <CheckBox Content="Drop duplicates" IsChecked="{Binding Dedupe}"
                           VerticalAlignment="Center" Margin="0,4,14,4" />

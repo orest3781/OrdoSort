@@ -220,4 +220,21 @@ public class ListReformatViewModelTests
             Enum.GetValues<ListReformat.OutputShape>(),
             ListReformatViewModel.ShapeChoices.Select(c => c.Key).ToArray());
     }
+
+    /// <summary>UX-31: the separator switch (ListReformat.cs:108-110) reads
+    /// SpaceAfterComma only for the comma and custom shapes; under one item
+    /// per line the checkbox did nothing while staying live, unlike the
+    /// delimiter box beside it, which already disables itself.</summary>
+    [Fact]
+    public void SpaceAfterSeparatorAppliesOnlyWhereThereIsASeparator()
+    {
+        var vm = new ListReformatViewModel();
+
+        vm.Shape = ListReformat.OutputShape.CommaLine;
+        Assert.True(vm.SpaceAfterApplies);
+        vm.Shape = ListReformat.OutputShape.OnePerLine;
+        Assert.False(vm.SpaceAfterApplies);
+        vm.Shape = ListReformat.OutputShape.CustomDelimiter;
+        Assert.True(vm.SpaceAfterApplies);
+    }
 }
