@@ -9,9 +9,27 @@ namespace OrdoSort.Wpf.Windows;
 
 public partial class LabelMakerWindow : Window
 {
-    public LabelMakerWindow(LabelMakerViewModel vm)
+    private readonly string _previewTitle;
+
+    /// <summary>The host supplies its own names and says whether this is its
+    /// main window.
+    ///
+    /// In OrdoSort it is an owned modal off the Tools menu, which is why the
+    /// XAML says ShowInTaskbar="False" and CenterOwner. In BoxLabels.exe it
+    /// IS the application: it has no owner to centre on, and a window with no
+    /// taskbar button and no owner is one the user cannot alt-tab back to.
+    /// <paramref name="standalone"/> switches those two, and nothing else.</summary>
+    public LabelMakerWindow(LabelMakerViewModel vm, string windowTitle,
+        string previewTitle, bool standalone = false)
     {
         InitializeComponent();
+        Title = windowTitle;
+        _previewTitle = previewTitle;
+        if (standalone)
+        {
+            ShowInTaskbar = true;
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        }
         DataContext = vm;
         vm.PrintSheets = PrintSheets;
         vm.RequestIdFocus += () => { IdBox.Focus(); IdBox.SelectAll(); };
@@ -40,8 +58,7 @@ public partial class LabelMakerWindow : Window
     {
         var vm = (LabelMakerViewModel)DataContext;
         var preview = new PrintPreviewWindow(LabelPrinting.BuildDocument(items, vm.DateStyle), jobName,
-            msg => vm.Dialogs.Warn(msg, "OrdoSort — label maker"),
-            "OrdoSort — Print preview") { Owner = this };
+            msg => vm.Dialogs.Warn(msg, vm.AppTitle), _previewTitle) { Owner = this };
         preview.ShowDialog();
         return preview.Printed;
     }

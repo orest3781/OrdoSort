@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.IO;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Mvvm;
@@ -53,12 +53,15 @@ public sealed class LabelClientVm : ObservableObject
     };
 }
 
-/// <summary>Tools → Label maker: print-ready box labels, ten per US-letter
-/// sheet. Each client keeps its own destruction offset and running number;
-/// generating a batch advances the number and persists it.</summary>
+/// <summary>Print-ready box labels, ten per US-letter sheet. Each client
+/// keeps its own destruction offset and running number; generating a batch
+/// advances the number and persists it.
+///
+/// Reached from OrdoSort's Tools menu and as the whole of BoxLabels.exe, so
+/// it names neither: the title on its dialogs is whatever the host passed.</summary>
 public sealed class LabelMakerViewModel : ObservableObject
 {
-    private readonly Config _cfg;
+    private readonly string _appTitle;
     private readonly string _boxLabelsPath;
     private readonly ILabelDialogs _dialogs;
     private readonly Func<DateTime> _today;
@@ -114,11 +117,21 @@ public sealed class LabelMakerViewModel : ObservableObject
     // client.
     private bool _suppressDirty;
 
-    public LabelMakerViewModel(Config cfg, string boxLabelsPath, ILabelDialogs dialogs,
+    /// <summary><paramref name="appTitle"/> heads every dialog this view model
+    /// raises: OrdoSort passes its own label-maker title, BoxLabels.exe passes
+    /// "Box Labels". Neither name is written down in here.
+    ///
+    /// <paramref name="migrationSeed"/> is the pre-split config's inline
+    /// label_clients, and only OrdoSort has any: it used to take the whole
+    /// Config for this one branch. A machine that never ran OrdoSort has no
+    /// config.json to migrate FROM, so the standalone passes null and the
+    /// branch below is unreachable there.</summary>
+    public LabelMakerViewModel(IReadOnlyList<LabelClient>? migrationSeed, string boxLabelsPath,
+        ILabelDialogs dialogs, string appTitle,
         Func<DateTime>? today = null, Action<string>? openFile = null,
         IWorkScheduler? scheduler = null)
     {
-        _cfg = cfg;
+        _appTitle = appTitle;
         _boxLabelsPath = boxLabelsPath;
         _dialogs = dialogs;
         _today = today ?? (() => DateTime.Now);
@@ -136,11 +149,11 @@ public sealed class LabelMakerViewModel : ObservableObject
             // roster, and Config.Save's bootstrap-only rule means the
             // migration never gets another chance — the inline counters are
             // gone for good the next time anything saves config.json.
-            if (!File.Exists(boxLabelsPath) && _cfg.LabelClients.Count > 0)
+            if (!File.Exists(boxLabelsPath) && migrationSeed is { Count: > 0 })
             {
                 BoxLabelStore.Mutate(boxLabelsPath, d =>
                 {
-                    d.LabelClients = _cfg.LabelClients.Select(c => new LabelClient
+                    d.LabelClients = migrationSeed.Select(c => new LabelClient
                     {
                         Id = c.Id, DestroyDays = c.DestroyDays, NextNumber = c.NextNumber,
                         Extras = c.Extras,
@@ -159,7 +172,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             // a held or corrupt file at window-open time is not fatal — warn
             // and open with an empty roster rather than throwing into the
             // global handler
-            _dialogs.Warn(ex.Message, "OrdoSort — label maker");
+            _dialogs.Warn(ex.Message, _appTitle);
         }
 
         AddClientCommand = new RelayCommand(() =>
@@ -195,7 +208,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             if (!pristine && !_dialogs.Confirm(
                     $"Remove \"{s.Id}\"?\n\nIts running label number ({shownNumber}) "
                     + "will be lost — re-adding the client starts back at 1.",
-                    "OrdoSort — label maker", "Remove client", "Keep it"))
+                    _appTitle, "Remove client", "Keep it"))
                 return;
             Clients.Remove(s);
             if (s.Id.Length > 0) _removedIds.Add(s.Id);   // a blank pristine row was never on disk
@@ -227,7 +240,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             if (!pristine && !_dialogs.Confirm(
                     $"Reset \"{s.Id}\"'s label number to 1?\n\nIts running label number "
                     + $"({shownNumber}) will be lost.",
-                    "OrdoSort — label maker", "Reset to 1", "Keep counting"))
+                    _appTitle, "Reset to 1", "Keep counting"))
                 return;
             s.NextNumberText = "1";
         }, () => Selected is not null);
@@ -257,6 +270,11 @@ public sealed class LabelMakerViewModel : ObservableObject
     /// <summary>The window's print path reports failures through the same
     /// dialog service the view model uses.</summary>
     internal ILabelDialogs Dialogs => _dialogs;
+
+    /// <summary>The host's name for this tool, as it heads every dialog —
+    /// exposed so the window titles the warnings it raises itself the same
+    /// way the view model titles its own.</summary>
+    internal string AppTitle => _appTitle;
 
     /// <summary>Raised after Add so the view can put the caret in the
     /// client-id box — typing the id is the only sensible next step.</summary>
@@ -324,7 +342,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             }
             catch (ConfigException ex)
             {
-                _dialogs.Warn(ex.Message, "OrdoSort — label maker");
+                _dialogs.Warn(ex.Message, _appTitle);
             }
         }
     }
@@ -414,7 +432,7 @@ public sealed class LabelMakerViewModel : ObservableObject
         if (problems.Count > 0)
         {
             _dialogs.Warn("These need fixing first:\n\n • " + string.Join("\n • ", problems),
-                "OrdoSort — label maker");
+                _appTitle);
             return null;
         }
         var start = long.Parse(s.NextNumberText.Trim());
@@ -480,7 +498,7 @@ public sealed class LabelMakerViewModel : ObservableObject
         if (BuildBatch() is not { } b) return;
         if (PrintSheets is null)
         {
-            _dialogs.Warn("Printing isn't available here.", "OrdoSort — label maker");
+            _dialogs.Warn("Printing isn't available here.", _appTitle);
             return;
         }
         // Claim from the fresh file FIRST: several stations may be printing,
@@ -496,7 +514,7 @@ public sealed class LabelMakerViewModel : ObservableObject
         }
         catch (ConfigException ex)
         {
-            _dialogs.Warn(ex.Message, "OrdoSort — label maker");
+            _dialogs.Warn(ex.Message, _appTitle);
             return;
         }
         finally
@@ -505,7 +523,7 @@ public sealed class LabelMakerViewModel : ObservableObject
         }
         SetClaimedNumber(b.Client, start + b.Count);
         var items = RebuildFromClaim(b, start);
-        if (!PrintSheets(items, $"OrdoSort labels {items[0].Code}")) return;   // cancelled
+        if (!PrintSheets(items, $"Box labels {items[0].Code}")) return;   // cancelled
         var sheets = (b.Count + BoxLabels.PerSheet - 1) / BoxLabels.PerSheet;
         Status = $"Sent {b.Count} label{(b.Count == 1 ? "" : "s")} "
             + $"({sheets} sheet{(sheets == 1 ? "" : "s")}) to the printer.";
@@ -543,12 +561,12 @@ public sealed class LabelMakerViewModel : ObservableObject
         }
         catch (ConfigException ex)
         {
-            _dialogs.Warn(ex.Message, "OrdoSort — label maker");
+            _dialogs.Warn(ex.Message, _appTitle);
             return;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _dialogs.Warn("Couldn't save it: " + ex.Message, "OrdoSort — label maker");
+            _dialogs.Warn("Couldn't save it: " + ex.Message, _appTitle);
             return;
         }
 
@@ -650,7 +668,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             if (_dialogs.Confirm(
                     $"Remove \"{origin}\"?\n\nIts running label number ({shownNumber}) "
                     + "will be lost — re-adding the client starts back at 1.",
-                    "OrdoSort — label maker", "Remove client", "Keep it"))
+                    _appTitle, "Remove client", "Keep it"))
                 continue;   // confirmed: leave the blank id — the sweep below removes it
 
             _suppressDirty = true;
@@ -667,7 +685,7 @@ public sealed class LabelMakerViewModel : ObservableObject
         if (duplicate is not null)
         {
             _dialogs.Warn($"Two clients share the id \"{duplicate.Key}\" — fix the duplicate "
-                + "before closing; nothing was saved.", "OrdoSort — label maker");
+                + "before closing; nothing was saved.", _appTitle);
             return false;   // caller must not let the close proceed over this
         }
 
@@ -779,7 +797,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             // <returns> doc above). The "don't lie about writing" promise is
             // kept through the message instead of through a trap.
             _dialogs.Warn(ex.Message + "\n\nNone of this session's changes were saved.",
-                "OrdoSort — label maker");
+                _appTitle);
             return true;
         }
     }

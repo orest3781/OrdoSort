@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -138,7 +138,10 @@ public static class Screenshots
             if (File.Exists(boxLabelsScratch))
             {
                 Capture(notes, outdir, theme, "LabelMaker", () =>
-                    new LabelMakerWindow(new LabelMakerViewModel(Config.Load(cfgPath), boxLabelsScratch, dialogs)));
+                    new LabelMakerWindow(
+                        new LabelMakerViewModel(Config.Load(cfgPath).LabelClients, boxLabelsScratch,
+                            dialogs, "OrdoSort — label maker"),
+                        "OrdoSort — Box labels", "OrdoSort — Print preview"));
             }
             else
             {

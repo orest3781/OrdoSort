@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
@@ -58,10 +58,10 @@ public class LabelMakerOverflowTests
         _fx.App.Resources["AppFontSize"] = fontSize;
 
         var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
-        var vm = new LabelMakerViewModel(new Config(), boxLabelsPath, new NoDialogs());
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels");
         vm.Clients.Add(new LabelClientVm { Id = "TESTCLNT", DestroyDaysText = "45", NextNumberText = "00000001" });
         vm.Selected = vm.Clients[0];
-        var window = new LabelMakerWindow(vm)
+        var window = new LabelMakerWindow(vm, "Box labels", "Print preview")
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,

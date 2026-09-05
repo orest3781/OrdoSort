@@ -361,9 +361,17 @@ public partial class MainWindow : Window
             Shell.Cfg, Shell.SaveMergeHeaders, Dialogs, Shell.SaveConfigNow))
         { Owner = this }.ShowDialog();
 
+    // The three names are OrdoSort's, passed in rather than baked into the
+    // shared window: BoxLabels.exe opens the same one and must not show the
+    // name of a product its user does not have. Shell.Cfg.LabelClients is the
+    // pre-split config's inline roster, migrated on first open — the
+    // standalone has no config.json and passes none.
     private void OnLabelMaker(object sender, RoutedEventArgs e) =>
-        new Windows.LabelMakerWindow(new LabelMakerViewModel(
-            Shell.Cfg, Shell.BoxLabelsPath, Dialogs)) { Owner = this }.ShowDialog();
+        new Windows.LabelMakerWindow(
+            new LabelMakerViewModel(Shell.Cfg.LabelClients, Shell.BoxLabelsPath, Dialogs,
+                "OrdoSort — label maker"),
+            "OrdoSort — Box labels", "OrdoSort — Print preview")
+        { Owner = this }.ShowDialog();
 
     private void OnFilenameList(object sender, RoutedEventArgs e)
     {

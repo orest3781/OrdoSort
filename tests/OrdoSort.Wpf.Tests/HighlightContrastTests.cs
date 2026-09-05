@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -755,9 +755,9 @@ public class HighlightContrastTests
         ThemeManager.Apply(_fx.App, scheme);
 
         var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
-        var vm = new LabelMakerViewModel(new Config(), boxLabelsPath, new NoDialogs());
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels");
         vm.Clients.Add(new LabelClientVm { Id = "TEST" });
-        var window = new LabelMakerWindow(vm)
+        var window = new LabelMakerWindow(vm, "Box labels", "Print preview")
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
@@ -972,9 +972,9 @@ public class HighlightContrastTests
         ThemeManager.Apply(_fx.App, scheme);
 
         var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
-        var vm = new LabelMakerViewModel(new Config(), boxLabelsPath, new NoDialogs());
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels");
         vm.Clients.Add(new LabelClientVm { Id = "TEST" });
-        var window = new LabelMakerWindow(vm)
+        var window = new LabelMakerWindow(vm, "Box labels", "Print preview")
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
