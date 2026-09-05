@@ -75,12 +75,21 @@ public class HistoryViewModelTests : IDisposable
         Assert.Equal(HistoryViewModel.InitialLoad, vm.Rows.Count);
         Assert.True(vm.ShowAllCommand.CanExecute(null));
 
+        // Important 2: "No filings match your search." and "Loading…" share
+        // one Grid cell in HistoryWindow.xaml, so filtering to zero matches
+        // and then clicking Show all used to render both lines on top of
+        // each other for the whole load.
+        vm.Filter = "zzz";
+        Assert.True(vm.NoMatches);
+
         vm.ShowAllCommand.Execute(null);
         Assert.True(vm.IsBusy);
+        Assert.False(vm.NoMatches);   // cleared the instant the load starts, not overlaid on Loading…
         Assert.False(vm.ShowAllCommand.CanExecute(null));
         Assert.Equal(HistoryViewModel.InitialLoad, vm.Rows.Count);   // stale rows stay visible
 
         scheduler.ReleaseAll();
+        vm.Filter = "";
         Assert.False(vm.IsBusy);
         Assert.Equal(600, vm.Rows.Count);
         Assert.False(vm.ShowAllCommand.CanExecute(null));   // everything is shown now

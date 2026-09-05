@@ -112,6 +112,14 @@ public sealed class HistoryViewModel : ObservableObject
         private set
         {
             if (!Set(ref _isBusy, value)) return;
+            // Both empty-state lines and the Loading line live in the same
+            // Grid cell (HistoryWindow.xaml), so a filter that had zero
+            // matches right before Show all was clicked left "No filings
+            // match your search." rendered on top of "Loading…" for the
+            // whole load. ApplyFilter recomputes both correctly once the
+            // load lands; clearing them here just stops the stale line
+            // showing while it's in flight.
+            if (value) { IsEmpty = false; NoMatches = false; }
             ShowAllCommand.RaiseCanExecuteChanged();
         }
     }
