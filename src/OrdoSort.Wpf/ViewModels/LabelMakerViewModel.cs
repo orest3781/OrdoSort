@@ -230,7 +230,7 @@ public sealed class LabelMakerViewModel : ObservableObject
                 return;
             s.NextNumberText = "1";
         }, () => Selected is not null);
-        PrintCommand = new RelayCommand(Print, () => Selected is not null);
+        PrintCommand = new RelayCommand(Print, () => Selected is not null && !IsPrinting);
         SavePdfCommand = new RelayCommand(SavePdf, () => Selected is not null);
 
         Selected = Clients.FirstOrDefault();   // after the commands the setter pokes
@@ -240,6 +240,18 @@ public sealed class LabelMakerViewModel : ObservableObject
     /// user cancels the print dialog. Supplied by the window (WPF PrintDialog
     /// + FixedDocument); tests inject a recorder.</summary>
     internal Func<IReadOnlyList<BoxLabels.Item>, string, bool>? PrintSheets { get; set; }
+
+    /// <summary>True while Print's claim is out with the scheduler. A
+    /// contended store file can hold the claim for BoxLabelStore's whole
+    /// retry budget, which used to freeze the window (UX-05); this parks
+    /// PrintCommand for the duration so a second click cannot claim a
+    /// second range.</summary>
+    private bool _isPrinting;
+    public bool IsPrinting
+    {
+        get => _isPrinting;
+        private set { if (Set(ref _isPrinting, value)) PrintCommand.RaiseCanExecuteChanged(); }
+    }
 
     /// <summary>The window's print path reports failures through the same
     /// dialog service the view model uses.</summary>
@@ -414,9 +426,11 @@ public sealed class LabelMakerViewModel : ObservableObject
     /// <summary>The file-only half of a claim: reads the FRESH on-disk
     /// counter, refuses a batch that would pass <see cref="BoxLabels.MaxNumber"/>,
     /// and advances it. Touches nothing on the VM, so it is safe to run off
-    /// the UI thread (SavePdfAsync offloads it alongside the render). Throws
-    /// <see cref="ConfigException"/> on a busy/corrupt file OR a
-    /// ceiling-breaking batch — the write never lands in either case.</summary>
+    /// the UI thread — both PrintAsync and SavePdfAsync offload it through
+    /// the scheduler (UX-05: a contended file can hold this for the store's
+    /// whole retry budget). Throws <see cref="ConfigException"/> on a
+    /// busy/corrupt file OR a ceiling-breaking batch — the write never lands
+    /// in either case.</summary>
     private long ClaimNumbersCore(LabelClientVm client, int count) =>
         BoxLabelStore.Mutate(_boxLabelsPath, doc =>
         {
@@ -444,27 +458,6 @@ public sealed class LabelMakerViewModel : ObservableObject
         finally { _suppressDirty = false; }
     }
 
-    /// <summary>Claim `count` numbers for `client` from the FRESH on-disk
-    /// counter (several stations may be printing). Returns the claimed start,
-    /// or null when the file is busy past the retry window or the claim would
-    /// pass the ceiling — either way, already warned. UI-thread only: Print()
-    /// calls this directly; SavePdfAsync uses <see cref="ClaimNumbersCore"/>
-    /// instead so the file work can run off-thread.</summary>
-    internal long? ClaimNumbers(LabelClientVm client, int count)
-    {
-        try
-        {
-            var start = ClaimNumbersCore(client, count);
-            SetClaimedNumber(client, start + count);
-            return start;
-        }
-        catch (ConfigException ex)
-        {
-            _dialogs.Warn(ex.Message, "OrdoSort — label maker");
-            return null;
-        }
-    }
-
     /// <summary>Rebuild the batch's items against a freshly-claimed start when
     /// it differs from the stale on-screen number BuildBatch used — the
     /// created/destroy dates carry over unchanged, only the codes shift.</summary>
@@ -475,7 +468,9 @@ public sealed class LabelMakerViewModel : ObservableObject
             : BoxLabels.Batch(b.Client.Id, claimedStart, b.Count, b.Items[0].Created,
                 int.Parse(b.Client.DestroyDaysText.Trim()));
 
-    internal void Print()
+    internal void Print() => _ = PrintAsync();
+
+    internal async Task PrintAsync()
     {
         if (BuildBatch() is not { } b) return;
         if (PrintSheets is null)
@@ -485,8 +480,25 @@ public sealed class LabelMakerViewModel : ObservableObject
         }
         // Claim from the fresh file FIRST: several stations may be printing,
         // so the sheets that actually go out must carry the claimed numbers,
-        // not whatever was on screen when this window opened.
-        if (ClaimNumbers(b.Client, b.Count) is not { } start) return;   // busy file — already warned
+        // not whatever was on screen when this window opened. Off the UI
+        // thread, as SavePdfAsync already does — the store can wait seconds
+        // on a contended file (UX-05).
+        long start;
+        IsPrinting = true;
+        try
+        {
+            start = await _scheduler.Run(() => ClaimNumbersCore(b.Client, b.Count));
+        }
+        catch (ConfigException ex)
+        {
+            _dialogs.Warn(ex.Message, "OrdoSort — label maker");
+            return;
+        }
+        finally
+        {
+            IsPrinting = false;
+        }
+        SetClaimedNumber(b.Client, start + b.Count);
         var items = RebuildFromClaim(b, start);
         if (!PrintSheets(items, $"OrdoSort labels {items[0].Code}")) return;   // cancelled
         var sheets = (b.Count + BoxLabels.PerSheet - 1) / BoxLabels.PerSheet;

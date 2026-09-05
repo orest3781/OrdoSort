@@ -140,6 +140,39 @@ public class LabelMakerViewModelTests : IDisposable
         Assert.Empty(_dialogs.Warnings);
     }
 
+    /// <summary>UX-05: Print claimed its numbers ON the UI thread, and the
+    /// store retries a contended file for up to five seconds, so the window
+    /// froze on its one primary button. The claim now runs through the
+    /// scheduler like SavePdf's; while it is out, PrintCommand is parked so a
+    /// second click cannot claim a second range.</summary>
+    [Fact]
+    public void PrintClaimsOffTheUiThreadAndParksItselfMeanwhile()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 5 });
+        var scheduler = new ControlledWorkScheduler();
+        var vm = new LabelMakerViewModel(new Config(), path, _dialogs, () => Today, _opened.Add, scheduler);
+        scheduler.ReleaseAll();   // anything the constructor queued
+        IReadOnlyList<BoxLabels.Item>? sent = null;
+        vm.PrintSheets = (items, _) => { sent = items; return true; };
+        var queuedBefore = scheduler.Queued;
+
+        vm.Print();
+
+        Assert.Equal(queuedBefore + 1, scheduler.Queued);   // the claim is in flight, not done
+        Assert.Null(sent);
+        Assert.True(vm.IsPrinting);
+        Assert.False(vm.PrintCommand.CanExecute(null));
+
+        scheduler.ReleaseNext();
+
+        Assert.NotNull(sent);
+        Assert.Equal("ABCD00000005", sent![0].Code);
+        Assert.False(vm.IsPrinting);
+        Assert.True(vm.PrintCommand.CanExecute(null));
+        Assert.Equal("15", vm.Selected!.NextNumberText);
+        Assert.Empty(_dialogs.Warnings);
+    }
+
     [Fact]
     public void SavePdfWritesTheFileAdvancesTheNumberAndPersists()
     {
@@ -362,9 +395,13 @@ public class LabelMakerViewModelTests : IDisposable
             // another station advances the counter AFTER our window opened:
             BoxLabelStore.Mutate(path, d =>
                 { d.LabelClients.Single(c => c.Id == "ACME").NextNumber = 50; return 0; });
+            vm.LabelCountText = "3";
+            IReadOnlyList<BoxLabels.Item>? sent = null;
+            vm.PrintSheets = (items, _) => { sent = items; return true; };
 
-            var start = vm.ClaimNumbers(vm.Clients.Single(c => c.Id == "ACME"), 3);
-            Assert.Equal(50, start);                 // fresh, not the stale 10
+            vm.Print();
+
+            Assert.Equal("ACME00000050", sent![0].Code);   // fresh, not the stale 10
             Assert.Equal(53, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
         }
         finally { Directory.Delete(dir, true); }
@@ -691,15 +728,17 @@ public class LabelMakerViewModelTests : IDisposable
     }
 
     [Fact]
-    public void ClaimNumbersDoesNotDirtyItsClientSoAClaimAloneClosesWithoutWriting()
+    public void PrintDoesNotDirtyItsClientSoAPrintAloneClosesWithoutWriting()
     {
-        // ClaimNumbers already wrote the advance straight to the store — the
+        // Print's claim already wrote the advance straight to the store — the
         // VM's own NextNumberText update afterward is display-only and must
         // not make Persist think there is local, unsaved state to merge
         var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 5 });
         var vm = Vm(path);
+        vm.PrintSheets = (_, _) => true;
 
-        Assert.Equal(5, vm.ClaimNumbers(vm.Clients.Single(), 10));
+        vm.Print();   // 10 labels (the default LabelCountText) claimed
+
         Assert.Equal("15", vm.Clients.Single().NextNumberText);   // display updated...
         var afterClaim = File.ReadAllBytes(path);                // ...and the claim's write already landed
 
@@ -847,14 +886,20 @@ public class LabelMakerViewModelTests : IDisposable
     // -------------------------------------------------------------- ceiling
 
     [Fact]
-    public void ClaimNumbersRefusesABatchThatWouldPassTheCeilingAndLeavesTheCounterUnchanged()
+    public void PrintRefusesABatchThatWouldPassTheCeilingAndLeavesTheCounterUnchanged()
     {
-        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = BoxLabels.MaxNumber - 1 });
+        // The stale on-screen number (10) passes Problems()'s own ceiling
+        // check — only the claim's read of the FRESH file, which a peer has
+        // since advanced to right below the ceiling, catches this.
+        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = 10 });
         var vm = Vm(path);
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "ABCD").NextNumber = BoxLabels.MaxNumber - 1; return 0; });
+        vm.LabelCountText = "3";
+        vm.PrintSheets = (_, _) => true;
 
-        var start = vm.ClaimNumbers(vm.Clients.Single(), 3);
+        vm.Print();
 
-        Assert.Null(start);
         Assert.Contains("99 999 999", Assert.Single(_dialogs.Warnings).Message);
         Assert.Equal(BoxLabels.MaxNumber - 1, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
     }
