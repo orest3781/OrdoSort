@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Input;
+using System.Windows.Threading;
 
 namespace OrdoSort.Wpf.Windows;
 
@@ -35,9 +36,24 @@ public partial class MessageWindow : Window
 
     private bool _answeredYes;
 
+    /// <summary>The clipboard write, injectable so tests can drive the busy
+    /// branch without the real clipboard. Defaults to WPF's own.</summary>
+    internal Action<string> SetClipboardText { get; set; } = Clipboard.SetText;
+
+    /// <summary>Puts the Copy label back after the acknowledgment has been
+    /// read — two seconds, the feedback reference's figure for a
+    /// copy-to-clipboard confirmation.</summary>
+    private readonly DispatcherTimer _copyLabelReset = new() { Interval = TimeSpan.FromSeconds(2) };
+
     private MessageWindow()
     {
         InitializeComponent();
+        _copyLabelReset.Tick += (_, _) =>
+        {
+            _copyLabelReset.Stop();
+            CopyButton.Content = "Copy";
+            CopyButton.ToolTip = null;
+        };
         PreviewKeyDown += (_, e) =>
         {
             if (e.Key != Key.Escape) return;
@@ -176,13 +192,25 @@ public partial class MessageWindow : Window
         Close();
     }
 
-    /// <summary>Puts the message on the clipboard. Clipboard access genuinely
-    /// fails when another process holds it open, and a dialog that threw while
-    /// reporting a problem would replace the message the user came here to
-    /// read.</summary>
+    /// <summary>Puts the message on the clipboard and says so on the button
+    /// (UX-20). Clipboard access genuinely fails when another process holds
+    /// it open; a dialog that threw while reporting a problem would replace
+    /// the message the user came here to read, so the failure is said on the
+    /// same button instead — "Try again" is true, the lock is momentary.</summary>
     private void OnCopy(object sender, RoutedEventArgs e)
     {
-        try { Clipboard.SetText(MessageText.Text); }
-        catch (Exception) { /* clipboard busy — nothing worth saying about it */ }
+        try
+        {
+            SetClipboardText(MessageText.Text);
+            CopyButton.Content = "Copied";
+            CopyButton.ToolTip = null;
+        }
+        catch (Exception)
+        {
+            CopyButton.Content = "Try again";
+            CopyButton.ToolTip = "Another program is holding the clipboard.";
+        }
+        _copyLabelReset.Stop();
+        _copyLabelReset.Start();
     }
 }
