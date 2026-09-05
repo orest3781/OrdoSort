@@ -296,7 +296,7 @@ public static class Screenshots
         Capture(notes, outdir, theme, "PrintPreview", () => new PrintPreviewWindow(
             OrdoSort.Wpf.Views.LabelPrinting.BuildDocument(
                 BoxLabels.Batch("ABCD", 1, 12, new DateTime(2026, 7, 25), 30)),
-            "smoke", _ => { }));
+            "smoke", _ => { }, "OrdoSort — Print preview"));
 
     // --------------------------------------------------------------- History
     private static void CaptureHistory(List<string> notes, string outdir, string theme,

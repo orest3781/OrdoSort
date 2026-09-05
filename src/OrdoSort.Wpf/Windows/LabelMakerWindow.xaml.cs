@@ -40,7 +40,8 @@ public partial class LabelMakerWindow : Window
     {
         var vm = (LabelMakerViewModel)DataContext;
         var preview = new PrintPreviewWindow(LabelPrinting.BuildDocument(items, vm.DateStyle), jobName,
-            msg => vm.Dialogs.Warn(msg, "OrdoSort — label maker")) { Owner = this };
+            msg => vm.Dialogs.Warn(msg, "OrdoSort — label maker"),
+            "OrdoSort — Print preview") { Owner = this };
         preview.ShowDialog();
         return preview.Printed;
     }
