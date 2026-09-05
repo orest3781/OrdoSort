@@ -293,7 +293,10 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         if (DeleteSeg4) deletePositions.Add(4);
 
         return new(
-            Find: Find, Replace: Replace, Prefix: Prefix, Suffix: Suffix,
+            // Trimmed here, not in the setters: the boxes update per keystroke,
+            // and trimming the stored text would eat the space before the next
+            // word. Find/Replace stay as typed — they match existing names (UX-35).
+            Find: Find, Replace: Replace, Prefix: Prefix.Trim(), Suffix: Suffix.Trim(),
             Case: CaseIndex switch { 1 => "upper", 2 => "lower", _ => "keep" },
             // Invariant: this stem is rebuilt into the actual on-disk file
             // name (BulkRename.TransformStem), so it can't vary by station.

@@ -1277,6 +1277,27 @@ public class BulkRenameViewModelTests : IDisposable
         Assert.DoesNotContain("need a name", vm.CountsLine);
     }
 
+    /// <summary>UX-35: Prefix and Suffix went into the operation untrimmed
+    /// while the per-row override three lines away trims. A prefix pasted
+    /// from a spreadsheet cell with a leading space landed in every
+    /// filename. The box keeps what was typed (a trailing space is the
+    /// start of the next word); only the operation is trimmed.</summary>
+    [Fact]
+    public async Task PrefixAndSuffixAreTrimmedInTheOperationButNotInTheBox()
+    {
+        var vm = new BulkRenameViewModel();
+        await vm.AddFilesAsync(new[] { Touch("scan_001.pdf") });
+        WaitFor(() => vm.Preview.Count == 1, "the initial add's compute should land");
+
+        vm.Prefix = " X";
+        vm.Suffix = "Y \n";
+
+        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "Xscan_001Y.pdf",
+            "the trimmed prefix and suffix should reach the preview");
+        Assert.Equal(" X", vm.Prefix);
+        Assert.Equal("Y \n", vm.Suffix);
+    }
+
     [Fact]
     public async Task FindReplacePreviewMatchesThePlan()
     {
