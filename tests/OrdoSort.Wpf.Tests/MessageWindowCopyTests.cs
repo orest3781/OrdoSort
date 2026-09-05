@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls.Primitives;
 using OrdoSort.Wpf.Theme;
 using OrdoSort.Wpf.Windows;
@@ -29,6 +30,7 @@ public class MessageWindowCopyTests
 
         Assert.Equal("Couldn't save C:\\x.csv", copied);
         Assert.Equal("Copied", w.CopyButton.Content);
+        Assert.Equal("Copied", AutomationProperties.GetName(w.CopyButton));
     });
 
     [Fact]
@@ -42,6 +44,8 @@ public class MessageWindowCopyTests
 
         Assert.Equal("Try again", w.CopyButton.Content);
         Assert.Equal("Another program is holding the clipboard.", w.CopyButton.ToolTip);
+        Assert.Equal("Copy this message — try again, another program is holding the clipboard",
+            AutomationProperties.GetName(w.CopyButton));
         Assert.True(w.IsEnabled);   // the dialog itself is untouched
     });
 }

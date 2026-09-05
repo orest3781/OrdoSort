@@ -53,6 +53,10 @@ public partial class MessageWindow : Window
             _copyLabelReset.Stop();
             CopyButton.Content = "Copy";
             CopyButton.ToolTip = null;
+            // The house rule (ReadyView.xaml): the automation name must match
+            // what is rendered — a screen reader user hears the same button
+            // a sighted user reads, at every point in its lifecycle.
+            AutomationProperties.SetName(CopyButton, "Copy this message");
         };
         PreviewKeyDown += (_, e) =>
         {
@@ -204,11 +208,17 @@ public partial class MessageWindow : Window
             SetClipboardText(MessageText.Text);
             CopyButton.Content = "Copied";
             CopyButton.ToolTip = null;
+            // Content changes but AutomationProperties.Name does not update
+            // itself — a screen reader would keep announcing "Copy this
+            // message" forever, silently disagreeing with what's on screen.
+            AutomationProperties.SetName(CopyButton, "Copied");
         }
         catch (Exception)
         {
             CopyButton.Content = "Try again";
             CopyButton.ToolTip = "Another program is holding the clipboard.";
+            AutomationProperties.SetName(CopyButton,
+                "Copy this message — try again, another program is holding the clipboard");
         }
         _copyLabelReset.Stop();
         _copyLabelReset.Start();
