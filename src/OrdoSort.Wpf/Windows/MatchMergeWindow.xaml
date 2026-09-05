@@ -11,7 +11,9 @@
             <StackPanel Orientation="Horizontal">
                 <Button Command="{Binding MergeCommand}"
                         Style="{StaticResource PrimaryButton}" MinWidth="120" Margin="0,0,8,0"
+                        IsDefault="True"
                         AutomationProperties.Name="{Binding MergeButtonText}">
+                    <!-- IsDefault: CanExecute already needs rows, so Enter cannot fire early; the sibling batch windows wire it (UX-22). -->
                     <StackPanel Orientation="Horizontal">
                         <!-- E8C8 (copy/merge), distinct from this tool's own
                              Tools menu glyph (E721, "_Match and merge…") so

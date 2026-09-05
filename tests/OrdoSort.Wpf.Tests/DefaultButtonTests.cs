@@ -1,8 +1,11 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using OrdoSort.Core;
 using OrdoSort.Wpf.Theme;
+using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Views;
+using OrdoSort.Wpf.Windows;
 
 namespace OrdoSort.Wpf.Tests;
 
@@ -22,14 +25,20 @@ public class DefaultButtonTests
     {
         foreach (var child in LogicalTreeHelper.GetChildren(root))
         {
-            if (child is not DependencyObject d) continue;
-            if (d is T t) yield return t;
-            foreach (var x in LogicalDescendants<T>(d)) yield return x;
+            if (child is not DependencyObject dependencyObject) continue;
+            if (dependencyObject is T match) yield return match;
+            foreach (var descendant in LogicalDescendants<T>(dependencyObject)) yield return descendant;
         }
     }
 
     private static Button ByName(DependencyObject root, string automationName) =>
         LogicalDescendants<Button>(root).Single(b => AutomationProperties.GetName(b) == automationName);
+
+    private static Button ThePrimary(Window win)
+    {
+        var primary = (Style)win.FindResource("PrimaryButton");
+        return Assert.Single(LogicalDescendants<Button>(win).Where(b => ReferenceEquals(b.Style, primary)));
+    }
 
     [Fact]
     public void StartProcessingAnswersEnter() => _fx.Invoke(() =>
@@ -45,5 +54,32 @@ public class DefaultButtonTests
         ThemeManager.Apply(_fx.App, dark: false);
         var view = new DoneView();
         Assert.True(ByName(view, "Back to inbox").IsDefault, "Enter on Done must return to the inbox");
+    });
+
+    [Fact]
+    public void ZipAnswersEnter() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var win = new ZipToolsWindow(new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler()));
+        Assert.True(ThePrimary(win).IsDefault);
+    });
+
+    [Fact]
+    public void MergePdfsAnswersEnter() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(),
+            zipProbe: (p, _) => new Zipper.ZipProbeResult(p, "not_encrypted"),
+            pdfProbe: (p, _) => new Unlock.ProbeResult("not_encrypted", p));
+        var win = new MergePdfsWindow(vm);
+        Assert.True(ThePrimary(win).IsDefault);
+    });
+
+    [Fact]
+    public void MatchAndMergeAnswersEnter() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var win = new MatchMergeWindow(new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs()));
+        Assert.True(ThePrimary(win).IsDefault);
     });
 }

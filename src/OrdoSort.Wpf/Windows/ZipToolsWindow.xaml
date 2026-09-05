@@ -18,7 +18,9 @@
             <StackPanel Orientation="Horizontal">
                 <Button Command="{Binding ZipCommand}"
                         Style="{StaticResource PrimaryButton}" MinWidth="110" Margin="0,0,8,0"
+                        IsDefault="True"
                         AutomationProperties.Name="{Binding ZipButtonText}">
+                    <!-- IsDefault: CanExecute already needs rows, so Enter cannot fire early; the sibling batch windows wire it (UX-22). -->
                     <TextBlock Text="{Binding ZipButtonText}"
                                Style="{StaticResource PrimaryButtonLabel}" />
                 </Button>
