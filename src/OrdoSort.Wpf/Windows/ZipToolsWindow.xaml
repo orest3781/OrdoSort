@@ -69,7 +69,7 @@
                 <DataGrid x:Name="ItemsGrid" ItemsSource="{Binding Rows}"
                           AutomationProperties.Name="Files, folders and archives to process" AutoGenerateColumns="False"
                           IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
-                          SelectionMode="Extended">
+                          SelectionMode="Extended" PreviewKeyDown="OnGridKeyDown">
                     <!-- Theme.RowHover so the hover tint stays consistent
                          app-wide; the row ToolTip carries the full path,
                          which no column shows. -->

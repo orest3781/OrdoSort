@@ -130,6 +130,20 @@ public partial class UnlockWindow : Window
     private void OnRemoveSelected(object sender, RoutedEventArgs e) =>
         _vm.RemoveFiles(FileList.SelectedItems.Cast<UnlockFileRow>().Select(r => r.Path).ToList());
 
+    /// <summary>Delete = the Remove selected button (UX-32) — the Filename
+    /// list has answered the key since its own audit; the other tool
+    /// windows now match it. Gated on IsIdle exactly as the button is
+    /// (UnlockWindow.xaml): RemoveFiles already guards on IsUnlocking
+    /// itself (QC-05), but mirroring the gate here too keeps Delete and the
+    /// button visibly consistent rather than relying on that inner guard
+    /// alone.</summary>
+    private void OnGridKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Delete || !_vm.IsIdle) return;
+        OnRemoveSelected(sender, e);
+        e.Handled = true;
+    }
+
     private void OnDragOver(object sender, DragEventArgs e)
     {
         e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop)

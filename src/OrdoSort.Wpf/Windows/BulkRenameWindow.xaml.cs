@@ -77,6 +77,14 @@ public partial class BulkRenameWindow : Window
     /// other grid; double-click still works.</summary>
     private void OnGridKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        // Delete = the Remove selected button, as in the Filename list (UX-32);
+        // never while a cell editor is open, where Delete edits text.
+        if (!_editing && e.Key == System.Windows.Input.Key.Delete)
+        {
+            _vm.RemoveSelected();
+            e.Handled = true;
+            return;
+        }
         if (PreviewGrid.SelectedItem is not RenameRow row) return;
         // while a cell editor is open these keys belong to it: Enter commits
         // and Escape cancels, both of which the grid already does

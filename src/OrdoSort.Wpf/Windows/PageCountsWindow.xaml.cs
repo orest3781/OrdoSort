@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 using Microsoft.Win32;
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Views;
@@ -34,6 +35,16 @@ public partial class PageCountsWindow : Window
 
     private void OnRemoveSelected(object sender, RoutedEventArgs e) =>
         _vm.RemoveSelected(CountsGrid.SelectedItems);
+
+    /// <summary>Delete = the Remove selected button (UX-32) — the Filename
+    /// list has answered the key since its own audit; the other tool
+    /// windows now match it.</summary>
+    private void OnGridKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Delete) return;
+        OnRemoveSelected(sender, e);
+        e.Handled = true;
+    }
 
     // CLIPBOARD RULE: System.Windows.Clipboard appears ONLY here, never in
     // the view model — Clipboard is a WPF/COM type the headless MTA tests

@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 using Microsoft.Win32;
 using OrdoSort.Core;
 using OrdoSort.Wpf.ViewModels;
@@ -34,6 +35,16 @@ public partial class MatchMergeWindow : Window
     private void OnRemoveSelected(object sender, RoutedEventArgs e) =>
         _vm.RemoveFiles(MatchGrid.SelectedItems.OfType<MatchRow>()
             .Select(r => r.Source).ToList());
+
+    /// <summary>Delete = the Remove selected button (UX-32) — the Filename
+    /// list has answered the key since its own audit; the other tool
+    /// windows now match it.</summary>
+    private void OnGridKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Delete) return;
+        OnRemoveSelected(sender, e);
+        e.Handled = true;
+    }
 
     private void OnReview(object sender, RoutedEventArgs e)
     {

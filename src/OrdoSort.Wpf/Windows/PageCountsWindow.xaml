@@ -50,7 +50,7 @@
                 <DataGrid x:Name="CountsGrid" ItemsSource="{Binding Rows}"
                           AutomationProperties.Name="PDFs and their page counts" AutoGenerateColumns="False"
                           IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
-                          SelectionMode="Extended">
+                          SelectionMode="Extended" PreviewKeyDown="OnGridKeyDown">
                     <!-- Local RowStyle, same shape as BulkRename/MatchMerge/
                          FilenameList's own — Theme.RowHover so the hover tint
                          stays consistent app-wide, and matters here because

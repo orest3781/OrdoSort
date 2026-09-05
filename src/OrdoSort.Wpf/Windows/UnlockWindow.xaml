@@ -73,7 +73,8 @@
                 <ListBox x:Name="FileList" ItemsSource="{Binding Files}"
                          SelectionMode="Extended" MinHeight="120"
                          AutomationProperties.Name="PDFs to unlock"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         PreviewKeyDown="OnGridKeyDown">
                     <!-- Stretch + h-scroll Disabled: the row template below is a
                          DockPanel whose FileName ellipsis only engages when the
                          item is pinned to the viewport width (see RouteList's

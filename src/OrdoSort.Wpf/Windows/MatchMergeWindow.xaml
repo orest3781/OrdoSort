@@ -150,7 +150,7 @@
             <Grid Grid.Row="3">
                 <DataGrid x:Name="MatchGrid" AutomationProperties.Name="Matches" ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
                           IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
-                          SelectionMode="Extended">
+                          SelectionMode="Extended" PreviewKeyDown="OnGridKeyDown">
                     <!-- Foreground DataTriggers used to live here, on DataGridRow,
                          keyed on Status the same way BulkRenameWindow's
                          NeedsName trigger colours a row's Background below.
