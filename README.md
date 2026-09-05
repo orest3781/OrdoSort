@@ -102,7 +102,9 @@ workflow tests, builds, zips, and publishes.
     created and destruction dates on black bars, per-client retention
     offsets, and a resettable running number. A live card previews the exact
     label, and a full-sheet print preview with printer picker prints in-app
-    at a guaranteed 100% scale — PDF export remains as an alternative.
+    at a guaranteed 100% scale — PDF export remains as an alternative. Also
+    ships on its own as **Box Labels** for people who need nothing else from
+    OrdoSort — see [Box Labels, on its own](#box-labels-on-its-own).
   - *Filename list* — drop files or folders and get their names as a list you
     curate: remove rows and they stay removed across a rebuild, add size,
     modified date, folder or full path as columns, filter by name, and copy
@@ -141,13 +143,23 @@ src/OrdoSort.Core/       pure logic — no UI, unit-tested
   MatchMerge.cs          roster CSV matching + ID merge
   Config.cs  Scanner.cs  Commit.cs  Session.cs
   History.cs             network-safe SQLite audit log
-src/OrdoSort.Wpf/        the app: MVVM view models (headless-tested) + XAML
+src/OrdoSort.Ui/         UI shared by BOTH applications
   Theme/                 WCAG-enforced light/dark palette, live OS switching
+  Windows/               the label maker, message box, print preview
+  ViewModels/ Views/ Mvvm/ Services/
+src/OrdoSort.Wpf/        OrdoSort.exe: MVVM view models (headless-tested) + XAML
   ViewModels/ Views/ Windows/
+src/BoxLabels.App/       BoxLabels.exe: the label maker on its own
 tests/OrdoSort.Core.Tests/   xUnit — the routing rules, adversarially
 tests/OrdoSort.Wpf.Tests/    xUnit — the whole app logic, headless
 tools/OrdoSort.Smoke/        UI proofs against the real WebView2 viewer
 ```
+
+Anything the two applications share lives in `OrdoSort.Ui`, so a change to
+what a label looks like cannot land in one and miss the other. That library
+never names either application: titles are passed in by the host, and
+`SharedUiIsUnbrandedTests` fails the build if "OrdoSort" is written into a
+title there.
 
 ## Build & test
 
@@ -155,6 +167,46 @@ tools/OrdoSort.Smoke/        UI proofs against the real WebView2 viewer
 dotnet build
 dotnet test
 ```
+
+Both applications and all tests are in `OrdoSort.sln`, so those two commands
+cover Box Labels too.
+
+## Box Labels, on its own
+
+`BoxLabels.exe` is the box-label maker as a separate program, for someone who
+needs labels and has no use for the rest of OrdoSort. Same window, same
+labels, same barcode — it is the identical code, not a reimplementation.
+
+```
+publish-boxlabels.bat        ->  publish-boxlabels\BoxLabels.exe
+```
+
+**It shares OrdoSort's box numbers.** Both programs read and write the same
+`box-labels.json` through the same exclusive-locking store, which is what
+keeps the running number unique across stations. Point it at the copy on your
+share, not at a local copy — two separate stores means two boxes eventually
+carrying the same number, and nothing in the software can detect that.
+
+On first run it asks for that file and remembers the choice in
+`box-labels-app.json` beside the exe. To set it up before handing the folder
+over, either run it once and pick the file, or write that file yourself:
+
+```json
+{ "box_labels_file": "\\\\server\\records\\box-labels.json" }
+```
+
+To run against a different store once — a test copy, another client's share —
+pass `--file`:
+
+```
+BoxLabels.exe --file C:\somewhere\box-labels.json
+```
+
+That is deliberately not remembered; the next plain launch goes back to the
+saved file.
+
+OrdoSort keeps its own **Tools → Box labels** exactly as before. The two are
+the same window, so either can be used, and neither can drift from the other.
 
 ## The end-to-end suite
 
