@@ -374,9 +374,12 @@
              into both TextBlocks below; EmphasisText is TextBlock-only, and
              moving the value down into the template would be template
              surgery for a rename-only pass. -->
+        <!-- IsDefault: Processing makes Enter the commit, so Enter on the
+             bookends means "go" too (UX-19). Only the visible screen's
+             default button is reachable — WPF skips collapsed ones. -->
         <Button Grid.Row="7" Command="{Binding StartCommand}"
                 Style="{StaticResource PrimaryButton}" Height="48" Margin="0,14,0,0"
-                FontSize="15" AutomationProperties.Name="Start processing">
+                FontSize="15" AutomationProperties.Name="Start processing" IsDefault="True">
             <StackPanel Orientation="Horizontal">
                 <!-- EmphasisText size — Icon style already sets FontFamily;
                      converting would drop it. -->

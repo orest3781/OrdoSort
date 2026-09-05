@@ -30,9 +30,12 @@
                      Fill="{DynamicResource Theme.Success}" />
         </Grid>
 
+        <!-- IsDefault: Processing makes Enter the commit, so Enter on the
+             bookends means "go" too (UX-19). Only the visible screen's
+             default button is reachable — WPF skips collapsed ones. -->
         <Button Command="{Binding RescanCommand}"
                 Style="{StaticResource PrimaryButton}" Height="42" Margin="0,16,0,0"
-                AutomationProperties.Name="Back to inbox">
+                AutomationProperties.Name="Back to inbox" IsDefault="True">
             <TextBlock Text="Back to inbox" Style="{StaticResource PrimaryButtonLabel}" />
         </Button>
         <Button Content="Undo last   ·   Ctrl+Shift+Z" Command="{Binding UndoCommand}"
