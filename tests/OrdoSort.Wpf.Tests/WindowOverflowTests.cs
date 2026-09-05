@@ -327,7 +327,7 @@ public class WindowOverflowTests
     /// <summary>The default face. Named rather than inlined so the family axis
     /// below reads as a deliberate list including the default, not a special
     /// case bolted beside it.</summary>
-    private const string DefaultFamily = App.DefaultFontChain;
+    private const string DefaultFamily = OrdoSort.Wpf.Theme.AppFonts.DefaultChain;
 
     /// <summary>A monospace face, which is the axis this suite was missing.
     ///

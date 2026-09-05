@@ -6,6 +6,15 @@
     <!-- All colors come from the Theme.* brushes ThemeManager materializes;
          DynamicResource keeps a live OS light/dark switch working. -->
 
+    <!-- These two converters are declared HERE rather than in an app's
+         App.xaml because both executables need them: the styles below
+         instantiate FontFamilyStringConverter, and windows in this assembly
+         bind through ZeroToVis. Declaring them in the dictionary that carries
+         the styles means an app gets them by merging it, with nothing to
+         remember and nothing to keep in step between the two App.xaml files. -->
+    <views:FontFamilyStringConverter x:Key="FontFamilyString" />
+    <views:ZeroToVisibilityConverter x:Key="ZeroToVis" />
+
     <!-- Spacing rhythm as practised: 2/4/6/8/10/12/14/16 (6 occurs 91×, 8 occurs 87×, 10 occurs 60×, 4 occurs 57×, 2 occurs 29×) -->
 
     <!-- Shared focus ring: a flat bronze outline on every focusable styled

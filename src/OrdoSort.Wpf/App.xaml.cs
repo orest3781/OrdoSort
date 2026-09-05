@@ -107,15 +107,15 @@ public partial class App : Application
     }
 
     /// <summary>ui_font_family / ui_font_size land in the AppFontFamily and
-    /// AppFontSize resources every window's style consumes.</summary>
-    /// <summary>The default face: Segoe UI Variable (the Windows 11 optical
-    /// font) with a plain Segoe UI fallback for older Windows.</summary>
-    internal const string DefaultFontChain = "Segoe UI Variable Text, Segoe UI";
-
+    /// AppFontSize resources every window's style consumes. The default face
+    /// lives on <see cref="Theme.AppFonts.DefaultChain"/> in OrdoSort.Ui —
+    /// BoxLabels.exe shares these styles and needs the same fallback.</summary>
     public static void ApplyFont(Application app, Config cfg)
     {
         app.Resources["AppFontFamily"] = new System.Windows.Media.FontFamily(
-            string.IsNullOrWhiteSpace(cfg.UiFontFamily) ? DefaultFontChain : cfg.UiFontFamily);
+            string.IsNullOrWhiteSpace(cfg.UiFontFamily)
+                ? Theme.AppFonts.DefaultChain
+                : cfg.UiFontFamily);
         app.Resources["AppFontSize"] = cfg.UiFontSize == 0 ? 14.0 : (double)cfg.UiFontSize;
     }
 

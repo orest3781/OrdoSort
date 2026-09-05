@@ -47,12 +47,28 @@ public class TextWrapCoverageTests
             " — this suite reads window XAML source directly off disk and needs the repo root.");
     }
 
+    /// <summary>Every window and view XAML in the app, across BOTH UI
+    /// projects.
+    ///
+    /// OrdoSort.Ui is scanned as well as OrdoSort.Wpf because the windows
+    /// BoxLabels.exe shares (the label maker, the message and print-preview
+    /// dialogs) live there now. Scanning only OrdoSort.Wpf would have quietly
+    /// dropped them from this coverage as they moved — the suite would still
+    /// have passed, and said nothing, which is the failure mode this comment
+    /// exists to prevent. Directories are skipped when absent rather than
+    /// throwing, so neither project is forced to hold a folder it has no use
+    /// for.</summary>
     private static IEnumerable<string> ProseSurfaceXamlFiles()
     {
-        var wpf = Path.Combine(FindRepoRoot(), "src", "OrdoSort.Wpf");
-        yield return Path.Combine(wpf, "MainWindow.xaml");
-        foreach (var f in Directory.EnumerateFiles(Path.Combine(wpf, "Views"), "*.xaml")) yield return f;
-        foreach (var f in Directory.EnumerateFiles(Path.Combine(wpf, "Windows"), "*.xaml")) yield return f;
+        var root = FindRepoRoot();
+        yield return Path.Combine(root, "src", "OrdoSort.Wpf", "MainWindow.xaml");
+        foreach (var project in new[] { "OrdoSort.Wpf", "OrdoSort.Ui" })
+            foreach (var folder in new[] { "Views", "Windows" })
+            {
+                var dir = Path.Combine(root, "src", project, folder);
+                if (!Directory.Exists(dir)) continue;
+                foreach (var f in Directory.EnumerateFiles(dir, "*.xaml")) yield return f;
+            }
     }
 
     private static bool HasWidthPin(XElement e) =>
@@ -109,7 +125,7 @@ public class TextWrapCoverageTests
         var offenders = new List<string>();
         var judged = 0;
         var shared = XDocument.Load(
-            Path.Combine(FindRepoRoot(), "src", "OrdoSort.Wpf", "Theme", "Styles.xaml"));
+            Path.Combine(FindRepoRoot(), "src", "OrdoSort.Ui", "Theme", "Styles.xaml"));
         foreach (var file in ProseSurfaceXamlFiles())
         {
             var doc = XDocument.Load(file, LoadOptions.SetLineInfo);
@@ -164,7 +180,7 @@ public class TextWrapCoverageTests
         var offenders = new List<string>();
         var judged = 0;
         var shared = XDocument.Load(
-            Path.Combine(FindRepoRoot(), "src", "OrdoSort.Wpf", "Theme", "Styles.xaml"));
+            Path.Combine(FindRepoRoot(), "src", "OrdoSort.Ui", "Theme", "Styles.xaml"));
         foreach (var file in ProseSurfaceXamlFiles())
         {
             var doc = XDocument.Load(file, LoadOptions.SetLineInfo);

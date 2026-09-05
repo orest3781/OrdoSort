@@ -32,27 +32,6 @@ public sealed class ColorStringToForeBrushConverter : IValueConverter
         throw new NotSupportedException();
 }
 
-/// <summary>Config font-family string → FontFamily; blank means the app
-/// default (Segoe UI). Drives the live sample on the Appearance page.</summary>
-public sealed class FontFamilyStringConverter : IValueConverter
-{
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        var name = (value as string)?.Trim() ?? "";
-        try
-        {
-            return new FontFamily(name.Length == 0 ? App.DefaultFontChain : name);
-        }
-        catch (ArgumentException)
-        {
-            return new FontFamily(App.DefaultFontChain);
-        }
-    }
-
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        throw new NotSupportedException();
-}
-
 /// <summary>The size textbox's text → a preview font size; anything invalid
 /// falls back to the app default (14) so the sample never explodes.</summary>
 public sealed class FontSizeTextConverter : IValueConverter
@@ -93,18 +72,6 @@ public sealed class FileNameConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         value is string s ? System.IO.Path.GetFileName(s) : "";
-
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        throw new NotSupportedException();
-}
-
-/// <summary>Count → Visible when zero (empty-state hints).</summary>
-public sealed class ZeroToVisibilityConverter : IValueConverter
-{
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        value is int i && i == 0
-            ? System.Windows.Visibility.Visible
-            : System.Windows.Visibility.Collapsed;
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();

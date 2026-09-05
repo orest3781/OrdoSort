@@ -30,6 +30,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- "OrdoSort" is OrdoSort.Wpf's AssemblyName, not a folder. It is a
+         friend rather than a plain consumer because members like
+         AsyncRelayCommand.Completion were deliberately kept off the public
+         surface; the alternative to this line is widening them for everyone,
+         which is the opposite of what their doc comments ask for. -->
+    <InternalsVisibleTo Include="OrdoSort" />
     <InternalsVisibleTo Include="OrdoSort.Wpf.Tests" />
     <InternalsVisibleTo Include="OrdoSort.Smoke" />
   </ItemGroup>
