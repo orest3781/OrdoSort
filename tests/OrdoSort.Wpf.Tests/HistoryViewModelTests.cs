@@ -54,6 +54,38 @@ public class HistoryViewModelTests : IDisposable
         Assert.Equal("600 of 600 filings shown", vm.FooterText);
     }
 
+    /// <summary>UX-06: a query on a share can take seconds, and the window
+    /// showed neither rows nor an empty-state line while it ran; worse,
+    /// Show all was gated on "not yet shown all" only, so a second click
+    /// during the slow load started a second full query. IsBusy now covers
+    /// both: the window binds a Loading line to it and Show all is parked.
+    /// ControlledWorkScheduler holds each load in flight until released.</summary>
+    [Fact]
+    public void ShowAllIsParkedWhileALoadIsInFlight()
+    {
+        Seed(600);
+        var scheduler = new ControlledWorkScheduler();
+        var vm = new HistoryViewModel(_history, _dialogs, scheduler);   // the initial load is queued
+
+        Assert.True(vm.IsBusy);
+        Assert.False(vm.ShowAllCommand.CanExecute(null));
+
+        scheduler.ReleaseNext();
+        Assert.False(vm.IsBusy);
+        Assert.Equal(HistoryViewModel.InitialLoad, vm.Rows.Count);
+        Assert.True(vm.ShowAllCommand.CanExecute(null));
+
+        vm.ShowAllCommand.Execute(null);
+        Assert.True(vm.IsBusy);
+        Assert.False(vm.ShowAllCommand.CanExecute(null));
+        Assert.Equal(HistoryViewModel.InitialLoad, vm.Rows.Count);   // stale rows stay visible
+
+        scheduler.ReleaseAll();
+        Assert.False(vm.IsBusy);
+        Assert.Equal(600, vm.Rows.Count);
+        Assert.False(vm.ShowAllCommand.CanExecute(null));   // everything is shown now
+    }
+
     [Fact]
     public void SmallTablesNeedNoShowAll()
     {

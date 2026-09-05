@@ -76,7 +76,7 @@ public sealed class HistoryViewModel : ObservableObject
         _scheduler = scheduler ?? new TaskWorkScheduler();
         RowsView = CollectionViewSource.GetDefaultView(Rows);
         RowsView.Filter = o => _filter.Length == 0 || (o is HistoryRow r && r.Matches(_filter));
-        ShowAllCommand = new RelayCommand(() => _ = LoadAsync(all: true), () => !_showedAll);
+        ShowAllCommand = new RelayCommand(() => _ = LoadAsync(all: true), () => !_showedAll && !IsBusy);
         ExportCommand = new RelayCommand(() => _ = ExportAsync());
         _ = LoadAsync(all: false);
     }
@@ -101,21 +101,44 @@ public sealed class HistoryViewModel : ObservableObject
     private bool _noMatches;
     public bool NoMatches { get => _noMatches; private set => Set(ref _noMatches, value); }
 
+    /// <summary>True from the moment a load is handed to the scheduler until
+    /// its rows have landed. The window shows a Loading line on it, and Show
+    /// all is parked on it — a second click mid-load used to start a second
+    /// full query (UX-06).</summary>
+    private bool _isBusy;
+    public bool IsBusy
+    {
+        get => _isBusy;
+        private set
+        {
+            if (!Set(ref _isBusy, value)) return;
+            ShowAllCommand.RaiseCanExecuteChanged();
+        }
+    }
+
     public bool CanShowAll => !_showedAll;
 
     internal async Task LoadAsync(bool all)
     {
         var history = _history;
-        var (rows, total) = await _scheduler.Run(() =>
+        IsBusy = true;
+        try
         {
-            var loaded = (all ? history.Rows() : history.Rows(InitialLoad))
-                .Select(HistoryRow.From).ToList();
-            return (loaded, (long)history.Count());
-        });
-        _total = total;
-        _showedAll = all || rows.Count < InitialLoad;
-        Rows.Clear();
-        foreach (var r in rows) Rows.Add(r);
+            var (rows, total) = await _scheduler.Run(() =>
+            {
+                var loaded = (all ? history.Rows() : history.Rows(InitialLoad))
+                    .Select(HistoryRow.From).ToList();
+                return (loaded, (long)history.Count());
+            });
+            _total = total;
+            _showedAll = all || rows.Count < InitialLoad;
+            Rows.Clear();
+            foreach (var r in rows) Rows.Add(r);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
         ShowAllCommand.RaiseCanExecuteChanged();
         Raise(nameof(CanShowAll));
         ApplyFilter();

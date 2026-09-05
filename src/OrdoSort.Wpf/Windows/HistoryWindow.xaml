@@ -307,6 +307,16 @@
                     <Binding Path="NoMatches" Converter="{StaticResource BoolToVis}" />
                 </TextBlock.Visibility>
             </TextBlock>
+            <!-- UX-06: the load can take seconds on a share; without this the
+                 grid is simply empty while it runs, which reads as "no
+                 history". Show all leaves the old rows in place underneath. -->
+            <TextBlock x:Name="LoadingText"
+                       Text="Loading…"
+                       Style="{StaticResource EmptyStateText}">
+                <TextBlock.Visibility>
+                    <Binding Path="IsBusy" Converter="{StaticResource BoolToVis}" />
+                </TextBlock.Visibility>
+            </TextBlock>
         </Grid>
     </DockPanel>
 </Window>
