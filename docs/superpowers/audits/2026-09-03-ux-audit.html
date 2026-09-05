@@ -195,6 +195,7 @@
   .finding .id { font-family: "IBM Plex Mono", monospace; font-size: 13px; font-weight: 500; color: var(--muted); }
   .finding .surface { font-size: 13px; color: var(--muted); }
   .finding .law { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; color: var(--accent); margin-left: auto; }
+  .finding .fixed { font-size: 12px; font-weight: 600; color: var(--ok); background: var(--ok-bg); padding: 0 7px; border-radius: 999px; }
   .finding .qc { font-size: 12px; font-weight: 600; color: var(--ok); background: var(--ok-bg); padding: 0 7px; border-radius: 999px; }
   .finding h3 { margin-bottom: 8px; }
   .finding .marks { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--muted); margin-left: 6px; font-weight: 400; }
@@ -220,7 +221,7 @@
 
 <div class="page">
   <header>
-    <div class="eyebrow">Audit · 2026-09-03 · QC-checked the same day</div>
+    <div class="eyebrow">Audit · 2026-09-03 · QC-checked the same day · batch 1 fixed 2026-09-05</div>
     <h1 style="margin-top:8px">OrdoSort UX Audit</h1>
     <div class="meta">
       <span><b>Tree</b> main @ 8e77436 (v1.5.4)</span>
@@ -228,7 +229,7 @@
       <span><b>Source of truth</b> <code>docs/superpowers/audits/2026-09-03-ux-audit.md</code></span>
     </div>
     <div class="counts">
-      <div class="count total"><div class="n">38</div><div class="l">findings, UX-01 … UX-38 — nothing fixed yet</div></div>
+      <div class="count total"><div class="n">38</div><div class="l">findings, UX-01 … UX-38 — 15 fixed on the batch-1 branch</div></div>
       <div class="count critical"><div class="n">2</div><div class="l">Critical — blocks the task or yields a wrong result</div></div>
       <div class="count major"><div class="n">17</div><div class="l">Major — measurable friction</div></div>
       <div class="count minor"><div class="n">19</div><div class="l">Minor — polish</div></div>
@@ -238,6 +239,9 @@
   <section class="reading">
     <p class="lede" style="margin-top:20px">One question per screen: what is the one thing the user came here to do, and does the screen make it unmistakable, fast, forgiving, and well-ended? Each answer is scored against the cognitive laws that predict where people fail. This is a different lens from the August defect and chrome audits.</p>
     <p>Six read-only sweeps, one per surface group, each required to cite file and line for every claim and to grep the tracker first; every Critical and Major was then re-read in source. A same-day QC pass by five further agents re-opened every citation, hunted for misses, and de-duplicated against the tracker: all 32 original findings stand, eleven details were corrected, one finding was narrowed, and six were added (UX-33 to UX-38). No live pass was run: every finding is a code path, so all carry <span class="mono">[V]</span>; the two whose consequence deserves a running app also carry <span class="mono">[U]</span> with the thing to measure.</p>
+    <div class="note">
+      <p><b>Batch 1 fixed (2026-09-05).</b> The fifteen findings in the recommended order's first batch are fixed on branch <code>fix/ux-audit-2026-09-03</code>, one commit each with a regression test that failed first, plus a fix wave from the whole-branch review. Each fixed finding carries a green chip below; hover it for the commit. Batches 2–4 remain open.</p>
+    </div>
     <div class="note">
       <p><b>Tracker corrections.</b></p>
       <ol>
@@ -312,14 +316,14 @@
     <div class="tier-head" data-tier-head="critical"><h2 style="margin:0">Critical</h2><span class="def">blocks the task or yields a wrong result</span></div>
 
     <article class="finding" data-tier="critical" data-surface="Processing">
-      <div class="top"><span class="id">UX-01</span><span class="surface">Processing</span><span class="law">Peak-End</span></div>
+      <div class="top"><span class="id">UX-01</span><span class="surface">Processing</span><span class="law">Peak-End</span><span class="fixed" title="6278646">Fixed 2026-09-05</span></div>
       <h3>A failed filing wipes the name the user just typed <span class="marks">[V]</span></h3>
       <p><code>LoadCurrentAsync</code> resets the box unconditionally (<code>ShellViewModel.cs:1360</code>). Both <code>CommitError</code> catches reload through it (<code>:1436-1437</code>, <code>:1471-1477</code>), and the session only advances on success, so the same PDF comes back with an empty box after the modal. Route buttons are enabled by route validity, not name validity, so an illegal name (<code>Naming.cs:102</code>, rewrapped at <code>Commit.cs:103</code>) or an unreachable folder reaches this path with the name typed. No test asserts the name survives.</p>
       <p class="fix"><b>Fix:</b> keep <code>TypedName</code> when the document is unchanged (a "same document" refresh path). <b>Pin:</b> a commit that throws leaves <code>TypedName</code> intact — fails today.</p>
     </article>
 
     <article class="finding" data-tier="critical" data-surface="Bulk rename">
-      <div class="top"><span class="id">UX-02</span><span class="surface">Bulk rename</span><span class="law">Zeigarnik</span></div>
+      <div class="top"><span class="id">UX-02</span><span class="surface">Bulk rename</span><span class="law">Zeigarnik</span><span class="fixed" title="183691f">Fixed 2026-09-05</span></div>
       <h3>Sorting the preview breaks "next file needing a name" <span class="marks">[V] [U]</span></h3>
       <p><code>PreviewGrid</code> is sortable (no <code>CanUserSortColumns="False"</code>). The navigator reads a view-order index (<code>BulkRenameWindow.xaml.cs:60-66</code>, <code>:128-137</code>), walks <code>Preview</code> in insertion order (<code>BulkRenameViewModel.cs:457-465</code>), then indexes the view again. WPF sorts the view, never the source, so after any header click Enter or F2 opens an arbitrary row and seeds it, in the type-Enter rhythm the code designs for. Existing tests exercise the walk unsorted only.</p>
       <p class="fix"><b>Measure:</b> sort by Result, press Enter on a stray, read which row opens. <b>Fix:</b> <code>CanUserSortColumns="False"</code>, or navigate by row identity. <b>Pin:</b> with a sort applied, the row in edit has <code>NeedsName</code> — fails today.</p>
@@ -328,7 +332,7 @@
     <div class="tier-head" data-tier-head="major"><h2 style="margin:0">Major</h2><span class="def">measurable friction</span></div>
 
     <article class="finding" data-tier="major" data-surface="Settings">
-      <div class="top"><span class="id">UX-03</span><span class="surface">Settings</span><span class="law">Jakob</span></div>
+      <div class="top"><span class="id">UX-03</span><span class="surface">Settings</span><span class="law">Jakob</span><span class="fixed" title="009aea3">Fixed 2026-09-05</span></div>
       <h3>Enter in almost any text box commits and closes all seven tabs <span class="marks">[V]</span></h3>
       <p>OK is <code>IsDefault</code> (<code>SettingsWindow.xaml:156</code>). Only the hotkey box, the section editor and the alert-term box intercept Return; every other text box (paths, route fields, poll seconds, font size) lets it reach OK, which validates every tab and closes on success. Mid-edit Enter pops a dialog about other tabs, or saves half-reviewed edits.</p>
       <p class="fix"><b>Fix:</b> swallow Return in the window's text boxes (the Manage-saved fix, inverted), or drop <code>IsDefault</code> from OK. <b>Pin:</b> Enter in the Inbox box leaves the window open — fails today.</p>
@@ -342,21 +346,21 @@
     </article>
 
     <article class="finding" data-tier="major" data-surface="Box labels">
-      <div class="top"><span class="id">UX-05</span><span class="surface">Box labels</span><span class="law">Doherty</span></div>
+      <div class="top"><span class="id">UX-05</span><span class="surface">Box labels</span><span class="law">Doherty</span><span class="fixed" title="c6caf67">Fixed 2026-09-05</span></div>
       <h3>Print can freeze the window for five seconds with no busy state <span class="marks">[V]</span></h3>
       <p><code>Print</code> calls <code>ClaimNumbers</code> synchronously on the UI thread (<code>LabelMakerViewModel.cs:489</code>); the method's own comment says so, and the store retries a contended file for 5 s (<code>BoxLabelStore.cs:12</code>). The command is a plain <code>RelayCommand</code> with no busy state; the primary button simply stops answering. DW-63 asked for this in Save PDF, which already has it.</p>
       <p class="fix"><b>Fix:</b> go through <code>_scheduler.Run(ClaimNumbersCore)</code> as <code>SavePdfAsync</code> already does; disable Print while claiming.</p>
     </article>
 
     <article class="finding" data-tier="major" data-surface="History">
-      <div class="top"><span class="id">UX-06</span><span class="surface">History</span><span class="law">Doherty</span></div>
+      <div class="top"><span class="id">UX-06</span><span class="surface">History</span><span class="law">Doherty</span><span class="fixed" title="0d59b03, 523de1a">Fixed 2026-09-05</span></div>
       <h3>A blank grid during a slow load, and Show all can run twice <span class="marks">[V]</span></h3>
       <p>The class warns that a query on a share "takes seconds" (<code>HistoryViewModel.cs:38-42</code>), yet has no <code>IsBusy</code>; rows clear after the query and the empty-state text only appears after load, so the wait shows nothing. <code>ShowAllCommand</code> is a plain command gated on <code>!_showedAll</code> only (<code>:79</code>), which is set at the end of the load.</p>
       <p class="fix"><b>Fix:</b> <code>IsBusy</code> driving a Loading row and gating Show all. <b>Pin:</b> Show all cannot execute while a load is in flight — fails today.</p>
     </article>
 
     <article class="finding" data-tier="major" data-surface="Zip and unzip">
-      <div class="top"><span class="id">UX-07</span><span class="surface">Zip and unzip · sibling of QC-31</span><span class="law">Doherty</span></div>
+      <div class="top"><span class="id">UX-07</span><span class="surface">Zip and unzip · sibling of QC-31</span><span class="law">Doherty</span><span class="fixed" title="7144633">Fixed 2026-09-05</span></div>
       <h3>Building a zip shows nothing until it is finished <span class="marks">[V]</span></h3>
       <p><code>ZipAsync</code> (<code>ZipExtractViewModel.cs:88-97</code>) writes <code>Status</code> only after the run and never sets <code>IsBusy</code>; its sibling Extract does both through <code>RunBatchAsync</code>. Open tracker row QC-31 records the same method from the lifecycle side (it ignores cancellation, so closing mid-zip leaves it running); this is the feedback side. Cite both.</p>
       <p class="fix"><b>Fix:</b> route <code>ZipAsync</code> through <code>RunBatchAsync</code> as one unit, which closes QC-31 too. <b>Pin:</b> Status changes before the zipper stub completes — fails today.</p>
@@ -456,14 +460,14 @@
     </article>
 
     <article class="finding" data-tier="minor" data-surface="Ready">
-      <div class="top"><span class="id">UX-19</span><span class="surface">Ready · Done</span><span class="law">Jakob</span></div>
+      <div class="top"><span class="id">UX-19</span><span class="surface">Ready · Done</span><span class="law">Jakob</span><span class="fixed" title="5410e60">Fixed 2026-09-05</span></div>
       <h3>Enter does nothing on Ready and Done <span class="marks">[V]</span></h3>
       <p>Start processing and Back to inbox carry no <code>IsDefault</code>, MainWindow binds no Enter, while Processing makes Enter the commit.</p>
       <p class="fix"><b>Fix:</b> <code>IsDefault="True"</code> on both.</p>
     </article>
 
     <article class="finding" data-tier="minor" data-surface="Message dialog">
-      <div class="top"><span class="id">UX-20</span><span class="surface">Message dialog</span><span class="law">Doherty</span></div>
+      <div class="top"><span class="id">UX-20</span><span class="surface">Message dialog</span><span class="law">Doherty</span><span class="fixed" title="f2c83cd, 3c4a37c">Fixed 2026-09-05</span></div>
       <h3>The Copy button is silent on success and on failure <span class="marks">[V]</span></h3>
       <p>Every action gets an acknowledgment proportional to its weight; this one gets none, on every error dialog in the app. <code>MessageWindow.xaml.cs:183-187</code> swallows both outcomes; every sibling Copy reports.</p>
       <p class="fix"><b>Fix:</b> "Copied" for 2 s; "Clipboard busy, try again" on the catch.</p>
@@ -477,7 +481,7 @@
     </article>
 
     <article class="finding" data-tier="minor" data-surface="Zip and unzip">
-      <div class="top"><span class="id">UX-22</span><span class="surface">Zip · Merge PDFs · Match and merge</span><span class="law">Jakob</span></div>
+      <div class="top"><span class="id">UX-22</span><span class="surface">Zip · Merge PDFs · Match and merge</span><span class="law">Jakob</span><span class="fixed" title="42d8082">Fixed 2026-09-05</span></div>
       <h3>The primary button is not the default <span class="marks">[V]</span></h3>
       <p>Unlock, Box labels, Print preview and the date prompt wire <code>IsDefault</code>; these three do not, though all three commands already gate on rows.</p>
       <p class="fix"><b>Fix:</b> three attributes.</p>
@@ -540,42 +544,42 @@
     </article>
 
     <article class="finding" data-tier="minor" data-surface="List reformatter">
-      <div class="top"><span class="id">UX-31</span><span class="surface">List reformatter</span><span class="law">Jakob</span></div>
+      <div class="top"><span class="id">UX-31</span><span class="surface">List reformatter</span><span class="law">Jakob</span><span class="fixed" title="95e42a7">Fixed 2026-09-05</span></div>
       <h3>"Space after separator" stays enabled where it has no effect <span class="marks">[V]</span></h3>
       <p>The delimiter box disables itself when irrelevant; this checkbox does not, and the flag is ignored for one-per-line output.</p>
       <p class="fix"><b>Fix:</b> bind <code>IsEnabled</code> to the shape.</p>
     </article>
 
     <article class="finding" data-tier="minor" data-surface="App-wide">
-      <div class="top"><span class="id">UX-32</span><span class="surface">Six tool windows</span><span class="law">Jakob</span><span class="qc">QC-corrected</span></div>
+      <div class="top"><span class="id">UX-32</span><span class="surface">Six tool windows</span><span class="law">Jakob</span><span class="qc">QC-corrected</span><span class="fixed" title="fa390c8, 0b37b87">Fixed 2026-09-05</span></div>
       <h3>Delete removes a selected row in only one tool window <span class="marks">[V]</span></h3>
       <p>Handled in the Filename list (and Settings); absent in the six other windows that have a Remove selected button: Bulk rename, Page counts, Unlock, Zip, Merge, Match and merge. Standardise names has no pending list, so it is out of scope.</p>
       <p class="fix"><b>Fix:</b> the same key branch calling each window's existing remove handler.</p>
     </article>
 
     <article class="finding" data-tier="minor" data-surface="Bulk rename">
-      <div class="top"><span class="id">UX-35</span><span class="surface">Bulk rename</span><span class="law">Postel</span><span class="qc">QC addition</span></div>
+      <div class="top"><span class="id">UX-35</span><span class="surface">Bulk rename</span><span class="law">Postel</span><span class="qc">QC addition</span><span class="fixed" title="0c4edec">Fixed 2026-09-05</span></div>
       <h3>Prefix and Suffix are not trimmed, unlike the per-row override <span class="marks">[V]</span></h3>
       <p><code>BulkRenameViewModel.cs:209</code> and <code>:212</code> take the values raw; <code>SetOverride</code> three lines away trims. A prefix pasted with a leading space lands in every filename; one with a trailing newline makes every row skip with a reason. Find and Replace should stay untrimmed.</p>
       <p class="fix"><b>Fix:</b> trim in the two setters.</p>
     </article>
 
     <article class="finding" data-tier="minor" data-surface="Password prompt">
-      <div class="top"><span class="id">UX-36</span><span class="surface">Password prompt</span><span class="law">Jakob</span><span class="qc">QC addition</span></div>
+      <div class="top"><span class="id">UX-36</span><span class="surface">Password prompt</span><span class="law">Jakob</span><span class="qc">QC addition</span><span class="fixed" title="535eebb">Fixed 2026-09-05</span></div>
       <h3>The Show toggle resets on every prompt in a run <span class="marks">[V]</span></h3>
       <p>A new window is built per locked item (<code>PasswordWindow.xaml.cs:51</code>) and the toggle is unbound, so a user transcribing from a note re-clicks Show six times in a six-password zip. Unlock's inline retry keeps one window and so keeps the state.</p>
       <p class="fix"><b>Fix:</b> carry the toggle in the per-run state UX-23's count would also travel in.</p>
     </article>
 
     <article class="finding" data-tier="minor" data-surface="History">
-      <div class="top"><span class="id">UX-37</span><span class="surface">History</span><span class="law">Fitts</span><span class="qc">QC addition</span></div>
+      <div class="top"><span class="id">UX-37</span><span class="surface">History</span><span class="law">Fitts</span><span class="qc">QC addition</span><span class="fixed" title="722ddfa">Fixed 2026-09-05</span></div>
       <h3>The Find box does not take initial focus <span class="marks">[V]</span></h3>
       <p>The window never calls <code>Focus()</code> and the filter box is unnamed, while every other text-first window focuses its field explicitly. The box is the window's stated job.</p>
       <p class="fix"><b>Fix:</b> name the box and focus it on Loaded.</p>
     </article>
 
     <article class="finding" data-tier="minor" data-surface="Filename list">
-      <div class="top"><span class="id">UX-38</span><span class="surface">Filename list</span><span class="law">Postel</span><span class="qc">QC addition</span></div>
+      <div class="top"><span class="id">UX-38</span><span class="surface">Filename list</span><span class="law">Postel</span><span class="qc">QC addition</span><span class="fixed" title="b869c8c">Fixed 2026-09-05</span></div>
       <h3>Find does not trim a pasted term <span class="marks">[V]</span></h3>
       <p><code>FilenameListViewModel.cs:446-448</code> matches case-insensitively but never trims, so a term pasted with a trailing space finds nothing, with no indication why.</p>
       <p class="fix"><b>Fix:</b> trim before the match.</p>
