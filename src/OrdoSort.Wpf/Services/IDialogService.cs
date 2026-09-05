@@ -3,28 +3,15 @@ using OrdoSort.Core;
 namespace OrdoSort.Wpf.Services;
 
 /// <summary>Every modal the app can show, behind an interface so view models
-/// stay testable and the smoke harness can record instead of block.</summary>
-public interface IDialogService
+/// stay testable and the smoke harness can record instead of block.
+///
+/// Warn, Confirm and AskSaveFile now come from <see cref="ILabelDialogs"/>,
+/// the subset the shared box-label maker needs. They are inherited rather
+/// than restated, so implementers of this interface — the real service, the
+/// fakes, the smoke recorders — are unaffected by the split.</summary>
+public interface IDialogService : ILabelDialogs
 {
-    void Warn(string message, string title);
     void Info(string message, string title);
-    bool Confirm(string message, string title);
-
-    /// <summary>A question whose buttons say what they DO — "Remove"/"Keep"
-    /// rather than "Yes"/"No". Every question this app asks has a destructive
-    /// answer, and a generic Yes forces the user to re-read the sentence to
-    /// work out which way round it is.
-    ///
-    /// Defaulted rather than abstract for the same reason
-    /// <see cref="AskOpenFiles"/> is: fourteen classes implement this
-    /// interface and only the real one renders buttons, so the fakes,
-    /// recorders and scripted stubs inherit a correct fallback instead of each
-    /// carrying a throwaway override. The fallback deliberately drops the
-    /// labels — a recording double cares which question was asked, not what
-    /// the buttons said.</summary>
-    bool Confirm(string message, string title, string yesLabel, string noLabel) =>
-        Confirm(message, title);
-    string? AskSaveFile(string filter, string suggestedName);
     string? AskOpenFile(string filter);
 
     /// <summary>Like <see cref="AskOpenFile(string)"/>, but opens the dialog

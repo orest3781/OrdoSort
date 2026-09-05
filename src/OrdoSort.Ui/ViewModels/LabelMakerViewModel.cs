@@ -60,7 +60,7 @@ public sealed class LabelMakerViewModel : ObservableObject
 {
     private readonly Config _cfg;
     private readonly string _boxLabelsPath;
-    private readonly IDialogService _dialogs;
+    private readonly ILabelDialogs _dialogs;
     private readonly Func<DateTime> _today;
     private readonly Action<string> _openFile;
     private readonly IWorkScheduler _scheduler;
@@ -114,7 +114,7 @@ public sealed class LabelMakerViewModel : ObservableObject
     // client.
     private bool _suppressDirty;
 
-    public LabelMakerViewModel(Config cfg, string boxLabelsPath, IDialogService dialogs,
+    public LabelMakerViewModel(Config cfg, string boxLabelsPath, ILabelDialogs dialogs,
         Func<DateTime>? today = null, Action<string>? openFile = null,
         IWorkScheduler? scheduler = null)
     {
@@ -256,7 +256,7 @@ public sealed class LabelMakerViewModel : ObservableObject
 
     /// <summary>The window's print path reports failures through the same
     /// dialog service the view model uses.</summary>
-    internal IDialogService Dialogs => _dialogs;
+    internal ILabelDialogs Dialogs => _dialogs;
 
     /// <summary>Raised after Add so the view can put the caret in the
     /// client-id box — typing the id is the only sensible next step.</summary>
