@@ -25,9 +25,10 @@ public partial class PasswordWindow : Window
             _answer = null;
             Close();
         };
-        // Focus lands in the box, so the next keystroke is the password and
-        // Enter is live immediately.
-        Loaded += (_, _) => PwBox.Focus();
+        // Focus lands in whichever box is showing — PwPlain when Show came in
+        // checked (UX-36) — so the next keystroke is the password and Enter is
+        // live immediately. Keyboard.Focus on a Collapsed element lands nowhere.
+        Loaded += (_, _) => (ShowPw.IsChecked == true ? (UIElement)PwPlain : PwBox).Focus();
     }
 
     /// <summary>The answer: the typed password, or null for a skip. Internal
@@ -35,18 +36,26 @@ public partial class PasswordWindow : Window
     /// clicks and keys instead of the modal loop.</summary>
     internal string? Answer => _answer;
 
-    /// <summary>Owner-modal. Returns the password, or null when skipped.</summary>
-    public static string? Ask(Window? owner, PasswordRequest request)
+    /// <summary>Owner-modal. Returns the password, or null when skipped.
+    /// <paramref name="showPassword"/> carries the Show toggle in and back
+    /// out, so a run that asks for several passwords opens each prompt the
+    /// way the user left the last one (UX-36).</summary>
+    public static string? Ask(Window? owner, PasswordRequest request, ref bool showPassword)
     {
-        var w = Build(owner, request);
+        var w = Build(owner, request, showPassword);
         w.ShowDialog();
+        showPassword = w.ShowPassword;
         return w._answer;
     }
+
+    /// <summary>The Show toggle's state, read back by <see cref="Ask"/> after
+    /// the dialog closes.</summary>
+    internal bool ShowPassword => ShowPw.IsChecked == true;
 
     /// <summary>Internal, not private, so tests can build the real thing and
     /// drive it without entering ShowDialog — the seam MessageWindow.Build
     /// already established.</summary>
-    internal static PasswordWindow Build(Window? owner, PasswordRequest request)
+    internal static PasswordWindow Build(Window? owner, PasswordRequest request, bool showPassword = false)
     {
         var w = new PasswordWindow();
         // WPF throws if handed an owner that has never been shown.
@@ -64,6 +73,10 @@ public partial class PasswordWindow : Window
         // live theme switch like everything else; AccentBronze is a pairing
         // ThemeTests already enforces against Theme.WindowBg.
         w.Glyph.SetResourceReference(ForegroundProperty, "Theme.AccentBronze");
+        // Checked AFTER the text is in place: the Checked handler swaps the
+        // boxes and copies the password across, which is exactly the setup
+        // a prompt opened with Show already on needs.
+        if (showPassword) w.ShowPw.IsChecked = true;
         return w;
     }
 

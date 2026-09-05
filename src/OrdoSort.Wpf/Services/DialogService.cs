@@ -78,7 +78,13 @@ public sealed class DialogService : IDialogService
         return dlg.ShowDialog(_owner) == true ? dlg.FolderName : null;
     }
 
-    public string? AskPassword(PasswordRequest request) => PasswordWindow.Ask(_owner, request);
+    /// <summary>The password prompt's Show toggle, carried from one prompt to
+    /// the next for the life of this service — one per owning window, so
+    /// one per run (UX-36).</summary>
+    private bool _showPassword;
+
+    public string? AskPassword(PasswordRequest request) =>
+        PasswordWindow.Ask(_owner, request, ref _showPassword);
 
     public string? AskDate(string defaultDate, int fileCount) =>
         StandardiseDateWindow.Ask(_owner, defaultDate, fileCount);

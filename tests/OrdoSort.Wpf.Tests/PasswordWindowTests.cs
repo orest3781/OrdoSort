@@ -145,4 +145,35 @@ public class PasswordWindowTests
         }
         finally { if (w.IsVisible) w.Close(); }
     });
+
+    /// <summary>UX-36: every prompt in a run is a fresh window, and Show
+    /// started unchecked each time. The caller now hands the last state in
+    /// and reads it back, so the second locked item opens the way the user
+    /// left the first.</summary>
+    [Fact]
+    public void ShowCarriesInAndOut() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var w = PasswordWindow.Build(null, new PasswordRequest("a.zip", null, false), showPassword: true);
+        w.WindowStartupLocation = WindowStartupLocation.Manual;
+        w.Left = -20000; w.Top = 0; w.ShowActivated = false;
+        w.Show();
+        w.UpdateLayout();
+        try
+        {
+            Assert.True(w.ShowPw.IsChecked);
+            Assert.True(w.PwPlain.IsVisible);
+            Assert.False(w.PwBox.IsVisible);
+            Assert.Same(w.PwPlain, FocusManager.GetFocusedElement(w));   // focus follows the visible box
+            Assert.True(w.ShowPassword);
+
+            w.PwPlain.Text = "secret";
+            w.OpenButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            Assert.Equal("secret", w.Answer);
+
+            w.ShowPw.IsChecked = false;
+            Assert.False(w.ShowPassword);
+        }
+        finally { if (w.IsVisible) w.Close(); }
+    });
 }
