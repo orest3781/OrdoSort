@@ -5,13 +5,12 @@ namespace OrdoSort.Wpf.Services;
 /// <summary>Every modal the app can show, behind an interface so view models
 /// stay testable and the smoke harness can record instead of block.
 ///
-/// Warn, Confirm and AskSaveFile now come from <see cref="ILabelDialogs"/>,
+/// Warn, Info, Confirm and AskSaveFile now come from <see cref="ILabelDialogs"/>,
 /// the subset the shared box-label maker needs. They are inherited rather
 /// than restated, so implementers of this interface — the real service, the
 /// fakes, the smoke recorders — are unaffected by the split.</summary>
 public interface IDialogService : ILabelDialogs
 {
-    void Info(string message, string title);
     string? AskOpenFile(string filter);
 
     /// <summary>Like <see cref="AskOpenFile(string)"/>, but opens the dialog

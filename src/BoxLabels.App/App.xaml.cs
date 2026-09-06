@@ -90,17 +90,9 @@ public partial class App : Application
         var decision = LabelsFileSettings.Decide(args, settingsPath, LabelsFileSettings.FolderReachable);
         if (decision.Prompt == LabelsFilePrompt.None) return decision.Path;
 
-        dialogs.Warn(decision.Prompt == LabelsFilePrompt.FirstRun
-            ? "Box Labels needs to know where the shared box labels file is.\n\n" +
-              "This is the file every station prints from — it holds the client list and the " +
-              "running box number, so they all stay in step. It is usually on a shared drive " +
-              "and is named box-labels.json.\n\n" +
-              "Choose it on the next screen."
-            : $"The box labels file couldn't be reached:\n\n{decision.Path}\n\n" +
-              "The drive or shared folder it lives on may be disconnected. Reconnect it and " +
-              "start Box Labels again, or choose the file's new location.\n\n" +
-              "Nothing has been changed.",
-            Title);
+        var (message, kind) = LabelsFilePrompts.PromptFor(decision.Prompt, decision.Path);
+        if (kind == MessageKind.Info) dialogs.Info(message, Title);
+        else dialogs.Warn(message, Title);
 
         var chosen = AskForLabelsFile();
         if (chosen is null) return null;

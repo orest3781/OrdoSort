@@ -28,6 +28,9 @@ public sealed class BoxLabelDialogs : ILabelDialogs
     public void Warn(string message, string title) =>
         MessageWindow.Show(_owner(), message, title, MessageKind.Warning);
 
+    public void Info(string message, string title) =>
+        MessageWindow.Show(_owner(), message, title, MessageKind.Info);
+
     public bool Confirm(string message, string title) =>
         Confirm(message, title, "Yes", "No");
 

@@ -13,6 +13,16 @@ namespace OrdoSort.Wpf.Services;
 public interface ILabelDialogs
 {
     void Warn(string message, string title);
+
+    /// <summary>Something the user needs to read, but nothing is wrong.
+    ///
+    /// Here rather than only on OrdoSort's IDialogService because the
+    /// standalone's very first screen is an explanation of what the shared
+    /// box-labels file is — and shown through Warn, it greeted a brand-new
+    /// user with a warning triangle before they had done anything at
+    /// all.</summary>
+    void Info(string message, string title);
+
     bool Confirm(string message, string title);
 
     /// <summary>A question whose buttons say what they DO — "Remove"/"Keep"
