@@ -68,6 +68,25 @@ public sealed class BoxLabelsAppSettingsTests : IDisposable
         Assert.Equal(Path.Combine(_dir, "box-labels-app.json"), LabelsFileSettings.PathIn(_dir));
     }
 
+    /// <summary>The README tells people to hand-write this file when
+    /// pre-pointing a station, so a bare "box-labels.json" will genuinely be
+    /// typed into it. Resolved against the WORKING DIRECTORY that would name a
+    /// different store depending on how the app was launched — a shortcut with
+    /// a different "Start in" would quietly open a private one.</summary>
+    [Fact]
+    public void ARelativePathResolvesAgainstTheSettingsFileNotTheWorkingDirectory()
+    {
+        File.WriteAllText(SettingsPath, "{ \"box_labels_file\": \"box-labels.json\" }");
+
+        var resolved = LabelsFileSettings.Read(SettingsPath);
+
+        Assert.Equal(Path.Combine(_dir, "box-labels.json"), resolved);
+        Assert.NotEqual(Path.GetFullPath("box-labels.json"), resolved);
+    }
+
+    // (an absolute path surviving the round trip unchanged is already covered
+    // by ARememberedFileComesBackOnTheNextLaunch, above)
+
     // ----------------------------------------------------------- the decision
 
     [Fact]

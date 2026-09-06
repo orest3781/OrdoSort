@@ -1,5 +1,6 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
+using OrdoSort.Core;
 
 namespace BoxLabelsApp.Services;
 
@@ -38,7 +39,15 @@ public static class LabelsFileSettings
     /// A missing file is first run. A damaged one is treated the same way
     /// rather than thrown: this setting is a convenience the user can re-pick
     /// in one click, and refusing to start over a corrupt one-key file would
-    /// be a dead end for someone with no way to fix it.</summary>
+    /// be a dead end for someone with no way to fix it.
+    ///
+    /// A RELATIVE value is resolved against the settings file's own folder,
+    /// not the working directory. The README tells people to hand-write this
+    /// file when pre-pointing a station, so "box-labels.json" is a spelling
+    /// that will genuinely appear — and resolved against the working
+    /// directory it would name a different store depending on how the app was
+    /// launched. <see cref="Config.ResolveBeside"/> is the same helper
+    /// OrdoSort applies to the same key name in its own config.</summary>
     public static string Read(string settingsPath)
     {
         try
@@ -46,7 +55,8 @@ public static class LabelsFileSettings
             if (!File.Exists(settingsPath)) return "";
             var doc = JsonSerializer.Deserialize<LabelsFileDoc>(
                 File.ReadAllText(settingsPath), Opts);
-            return doc?.BoxLabelsFile?.Trim() ?? "";
+            var value = doc?.BoxLabelsFile?.Trim() ?? "";
+            return value.Length == 0 ? "" : Config.ResolveBeside(settingsPath, value);
         }
         catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
         {
