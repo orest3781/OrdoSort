@@ -80,69 +80,52 @@ public partial class App : Application
 
     /// <summary>Which box-labels.json to open, asking the user when there is
     /// nothing remembered or what was remembered has gone away. Null means
-    /// they cancelled and the app should close.</summary>
+    /// they cancelled and the app should close.
+    ///
+    /// The rules live in LabelsFileSettings.Decide, which is a pure function
+    /// and tested. This is only the part that cannot be: showing a message and
+    /// opening a picker.</summary>
     private string? ResolveLabelsFile(string[] args, string settingsPath, BoxLabelDialogs dialogs)
     {
-        var remembered = LabelsFileSettings.Resolve(args, settingsPath);
+        var decision = LabelsFileSettings.Decide(args, settingsPath, LabelsFileSettings.FolderReachable);
+        if (decision.Prompt == LabelsFilePrompt.None) return decision.Path;
 
-        // An unreachable FOLDER is the case worth catching by hand. A missing
-        // file inside a reachable folder is ordinary — the store creates it.
-        // But when the share itself is not mapped, silently carrying on would
-        // create a brand new, empty store the moment a number was claimed, and
-        // the running numbers on everyone's boxes would start again at 1.
-        if (remembered.Length > 0 && !FolderReachable(remembered))
-        {
-            dialogs.Warn(
-                $"The box labels file couldn't be reached:\n\n{remembered}\n\n" +
-                "The drive or shared folder it lives on may be disconnected. Reconnect it and " +
-                "start Box Labels again, or choose the file's new location.\n\n" +
-                "Nothing has been changed.",
-                Title);
-        }
-        else if (remembered.Length > 0)
-        {
-            return remembered;
-        }
-        else
-        {
-            dialogs.Warn(
-                "Box Labels needs to know where the shared box labels file is.\n\n" +
-                "This is the file every station prints from — it holds the client list and the " +
-                "running box number, so they all stay in step. It is usually on a shared drive " +
-                "and is named box-labels.json.\n\n" +
-                "Choose it on the next screen.",
-                Title);
-        }
+        dialogs.Warn(decision.Prompt == LabelsFilePrompt.FirstRun
+            ? "Box Labels needs to know where the shared box labels file is.\n\n" +
+              "This is the file every station prints from — it holds the client list and the " +
+              "running box number, so they all stay in step. It is usually on a shared drive " +
+              "and is named box-labels.json.\n\n" +
+              "Choose it on the next screen."
+            : $"The box labels file couldn't be reached:\n\n{decision.Path}\n\n" +
+              "The drive or shared folder it lives on may be disconnected. Reconnect it and " +
+              "start Box Labels again, or choose the file's new location.\n\n" +
+              "Nothing has been changed.",
+            Title);
 
         var chosen = AskForLabelsFile();
         if (chosen is null) return null;
 
+        // Honour the decision rather than always saving: a --file run is a
+        // one-off and must leave the remembered path exactly as it was.
+        if (decision.PersistChoice) Remember(settingsPath, chosen, dialogs);
+        return chosen;
+    }
+
+    /// <summary>Save the choice for next launch. A failure here is not fatal —
+    /// this run works fine — but it has to be said, or the app asks again on
+    /// every launch and looks broken.</summary>
+    private void Remember(string settingsPath, string chosen, BoxLabelDialogs dialogs)
+    {
         try
         {
             LabelsFileSettings.Write(settingsPath, chosen);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Not fatal — this run works fine. Saying so matters, though:
-            // otherwise the app asks again on every launch and looks broken.
             dialogs.Warn(
                 "Box Labels can use that file now, but couldn't remember it for next time:\n\n" +
                 ex.Message + "\n\nIt will ask again the next time it starts.",
                 Title);
-        }
-        return chosen;
-    }
-
-    private static bool FolderReachable(string labelsFile)
-    {
-        try
-        {
-            var dir = Path.GetDirectoryName(Path.GetFullPath(labelsFile));
-            return string.IsNullOrEmpty(dir) || Directory.Exists(dir);
-        }
-        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return false;   // a malformed remembered path is not reachable
         }
     }
 

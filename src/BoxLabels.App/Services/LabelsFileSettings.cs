@@ -76,15 +76,80 @@ public static class LabelsFileSettings
         return null;
     }
 
-    /// <summary>Which box-labels.json this run should open: the command line
-    /// wins, then whatever was remembered, and "" means there is nothing to
-    /// go on and the user has to be asked.
+    /// <summary>Whether the folder holding <paramref name="labelsFile"/> can
+    /// be reached right now.
     ///
-    /// A "--file" path is deliberately NOT remembered. It is for running
-    /// against a different store once — a test copy, a second client's share
-    /// — and quietly rewriting the saved setting would leave the app pointed
-    /// somewhere the user never chose the next time they double-clicked
-    /// it.</summary>
-    public static string Resolve(string[] args, string settingsPath) =>
-        FromArgs(args) ?? Read(settingsPath);
+    /// A missing FILE inside a reachable folder is ordinary — the store
+    /// creates it. An unreachable FOLDER is not: carrying on would create a
+    /// private empty store on the first claim, and every station's box
+    /// numbers would start again at 1.</summary>
+    public static bool FolderReachable(string labelsFile)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(Path.GetFullPath(labelsFile));
+            return string.IsNullOrEmpty(dir) || Directory.Exists(dir);
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;   // a malformed remembered path is not reachable
+        }
+    }
+
+    /// <summary>What this run should do about the store, decided without
+    /// touching a dialog so the rules can be tested.
+    ///
+    /// <paramref name="folderReachable"/> is injected for the same reason —
+    /// pass <see cref="FolderReachable"/> in the app.</summary>
+    public static LabelsFileDecision Decide(string[] args, string settingsPath,
+        Func<string, bool> folderReachable)
+    {
+        if (FromArgs(args) is { } fromArgs)
+            return folderReachable(fromArgs)
+                ? new(LabelsFilePrompt.None, fromArgs, PersistChoice: false)
+                // PersistChoice stays FALSE here, and that is the whole point:
+                // a --file run must not repoint the saved setting, not even
+                // when the path it names is unreachable and the user picks
+                // another one to get going. Doing so silently repointed the
+                // app for every later double-click — the defect this
+                // function was extracted to make testable.
+                : new(LabelsFilePrompt.Unreachable, fromArgs, PersistChoice: false);
+
+        var remembered = Read(settingsPath);
+        if (remembered.Length == 0)
+            return new(LabelsFilePrompt.FirstRun, "", PersistChoice: true);
+
+        return folderReachable(remembered)
+            ? new(LabelsFilePrompt.None, remembered, PersistChoice: false)
+            : new(LabelsFilePrompt.Unreachable, remembered, PersistChoice: true);
+    }
 }
+
+/// <summary>What the user needs to be told before being asked to pick.</summary>
+public enum LabelsFilePrompt
+{
+    /// <summary>Nothing to ask — open the store and go.</summary>
+    None,
+
+    /// <summary>Nothing is remembered: explain what the file is, then pick.</summary>
+    FirstRun,
+
+    /// <summary>Something is remembered but its folder is gone: say which
+    /// path failed, then offer to pick another.</summary>
+    Unreachable,
+}
+
+/// <summary>The outcome of <see cref="LabelsFileSettings.Decide"/>.</summary>
+/// <param name="Prompt">What to show before picking, if anything.</param>
+/// <param name="Path">
+/// When <see cref="Prompt"/> is <see cref="LabelsFilePrompt.None"/>, the store
+/// to open. When <see cref="LabelsFilePrompt.Unreachable"/>, the path that
+/// could NOT be reached — for the message, not for opening. Empty for
+/// <see cref="LabelsFilePrompt.FirstRun"/>.
+/// </param>
+/// <param name="PersistChoice">
+/// Whether a file the user then picks should be remembered for next launch.
+/// False for anything a "--file" argument started, which is a one-off run.
+/// </param>
+public readonly record struct LabelsFileDecision(
+    LabelsFilePrompt Prompt, string Path, bool PersistChoice);

@@ -17,10 +17,15 @@ public sealed class BoxLabelsAppSettingsTests : IDisposable
 
     private string SettingsPath => LabelsFileSettings.PathIn(_dir);
 
+    private static readonly Func<string, bool> Reachable = _ => true;
+    private static readonly Func<string, bool> Unreachable = _ => false;
+
     public void Dispose()
     {
         try { Directory.Delete(_dir, true); } catch { }
     }
+
+    // ------------------------------------------------------- the settings file
 
     [Fact]
     public void ARememberedFileComesBackOnTheNextLaunch()
@@ -30,7 +35,6 @@ public sealed class BoxLabelsAppSettingsTests : IDisposable
         LabelsFileSettings.Write(SettingsPath, share);
 
         Assert.Equal(share, LabelsFileSettings.Read(SettingsPath));
-        Assert.Equal(share, LabelsFileSettings.Resolve(Array.Empty<string>(), SettingsPath));
     }
 
     /// <summary>Nothing remembered is first run: the caller has to ask. An
@@ -42,7 +46,6 @@ public sealed class BoxLabelsAppSettingsTests : IDisposable
         Assert.False(File.Exists(SettingsPath));
 
         Assert.Equal("", LabelsFileSettings.Read(SettingsPath));
-        Assert.Equal("", LabelsFileSettings.Resolve(Array.Empty<string>(), SettingsPath));
     }
 
     /// <summary>A damaged one-key file is treated as first run rather than
@@ -60,28 +63,79 @@ public sealed class BoxLabelsAppSettingsTests : IDisposable
     }
 
     [Fact]
+    public void TheSettingsFileSitsBesideTheProgram()
+    {
+        Assert.Equal(Path.Combine(_dir, "box-labels-app.json"), LabelsFileSettings.PathIn(_dir));
+    }
+
+    // ----------------------------------------------------------- the decision
+
+    [Fact]
+    public void ARememberedReachableFileIsOpenedWithoutAsking()
+    {
+        LabelsFileSettings.Write(SettingsPath, @"\\server\records\box-labels.json");
+
+        var d = LabelsFileSettings.Decide(Array.Empty<string>(), SettingsPath, Reachable);
+
+        Assert.Equal(LabelsFilePrompt.None, d.Prompt);
+        Assert.Equal(@"\\server\records\box-labels.json", d.Path);
+    }
+
+    [Fact]
+    public void WithNothingRememberedTheUserIsAskedAndTheChoiceIsKept()
+    {
+        var d = LabelsFileSettings.Decide(Array.Empty<string>(), SettingsPath, Reachable);
+
+        Assert.Equal(LabelsFilePrompt.FirstRun, d.Prompt);
+        Assert.True(d.PersistChoice);
+    }
+
+    /// <summary>An unreachable share is reported, and whatever the user picks
+    /// instead becomes the new remembered file — they have told us the store
+    /// moved.</summary>
+    [Fact]
+    public void AnUnreachableRememberedFileIsReportedAndTheReplacementIsKept()
+    {
+        LabelsFileSettings.Write(SettingsPath, @"\\dead\share\box-labels.json");
+
+        var d = LabelsFileSettings.Decide(Array.Empty<string>(), SettingsPath, Unreachable);
+
+        Assert.Equal(LabelsFilePrompt.Unreachable, d.Prompt);
+        Assert.Equal(@"\\dead\share\box-labels.json", d.Path);   // named in the message
+        Assert.True(d.PersistChoice);
+    }
+
+    [Fact]
     public void TheCommandLineWinsOverWhatWasRemembered()
     {
         LabelsFileSettings.Write(SettingsPath, @"C:\remembered\box-labels.json");
-        var args = new[] { "--file", @"\\other\share\box-labels.json" };
 
-        Assert.Equal(@"\\other\share\box-labels.json",
-            LabelsFileSettings.Resolve(args, SettingsPath));
+        var d = LabelsFileSettings.Decide(
+            new[] { "--file", @"\\other\share\box-labels.json" }, SettingsPath, Reachable);
+
+        Assert.Equal(LabelsFilePrompt.None, d.Prompt);
+        Assert.Equal(@"\\other\share\box-labels.json", d.Path);
     }
 
-    /// <summary>--file is for running against a different store ONCE — a test
-    /// copy, a second client's share. Persisting it would leave the app
-    /// pointed somewhere the user never chose the next time they simply
-    /// double-clicked it.</summary>
+    /// <summary>The defect this whole function was extracted to make testable.
+    ///
+    /// --file is for running against a different store ONCE. When that path is
+    /// unreachable the user is asked to pick another — and the old code then
+    /// SAVED what they picked, silently repointing the app for every later
+    /// double-click, which is the exact opposite of what --file promises.</summary>
     [Fact]
-    public void TheCommandLineDoesNotOverwriteWhatWasRemembered()
+    public void AnUnreachableCommandLinePathNeverRepointsTheRememberedFile()
     {
         LabelsFileSettings.Write(SettingsPath, @"C:\remembered\box-labels.json");
 
-        LabelsFileSettings.Resolve(new[] { "--file", @"\\other\share\box-labels.json" }, SettingsPath);
+        var d = LabelsFileSettings.Decide(
+            new[] { "--file", @"\\dead\share\box-labels.json" }, SettingsPath, Unreachable);
 
-        Assert.Equal(@"C:\remembered\box-labels.json", LabelsFileSettings.Read(SettingsPath));
+        Assert.Equal(LabelsFilePrompt.Unreachable, d.Prompt);
+        Assert.False(d.PersistChoice);
     }
+
+    // -------------------------------------------------------- the command line
 
     public static IEnumerable<object[]> UnusableCommandLines() => new[]
     {
@@ -98,9 +152,29 @@ public sealed class BoxLabelsAppSettingsTests : IDisposable
         Assert.Null(LabelsFileSettings.FromArgs(args));
     }
 
+    // ------------------------------------------------------------ reachability
+
     [Fact]
-    public void TheSettingsFileSitsBesideTheProgram()
+    public void AFolderThatExistsIsReachable()
     {
-        Assert.Equal(Path.Combine(_dir, "box-labels-app.json"), LabelsFileSettings.PathIn(_dir));
+        Assert.True(LabelsFileSettings.FolderReachable(Path.Combine(_dir, "box-labels.json")));
+    }
+
+    /// <summary>A missing FILE in a folder that exists is ordinary — the store
+    /// creates it. Only a missing FOLDER means the share is gone.</summary>
+    [Fact]
+    public void AMissingFileInAnExistingFolderIsStillReachable()
+    {
+        var missing = Path.Combine(_dir, "never-written.json");
+        Assert.False(File.Exists(missing));
+
+        Assert.True(LabelsFileSettings.FolderReachable(missing));
+    }
+
+    [Fact]
+    public void AFolderThatDoesNotExistIsNotReachable()
+    {
+        Assert.False(LabelsFileSettings.FolderReachable(
+            Path.Combine(_dir, "no-such-folder", "box-labels.json")));
     }
 }
