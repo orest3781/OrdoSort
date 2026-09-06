@@ -1,7 +1,15 @@
 <Application x:Class="BoxLabelsApp.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             ShutdownMode="OnMainWindowClose">
+             ShutdownMode="OnExplicitShutdown">
+    <!-- OnExplicitShutdown, not OnMainWindowClose, and this is load-bearing.
+         WPF makes the FIRST window shown the MainWindow when nothing has set
+         it, and this app shows a dialog before its real window exists: the
+         first-run "choose the shared file" explanation. Under
+         OnMainWindowClose that dialog became the main window, so pressing OK
+         closed it and exited the process before the file picker could open —
+         pressing OK appeared to do nothing at all. OnStartup switches to
+         OnMainWindowClose once the label maker is actually up. -->
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>

@@ -47,10 +47,16 @@ public partial class App : Application
                 Title);
             ex.Handled = true;
             // Handled keeps a running app alive, which is right once there is
-            // a window to go back to. Before MainWindow exists there is
-            // nothing to return to, and ShutdownMode=OnMainWindowClose means
-            // nothing would ever close the process — it would linger invisibly.
-            if (MainWindow is null) Shutdown(1);
+            // a window to go back to. Before then there is nothing to return
+            // to and nothing that would ever close the process, so it would
+            // linger invisibly.
+            //
+            // "is null" is not the test for that. WPF makes the first window
+            // shown the MainWindow, so during startup this is the first-run
+            // explanation dialog — and once the user has dismissed it, a
+            // CLOSED window that is not null and cannot be returned to. Ask
+            // whether there is a live window instead.
+            if (MainWindow is not { IsLoaded: true }) Shutdown(1);
         };
         AppDomain.CurrentDomain.UnhandledException += (_, ex) =>
             LogCrash(ex.ExceptionObject as Exception);
@@ -89,6 +95,10 @@ public partial class App : Application
             standalone: true, storeBar: new LabelStoreBar(_labelsFile, ChangeStoreFile));
         MainWindow = window;
         window.Show();
+        // Only now is there a main window whose closing should end the process.
+        // Until this point the app runs under OnExplicitShutdown — see App.xaml
+        // for what happens otherwise.
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
     }
 
     /// <summary>The Change file… button: point this app at a different shared
