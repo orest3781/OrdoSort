@@ -187,6 +187,11 @@ keeps the running number unique across stations. Point it at the copy on your
 share, not at a local copy — two separate stores means two boxes eventually
 carrying the same number, and nothing in the software can detect that.
 
+The window says which file it is printing from, across the top, with a
+**Change file…** button beside it. OrdoSort's own Tools → Box labels does not
+show that bar: there the path is a `box_labels_file` key in `config.json`,
+edited on the Settings page.
+
 On first run it asks for that file and remembers the choice in
 `box-labels-app.json` beside the exe. To set it up before handing the folder
 over, either run it once and pick the file, or write that file yourself:
@@ -194,6 +199,18 @@ over, either run it once and pick the file, or write that file yourself:
 ```json
 { "box_labels_file": "\\\\server\\records\\box-labels.json" }
 ```
+
+A relative path there is resolved beside that settings file, not against
+whatever folder the shortcut happens to start in.
+
+**What it refuses.** A file that is valid JSON but has no client list — most
+often another program's settings, `config.json` included — is turned down
+rather than opened, because using it would write box-label settings into it. A
+damaged or empty file is turned down too: the store treats an empty one as a
+save that was interrupted, so accepting it would only defer the error to the
+first print. Picking a path with no file there yet is allowed, but it asks
+first, because that is both how the first station legitimately creates the
+shared list and how someone accidentally starts a private one.
 
 To run against a different store once — a test copy, another client's share —
 pass `--file`:
