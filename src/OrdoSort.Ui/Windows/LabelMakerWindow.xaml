@@ -6,6 +6,33 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Style="{StaticResource {x:Type Window}}">
     <DockPanel Margin="14">
+        <!-- Which store is open. Collapsed unless the host passes a
+             LabelStoreBar, so OrdoSort's window is unchanged: there the path
+             is a config.json key edited on the Settings page, and a second
+             way to change it here would disagree with that one.
+
+             It is at the TOP because this app's whole risk is printing from
+             the wrong file, and that mistake is undetectable once numbers are
+             on physical boxes — so the store has to be readable before you
+             touch anything, not after. -->
+        <Border x:Name="StoreBar" DockPanel.Dock="Top" Visibility="Collapsed"
+                BorderBrush="{DynamicResource Theme.Border}" BorderThickness="0,0,0,1"
+                Padding="0,0,0,10" Margin="0,0,0,12">
+            <DockPanel>
+                <Button x:Name="ChangeStoreButton" DockPanel.Dock="Right"
+                        Content="Change file…" MinWidth="112" Margin="12,0,0,0"
+                        AutomationProperties.Name="Change box labels file" />
+                <TextBlock DockPanel.Dock="Left" Text="Labels file:"
+                           Style="{StaticResource FieldLabel}"
+                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                <!-- Trimmed with the full path on hover, the same treatment
+                     the status line below gets: a share path is longer than
+                     any window is wide. -->
+                <TextBlock x:Name="StorePathText" Style="{StaticResource SubtleText}"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+        </Border>
+
         <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
             <Button DockPanel.Dock="Right" Content="Close" Width="96" IsCancel="True" />
             <Button DockPanel.Dock="Right" Command="{Binding SavePdfCommand}"

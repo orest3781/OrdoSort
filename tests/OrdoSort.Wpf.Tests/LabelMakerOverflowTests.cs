@@ -91,4 +91,103 @@ public class LabelMakerOverflowTests
         }
     });
 
+    /// <summary>The standalone adds a store bar across the top, and a fixed
+    /// window height does not grow to meet it: the first build of it pushed the
+    /// "Labels to print" row and the whole "Date bars" choice off the bottom
+    /// edge, where nothing clips and nothing warns — the controls were simply
+    /// not there.
+    ///
+    /// The sibling test above checks the horizontal axis, which is where this
+    /// window's font-size defects live. This one checks the vertical axis,
+    /// which is where ADDING A ROW puts them.</summary>
+    /// <remarks>Default font only, deliberately. At 18px this same overlap
+    /// happens WITHOUT the store bar — measured: the choice runs to 314px and
+    /// the summary starts at 294px in both configurations — so it is an
+    /// existing defect of this window at large fonts, not something the bar
+    /// introduced, and pinning it here would make this test fail for a reason
+    /// it does not describe.</remarks>
+    [Theory]
+    [InlineData(14.0)]
+    public void TheStandaloneStoreBarDoesNotPushContentOffTheBottom(double fontSize) => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var defaultFont = _fx.App.Resources["AppFontSize"];
+        _fx.App.Resources["AppFontSize"] = fontSize;
+
+        var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box Labels");
+        vm.Clients.Add(new LabelClientVm { Id = "TESTCLNT", DestroyDaysText = "45", NextNumberText = "00000001" });
+        vm.Selected = vm.Clients[0];
+        var window = new LabelMakerWindow(vm, "Box Labels", "Box Labels — Print preview",
+            standalone: true,
+            storeBar: new LabelStoreBar(@"\\server\records\box-labels.json", () => { }))
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            OverflowProbe.PumpRender();
+
+            // The window is not what clips this, which is why OverflowProbe
+            // and a desired-height check both passed while two rows were
+            // visibly missing: the form overflows its own * Grid row and the
+            // preview section below is painted over the top of it. So the
+            // thing to assert is that the last row of the form and the summary
+            // line beneath it do not occupy the same pixels.
+            var content = (FrameworkElement)window.Content;
+            var dateStyle = FindDateStyleChoice(content);
+            var summary = FindPrintsSummary(content);
+            Assert.NotNull(dateStyle);
+            Assert.NotNull(summary);
+
+            Rect BoundsOf(FrameworkElement e) =>
+                e.TransformToAncestor(content).TransformBounds(new Rect(e.RenderSize));
+
+            var choice = BoundsOf(dateStyle!);
+            var below = BoundsOf(summary!);
+
+            // without this the comparison below is vacuous — an element the
+            // layout never gave room reports a zero-sized rect that overlaps
+            // nothing
+            Assert.True(choice.Height > 0 && below.Height > 0,
+                $"font {fontSize}: nothing was laid out (choice {choice}, summary {below})");
+
+            Assert.True(choice.Bottom <= below.Top + 0.5,
+                $"font {fontSize}: the date-style choice runs to {choice.Bottom:F0}px but the "
+                + $"summary line starts at {below.Top:F0}px, so the last of the form is painted "
+                + "over — the store bar took the room and the window did not grow to meet it.");
+        }
+        finally
+        {
+            window.Close();
+            _fx.App.Resources["AppFontSize"] = defaultFont;
+            try { File.Delete(boxLabelsPath); } catch { /* best effort */ }
+        }
+    });
+
+    /// <summary>The "Date bars" radio group — the last row of the form, and so
+    /// the first thing to disappear when the window runs short.</summary>
+    private static FrameworkElement? FindDateStyleChoice(DependencyObject root)
+    {
+        if (root is RadioButton { GroupName: "DateStyle" } rb) return rb;
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+            if (FindDateStyleChoice(VisualTreeHelper.GetChild(root, i)) is { } found)
+                return found;
+        return null;
+    }
+
+    /// <summary>The "Prints ABCD00000001 — ..." line that opens the preview
+    /// section, i.e. the first thing drawn BELOW the form.</summary>
+    private static FrameworkElement? FindPrintsSummary(DependencyObject root)
+    {
+        if (root is TextBlock { Text: var t } tb && t.StartsWith("Prints ", StringComparison.Ordinal))
+            return tb;
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+            if (FindPrintsSummary(VisualTreeHelper.GetChild(root, i)) is { } found)
+                return found;
+        return null;
+    }
 }

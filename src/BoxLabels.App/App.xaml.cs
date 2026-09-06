@@ -63,19 +63,80 @@ public partial class App : Application
         // applications cannot drift apart on the font they fall back to.
         Resources["AppFontFamily"] = new FontFamily(AppFonts.DefaultChain);
 
-        var settingsPath = LabelsFileSettings.PathIn(AppContext.BaseDirectory);
-        if (ResolveLabelsFile(e.Args, settingsPath, dialogs) is not { } labelsFile)
+        _dialogs = dialogs;
+        _settingsPath = LabelsFileSettings.PathIn(AppContext.BaseDirectory);
+        if (ResolveLabelsFile(e.Args, _settingsPath, dialogs) is not { } labelsFile)
         {
             Shutdown(0);   // the user cancelled the picker; nothing to show
             return;
         }
 
+        _labelsFile = labelsFile;
+        ShowLabelMaker();
+    }
+
+    private BoxLabelDialogs _dialogs = null!;
+    private string _settingsPath = "";
+    private string _labelsFile = "";
+
+    /// <summary>Open the label maker on whatever store is current.</summary>
+    private void ShowLabelMaker()
+    {
         // migrationSeed is null: that migration reads a pre-split OrdoSort
         // config.json, and a machine running only this app has never had one.
-        var vm = new LabelMakerViewModel(null, labelsFile, dialogs, Title);
-        var window = new LabelMakerWindow(vm, Title, $"{Title} — Print preview", standalone: true);
+        var vm = new LabelMakerViewModel(null, _labelsFile, _dialogs, Title);
+        var window = new LabelMakerWindow(vm, Title, $"{Title} — Print preview",
+            standalone: true, storeBar: new LabelStoreBar(_labelsFile, ChangeStoreFile));
         MainWindow = window;
         window.Show();
+    }
+
+    /// <summary>The Change file… button: point this app at a different shared
+    /// store and reopen on it.
+    ///
+    /// The window is rebuilt rather than rebound because the view model reads
+    /// the store once, in its constructor, and holds the path for the life of
+    /// the window — a store that could change underneath it would be a much
+    /// larger change to code both applications share.</summary>
+    private void ChangeStoreFile()
+    {
+        if (PickAndCheck(_dialogs) is not { } chosen) return;
+        if (string.Equals(chosen, _labelsFile, StringComparison.OrdinalIgnoreCase)) return;
+
+        var old = MainWindow;
+
+        // Closing the main window would end the process, so hold that off for
+        // the length of the swap and put it back afterwards either way.
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        try
+        {
+            var closed = false;
+            void MarkClosed(object? _, EventArgs __) => closed = true;
+
+            if (old is null) closed = true;
+            else
+            {
+                old.Closed += MarkClosed;
+                old.Close();          // runs TryPersist against the OLD store, which is right
+                old.Closed -= MarkClosed;
+            }
+
+            // TryPersist refuses to close while two clients share an id. That
+            // refusal has to abandon the change as well: carrying on would
+            // discard the very edits it just protected, and repoint the app on
+            // the way out.
+            if (!closed) return;
+
+            // Remembered only once the old window is safely closed, so an
+            // abandoned change never leaves the setting pointing somewhere new.
+            Remember(_settingsPath, chosen, _dialogs);
+            _labelsFile = chosen;
+            ShowLabelMaker();
+        }
+        finally
+        {
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+        }
     }
 
     /// <summary>Which box-labels.json to open, asking the user when there is
