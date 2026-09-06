@@ -2,9 +2,13 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:OrdoSort.Wpf.Views"
-        Width="680" Height="560" MinWidth="600" MinHeight="500"
+        Width="680" Height="572" MinWidth="600" MinHeight="512"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Style="{StaticResource {x:Type Window}}">
+    <!-- Height/MinHeight above carry 12px more than the form strictly needs.
+         At the default font the form sat 11px over its row — harmless when it
+         simply spilled, but with the scrolling viewport below that means a
+         scrollbar on a window that never had one. The room removes it. -->
     <DockPanel Margin="14">
         <!-- Which store is open. Collapsed unless the host passes a
              LabelStoreBar, so OrdoSort's window is unchanged: there the path
@@ -153,128 +157,136 @@
                  IsSharedSizeScope="True" on a common ancestor, SharedSizeGroup
                  has no scope to coordinate within and the columns silently
                  go back to sizing independently. -->
-            <StackPanel Grid.Column="1" Margin="16,0,0,0" DataContext="{Binding Selected}"
-                        Grid.IsSharedSizeScope="True">
-                <StackPanel.Style>
-                    <Style TargetType="StackPanel">
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding}" Value="{x:Null}">
-                                <Setter Property="IsEnabled" Value="False" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </StackPanel.Style>
+            <!-- The form scrolls rather than spilling. It grows with ui_font_size
+                 (6-72) while this * Grid row does not, and a Grid neither clips
+                 nor scrolls: past about 16px the last rows were arranged under
+                 the preview section below and painted over by it, so the
+                 date-style choice was not on screen at all. Same treatment
+                 SettingsWindow and UnlockWindow give their own forms. -->
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="16,0,0,0" DataContext="{Binding Selected}"
+                            Grid.IsSharedSizeScope="True">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                    <Setter Property="IsEnabled" Value="False" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
 
-                <Grid Style="{StaticResource FieldRow}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
-                        <ColumnDefinition Width="140" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Client id:" Style="{StaticResource FieldLabel}" />
-                    <TextBox x:Name="IdBox" Grid.Column="1" CharacterCasing="Upper" MaxLength="8"
-                             Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}"
-                             AutomationProperties.Name="Client id" />
-                    <TextBlock Grid.Column="2" Text="2-8 letters or digits"
-                               Style="{StaticResource CaptionText}"
-                               VerticalAlignment="Center" Margin="8,0,0,0"
-                               TextTrimming="CharacterEllipsis" />
-                </Grid>
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Client id:" Style="{StaticResource FieldLabel}" />
+                        <TextBox x:Name="IdBox" Grid.Column="1" CharacterCasing="Upper" MaxLength="8"
+                                 Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Client id" />
+                        <TextBlock Grid.Column="2" Text="2-8 letters or digits"
+                                   Style="{StaticResource CaptionText}"
+                                   VerticalAlignment="Center" Margin="8,0,0,0"
+                                   TextTrimming="CharacterEllipsis" />
+                    </Grid>
 
-                <Grid Style="{StaticResource FieldRow}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
-                        <ColumnDefinition Width="140" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Keep boxes (days):" Style="{StaticResource FieldLabel}" />
-                    <TextBox Grid.Column="1"
-                             Text="{Binding DestroyDaysText, UpdateSourceTrigger=PropertyChanged}"
-                             AutomationProperties.Name="Keep boxes days" />
-                    <TextBlock Grid.Column="2" Text="sets the destruction date"
-                               Style="{StaticResource CaptionText}"
-                               VerticalAlignment="Center" Margin="8,0,0,0"
-                               TextTrimming="CharacterEllipsis" />
-                </Grid>
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Keep boxes (days):" Style="{StaticResource FieldLabel}" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding DestroyDaysText, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Keep boxes days" />
+                        <TextBlock Grid.Column="2" Text="sets the destruction date"
+                                   Style="{StaticResource CaptionText}"
+                                   VerticalAlignment="Center" Margin="8,0,0,0"
+                                   TextTrimming="CharacterEllipsis" />
+                    </Grid>
 
-                <Grid Style="{StaticResource FieldRow}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
-                        <ColumnDefinition Width="140" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Next label number:" Style="{StaticResource FieldLabel}" />
-                    <TextBox Grid.Column="1"
-                             Text="{Binding NextNumberText, UpdateSourceTrigger=PropertyChanged}"
-                             AutomationProperties.Name="Next label number" />
-                    <Button Grid.Column="2" Margin="8,0,0,0"
-                            Style="{StaticResource ChipButton}" VerticalAlignment="Center"
-                            ToolTip="Start this client's numbering over at 00000001"
-                            AutomationProperties.Name="Reset to 1"
-                            Command="{Binding DataContext.ResetNumberCommand,
-                                      RelativeSource={RelativeSource AncestorType=Window}}">
-                        <TextBlock Text="Reset to 1" Style="{StaticResource ChipButtonLabel}" />
-                    </Button>
-                </Grid>
-
-                <Grid Style="{StaticResource FieldRow}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
-                        <ColumnDefinition Width="60" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Labels to print:" Style="{StaticResource FieldLabel}" />
-                    <TextBox Grid.Column="1"
-                             Text="{Binding DataContext.LabelCountText,
-                                    RelativeSource={RelativeSource AncestorType=Window},
-                                    UpdateSourceTrigger=PropertyChanged}"
-                             AutomationProperties.Name="Labels to print" />
-                    <!-- whole-sheet presets: one click for the common runs -->
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0"
-                                VerticalAlignment="Center">
-                        <Button Tag="10" Click="OnCountPreset" MinWidth="36"
-                                Style="{StaticResource ChipButton}" AutomationProperties.Name="10">
-                            <TextBlock Text="10" Style="{StaticResource ChipButtonLabel}" />
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Next label number:" Style="{StaticResource FieldLabel}" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding NextNumberText, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Next label number" />
+                        <Button Grid.Column="2" Margin="8,0,0,0"
+                                Style="{StaticResource ChipButton}" VerticalAlignment="Center"
+                                ToolTip="Start this client's numbering over at 00000001"
+                                AutomationProperties.Name="Reset to 1"
+                                Command="{Binding DataContext.ResetNumberCommand,
+                                          RelativeSource={RelativeSource AncestorType=Window}}">
+                            <TextBlock Text="Reset to 1" Style="{StaticResource ChipButtonLabel}" />
                         </Button>
-                        <Button Tag="20" Click="OnCountPreset" MinWidth="36"
-                                Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="20">
-                            <TextBlock Text="20" Style="{StaticResource ChipButtonLabel}" />
-                        </Button>
-                        <Button Tag="30" Click="OnCountPreset" MinWidth="36"
-                                Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="30">
-                            <TextBlock Text="30" Style="{StaticResource ChipButtonLabel}" />
-                        </Button>
-                    </StackPanel>
-                    <TextBlock Grid.Column="3" Text="10 per sheet · 4×2 in"
-                               Style="{StaticResource CaptionText}"
-                               VerticalAlignment="Center" Margin="8,0,0,0"
-                               TextTrimming="CharacterEllipsis" />
-                </Grid>
+                    </Grid>
 
-                <Grid Style="{StaticResource FieldRow}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Date bars:" Style="{StaticResource FieldLabel}" />
-                    <!-- WrapPanel, not a horizontal StackPanel: at the window's
-                         MinWidth (or a larger configured app font) the second
-                         option used to march off the window edge — wrapping to
-                         a second line keeps both choices on screen
-                         (LabelMakerOverflowTests) -->
-                    <WrapPanel Grid.Column="1">
-                        <RadioButton GroupName="DateStyle" Content="Black bars (white text)"
-                                     IsChecked="{Binding DataContext.DateStyleBars,
-                                                 RelativeSource={RelativeSource AncestorType=Window}}"
-                                     VerticalAlignment="Center" Margin="0,4,14,4" />
-                        <RadioButton GroupName="DateStyle" Content="Plain (black text)"
-                                     IsChecked="{Binding DataContext.DateStylePlain,
-                                                 RelativeSource={RelativeSource AncestorType=Window}}"
-                                     VerticalAlignment="Center" Margin="0,4" />
-                    </WrapPanel>
-                </Grid>
-            </StackPanel>
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                            <ColumnDefinition Width="60" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Labels to print:" Style="{StaticResource FieldLabel}" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding DataContext.LabelCountText,
+                                        RelativeSource={RelativeSource AncestorType=Window},
+                                        UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Labels to print" />
+                        <!-- whole-sheet presets: one click for the common runs -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0"
+                                    VerticalAlignment="Center">
+                            <Button Tag="10" Click="OnCountPreset" MinWidth="36"
+                                    Style="{StaticResource ChipButton}" AutomationProperties.Name="10">
+                                <TextBlock Text="10" Style="{StaticResource ChipButtonLabel}" />
+                            </Button>
+                            <Button Tag="20" Click="OnCountPreset" MinWidth="36"
+                                    Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="20">
+                                <TextBlock Text="20" Style="{StaticResource ChipButtonLabel}" />
+                            </Button>
+                            <Button Tag="30" Click="OnCountPreset" MinWidth="36"
+                                    Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="30">
+                                <TextBlock Text="30" Style="{StaticResource ChipButtonLabel}" />
+                            </Button>
+                        </StackPanel>
+                        <TextBlock Grid.Column="3" Text="10 per sheet · 4×2 in"
+                                   Style="{StaticResource CaptionText}"
+                                   VerticalAlignment="Center" Margin="8,0,0,0"
+                                   TextTrimming="CharacterEllipsis" />
+                    </Grid>
+
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Date bars:" Style="{StaticResource FieldLabel}" />
+                        <!-- WrapPanel, not a horizontal StackPanel: at the window's
+                             MinWidth (or a larger configured app font) the second
+                             option used to march off the window edge — wrapping to
+                             a second line keeps both choices on screen
+                             (LabelMakerOverflowTests) -->
+                        <WrapPanel Grid.Column="1">
+                            <RadioButton GroupName="DateStyle" Content="Black bars (white text)"
+                                         IsChecked="{Binding DataContext.DateStyleBars,
+                                                     RelativeSource={RelativeSource AncestorType=Window}}"
+                                         VerticalAlignment="Center" Margin="0,4,14,4" />
+                            <RadioButton GroupName="DateStyle" Content="Plain (black text)"
+                                         IsChecked="{Binding DataContext.DateStylePlain,
+                                                     RelativeSource={RelativeSource AncestorType=Window}}"
+                                         VerticalAlignment="Center" Margin="0,4" />
+                        </WrapPanel>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
 
             <!-- the first label, rendered exactly as it will print -->
             <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0">

@@ -100,15 +100,15 @@ public class LabelMakerOverflowTests
     /// The sibling test above checks the horizontal axis, which is where this
     /// window's font-size defects live. This one checks the vertical axis,
     /// which is where ADDING A ROW puts them.</summary>
-    /// <remarks>Default font only, deliberately. At 18px this same overlap
-    /// happens WITHOUT the store bar — measured: the choice runs to 314px and
-    /// the summary starts at 294px in both configurations — so it is an
-    /// existing defect of this window at large fonts, not something the bar
-    /// introduced, and pinning it here would make this test fail for a reason
-    /// it does not describe.</remarks>
+    /// <remarks><paramref name="expectsScrolling"/> is what keeps this honest
+    /// in both directions: at the default font the form must fit with nothing
+    /// hidden, and at 18px it must genuinely be scrolling — an assertion that
+    /// only checked "nothing overlaps" would also pass if the form had
+    /// silently collapsed to nothing.</remarks>
     [Theory]
-    [InlineData(14.0)]
-    public void TheStandaloneStoreBarDoesNotPushContentOffTheBottom(double fontSize) => _fx.Invoke(() =>
+    [InlineData(14.0, false)]
+    [InlineData(18.0, true)]
+    public void TheFormIsNeverPaintedOverByThePreview(double fontSize, bool expectsScrolling) => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
         var defaultFont = _fx.App.Resources["AppFontSize"];
@@ -131,34 +131,57 @@ public class LabelMakerOverflowTests
             window.UpdateLayout();
             OverflowProbe.PumpRender();
 
-            // The window is not what clips this, which is why OverflowProbe
-            // and a desired-height check both passed while two rows were
-            // visibly missing: the form overflows its own * Grid row and the
-            // preview section below is painted over the top of it. So the
-            // thing to assert is that the last row of the form and the summary
-            // line beneath it do not occupy the same pixels.
+            // The form outgrows its * Grid row as the font grows. A Grid
+            // neither clips nor scrolls, so without a viewport the form's last
+            // rows are arranged past the row and the preview section below is
+            // painted over the top of them — the date-style choice simply is
+            // not on screen. The fix is the same one SettingsWindow and
+            // UnlockWindow already use for forms that can outgrow their space.
             var content = (FrameworkElement)window.Content;
             var dateStyle = FindDateStyleChoice(content);
             var summary = FindPrintsSummary(content);
             Assert.NotNull(dateStyle);
             Assert.NotNull(summary);
 
+            var scroller = FindAncestorScrollViewer(dateStyle!);
+            Assert.True(scroller is not null,
+                "the form has no scrolling viewport, so anything it outgrows is "
+                + "painted over the preview instead of being reachable");
+
             Rect BoundsOf(FrameworkElement e) =>
                 e.TransformToAncestor(content).TransformBounds(new Rect(e.RenderSize));
 
-            var choice = BoundsOf(dateStyle!);
+            var form = BoundsOf(scroller!);
             var below = BoundsOf(summary!);
+            Assert.True(form.Height > 0 && below.Height > 0,
+                $"font {fontSize}: nothing was laid out (form {form}, summary {below})");
 
-            // without this the comparison below is vacuous — an element the
-            // layout never gave room reports a zero-sized rect that overlaps
-            // nothing
-            Assert.True(choice.Height > 0 && below.Height > 0,
-                $"font {fontSize}: nothing was laid out (choice {choice}, summary {below})");
+            Assert.True(form.Bottom <= below.Top + 0.5,
+                $"font {fontSize}: the form runs to {form.Bottom:F0}px but the summary line "
+                + $"starts at {below.Top:F0}px, so the two are drawn on top of each other.");
 
-            Assert.True(choice.Bottom <= below.Top + 0.5,
-                $"font {fontSize}: the date-style choice runs to {choice.Bottom:F0}px but the "
-                + $"summary line starts at {below.Top:F0}px, so the last of the form is painted "
-                + "over — the store bar took the room and the window did not grow to meet it.");
+            if (!expectsScrolling)
+            {
+                // Nothing hidden AND no scrollbar at the default font. The
+                // window carries 12px for exactly this: the form was 11px over
+                // its row, which with a viewport means a scrollbar appears on a
+                // window that never had one.
+                Assert.True(scroller!.ScrollableHeight <= 0.5,
+                    $"font {fontSize}: the form is {scroller.ScrollableHeight:F0}px over its "
+                    + "viewport at the DEFAULT font, so a scrollbar shows on a window that "
+                    + "never had one.");
+            }
+            else
+            {
+                // Non-vacuous the other way: at 18px the form genuinely must
+                // exceed the viewport, or this case is proving nothing about
+                // the scroller and the whole test would pass on a window that
+                // had quietly collapsed.
+                Assert.True(scroller!.ScrollableHeight > 0.5,
+                    $"font {fontSize}: the form fits after all "
+                    + $"(extent {scroller.ExtentHeight:F0}, viewport {scroller.ViewportHeight:F0}) "
+                    + "— this case no longer exercises the scrolling it exists to check.");
+            }
         }
         finally
         {
@@ -167,6 +190,7 @@ public class LabelMakerOverflowTests
             try { File.Delete(boxLabelsPath); } catch { /* best effort */ }
         }
     });
+
 
     /// <summary>The "Date bars" radio group — the last row of the form, and so
     /// the first thing to disappear when the window runs short.</summary>
@@ -188,6 +212,13 @@ public class LabelMakerOverflowTests
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
             if (FindPrintsSummary(VisualTreeHelper.GetChild(root, i)) is { } found)
                 return found;
+        return null;
+    }
+
+    private static ScrollViewer? FindAncestorScrollViewer(DependencyObject from)
+    {
+        for (var p = VisualTreeHelper.GetParent(from); p is not null; p = VisualTreeHelper.GetParent(p))
+            if (p is ScrollViewer sv) return sv;
         return null;
     }
 }
