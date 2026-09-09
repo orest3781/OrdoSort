@@ -14,7 +14,7 @@
 
 **This supersedes audit finding 4.3**, which reads *"DPAPI scope `CurrentUser` with null entropy is the correct choice here — do not 'fix' it to `LocalMachine`."* That ruling was correct for a single-station deployment and is wrong for this one. It must be updated, not silently contradicted — see Task 3.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\OrdoSort`, branch `main`, base `da95b84`.
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\OrdoSort`, branch `main`, base `da95b84`.
 
 ## Current state
 

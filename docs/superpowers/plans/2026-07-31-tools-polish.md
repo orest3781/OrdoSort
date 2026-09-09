@@ -6,7 +6,7 @@
 
 **Architecture:** Core work first (segment-delete step in `BulkRename.TransformStem`; `date_style` on `BoxLabelsDoc` + a style parameter through the `BoxLabels` layout; HResult classification in `BoxLabelStore`), then the two window rewires (LabelMaker: merge-Persist, ceiling check, offloaded claim, style radios; Unlock: auto-try + banner + dialog), then Settings tab slimming, then gate+push.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\OrdoSort`, branch `main` (established: commits per task, push only in the final task). Suites baseline: Core 352 + Wpf 287 = 639.
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\OrdoSort`, branch `main` (established: commits per task, push only in the final task). Suites baseline: Core 352 + Wpf 287 = 639.
 
 ## Global Constraints
 

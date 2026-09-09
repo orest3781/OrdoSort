@@ -6,7 +6,7 @@
 
 **Architecture:** Pure text edits applied with exact old→new string pairs (use the Edit tool, never sed — the tree is LF-only and edits must stay byte-surgical). Three tasks: mechanical renames, comment rewrites, then gate + single commit + push.
 
-**Tech Stack:** C# / .NET 8, xUnit, git. Repo: `S:\OrdoSort`, branch `main` (user-approved direct-to-main).
+**Tech Stack:** C# / .NET 8, xUnit, git. Repo: `A:\DEV\OrdoSort`, branch `main` (user-approved direct-to-main).
 
 ## Global Constraints
 

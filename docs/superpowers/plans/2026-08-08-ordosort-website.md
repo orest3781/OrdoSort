@@ -68,7 +68,7 @@ ordosort.com/
 - [ ] **Step 1: Build the demo workbench** (from the repo root — cwd matters, the tool resolves `demo-full` from it)
 
 ```powershell
-cd S:\OrdoSort
+cd A:\DEV\OrdoSort
 dotnet run --project tools/OrdoSort.Smoke -- demo-full
 ```
 
@@ -77,7 +77,7 @@ Expected: a printed summary of the generated workbench under `demo-full\`. If Wi
 - [ ] **Step 2: Render the screenshots**
 
 ```powershell
-cd S:\OrdoSort
+cd A:\DEV\OrdoSort
 dotnet run --project tools/OrdoSort.Smoke -- screenshots $env:TEMP\ordosort-shots both
 ```
 
@@ -90,10 +90,10 @@ Open each of the eight PNGs with the Read tool. Each must show a fully rendered 
 - [ ] **Step 4: Copy into the site under canonical names**
 
 ```powershell
-New-Item -ItemType Directory -Force S:\OrdoSort\ordosort.com\assets
+New-Item -ItemType Directory -Force A:\DEV\OrdoSort\ordosort.com\assets
 $m = @{ 'MainWindow-ready' = 'hero'; 'Settings' = 'shot-settings'; 'LabelMaker' = 'shot-labels'; 'History' = 'shot-history' }
 foreach ($k in $m.Keys) { foreach ($t in 'light','dark') {
-  Copy-Item "$env:TEMP\ordosort-shots\$k-$t.png" "S:\OrdoSort\ordosort.com\assets\$($m[$k])-$t.png"
+  Copy-Item "$env:TEMP\ordosort-shots\$k-$t.png" "A:\DEV\OrdoSort\ordosort.com\assets\$($m[$k])-$t.png"
 } }
 ```
 
@@ -101,7 +101,7 @@ foreach ($k in $m.Keys) { foreach ($t in 'light','dark') {
 
 ```powershell
 Add-Type -AssemblyName System.Drawing
-Get-ChildItem S:\OrdoSort\ordosort.com\assets\*.png | ForEach-Object {
+Get-ChildItem A:\DEV\OrdoSort\ordosort.com\assets\*.png | ForEach-Object {
   $img = [System.Drawing.Image]::FromFile($_.FullName)
   "{0}  {1}x{2}  {3:N0} KB" -f $_.Name, $img.Width, $img.Height, ($_.Length/1KB)
   $img.Dispose()
@@ -112,7 +112,7 @@ Record each width×height in the task summary. For any file > 1600 px wide or > 
 
 ```powershell
 Add-Type -AssemblyName System.Drawing
-$src = 'S:\OrdoSort\ordosort.com\assets\NAME.png'; $maxW = 1600
+$src = 'A:\DEV\OrdoSort\ordosort.com\assets\NAME.png'; $maxW = 1600
 $img = [System.Drawing.Image]::FromFile($src)
 $w = $maxW; $h = [int]($img.Height * $maxW / $img.Width)
 $bmp = New-Object System.Drawing.Bitmap $w, $h
@@ -128,7 +128,7 @@ Move-Item -Force $tmp $src
 - [ ] **Step 6: Commit**
 
 ```powershell
-cd S:\OrdoSort
+cd A:\DEV\OrdoSort
 git add ordosort.com/assets/*.png
 git commit -m "feat(web): screenshot assets for ordosort.com, both themes"
 ```
@@ -189,7 +189,7 @@ Read all three files with the Read tool: the SVG opens as text with both palette
 - [ ] **Step 5: Commit**
 
 ```powershell
-cd S:\OrdoSort
+cd A:\DEV\OrdoSort
 git add ordosort.com/assets/favicon.svg ordosort.com/assets/favicon-32.png ordosort.com/assets/apple-touch-icon.png
 git commit -m "feat(web): favicons — theme-aware SVG mark + PNG fallbacks"
 ```
@@ -404,7 +404,7 @@ section { padding: 56px 0; }
 - [ ] **Step 3: Render and verify both themes, both widths**
 
 With the Playwright browser tools:
-1. `browser_navigate` → `file:///S:/OrdoSort/ordosort.com/index.html`
+1. `browser_navigate` → `file:///A:/DEV/OrdoSort/ordosort.com/index.html`
 2. `browser_resize` 1280×900 → `browser_take_screenshot`. Inspect: header, hero headline, coming-soon chip, hero screenshot (light variant), three step cards, footer. No layout breakage.
 3. `browser_run_code_unsafe` → `await page.emulateMedia({ colorScheme: 'dark' })`, screenshot again. Inspect: dark tokens applied AND the hero `<picture>` now shows the dark screenshot.
 4. `browser_resize` 390×844 (still dark) → screenshot. Steps stack to one column; no horizontal scrollbar. Confirm programmatically: `browser_run_code_unsafe` → `return await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)` must be `true`.
@@ -413,7 +413,7 @@ With the Playwright browser tools:
 - [ ] **Step 4: Commit**
 
 ```powershell
-cd S:\OrdoSort
+cd A:\DEV\OrdoSort
 git add ordosort.com/index.html ordosort.com/styles.css
 git commit -m "feat(web): page skeleton, two-theme tokens, header/hero/how-it-works"
 ```
@@ -559,7 +559,7 @@ Repeat Task 3 Step 3's Playwright pass (light 1280, dark 1280, dark 390). Additi
 - [ ] **Step 4: Commit**
 
 ```powershell
-cd S:\OrdoSort
+cd A:\DEV\OrdoSort
 git add ordosort.com/index.html ordosort.com/styles.css
 git commit -m "feat(web): features grid, theme-matched gallery, download card"
 ```
@@ -655,12 +655,12 @@ Allow: /
 
 - [ ] **Step 5: Verify**
 
-Reload the page in Playwright; `browser_console_messages` clean; `browser_run_code_unsafe` → `return await page.evaluate(() => !!document.querySelector('meta[property="og:image"]'))` is `true`. Validate `vercel.json` parses: `Get-Content S:\OrdoSort\ordosort.com\vercel.json -Raw | ConvertFrom-Json` succeeds.
+Reload the page in Playwright; `browser_console_messages` clean; `browser_run_code_unsafe` → `return await page.evaluate(() => !!document.querySelector('meta[property="og:image"]'))` is `true`. Validate `vercel.json` parses: `Get-Content A:\DEV\OrdoSort\ordosort.com\vercel.json -Raw | ConvertFrom-Json` succeeds.
 
 - [ ] **Step 6: Commit**
 
 ```powershell
-cd S:\OrdoSort
+cd A:\DEV\OrdoSort
 git add ordosort.com/index.html ordosort.com/assets/og.png ordosort.com/robots.txt ordosort.com/vercel.json
 git commit -m "feat(web): SEO meta, OG card, robots.txt, vercel headers"
 ```
@@ -741,7 +741,7 @@ No selector may come back `missing`. Feed each reported `color`/`bg` pair throug
 
 - [ ] **Step 2: Rendered matrix**
 
-Playwright, against `file:///S:/OrdoSort/ordosort.com/index.html` — six screenshots: {light, dark} × {390×844, 768×1024, 1280×900}. Inspect each with the Read tool for: readable text, intact layout, correct theme variant of every image, no clipped or overlapping elements.
+Playwright, against `file:///A:/DEV/OrdoSort/ordosort.com/index.html` — six screenshots: {light, dark} × {390×844, 768×1024, 1280×900}. Inspect each with the Read tool for: readable text, intact layout, correct theme variant of every image, no clipped or overlapping elements.
 
 - [ ] **Step 3: Behavior checks**
 
@@ -755,7 +755,7 @@ Playwright, against `file:///S:/OrdoSort/ordosort.com/index.html` — six screen
 Apply minimal fixes; re-run the failed check until clean.
 
 ```powershell
-cd S:\OrdoSort
+cd A:\DEV\OrdoSort
 git add ordosort.com/
 git commit -m "fix(web): verification-pass fixes"
 ```
@@ -783,7 +783,7 @@ Fetch the returned deployment URL (WebFetch or Playwright): the page renders, `s
 - [ ] **Step 3: Push the branch**
 
 ```powershell
-cd S:\OrdoSort
+cd A:\DEV\OrdoSort
 git push origin main
 ```
 

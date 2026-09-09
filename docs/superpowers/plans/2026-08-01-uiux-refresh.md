@@ -6,7 +6,7 @@
 
 **Architecture:** Screenshot tooling first (so the BEFORE set exists), then the palette (token evolution + new `AccentBronze`, WCAG-pinned), then the shared control language in `Styles.xaml`, then two per-window retouch waves, then the gate + AFTER screenshots + delivery. Pixels can't be unit-tested: `ThemeTests` guards contrast, suites guard behavior, and the user's screenshot pass is final acceptance.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit, DWM interop. Repo `S:\OrdoSort`, branch `main` (established: commits per task, push only in the final task). Suites baseline: Core 375 + Wpf 311 = 686.
+**Tech Stack:** C# / .NET 8, WPF, xUnit, DWM interop. Repo `A:\DEV\OrdoSort`, branch `main` (established: commits per task, push only in the final task). Suites baseline: Core 375 + Wpf 311 = 686.
 
 ## Global Constraints
 
@@ -14,7 +14,7 @@
 - Bronze appears in EXACTLY four roles: focus visuals, the ⏎ Enter-target badge, selected tab/section indicators, progress/working states. Route colors and alert red untouched.
 - Control language: 4px radii everywhere (buttons drop from 6); flat (no shadows); hover = border moves Border→BorderStrong (no glow); focus = 2px AccentBronze rounded rectangle, 2px offset, via a shared `FocusVisualStyle` resource; primary buttons + section headers SemiBold; spacing rhythm 6/10/16 — normalize only values deviating >2px from the nearest step within areas a task touches, never restructure layout.
 - Non-goals (verbatim from spec): no layout changes, no custom-drawn title bar (DWM dark attribute only), no new illustrations/iconography, no route/alert color changes, no new settings.
-- Screenshots: `S:\tmp\ordosort-refresh-shots\before\` and `...\after\` (untracked), both themes per window, captured via the new smoke command against demo-full.
+- Screenshots: `A:\DEV\tmp\ordosort-refresh-shots\before\` and `...\after\` (untracked), both themes per window, captured via the new smoke command against demo-full.
 - Reviewer rule: `git show COMMIT:path` only; scratch files deleted with a clean-tree check.
 - Suites stay green throughout; `ThemeTests` additions only (no pairing removed).
 
@@ -51,7 +51,7 @@ win.Close();
 For MainWindow, capture three states: Ready (default), Processing (start a session the way `Reentrancy`/the filing smoke does), Done if cheaply reachable (skip with a console note if not — record what was skipped). Adapt construction details from `DialogCheck`/`Reentrancy`; anything that can't render headlessly gets skipped WITH a printed note, never silently.
 
 - [ ] **Step 2: Dispatch** — `if (args.Length > 0 && args[0] == "screenshots") return Screenshots.Run(args);` beside the other entries.
-- [ ] **Step 3: Capture the BEFORE set** — `dotnet run --project tools/OrdoSort.Smoke -- screenshots S:\tmp\ordosort-refresh-shots\before both` (run `demo-full` first if the workbench is missing). Verify the PNG list covers every window in both themes; record the file list + any skips in your report.
+- [ ] **Step 3: Capture the BEFORE set** — `dotnet run --project tools/OrdoSort.Smoke -- screenshots A:\DEV\tmp\ordosort-refresh-shots\before both` (run `demo-full` first if the workbench is missing). Verify the PNG list covers every window in both themes; record the file list + any skips in your report.
 - [ ] **Step 4: Suites still green** (`dotnet test OrdoSort.sln -v minimal` — the command is new code, nothing touched).
 - [ ] **Step 5: Commit** — `feat(smoke): off-screen window screenshot capture` (+ standard trailers from `git log -1 --format=%B`).
 
@@ -166,7 +166,7 @@ public static class TitleBarChrome
 
 - [ ] **Step 1:** `dotnet build OrdoSort.sln -c Release && dotnet test OrdoSort.sln -c Release -v minimal` — green (record totals; expect 686 + ThemeTests additions).
 - [ ] **Step 2:** `demo-full` → "All checks passed"; `dialogs` → exit 0.
-- [ ] **Step 3:** AFTER screenshots: `dotnet run --project tools/OrdoSort.Smoke -- screenshots S:\tmp\ordosort-refresh-shots\after both` — verify the file list matches the BEFORE set (same names; any new skip must be explained).
+- [ ] **Step 3:** AFTER screenshots: `dotnet run --project tools/OrdoSort.Smoke -- screenshots A:\DEV\tmp\ordosort-refresh-shots\after both` — verify the file list matches the BEFORE set (same names; any new skip must be explained).
 - [ ] **Step 4:** Launch sanity (Start-Process, window check, clean stop — visually confirmable dark title bar noted in the report if the machine theme is dark).
 - [ ] **Step 5:** Push (`git push origin main`, ancestry-checked, never force; ls-remote match; no tags).
 - [ ] **Step 6:** Controller delivers the before/after screenshot pairs to the user for the acceptance pass.

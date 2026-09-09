@@ -1,6 +1,6 @@
 # v1.0 UI audit — WPF (correctness, accessibility, consistency)
 
-Repo: `S:\ordosort-session`, branch `session/header-pickers`, HEAD `6c11ead`.
+Repo: `A:\DEV\ordosort-session`, branch `session/header-pickers`, HEAD `6c11ead`.
 Scope: newest surfaces weighted most — TurnaroundWindow/ProductionWindow (reports),
 five Tools-menu utilities (FilenameList, PageCounts, ListReformat, ZipMerge, Zip,
 Unzip), the MainWindow notification rail, Settings' Alerts & polling tab,

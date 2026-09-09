@@ -20,7 +20,7 @@ namespace OrdoSort.Core.Tests;
 /// path — even when the guard being tested is disabled. That is not just a
 /// tidiness goal: an earlier version of this file used real-looking
 /// literals (`..\..\evil.json`, `\evil.json`) that, under a manual
-/// guard-disabled teeth-proof run, actually landed at `S:\evil.json` and
+/// guard-disabled teeth-proof run, actually landed at `A:\DEV\evil.json` and
 /// `C:\Users\<user>\AppData\Local\evil.json` — confirmed on disk. See the
 /// drive-root comment below for why a rooted-without-drive escape in
 /// particular forces this design, not just a nested %TEMP% subfolder.</summary>

@@ -6,7 +6,7 @@
 
 **Architecture:** The engine work is additive at three seams: `Naming.ApplyName` (mode semantics + template rendering), `Scanner.Eligible` (pickup rule), `Naming.ResolveMode`/new `ResolveTemplate` (override resolution). `BuildTarget`/`CommitFile` grow optional parameters so existing callers compile unchanged. The Settings VM swaps its `InsertMode` bool for a five-value `FilingMode` string with radio wrappers; Enter behavior changes are two small methods in `ShellViewModel`.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\OrdoSort`, branch `main` (established delivery mode: commits per task, push only in the final task's gate).
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\OrdoSort`, branch `main` (established delivery mode: commits per task, push only in the final task's gate).
 
 ## Global Constraints
 

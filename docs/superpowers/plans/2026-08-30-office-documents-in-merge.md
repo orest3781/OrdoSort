@@ -72,21 +72,21 @@
 
 **This task's output is an answer, not code.** Everything it writes is throwaway and deleted before it reports. If either assumption fails, STOP and report rather than proceeding.
 
-**Files:** create and then delete `S:\tmp\office-spike\` (a console app targeting `net8.0-windows`).
+**Files:** create and then delete `A:\DEV\tmp\office-spike\` (a console app targeting `net8.0-windows`).
 
 - [ ] **Step 1: Build fixtures with Office itself**
 
 ```powershell
 $w = New-Object -ComObject Word.Application; $w.Visible = $false
 $d = $w.Documents.Add(); $d.Content.Text = "Spike fixture. Second line."
-$d.SaveAs2("S:\tmp\office-spike\plain.docx"); $d.Close()
+$d.SaveAs2("A:\DEV\tmp\office-spike\plain.docx"); $d.Close()
 $p = $w.Documents.Add(); $p.Content.Text = "Protected fixture."
-$p.SaveAs2("S:\tmp\office-spike\locked.docx", [Type]::Missing, $false, "secret"); $p.Close()
+$p.SaveAs2("A:\DEV\tmp\office-spike\locked.docx", [Type]::Missing, $false, "secret"); $p.Close()
 $w.Quit()
 $pp = New-Object -ComObject PowerPoint.Application
 $pres = $pp.Presentations.Add($false)
 $null = $pres.Slides.Add(1, 11)
-$pres.SaveAs("S:\tmp\office-spike\deck.pptx"); $pres.Close(); $pp.Quit()
+$pres.SaveAs("A:\DEV\tmp\office-spike\deck.pptx"); $pres.Close(); $pp.Quit()
 ```
 Confirm all three exist and that `locked.docx` really asks for a password when opened by hand.
 
@@ -104,13 +104,13 @@ Console.WriteLine($"word cold start: {sw.ElapsedMilliseconds} ms");
 app.Visible = false; app.DisplayAlerts = 0; app.AutomationSecurity = 3;
 
 sw.Restart();
-dynamic doc = app.Documents.Open(@"S:\tmp\office-spike\plain.docx",
+dynamic doc = app.Documents.Open(@"A:\DEV\tmp\office-spike\plain.docx",
     ConfirmConversions: false, ReadOnly: true, AddToRecentFiles: false,
     PasswordDocument: "an-unlikely-sentinel-3f9c", Visible: false);
-doc.ExportAsFixedFormat(@"S:\tmp\office-spike\plain.pdf", 17);   // wdExportFormatPDF
+doc.ExportAsFixedFormat(@"A:\DEV\tmp\office-spike\plain.pdf", 17);   // wdExportFormatPDF
 doc.Close(false);
 Console.WriteLine($"convert: {sw.ElapsedMilliseconds} ms, " +
-    $"bytes: {new FileInfo(@"S:\tmp\office-spike\plain.pdf").Length}");
+    $"bytes: {new FileInfo(@"A:\DEV\tmp\office-spike\plain.pdf").Length}");
 ```
 
 **The question this answers:** does a *sentinel* password break the open of an UNprotected document? It must not — Word is expected to ignore `PasswordDocument` when the file needs none. If this open fails, the sentinel approach is wrong and the design changes.
@@ -121,7 +121,7 @@ Console.WriteLine($"convert: {sw.ElapsedMilliseconds} ms, " +
 sw.Restart();
 try
 {
-    dynamic locked = app.Documents.Open(@"S:\tmp\office-spike\locked.docx",
+    dynamic locked = app.Documents.Open(@"A:\DEV\tmp\office-spike\locked.docx",
         ConfirmConversions: false, ReadOnly: true, AddToRecentFiles: false,
         PasswordDocument: "an-unlikely-sentinel-3f9c", Visible: false);
     Console.WriteLine("OPENED WITH THE SENTINEL — the design's premise is wrong");
@@ -143,11 +143,11 @@ dynamic pp = Activator.CreateInstance(ppType)!;
 Console.WriteLine($"powerpoint cold start: {sw.ElapsedMilliseconds} ms");
 // PowerPoint refuses Visible=false in some builds — record what happens.
 try { pp.Visible = false; } catch (Exception ex) { Console.WriteLine($"pp.Visible=false refused: {ex.Message}"); }
-dynamic pres = pp.Presentations.Open(@"S:\tmp\office-spike\deck.pptx",
+dynamic pres = pp.Presentations.Open(@"A:\DEV\tmp\office-spike\deck.pptx",
     ReadOnly: true, Untitled: false, WithWindow: false);
-pres.ExportAsFixedFormat(@"S:\tmp\office-spike\deck.pdf", 2);   // ppFixedFormatTypePDF
+pres.ExportAsFixedFormat(@"A:\DEV\tmp\office-spike\deck.pdf", 2);   // ppFixedFormatTypePDF
 pres.Close();
-Console.WriteLine($"deck bytes: {new FileInfo(@"S:\tmp\office-spike\deck.pdf").Length}");
+Console.WriteLine($"deck bytes: {new FileInfo(@"A:\DEV\tmp\office-spike\deck.pdf").Length}");
 ```
 PowerPoint historically objects to a hidden application window. **Whatever it does, record it** — Task 6's adapter has to live with the answer.
 
@@ -170,7 +170,7 @@ foreach (var name in new[] { "WINWORD", "EXCEL", "POWERPNT" })
 - [ ] **Step 6: Report, and delete everything**
 
 ```bash
-rm -rf "S:/tmp/office-spike"
+rm -rf "A:/DEV/tmp/office-spike"
 ```
 Report: cold-start ms per app, per-convert ms, the sentinel's behaviour on both documents, the wrong-password HRESULT, whether PowerPoint accepted a hidden window, and whether any Office process survived. **Nothing is committed.**
 

@@ -6,7 +6,7 @@
 
 **Architecture:** New styles in `Theme/Styles.xaml` for the `Calendar` family, `ListBoxItem`, and `DocumentViewer` chrome, following this file's existing conventions. Every text colour theme-bound; every fix verified by off-screen render + WCAG math, with regression tests extending `HighlightContrastTests`.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\OrdoSort`, branch `main`.
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\OrdoSort`, branch `main`.
 
 ## Global Constraints
 

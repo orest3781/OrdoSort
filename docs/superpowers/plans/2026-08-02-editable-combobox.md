@@ -6,7 +6,7 @@
 
 **Architecture:** One `ControlTemplate` change in `Theme/Styles.xaml`: add a `PART_EditableTextBox` swapped in by an `IsEditable` trigger, keeping the implicit TextBox style (for the themed editor context menu, caret and selection brushes) and neutralizing only its chrome with local values. Proven by an off-screen WPF harness, since headless view-model tests cannot reach template parts.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\OrdoSort`, branch `main`.
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\OrdoSort`, branch `main`.
 
 ## Global Constraints
 

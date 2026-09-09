@@ -1,6 +1,6 @@
 ﻿# v1.0 release audit — OrdoSort.Core — correctness & data safety
 
-Repo: `S:\ordosort-session`, branch `session/header-pickers`, HEAD `6c11ead`.
+Repo: `A:\DEV\ordosort-session`, branch `session/header-pickers`, HEAD `6c11ead`.
 Scope: `src/OrdoSort.Core` — Commit, Unlock, Session, History, BulkRename,
 MatchMerge, Naming, Config, Scanner, BoxLabelStore, Collision, Intake,
 NaturalSort, Zipper, ZipMerge. Read-only; nothing in the worktree was changed.

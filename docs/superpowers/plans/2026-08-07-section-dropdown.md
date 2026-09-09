@@ -10,7 +10,7 @@
 
 **Decision taken by the product owner (do not re-open):** an emptied section **stays for the rest of the Settings session** — visible in the list and offered in the drop-down so folders can be moved back — and only disappears when OK is clicked with nothing in it. Not permanently persisted; sections stay derived at rest.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\OrdoSort`, branch `main`, base `bbf70d7`.
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\OrdoSort`, branch `main`, base `bbf70d7`.
 
 ## Global Constraints
 

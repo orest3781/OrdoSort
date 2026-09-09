@@ -8,7 +8,7 @@
 The app has carried three names: **FileRouter** (assembly, namespaces, config
 identifiers), **Sendu** (repository), and **Paper Trail** (product). The final
 name is **OrdoSort**. The source of truth is an extracted release archive at
-`S:\OrdoSort\sendu-1.4.0\sendu-1.4.0\` (no git history) — a working C#/.NET 8
+`A:\DEV\OrdoSort\sendu-1.4.0\sendu-1.4.0\` (no git history) — a working C#/.NET 8
 WPF document-routing app with Core + WPF projects, two xUnit test suites, a
 smoke-test tool, demo generators, and CI workflows.
 
@@ -16,7 +16,7 @@ The GitHub repository `orest3781/OrdoSort` exists and is empty.
 
 ## Goal
 
-Rebuild the project as **OrdoSort** at `S:\OrdoSort` (repo root), with a full
+Rebuild the project as **OrdoSort** at `A:\DEV\OrdoSort` (repo root), with a full
 clean rebrand — no FileRouter/Sendu/Paper Trail residue in code, docs, or git
 history — and push it to `https://github.com/orest3781/OrdoSort`. The sole
 exception is this design spec, which necessarily documents the rename.
@@ -29,12 +29,12 @@ exception is this design spec, which necessarily documents the rename.
 | Old-install compatibility | Clean break — no config/history migration |
 | Execution approach | In-place mechanical rebrand (rename, not rewrite) |
 | Versioning | Fresh line; first release tag will be `v1.0.0` |
-| Old archive | After verification, move `sendu-1.4.0` to `S:\tmp\sendu-1.4.0` |
+| Old archive | After verification, move `sendu-1.4.0` to `A:\DEV\tmp\sendu-1.4.0` |
 | GitHub Pages site | Drop the old Sendu `docs/index.html`; rebuild later separately |
 
 ## Repo layout
 
-`S:\OrdoSort` becomes the git repo root:
+`A:\DEV\OrdoSort` becomes the git repo root:
 
 ```
 OrdoSort.sln
@@ -96,7 +96,7 @@ renamed identifiers need no back-compat aliases.
 
 ## Git & push
 
-- `git init` at `S:\OrdoSort`, branch `main`.
+- `git init` at `A:\DEV\OrdoSort`, branch `main`.
 - Existing `.gitignore` / `.gitattributes` carried over.
 - Clean initial commit(s): spec + rebranded codebase.
 - Remote `origin` → `https://github.com/orest3781/OrdoSort.git`, push `main`.

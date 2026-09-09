@@ -75,7 +75,7 @@ public class FieldClippingTests
 
         // A real destination path, long enough that its routes share a prefix —
         // which is what makes a clipped one indistinguishable from its siblings.
-        const string LongPath = @"S:\OrdoSort\demo-full\routes\01-invoices";
+        const string LongPath = @"A:\DEV\OrdoSort\demo-full\routes\01-invoices";
         var cfg = new Config
         {
             Inbox = @"C:\inbox", Deferred = @"C:\deferred",

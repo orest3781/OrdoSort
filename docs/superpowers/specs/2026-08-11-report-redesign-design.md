@@ -32,7 +32,7 @@ defended.
 
 ### Upload logs → Turn-around report
 
-`S:\OrdoSort-samples\UPLOAD LOGS\<YYYYMMDD>\<YYYYMMDD-HHMM> PECF Report.xlsx`.
+`A:\DEV\OrdoSort-samples\UPLOAD LOGS\<YYYYMMDD>\<YYYYMMDD-HHMM> PECF Report.xlsx`.
 143 files in the sample, 6–7 per working day, 23,552 rows, covering 2026-07-01
 to 2026-08-10.
 
@@ -72,7 +72,7 @@ visible without displacing the primary metric.
 
 ### File move logs → Production report
 
-`S:\OrdoSort-samples\FILE MOVE LOGS\<CATEGORY>\<YYYYMMDD>-<CATEGORY>-MOVE-LOG.csv`.
+`A:\DEV\OrdoSort-samples\FILE MOVE LOGS\<CATEGORY>\<YYYYMMDD>-<CATEGORY>-MOVE-LOG.csv`.
 1,730 files across five categories, 163,282 rows, covering 2025-08-28 to
 2026-08-11 — 240 days with activity, averaging 680 documents per day, peaking
 at 1,222.
@@ -233,7 +233,7 @@ same shapes, small enough to verify by hand.
 
 **Live sample data is never copied into the repo or into fixtures.** It contains
 real patient and staff names and lives outside the working tree entirely, at
-`S:\OrdoSort-samples`. The `.realSamples/` ignore rule is retained as a safety
+`A:\DEV\OrdoSort-samples`. The `.realSamples/` ignore rule is retained as a safety
 net in case samples are ever dropped inside the repo again, but the intended
 location is outside it — an ignore rule protects against committing, not
 against copying, searching, or a tool that walks the tree.

@@ -6,7 +6,7 @@
 
 **Requested by the owner:** *"is it possible to auto check each pdf when a pdf is dragged into the unlock box and have text indicating that a required password is already saved"*
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit, PDFsharp. Repo `S:\OrdoSort`, branch `main`, base `0b01897`.
+**Tech Stack:** C# / .NET 8, WPF, xUnit, PDFsharp. Repo `A:\DEV\OrdoSort`, branch `main`, base `0b01897`.
 
 ## Current state
 

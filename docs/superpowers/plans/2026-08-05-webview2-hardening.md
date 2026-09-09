@@ -6,7 +6,7 @@
 
 **Architecture:** The pane only ever navigates to two things: a `file://` URL for the document currently being triaged, and `about:blank`. So the control is not a URL-scheme filter but something stricter and simpler — **permit only navigations this viewer itself initiated**. That reduces to a pure predicate, which is fully unit-testable without a real `WebView2`; the event wiring around it is verified by the smoke harness, which drives real WebView2 against real PDFs.
 
-**Tech Stack:** C# / .NET 8, WPF, `Microsoft.Web.WebView2` 1.0.2903.40. Repo `S:\OrdoSort`, branch `main`, base `79e9768`.
+**Tech Stack:** C# / .NET 8, WPF, `Microsoft.Web.WebView2` 1.0.2903.40. Repo `A:\DEV\OrdoSort`, branch `main`, base `79e9768`.
 
 ## Global Constraints
 

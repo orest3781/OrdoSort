@@ -8,7 +8,7 @@
 
 **Architecture:** Twelve independently reviewable work packages ordered by risk: correctness first (layout defect, UI-thread I/O, error-channel bypass, disposal, invariant dates), then platform/robustness, then one-surface improvements, then keyboard/copy/consistency, then verify-then-decide items and minors. Each package ends green with its own tests.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\OrdoSort`, branch `main`.
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\OrdoSort`, branch `main`.
 
 ## Global Constraints
 
