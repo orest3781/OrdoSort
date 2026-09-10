@@ -1,0 +1,31 @@
+<Application x:Class="BoxLabelsApp.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <!-- OnExplicitShutdown, not OnMainWindowClose, and this is load-bearing.
+         WPF makes the FIRST window shown the MainWindow when nothing has set
+         it, and this app shows a dialog before its real window exists: the
+         first-run "choose the shared file" explanation. Under
+         OnMainWindowClose that dialog became the main window, so pressing OK
+         closed it and exited the process before the file picker could open —
+         pressing OK appeared to do nothing at all. OnStartup switches to
+         OnMainWindowClose once the label maker is actually up. -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- The same two dictionaries OrdoSort merges. Everything the
+                     label maker, the message box and the print preview ask
+                     for resolves from this pair — verified by walking every
+                     StaticResource key in the three windows. -->
+                <ResourceDictionary Source="pack://application:,,,/OrdoSort.Ui;component/Theme/Styles.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/OrdoSort.Ui;component/Theme/Illustrations.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <!-- Load-time placeholders: the styles above consume these two
+                 keys, so they must exist before any window is built.
+                 OnStartup replaces them with AppFonts.DefaultChain, which is
+                 the real source of truth for both applications. -->
+            <FontFamily x:Key="AppFontFamily">Segoe UI Variable Text, Segoe UI</FontFamily>
+            <sys:Double x:Key="AppFontSize" xmlns:sys="clr-namespace:System;assembly=mscorlib">14</sys:Double>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

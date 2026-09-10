@@ -104,7 +104,7 @@ public sealed class HighlightContrastFixture : IDisposable
                 app.Resources.MergedDictionaries.Add(new ResourceDictionary
                 {
                     // AssemblyName is "OrdoSort" (OrdoSort.Wpf.csproj), not "OrdoSort.Wpf".
-                    Source = new Uri("pack://application:,,,/OrdoSort;component/Theme/Styles.xaml"),
+                    Source = new Uri("pack://application:,,,/OrdoSort.Ui;component/Theme/Styles.xaml"),
                 });
             }
             // Same reasoning as the Styles.xaml merge above — App.xaml also
@@ -118,7 +118,7 @@ public sealed class HighlightContrastFixture : IDisposable
             {
                 app.Resources.MergedDictionaries.Add(new ResourceDictionary
                 {
-                    Source = new Uri("pack://application:,,,/OrdoSort;component/Theme/Illustrations.xaml"),
+                    Source = new Uri("pack://application:,,,/OrdoSort.Ui;component/Theme/Illustrations.xaml"),
                 });
             }
             // App.xaml declares these converters (and a couple of plain
@@ -755,9 +755,9 @@ public class HighlightContrastTests
         ThemeManager.Apply(_fx.App, scheme);
 
         var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
-        var vm = new LabelMakerViewModel(new Config(), boxLabelsPath, new NoDialogs());
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels");
         vm.Clients.Add(new LabelClientVm { Id = "TEST" });
-        var window = new LabelMakerWindow(vm)
+        var window = new LabelMakerWindow(vm, "Box labels", "Print preview")
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
@@ -972,9 +972,9 @@ public class HighlightContrastTests
         ThemeManager.Apply(_fx.App, scheme);
 
         var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
-        var vm = new LabelMakerViewModel(new Config(), boxLabelsPath, new NoDialogs());
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels");
         vm.Clients.Add(new LabelClientVm { Id = "TEST" });
-        var window = new LabelMakerWindow(vm)
+        var window = new LabelMakerWindow(vm, "Box labels", "Print preview")
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,

@@ -6,7 +6,7 @@
 
 **Architecture:** Three independent fixes plus a gate. Task 3 (startup) is deliberately a verify-then-decide: the obvious fix trades a startup stall for a torn backup, so it must be measured before it is chosen.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\OrdoSort`, branch `main`, base `689a61f`.
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\OrdoSort`, branch `main`, base `689a61f`.
 
 ## Global Constraints
 
@@ -19,7 +19,7 @@
 - **`FocusRingCoverageTests.TabItemShowsTheBronzeFocusRing` is environment-sensitive** on this machine — it failed all of one afternoon and later passed, proven pre-existing by rebuilding an older commit in a throwaway worktree. Either result is acceptable; never chase it, never weaken it.
 - **Do not touch `journal_mode`, `synchronous` or `busy_timeout`** (`History.cs:5-15`). WAL is deliberately absent because it relies on shared memory that does not work over a network filesystem and is the documented way to corrupt a shared SQLite file.
 - **Static/process-wide test state is this repo's leading false-green source — three instances so far.** If you add or touch any, put every mutating class in one shared `[Collection]` and add a reflection membership test, then **prove it by removing the attribute from *each* member**, not just one.
-- Keep tests hermetic and **verify it by inspecting the filesystem** — a fixture on an earlier branch wrote to `C:\Users\stoic\AppData\Local` and `S:\` while its own comment claimed otherwise.
+- Keep tests hermetic and **verify it by inspecting the filesystem** — a fixture on an earlier branch wrote to `C:\Users\stoic\AppData\Local` and `A:\DEV\` while its own comment claimed otherwise.
 - **The pattern is at eleven.** Each task below states its safety argument. Ask what fails if the guard is deleted, not whether the feature still works.
 - A stray `OrdoSort.exe` or leftover `dotnet.exe` MSBuild node breaks rebuilds — `tasklist | findstr OrdoSort` first.
 - Never `--no-verify`, never force, **never push**.

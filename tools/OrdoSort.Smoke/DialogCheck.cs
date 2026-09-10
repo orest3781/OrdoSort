@@ -35,11 +35,13 @@ public static class DialogCheck
             new MatchMergeViewModel(new Config(), _ => { }, dialogs)));
         Check("Settings", () => new SettingsWindow(new SettingsViewModel(new Config(), dialogs)));
         Check("LabelMaker", () => new LabelMakerWindow(
-            new LabelMakerViewModel(new Config(), Path.Combine(dir, "box-labels.json"), dialogs)));
+            new LabelMakerViewModel(null, Path.Combine(dir, "box-labels.json"), dialogs,
+                "OrdoSort — label maker"),
+            "OrdoSort — Box labels", "OrdoSort — Print preview"));
         Check("PrintPreview", () => new PrintPreviewWindow(
             OrdoSort.Wpf.Views.LabelPrinting.BuildDocument(
                 BoxLabels.Batch("ABCD", 1, 12, new DateTime(2026, 7, 25), 30)),
-            "smoke", _ => { }));
+            "smoke", _ => { }, "OrdoSort — Print preview"));
         Check("TriageWindow", () => new TriageWindow(new List<MatchMerge.MatchResult>(), new[] { "A", "B" }));
 
         // 3a dedupes ChosenColumns at the view model, but TriageWindow itself

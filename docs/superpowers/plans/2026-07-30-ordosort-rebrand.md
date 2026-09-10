@@ -2,16 +2,16 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rebuild the app as OrdoSort at `S:\OrdoSort` — full clean rebrand of the FileRouter/Sendu/Paper Trail codebase — verified by build + both test suites, then pushed to `https://github.com/orest3781/OrdoSort`.
+**Goal:** Rebuild the app as OrdoSort at `A:\DEV\OrdoSort` — full clean rebrand of the FileRouter/Sendu/Paper Trail codebase — verified by build + both test suites, then pushed to `https://github.com/orest3781/OrdoSort`.
 
 **Architecture:** Mechanical in-place rebrand of a working .NET 8 WPF app: copy the extracted archive to the repo root, rename files/directories, run an ordered token-replacement sweep, then hand-fix the spots a sweep can't get right (assembly name, pack URIs, exe references, stale prose). Code logic never changes.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit, Git Bash (commands below use Git Bash syntax from `S:/OrdoSort`), GitHub Actions.
+**Tech Stack:** C# / .NET 8, WPF, xUnit, Git Bash (commands below use Git Bash syntax from `A:/DEV/OrdoSort`), GitHub Actions.
 
 ## Global Constraints
 
-- Repo root is `S:\OrdoSort`. Git is already initialized on `main` with two commits (the design spec). Never rewrite those commits.
-- Source of truth (read-only input): `S:\OrdoSort\sendu-1.4.0\sendu-1.4.0\`. It is moved to `S:\tmp\sendu-1.4.0` only in Task 7, after verification.
+- Repo root is `A:\DEV\OrdoSort`. Git is already initialized on `main` with two commits (the design spec). Never rewrite those commits.
+- Source of truth (read-only input): `A:\DEV\OrdoSort\sendu-1.4.0\sendu-1.4.0\`. It is moved to `A:\DEV\tmp\sendu-1.4.0` only in Task 7, after verification.
 - **Clean-history rule:** no code is committed until Task 7. Tasks 1–6 work entirely on untracked files. (The only committed files before Task 7 are the spec and this plan under `docs/superpowers/`.)
 - **Do not copy from the archive:** `README.md` (rewritten in Task 5), `docs/` (old Paper Trail branding + Pages site + historical specs), `plans/` (historical design doc).
 - **Naming (exact):** solution `OrdoSort.sln`; projects `OrdoSort.Core`, `OrdoSort.Wpf`, `OrdoSort.Core.Tests`, `OrdoSort.Wpf.Tests`, `OrdoSort.Smoke`; WPF app `<AssemblyName>OrdoSort</AssemblyName>` (binary `OrdoSort.exe`) with `<RootNamespace>OrdoSort.Wpf</RootNamespace>`; pack URIs use `pack://application:,,,/OrdoSort;component/...`; sound assets `ordosort-alert.wav`, `ordosort-send.wav`, `ordosort-aside.wav`.
@@ -34,7 +34,7 @@
 ### Task 1: Copy the source tree to the repo root (baseline green)
 
 **Files:**
-- Create (copies): `src/`, `tests/`, `tools/`, `demo/`, `.github/`, `FileRouterNet.sln`, `.gitignore`, `.gitattributes`, `run.bat`, `reset.bat`, `publish.bat`, `demo-full.bat` — all at `S:/OrdoSort/`
+- Create (copies): `src/`, `tests/`, `tools/`, `demo/`, `.github/`, `FileRouterNet.sln`, `.gitignore`, `.gitattributes`, `run.bat`, `reset.bat`, `publish.bat`, `demo-full.bat` — all at `A:/DEV/OrdoSort/`
 
 **Interfaces:**
 - Consumes: the archive at `sendu-1.4.0/sendu-1.4.0/`
@@ -557,7 +557,7 @@ Expected: `CLEAN` (the demo generator must not have written any old-name content
 ### Task 7: Archive out, single clean commit, push
 
 **Files:**
-- Move: `sendu-1.4.0/` → `S:\tmp\sendu-1.4.0`
+- Move: `sendu-1.4.0/` → `A:\DEV\tmp\sendu-1.4.0`
 - Commit: the entire rebranded tree
 - Push: `main` → `https://github.com/orest3781/OrdoSort`
 

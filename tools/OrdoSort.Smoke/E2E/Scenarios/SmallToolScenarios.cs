@@ -400,11 +400,13 @@ public static class SmallToolScenarios
         ctx.Check("the store does not exist before this scenario runs",
             !File.Exists(store), "already present");
 
-        var vm = new LabelMakerViewModel(cfg, store, ctx.Dialogs,
+        var vm = new LabelMakerViewModel(cfg.LabelClients, store, ctx.Dialogs,
+            "OrdoSort — label maker",
             today: () => new DateTime(2026, 8, 9),   // clock, not a work seam
             openFile: _ => { },                       // never shell out during a run
             scheduler: new InlineScheduler());
-        var win = new LabelMakerWindow(vm);
+        var win = new LabelMakerWindow(vm,
+            "OrdoSort — Box labels", "OrdoSort — Print preview");
         E2EPump.ShowOffscreen(win);
 
         vm.AddClientCommand.Execute(null);

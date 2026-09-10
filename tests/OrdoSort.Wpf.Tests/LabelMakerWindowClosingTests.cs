@@ -34,8 +34,8 @@ public class LabelMakerWindowClosingTests
             return 0;
         });
         var dialogs = new FakeDialogs();
-        var vm = new LabelMakerViewModel(new Config(), boxLabelsPath, dialogs);
-        var window = new LabelMakerWindow(vm)
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, dialogs, "Box labels");
+        var window = new LabelMakerWindow(vm, "Box labels", "Print preview")
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,

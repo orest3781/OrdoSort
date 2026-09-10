@@ -20,7 +20,7 @@
   ```
 - **C# guidelines (repo CLAUDE.md):** `///` XML doc comments on every new public or internal member; private fields prefixed `_`; comments explain *why*, not what; no APIs you have not seen in this codebase or the BCL.
 - **Test discipline:** every fix ships with a test that FAILS before the fix (a compile error counts) and PASSES after. Run the failing step and read the output before implementing. Tests are hermetic: temp folders, no sleeps except through the existing `WaitFor` polling helpers already used in the same test file.
-- **Run only the tests you touched:** from `S:\OrdoSort`, `dotnet test tests/OrdoSort.Wpf.Tests --filter "FullyQualifiedName~<TestClassName>"`. The full WPF suite can take 40+ minutes and is run once by the controller at the end, not per task.
+- **Run only the tests you touched:** from `A:\DEV\OrdoSort`, `dotnet test tests/OrdoSort.Wpf.Tests --filter "FullyQualifiedName~<TestClassName>"`. The full WPF suite can take 40+ minutes and is run once by the controller at the end, not per task.
 - **Read the `Passed!` line and its count.** On this machine Smart App Control sometimes blocks a freshly built assembly by hash: `dotnet test` then prints `Skipping: … An Application Control policy has blocked this file` and exits 0 having run ZERO tests. If you see that, report it and stop — do not rebuild in a loop.
 - **Do not run the app.** If `OrdoSort.exe` is running, build with `-p:BaseOutputPath=bin-agent/`; it was not running when this plan was written.
 - **Never leave two ways to do one thing.** When a method is replaced (Task 6's `ClaimNumbers`, Task 15's `Ask` overload), remove the old one and fix its callers.

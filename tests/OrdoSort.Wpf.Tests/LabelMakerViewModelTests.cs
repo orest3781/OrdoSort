@@ -11,8 +11,13 @@ public class LabelMakerViewModelTests : IDisposable
     private readonly List<string> _opened = new();
     private static readonly DateTime Today = new(2026, 7, 25);
 
+    /// <summary>The host's name for the tool. Deliberately not either real
+    /// application's title: these tests assert it is passed through, and a
+    /// string that happened to match a hardcoded one would hide the bug.</summary>
+    private const string AppTitle = "Test — label maker";
+
     private LabelMakerViewModel Vm(string boxLabelsPath) =>
-        new(new Config(), boxLabelsPath, _dialogs, () => Today, _opened.Add,
+        new(null, boxLabelsPath, _dialogs, AppTitle, () => Today, _opened.Add,
             new InlineWorkScheduler());
 
     /// <summary>A fresh box-labels.json path (nothing written yet — the
@@ -46,7 +51,7 @@ public class LabelMakerViewModelTests : IDisposable
             LabelClients = { new LabelClient { Id = "ACME", DestroyDays = 45, NextNumber = 7 } },
         };
 
-        var vm = new LabelMakerViewModel(cfg, path, _dialogs, () => Today, _opened.Add,
+        var vm = new LabelMakerViewModel(cfg.LabelClients, path, _dialogs, AppTitle, () => Today, _opened.Add,
             new InlineWorkScheduler());
 
         Assert.True(File.Exists(path));
@@ -73,7 +78,7 @@ public class LabelMakerViewModelTests : IDisposable
             LabelClients = { new LabelClient { Id = "STALE", NextNumber = 99 } },
         };
 
-        var vm = new LabelMakerViewModel(cfg, path, _dialogs, () => Today, _opened.Add,
+        var vm = new LabelMakerViewModel(cfg.LabelClients, path, _dialogs, AppTitle, () => Today, _opened.Add,
             new InlineWorkScheduler());
 
         Assert.Empty(vm.Clients);
@@ -150,7 +155,7 @@ public class LabelMakerViewModelTests : IDisposable
     {
         var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 5 });
         var scheduler = new ControlledWorkScheduler();
-        var vm = new LabelMakerViewModel(new Config(), path, _dialogs, () => Today, _opened.Add, scheduler);
+        var vm = new LabelMakerViewModel(null, path, _dialogs, AppTitle, () => Today, _opened.Add, scheduler);
         scheduler.ReleaseAll();   // anything the constructor queued
         IReadOnlyList<BoxLabels.Item>? sent = null;
         vm.PrintSheets = (items, _) => { sent = items; return true; };
@@ -234,6 +239,41 @@ public class LabelMakerViewModelTests : IDisposable
         vm.Print();   // PrintSheets never wired
         Assert.Contains("Printing", Assert.Single(_dialogs.Warnings).Message);
         Assert.Equal(1, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);  // untouched
+    }
+
+    /// <summary>Every dialog this view model raises is headed by the title the
+    /// HOST passed, not one written down in here. The view model is shared by
+    /// OrdoSort and BoxLabels.exe, and a hardcoded "OrdoSort — label maker"
+    /// would name a product the standalone's user does not have.</summary>
+    [Fact]
+    public void DialogsAreHeadedByTheTitleTheHostPassed()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD" });
+        var vm = Vm(path);
+
+        vm.Print();   // PrintSheets never wired, so this warns
+
+        Assert.Equal(AppTitle, Assert.Single(_dialogs.Warnings).Title);
+    }
+
+    /// <summary>The mirror of
+    /// <see cref="BootstrapsFromLegacyInlineLabelClientsWhenTheStoreFileIsMissing"/>:
+    /// a machine that never ran OrdoSort has no config.json to migrate from,
+    /// so BoxLabels.exe passes no seed. Nothing may be written in that case —
+    /// the old code took a whole Config and would have had to be handed an
+    /// empty one to say the same thing.</summary>
+    [Fact]
+    public void WithoutAMigrationSeedNothingIsWrittenToTheStore()
+    {
+        var path = Path.Combine(_dir, $"box-labels-{Guid.NewGuid():N}.json");
+        Assert.False(File.Exists(path));
+
+        var vm = new LabelMakerViewModel(null, path, _dialogs, AppTitle, () => Today,
+            _opened.Add, new InlineWorkScheduler());
+
+        Assert.False(File.Exists(path));
+        Assert.Empty(vm.Clients);
+        Assert.Empty(_dialogs.Warnings);
     }
 
     [Fact]

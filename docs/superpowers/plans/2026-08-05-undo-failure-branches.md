@@ -6,7 +6,7 @@
 
 **Architecture:** Mostly a test task, but not only. The promise being pinned is not "it throws" — it is **"the filed copy stays put and the session stays consistent"**, which is what `UndoAction`'s own doc comment claims and what a user relies on. So the tests assert *state after failure*, at both the `Commit` and `Session` levels. One genuine defect found during planning is settled by measurement in Task 1.
 
-**Tech Stack:** C# / .NET 8, xUnit. Repo `S:\OrdoSort`, branch `main`, base `d930612`.
+**Tech Stack:** C# / .NET 8, xUnit. Repo `A:\DEV\OrdoSort`, branch `main`, base `d930612`.
 
 ## Global Constraints
 

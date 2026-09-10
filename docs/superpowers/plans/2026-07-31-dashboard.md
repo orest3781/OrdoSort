@@ -6,7 +6,7 @@
 
 **Architecture:** `WatchFolder` gains a `section` key that rides through `FolderMonitor.FolderStatus` into the tile rebuild. `ShellViewModel.Tiles` REMAINS the flat store (MainWindow's self-sizing hook and DashboardTests depend on it); a new `TileGroups` collection is a grouped projection over the same `TileViewModel` instances, and `ReadyView` renders groups. The Settings Dashboard tab gains a Section pick-or-type ComboBox per folder and swaps the alerts multiline for a chip editor.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\OrdoSort`, branch `main` (established delivery mode: commits per task, push only in the final task).
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\OrdoSort`, branch `main` (established delivery mode: commits per task, push only in the final task).
 
 ## Global Constraints
 

@@ -10,7 +10,7 @@ namespace OrdoSort.Wpf.Theme;
 /// carrying its own full ControlTemplate copy: a template trigger in the
 /// shared template reads it, so one shared visual tree serves both the
 /// plain rail look and SettingsWindow's underlined variant.</summary>
-internal static class TabItemOptions
+public static class TabItemOptions
 {
     public static readonly DependencyProperty ShowSelectedUnderlineProperty =
         DependencyProperty.RegisterAttached(

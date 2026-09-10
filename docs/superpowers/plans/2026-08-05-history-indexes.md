@@ -6,7 +6,7 @@
 
 **Architecture:** One measurement-led change to `History.cs`. The deliverable is not "an index exists" but "the query plan no longer scans the table, and the write path did not get slower to pay for it." Both halves are measured, and the read half is pinned by a test that fails if the index is dropped.
 
-**Tech Stack:** C# / .NET 8, `Microsoft.Data.Sqlite` 8.0.11. Repo `S:\OrdoSort`, branch `main`, base `e407b5d`.
+**Tech Stack:** C# / .NET 8, `Microsoft.Data.Sqlite` 8.0.11. Repo `A:\DEV\OrdoSort`, branch `main`, base `e407b5d`.
 
 ## Global Constraints
 

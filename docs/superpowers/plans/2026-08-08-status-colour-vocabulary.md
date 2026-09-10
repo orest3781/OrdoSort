@@ -18,7 +18,7 @@
 
 **This extends an existing contract, it does not replace one.** `CopyAndTerminologyTests.cs:183-484` locks Settings' per-field notes to amber-for-problem / subtle-for-fact, and `SettingsWindow.xaml:43-53`'s `NoteText` style is the precedent. **Amber means needs-attention and must never be used for a merely informational fact.** Keep that true.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\OrdoSort`, branch `main`, base `991d535`.
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\OrdoSort`, branch `main`, base `991d535`.
 
 ## Two traps this plan exists to navigate
 

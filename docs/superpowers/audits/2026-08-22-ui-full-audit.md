@@ -374,8 +374,8 @@ family**, an axis nothing in the test suite varies.
 ### UI-25 — the destination folder path is truncated to a third of itself (Medium) — **MITIGATED 2026-08-23**
 
 Settings ▸ Destinations, the `Folder:` field. The configured value for the
-"Invoices" route is `S:/OrdoSort/demo-full/routes/01-invoices` (38 characters).
-The field renders **`S:/OrdoSort`** — 11 characters, 29% of the value — because
+"Invoices" route is `A:/DEV/OrdoSort/demo-full/routes/01-invoices` (38 characters).
+The field renders **`A:/DEV/OrdoSort`** — 11 characters, 29% of the value — because
 `Browse…` and `Open` sit in the same row and take their width first.
 
 It is a `TextBox`, so nothing is lost and the text scrolls when focused. But the

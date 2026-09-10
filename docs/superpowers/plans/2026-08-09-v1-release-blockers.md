@@ -4,13 +4,13 @@
 
 **Goal:** Clear the mechanical items that gate a v1.0 release, plus one data-loss bug pulled forward from the deferred list.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\ordosort-session` (worktree), branch `session/header-pickers`, base `b9739c6`.
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\ordosort-session` (worktree), branch `session/header-pickers`, base `b9739c6`.
 
 **Verified still outstanding** (checked 2026-08-09, not assumed): no `<Version>`/`<AssemblyVersion>`/`<InformationalVersion>` anywhere; no About window; `SQLitePCLRaw` **2.1.6** transitively via `Microsoft.Data.Sqlite` 8.0.11; no `THIRD-PARTY-NOTICES`; `.claude/` absent from `.gitignore`; no WebView2 prerequisite check.
 
 ## Global Constraints
 
-- **Work only in `S:\ordosort-session`.** `S:\OrdoSort` is a separate checkout with another Claude session active in it — never read from, write to, or `cd` into it.
+- **Work only in `A:\DEV\ordosort-session`.** `A:\DEV\OrdoSort` is a separate checkout with another Claude session active in it — never read from, write to, or `cd` into it.
 - **The gate command is NOT plain `dotnet test`.** Smart App Control blocks the WPF test assembly by hash; `dotnet test` alone **silently skips the entire WPF suite and still exits 0**:
   ```bash
   dotnet build OrdoSort.sln -t:Rebuild -p:Deterministic=false -v minimal
@@ -61,7 +61,7 @@
 
 - [ ] **Step 3: `.gitignore`.** Add `.claude/`. Check what else is untracked and shouldn't be — `.playwright-mcp/` and stray PNGs have appeared in this repo.
 
-- [ ] **Step 4: Stale worktrees.** Six `agent-*` worktrees under `.claude/worktrees/` are long dead. **List them and their sizes before removing anything**, confirm each is genuinely unreferenced (`git worktree list`, `git worktree prune --dry-run`), and only then clean up. **Do not touch `S:\OrdoSort` or any worktree belonging to a live session.**
+- [ ] **Step 4: Stale worktrees.** Six `agent-*` worktrees under `.claude/worktrees/` are long dead. **List them and their sizes before removing anything**, confirm each is genuinely unreferenced (`git worktree list`, `git worktree prune --dry-run`), and only then clean up. **Do not touch `A:\DEV\OrdoSort` or any worktree belonging to a live session.**
 
 - [ ] **Step 5: Commit** the dependency change and the hygiene separately.
 

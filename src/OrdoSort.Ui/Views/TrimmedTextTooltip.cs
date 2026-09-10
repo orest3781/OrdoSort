@@ -68,7 +68,7 @@ namespace OrdoSort.Wpf.Views;
 /// <see cref="Hook"/> — since the recycled container may already carry its
 /// final text and size by the time Loaded fires), and a closed window
 /// unloads its whole tree the same way.</summary>
-internal static class TrimmedTextTooltip
+public static class TrimmedTextTooltip
 {
     public static readonly DependencyProperty EnabledProperty =
         DependencyProperty.RegisterAttached(

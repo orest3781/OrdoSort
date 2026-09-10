@@ -1,0 +1,320 @@
+<Window x:Class="OrdoSort.Wpf.Windows.LabelMakerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:OrdoSort.Wpf.Views"
+        Width="680" Height="572" MinWidth="600" MinHeight="512"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Style="{StaticResource {x:Type Window}}">
+    <!-- Height/MinHeight above carry 12px more than the form strictly needs.
+         At the default font the form sat 11px over its row — harmless when it
+         simply spilled, but with the scrolling viewport below that means a
+         scrollbar on a window that never had one. The room removes it. -->
+    <DockPanel Margin="14">
+        <!-- Which store is open. Collapsed unless the host passes a
+             LabelStoreBar, so OrdoSort's window is unchanged: there the path
+             is a config.json key edited on the Settings page, and a second
+             way to change it here would disagree with that one.
+
+             It is at the TOP because this app's whole risk is printing from
+             the wrong file, and that mistake is undetectable once numbers are
+             on physical boxes — so the store has to be readable before you
+             touch anything, not after. -->
+        <Border x:Name="StoreBar" DockPanel.Dock="Top" Visibility="Collapsed"
+                BorderBrush="{DynamicResource Theme.Border}" BorderThickness="0,0,0,1"
+                Padding="0,0,0,10" Margin="0,0,0,12">
+            <DockPanel>
+                <Button x:Name="ChangeStoreButton" DockPanel.Dock="Right"
+                        Content="Change file…" MinWidth="112" Margin="12,0,0,0"
+                        AutomationProperties.Name="Change box labels file" />
+                <TextBlock DockPanel.Dock="Left" Text="Labels file:"
+                           Style="{StaticResource FieldLabel}"
+                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                <!-- Trimmed with the full path on hover, the same treatment
+                     the status line below gets: a share path is longer than
+                     any window is wide. -->
+                <TextBlock x:Name="StorePathText" Style="{StaticResource SubtleText}"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+        </Border>
+
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <Button DockPanel.Dock="Right" Content="Close" Width="96" IsCancel="True" />
+            <Button DockPanel.Dock="Right" Command="{Binding SavePdfCommand}"
+                    Width="110" Margin="0,0,8,0" AutomationProperties.Name="Save PDF">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE74E;" Margin="0,0,8,0" />
+                    <TextBlock Text="Save PDF…" />
+                </StackPanel>
+            </Button>
+            <!-- IsDefault is safe here: Enter only opens the preview, which
+                 Esc backs out of — nothing spools without a second Print -->
+            <Button DockPanel.Dock="Right" Command="{Binding PrintCommand}"
+                    Style="{StaticResource PrimaryButton}" Width="110" Margin="0,0,8,0"
+                    IsDefault="True" AutomationProperties.Name="Print">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE749;" Margin="0,0,8,0"
+                               Foreground="{DynamicResource Theme.AccentText}" />
+                    <TextBlock Text="Print…" Foreground="{DynamicResource Theme.AccentText}" />
+                </StackPanel>
+            </Button>
+            <TextBlock Text="{Binding Status}" Style="{StaticResource StatusText}"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding Status}" />
+        </DockPanel>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="170" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- client list -->
+            <DockPanel>
+                <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                    <Button Content="Add" Command="{Binding AddClientCommand}" MinWidth="48" Margin="0,0,4,4" />
+                    <Button Content="Remove" Command="{Binding RemoveClientCommand}" />
+                </WrapPanel>
+                <Grid>
+                    <ListBox ItemsSource="{Binding Clients}" SelectedItem="{Binding Selected}"
+                             AutomationProperties.Name="Clients">
+                        <ListBox.ItemTemplate>
+                            <!-- Id gets a LOCAL Foreground bound back to the
+                                 generated ListBoxItem — Styles.xaml's
+                                 ListBoxItem style comment explains why: an
+                                 ItemTemplate's TextBlocks are exactly as
+                                 exposed to the "Style Setter outranks
+                                 inheritance" trap as an auto-wrapped one, and
+                                 this ItemTemplate's LOCAL ContentTemplate
+                                 assignment outranks that style's own
+                                 ContentTemplate Setter, so only a call-site
+                                 fix reaches it. NextNumberText is NOT given
+                                 that same blanket binding: it also carries
+                                 an inline Style BasedOn CaptionText for its
+                                 de-emphasised at-rest look, and a LOCAL
+                                 Foreground on the SAME TextBlock as that
+                                 Style's Setter would outrank it, silently
+                                 pinning NextNumberText to full-emphasis
+                                 Theme.Text whenever the row is unselected
+                                 (found in the 2026-08-02 theme-coverage final
+                                 review). Fixed with a conditional Style
+                                 instead: BasedOn CaptionText (small AND
+                                 de-emphasised) so its Setter still applies at
+                                 rest, with a DataTrigger that only overrides
+                                 Foreground to Theme.AccentText while the row
+                                 is selected. -->
+                            <DataTemplate>
+                                <DockPanel ToolTip="{Binding Summary}" Background="Transparent">
+                                    <!-- the next number, at a glance -->
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding NextNumberText}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsSelected,
+                                                        RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                                        Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding Id}" TextTrimming="CharacterEllipsis"
+                                               Foreground="{Binding Foreground,
+                                                   RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                                </DockPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                            IsHitTestVisible="False" Background="{DynamicResource Theme.Surface}"
+                            BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
+                            CornerRadius="4" Padding="16">
+                        <Border.Visibility>
+                            <Binding Path="Clients.Count" Converter="{StaticResource ZeroToVis}" />
+                        </Border.Visibility>
+                        <StackPanel>
+                            <ContentControl Template="{StaticResource Illustration.LabelsEmpty}"
+                                             Height="76" Margin="0,0,0,8" />
+                            <TextBlock Text="No clients yet — click Add."
+                                       Style="{StaticResource SubtleText}"
+                                       HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </DockPanel>
+
+            <!-- selected client -->
+            <!-- IsSharedSizeScope: the five rows below share the LabelCol
+                 SharedSizeGroup on their first column (2026-08-04, Task 7)
+                 so the label column grows with the configured text size
+                 instead of clipping at a fixed 130px, while all five stay
+                 aligned to the widest label ("Next label number:"). Without
+                 IsSharedSizeScope="True" on a common ancestor, SharedSizeGroup
+                 has no scope to coordinate within and the columns silently
+                 go back to sizing independently. -->
+            <!-- The form scrolls rather than spilling. It grows with ui_font_size
+                 (6-72) while this * Grid row does not, and a Grid neither clips
+                 nor scrolls: past about 16px the last rows were arranged under
+                 the preview section below and painted over by it, so the
+                 date-style choice was not on screen at all. Same treatment
+                 SettingsWindow and UnlockWindow give their own forms. -->
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="16,0,0,0" DataContext="{Binding Selected}"
+                            Grid.IsSharedSizeScope="True">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                    <Setter Property="IsEnabled" Value="False" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Client id:" Style="{StaticResource FieldLabel}" />
+                        <TextBox x:Name="IdBox" Grid.Column="1" CharacterCasing="Upper" MaxLength="8"
+                                 Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Client id" />
+                        <TextBlock Grid.Column="2" Text="2-8 letters or digits"
+                                   Style="{StaticResource CaptionText}"
+                                   VerticalAlignment="Center" Margin="8,0,0,0"
+                                   TextTrimming="CharacterEllipsis" />
+                    </Grid>
+
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Keep boxes (days):" Style="{StaticResource FieldLabel}" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding DestroyDaysText, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Keep boxes days" />
+                        <TextBlock Grid.Column="2" Text="sets the destruction date"
+                                   Style="{StaticResource CaptionText}"
+                                   VerticalAlignment="Center" Margin="8,0,0,0"
+                                   TextTrimming="CharacterEllipsis" />
+                    </Grid>
+
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Next label number:" Style="{StaticResource FieldLabel}" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding NextNumberText, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Next label number" />
+                        <Button Grid.Column="2" Margin="8,0,0,0"
+                                Style="{StaticResource ChipButton}" VerticalAlignment="Center"
+                                ToolTip="Start this client's numbering over at 00000001"
+                                AutomationProperties.Name="Reset to 1"
+                                Command="{Binding DataContext.ResetNumberCommand,
+                                          RelativeSource={RelativeSource AncestorType=Window}}">
+                            <TextBlock Text="Reset to 1" Style="{StaticResource ChipButtonLabel}" />
+                        </Button>
+                    </Grid>
+
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                            <ColumnDefinition Width="60" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Labels to print:" Style="{StaticResource FieldLabel}" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding DataContext.LabelCountText,
+                                        RelativeSource={RelativeSource AncestorType=Window},
+                                        UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Labels to print" />
+                        <!-- whole-sheet presets: one click for the common runs -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0"
+                                    VerticalAlignment="Center">
+                            <Button Tag="10" Click="OnCountPreset" MinWidth="36"
+                                    Style="{StaticResource ChipButton}" AutomationProperties.Name="10">
+                                <TextBlock Text="10" Style="{StaticResource ChipButtonLabel}" />
+                            </Button>
+                            <Button Tag="20" Click="OnCountPreset" MinWidth="36"
+                                    Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="20">
+                                <TextBlock Text="20" Style="{StaticResource ChipButtonLabel}" />
+                            </Button>
+                            <Button Tag="30" Click="OnCountPreset" MinWidth="36"
+                                    Style="{StaticResource ChipButton}" Margin="4,0,0,0" AutomationProperties.Name="30">
+                                <TextBlock Text="30" Style="{StaticResource ChipButtonLabel}" />
+                            </Button>
+                        </StackPanel>
+                        <TextBlock Grid.Column="3" Text="10 per sheet · 4×2 in"
+                                   Style="{StaticResource CaptionText}"
+                                   VerticalAlignment="Center" Margin="8,0,0,0"
+                                   TextTrimming="CharacterEllipsis" />
+                    </Grid>
+
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Date bars:" Style="{StaticResource FieldLabel}" />
+                        <!-- WrapPanel, not a horizontal StackPanel: at the window's
+                             MinWidth (or a larger configured app font) the second
+                             option used to march off the window edge — wrapping to
+                             a second line keeps both choices on screen
+                             (LabelMakerOverflowTests) -->
+                        <WrapPanel Grid.Column="1">
+                            <RadioButton GroupName="DateStyle" Content="Black bars (white text)"
+                                         IsChecked="{Binding DataContext.DateStyleBars,
+                                                     RelativeSource={RelativeSource AncestorType=Window}}"
+                                         VerticalAlignment="Center" Margin="0,4,14,4" />
+                            <RadioButton GroupName="DateStyle" Content="Plain (black text)"
+                                         IsChecked="{Binding DataContext.DateStylePlain,
+                                                     RelativeSource={RelativeSource AncestorType=Window}}"
+                                         VerticalAlignment="Center" Margin="0,4" />
+                        </WrapPanel>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- the first label, rendered exactly as it will print -->
+            <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0">
+                <TextBlock Text="{Binding Preview}" FontWeight="SemiBold" TextWrapping="Wrap"
+                           Margin="0,0,0,6" />
+                <Border BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
+                        CornerRadius="4" Padding="10"
+                        Background="{DynamicResource Theme.Surface}">
+                    <Grid Height="160">
+                        <views:LabelPreviewControl Item="{Binding PreviewItem}"
+                                                   DateStyle="{Binding DateStyle}"
+                                                   AutomationProperties.Name="Label preview" />
+                        <TextBlock Text="Fix the inputs above to see the label."
+                                   HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding PreviewItem}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                </Border>
+            </StackPanel>
+        </Grid>
+    </DockPanel>
+</Window>

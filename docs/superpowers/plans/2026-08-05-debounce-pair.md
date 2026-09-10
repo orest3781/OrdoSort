@@ -9,7 +9,7 @@
 - **5.4 (tile preview)** lives in `SettingsViewModel`, which already constructs `DebouncedProbe`s, already takes a scheduler and `uiContext`, and already disposes them. Small and contained.
 - **5.2 (Bulk Rename)** is structural: `BulkRenameViewModel` has a **parameterless constructor**, is **not `IDisposable`**, and is built at nine call sites — most of them tests that set a property and immediately assert on `Preview`. Debouncing breaks that synchronous contract, so the constructor, the disposal, and those tests all move together.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\OrdoSort`, branch `main`, base `d76028d`.
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\OrdoSort`, branch `main`, base `d76028d`.
 
 ## Global Constraints
 

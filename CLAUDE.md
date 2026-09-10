@@ -1,4 +1,4 @@
-@S:\CLAUDE.md
+@A:\DEV\CLAUDE.md
 
 # C# guidelines
 

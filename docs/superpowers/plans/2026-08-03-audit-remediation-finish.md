@@ -6,7 +6,7 @@
 
 **Architecture:** The original Task 10 is split into three independently reviewable packages (caption sizing, shared field rows, primary-button/rhythm) because a reviewer can meaningfully reject any one of them while approving its neighbours, and because Task 3 below is the only one that can move pixels in four windows at once. Original Tasks 11 and 12 keep their shape. Every package ends green with its own tests and its own commit; nothing is pushed until the final gate.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\OrdoSort`, branch `main`.
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\OrdoSort`, branch `main`.
 
 ## Global Constraints
 

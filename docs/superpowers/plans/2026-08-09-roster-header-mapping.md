@@ -6,7 +6,7 @@
 
 **Why this is Critical:** this mapping decides **which person a document is filed against**. A wrong guess files someone's records under someone else's name, and today the UI says *"Roster loaded: N people."* either way.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\ordosort-session` (worktree), branch `session/header-pickers`, base `4a006e5`.
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\ordosort-session` (worktree), branch `session/header-pickers`, base `4a006e5`.
 
 ## The defects, all confirmed by reading the code
 
@@ -44,7 +44,7 @@ _controlHeader = Pick("control", "control", "id");
   ```
   Core.Tests takes ~56s by design — not a hang.
 - **Two environment-sensitive suites — report, never chase, never weaken:** `FocusRingCoverageTests.TabItemShowsTheBronzeFocusRing`, `WebViewPdfViewerGuardBehaviourTests` (all 5 fail together with COM `Class not registered`, pass on re-run).
-- **Work only in the `S:\ordosort-session` worktree.** `S:\OrdoSort` is a different checkout with another session active in it — do not touch it, do not `cd` into it.
+- **Work only in the `A:\DEV\ordosort-session` worktree.** `A:\DEV\OrdoSort` is a different checkout with another session active in it — do not touch it, do not `cd` into it.
 - **This session cannot drive the real UI** — screen capture returns black, input injection denied. Verify off-screen on the WPF suite's STA fixture.
 - **The pattern is at thirteen.** A test that proves a roster loads is not a test that proves it loaded *correctly*. Assert which column each role resolved to, not that no exception was thrown.
 - Never `--no-verify`, never force, **never push**.

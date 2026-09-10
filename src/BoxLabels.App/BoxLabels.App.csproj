@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Box Labels: the label maker on its own, for someone who has no use for
+       the rest of OrdoSort. The window, the view model and the label
+       rendering all come from OrdoSort.Ui — this project is a front door and
+       nothing more, so a change to what a label looks like cannot land in one
+       application and miss the other.
+
+       It prints from the SAME box-labels.json as OrdoSort, through the same
+       BoxLabelStore. That is what keeps the running box number unique across
+       stations; a second reader/writer here would eventually put the same
+       number on two physical boxes. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>BoxLabels</AssemblyName>
+    <!-- NOT "BoxLabels": OrdoSort.Core already has a BoxLabels CLASS, and a
+         root namespace of the same name shadows it in any project that
+         references both — which the test project does, and which broke every
+         existing BoxLabels.Batch(...) call the moment this project was added.
+         The assembly is still BoxLabels.exe, and that is the only one of these
+         names a user ever sees. -->
+    <RootNamespace>BoxLabelsApp</RootNamespace>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <!-- Same per-monitor-v2 DPI declaration OrdoSort makes, for the same
+         reason — see the manifest's own comment. -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- also a WPF resource so windows show it when run via the dotnet host -->
+    <Resource Include="app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The MIT terms these packages carry require the notice to accompany
+         the distribution, and this build is handed to someone by definition. -->
+    <None Include="..\..\THIRD-PARTY-NOTICES" Link="THIRD-PARTY-NOTICES"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- the WPF SDK drops the System.IO implicit using (Shapes.Path clash) -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OrdoSort.Ui\OrdoSort.Ui.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OrdoSort.Wpf.Tests" />
+  </ItemGroup>
+
+</Project>

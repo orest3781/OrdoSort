@@ -6,7 +6,7 @@
 
 **Architecture:** Four small "doc" types serialize each side file; `Config.Load` gains side-file-wins/inline-fallback resolution and `Config.Save` writes the main file without the split sections plus the three Settings-owned docs (box-labels is bootstrap-only). A new `BoxLabelStore` does exclusive-open read-modify-write with retries for every label mutation. The Settings UI gains a Data files section; demo generators emit the split layout.
 
-**Tech Stack:** C# / .NET 8, System.Text.Json (incl. `JsonNode` for section-stripped saves), xUnit. Repo `S:\OrdoSort`, branch `main` (user-approved; normal commits per task, push only in the final task).
+**Tech Stack:** C# / .NET 8, System.Text.Json (incl. `JsonNode` for section-stripped saves), xUnit. Repo `A:\DEV\OrdoSort`, branch `main` (user-approved; normal commits per task, push only in the final task).
 
 ## Global Constraints
 

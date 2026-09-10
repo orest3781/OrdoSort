@@ -18,7 +18,7 @@ one.
    share), QC-22 (WebView2 history DB of every previewed document), R4 + DW-37 (the same
    log's rotation and interleaving) are the only open items touching patient data — for
    this app that is the reputational tail risk. ▸ Recommend yes, immediately after batch B.
-3. **`docs/sample/` — may I move the 412 real exports to `S:\OrdoSort-samples` now?**
+3. **`docs/sample/` — may I move the 412 real exports to `A:\DEV\OrdoSort-samples` now?**
    (DW-13; one `Move-Item`; a QC subagent already read a row of one CSV, which is the
    exact predicted failure.) ▸ Recommend yes, today, independent of any batch.
 4. **Are `docs/FileMover.py`, `docs/paper_mover_logger.py`, `docs/RemoveReadOnly.ps1`

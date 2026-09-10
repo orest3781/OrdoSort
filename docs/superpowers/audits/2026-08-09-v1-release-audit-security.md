@@ -1,6 +1,6 @@
 # v1.0 release audit - security, privacy, configuration, concurrency (shared SMB deployment)
 
-Repo: `S:\ordosort-session`, branch `session/header-pickers`, HEAD `6c11ead`.
+Repo: `A:\DEV\ordosort-session`, branch `session/header-pickers`, HEAD `6c11ead`.
 Read-only; nothing in the worktree was changed except this file.
 
 Scope: `Config.ResolveBeside*`/`ResolveConfined` path handling; concurrent-station

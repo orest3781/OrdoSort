@@ -6,7 +6,7 @@
 
 **Architecture:** Four independent fixes in `OrdoSort.Core` and `UnlockViewModel`, then a gate. They are separate tasks because a reviewer could reject any one while approving the others, and because two of them (4.3 and 4.2) can change what an existing user's config does — a class of risk worth its own gate each.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\OrdoSort`, branch `main`, base `512b999`.
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\OrdoSort`, branch `main`, base `512b999`.
 
 ## Global Constraints
 

@@ -70,9 +70,16 @@ public partial class PrintPreviewWindow : Window
 
     public bool Printed { get; private set; }
 
-    public PrintPreviewWindow(FixedDocument doc, string jobName, Action<string> warn)
+    /// <summary><paramref name="windowTitle"/> is the caller's, because this
+    /// window is shared by two applications and a library has no business
+    /// naming either of them. The default is what an unbranded host gets;
+    /// OrdoSort and BoxLabels each pass their own, so the title bar never
+    /// says the name of a product the user does not have.</summary>
+    public PrintPreviewWindow(FixedDocument doc, string jobName, Action<string> warn,
+        string windowTitle = "Print preview")
     {
         InitializeComponent();
+        Title = windowTitle;
         _doc = doc;
         _jobName = jobName;
         _warn = warn;

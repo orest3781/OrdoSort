@@ -262,7 +262,7 @@ public class FolderMonitorTests : IDisposable
             AlertTexts = new() { "URGENT", "STAT" },
             WatchFolders = new()
             {
-                new WatchFolder { Label = "Failed", Path = "S:/x", Recursive = true, Filetypes = "pdf,txt", Color = "#c0392b" },
+                new WatchFolder { Label = "Failed", Path = "A:/DEV/x", Recursive = true, Filetypes = "pdf,txt", Color = "#c0392b" },
             },
         };
         Config.Save(cfg, path);

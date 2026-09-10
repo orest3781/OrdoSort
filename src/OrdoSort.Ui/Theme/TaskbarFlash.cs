@@ -7,7 +7,7 @@ namespace OrdoSort.Wpf.Theme;
 /// <summary>Flashes a window's taskbar button to pull the eye when a new
 /// alert lands and the app isn't in focus — the "something needs you" nudge
 /// that a dashboard tile alone can't give.</summary>
-internal static class TaskbarFlash
+public static class TaskbarFlash
 {
     [StructLayout(LayoutKind.Sequential)]
     private struct FLASHWINFO

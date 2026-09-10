@@ -12,7 +12,7 @@
 
 **Architecture:** Four grids, and **they are not all the same problem**. Three are bounded (a rename batch, a candidate list, a merge preview) where WPF's `Auto` behaves well. **History is virtualized over an unbounded table**, where `Auto` measures only *realized* rows — so columns visibly jump as you scroll and a longer path renders. That is the failure mode decision 1 exists to prevent, so History needs a different tactic and Task 1 Step 5 settles it by measurement.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\OrdoSort`, branch `main`, base `26684b3`.
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\OrdoSort`, branch `main`, base `26684b3`.
 
 ## Current state
 

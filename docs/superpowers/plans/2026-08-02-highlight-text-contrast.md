@@ -6,7 +6,7 @@
 
 **Architecture:** Measure first (the remedy is chosen by harness comparison, because the obvious one failed in this codebase before), apply one shared remedy to each broken template in `Theme/Styles.xaml`, then close the CI gap with a headless test that asserts *resolved* colours rather than palette pairs.
 
-**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `S:\OrdoSort`, branch `main`.
+**Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\OrdoSort`, branch `main`.
 
 ## Global Constraints
 
