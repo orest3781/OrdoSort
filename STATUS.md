@@ -9,7 +9,7 @@
 ## Next
 - [x] Delete the four local `fix/*` branches — all fully merged into `main`, nothing on GitHub
 - [x] Merge `feature/box-labels-standalone` into `main` — long-lived branch, house rule says short-lived
-- [ ] Decide whether `feature/box-labels-standalone` and `docs/refinement-tracker` should stay — both are merged into `main` and both still exist locally and on GitHub
+- [x] Decide whether `feature/box-labels-standalone` and `docs/refinement-tracker` should stay — deleted 2026-09-12, local and on GitHub, both fully merged into `main`
 - [ ] Three xUnit1031 warnings in `OrdoSort.Wpf.Tests` — blocking task calls in `BulkRenameSortedNavigationTests` and `DeleteKeyTests`, which xUnit says can deadlock
 
 ## Blocked
