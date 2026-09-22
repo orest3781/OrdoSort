@@ -29,7 +29,9 @@ run uploads one under the run's Artifacts):
   [Box Labels, on its own](#box-labels-on-its-own).
 
 Unzip anywhere and run — the app reads (or creates on first run) a
-`config.json` beside the exe, or takes `--config <path>`. Locally,
+`config.json` beside the exe, or takes `--config <path>`. Every setting lives
+in that one file except the box labels, which keep their running box numbers
+in `box-labels.json` beside it (shared with Box Labels). Locally,
 `publish.bat` builds the same portable exe into `publish\`.
 
 To cut a release: `git tag v1.0.0 && git push origin v1.0.0` — the Release

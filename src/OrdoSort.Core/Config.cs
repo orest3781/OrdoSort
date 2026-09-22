@@ -171,39 +171,24 @@ public sealed class Config
     [JsonPropertyName("label_clients")] public List<LabelClient> LabelClients { get; set; } = new();
     [JsonPropertyName("sounds")] public SoundSettings Sounds { get; set; } = new();
 
-    // ---- split config: where each section lives (relative = beside config.json)
-    public const string DefaultDestinationsFile = "destinations.json";
-    public const string DefaultMonitoredFoldersFile = "monitored-folders.json";
-    public const string DefaultAlertsFile = "alerts.json";
+    // ---- box labels live in their own file (relative = beside config.json).
+    // Everything else — destinations, monitored folders, alert words — is in
+    // config.json itself. The labels file stays separate because its running
+    // box numbers have their own exclusive writer (BoxLabelStore), shared with
+    // the standalone Box Labels app; a Settings save must never rewrite them.
     public const string DefaultBoxLabelsFile = "box-labels.json";
 
-    [JsonPropertyName("destinations_file")] public string DestinationsFile { get; set; } = DefaultDestinationsFile;
-    [JsonPropertyName("monitored_folders_file")] public string MonitoredFoldersFile { get; set; } = DefaultMonitoredFoldersFile;
-    [JsonPropertyName("alerts_file")] public string AlertsFile { get; set; } = DefaultAlertsFile;
+    /// <summary>Keys from the old split layout, when destinations, monitored
+    /// folders and alerts each had their own file. Those files are no longer
+    /// read; the keys are dropped on load so a saved config.json doesn't keep
+    /// pointing at files nothing uses.</summary>
+    internal static readonly string[] RetiredSideFileKeys =
+        { "destinations_file", "monitored_folders_file", "alerts_file" };
+
     [JsonPropertyName("box_labels_file")] public string BoxLabelsFile { get; set; } = DefaultBoxLabelsFile;
 
-    // Unknown top-level keys of each side file, carried for round-trip
-    [JsonIgnore] public Dictionary<string, JsonElement> DestinationsFileExtras { get; set; } = new();
-    [JsonIgnore] public Dictionary<string, JsonElement> MonitoredFoldersFileExtras { get; set; } = new();
-    [JsonIgnore] public Dictionary<string, JsonElement> AlertsFileExtras { get; set; } = new();
+    // Unknown top-level keys of box-labels.json, carried for round-trip
     [JsonIgnore] public Dictionary<string, JsonElement> BoxLabelsFileExtras { get; set; } = new();
-
-    /// <summary>Non-null after <see cref="Load(string,bool)"/> when two of the
-    /// four side-file keys resolve to the same file (QC-08). Load does NOT
-    /// throw for this — a config problem that blocks startup leaves the user
-    /// no in-app recovery (2026-08-07 audit D2), and adding a second one here
-    /// would regress against that while fixing this. The next <see cref="Save"/>
-    /// or <see cref="TrySave"/> DOES refuse, which is what actually prevents
-    /// the data loss; this string only makes the problem visible as data
-    /// instead of losing it silently, the same "never throws, problems come
-    /// back as data" contract <c>Scanner.DeferredSummary</c> documents. As of
-    /// the app-qc-2026-08-21 fix pass, "visible as data" is no longer a
-    /// dead end: OrdoSort.Wpf.ViewModels.ShellViewModel.RefreshNotices reads
-    /// this field into the same non-blocking notification rail every other
-    /// startup-time problem already uses — a config that already carries a
-    /// collision (a hand edit, or a save made before this check existed) no
-    /// longer starts the app with no indication at all.</summary>
-    [JsonIgnore] public string? SideFileCollisionWarning { get; set; }
 
     [JsonExtensionData] public Dictionary<string, JsonElement> Extras { get; set; } = new();
 
@@ -294,46 +279,21 @@ public sealed class Config
             throw new ConfigException(
                 $"poll_seconds must be {MinPollSeconds}-{MaxPollSeconds}, " +
                 $"got {cfg.PollSeconds}");
-        // ---- split sections: a side file wins; inline (legacy) is the fallback
-        if (ReadDoc<DestinationsDoc>(path, cfg.DestinationsFile, "destinations_file") is { } dd)
-        {
-            cfg.Routes = Clean(dd.Routes);
-            cfg.DestinationsFileExtras = dd.Extras ?? new();
-        }
-        if (ReadDoc<MonitoredFoldersDoc>(path, cfg.MonitoredFoldersFile, "monitored_folders_file") is { } md)
-        {
-            cfg.WatchFolders = Clean(md.WatchFolders);
-            cfg.MonitoredFoldersFileExtras = md.Extras ?? new();
-        }
-        if (ReadDoc<AlertsDoc>(path, cfg.AlertsFile, "alerts_file") is { } ad)
-        {
-            cfg.AlertTexts = Clean(ad.AlertTexts);
-            cfg.AlertsFileExtras = ad.Extras ?? new();
-        }
+        // ---- box labels: the side file wins; inline (legacy) is the fallback
         if (ReadDoc<BoxLabelsDoc>(path, cfg.BoxLabelsFile, "box_labels_file") is { } bd)
         {
             cfg.LabelClients = Clean(bd.LabelClients);
             cfg.BoxLabelsFileExtras = bd.Extras ?? new();
         }
         cfg.NormalizeSectionItems();
-        // Surfaced, never thrown — see SideFileCollisionWarning's own doc
-        // comment for why a collision here must not join naming_mode/sort/
-        // etc. above in blocking startup. TryFindSideFileCollision, not the
-        // throwing check Save/TrySave use, is the point of that split.
-        if (TryFindSideFileCollision(path, cfg.DestinationsFile, cfg.MonitoredFoldersFile,
-                cfg.AlertsFile, cfg.BoxLabelsFile, out var collKeyA, out var collKeyB, out var collPath))
-            cfg.SideFileCollisionWarning =
-                $"{collKeyA} and {collKeyB} both point at {collPath}, so only one of them " +
-                "actually holds what was last saved there. OrdoSort started anyway, but fix " +
-                "this in Settings — Save will refuse until the two point at different files.";
         return cfg;
     }
 
     /// <summary>Resolve a section-file path: absolute stays; relative lands
     /// beside config.json (the names_file / history_db rule). Unconfined —
     /// see <see cref="ResolveBesideForRead"/> / <see cref="ResolveBesideForWrite"/>
-    /// for the confinement-checked callers that guard the four side-file
-    /// keys. Kept public because it still answers a narrower question
+    /// for the confinement-checked callers that guard the box_labels_file
+    /// key. Kept public because it still answers a narrower question
     /// ("where would this spelling point?") used by the Settings UI to
     /// detect whether a re-typed path is the same physical file.</summary>
     public static string ResolveBeside(string configPath, string sectionPath) =>
@@ -383,7 +343,7 @@ public sealed class Config
     /// is the fix for the share-write to local-arbitrary-write escalation
     /// (2026-08 audit finding 4.2[A]): on the shared-config deployment this
     /// app supports, anyone who can edit config.json on the share could
-    /// otherwise point one of the four side-file keys at any file on every
+    /// otherwise point box_labels_file at any file on every
     /// other station's disk and have it overwritten at that station's next
     /// Save. There is no backward-compatibility carve-out on write — even
     /// though the Settings "Data files" Browse... buttons themselves now
@@ -400,13 +360,26 @@ public sealed class Config
     /// regardless of how it arrived. See <see cref="ResolveBesideForRead"/>
     /// for the read-side half of the split that keeps an already-configured
     /// absolute path loadable.</summary>
-    public static string ResolveBesideForWrite(string configPath, string sectionPath, string keyName) =>
-        ResolveConfined(configPath, sectionPath, keyName);
+    ///
+    /// Also refuses the config file itself: config.json holds every
+    /// destination, monitored folder and alert, and BoxLabelStore writing
+    /// its counters into it — then the next config save dropping
+    /// label_clients again — would reset the running box numbers and reissue
+    /// numbers already printed on physical boxes.
+    public static string ResolveBesideForWrite(string configPath, string sectionPath, string keyName)
+    {
+        var full = ResolveConfined(configPath, sectionPath, keyName);
+        if (PathIdentity.Same(full, Path.GetFullPath(configPath)))
+            throw new ConfigException(
+                $"{keyName} can't be the config file itself ({full}). Box labels keep their " +
+                "running numbers in their own file — use a different name, such as box-labels.json.");
+        return full;
+    }
 
     /// <summary>Resolve a side-file path for READING. A fully-qualified
     /// absolute path (one with a drive or UNC root — Path.IsPathFullyQualified,
     /// which is what Microsoft.Win32.OpenFileDialog's Browse... buttons
-    /// always hand back for these four keys) is preserved as-is, even
+    /// always hands back for this key) is preserved as-is, even
     /// outside the config directory: that is a shipped, UI-reachable
     /// capability, and refusing to read a station's already-working
     /// absolute-pathed side file would silently relocate its data out from
@@ -441,53 +414,52 @@ public sealed class Config
         }
     }
 
-    /// <summary>Which two of the four side-file keys — if any — resolve to
-    /// the same file. Resolved through <see cref="ResolveBesideForWrite"/>,
-    /// the exact confinement-checked path <see cref="Save"/> and
-    /// <see cref="TrySave"/> actually write through, and compared through
-    /// <see cref="PathIdentity"/> rather than a raw string compare
-    /// (CONTEXT.md: "path identity is decided in exactly one place") — so
-    /// "./destinations.json" and "destinations.json" collide exactly like an
-    /// identical spelling. A key whose OWN path escapes confinement is left
-    /// out of the comparison: that is a separate refusal, raised
-    /// independently wherever the key is actually resolved for real, and
-    /// folding it in here would report the wrong pair instead of the real
-    /// one. Public (not private) so Settings' HardErrors can run this exact
-    /// check against the form's live, not-yet-saved values before OK is
-    /// accepted, instead of only finding out from a refused Save.
-    ///
-    /// QC-08 (2026-08-21 audit): pointing monitored_folders_file at
-    /// destinations.json let one Save silently erase every filing
-    /// destination, because WriteDoc is a full re-serialization of one doc
-    /// type, never a read-modify-write.</summary>
-    public static bool TryFindSideFileCollision(string configPath,
-        string destinationsFile, string monitoredFoldersFile, string alertsFile, string boxLabelsFile,
-        out string keyA, out string keyB, out string collisionPath)
+    /// <summary>The three config.json sections another station can change
+    /// under this one — destinations, monitored folders, alerts — read from
+    /// config.json ONLY (never box-labels.json, whose exclusive-lock writer
+    /// must not be able to make this read fail), plus each section's JSON
+    /// text for fingerprinting. Null when config.json doesn't exist. Every
+    /// way the file can fail to read — locked or vanishing mid-replace, bad
+    /// JSON, the same key twice (which JsonNode refuses though the
+    /// serializer accepts it) — comes back as a <see cref="ConfigException"/>
+    /// with a readable message, so a caller has exactly one thing to
+    /// catch.</summary>
+    public static SharedSections? ReadSharedSections(string configPath)
     {
-        var keys = new (string Key, string Value)[]
+        if (!File.Exists(configPath)) return null;
+        string text;
+        try { text = File.ReadAllText(configPath); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            ("destinations_file", destinationsFile),
-            ("monitored_folders_file", monitoredFoldersFile),
-            ("alerts_file", alertsFile),
-            ("box_labels_file", boxLabelsFile),
-        };
-        var resolved = new List<(string Key, string Full)>();
-        foreach (var (key, value) in keys)
-        {
-            try { resolved.Add((key, ResolveBesideForWrite(configPath, value, key))); }
-            catch (ConfigException) { /* that key's own confinement refusal fires separately */ }
+            throw new ConfigException(ReadProblem(configPath), ex);
         }
-        for (var i = 0; i < resolved.Count; i++)
-            for (var j = i + 1; j < resolved.Count; j++)
-                if (PathIdentity.Same(resolved[i].Full, resolved[j].Full))
-                {
-                    keyA = resolved[i].Key;
-                    keyB = resolved[j].Key;
-                    collisionPath = resolved[i].Full;
-                    return true;
-                }
-        keyA = keyB = collisionPath = "";
-        return false;
+        Config cfg;
+        string? routesJson, watchFoldersJson, alertTextsJson;
+        try
+        {
+            var node = JsonNode.Parse(text) as JsonObject
+                       ?? throw new ConfigException($"Config file {configPath} is not a JSON object.");
+            // JsonObject builds its key table lazily, so a duplicate key
+            // throws here, on first lookup — not in Parse above.
+            routesJson = node["routes"]?.ToJsonString();
+            watchFoldersJson = node["watch_folders"]?.ToJsonString();
+            alertTextsJson = node["alert_texts"]?.ToJsonString();
+            cfg = JsonSerializer.Deserialize<Config>(text, Opts)
+                  ?? throw new ConfigException($"Config file {configPath} is empty");
+        }
+        catch (JsonException ex)
+        {
+            throw new ConfigException(JsonProblem(configPath, ex), ex);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new ConfigException(
+                $"Config file {configPath} has the same setting written twice. Open it in a " +
+                "text editor and remove one of them.", ex);
+        }
+        cfg.Normalize();
+        return new SharedSections(cfg.Routes, cfg.WatchFolders, cfg.AlertTexts,
+            routesJson, watchFoldersJson, alertTextsJson);
     }
 
     /// <summary>An explicit JSON null means the same thing as an absent key:
@@ -520,9 +492,6 @@ public sealed class Config
         Theme ??= "auto";
         WordSeparator ??= "";
 
-        DestinationsFile ??= DefaultDestinationsFile;
-        MonitoredFoldersFile ??= DefaultMonitoredFoldersFile;
-        AlertsFile ??= DefaultAlertsFile;
         BoxLabelsFile ??= DefaultBoxLabelsFile;
 
         Routes = Clean(Routes);
@@ -535,6 +504,7 @@ public sealed class Config
         MergeColumns ??= new();
         MergeTypes ??= "";
         Extras ??= new();
+        foreach (var key in RetiredSideFileKeys) Extras.Remove(key);
 
         Sounds ??= new();
         Sounds.NewAlert ??= "";
@@ -548,7 +518,7 @@ public sealed class Config
     }
 
     /// <summary>Per-item null-hardening for Routes, WatchFolders, and LabelClients.
-    /// Called by Normalize() and also by Load() after reading side files to ensure
+    /// Called by Normalize() and also by Load() after reading box-labels.json to ensure
     /// consistency regardless of source.</summary>
     internal void NormalizeSectionItems()
     {
@@ -572,24 +542,8 @@ public sealed class Config
     private static List<T> Clean<T>(List<T>? items) where T : class =>
         items is null ? new() : items.Where(i => i is not null).ToList();
 
-    /// <summary>Refuses a Save/TrySave the same way ResolveConfined already
-    /// refuses an escaping path — see <see cref="TryFindSideFileCollision"/>
-    /// for what counts as a collision. Must run before ANY of the four
-    /// side-file writes: each one is a full re-serialization of one doc
-    /// type, so writing even one of a colliding pair before this check ran
-    /// would already have destroyed the other's content (QC-08).</summary>
-    private static void CheckSideFileUniqueness(Config cfg, string path)
-    {
-        if (TryFindSideFileCollision(path, cfg.DestinationsFile, cfg.MonitoredFoldersFile,
-                cfg.AlertsFile, cfg.BoxLabelsFile, out var keyA, out var keyB, out var collisionPath))
-            throw new ConfigException(
-                $"{keyA} and {keyB} both resolve to {collisionPath}. Two side-file keys can't " +
-                "name the same file — each Save fully rewrites its own file, so the second " +
-                "write would silently erase what the first just saved. Point them at different files.");
-    }
-
-    /// <summary>Write the main config (without the split sections) and the
-    /// Settings-owned side files. box-labels.json is bootstrap-only: created
+    /// <summary>Write config.json (everything except the box labels) and
+    /// bootstrap box-labels.json. box-labels.json is bootstrap-only: created
     /// when missing, never overwritten — its counters belong to the Box
     /// labels tool's exclusive writer (BoxLabelStore). The bootstrap write
     /// goes through <see cref="WriteAtomicNew"/>, not <see cref="WriteAtomic"/>:
@@ -599,16 +553,9 @@ public sealed class Config
     /// finding 1). See WriteAtomicNew's doc comment for the full story.</summary>
     public static void Save(Config cfg, string path)
     {
-        CheckSideFileUniqueness(cfg, path);
         var dir = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
         SaveMain(cfg, path);
-        WriteDoc(path, cfg.DestinationsFile, "destinations_file",
-            new DestinationsDoc { Routes = cfg.Routes, Extras = cfg.DestinationsFileExtras });
-        WriteDoc(path, cfg.MonitoredFoldersFile, "monitored_folders_file",
-            new MonitoredFoldersDoc { WatchFolders = cfg.WatchFolders, Extras = cfg.MonitoredFoldersFileExtras });
-        WriteDoc(path, cfg.AlertsFile, "alerts_file",
-            new AlertsDoc { AlertTexts = cfg.AlertTexts, Extras = cfg.AlertsFileExtras });
         // The Exists probe MUST run on the same confined path as the write,
         // not the unconfined ResolveBeside: probing an unconfined path
         // first (and only confining the write once the probe says
@@ -617,8 +564,8 @@ public sealed class Config
         // that path exists and throw when it doesn't, letting a hostile
         // shared config.json learn whether a given file exists anywhere on
         // the victim's disk. Resolving once, confined, closes that: an
-        // escaping box_labels_file is refused unconditionally, the same as
-        // the other three keys, before any filesystem probe happens at all.
+        // escaping box_labels_file is refused unconditionally, before any
+        // filesystem probe happens at all.
         var labels = ResolveBesideForWrite(path, cfg.BoxLabelsFile, "box_labels_file");
         if (!File.Exists(labels))
             WriteJsonNew(labels,
@@ -641,8 +588,7 @@ public sealed class Config
     /// giving either a reader or a dropped connection time to let go.
     ///
     /// This is for files where a newer replacement is always correct — the
-    /// main config and the destinations/monitored-folders/alerts side files,
-    /// all owned exclusively by whichever station last hit Save. It must
+    /// main config, owned exclusively by whichever station last hit Save. It must
     /// NOT be used for box-labels.json's bootstrap write: see
     /// <see cref="WriteAtomicNew"/>.</summary>
     internal static void WriteAtomic(string fullPath, string content)
@@ -725,15 +671,9 @@ public sealed class Config
     private static void SaveMain(Config cfg, string path)
     {
         var node = JsonSerializer.SerializeToNode(cfg, Opts)!.AsObject();
-        node.Remove("routes");
-        node.Remove("watch_folders");
-        node.Remove("alert_texts");
         node.Remove("label_clients");
         WriteAtomic(path, node.ToJsonString(Opts) + "\n");
     }
-
-    private static void WriteDoc<T>(string configPath, string sectionPath, string keyName, T doc) =>
-        WriteJson(ResolveBesideForWrite(configPath, sectionPath, keyName), doc);
 
     internal static void WriteJson<T>(string fullPath, T doc) =>
         WriteAtomic(fullPath, JsonSerializer.Serialize(doc, Opts) + "\n");
@@ -786,18 +726,6 @@ public sealed class Config
         var errors = new List<string>();
         var refused = new List<string>();
 
-        // Checked before any I/O at all — same reasoning as CheckSideFileUniqueness's
-        // own doc comment. Not added to `refused`: that list means "a confinement
-        // escape", a different, narrower refusal ShellViewModel treats as
-        // structural-and-suppressible; a collision gets its own message every time.
-        Attempt(() => CheckSideFileUniqueness(cfg, path), path);
-        if (errors.Count > 0)
-        {
-            error = string.Join("; ", errors);
-            refusedSideFileKeys = Array.Empty<string>();
-            return false;
-        }
-
         var dir = Path.GetDirectoryName(Path.GetFullPath(path));
         Attempt(() => { if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir); }, path);
         if (errors.Count > 0)
@@ -808,15 +736,6 @@ public sealed class Config
         }
 
         Attempt(() => SaveMain(cfg, path), path);
-        Attempt(() => WriteDoc(path, cfg.DestinationsFile, "destinations_file",
-            new DestinationsDoc { Routes = cfg.Routes, Extras = cfg.DestinationsFileExtras }),
-            ResolveBeside(path, cfg.DestinationsFile), "destinations_file");
-        Attempt(() => WriteDoc(path, cfg.MonitoredFoldersFile, "monitored_folders_file",
-            new MonitoredFoldersDoc { WatchFolders = cfg.WatchFolders, Extras = cfg.MonitoredFoldersFileExtras }),
-            ResolveBeside(path, cfg.MonitoredFoldersFile), "monitored_folders_file");
-        Attempt(() => WriteDoc(path, cfg.AlertsFile, "alerts_file",
-            new AlertsDoc { AlertTexts = cfg.AlertTexts, Extras = cfg.AlertsFileExtras }),
-            ResolveBeside(path, cfg.AlertsFile), "alerts_file");
         Attempt(() =>
         {
             // As in Save: the Exists probe runs on the SAME confined path
@@ -851,27 +770,15 @@ public sealed class Config
         }
     }
 
-    /// <summary>Save ONLY the main config.json section — never the three
-    /// side files (destinations/monitored-folders/alerts) or the box-labels
-    /// bootstrap <see cref="TrySave"/> also writes. For a caller that is only
-    /// ever entitled to change a main-section field (today, ShellViewModel.
-    /// SaveSavedPasswordsNow's SavedPasswords overlay), routing through the
-    /// full <see cref="TrySave"/> was its own bug (final review, Important
-    /// 3, 2026-08-06): a station with a legitimately-Browsed ABSOLUTE side-
-    /// file path (a shipped Settings capability — see
-    /// <see cref="ResolveBesideForWrite"/>'s doc comment) has that path
-    /// refused on every write, so TrySave's side-file Attempt for it always
-    /// fails and the overall call returns false — even though SaveMain,
-    /// which TrySave runs first, already landed the password change on
-    /// disk. The caller would then report "not saved" about a write that
-    /// partly succeeded, and skip any success notice gated on the return
-    /// value. Writing only the main file removes that whole failure surface
-    /// for a caller with nothing to say about the side files: it cannot fail
-    /// on a side-file path it never touches, cannot lose to a peer's
-    /// in-flight side-file write, and cannot re-serialize a hand-edited side
-    /// file byte-for-byte-unchanged (which would otherwise trip a peer's
-    /// hash-based Settings-conflict prompt over a file this call never
-    /// meant to touch at all).</summary>
+    /// <summary>Save ONLY config.json — never the box-labels bootstrap
+    /// <see cref="TrySave"/> also writes. For a caller that is only ever
+    /// entitled to change a config.json field (today, ShellViewModel.
+    /// SaveSavedPasswordsNow's SavedPasswords overlay): a station with an
+    /// ABSOLUTE box_labels_file path has that path refused on every write
+    /// (see <see cref="ResolveBesideForWrite"/>), so a full
+    /// <see cref="TrySave"/> would report "not saved" about a write whose
+    /// config.json half had already landed (final review, Important 3,
+    /// 2026-08-06).</summary>
     public static bool TrySaveMain(Config cfg, string path, out string error)
     {
         try
@@ -955,6 +862,18 @@ public sealed class Config
         $"Config file {path} could not be read. It may be open in another program, " +
         "or on a drive or share this computer cannot reach right now.";
 }
+
+/// <summary>What <see cref="Config.ReadSharedSections"/> returns: the three
+/// shared sections as typed lists, plus each one's JSON text as it stands in
+/// config.json (null when the key is absent) for conflict
+/// fingerprinting.</summary>
+public sealed record SharedSections(
+    List<Route> Routes,
+    List<WatchFolder> WatchFolders,
+    List<string> AlertTexts,
+    string? RoutesJson,
+    string? WatchFoldersJson,
+    string? AlertTextsJson);
 
 public class ConfigException : Exception
 {

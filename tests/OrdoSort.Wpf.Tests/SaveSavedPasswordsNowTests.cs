@@ -191,28 +191,54 @@ public class SaveSavedPasswordsNowTests
     }
 
     [Fact]
+    public void FallbackSaveKeepsAPeersDestinationsWhenOnlyBoxLabelsIsLocked()
+    {
+        // Review finding: when Config.Load fails because a peer holds
+        // box-labels.json locked mid-print, the fallback writes this
+        // station's in-memory config — which now carries destinations too.
+        // It must re-read those from config.json first, not revert them.
+        using var fx = new ShellFixture();
+        fx.Shell.Initialize();
+        fx.Shell.SaveConfigNow();
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(fx.CfgPath))!.AsObject();
+        node["routes"] = System.Text.Json.Nodes.JsonNode.Parse("""[{"label":"PEER","path":"C:/peer"}]""");
+        File.WriteAllText(fx.CfgPath, node.ToJsonString());
+
+        fx.Shell.Cfg.SavedPasswords.Add(new SavedPassword { Label = "X", Password = "secret" });
+        var labels = Path.Combine(fx.Dir, "box-labels.json");
+        bool ok;
+        using (new FileStream(labels, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            ok = fx.Shell.SaveSavedPasswordsNow();
+
+        Assert.True(ok);
+        var back = Config.Load(fx.CfgPath);
+        Assert.Equal("PEER", Assert.Single(back.Routes).Label);
+        Assert.Equal("X", Assert.Single(back.SavedPasswords).Label);
+    }
+
+    [Fact]
     public void ALegitimatelyBrowsedAbsoluteSideFilePathDoesNotSuppressTheSave()
     {
-        // Final review, Important 3. destinations_file points OUTSIDE the
+        // Final review, Important 3. box_labels_file points OUTSIDE the
         // config directory — a real, shipped shape: the Settings "Data
         // files" Browse... buttons return an absolute path with no
         // containment check of their own (task-1-brief.md), and reading an
         // already-configured absolute path back stays supported
         // (Config.ResolveBesideForRead). Writing to it does not: every
         // Save/TrySave call refuses it (Config.ResolveBesideForWrite), so
-        // this station's destinations.json write fails on EVERY save,
+        // this station's box-labels write fails on EVERY save,
         // deliberately, regardless of what else that save is doing.
-        var outside = Path.Combine(Path.GetTempPath(), "ordoshell_outside_" + Guid.NewGuid(), "dest.json");
-        using var fx = new ShellFixture(cfg => cfg.DestinationsFile = outside);
+        var outside = Path.Combine(Path.GetTempPath(), "ordoshell_outside_" + Guid.NewGuid(), "box-labels.json");
+        using var fx = new ShellFixture(cfg => cfg.BoxLabelsFile = outside);
         fx.Shell.Initialize();
-        fx.Shell.SaveConfigNow();   // config.json now exists; the destinations write already failed here too
+        fx.Shell.SaveConfigNow();   // config.json now exists; the box-labels write already failed here too
 
         // Sanity: confirm the absolute path really is refused on write
         // before this test's real assertion — otherwise a change to
         // ResolveBesideForWrite's rules could make this test pass for the
         // wrong reason (nothing to route around because nothing failed).
         var sanity = Assert.Single(fx.Dialogs.Warnings);
-        Assert.Contains("destinations_file", sanity.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("box_labels_file", sanity.Message, StringComparison.OrdinalIgnoreCase);
         fx.Dialogs.Warnings.Clear();
 
         fx.Shell.Cfg.SavedPasswords.Add(
@@ -220,7 +246,7 @@ public class SaveSavedPasswordsNowTests
         var ok = fx.Shell.SaveSavedPasswordsNow();
 
         // The old TrySave-routed save reported false here (sunk by the
-        // destinations.json refusal) even though the password had already
+        // box-labels refusal) even though the password had already
         // landed via the main-file write TrySave runs first — silently
         // dropping UnlockViewModel's "passwords protected" notice beside a
         // spurious "not saved" warning about a write that had actually

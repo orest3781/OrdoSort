@@ -100,10 +100,9 @@ public class CopyAndTerminologyTests
 
     // ------------------------------------------- I5: one word for one feature
 
-    /// <summary>The tab, the section header it opens with, and the Data files
-    /// tab's label for the very same list must all say the SAME thing. Before
-    /// this task the tab said "Dashboard" and the other two said "Monitored
-    /// folders" — one feature, two names, and the loser was the name used
+    /// <summary>The tab and the section header it opens with must say the
+    /// SAME thing. Before this task the tab said "Dashboard" and the heading
+    /// said "Monitored folders" — one feature, two names, and the loser was the name used
     /// everywhere else in the product (including
     /// <see cref="Config.MonitorTitle"/>'s own default, which is the heading a
     /// user reads on the Ready screen).
@@ -112,7 +111,7 @@ public class CopyAndTerminologyTests
     /// automation name + the rendered section heading), because those are
     /// three separately-authored strings that have to agree.</summary>
     [Fact]
-    public void MonitoredFoldersIsCalledThatOnItsTabItsHeadingAndTheDataFilesLabel() => _fx.Invoke(() =>
+    public void MonitoredFoldersIsCalledThatOnItsTabAndItsHeading() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
         var vm = BuildSettingsVm(ThemePalette.Light, out _);
@@ -152,14 +151,6 @@ public class CopyAndTerminologyTests
                 .Select(t => t.Text)
                 .ToList();
             Assert.Contains("Monitored folders", headings);
-
-            // and the Data files tab's label for the same file
-            tabControl.SelectedItem = tabs.First(t => (t.Header?.ToString() ?? "").Replace("_", "") == "Data files");
-            window.UpdateLayout();
-            PumpRender();
-            window.UpdateLayout();
-            var labels = Descendants<TextBlock>(window).Select(t => t.Text).ToList();
-            Assert.Contains("Monitored folders:", labels);
         }
         finally { window.Close(); }
     });
@@ -364,8 +355,7 @@ public class CopyAndTerminologyTests
         Directory.CreateDirectory(cfgDir);
         // never created: the "folder doesn't exist" branches need a real miss
         var absent = Path.Combine(Path.GetTempPath(), "ordo_absent_" + Guid.NewGuid());
-        foreach (var name in new[] { "destinations", "folders", "alerts", "labels" })
-            File.WriteAllText(Path.Combine(cfgDir, $"broken-{name}.json"), "{ not json");
+        File.WriteAllText(Path.Combine(cfgDir, "broken-labels.json"), "{ not json");
         // 2026-08 audit finding C2: Inbox/Deferred's relative-info branches
         // below ("inbox", "set-aside") are real folders now that a relative
         // value's existence is checked beside config.json rather than never
@@ -393,15 +383,6 @@ public class CopyAndTerminologyTests
                 "relative — kept beside the config file", false,
                 v => v.HistoryDb = Path.Combine(absent, "history.sqlite"),
                 "folder doesn't exist", true),
-            new NoteCase("Data files", nameof(vm.DestinationsFileNote),
-                v => v.DestinationsFile = "", "blank = the default beside config.json", false,
-                v => v.DestinationsFile = "broken-destinations.json", "is not valid JSON", true),
-            new NoteCase("Data files", nameof(vm.MonitoredFoldersFileNote),
-                v => v.MonitoredFoldersFile = "", "blank = the default beside config.json", false,
-                v => v.MonitoredFoldersFile = "broken-folders.json", "is not valid JSON", true),
-            new NoteCase("Data files", nameof(vm.AlertsFileNote),
-                v => v.AlertsFile = "", "blank = the default beside config.json", false,
-                v => v.AlertsFile = "broken-alerts.json", "is not valid JSON", true),
             new NoteCase("Data files", nameof(vm.BoxLabelsFileNote),
                 v => v.BoxLabelsFile = "", "blank = the default beside config.json", false,
                 v => v.BoxLabelsFile = "broken-labels.json", "is not valid JSON", true),

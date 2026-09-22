@@ -626,15 +626,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         _historyDbProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
             v => ApplyNote(v, ref _historyDbNote, ref _historyDbNoteNeedsAttention,
                 nameof(HistoryDbNote), nameof(HistoryDbNoteNeedsAttention)), _probeDelayMs);
-        _destinationsFileProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
-            v => ApplyNote(v, ref _destinationsFileNote, ref _destinationsFileNoteNeedsAttention,
-                nameof(DestinationsFileNote), nameof(DestinationsFileNoteNeedsAttention)), _probeDelayMs);
-        _monitoredFoldersFileProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
-            v => ApplyNote(v, ref _monitoredFoldersFileNote, ref _monitoredFoldersFileNoteNeedsAttention,
-                nameof(MonitoredFoldersFileNote), nameof(MonitoredFoldersFileNoteNeedsAttention)), _probeDelayMs);
-        _alertsFileProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
-            v => ApplyNote(v, ref _alertsFileNote, ref _alertsFileNoteNeedsAttention,
-                nameof(AlertsFileNote), nameof(AlertsFileNoteNeedsAttention)), _probeDelayMs);
         _boxLabelsFileProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
             v => ApplyNote(v, ref _boxLabelsFileNote, ref _boxLabelsFileNoteNeedsAttention,
                 nameof(BoxLabelsFileNote), nameof(BoxLabelsFileNoteNeedsAttention)), _probeDelayMs);
@@ -655,9 +646,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         Deferred = current.Deferred;
         NamesFile = current.NamesFile;
         HistoryDb = current.HistoryDb;
-        DestinationsFile = current.DestinationsFile;
-        MonitoredFoldersFile = current.MonitoredFoldersFile;
-        AlertsFile = current.AlertsFile;
         BoxLabelsFile = current.BoxLabelsFile;
         // the assignments above already queued normal-debounce checks;
         // supersede them with immediate (still off-thread) ones so the
@@ -667,9 +655,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         RecomputeDeferredNote(immediate: true);
         RecomputeNamesFileNote(immediate: true);
         RecomputeHistoryDbNote(immediate: true);
-        RecomputeDestinationsFileNote(immediate: true);
-        RecomputeMonitoredFoldersFileNote(immediate: true);
-        RecomputeAlertsFileNote(immediate: true);
         RecomputeBoxLabelsFileNote(immediate: true);
         MonitorTitle = current.MonitorTitle;
         FilingMode = current.NamingMode;
@@ -769,12 +754,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         BrowseHistoryDbCommand = new RelayCommand(() =>
             HistoryDb = _dialogs.AskFilePath("SQLite database (*.sqlite)|*.sqlite|All files (*.*)|*.*",
                 System.IO.Path.GetFileName(HistoryDb)) ?? HistoryDb);
-        BrowseDestinationsFileCommand = new RelayCommand(() =>
-            DestinationsFile = PickSideFile(DestinationsFile, "destinations_file"));
-        BrowseMonitoredFoldersFileCommand = new RelayCommand(() =>
-            MonitoredFoldersFile = PickSideFile(MonitoredFoldersFile, "monitored_folders_file"));
-        BrowseAlertsFileCommand = new RelayCommand(() =>
-            AlertsFile = PickSideFile(AlertsFile, "alerts_file"));
         BrowseBoxLabelsFileCommand = new RelayCommand(() =>
             BoxLabelsFile = PickSideFile(BoxLabelsFile, "box_labels_file"));
         BrowseRoutePathCommand = new RelayCommand(() =>
@@ -970,29 +949,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         set { if (Set(ref _historyDb, value)) RecomputeHistoryDbNote(); }
     }
 
-    // ---- split-config section files (destinations/monitored folders/alerts/
-    // box labels) — Settings edits the path, not the section's contents
-    private string _destinationsFile = "";
-    public string DestinationsFile
-    {
-        get => _destinationsFile;
-        set { if (Set(ref _destinationsFile, value)) RecomputeDestinationsFileNote(); }
-    }
-
-    private string _monitoredFoldersFile = "";
-    public string MonitoredFoldersFile
-    {
-        get => _monitoredFoldersFile;
-        set { if (Set(ref _monitoredFoldersFile, value)) RecomputeMonitoredFoldersFileNote(); }
-    }
-
-    private string _alertsFile = "";
-    public string AlertsFile
-    {
-        get => _alertsFile;
-        set { if (Set(ref _alertsFile, value)) RecomputeAlertsFileNote(); }
-    }
-
+    // ---- box-labels.json — Settings edits the path, not the file's contents
     private string _boxLabelsFile = "";
     public string BoxLabelsFile
     {
@@ -1133,42 +1090,9 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         }, immediate);
     }
 
-    // Live per-field notes for the four section-file paths: entry count when
-    // the file's readable, "will be created" when it's missing, the
-    // ConfigException message when it's there but broken.
-    private string _destinationsFileNote = "";
-    public string DestinationsFileNote => _destinationsFileNote;
-    private bool _destinationsFileNoteNeedsAttention;
-    public bool DestinationsFileNoteNeedsAttention => _destinationsFileNoteNeedsAttention;
-    private readonly DebouncedProbe<FieldNote> _destinationsFileProbe;
-
-    private void RecomputeDestinationsFileNote(bool immediate = false) =>
-        RecomputeDataFileNote(DestinationsFile, "destinations_file",
-            sp => (Config.ReadDoc<DestinationsDoc>(_cfgPath!, sp) ?? new DestinationsDoc()).Routes.Count,
-            _destinationsFileProbe, immediate);
-
-    private string _monitoredFoldersFileNote = "";
-    public string MonitoredFoldersFileNote => _monitoredFoldersFileNote;
-    private bool _monitoredFoldersFileNoteNeedsAttention;
-    public bool MonitoredFoldersFileNoteNeedsAttention => _monitoredFoldersFileNoteNeedsAttention;
-    private readonly DebouncedProbe<FieldNote> _monitoredFoldersFileProbe;
-
-    private void RecomputeMonitoredFoldersFileNote(bool immediate = false) =>
-        RecomputeDataFileNote(MonitoredFoldersFile, "monitored_folders_file",
-            sp => (Config.ReadDoc<MonitoredFoldersDoc>(_cfgPath!, sp) ?? new MonitoredFoldersDoc()).WatchFolders.Count,
-            _monitoredFoldersFileProbe, immediate);
-
-    private string _alertsFileNote = "";
-    public string AlertsFileNote => _alertsFileNote;
-    private bool _alertsFileNoteNeedsAttention;
-    public bool AlertsFileNoteNeedsAttention => _alertsFileNoteNeedsAttention;
-    private readonly DebouncedProbe<FieldNote> _alertsFileProbe;
-
-    private void RecomputeAlertsFileNote(bool immediate = false) =>
-        RecomputeDataFileNote(AlertsFile, "alerts_file",
-            sp => (Config.ReadDoc<AlertsDoc>(_cfgPath!, sp) ?? new AlertsDoc()).AlertTexts.Count,
-            _alertsFileProbe, immediate);
-
+    // Live note for the box-labels path: entry count when the file's
+    // readable, "will be created" when it's missing, the ConfigException
+    // message when it's there but broken.
     private string _boxLabelsFileNote = "";
     public string BoxLabelsFileNote => _boxLabelsFileNote;
     private bool _boxLabelsFileNoteNeedsAttention;
@@ -1180,8 +1104,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             sp => (Config.ReadDoc<BoxLabelsDoc>(_cfgPath!, sp) ?? new BoxLabelsDoc()).LabelClients.Count,
             _boxLabelsFileProbe, immediate);
 
-    /// <summary>Browse... for one of the four side-file keys (destinations/
-    /// monitored-folders/alerts/box-labels), then refuse the result up
+    /// <summary>Browse... for box_labels_file, then refuse the result up
     /// front if it can never actually be saved to. Microsoft.Win32.
     /// OpenFileDialog (behind <see cref="IDialogService.AskOpenFile(string)"/>)
     /// always hands back a fully-qualified absolute path, and a side-file
@@ -1252,7 +1175,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         return Path.GetRelativePath(configDir!, full);
     }
 
-    /// <summary>Shared live-note logic for the four section-file path boxes:
+    /// <summary>Live-note logic for the box-labels path box:
     /// blank means the section default: not resolvable (no config path to
     /// resolve beside) reads as an unusable path; a value <see
     /// cref="Config.ResolveBesideForWrite"/> would refuse is a Problem
@@ -1302,7 +1225,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             // A ConfigException message here is a real, broken file (bad
             // JSON) the user must fix before OK will work — the other of
             // the two branches, alongside the confinement check in the
-            // fast path above, that earns amber for these four fields.
+            // fast path above, that earns amber for this field.
             try { return FieldNote.Info($"{countEntries(p)} entries"); }
             catch (ConfigException ex) { return FieldNote.Problem(ex.Message); }
         }, immediate);
@@ -2196,9 +2119,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     public RelayCommand BrowseDeferredCommand { get; }
     public RelayCommand BrowseNamesFileCommand { get; }
     public RelayCommand BrowseHistoryDbCommand { get; }
-    public RelayCommand BrowseDestinationsFileCommand { get; }
-    public RelayCommand BrowseMonitoredFoldersFileCommand { get; }
-    public RelayCommand BrowseAlertsFileCommand { get; }
     public RelayCommand BrowseBoxLabelsFileCommand { get; }
     public RelayCommand BrowseRoutePathCommand { get; }
     public RelayCommand BrowseWatchPathCommand { get; }
@@ -2282,52 +2202,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 errors.Add($"\"{w.Label}\": \"{w.Color}\" is not a color (try #c0392b).");
         }
 
-        // QC-08: each of the four side-file fields owns its own DebouncedProbe
-        // note above, which sees only that field's own value — a constraint
-        // BETWEEN fields has no home there. HardErrors is the right place
-        // because it already sees the whole form, and it runs before OK is
-        // accepted, so the user is told which two fields clash instead of
-        // finding out from a refused Save. Reuses the same
-        // Config.TryFindSideFileCollision Save/TrySave check, resolved
-        // against the same blank-means-default substitution TryBuildResult
-        // applies below — so a blank box and its own default filename are
-        // compared as what they'll actually become on disk, not as "".
-        // Skipped with no known _cfgPath (Settings opened before any config
-        // exists — same guard PickSideFile and RecomputeDataFileNote already
-        // use): there is no base directory to resolve a relative path
-        // against, so there is nothing safe to compare yet.
-        if (_cfgPath is { } cfgPathForCollision)
-        {
-            var destFile = DestinationsFile.Trim().Length == 0
-                ? Config.DefaultDestinationsFile : DestinationsFile.Trim();
-            var monFile = MonitoredFoldersFile.Trim().Length == 0
-                ? Config.DefaultMonitoredFoldersFile : MonitoredFoldersFile.Trim();
-            var alertsFileForCollision = AlertsFile.Trim().Length == 0
-                ? Config.DefaultAlertsFile : AlertsFile.Trim();
-            var boxFile = BoxLabelsFile.Trim().Length == 0
-                ? Config.DefaultBoxLabelsFile : BoxLabelsFile.Trim();
-            if (Config.TryFindSideFileCollision(cfgPathForCollision, destFile, monFile,
-                    alertsFileForCollision, boxFile, out var collKeyA, out var collKeyB, out _))
-                errors.Add($"\"{SideFileFieldLabel(collKeyA)}\" and \"{SideFileFieldLabel(collKeyB)}\" " +
-                           "are set to the same file — point them at different files.");
-        }
-
         return errors;
     }
-
-    /// <summary>The "Data files" tab's own labels (SettingsWindow.xaml) for
-    /// a side-file JSON key, for a HardErrors message a user actually
-    /// recognizes — Config's own exception messages name the raw key
-    /// (destinations_file, etc.) because that's what config.json shows a
-    /// hand-editor; this is the Settings-facing half of the same fact.</summary>
-    private static string SideFileFieldLabel(string key) => key switch
-    {
-        "destinations_file" => "Destinations",
-        "monitored_folders_file" => "Monitored folders",
-        "alerts_file" => "Alerts",
-        "box_labels_file" => "Box labels",
-        _ => key,
-    };
 
     /// <summary>Problems worth a "Save anyway?" — unreachable folders mostly
     /// (they may simply be offline right now).</summary>
@@ -2378,26 +2254,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
         var cfg = BuildEditedConfig();
 
-        // A section re-pointed at a path that already holds a file: that
-        // file — not whatever this window happened to load with — becomes
-        // the truth (box-labels.json is excluded; it's already protected as
-        // a bootstrap-only write with its own exclusive writer).
-        AdoptRepointedSection<DestinationsDoc>(_original.DestinationsFile, cfg.DestinationsFile, d =>
-        {
-            cfg.Routes = d.Routes ?? new();
-            cfg.DestinationsFileExtras = d.Extras ?? new();
-        });
-        AdoptRepointedSection<MonitoredFoldersDoc>(_original.MonitoredFoldersFile, cfg.MonitoredFoldersFile, d =>
-        {
-            cfg.WatchFolders = d.WatchFolders ?? new();
-            cfg.MonitoredFoldersFileExtras = d.Extras ?? new();
-        });
-        AdoptRepointedSection<AlertsDoc>(_original.AlertsFile, cfg.AlertsFile, d =>
-        {
-            cfg.AlertTexts = d.AlertTexts ?? new();
-            cfg.AlertsFileExtras = d.Extras ?? new();
-        });
-
         Result = cfg;
         return true;
     }
@@ -2408,40 +2264,23 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// (<see cref="IsDirty"/>) can reuse the very same mapping instead of
     /// keeping a second, hand-maintained list of "things the user can edit" —
     /// the same reasoning the JSON clone below already applies to unedited
-    /// fields. A field added here is compared automatically.
-    ///
-    /// Deliberately does NOT run AdoptRepointedSection: that decides which
-    /// FILE wins for a re-pointed section, which is a save-time question and
-    /// touches disk. A re-point still registers as an edit here, because the
-    /// path itself is one of the fields copied below.</summary>
+    /// fields. A field added here is compared automatically.</summary>
     private Config BuildEditedConfig()
     {
         // JSON-clone the original so EVERY unedited field and unknown key
         // survives by construction (no hand-maintained carry-through list).
         var cfg = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(_original))!;
 
-        // The four side-file Extras dictionaries are [JsonIgnore] (they hold
-        // JsonElement values tied to the doc types, not config.json's own
-        // shape), so the clone above drops them back to empty. Settings
-        // never edits a side file's unknown keys directly — carry the
-        // ORIGINAL's copies through by hand, or every Settings OK would quietly
-        // erase hand-added keys from destinations.json/monitored-folders.json/
-        // alerts.json/box-labels.json on the next save.
-        cfg.DestinationsFileExtras = _original.DestinationsFileExtras;
-        cfg.MonitoredFoldersFileExtras = _original.MonitoredFoldersFileExtras;
-        cfg.AlertsFileExtras = _original.AlertsFileExtras;
+        // BoxLabelsFileExtras is [JsonIgnore] (it holds box-labels.json's
+        // unknown keys, not config.json's), so the clone above drops it back
+        // to empty. Settings never edits it — carry the ORIGINAL's copy
+        // through by hand so it survives.
         cfg.BoxLabelsFileExtras = _original.BoxLabelsFileExtras;
 
         cfg.Inbox = Inbox.Trim();
         cfg.Deferred = Deferred.Trim();
         cfg.NamesFile = NamesFile.Trim();
         cfg.HistoryDb = HistoryDb.Trim();
-        cfg.DestinationsFile = DestinationsFile.Trim().Length == 0
-            ? Config.DefaultDestinationsFile : DestinationsFile.Trim();
-        cfg.MonitoredFoldersFile = MonitoredFoldersFile.Trim().Length == 0
-            ? Config.DefaultMonitoredFoldersFile : MonitoredFoldersFile.Trim();
-        cfg.AlertsFile = AlertsFile.Trim().Length == 0
-            ? Config.DefaultAlertsFile : AlertsFile.Trim();
         cfg.BoxLabelsFile = BoxLabelsFile.Trim().Length == 0
             ? Config.DefaultBoxLabelsFile : BoxLabelsFile.Trim();
         cfg.MonitorTitle = MonitorTitle.Trim();
@@ -2507,42 +2346,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>When a section's path box was changed to point at a file
-    /// that already exists, that file's contents become the truth for the
-    /// built config — an admin's shared file must win over whatever this
-    /// editor happened to load with. A target that exists but fails to
-    /// parse leaves the editor's built values alone (the save path surfaces
-    /// the broken file; TryBuildResult must never throw over it). No-op when
-    /// there's no config path to resolve beside, or the path didn't
-    /// genuinely change: "changed" is decided by RESOLVED path, not the raw
-    /// string — a file dialog hands back an absolute path, and the stored
-    /// default is relative, so the same physical file can arrive spelled two
-    /// different ways. Comparing the raw strings would misread that as a
-    /// re-point and silently swap the editor's in-session edits for the
-    /// stale on-disk list.</summary>
-    private void AdoptRepointedSection<TDoc>(string originalPath, string newPath,
-        Action<TDoc> apply) where TDoc : class
-    {
-        if (_cfgPath is null) return;
-        string full, originalFull, fullCanonical, originalCanonical;
-        try
-        {
-            full = Config.ResolveBeside(_cfgPath, newPath.Trim());
-            originalFull = Config.ResolveBeside(_cfgPath, originalPath.Trim());
-            fullCanonical = Path.GetFullPath(full);
-            originalCanonical = Path.GetFullPath(originalFull);
-        }
-        catch (Exception) { return; }
-        var changed = !string.Equals(fullCanonical, originalCanonical, StringComparison.OrdinalIgnoreCase);
-        if (!changed) return;
-        if (!File.Exists(full)) return;
-        TDoc? doc;
-        try { doc = Config.ReadDoc<TDoc>(_cfgPath, newPath); }
-        catch (ConfigException) { return; }   // broken target: keep the built values
-        if (doc is not null) apply(doc);
-    }
-
-    /// <summary>Disposes the 8 per-field note probes, the tile preview
+    /// <summary>Disposes the 5 per-field note probes, the tile preview
     /// probe, and every current route/watch row's own Problem probe. Called
     /// by the window host (MainWindow.OnSettings) once the Settings dialog
     /// closes — any probe still armed at that point is a bounded, one-shot
@@ -2555,9 +2359,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         _deferredProbe.Dispose();
         _namesFileProbe.Dispose();
         _historyDbProbe.Dispose();
-        _destinationsFileProbe.Dispose();
-        _monitoredFoldersFileProbe.Dispose();
-        _alertsFileProbe.Dispose();
         _boxLabelsFileProbe.Dispose();
         _tilePreviewProbe.Dispose();
         foreach (var r in Routes) r.Dispose();

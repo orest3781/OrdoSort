@@ -42,12 +42,11 @@ public class NamingConfigTests : IDisposable
     [Fact]
     public void RouteTemplateModeMigratesToReplaceAtLoad()
     {
-        // per-route overrides migrate too — including routes arriving via
-        // the destinations.json side file, the live path since the split
+        // per-route overrides migrate too
         var path = Path.Combine(_dir, "config.json");
-        File.WriteAllText(path, """{"inbox":"C:/in"}""");
-        File.WriteAllText(Path.Combine(_dir, "destinations.json"), """
-            {"routes":[{"label":"A","path":"C:/a","naming_mode":"template","naming_template":"{name}!"}]}
+        File.WriteAllText(path, """
+            {"inbox":"C:/in",
+             "routes":[{"label":"A","path":"C:/a","naming_mode":"template","naming_template":"{name}!"}]}
             """);
         var route = Config.Load(path).Routes.Single();
         Assert.Equal("replace", route.NamingMode);

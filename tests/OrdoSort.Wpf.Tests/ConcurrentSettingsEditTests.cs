@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using OrdoSort.Core;
 
 namespace OrdoSort.Wpf.Tests;
@@ -10,29 +11,40 @@ namespace OrdoSort.Wpf.Tests;
 /// config exactly as they were.</summary>
 public class ConcurrentSettingsEditTests
 {
-    private static string PeerDestinations(string label) =>
-        $$"""{"routes":[{"label":"{{label}}","path":"C:/peer","color":"#000000"}]}""";
+    /// <summary>A second station saving its own Settings edit to one
+    /// section of the shared config.json, behind this app's back — exactly
+    /// like a real peer on the same network share.</summary>
+    private static void PeerEdit(string cfgPath, string key, JsonNode value)
+    {
+        var node = JsonNode.Parse(File.ReadAllText(cfgPath))!.AsObject();
+        node[key] = value;
+        File.WriteAllText(cfgPath, node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
 
-    private static string PeerAlerts(string text) =>
-        $$"""{"alert_texts":["{{text}}"]}""";
+    private static JsonNode PeerRoutes(string label) =>
+        JsonNode.Parse($$"""[{"label":"{{label}}","path":"C:/peer","color":"#000000"}]""")!;
 
-    private static string PeerMonitoredFolders(string label) =>
-        $$"""{"watch_folders":[{"label":"{{label}}","path":"C:/peer"}]}""";
+    private static JsonNode PeerAlerts(string text) => new JsonArray(text);
+
+    private static JsonNode PeerMonitoredFolders(string label) =>
+        JsonNode.Parse($$"""[{"label":"{{label}}","path":"C:/peer"}]""")!;
+
+    private static string RoutesOnDisk(ShellFixture fx) =>
+        string.Join(",", Config.Load(fx.CfgPath).Routes.Select(r => r.Label));
 
     [Fact]
     public void PeerEditToDestinationsWhileSettingsIsOpenIsDetectedAndDecliningKeepsThePeersRoutes()
     {
         using var fx = new ShellFixture();
         fx.Shell.Initialize();
-        fx.Shell.SaveConfigNow();   // config.json + destinations.json now exist on disk
+        fx.Shell.SaveConfigNow();   // config.json now exists on disk
 
         // Settings window opens: this is where the snapshot is taken.
         var fresh = fx.Shell.FreshConfigForSettings();
 
         // A second station saves its own Settings edit while this station's
-        // dialog is still open — behind this app's back, exactly like a real
-        // peer on the same network share.
-        File.WriteAllText(Path.Combine(fx.Dir, "destinations.json"), PeerDestinations("PEER"));
+        // dialog is still open.
+        PeerEdit(fx.CfgPath, "routes", PeerRoutes("PEER"));
 
         // This station's own (now-stale) edit: a route added on top of what
         // it read when the window opened.
@@ -44,8 +56,8 @@ public class ConcurrentSettingsEditTests
 
         // The peer's edit must survive on disk — not silently overwritten.
         // (This is the assertion that catches today's bug: without the fix,
-        // ApplySettings saves straight over the peer's file.)
-        var onDisk = File.ReadAllText(Path.Combine(fx.Dir, "destinations.json"));
+        // ApplySettings saves straight over the peer's edit.)
+        var onDisk = RoutesOnDisk(fx);
         Assert.Contains("PEER", onDisk);
         Assert.DoesNotContain("MINE", onDisk);
 
@@ -66,7 +78,7 @@ public class ConcurrentSettingsEditTests
         fx.Shell.SaveConfigNow();
 
         var fresh = fx.Shell.FreshConfigForSettings();
-        File.WriteAllText(Path.Combine(fx.Dir, "destinations.json"), PeerDestinations("PEER"));
+        PeerEdit(fx.CfgPath, "routes", PeerRoutes("PEER"));
 
         var mine = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(fresh))!;
         mine.Routes.Add(new Route { Label = "MINE", Path = fx.RouteDir, Color = "#123456" });
@@ -75,7 +87,7 @@ public class ConcurrentSettingsEditTests
         fx.Shell.ApplySettings(mine);
 
         Assert.Single(fx.Dialogs.Confirms);
-        var onDisk = File.ReadAllText(Path.Combine(fx.Dir, "destinations.json"));
+        var onDisk = RoutesOnDisk(fx);
         Assert.Contains("MINE", onDisk);
         Assert.DoesNotContain("PEER", onDisk);
         Assert.Contains(fx.Shell.Cfg.Routes, r => r.Label == "MINE");
@@ -95,8 +107,7 @@ public class ConcurrentSettingsEditTests
         fx.Shell.ApplySettings(mine);
 
         Assert.Empty(fx.Dialogs.Confirms);
-        var onDisk = File.ReadAllText(Path.Combine(fx.Dir, "destinations.json"));
-        Assert.Contains("MINE", onDisk);
+        Assert.Contains("MINE", RoutesOnDisk(fx));
     }
 
     [Fact]
@@ -107,9 +118,9 @@ public class ConcurrentSettingsEditTests
         fx.Shell.SaveConfigNow();
 
         var fresh = fx.Shell.FreshConfigForSettings();
-        File.WriteAllText(Path.Combine(fx.Dir, "destinations.json"), PeerDestinations("PEER"));
-        File.WriteAllText(Path.Combine(fx.Dir, "monitored-folders.json"), PeerMonitoredFolders("PEER"));
-        File.WriteAllText(Path.Combine(fx.Dir, "alerts.json"), PeerAlerts("PEER-ALERT"));
+        PeerEdit(fx.CfgPath, "routes", PeerRoutes("PEER"));
+        PeerEdit(fx.CfgPath, "watch_folders", PeerMonitoredFolders("PEER"));
+        PeerEdit(fx.CfgPath, "alert_texts", PeerAlerts("PEER-ALERT"));
 
         var mine = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(fresh))!;
         fx.Dialogs.ConfirmAnswer = false;
@@ -123,26 +134,24 @@ public class ConcurrentSettingsEditTests
     }
 
     [Fact]
-    public void ByteIdenticalRewriteOfASectionFileDoesNotPromptForConflict()
+    public void APeerRewriteThatLeavesTheSharedSectionsUnchangedDoesNotPrompt()
     {
         // SaveConfigNow (the header-bar tile-visibility toggle, remembered
-        // match/merge headers, saved Unlock passwords — none of them a
-        // Settings edit) rewrites all three shared section files on every
-        // call via Config.TrySave, whether or not their content actually
-        // changed. A peer station doing any of that while this station's
-        // Settings window happens to be open must not trip the conflict
-        // prompt when what it wrote is byte-identical to what was already
-        // there — that would be a false positive, not a real conflict.
+        // match/merge headers — none of them a Settings edit) rewrites
+        // config.json on every call. A peer station doing that while this
+        // station's Settings window happens to be open must not trip the
+        // conflict prompt: destinations, monitored folders and alerts are
+        // unchanged, even though the file's bytes (a different
+        // tile_visibility, different formatting) are not.
         using var fx = new ShellFixture();
         fx.Shell.Initialize();
-        fx.Shell.SaveConfigNow();   // config.json + section files now exist on disk
+        fx.Shell.SaveConfigNow();   // config.json now exists on disk
 
         var fresh = fx.Shell.FreshConfigForSettings();
 
-        // Simulate a peer's unrelated SaveConfigNow: destinations.json gets
-        // rewritten with exactly the same bytes it already had.
-        var destPath = Path.Combine(fx.Dir, "destinations.json");
-        File.WriteAllBytes(destPath, (byte[])File.ReadAllBytes(destPath).Clone());
+        var node = JsonNode.Parse(File.ReadAllText(fx.CfgPath))!.AsObject();
+        node["tile_visibility"] = "hidden";
+        File.WriteAllText(fx.CfgPath, node.ToJsonString());   // compact: every byte moves
 
         var mine = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(fresh))!;
         mine.WordSeparator = "-";   // this station's own, unrelated Settings edit
@@ -154,20 +163,22 @@ public class ConcurrentSettingsEditTests
     }
 
     [Fact]
-    public void MissingSectionFileFingerprintsAsAbsentNotAsChanged()
+    public void MissingSectionFingerprintsAsAbsentNotAsChanged()
     {
-        // First-run creation (or a section repointed at a not-yet-created
-        // file) must not read as a conflict: a file missing at both ends
-        // fingerprints as null both times, not as "changed".
+        // First-run creation must not read as a conflict: a section missing
+        // at both ends fingerprints as null both times, not as "changed".
         using var fx = new ShellFixture();
         fx.Shell.Initialize();
         fx.Shell.SaveConfigNow();
-        File.Delete(Path.Combine(fx.Dir, "destinations.json"));
+        var node = JsonNode.Parse(File.ReadAllText(fx.CfgPath))!.AsObject();
+        node.Remove("routes");
+        File.WriteAllText(fx.CfgPath, node.ToJsonString());
 
         var a = fx.Shell.SnapshotSections();
         var b = fx.Shell.SnapshotSections();
 
         Assert.Equal(a, b);
         Assert.Null(a.Destinations);
+        Assert.NotNull(a.Alerts);
     }
 }

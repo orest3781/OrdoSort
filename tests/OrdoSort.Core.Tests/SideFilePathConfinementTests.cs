@@ -2,14 +2,13 @@ using System.Text.Json;
 
 namespace OrdoSort.Core.Tests;
 
-/// <summary>Side files (destinations_file, monitored_folders_file, alerts_file,
-/// box_labels_file) must stay beside config.json — 2026-08 audit finding
+/// <summary>The box-labels side file (box_labels_file) must stay beside config.json — 2026-08 audit finding
 /// 4.2[A]: an unconfined rooted path let anyone who can edit config.json on
 /// a shared config overwrite an arbitrary file on every OTHER station's
 /// local disk at that station's next Save. WRITE refuses any path that
 /// resolves outside the config directory, with no exception. READ keeps
 /// loading an already-configured fully-qualified absolute path (the
-/// Settings "Data files" Browse... buttons have always been able to
+/// Settings "Data files" Browse... button has always been able to
 /// produce one — see task-1-report.md), but refuses a `..` traversal or a
 /// Windows rooted-without-drive path the same as a write, since the UI
 /// never produces those and a malicious shared config could otherwise use
@@ -80,39 +79,6 @@ public class SideFilePathConfinementTests : IDisposable
 
     [Theory]
     [MemberData(nameof(EscapeKinds))]
-    public void SaveRefusesAnEscapingDestinationsFile(string kind)
-    {
-        var escaping = Escape(kind);
-        var cfg = new Config { DestinationsFile = escaping };
-        var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
-        Assert.Contains("destinations_file", ex.Message);
-        Assert.Contains(escaping, ex.Message);
-    }
-
-    [Theory]
-    [MemberData(nameof(EscapeKinds))]
-    public void SaveRefusesAnEscapingMonitoredFoldersFile(string kind)
-    {
-        var escaping = Escape(kind);
-        var cfg = new Config { MonitoredFoldersFile = escaping };
-        var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
-        Assert.Contains("monitored_folders_file", ex.Message);
-        Assert.Contains(escaping, ex.Message);
-    }
-
-    [Theory]
-    [MemberData(nameof(EscapeKinds))]
-    public void SaveRefusesAnEscapingAlertsFile(string kind)
-    {
-        var escaping = Escape(kind);
-        var cfg = new Config { AlertsFile = escaping };
-        var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
-        Assert.Contains("alerts_file", ex.Message);
-        Assert.Contains(escaping, ex.Message);
-    }
-
-    [Theory]
-    [MemberData(nameof(EscapeKinds))]
     public void SaveRefusesAnEscapingBoxLabelsFile(string kind)
     {
         var escaping = Escape(kind);
@@ -124,13 +90,13 @@ public class SideFilePathConfinementTests : IDisposable
 
     [Theory]
     [MemberData(nameof(EscapeKinds))]
-    public void TrySaveReportsAnEscapingDestinationsFileInsteadOfThrowing(string kind)
+    public void TrySaveReportsAnEscapingBoxLabelsFileInsteadOfThrowing(string kind)
     {
         var escaping = Escape(kind);
-        var cfg = new Config { DestinationsFile = escaping };
+        var cfg = new Config { BoxLabelsFile = escaping };
         var ok = Config.TrySave(cfg, ConfigPath, out var error);
         Assert.False(ok);
-        Assert.Contains("destinations_file", error);
+        Assert.Contains("box_labels_file", error);
     }
 
     [Fact]
@@ -142,28 +108,26 @@ public class SideFilePathConfinementTests : IDisposable
         // that nothing landed there is airtight and needs no cleanup of a
         // real machine location.
         var outsideFile = Path.Combine(OutsideDir, "evil.json");
-        var cfg = new Config { DestinationsFile = outsideFile };
+        var cfg = new Config { BoxLabelsFile = outsideFile };
         var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
-        Assert.Contains("destinations_file", ex.Message);
+        Assert.Contains("box_labels_file", ex.Message);
         Assert.Contains(outsideFile, ex.Message);
         Assert.False(File.Exists(outsideFile));
     }
 
     [Fact]
-    public void TrySaveStillSavesTheOtherFilesWhenOneKeyEscapes()
+    public void TrySaveStillSavesConfigJsonWhenTheBoxLabelsKeyEscapes()
     {
-        // Each side file is attempted independently (TrySave's documented
-        // contract) — a bad destinations_file must not block alerts.json,
-        // monitored-folders.json, or the main config from saving, and must
-        // not actually write anything at the escaping location.
+        // Each file is attempted independently (TrySave's documented
+        // contract) — a bad box_labels_file must not block config.json from
+        // saving, and must not actually write anything at the escaping
+        // location.
         var outsideFile = Path.Combine(OutsideDir, "evil.json");
-        var cfg = new Config { DestinationsFile = outsideFile };
+        var cfg = new Config { BoxLabelsFile = outsideFile };
         var ok = Config.TrySave(cfg, ConfigPath, out var error);
         Assert.False(ok);
-        Assert.Contains("destinations_file", error);
+        Assert.Contains("box_labels_file", error);
         Assert.True(File.Exists(ConfigPath));
-        Assert.True(File.Exists(Path.Combine(_dir, "alerts.json")));
-        Assert.True(File.Exists(Path.Combine(_dir, "monitored-folders.json")));
         Assert.False(File.Exists(outsideFile));
     }
 
@@ -177,11 +141,11 @@ public class SideFilePathConfinementTests : IDisposable
         // transient I/O failure. When EVERY failure this call produced is a
         // confinement refusal, the key must come back in refusedSideFileKeys.
         var outsideFile = Path.Combine(OutsideDir, "evil.json");
-        var cfg = new Config { DestinationsFile = outsideFile };
+        var cfg = new Config { BoxLabelsFile = outsideFile };
         var ok = Config.TrySave(cfg, ConfigPath, out var error, out var refusedKeys);
         Assert.False(ok);
-        Assert.Contains("destinations_file", error);
-        Assert.Equal(new[] { "destinations_file" }, refusedKeys);
+        Assert.Contains("box_labels_file", error);
+        Assert.Equal(new[] { "box_labels_file" }, refusedKeys);
     }
 
     [Fact]
@@ -196,19 +160,18 @@ public class SideFilePathConfinementTests : IDisposable
     [Fact]
     public void TrySaveReportsNoRefusedKeysWhenAConfinementRefusalIsMixedWithARealFailure()
     {
-        // box_labels_file (left at its relative default) points at a path
-        // that already exists AS A DIRECTORY, not a file — a genuine,
-        // non-confinement I/O failure, arising independently of
-        // destinations_file's confinement refusal in the very same call.
+        // config.json's own path already exists AS A DIRECTORY, not a file —
+        // a genuine, non-confinement I/O failure, arising independently of
+        // box_labels_file's confinement refusal in the very same call.
         // refusedSideFileKeys must come back EMPTY here: a caller must
         // never suppress-on-sight a refusal that arrived bundled with
         // something genuinely new and different.
         var outsideFile = Path.Combine(OutsideDir, "evil.json");
-        Directory.CreateDirectory(Path.Combine(_dir, "box-labels.json"));
-        var cfg = new Config { DestinationsFile = outsideFile };
+        Directory.CreateDirectory(ConfigPath);
+        var cfg = new Config { BoxLabelsFile = outsideFile };
         var ok = Config.TrySave(cfg, ConfigPath, out var error, out var refusedKeys);
         Assert.False(ok);
-        Assert.Contains("destinations_file", error);
+        Assert.Contains("box_labels_file", error);
         Assert.Empty(refusedKeys);
     }
 
@@ -233,86 +196,97 @@ public class SideFilePathConfinementTests : IDisposable
         Assert.Contains("box_labels_file", ex.Message);
     }
 
+    [Fact]
+    public void SaveRefusesABoxLabelsFileThatIsTheConfigFileItself()
+    {
+        // BoxLabelStore writing counters into config.json, then the next
+        // config save dropping label_clients, would reset the box numbers.
+        var cfg = new Config { BoxLabelsFile = "config.json" };
+        var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
+        Assert.Contains("box_labels_file", ex.Message);
+        Assert.Contains("config file itself", ex.Message);
+    }
+
     // ---- confinement is not over-tight: legitimate relative paths still work ----
 
     [Fact]
     public void SaveAcceptsAPlainFilename()
     {
-        var cfg = new Config { DestinationsFile = "my-destinations.json" };
+        var cfg = new Config { BoxLabelsFile = "my-labels.json" };
         Config.Save(cfg, ConfigPath);
-        Assert.True(File.Exists(Path.Combine(_dir, "my-destinations.json")));
+        Assert.True(File.Exists(Path.Combine(_dir, "my-labels.json")));
     }
 
     [Fact]
     public void SaveAcceptsANestedRelativePath()
     {
-        // As in ConfigSplitTests.RelativeSectionPathResolvesBesideConfig,
+        // As in ConfigSplitTests.RelativeBoxLabelsPathResolvesBesideConfig,
         // the subfolder is pre-created: Save (like ResolveBeside before it)
         // resolves a nested relative path but was never responsible for
         // vivifying arbitrary subdirectory trees, on write any more than on
         // read — that is orthogonal to confinement, which is what this test
         // is proving still permits the nested path.
         Directory.CreateDirectory(Path.Combine(_dir, "data"));
-        var cfg = new Config { DestinationsFile = @"data\destinations.json" };
+        var cfg = new Config { BoxLabelsFile = @"data\box-labels.json" };
         Config.Save(cfg, ConfigPath);
-        Assert.True(File.Exists(Path.Combine(_dir, "data", "destinations.json")));
+        Assert.True(File.Exists(Path.Combine(_dir, "data", "box-labels.json")));
     }
 
     // ================= READ: Load / ReadDoc =================
 
     [Fact]
-    public void LoadStillReadsAnExistingAbsoluteDestinationsFile()
+    public void LoadStillReadsAnExistingAbsoluteBoxLabelsFile()
     {
-        // Step 1 finding: the Settings "Data files" Browse... buttons use
-        // Microsoft.Win32.OpenFileDialog for all four keys and always hand
+        // Step 1 finding: the Settings "Data files" Browse... button uses
+        // Microsoft.Win32.OpenFileDialog and has always handed
         // back a full path with no relativizing — an absolute side-file
         // path is a real, UI-reachable, already-shipped capability. Load
         // must keep reading a file that's already sitting there — genuinely
         // OUTSIDE the config directory, not merely a nested subfolder — or
         // an existing station's data silently vanishes out from under it.
-        var absoluteDests = Path.Combine(OutsideDir, "abs-destinations.json");
-        File.WriteAllText(absoluteDests, """{"routes":[{"label":"OUTSIDE","path":"C:/x"}]}""");
+        var absoluteLabels = Path.Combine(OutsideDir, "abs-labels.json");
+        File.WriteAllText(absoluteLabels, """{"label_clients":[{"id":"OUTSIDE"}]}""");
 
-        var configJson = JsonSerializer.Serialize(new { inbox = "C:/in", destinations_file = absoluteDests });
+        var configJson = JsonSerializer.Serialize(new { inbox = "C:/in", box_labels_file = absoluteLabels });
         File.WriteAllText(ConfigPath, configJson);
 
         var cfg = Config.Load(ConfigPath);
-        Assert.Equal("OUTSIDE", Assert.Single(cfg.Routes).Label);
+        Assert.Equal("OUTSIDE", Assert.Single(cfg.LabelClients).Id);
     }
 
     [Fact]
-    public void LoadRefusesATraversalDestinationsFile()
+    public void LoadRefusesATraversalBoxLabelsFile()
     {
-        var configJson = JsonSerializer.Serialize(new { inbox = "C:/in", destinations_file = TraversalEscape });
+        var configJson = JsonSerializer.Serialize(new { inbox = "C:/in", box_labels_file = TraversalEscape });
         File.WriteAllText(ConfigPath, configJson);
         var ex = Assert.Throws<ConfigException>(() => Config.Load(ConfigPath));
-        Assert.Contains("destinations_file", ex.Message);
+        Assert.Contains("box_labels_file", ex.Message);
     }
 
     [Fact]
-    public void LoadRefusesARootedWithoutDriveDestinationsFile()
+    public void LoadRefusesARootedWithoutDriveBoxLabelsFile()
     {
-        var configJson = JsonSerializer.Serialize(new { inbox = "C:/in", destinations_file = RootedWithoutDriveEscape });
+        var configJson = JsonSerializer.Serialize(new { inbox = "C:/in", box_labels_file = RootedWithoutDriveEscape });
         File.WriteAllText(ConfigPath, configJson);
         var ex = Assert.Throws<ConfigException>(() => Config.Load(ConfigPath));
-        Assert.Contains("destinations_file", ex.Message);
+        Assert.Contains("box_labels_file", ex.Message);
     }
 
     [Fact]
     public void LoadStillAcceptsAPlainFilenameAndANestedRelativePath()
     {
         File.WriteAllText(Path.Combine(_dir, "plain.json"),
-            """{"routes":[{"label":"PLAIN","path":"C:/p"}]}""");
+            """{"label_clients":[{"id":"PLAIN"}]}""");
         File.WriteAllText(ConfigPath,
-            JsonSerializer.Serialize(new { inbox = "C:/in", destinations_file = "plain.json" }));
-        Assert.Equal("PLAIN", Assert.Single(Config.Load(ConfigPath).Routes).Label);
+            JsonSerializer.Serialize(new { inbox = "C:/in", box_labels_file = "plain.json" }));
+        Assert.Equal("PLAIN", Assert.Single(Config.Load(ConfigPath).LabelClients).Id);
 
         var sub = Directory.CreateDirectory(Path.Combine(_dir, "nested")).FullName;
-        File.WriteAllText(Path.Combine(sub, "dests.json"),
-            """{"routes":[{"label":"NESTED","path":"C:/n"}]}""");
+        File.WriteAllText(Path.Combine(sub, "labels.json"),
+            """{"label_clients":[{"id":"NESTED"}]}""");
         File.WriteAllText(ConfigPath,
-            JsonSerializer.Serialize(new { inbox = "C:/in", destinations_file = @"nested\dests.json" }));
-        Assert.Equal("NESTED", Assert.Single(Config.Load(ConfigPath).Routes).Label);
+            JsonSerializer.Serialize(new { inbox = "C:/in", box_labels_file = @"nested\labels.json" }));
+        Assert.Equal("NESTED", Assert.Single(Config.Load(ConfigPath).LabelClients).Id);
     }
 
     // ================= the classic prefix hole =================
@@ -328,9 +302,9 @@ public class SideFilePathConfinementTests : IDisposable
         var evilSibling = _dir + "-evil";
         Directory.CreateDirectory(evilSibling);
         var evilFile = Path.Combine(evilSibling, "x.json");
-        var cfg = new Config { DestinationsFile = evilFile };
+        var cfg = new Config { BoxLabelsFile = evilFile };
         var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
-        Assert.Contains("destinations_file", ex.Message);
+        Assert.Contains("box_labels_file", ex.Message);
         Assert.False(File.Exists(evilFile));
     }
 }

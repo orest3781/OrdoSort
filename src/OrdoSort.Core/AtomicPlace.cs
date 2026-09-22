@@ -173,8 +173,7 @@ internal static class AtomicPlace
     internal static Action<string>? BeforeSweep;
 
     /// <summary>For files where a newer replacement is always correct: the
-    /// main config, the destinations/monitored-folders/alerts side files, and
-    /// a zip Save-As where the user has already confirmed the overwrite. The
+    /// main config and a zip Save-As where the user has already confirmed the overwrite. The
     /// existing file is swapped out in one operation, never deleted first and
     /// rebuilt after.
     ///
@@ -447,7 +446,7 @@ internal static class AtomicPlace
     /// which check runs first).
     ///
     /// A sibling destination's own temp is excluded the same structural way:
-    /// e.g. "destinations.json.&lt;guid&gt;.tmp" does not start with
+    /// e.g. "box-labels.json.&lt;guid&gt;.tmp" does not start with
     /// "config.json.", so it never even reaches the GUID check. And the
     /// destination file itself can never match: a match requires strictly
     /// MORE characters after the destination's own name (a dot, 32 hex
