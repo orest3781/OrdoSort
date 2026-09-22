@@ -10,8 +10,9 @@ namespace OrdoSort.Wpf.Tests;
 /// [JsonExtensionData] bag, so some other JSON file parses fine, shows an
 /// empty client list, and gets label_clients and date_style written into it on
 /// the first save. That was measured against a copy of demo-full/config.json —
-/// 1688 bytes in, 1830 out — which is why that exact file is one of the cases
-/// below rather than a hand-written stand-in.</summary>
+/// 1688 bytes in, 1830 out — which is why a config.json written by OrdoSort's
+/// own Config.Save is one of the cases below rather than a hand-written
+/// stand-in.</summary>
 public sealed class BoxLabelsAppFileCheckTests : IDisposable
 {
     private readonly string _dir = Directory.CreateDirectory(
@@ -27,14 +28,6 @@ public sealed class BoxLabelsAppFileCheckTests : IDisposable
         var p = Path.Combine(_dir, name);
         File.WriteAllText(p, contents);
         return p;
-    }
-
-    private static string RepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "OrdoSort.sln")))
-            dir = dir.Parent!;
-        return dir?.FullName ?? throw new InvalidOperationException("OrdoSort.sln not found");
     }
 
     [Fact]
@@ -75,17 +68,28 @@ public sealed class BoxLabelsAppFileCheckTests : IDisposable
 
     /// <summary>The case this check exists for. Pointing the app at OrdoSort's
     /// own config.json used to be accepted silently, and writing to it injected
-    /// label_clients and date_style at the top.</summary>
+    /// label_clients and date_style at the top.
+    ///
+    /// The config is written by Config.Save — the app's own writer — so it
+    /// has exactly the shape a real station's file has, and the test is
+    /// hermetic. It used to copy demo-full/config.json, which is gitignored,
+    /// so it could only pass on a machine that had run demo-full.bat and
+    /// failed every CI run.</summary>
     [Fact]
     public void OrdoSortsOwnConfigIsRefused()
     {
-        var source = Path.Combine(RepoRoot(), "demo-full", "config.json");
-        Assert.True(File.Exists(source),
-            $"this test needs the demo workbench config at {source} — run demo-full.bat");
-        var copy = Path.Combine(_dir, "config.json");
-        File.Copy(source, copy);
+        var config = Path.Combine(_dir, "config.json");
+        Config.Save(new Config
+        {
+            Inbox = Path.Combine(_dir, "inbox"),
+            Deferred = Path.Combine(_dir, "set-aside"),
+            Routes = { new Route { Label = "Invoices", Path = Path.Combine(_dir, "invoices"), Hotkey = "Ctrl+1" } },
+            WatchFolders = { new WatchFolder { Label = "Failed", Path = Path.Combine(_dir, "failed") } },
+            AlertTexts = { "URGENT" },
+            SavedPasswords = { new SavedPassword { Label = "Payer A", Password = "letmein" } },
+        }, config);
 
-        Assert.Equal(LabelsFileKind.NotAStore, LabelsFileCheck.Classify(copy));
+        Assert.Equal(LabelsFileKind.NotAStore, LabelsFileCheck.Classify(config));
     }
 
     [Theory]
