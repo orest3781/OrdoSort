@@ -24,6 +24,9 @@ run uploads one under the run's Artifacts):
   offers the download link if it's missing).
 - **`…-selfcontained.zip`** (~70 MB) — carries the runtime; nothing to
   install.
+- **`boxlabels-vX-win-x64.zip`** and **`boxlabels-vX-win-x64-selfcontained.zip`**
+  — the label maker on its own, same two flavours. See
+  [Box Labels, on its own](#box-labels-on-its-own).
 
 Unzip anywhere and run — the app reads (or creates on first run) a
 `config.json` beside the exe, or takes `--config <path>`. Locally,
@@ -177,6 +180,8 @@ Box Labels too. Plain `dotnet build` / `dotnet test` still work.
 `BoxLabels.exe` is the box-label maker as a separate program, for someone who
 needs labels and has no use for the rest of OrdoSort. Same window, same
 labels, same barcode — it is the identical code, not a reimplementation.
+
+Download it from a release (`boxlabels-vX-…zip`), or build it locally:
 
 ```
 publish-boxlabels.bat        ->  publish-boxlabels\BoxLabels.exe
