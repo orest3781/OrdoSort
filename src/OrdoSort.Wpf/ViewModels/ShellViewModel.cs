@@ -1,5 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Mvvm;
 using OrdoSort.Wpf.Services;
@@ -9,22 +12,21 @@ namespace OrdoSort.Wpf.ViewModels;
 
 public enum Screen { Ready, Processing, Done }
 
-/// <summary>Per-file conflict marker: a content hash, not file metadata.
+/// <summary>Per-section conflict marker: a content hash, not file metadata.
 /// SaveConfigNow (tile-visibility toggle, merge headers, saved passwords —
-/// none of them Settings edits) rewrites all three shared section files on
-/// every call via Config.TrySave, whether or not their content changed, so
-/// last-write-time and length both change on a save that made no actual
-/// edit to a given section. Hashing the bytes is the only comparison that
-/// tells "changed" from "rewritten unchanged" apart, and these files are
-/// small enough that the cost is a non-issue.</summary>
+/// none of them Settings edits) rewrites config.json on every call via
+/// Config.TrySave, so the file's last-write-time and length change on a save
+/// that made no edit to a given section. Hashing just that section's JSON is
+/// the only comparison that tells "changed" from "rewritten unchanged"
+/// apart, and it also ignores edits to config.json's unrelated fields.</summary>
 internal readonly record struct FileStamp(string Hash);
 
-/// <summary>Fingerprint of the three shared side files the Settings window
-/// can change (destinations, monitored folders, alerts) at one instant. A
-/// file that doesn't exist fingerprints as null rather than some sentinel —
-/// first-run creation, or a section repointed at a file nobody has written
-/// yet, must not read as a conflict. Two null fingerprints compare equal;
-/// null against a real stamp does not.</summary>
+/// <summary>Fingerprint of the three shared sections the Settings window can
+/// change (destinations, monitored folders, alerts) as config.json holds
+/// them at one instant. A section config.json doesn't hold yet (or a
+/// config.json that is missing or mid-write) fingerprints as null rather
+/// than some sentinel. Two null fingerprints compare equal; null against a
+/// real stamp does not.</summary>
 internal sealed record SectionFingerprint(
     FileStamp? Destinations,
     FileStamp? MonitoredFolders,
@@ -37,7 +39,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 {
     private Config _cfg;               // replaced by Settings
     private readonly string _cfgPath;
-    // Fingerprint of the shared section files taken the moment the Settings
+    // Fingerprint of the shared config.json sections taken the moment the Settings
     // window opened (FreshConfigForSettings) — compared again in
     // ApplySettingsAsync just before saving, so a peer station's edit that
     // landed while this station's dialog was open is caught instead of
@@ -61,7 +63,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private readonly ISoundService _sounds;
     private readonly System.Threading.Timer _flash;
 
-    // Side-file keys ("destinations_file", etc.) already named in a "not
+    // Side-file keys ("box_labels_file") already named in a "not
     // saved" warning this run — see WarnSaveFailure's doc comment for why a
     // confinement-refused key is only ever worth saying once per session for
     // an UNRELATED background save (SaveConfigNow), never once per save —
@@ -104,12 +106,11 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             else _uiContext.Post(_ => ExpireStatusNote(), null);
         });
 
-        // history_db is resolved with the SAME unconfined rule as the four
-        // Config side files (ResolvePath === Config.ResolveBeside) — an
+        // history_db is resolved with the SAME unconfined rule as the
+        // box-labels side file (ResolvePath === Config.ResolveBeside) — an
         // absolute history_db is NOT refused the way an absolute
-        // destinations_file/monitored_folders_file/alerts_file/box_labels_file
-        // now is (2026-08 audit 4.2[A]). This is deliberate, not an
-        // oversight: unlike those four, which are "designed to sit beside
+        // box_labels_file now is (2026-08 audit 4.2[A]). This is deliberate,
+        // not an oversight: unlike box-labels.json, which is "designed to sit beside
         // the config" (task-1-brief.md), History.cs's own class doc says
         // this database is DESIGNED to live on its own SMB share, shared
         // across stations independently of where config.json lives —
@@ -189,7 +190,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // Points at config.json's own folder, not a Settings window this
         // class has no way to open (its own class doc: "No WPF types" --
         // Settings is opened by MainWindow's code-behind). That folder is
-        // also where the colliding side files themselves live, so it is
+        // also where the colliding box-labels file itself lives, so it is
         // still the fastest path to actually seeing the problem.
         OpenConfigFolderCommand = new RelayCommand(() =>
             OpenFolder(Path.GetDirectoryName(Path.GetFullPath(_cfgPath)) ?? ""));
@@ -312,9 +313,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// <summary>box-labels.json resolved beside the config (or absolute).</summary>
     internal string BoxLabelsPath => ResolvePath(_cfg.BoxLabelsFile, _cfgPath);
 
-    /// <summary>Fresh config for the Settings window: shared side files may
-    /// have changed on disk. A load failure (e.g. a half-edited side file)
-    /// warns and falls back to the in-memory config rather than blocking.
+    /// <summary>Fresh config for the Settings window: a peer station may have
+    /// saved the shared config.json since this one loaded it. A load failure
+    /// (e.g. a half-edited config.json) warns and falls back to the in-memory config rather than blocking.
     /// This is also the moment the user's editing session begins, so it's
     /// where the conflict-detection snapshot is taken (see
     /// <see cref="_settingsSnapshot"/> and <see cref="ApplySettingsAsync"/>).</summary>
@@ -330,20 +331,36 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Fingerprint the three shared side files as they stand right
-    /// now, keyed off _cfg's current file names. Internal so tests can
-    /// assert on it directly (e.g. that a missing file fingerprints as
-    /// null, not as "changed").</summary>
-    internal SectionFingerprint SnapshotSections() => new(
-        StampSection(_cfg.DestinationsFile),
-        StampSection(_cfg.MonitoredFoldersFile),
-        StampSection(_cfg.AlertsFile));
-
-    private FileStamp? StampSection(string sectionFile)
+    /// <summary>Fingerprint the three shared sections as config.json holds
+    /// them right now. Internal so tests can assert on it directly (e.g.
+    /// that a section config.json doesn't hold fingerprints as null, not as
+    /// "changed").</summary>
+    internal SectionFingerprint SnapshotSections()
     {
-        var path = ResolvePath(sectionFile, _cfgPath);
-        if (!File.Exists(path)) return null;
-        var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+        var onDisk = ReadConfigOnDisk();
+        return new SectionFingerprint(
+            StampSection(onDisk, "routes"),
+            StampSection(onDisk, "watch_folders"),
+            StampSection(onDisk, "alert_texts"));
+    }
+
+    /// <summary>config.json's top-level object as it stands on disk, or null
+    /// when it is missing or doesn't parse (a share hiccup, or a hand edit in
+    /// progress) — the Settings save that follows reports those itself.</summary>
+    private JsonObject? ReadConfigOnDisk()
+    {
+        try { return JsonNode.Parse(File.ReadAllText(_cfgPath)) as JsonObject; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static FileStamp? StampSection(JsonObject? config, string sectionKey)
+    {
+        if (config is null || !config.TryGetPropertyValue(sectionKey, out var section) || section is null)
+            return null;
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(section.ToJsonString())));
         return new FileStamp(hash);
     }
 
@@ -1004,7 +1021,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // discoverable only via a refused Save or a trip into Settings. This
         // is the fix: the same non-blocking rail every other startup-time
         // problem already uses. No Detail split -- the message Config builds
-        // already names both colliding keys and the save-refusal consequence
+        // already names the colliding path and the save-refusal consequence
         // in one sentence, and re-deriving that split here would just be a
         // second copy of Config's own wording to keep in sync.
         if (_cfg.SideFileCollisionWarning is { } collision && !_configCollisionDismissed)
@@ -1610,12 +1627,12 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// window's own edits to Routes/WatchFolders/AlertTexts. The
     /// suppression above is correct for <see cref="SaveConfigNow"/>: a
     /// background save of an unrelated field (tile-visibility, merge
-    /// headers) shouldn't re-nag about a side-file path the user already
+    /// headers) shouldn't re-nag about a box-labels path the user already
     /// heard about. It is wrong for an explicit Settings OK: if a save had
     /// already warned once earlier in the session (a background save, or an
     /// earlier Settings attempt), the suppression would silently eat the
     /// dialog for THIS save too — and this save is the one whose entire
-    /// purpose was writing the user's just-made edits to those side files.
+    /// purpose was writing the user's just-made edits to disk.
     /// Without <paramref name="alwaysWarn"/>, those edits would live only in
     /// <c>_cfg</c>, vanish on restart, and never reach a peer station, with
     /// no dialog telling the user any of that happened. The refused keys are
@@ -1641,8 +1658,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// just on a deliberate password edit.
     ///
     /// <see cref="SaveConfigNow"/> writes the WHOLE live <c>_cfg</c>, and
-    /// <see cref="RefreshSharedSectionsFromDisk"/> only refreshes the four
-    /// side files first — Theme, TileVisibility, MergeHeaders, LabelClients,
+    /// <see cref="RefreshSharedSectionsFromDisk"/> only refreshes the three
+    /// shared sections first — Theme, TileVisibility, MergeHeaders, LabelClients,
     /// Sounds and the rest of the main config.json section still come from
     /// this station's own in-memory copy, which can be stale. That gap in
     /// SaveConfigNow is pre-existing and shared infrastructure other tools
@@ -1669,58 +1686,17 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     ///
     /// The write itself goes through <see cref="Config.TrySaveMain"/>, not
     /// <see cref="Config.TrySave"/> (final review, Important 3, 2026-08-06):
-    /// this call is entitled to change SavedPasswords, a MAIN-section
-    /// field, and nothing else, but TrySave also rewrites all three side
-    /// files plus the box-labels bootstrap on every call — which broke this
-    /// method's own contract two ways. A station with a legitimately-
-    /// Browsed ABSOLUTE side-file path (a shipped Settings capability) has
-    /// that path refused on every WRITE (see
-    /// <see cref="Config.ResolveBesideForWrite"/>), so TrySave's side-file
-    /// attempt for it always failed and the overall call returned false —
-    /// even though the password change had already reached disk via
-    /// TrySave's main-file write, which runs first. UnlockViewModel's
+    /// TrySave also runs the box-labels bootstrap, and a station with a
+    /// legitimately-Browsed ABSOLUTE box_labels_file has that path refused
+    /// on every WRITE (see <see cref="Config.ResolveBesideForWrite"/>). The
+    /// overall call would then return false even though the password
+    /// change had already reached config.json, and UnlockViewModel's
     /// constructor gates its "passwords protected" notice on this method's
-    /// return value, so that notice went silently missing on exactly the
-    /// stations where it mattered, right beside a "settings not saved"
-    /// warning about a save that had actually partly landed. Separately,
-    /// rewriting all three side files on every Unlock-window open — not
-    /// just on a deliberate Settings edit — re-serialized a hand-edited
-    /// side file byte-for-byte-unchanged, which trips a peer's hash-based
-    /// Settings-conflict prompt (<see cref="SnapshotSections"/>) over a
-    /// file this call was never entitled to touch. Writing only the main
-    /// file removes both failure surfaces, and makes "persist ONLY
-    /// SavedPasswords" (this method's own doc, above) true at the file
-    /// level too, not just the field level.
-    ///
-    /// This TrySaveMain swap is only correct HERE, precisely because this
-    /// method's own contract (above) is "persist ONLY SavedPasswords" — it
-    /// has nothing of its own to say about Routes/WatchFolders/AlertTexts,
-    /// so skipping the three side files entirely costs it nothing.
-    /// <see cref="SaveConfigNow"/> and <see cref="ApplySettingsAsync"/> sit
-    /// on the exact same absolute-side-file-path hazard described above
-    /// (2026-08-07 audit, Task 1b: this was originally fixed for this
-    /// method ONLY, leaving those two still calling <c>TrySave</c>
-    /// unguarded — a comment here claiming the hazard handled would have
-    /// been actively misleading about them) but CANNOT take this same
-    /// fix: SaveConfigNow persists tile-visibility/merge-header edits
-    /// alongside whichever Routes/WatchFolders/AlertTexts edits a peer's
-    /// concurrent Settings save landed since this station last read them,
-    /// and ApplySettingsAsync's entire job is persisting a Settings
-    /// session's edits to exactly those three side files — TrySaveMain
-    /// would silently stop saving a user's destination and monitored-
-    /// folder edits at both call sites, a materially worse bug than the
-    /// one being fixed. They keep <c>TrySave</c> and instead: (1) the
-    /// Settings "Data files" Browse... buttons now refuse to hand back an
-    /// absolute path outside the config directory in the first place
-    /// (SettingsViewModel's four <c>Browse*FileCommand</c>s), so the
-    /// hazard can no longer be freshly introduced through the UI; and (2)
-    /// for a config that already carries such a path from before this fix
-    /// (or from a hand edit), <see cref="WarnSaveFailure"/> still lands
-    /// every save that CAN succeed — the main config and any side file
-    /// whose own path is fine — and warns about a purely-confinement
-    /// failure once per running session instead of on every unrelated
-    /// save, rather than bricking the station's whole Settings experience
-    /// the way this method's own bug once did.
+    /// return value. <see cref="SaveConfigNow"/> and
+    /// <see cref="ApplySettingsAsync"/> keep <c>TrySave</c>, and for a
+    /// config carrying such a path <see cref="WarnSaveFailure"/> still lands
+    /// config.json and warns about the purely-confinement failure once per
+    /// running session instead of on every unrelated save.
     ///
     /// An ABSENT config.json is deliberately NOT treated as first run and
     /// gets no fallback write at all (fix round 2, Gap B): this method only
@@ -1789,48 +1765,28 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Before a tool-state save (tile-visibility toggle, merge
-    /// headers, remembered passwords) rewrites all three Settings-owned side
-    /// files, pull each one fresh from disk first. _cfg is whatever this run
-    /// started with — without this, a full TrySave would silently revert an
-    /// admin's intervening edit to a shared file the moment any tool saves
-    /// its own unrelated state. box-labels.json is untouched here: it's
-    /// already protected as a bootstrap-only write with its own exclusive
-    /// writer (BoxLabelStore). A section whose file doesn't exist yet keeps
-    /// its in-memory values so TrySave can still create it (first-run
-    /// migration); a section whose file exists but fails to parse also keeps
-    /// the in-memory copy — a broken shared file must not block a password
-    /// save.</summary>
+    /// headers, remembered passwords) rewrites config.json, pull the three
+    /// Settings-owned shared sections (destinations, monitored folders,
+    /// alerts) fresh from disk first. _cfg is whatever this run started with
+    /// — without this, a full TrySave would silently revert an admin's
+    /// intervening Settings edit on a shared config.json the moment any tool
+    /// saves its own unrelated state. box-labels.json is untouched here:
+    /// it's already protected as a bootstrap-only write with its own
+    /// exclusive writer (BoxLabelStore). A config.json that is missing or
+    /// fails to load keeps the in-memory sections — a broken shared file
+    /// must not block a password save. Config.Load(path, createIfMissing:
+    /// false), so a momentarily-missing file is never replaced with
+    /// defaults from here (see SaveSavedPasswordsNow's doc comment, Gap B).
+    /// A config.json still in the split-file layout folds its legacy side
+    /// files in through that same Load.</summary>
     private void RefreshSharedSectionsFromDisk()
     {
-        try
-        {
-            if (Config.ReadDoc<DestinationsDoc>(_cfgPath, _cfg.DestinationsFile) is { } dd)
-            {
-                _cfg.Routes = dd.Routes ?? new();
-                _cfg.DestinationsFileExtras = dd.Extras ?? new();
-            }
-        }
-        catch (ConfigException) { /* broken shared file: keep the in-memory copy */ }
-
-        try
-        {
-            if (Config.ReadDoc<MonitoredFoldersDoc>(_cfgPath, _cfg.MonitoredFoldersFile) is { } md)
-            {
-                _cfg.WatchFolders = md.WatchFolders ?? new();
-                _cfg.MonitoredFoldersFileExtras = md.Extras ?? new();
-            }
-        }
-        catch (ConfigException) { /* broken shared file: keep the in-memory copy */ }
-
-        try
-        {
-            if (Config.ReadDoc<AlertsDoc>(_cfgPath, _cfg.AlertsFile) is { } ad)
-            {
-                _cfg.AlertTexts = ad.AlertTexts ?? new();
-                _cfg.AlertsFileExtras = ad.Extras ?? new();
-            }
-        }
-        catch (ConfigException) { /* broken shared file: keep the in-memory copy */ }
+        Config onDisk;
+        try { onDisk = Config.Load(_cfgPath, createIfMissing: false); }
+        catch (ConfigException) { return; /* missing or broken: keep the in-memory copy */ }
+        _cfg.Routes = onDisk.Routes;
+        _cfg.WatchFolders = onDisk.WatchFolders;
+        _cfg.AlertTexts = onDisk.AlertTexts;
     }
 
     internal void SaveMergeHeaders(Dictionary<string, string> headers)
@@ -1949,9 +1905,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // (the same choice every existing conflict prompt offers) would
         // still resurrect the plaintext; it also touches conflict-detection
         // code shared by SnapshotSections' three other callers and would
-        // need a new, necessarily vague section name (config.json's main
-        // section has no single field granularity the way the three side
-        // files do). This overlay makes the resurrection structurally
+        // need a new, necessarily vague section name (the rest of
+        // config.json has no single field granularity the way the three
+        // shared sections do). This overlay makes the resurrection structurally
         // impossible instead of merely asking about it, and is safe by
         // construction: Settings has nothing of its own to lose here, since
         // it never had an edit to this field in the first place. Mirrors
@@ -2196,9 +2152,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     // _cfgPath)`) rather than rewriting them, but no longer a second copy of
     // the resolution logic itself: an absolute value stays; a relative one
     // lands beside config.json. Unconfined, deliberately — see
-    // Config.ResolveBeside's own doc comment for why the four side-file
-    // keys get a confined variant and general config-relative paths
-    // (Inbox/Deferred, the section-file "where would this point?" previews)
+    // Config.ResolveBeside's own doc comment for why the side-file keys
+    // get a confined variant and general config-relative paths
+    // (Inbox/Deferred, the box-labels "where would this point?" preview)
     // do not.
     internal static string ResolvePath(string value, string cfgPath) =>
         Config.ResolveBeside(cfgPath, value);

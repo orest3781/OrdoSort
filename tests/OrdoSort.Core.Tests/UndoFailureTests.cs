@@ -479,7 +479,7 @@ public class UndoRaceTestCollectionMembershipTests
     /// classes are always siblings in a file, never nested (confirmed by
     /// reading every file this scan covers), so "nearest declaration above"
     /// already identifies the right owner. Brace-counting was the first
-    /// attempt and it broke on real fixture data — ConfigSplitTests.cs
+    /// attempt and it broke on real fixture data — ConfigConsolidationTests.cs
     /// deliberately writes the malformed JSON literal "{ not json" to prove
     /// Config.Load fails readably, a single un-matched '{' inside an
     /// ordinary string literal that a depth counter can't tell from real

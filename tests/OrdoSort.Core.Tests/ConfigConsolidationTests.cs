@@ -1,16 +1,18 @@
 namespace OrdoSort.Core.Tests;
 
-/// <summary>Split config: side files win, inline is the legacy fallback,
-/// and a broken side file fails naming that file.</summary>
+/// <summary>One settings file: destinations, monitored folders and alerts
+/// live inline in config.json; only box labels keep a file of their own. A
+/// config saved in the 2026-07 split layout folds its legacy side files back
+/// in at load, and the next save completes the migration.</summary>
 /// <summary>In the AtomicPlace seam collection because
 /// BootstrapLeavesAPeerCreatedBoxLabelsFileIntact assigns
 /// AtomicPlace.BeforeAttempt — see AtomicPlaceTests.Name for why every
 /// setter of that single process-wide field must be serialised against the
 /// others.</summary>
 [Collection(AtomicPlaceTests.Name)]
-public class ConfigSplitTests : IDisposable
+public class ConfigConsolidationTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("ordosplit_").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("ordoconsolidate_").FullName;
     public void Dispose() { try { Directory.Delete(_dir, true); } catch { } }
 
     private string Write(string name, string json)
@@ -21,20 +23,41 @@ public class ConfigSplitTests : IDisposable
     }
 
     [Fact]
-    public void SideFileWinsOverInline()
+    public void LegacySideFilesAreFoldedInWhenConfigHasNoInlineSections()
+    {
+        var cfg = Write("config.json", """{"inbox":"C:/in","destinations_file":"destinations.json"}""");
+        Write("destinations.json", """{"routes":[{"label":"SIDE","path":"C:/y"}]}""");
+        Write("monitored-folders.json", """{"watch_folders":[{"label":"W","path":"C:/w"}]}""");
+        Write("alerts.json", """{"alert_texts":["URGENT"]}""");
+
+        var c = Config.Load(cfg);
+
+        Assert.Equal("SIDE", Assert.Single(c.Routes).Label);
+        Assert.Equal("W", Assert.Single(c.WatchFolders).Label);
+        Assert.Equal(new[] { "URGENT" }, c.AlertTexts);
+        Assert.False(c.Extras.ContainsKey("destinations_file"));
+    }
+
+    /// <summary>Once config.json holds a section — even an empty one — it
+    /// is the truth, and a leftover legacy file beside it is ignored.
+    /// Otherwise emptying a list in Settings would bring the stale legacy
+    /// list back at the next start.</summary>
+    [Fact]
+    public void InlineSectionWinsOverALeftoverLegacyFile()
     {
         var cfg = Write("config.json",
-            """{"inbox":"C:/in","routes":[{"label":"INLINE","path":"C:/x"}]}""");
-        Write("destinations.json",
-            """{"routes":[{"label":"SIDE","path":"C:/y"}],"custom_top":"kept"}""");
+            """{"inbox":"C:/in","routes":[{"label":"INLINE","path":"C:/x"}],"alert_texts":[]}""");
+        Write("destinations.json", """{"routes":[{"label":"STALE","path":"C:/y"}]}""");
+        Write("alerts.json", """{"alert_texts":["STALE"]}""");
+
         var c = Config.Load(cfg);
-        var r = Assert.Single(c.Routes);
-        Assert.Equal("SIDE", r.Label);
-        Assert.True(c.DestinationsFileExtras.ContainsKey("custom_top"));
+
+        Assert.Equal("INLINE", Assert.Single(c.Routes).Label);
+        Assert.Empty(c.AlertTexts);
     }
 
     [Fact]
-    public void InlineIsUsedWhenSideFileMissing()
+    public void InlineIsUsedWhenNoLegacyFileExists()
     {
         var cfg = Write("config.json",
             """{"inbox":"C:/in","alert_texts":["URGENT"],"watch_folders":[{"label":"W","path":"C:/w"}]}""");
@@ -55,7 +78,7 @@ public class ConfigSplitTests : IDisposable
     }
 
     [Fact]
-    public void BrokenSideFileNamesTheFile()
+    public void BrokenLegacyFileNamesTheFile()
     {
         var cfg = Write("config.json", """{"inbox":"C:/in"}""");
         Write("alerts.json", "{ not json");
@@ -64,7 +87,15 @@ public class ConfigSplitTests : IDisposable
     }
 
     [Fact]
-    public void SideFileNullsNormalizeLikeInline()
+    public void BrokenLegacyFileIsNotReadOnceConfigHoldsTheSection()
+    {
+        var cfg = Write("config.json", """{"inbox":"C:/in","alert_texts":["A"]}""");
+        Write("alerts.json", "{ not json");
+        Assert.Equal(new[] { "A" }, Config.Load(cfg).AlertTexts);
+    }
+
+    [Fact]
+    public void LegacyFileNullsNormalizeLikeInline()
     {
         var cfg = Write("config.json", """{"inbox":"C:/in"}""");
         Write("destinations.json",
@@ -76,7 +107,7 @@ public class ConfigSplitTests : IDisposable
     }
 
     [Fact]
-    public void RelativeSectionPathResolvesBesideConfig()
+    public void RelativeLegacySectionPathResolvesBesideConfig()
     {
         var sub = Directory.CreateDirectory(Path.Combine(_dir, "shared")).FullName;
         File.WriteAllText(Path.Combine(sub, "team-dests.json"),
@@ -90,7 +121,44 @@ public class ConfigSplitTests : IDisposable
     }
 
     [Fact]
-    public void SaveWritesSideFilesAndStripsInlineSections()
+    public void SaveMigratesTheSplitLayoutIntoOneConfigAndKeepsTheOldFiles()
+    {
+        var cfg = Write("config.json", """
+            {"inbox":"C:/in","destinations_file":"destinations.json",
+             "monitored_folders_file":"monitored-folders.json","alerts_file":"alerts.json"}
+            """);
+        const string legacyDestinations = """{"routes":[{"label":"A","path":"C:/a"}]}""";
+        Write("destinations.json", legacyDestinations);
+        Write("monitored-folders.json", """{"watch_folders":[{"label":"W","path":"C:/w"}]}""");
+        Write("alerts.json", """{"alert_texts":["URGENT"]}""");
+        Write("box-labels.json", """{"label_clients":[{"id":"ACME","destroy_days":30,"next_number":7}]}""");
+
+        Config.Save(Config.Load(cfg), cfg);
+
+        var main = File.ReadAllText(cfg);
+        Assert.Contains("\"A\"", main);
+        Assert.Contains("\"W\"", main);
+        Assert.Contains("URGENT", main);
+        Assert.DoesNotContain("destinations_file", main);
+        Assert.DoesNotContain("monitored_folders_file", main);
+        Assert.DoesNotContain("alerts_file", main);
+        Assert.DoesNotContain("\"label_clients\"", main);
+        // the old files are left exactly as they were, never deleted
+        Assert.Equal(legacyDestinations, File.ReadAllText(Path.Combine(_dir, "destinations.json")));
+
+        // and with the old files gone, config.json alone loads back identically
+        File.Delete(Path.Combine(_dir, "destinations.json"));
+        File.Delete(Path.Combine(_dir, "monitored-folders.json"));
+        File.Delete(Path.Combine(_dir, "alerts.json"));
+        var back = Config.Load(cfg);
+        Assert.Equal("A", Assert.Single(back.Routes).Label);
+        Assert.Equal("W", Assert.Single(back.WatchFolders).Label);
+        Assert.Equal(new[] { "URGENT" }, back.AlertTexts);
+        Assert.Equal(7, Assert.Single(back.LabelClients).NextNumber);
+    }
+
+    [Fact]
+    public void SaveKeepsSectionsInlineAndBoxLabelsInTheirOwnFile()
     {
         var cfg = Write("config.json",
             """
@@ -99,25 +167,17 @@ public class ConfigSplitTests : IDisposable
              "alert_texts":["URGENT"],
              "label_clients":[{"id":"ACME","destroy_days":30,"next_number":7}]}
             """);
-        var c = Config.Load(cfg);          // inline fallback path
-        Config.Save(c, cfg);               // migration completes here
+        Config.Save(Config.Load(cfg), cfg);
 
         var main = File.ReadAllText(cfg);
-        Assert.DoesNotContain("\"routes\"", main);
-        Assert.DoesNotContain("\"watch_folders\"", main);
-        Assert.DoesNotContain("\"alert_texts\"", main);
+        Assert.Contains("\"routes\"", main);
+        Assert.Contains("\"watch_folders\"", main);
+        Assert.Contains("\"alert_texts\"", main);
         Assert.DoesNotContain("\"label_clients\"", main);
-        Assert.Contains("\"destinations_file\"", main);
-
-        Assert.Contains("\"A\"", File.ReadAllText(Path.Combine(_dir, "destinations.json")));
-        Assert.Contains("\"W\"", File.ReadAllText(Path.Combine(_dir, "monitored-folders.json")));
-        Assert.Contains("URGENT", File.ReadAllText(Path.Combine(_dir, "alerts.json")));
         Assert.Contains("\"ACME\"", File.ReadAllText(Path.Combine(_dir, "box-labels.json")));
-
-        // and the split files load back identically
-        var back = Config.Load(cfg);
-        Assert.Equal("A", Assert.Single(back.Routes).Label);
-        Assert.Equal(7, Assert.Single(back.LabelClients).NextNumber);
+        Assert.False(File.Exists(Path.Combine(_dir, "destinations.json")));
+        Assert.False(File.Exists(Path.Combine(_dir, "monitored-folders.json")));
+        Assert.False(File.Exists(Path.Combine(_dir, "alerts.json")));
     }
 
     [Fact]
@@ -190,37 +250,23 @@ public class ConfigSplitTests : IDisposable
     }
 
     [Fact]
-    public void SideFileExtrasSurviveSaveRoundTrip()
+    public void FirstRunCreatesTheConfigAndTheBoxLabelsFileOnly()
     {
-        var cfg = Write("config.json", """{"inbox":"C:/in"}""");
-        Write("alerts.json", """{"alert_texts":["A"],"admin_note":"keep me"}""");
-        var c = Config.Load(cfg);
-        Config.Save(c, cfg);
-        Assert.Contains("keep me", File.ReadAllText(Path.Combine(_dir, "alerts.json")));
+        var fresh = Path.Combine(_dir, "fresh");
+        Directory.CreateDirectory(fresh);
+        Config.Load(Path.Combine(fresh, "config.json"));   // first-run: creates defaults
+        var created = Directory.GetFiles(fresh).Select(Path.GetFileName).Order().ToArray();
+        Assert.Equal(new[] { "box-labels.json", "config.json" }, created);
     }
 
     [Fact]
-    public void FirstRunCreatesAllFiveFiles()
-    {
-        var cfg = Path.Combine(_dir, "fresh", "config.json");
-        Directory.CreateDirectory(Path.GetDirectoryName(cfg)!);
-        Config.Load(cfg);   // first-run: creates defaults
-        foreach (var f in new[] { "config.json", "destinations.json",
-                 "monitored-folders.json", "alerts.json", "box-labels.json" })
-            Assert.True(File.Exists(Path.Combine(_dir, "fresh", f)), f);
-    }
-
-    [Fact]
-    public void TrySaveNamesTheFailingSideFile()
+    public void TrySaveNamesTheFailingFile()
     {
         var cfg = Write("config.json", """{"inbox":"C:/in"}""");
-        var dests = Path.Combine(_dir, "destinations.json");
-        File.WriteAllText(dests, "{}");
-        using var hold = new FileStream(dests, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        var c = new Config();
-        var ok = Config.TrySave(c, cfg, out var error);
+        using var hold = new FileStream(cfg, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        var ok = Config.TrySave(new Config(), cfg, out var error);
         Assert.False(ok);
-        Assert.Contains("destinations.json", error);
+        Assert.Contains("config.json", error);
     }
 
     [Fact]
@@ -230,6 +276,6 @@ public class ConfigSplitTests : IDisposable
         var ok = Config.TrySave(new Config(), cfgPath, out var error);
         Assert.True(ok, error);
         Assert.True(File.Exists(cfgPath));
-        Assert.True(File.Exists(Path.Combine(_dir, "brand-new", "destinations.json")));
+        Assert.True(File.Exists(Path.Combine(_dir, "brand-new", "box-labels.json")));
     }
 }

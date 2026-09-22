@@ -19,8 +19,8 @@ namespace OrdoSort.Wpf.Tests;
 /// opened — undoing this branch's own safety fix, with no prompt at all.
 /// (Unlike the existing peer-edit conflict flow just above this code in
 /// ApplySettingsAsync — SnapshotSections / ChangedSectionNames — which only
-/// ever fingerprints the three side files, never config.json's main
-/// section, so it can't see this change to begin with.) And a peer's next
+/// ever fingerprints the three shared sections, never the rest of
+/// config.json, so it can't see this change to begin with.) And a peer's next
 /// Unlock-window open would re-sweep the resurrected plaintext and fire its
 /// "one-time" protected notice all over again — forever.
 ///

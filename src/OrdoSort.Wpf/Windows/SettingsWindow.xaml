@@ -1628,67 +1628,7 @@
                     <StackPanel Margin="16,8" Grid.IsSharedSizeScope="True">
                         <TextBlock Text="Data files" Style="{StaticResource SectionHeaderFirst}" />
                         <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap" Margin="0,0,0,8"
-                                   Text="Changing a path re-points the app at that file — it does not move the current contents. A missing file is created on save from the current list." />
-
-                        <Grid Style="{StaticResource FieldRow}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <TextBlock Text="Destinations:" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" Text="{Binding DestinationsFile, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="Destinations file" />
-                            <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
-                                    Command="{Binding BrowseDestinationsFileCommand}" />
-                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DestinationsFileNote}"
-                                       Tag="{Binding DestinationsFileNoteNeedsAttention}"
-                                       Style="{StaticResource NoteText}" />
-                        </Grid>
-
-                        <Grid Style="{StaticResource FieldRow}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <TextBlock Text="Monitored folders:" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" Text="{Binding MonitoredFoldersFile, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="Monitored folders file" />
-                            <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
-                                    Command="{Binding BrowseMonitoredFoldersFileCommand}" />
-                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding MonitoredFoldersFileNote}"
-                                       Tag="{Binding MonitoredFoldersFileNoteNeedsAttention}"
-                                       Style="{StaticResource NoteText}" />
-                        </Grid>
-
-                        <Grid Style="{StaticResource FieldRow}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <TextBlock Text="Alerts:" Style="{StaticResource FieldLabel}" />
-                            <TextBox Grid.Column="1" Text="{Binding AlertsFile, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="Alerts file" />
-                            <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
-                                    Command="{Binding BrowseAlertsFileCommand}" />
-                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AlertsFileNote}"
-                                       Tag="{Binding AlertsFileNoteNeedsAttention}"
-                                       Style="{StaticResource NoteText}" />
-                        </Grid>
+                                   Text="Destinations, monitored folders and alerts are saved in the settings file itself. Box labels keep a file of their own, so several stations can share one set of label numbers. Changing the path re-points the app at that file — it does not move the current labels. A missing file is created on save from the current list." />
 
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>

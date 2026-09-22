@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using OrdoSort.Core;
 using OrdoSort.Wpf.ViewModels;
@@ -436,11 +437,10 @@ public class SettingsViewModelTests : IDisposable
     }
 
     // -------------------------------------- PickSideFile (Browse... for
-    // destinations/monitored-folders/alerts/box-labels) — 2026-08-07 audit,
+    // box-labels) — 2026-08-07 audit,
     // Task 1b round 1: this method's own branching, not the shared
     // Config.ResolveBesideForWrite confinement check it calls, is what these
-    // tests are proving. Only DestinationsFile is exercised — the other
-    // three Browse*FileCommands share the exact same PickSideFile body.
+    // tests are proving, through the one side-file key left: box labels.
 
     [Fact]
     public void BrowsingToAPathInsideTheConfigDirectoryStoresItAsAPlainFilename()
@@ -456,11 +456,11 @@ public class SettingsViewModelTests : IDisposable
         var cfg = Config.Load(cfgPath);
         var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
 
-        var insidePath = Path.Combine(_dir, "picked-destinations.json");
+        var insidePath = Path.Combine(_dir, "picked-labels.json");
         _dialogs.NextOpenFile = insidePath;
-        vm.BrowseDestinationsFileCommand.Execute(null);
+        vm.BrowseBoxLabelsFileCommand.Execute(null);
 
-        Assert.Equal("picked-destinations.json", vm.DestinationsFile);
+        Assert.Equal("picked-labels.json", vm.BoxLabelsFile);
         Assert.Empty(_dialogs.Warnings);
     }
 
@@ -472,12 +472,12 @@ public class SettingsViewModelTests : IDisposable
         var cfg = Config.Load(cfgPath);
         var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
 
-        var insidePath = Path.Combine(_dir, "archive", "picked-destinations.json");
+        var insidePath = Path.Combine(_dir, "archive", "picked-labels.json");
         _dialogs.NextOpenFile = insidePath;
-        vm.BrowseDestinationsFileCommand.Execute(null);
+        vm.BrowseBoxLabelsFileCommand.Execute(null);
 
-        var expected = Path.Combine("archive", "picked-destinations.json");
-        Assert.Equal(expected, vm.DestinationsFile);
+        var expected = Path.Combine("archive", "picked-labels.json");
+        Assert.Equal(expected, vm.BoxLabelsFile);
         Assert.Empty(_dialogs.Warnings);
 
         // The whole point of storing it relative: reading it back beside
@@ -485,7 +485,7 @@ public class SettingsViewModelTests : IDisposable
         // would have written it to — round-trips through a subfolder too,
         // not just a plain filename.
         Assert.Equal(Path.GetFullPath(insidePath),
-            Config.ResolveBesideForRead(cfgPath, vm.DestinationsFile, "destinations_file"));
+            Config.ResolveBesideForRead(cfgPath, vm.BoxLabelsFile, "box_labels_file"));
     }
 
     [Fact]
@@ -499,8 +499,8 @@ public class SettingsViewModelTests : IDisposable
         var cfg = Config.Load(cfgPath);
         var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
 
-        _dialogs.NextOpenFile = Path.Combine(_dir, "picked-destinations.json");
-        vm.BrowseDestinationsFileCommand.Execute(null);
+        _dialogs.NextOpenFile = Path.Combine(_dir, "picked-labels.json");
+        vm.BrowseBoxLabelsFileCommand.Execute(null);
 
         Assert.Equal(Path.GetFullPath(_dir), _dialogs.LastOpenFileInitialDirectory);
     }
@@ -512,18 +512,18 @@ public class SettingsViewModelTests : IDisposable
         Config.Save(new Config(), cfgPath);
         var cfg = Config.Load(cfgPath);
         var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
-        var before = vm.DestinationsFile;   // the default, "destinations.json"
+        var before = vm.BoxLabelsFile;   // the default, "box-labels.json"
 
         var outsideDir = Directory.CreateDirectory(
             Path.Combine(Path.GetTempPath(), "ordoset_outside_" + Guid.NewGuid())).FullName;
         try
         {
-            _dialogs.NextOpenFile = Path.Combine(outsideDir, "evil-destinations.json");
-            vm.BrowseDestinationsFileCommand.Execute(null);
+            _dialogs.NextOpenFile = Path.Combine(outsideDir, "evil-labels.json");
+            vm.BrowseBoxLabelsFileCommand.Execute(null);
 
-            Assert.Equal(before, vm.DestinationsFile);   // refused: field left unchanged
+            Assert.Equal(before, vm.BoxLabelsFile);   // refused: field left unchanged
             var warning = Assert.Single(_dialogs.Warnings);
-            Assert.Contains("destinations_file", warning.Message);
+            Assert.Contains("box_labels_file", warning.Message);
         }
         finally
         {
@@ -536,7 +536,7 @@ public class SettingsViewModelTests : IDisposable
     // Settings, not just refused silently at the next Save. Fixing the
     // picker above does nothing for a value that got in some OTHER way —
     // these three pin the note side of that, using DIRECT property sets
-    // (never BrowseDestinationsFileCommand) so the confinement-refused value
+    // (never BrowseBoxLabelsFileCommand) so the confinement-refused value
     // arrives the same way a hand edit or a pre-fix config would.
 
     [Fact]
@@ -556,11 +556,11 @@ public class SettingsViewModelTests : IDisposable
             // loadable on purpose) — but a Save would refuse it. The note
             // must say so without the user ever touching Save, in the same
             // words the save-time refusal uses.
-            vm.DestinationsFile = Path.Combine(outsideDir, "evil-destinations.json");
+            vm.BoxLabelsFile = Path.Combine(outsideDir, "evil-labels.json");
 
-            Assert.True(vm.DestinationsFileNoteNeedsAttention);
-            Assert.Contains("destinations_file", vm.DestinationsFileNote);
-            Assert.Contains("must stay beside the config file", vm.DestinationsFileNote);
+            Assert.True(vm.BoxLabelsFileNoteNeedsAttention);
+            Assert.Contains("box_labels_file", vm.BoxLabelsFileNote);
+            Assert.Contains("must stay beside the config file", vm.BoxLabelsFileNote);
         }
         finally
         {
@@ -581,9 +581,9 @@ public class SettingsViewModelTests : IDisposable
         var cfg = Config.Load(cfgPath);
         var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
 
-        vm.DestinationsFile = Path.Combine(_dir, "destinations.json");
+        vm.BoxLabelsFile = Path.Combine(_dir, "box-labels.json");
 
-        Assert.False(vm.DestinationsFileNoteNeedsAttention);
+        Assert.False(vm.BoxLabelsFileNoteNeedsAttention);
     }
 
     [Fact]
@@ -598,12 +598,12 @@ public class SettingsViewModelTests : IDisposable
             Path.Combine(Path.GetTempPath(), "ordoset_outside_" + Guid.NewGuid())).FullName;
         try
         {
-            vm.DestinationsFile = Path.Combine(outsideDir, "evil-destinations.json");
-            Assert.True(vm.DestinationsFileNoteNeedsAttention);
+            vm.BoxLabelsFile = Path.Combine(outsideDir, "evil-labels.json");
+            Assert.True(vm.BoxLabelsFileNoteNeedsAttention);
 
-            vm.DestinationsFile = "destinations.json";
+            vm.BoxLabelsFile = "box-labels.json";
 
-            Assert.False(vm.DestinationsFileNoteNeedsAttention);
+            Assert.False(vm.BoxLabelsFileNoteNeedsAttention);
         }
         finally
         {
@@ -621,37 +621,36 @@ public class SettingsViewModelTests : IDisposable
         // path while the doc comment right above it already claimed the
         // field's current value was kept, same as a cancelled dialog.
         var vm = new SettingsViewModel(new Config(), _dialogs);   // cfgPath left null
-        var before = vm.DestinationsFile;
+        var before = vm.BoxLabelsFile;
 
-        _dialogs.NextOpenFile = @"C:\anywhere\destinations.json";
-        vm.BrowseDestinationsFileCommand.Execute(null);
+        _dialogs.NextOpenFile = @"C:\anywhere\box-labels.json";
+        vm.BrowseBoxLabelsFileCommand.Execute(null);
 
-        Assert.Equal(before, vm.DestinationsFile);
+        Assert.Equal(before, vm.BoxLabelsFile);
     }
 
     // -------------------------------------- side-file uniqueness (QC-08):
-    // each of the four DebouncedProbe notes above sees only its OWN field
-    // (SettingsViewModel.cs:617-627), so a collision BETWEEN fields has no
-    // home there — HardErrors is where the whole form is visible at once.
+    // the box-labels DebouncedProbe note sees only its own field, not
+    // whether it lands on config.json itself — HardErrors checks that.
 
     [Fact]
-    public void HardErrorsCatchesTwoSideFileFieldsNamingOneFile()
+    public void HardErrorsCatchesBoxLabelsNamingTheConfigFile()
     {
         var cfgPath = Path.Combine(_dir, "config.json");
         Config.Save(new Config(), cfgPath);
         var cfg = Config.Load(cfgPath);
         var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath)
         {
-            MonitoredFoldersFile = "destinations.json",   // collides with DestinationsFile's default
+            BoxLabelsFile = "config.json",
         };
 
         var errors = vm.HardErrors();
 
-        Assert.Contains(errors, e => e.Contains("Destinations") && e.Contains("Monitored folders"));
+        Assert.Contains(errors, e => e.Contains("Box labels") && e.Contains("settings file"));
     }
 
     [Fact]
-    public void HardErrorsHasNoCollisionErrorWhenAllFourSideFilesAreDistinct()
+    public void HardErrorsHasNoCollisionErrorForTheDefaultBoxLabelsFile()
     {
         var cfgPath = Path.Combine(_dir, "config.json");
         Config.Save(new Config(), cfgPath);
@@ -670,7 +669,7 @@ public class SettingsViewModelTests : IDisposable
         // against, so there is nothing safe to compare. Must not throw.
         var vm = new SettingsViewModel(new Config(), _dialogs)
         {
-            MonitoredFoldersFile = "destinations.json",
+            BoxLabelsFile = "config.json",
         };
 
         Assert.Empty(vm.HardErrors());
@@ -1234,130 +1233,53 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public void DataFilePathsRoundTripThroughSettings()
+    public void BoxLabelsFilePathRoundTripsThroughSettings()
     {
-        var cfg = LoadFromJson("""{"inbox":"C:/in","destinations_file":"shared/dests.json"}""");
+        var cfg = LoadFromJson("""{"inbox":"C:/in","box_labels_file":"shared/labels.json"}""");
         var vm = new SettingsViewModel(cfg, _dialogs);
-        Assert.Equal("shared/dests.json", vm.DestinationsFile);
-        vm.AlertsFile = "team-alerts.json";
+        Assert.Equal("shared/labels.json", vm.BoxLabelsFile);
+        vm.BoxLabelsFile = "team-labels.json";
 
         Assert.True(vm.TryBuildResult());
-        var built = vm.Result!;
-        Assert.Equal("shared/dests.json", built.DestinationsFile);
-        Assert.Equal("team-alerts.json", built.AlertsFile);
-        Assert.Equal("monitored-folders.json", built.MonitoredFoldersFile); // untouched default
+        Assert.Equal("team-labels.json", vm.Result!.BoxLabelsFile);
     }
 
     [Fact]
-    public void SettingsSavePreservesAlertsFileExtras()
+    public void SettingsSavePreservesBoxLabelsFileExtras()
     {
         // Settings-OK JSON-clones the original config to build the result;
-        // the four XxxFileExtras dictionaries are [JsonIgnore] (they belong
-        // to the side-file doc types, not config.json's own shape) and so
-        // don't survive that clone by construction — they have to be carried
-        // through by hand, or every Settings OK erases hand-added keys from
-        // the side files.
+        // BoxLabelsFileExtras is [JsonIgnore] (it belongs to box-labels.json,
+        // not config.json's own shape) and so doesn't survive that clone by
+        // construction — it has to be carried through by hand, or the
+        // box-labels bootstrap would lose hand-added keys.
         var cfgPath = Path.Combine(_dir, "config.json");
-        Config.Save(new Config(), cfgPath);   // creates alerts.json etc.
-        var alertsPath = Path.Combine(_dir, "alerts.json");
-        File.WriteAllText(alertsPath,
-            """{"alert_texts":[],"hand_added_key":"keep me"}""");
+        Config.Save(new Config(), cfgPath);
+        File.WriteAllText(Path.Combine(_dir, "box-labels.json"),
+            """{"label_clients":[],"hand_added_key":"keep me"}""");
 
         var cfg = Config.Load(cfgPath);
-        Assert.True(cfg.AlertsFileExtras.ContainsKey("hand_added_key"));
-
         var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
         Assert.True(vm.TryBuildResult());
-        Config.Save(vm.Result!, cfgPath);
 
-        var onDisk = File.ReadAllText(alertsPath);
-        Assert.Contains("hand_added_key", onDisk);
-        Assert.Contains("keep me", onDisk);
+        Assert.True(vm.Result!.BoxLabelsFileExtras.ContainsKey("hand_added_key"));
     }
 
     [Fact]
-    public void RepointingADestinationsFileAtAnExistingFileAdoptsItInstead()
+    public void SettingsSaveWritesEverySectionIntoTheOneConfigFile()
     {
-        // the spec: re-pointing a section path at an EXISTING file means
-        // that file becomes the truth — not the editor's in-memory list,
-        // which may just be whatever this window happened to load with
         var cfgPath = Path.Combine(_dir, "config.json");
-        var original = new Config
-        {
-            Inbox = _dir,
-            Routes = { new Route { Label = "A", Path = _dir } },
-        };
-        Config.Save(original, cfgPath);
-        var cfg = Config.Load(cfgPath);   // now backed by destinations.json, Routes == [A]
-
-        var sharedDir = Path.Combine(_dir, "shared");
-        Directory.CreateDirectory(sharedDir);
-        File.WriteAllText(Path.Combine(sharedDir, "team.json"),
-            """{"routes":[{"label":"TEAM","path":"C:/team"}],"team_key":1}""");
-
-        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
-        vm.DestinationsFile = "shared/team.json";
-
-        Assert.True(vm.TryBuildResult());
-        var built = vm.Result!;
-        Assert.Equal(new[] { "TEAM" }, built.Routes.Select(r => r.Label));
-        Assert.Equal("shared/team.json", built.DestinationsFile);
-        Assert.True(built.DestinationsFileExtras.ContainsKey("team_key"));
-    }
-
-    [Fact]
-    public void RepointingADestinationsFileAtABrokenExistingFileKeepsTheBuiltRoutes()
-    {
-        // a target that exists but fails to parse must not throw out of
-        // TryBuildResult — the built (editor) values are kept, and Save is
-        // left to surface the broken file rather than blocking OK on it
-        var cfgPath = Path.Combine(_dir, "config.json");
-        var original = new Config
-        {
-            Inbox = _dir,
-            Routes = { new Route { Label = "A", Path = _dir } },
-        };
-        Config.Save(original, cfgPath);
-        var cfg = Config.Load(cfgPath);
-
-        var sharedDir = Path.Combine(_dir, "shared");
-        Directory.CreateDirectory(sharedDir);
-        File.WriteAllText(Path.Combine(sharedDir, "broken.json"), "{ not json");
-
-        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
-        vm.DestinationsFile = "shared/broken.json";
-
-        Assert.True(vm.TryBuildResult());
-        Assert.Equal(new[] { "A" }, vm.Result!.Routes.Select(r => r.Label));
-    }
-
-    [Fact]
-    public void RepointingToTheSamePhysicalFileByAbsolutePathKeepsInSessionEdits()
-    {
-        // Regression: a file dialog hands back an ABSOLUTE path, while the
-        // stored default is relative. Pointing DestinationsFile at the same
-        // physical file spelled the other way must not read as "changed" —
-        // comparing raw strings did, and silently replaced a route just
-        // added in this editing session with the stale on-disk list.
-        var cfgPath = Path.Combine(_dir, "config.json");
-        var original = new Config
-        {
-            Inbox = _dir,
-            Routes = { new Route { Label = "A", Path = _dir } },
-        };
-        Config.Save(original, cfgPath);
-        var cfg = Config.Load(cfgPath);   // DestinationsFile == "destinations.json" (relative)
-
-        var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
-        vm.AddRouteCommand.Execute(null);          // an in-session edit: route B
+        Config.Save(new Config { Inbox = _dir }, cfgPath);
+        var vm = new SettingsViewModel(Config.Load(cfgPath), _dialogs, cfgPath: cfgPath);
+        vm.AddRouteCommand.Execute(null);
         vm.SelectedRoute!.Label = "B";
         vm.SelectedRoute!.Path = _dir;
 
-        var sameFileAbsolute = Path.Combine(_dir, "destinations.json");
-        vm.DestinationsFile = sameFileAbsolute;    // same physical file, different spelling
-
         Assert.True(vm.TryBuildResult());
-        Assert.Equal(new[] { "A", "B" }, vm.Result!.Routes.Select(r => r.Label));
+        Config.Save(vm.Result!, cfgPath);
+
+        Assert.Equal(new[] { "B" }, Config.Load(cfgPath).Routes.Select(r => r.Label));
+        Assert.Contains("\"B\"", File.ReadAllText(cfgPath));
+        Assert.False(File.Exists(Path.Combine(_dir, "destinations.json")));
     }
 
     [Fact]
@@ -1394,22 +1316,22 @@ public class SettingsViewModelTests : IDisposable
     public void DataFileNotesSurfaceLiveState()
     {
         var cfgPath = Path.Combine(_dir, "config.json");
-        Config.Save(new Config(), cfgPath);   // writes destinations.json etc. with 0 entries
+        Config.Save(new Config(), cfgPath);   // bootstraps box-labels.json with 0 entries
         var cfg = Config.Load(cfgPath);
         var vm = new SettingsViewModel(cfg, _dialogs, cfgPath: cfgPath);
 
         // Config.ReadDoc is a real file read, debounced and off the UI
         // thread (Task 2) — even the just-loaded initial value needs a poll.
-        WaitFor(() => vm.DestinationsFileNote == "0 entries",
-            "the freshly-saved destinations.json should read back as 0 entries");
+        WaitFor(() => vm.BoxLabelsFileNote == "0 entries",
+            "the freshly-saved box-labels.json should read back as 0 entries");
 
         // blank needs no I/O — resolved synchronously, no wait
-        vm.DestinationsFile = "";
-        Assert.Equal("blank = the default beside config.json", vm.DestinationsFileNote);
+        vm.BoxLabelsFile = "";
+        Assert.Equal("blank = the default beside config.json", vm.BoxLabelsFileNote);
 
-        vm.DestinationsFile = "missing-dests.json";
-        WaitFor(() => vm.DestinationsFileNote.Contains("will be created on save"),
-            "a missing destinations file should eventually report it'll be created");
+        vm.BoxLabelsFile = "missing-labels.json";
+        WaitFor(() => vm.BoxLabelsFileNote.Contains("will be created on save"),
+            "a missing box-labels file should eventually report it'll be created");
     }
 
     // ---- Dashboard tab rework: grouped folder list as section manager ----
@@ -2003,14 +1925,14 @@ public class SettingsViewModelTests : IDisposable
 public class ApplySettingsTests
 {
     [Fact]
-    public void FreshConfigForSettingsRereadsSharedSideFilesFromDisk()
+    public void FreshConfigForSettingsRereadsTheSharedConfigFromDisk()
     {
         using var fx = new ShellFixture();
         fx.Shell.Initialize();
-        fx.Shell.SaveConfigNow();   // config.json + section files now exist on disk
+        fx.Shell.SaveConfigNow();   // config.json now exists on disk
 
-        // simulate an admin hand-editing the shared alerts file while the app runs
-        File.WriteAllText(Path.Combine(fx.Dir, "alerts.json"), """{"alert_texts": ["ADMIN-EDIT"]}""");
+        // simulate an admin editing the shared alerts list while the app runs
+        fx.EditConfigOnDisk("alert_texts", new JsonArray("ADMIN-EDIT"));
 
         var fresh = fx.Shell.FreshConfigForSettings();
         Assert.Contains("ADMIN-EDIT", fresh.AlertTexts);
@@ -2084,22 +2006,20 @@ public class ApplySettingsTests
     public void ToolStateSavesRefreshSharedSectionsFromDiskFirst()
     {
         // A tool-state save (here: Match & merge remembering its header
-        // mapping) runs a full TrySave, which rewrites all three
-        // Settings-owned side files from _cfg. _cfg is whatever this run
-        // started with, so without refreshing from disk first, this save
-        // would silently revert an admin's intervening hand-edit to the
-        // shared alerts file.
+        // mapping) runs a full TrySave, which rewrites config.json — the
+        // three Settings-owned sections included — from _cfg. _cfg is
+        // whatever this run started with, so without refreshing from disk
+        // first, this save would silently revert an admin's intervening
+        // edit to the shared alerts list.
         using var fx = new ShellFixture();
         fx.Shell.Initialize();
-        fx.Shell.SaveConfigNow();   // config.json + section files now exist on disk
+        fx.Shell.SaveConfigNow();   // config.json now exists on disk
 
-        File.WriteAllText(Path.Combine(fx.Dir, "alerts.json"),
-            """{"alert_texts": ["ADMIN-TERM"]}""");
+        fx.EditConfigOnDisk("alert_texts", new JsonArray("ADMIN-TERM"));
 
         fx.Shell.SaveMergeHeaders(new Dictionary<string, string> { ["first"] = "First name" });
 
-        var onDisk = File.ReadAllText(Path.Combine(fx.Dir, "alerts.json"));
-        Assert.Contains("ADMIN-TERM", onDisk);
+        Assert.Contains("ADMIN-TERM", Config.Load(fx.CfgPath).AlertTexts);
         Assert.Equal("First name", Config.Load(fx.CfgPath).MergeHeaders["first"]); // the save itself still landed
     }
 }

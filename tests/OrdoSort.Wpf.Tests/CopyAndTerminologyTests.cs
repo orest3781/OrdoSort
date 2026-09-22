@@ -100,10 +100,9 @@ public class CopyAndTerminologyTests
 
     // ------------------------------------------- I5: one word for one feature
 
-    /// <summary>The tab, the section header it opens with, and the Data files
-    /// tab's label for the very same list must all say the SAME thing. Before
-    /// this task the tab said "Dashboard" and the other two said "Monitored
-    /// folders" — one feature, two names, and the loser was the name used
+    /// <summary>The tab and the section header it opens with must say the
+    /// SAME thing. Before this task the tab said "Dashboard" and the heading
+    /// said "Monitored folders" — one feature, two names, and the loser was the name used
     /// everywhere else in the product (including
     /// <see cref="Config.MonitorTitle"/>'s own default, which is the heading a
     /// user reads on the Ready screen).
@@ -112,7 +111,7 @@ public class CopyAndTerminologyTests
     /// automation name + the rendered section heading), because those are
     /// three separately-authored strings that have to agree.</summary>
     [Fact]
-    public void MonitoredFoldersIsCalledThatOnItsTabItsHeadingAndTheDataFilesLabel() => _fx.Invoke(() =>
+    public void MonitoredFoldersIsCalledThatOnItsTabAndItsHeading() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
         var vm = BuildSettingsVm(ThemePalette.Light, out _);
@@ -152,14 +151,6 @@ public class CopyAndTerminologyTests
                 .Select(t => t.Text)
                 .ToList();
             Assert.Contains("Monitored folders", headings);
-
-            // and the Data files tab's label for the same file
-            tabControl.SelectedItem = tabs.First(t => (t.Header?.ToString() ?? "").Replace("_", "") == "Data files");
-            window.UpdateLayout();
-            PumpRender();
-            window.UpdateLayout();
-            var labels = Descendants<TextBlock>(window).Select(t => t.Text).ToList();
-            Assert.Contains("Monitored folders:", labels);
         }
         finally { window.Close(); }
     });
@@ -329,16 +320,16 @@ public class CopyAndTerminologyTests
         Action<SettingsViewModel> First, string FirstText, bool FirstNeedsAttention,
         Action<SettingsViewModel> Then, string ThenText, bool ThenNeedsAttention);
 
-    /// <summary>The severity mechanism is an EIGHT-way coupling between XAML
+    /// <summary>The severity mechanism is a FIVE-way coupling between XAML
     /// and C#: one shared <c>NoteText</c> style carries the amber trigger, and
-    /// each of the eight note TextBlocks has to hand it its own flag through
-    /// <c>Tag="{Binding …NoteNeedsAttention}"</c>. Drop one of those eight
+    /// each of the five note TextBlocks has to hand it its own flag through
+    /// <c>Tag="{Binding …NoteNeedsAttention}"</c>. Drop one of those five
     /// attributes in a later edit and nothing throws: the binding simply
     /// isn't there, Tag stays null, the trigger never fires, and that one note
     /// is permanently subtle — silently de-emphasising, for instance, History
     /// database's missing-folder warning or a data file's ConfigException
     /// parse error. The narrower predecessor of this test only ever exercised
-    /// InboxNote, so seven of the eight were unguarded.
+    /// InboxNote, so the others were unguarded.
     ///
     /// Everything here is RESOLVED RUNTIME STATE, the same standard the tab
     /// mnemonics are held to: the TextBlocks are located in a real
@@ -364,8 +355,7 @@ public class CopyAndTerminologyTests
         Directory.CreateDirectory(cfgDir);
         // never created: the "folder doesn't exist" branches need a real miss
         var absent = Path.Combine(Path.GetTempPath(), "ordo_absent_" + Guid.NewGuid());
-        foreach (var name in new[] { "destinations", "folders", "alerts", "labels" })
-            File.WriteAllText(Path.Combine(cfgDir, $"broken-{name}.json"), "{ not json");
+        File.WriteAllText(Path.Combine(cfgDir, "broken-labels.json"), "{ not json");
         // 2026-08 audit finding C2: Inbox/Deferred's relative-info branches
         // below ("inbox", "set-aside") are real folders now that a relative
         // value's existence is checked beside config.json rather than never
@@ -393,15 +383,6 @@ public class CopyAndTerminologyTests
                 "relative — kept beside the config file", false,
                 v => v.HistoryDb = Path.Combine(absent, "history.sqlite"),
                 "folder doesn't exist", true),
-            new NoteCase("Data files", nameof(vm.DestinationsFileNote),
-                v => v.DestinationsFile = "", "blank = the default beside config.json", false,
-                v => v.DestinationsFile = "broken-destinations.json", "is not valid JSON", true),
-            new NoteCase("Data files", nameof(vm.MonitoredFoldersFileNote),
-                v => v.MonitoredFoldersFile = "", "blank = the default beside config.json", false,
-                v => v.MonitoredFoldersFile = "broken-folders.json", "is not valid JSON", true),
-            new NoteCase("Data files", nameof(vm.AlertsFileNote),
-                v => v.AlertsFile = "", "blank = the default beside config.json", false,
-                v => v.AlertsFile = "broken-alerts.json", "is not valid JSON", true),
             new NoteCase("Data files", nameof(vm.BoxLabelsFileNote),
                 v => v.BoxLabelsFile = "", "blank = the default beside config.json", false,
                 v => v.BoxLabelsFile = "broken-labels.json", "is not valid JSON", true),
@@ -436,10 +417,10 @@ public class CopyAndTerminologyTests
                 $"flag {property}'s note binds to Tag no longer exists"))
             .GetValue(vm)!;
 
-    /// <summary>Drive all eight notes into one of their two states at once,
+    /// <summary>Drive all five notes into one of their two states at once,
     /// wait for the off-thread probes to land, then read every note's rendered
     /// colour tab by tab (a TabControl only realises the SELECTED tab's
-    /// content, so the four General notes and the four Data files notes are
+    /// content, so the four General notes and the Data files note are
     /// never in the visual tree at the same moment). Every mismatch is
     /// collected before failing, so one run names all of them.</summary>
     private static void AssertPhase(Window window, SettingsViewModel vm,

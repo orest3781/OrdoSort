@@ -485,7 +485,7 @@ public class SectionDropdownReproTests
 
     /// <summary>Step 6: an emptied, session-sticky section must never leak
     /// a phantom row into the built config — sections stay DERIVED at
-    /// rest, nothing phantom is written to monitored-folders.json. Checked
+    /// rest, nothing phantom is written to config.json. Checked
     /// on Result (what TryBuildResult actually produces, and what gets
     /// JSON-written on save), not just on WatchRows/SectionChoices.</summary>
     [Fact]

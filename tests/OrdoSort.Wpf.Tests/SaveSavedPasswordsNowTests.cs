@@ -10,8 +10,8 @@ namespace OrdoSort.Wpf.Tests;
 /// <c>SaveConfigNow</c>. Opening the Unlock window can trigger a save
 /// PASSIVELY (2026-08 audit 4.3[A] follow-up) — before that, reaching any
 /// save at all here required a deliberate password edit. <c>SaveConfigNow</c>
-/// only refreshes the four SIDE files before writing
-/// (<c>RefreshSharedSectionsFromDisk</c>); every other main-section field —
+/// only refreshes the three shared sections before writing
+/// (<c>RefreshSharedSectionsFromDisk</c>); every other config.json field —
 /// Theme, TileVisibility, MergeHeaders, LabelClients, Sounds, and the rest —
 /// still comes from this station's own (possibly stale) in-memory copy. That
 /// gap is pre-existing and shared with other tools' deliberate saves
@@ -21,9 +21,9 @@ namespace OrdoSort.Wpf.Tests;
 /// ever overwrites <c>SavedPasswords</c> with this station's copy.
 ///
 /// Final review, Important 3 (2026-08-06): the write itself used to route
-/// through <c>Config.TrySave</c>, which also rewrites all three side files
-/// plus the box-labels bootstrap — not just SavedPasswords, the one field
-/// this method is entitled to change. The test below,
+/// through <c>Config.TrySave</c>, which also runs the box-labels bootstrap
+/// — not just SavedPasswords, the one field this method is entitled to
+/// change. The test below,
 /// <c>ALegitimatelyBrowsedAbsoluteSideFilePathDoesNotSuppressTheSave</c>,
 /// proves the failure mode that created: a station with a legitimately-
 /// Browsed absolute side-file path (Task 1's shipped Settings capability)
@@ -32,7 +32,7 @@ namespace OrdoSort.Wpf.Tests;
 /// disk via TrySave's main-file write, which runs first — and
 /// UnlockViewModel's constructor gates its "passwords protected" notice on
 /// this method's return value. The fix (<c>Config.TrySaveMain</c>) writes
-/// only the main config.json file, so a side file this call never touches
+/// only config.json, so a side file this call never touches
 /// can no longer sink it.</summary>
 public class SaveSavedPasswordsNowTests
 {
@@ -44,7 +44,7 @@ public class SaveSavedPasswordsNowTests
         fx.Shell.SaveConfigNow();   // config.json now exists on disk, Theme defaults to "auto"
 
         // A peer station edits Theme directly on the shared config.json —
-        // part of the MAIN section, not one of the four side files
+        // not one of the three shared sections
         // RefreshSharedSectionsFromDisk already covers — while this
         // station's own in-memory copy sits unaware, still "auto".
         var peerCopy = Config.Load(fx.CfgPath);
@@ -193,26 +193,26 @@ public class SaveSavedPasswordsNowTests
     [Fact]
     public void ALegitimatelyBrowsedAbsoluteSideFilePathDoesNotSuppressTheSave()
     {
-        // Final review, Important 3. destinations_file points OUTSIDE the
+        // Final review, Important 3. box_labels_file points OUTSIDE the
         // config directory — a real, shipped shape: the Settings "Data
-        // files" Browse... buttons return an absolute path with no
+        // files" Browse... buttons used to return an absolute path with no
         // containment check of their own (task-1-brief.md), and reading an
         // already-configured absolute path back stays supported
         // (Config.ResolveBesideForRead). Writing to it does not: every
         // Save/TrySave call refuses it (Config.ResolveBesideForWrite), so
-        // this station's destinations.json write fails on EVERY save,
+        // this station's box-labels bootstrap fails on EVERY save,
         // deliberately, regardless of what else that save is doing.
-        var outside = Path.Combine(Path.GetTempPath(), "ordoshell_outside_" + Guid.NewGuid(), "dest.json");
-        using var fx = new ShellFixture(cfg => cfg.DestinationsFile = outside);
+        var outside = Path.Combine(Path.GetTempPath(), "ordoshell_outside_" + Guid.NewGuid(), "labels.json");
+        using var fx = new ShellFixture(cfg => cfg.BoxLabelsFile = outside);
         fx.Shell.Initialize();
-        fx.Shell.SaveConfigNow();   // config.json now exists; the destinations write already failed here too
+        fx.Shell.SaveConfigNow();   // config.json now exists; the box-labels write already failed here too
 
         // Sanity: confirm the absolute path really is refused on write
         // before this test's real assertion — otherwise a change to
         // ResolveBesideForWrite's rules could make this test pass for the
         // wrong reason (nothing to route around because nothing failed).
         var sanity = Assert.Single(fx.Dialogs.Warnings);
-        Assert.Contains("destinations_file", sanity.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("box_labels_file", sanity.Message, StringComparison.OrdinalIgnoreCase);
         fx.Dialogs.Warnings.Clear();
 
         fx.Shell.Cfg.SavedPasswords.Add(
@@ -220,7 +220,7 @@ public class SaveSavedPasswordsNowTests
         var ok = fx.Shell.SaveSavedPasswordsNow();
 
         // The old TrySave-routed save reported false here (sunk by the
-        // destinations.json refusal) even though the password had already
+        // box-labels refusal) even though the password had already
         // landed via the main-file write TrySave runs first — silently
         // dropping UnlockViewModel's "passwords protected" notice beside a
         // spurious "not saved" warning about a write that had actually

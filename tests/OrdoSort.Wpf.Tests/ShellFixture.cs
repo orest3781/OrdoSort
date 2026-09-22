@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.ViewModels;
@@ -60,6 +61,16 @@ public sealed class ShellFixture : IDisposable
         var path = Path.Combine(Dir, "names.txt");
         File.WriteAllLines(path, names);
         Cfg.NamesFile = path;
+    }
+
+    /// <summary>Simulate another station (or an admin's hand edit) changing
+    /// one top-level key of the shared config.json on disk, behind this
+    /// shell's back.</summary>
+    public void EditConfigOnDisk(string key, JsonNode? value)
+    {
+        var root = JsonNode.Parse(File.ReadAllText(CfgPath))!.AsObject();
+        root[key] = value;
+        File.WriteAllText(CfgPath, root.ToJsonString());
     }
 
     public void Dispose()

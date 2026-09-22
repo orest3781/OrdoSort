@@ -173,10 +173,9 @@ internal static class AtomicPlace
     internal static Action<string>? BeforeSweep;
 
     /// <summary>For files where a newer replacement is always correct: the
-    /// main config, the destinations/monitored-folders/alerts side files, and
-    /// a zip Save-As where the user has already confirmed the overwrite. The
-    /// existing file is swapped out in one operation, never deleted first and
-    /// rebuilt after.
+    /// main config and a zip Save-As where the user has already confirmed the
+    /// overwrite. The existing file is swapped out in one operation, never
+    /// deleted first and rebuilt after.
     ///
     /// Retries a destination that is briefly held open — Config.Load reads
     /// with File.ReadAllText and no FileShare.Delete, so a reader really can

@@ -49,8 +49,8 @@ caller no longer has to carry:
   bytes or find its own temp deleted mid-write.
 
 Placement comes in two kinds, and the difference is about **ownership, not
-mechanics**. Where a newer version is always correct — the config and its side
-files — placement replaces what's there. Where the file belongs to whoever
+mechanics**. Where a newer version is always correct — the config, which
+holds every section except box labels — placement replaces what's there. Where the file belongs to whoever
 created it — box labels — placement refuses, and a peer having won the race is
 a *success*: their content is newer truth than the caller's snapshot. Replacing
 in that second case reissued a box number already printed on a physical box.

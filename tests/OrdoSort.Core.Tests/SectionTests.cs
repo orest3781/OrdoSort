@@ -8,15 +8,14 @@ public class SectionTests : IDisposable
     public void Dispose() { try { Directory.Delete(_dir, true); } catch { } }
 
     [Fact]
-    public void SectionRoundTripsThroughMonitoredFoldersJson()
+    public void SectionRoundTripsThroughConfigJson()
     {
         var path = Path.Combine(_dir, "config.json");
         var cfg = new Config();
         cfg.WatchFolders.Add(new WatchFolder { Label = "A", Path = "C:/a", Section = "Failed queues" });
         cfg.WatchFolders.Add(new WatchFolder { Label = "B", Path = "C:/b" });
         Config.Save(cfg, path);
-        Assert.Contains("Failed queues",
-            File.ReadAllText(Path.Combine(_dir, "monitored-folders.json")));
+        Assert.Contains("Failed queues", File.ReadAllText(path));
         var back = Config.Load(path);
         Assert.Equal("Failed queues", back.WatchFolders[0].Section);
         Assert.Equal("", back.WatchFolders[1].Section);   // omitted -> ""

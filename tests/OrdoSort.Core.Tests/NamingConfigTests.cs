@@ -43,7 +43,7 @@ public class NamingConfigTests : IDisposable
     public void RouteTemplateModeMigratesToReplaceAtLoad()
     {
         // per-route overrides migrate too — including routes arriving via
-        // the destinations.json side file, the live path since the split
+        // a legacy destinations.json side file folded in at load
         var path = Path.Combine(_dir, "config.json");
         File.WriteAllText(path, """{"inbox":"C:/in"}""");
         File.WriteAllText(Path.Combine(_dir, "destinations.json"), """

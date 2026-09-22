@@ -23,9 +23,8 @@ public class QcTests : IDisposable
             """);
         var cfg = Config.Load(path);
         Config.Save(cfg, path);
-        var dests = Path.Combine(_dir, "destinations.json");
-        Assert.Contains("my_custom_key", File.ReadAllText(dests));
-        Assert.Contains("must survive", File.ReadAllText(dests));
+        Assert.Contains("my_custom_key", File.ReadAllText(path));
+        Assert.Contains("must survive", File.ReadAllText(path));
     }
 
     [Fact]

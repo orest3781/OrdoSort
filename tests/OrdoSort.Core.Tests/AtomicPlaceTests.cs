@@ -689,7 +689,7 @@ public class AtomicPlaceSeamMembershipTests
         {
             typeof(AtomicPlaceTests),
             typeof(AtomicWriteTests),
-            typeof(ConfigSplitTests),
+            typeof(ConfigConsolidationTests),
             typeof(ZipperTests),
         };
 
