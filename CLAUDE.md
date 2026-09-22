@@ -1,5 +1,15 @@
 @A:\DEV\CLAUDE.md
 
+## Stack, run, test, check
+
+| What | Command |
+|---|---|
+| Stack | C# / .NET 8, WPF, xUnit; `OrdoSort.sln` holds both apps and all tests |
+| Run | `run.bat` (demo workbench) or `run.bat <config.json>` |
+| Test | `check.bat core` (fast) / `check.bat wpf` |
+| Check | `check.bat` - restore, build Release, all tests; mirrors CI. Run before saying work is done |
+| End-to-end | `e2e.bat` |
+
 # C# guidelines
 
 You are an expert C# software engineer operating within this repository. Your primary goal is to write maintainable, readable, and highly testable code adhering strictly to Google's Software Engineering principles.

@@ -4,6 +4,7 @@
 | Item | Status | Notes |
 |---|---|---|
 | Box Labels standalone (`feature/box-labels-standalone`) | ✅ Done | Merged to `main` 2026-09-10 (`9dbe567`, 16 commits) and pushed. 3,236 tests green on the merged tree. The branch itself is kept, local and on GitHub |
+| `check.bat` - the one check command (mirrors CI) | ✅ Done | Added 2026-09-13; README, CLAUDE.md and Quick start point at it. Committed and pushed 2026-09-22 |
 | S:\ → A:\DEV path rewrite (45 files, comments and docs only) | ✅ Done | Committed `1f5b8de` and pushed 2026-09-09. `.gitignore` now points at `A:\DEV\_ARCHIVE\OrdoSort-samples` |
 
 ## Next
@@ -30,11 +31,11 @@
 | Check | Result | Not tested |
 |---|---|---|
 | `dotnet test OrdoSort.sln` (2026-09-10, pre-merge) | ✅ 920 Core + 2,316 Wpf = 3,236 passed, 0 failed | — |
+| `check.bat` full run (2026-09-13) | ✅ 920 Core + 2,316 Wpf = 3,236 passed, exit 0 | — |
 | Merged tree identical to the tested tree | ✅ `git diff feature/box-labels-standalone HEAD` empty | — |
 | BoxLabels.exe run by hand after the merge | ⬜ Not started | The standalone app has not been launched since merging |
 
 ## Quick start
 ```bash
-dotnet build OrdoSort.sln
-dotnet test OrdoSort.sln
+check.bat        # or: check.bat core
 ```

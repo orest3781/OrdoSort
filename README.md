@@ -164,12 +164,13 @@ title there.
 ## Build & test
 
 ```
-dotnet build
-dotnet test
+check.bat          # restore, build Release, run every test - the same steps as CI
+check.bat core     # only tests/OrdoSort.Core.Tests (about a minute)
+check.bat wpf      # only tests/OrdoSort.Wpf.Tests
 ```
 
-Both applications and all tests are in `OrdoSort.sln`, so those two commands
-cover Box Labels too.
+Both applications and all tests are in `OrdoSort.sln`, so `check.bat` covers
+Box Labels too. Plain `dotnet build` / `dotnet test` still work.
 
 ## Box Labels, on its own
 
