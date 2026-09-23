@@ -1,0 +1,37 @@
+# Formatting rules for every editor and for `dotnet format`, which check.bat
+# and CI run with --verify-no-changes. To fix a failure, run:
+#   dotnet format whitespace OrdoSort.sln
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+# end_of_line is left to .gitattributes / core.autocrlf, which already own it.
+
+[*.{cs,xaml}]
+indent_size = 4
+
+[*.{csproj,props,targets,sln,xml,json,yml,yaml}]
+indent_size = 2
+
+[*.md]
+# Two trailing spaces are a hard line break in Markdown.
+trim_trailing_whitespace = false
+
+[*.cs]
+# The house style already in use: file-scoped namespaces, braces on their own
+# lines, usings outside the namespace with System first.
+csharp_style_namespace_declarations = file_scoped
+csharp_new_line_before_open_brace = all
+csharp_using_directive_placement = outside_namespace
+dotnet_sort_system_directives_first = true
+# Keep compact initializer tables (the Code 39 patterns, theme colours) on
+# the lines their authors laid out, instead of one member per line.
+csharp_new_line_before_members_in_object_initializers = false
+csharp_new_line_before_members_in_anonymous_types = false
+csharp_preserve_single_line_blocks = true
+csharp_preserve_single_line_statements = true
+# A braced `case` block sits at the case label's indent, as written today.
+csharp_indent_case_contents_when_block = false

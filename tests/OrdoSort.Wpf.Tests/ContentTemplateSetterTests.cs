@@ -343,8 +343,8 @@ public class ContentTemplateSetterTests
     {
         var data = new TheoryData<string, string>();
         foreach (var shape in new[] { "itemssource-strings", "comboboxitem-children", "itemtemplate-kvp", "itemtemplate-font" })
-        foreach (var s in ThemePalette.Schemes)
-            data.Add(shape, s.Key);
+            foreach (var s in ThemePalette.Schemes)
+                data.Add(shape, s.Key);
         return data;
     }
 
@@ -380,19 +380,19 @@ public class ContentTemplateSetterTests
             // (Destinations) pickers.
             case "itemtemplate-kvp":
                 return (new ComboBox
-                        {
-                            ItemTemplate = (DataTemplate)_fx.App.Resources["KvpValueTemplate"],
-                            ItemsSource = SettingsViewModel.SortChoices,
-                        },
+                {
+                    ItemTemplate = (DataTemplate)_fx.App.Resources["KvpValueTemplate"],
+                    ItemsSource = SettingsViewModel.SortChoices,
+                },
                         SettingsViewModel.SortChoices[0].Value, true);
 
             // SettingsWindow's "App font" picker (Appearance).
             case "itemtemplate-font":
                 return (new ComboBox
-                        {
-                            ItemTemplate = (DataTemplate)_fx.App.Resources["FontChoiceTemplate"],
-                            ItemsSource = SettingsViewModel.FontChoices,
-                        },
+                {
+                    ItemTemplate = (DataTemplate)_fx.App.Resources["FontChoiceTemplate"],
+                    ItemsSource = SettingsViewModel.FontChoices,
+                },
                         SettingsViewModel.FontChoices[0].Value, true);
 
             default:

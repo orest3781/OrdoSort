@@ -25,13 +25,13 @@ public static class DemoWorkbench
         var root = Path.Combine(Directory.GetCurrentDirectory(), "demo-full");
         var rng = new Random(Seed);
 
-        var inbox     = Fresh(root, "inbox");
-        var deferred  = Fresh(root, "deferred");
-        var locked    = Fresh(root, "locked");
-        var rename    = Fresh(root, "rename");
-        var merge     = Fresh(root, "merge");
+        var inbox = Fresh(root, "inbox");
+        var deferred = Fresh(root, "deferred");
+        var locked = Fresh(root, "locked");
+        var rename = Fresh(root, "rename");
+        var merge = Fresh(root, "merge");
         var routesDir = Fresh(root, "routes");
-        var watchDir  = Fresh(root, "watch");
+        var watchDir = Fresh(root, "watch");
 
         var routes = BuildRoutes(routesDir);
         var watches = BuildWatchFolders(watchDir);

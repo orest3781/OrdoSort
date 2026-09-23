@@ -104,12 +104,13 @@ public class TransientFooterButtonTests
                     "insert", "", "Invoices", @"c:\out", tagged: false, "");
                 var vm = new HistoryViewModel(history, new FakeDialogs(), new InlineWorkScheduler());
                 var w = new HistoryWindow(vm);
-                return (w, FindByContent(w, "Show all"), () =>
+                Action cleanup = () =>
                 {
                     history.Dispose();
                     SqliteConnection.ClearAllPools();
                     try { File.Delete(db); } catch { /* best effort */ }
-                });
+                };
+                return (w, FindByContent(w, "Show all"), cleanup);
             }
             default: throw new ArgumentOutOfRangeException(nameof(site), site, "unknown site");
         }

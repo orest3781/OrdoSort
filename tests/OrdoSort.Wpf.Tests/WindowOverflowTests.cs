@@ -131,12 +131,13 @@ public class WindowOverflowTests
             history.LogCommit(@"c:\in\a.pdf", "a.pdf", "A.pdf", "A",
                 "insert", "", "Invoices", @"c:\out", tagged: false, "");
             var vm = new HistoryViewModel(history, new FakeDialogs(), new InlineWorkScheduler());
-            return (new HistoryWindow(vm), () =>
+            Action cleanup = () =>
             {
                 history.Dispose();
                 SqliteConnection.ClearAllPools();
                 try { File.Delete(dbPath); } catch { /* best effort */ }
-            });
+            };
+            return (new HistoryWindow(vm), cleanup);
         }, MinExamined: 20),   // 26 measured
 
         ["ListReformatWindow"] = new(480, 620, 400, 520, () =>
@@ -311,7 +312,7 @@ public class WindowOverflowTests
             Directory.CreateDirectory(cfg.Inbox);
             Directory.CreateDirectory(cfg.Deferred);
             var window = new MainWindow(cfg, Path.Combine(dir, "config.json"));
-            return (window, () =>
+            Action cleanup = () =>
             {
                 SqliteConnection.ClearAllPools();
                 for (var i = 0; i < 10; i++)
@@ -320,7 +321,8 @@ public class WindowOverflowTests
                     catch (IOException) { Thread.Sleep(50); }
                     catch (UnauthorizedAccessException) { Thread.Sleep(50); }
                 }
-            });
+            };
+            return (window, cleanup);
         }, MinExamined: 9, SetWidthAfterShow: true),   // 11 measured
     };
 

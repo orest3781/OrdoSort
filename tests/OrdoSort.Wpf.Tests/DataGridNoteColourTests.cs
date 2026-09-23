@@ -48,8 +48,8 @@ public class DataGridNoteColourTests
     public static IEnumerable<object[]> PalettesAndSelection()
     {
         foreach (var s in ThemePalette.Schemes)
-        foreach (var selected in new[] { false, true })
-            yield return new object[] { s.Key, selected };
+            foreach (var selected in new[] { false, true })
+                yield return new object[] { s.Key, selected };
     }
 
     // ---------------------------------------------------------- Match & Merge

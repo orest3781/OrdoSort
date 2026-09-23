@@ -27,126 +27,126 @@ public sealed record ThemePalette(
     Rgb Success,       // positive accents (Done summary)
     Rgb StatusAmber,   // the amber status line, readable on WindowBg
     Rgb StatusGreen,   // the green status line, readable on Surface/WindowBg. Success
-                        // (46,125,50) is IDENTICAL in both palettes and measures below
-                        // the 4.5:1 floor in dark (2.85:1 vs Surface, 3.33:1 vs WindowBg
-                        // -- ThemePalette.ContrastRatio, measured directly, not assumed)
-                        // -- so this is its own per-palette pair, the same way StatusAmber
-                        // already is, rather than a reuse of Success (status-colour-
-                        // vocabulary plan, 2026-08-08, Task 1 Step 1).
+                       // (46,125,50) is IDENTICAL in both palettes and measures below
+                       // the 4.5:1 floor in dark (2.85:1 vs Surface, 3.33:1 vs WindowBg
+                       // -- ThemePalette.ContrastRatio, measured directly, not assumed)
+                       // -- so this is its own per-palette pair, the same way StatusAmber
+                       // already is, rather than a reuse of Success (status-colour-
+                       // vocabulary plan, 2026-08-08, Task 1 Step 1).
     Rgb StatusRed,     // the red status line, readable on Surface/WindowBg. NOT the
-                        // same job as Danger/DangerText below (a background, paired
-                        // with its own on-Danger text) -- Danger used AS FOREGROUND
-                        // TEXT measures 2.69:1 vs Dark.Surface / 3.14:1 vs
-                        // Dark.WindowBg, found while building the Unlock file list's
-                        // Unreadable note (Task 1 Step 3) -- the exact Success-shaped
-                        // problem Step 1 already fixed once, just discovered a step
-                        // late and on a different token. Existing Danger-as-background
-                        // usage is unaffected and OUT OF SCOPE here. The other three
-                        // foreground usages Task 1 found (MainWindow.xaml:231,
-                        // ProcessingView.xaml:55, ReadyView.xaml:113) were switched to
-                        // StatusRed by Task 3 Part B: ProcessingView/ReadyView sit on
-                        // WindowBg and now clear 4.5:1 in both palettes (the pairing
-                        // already covered by ThemeTests.TextPairs' {StatusRed,
-                        // WindowBg} entry). MainWindow.xaml:231 is the one exception --
-                        // its real background is Theme.SurfaceRaised, not
-                        // Surface/WindowBg, and StatusRed was never tuned against that
-                        // (one step lighter than Surface in dark mode). Measured there:
-                        // 4.11:1 dark / 5.44:1 light -- an improvement over Danger's
-                        // 2.26:1 but still short of this app's 4.5 floor in dark,
-                        // though it clears WCAG's 3:1 non-text/icon floor. Left as a
-                        // known, open gap (see MainWindow.xaml's own comment at that
-                        // site and HighlightContrastTests' MainWindowToastIconContrast)
-                        // rather than adding a token tuned for one call site.
-                        //
-                        // GAP CLOSED 2026-08-09 via StatusRedRaised (below) + the newly
-                        // materialized SurfaceRaised field: the toast icon now binds
-                        // Theme.StatusRedRaised instead of Theme.StatusRed. See
-                        // StatusRedRaised's own comment for the replacement values.
+                       // same job as Danger/DangerText below (a background, paired
+                       // with its own on-Danger text) -- Danger used AS FOREGROUND
+                       // TEXT measures 2.69:1 vs Dark.Surface / 3.14:1 vs
+                       // Dark.WindowBg, found while building the Unlock file list's
+                       // Unreadable note (Task 1 Step 3) -- the exact Success-shaped
+                       // problem Step 1 already fixed once, just discovered a step
+                       // late and on a different token. Existing Danger-as-background
+                       // usage is unaffected and OUT OF SCOPE here. The other three
+                       // foreground usages Task 1 found (MainWindow.xaml:231,
+                       // ProcessingView.xaml:55, ReadyView.xaml:113) were switched to
+                       // StatusRed by Task 3 Part B: ProcessingView/ReadyView sit on
+                       // WindowBg and now clear 4.5:1 in both palettes (the pairing
+                       // already covered by ThemeTests.TextPairs' {StatusRed,
+                       // WindowBg} entry). MainWindow.xaml:231 is the one exception --
+                       // its real background is Theme.SurfaceRaised, not
+                       // Surface/WindowBg, and StatusRed was never tuned against that
+                       // (one step lighter than Surface in dark mode). Measured there:
+                       // 4.11:1 dark / 5.44:1 light -- an improvement over Danger's
+                       // 2.26:1 but still short of this app's 4.5 floor in dark,
+                       // though it clears WCAG's 3:1 non-text/icon floor. Left as a
+                       // known, open gap (see MainWindow.xaml's own comment at that
+                       // site and HighlightContrastTests' MainWindowToastIconContrast)
+                       // rather than adding a token tuned for one call site.
+                       //
+                       // GAP CLOSED 2026-08-09 via StatusRedRaised (below) + the newly
+                       // materialized SurfaceRaised field: the toast icon now binds
+                       // Theme.StatusRedRaised instead of Theme.StatusRed. See
+                       // StatusRedRaised's own comment for the replacement values.
     Rgb StatusRedRaised, // the red status voice, readable on SurfaceRaised specifically
-                          // -- StatusRed above was tuned against Surface/WindowBg and
-                          // falls short of SurfaceRaised (one step lighter in dark mode)
-                          // for graphite/ledger/microfilm: 4.11:1/4.34:1/4.38:1, all
-                          // below this app's 4.5 floor (paper 5.44, manila 5.81, carbon
-                          // 4.93, blueprint 5.94 already cleared it). paper/manila/
-                          // carbon/blueprint reuse StatusRed verbatim below -- same
-                          // pattern as light StatusGreen reusing Success. graphite/
-                          // ledger/microfilm get a brighter red, (234,130,130) -- found
-                          // by stepping StatusRed's (229,115,115) up while keeping R
-                          // dominant (so it still reads red, not pink) until
-                          // ContrastRatio vs SurfaceRaised cleared 4.55 with real
-                          // margin: measured 4.689:1 (graphite), 4.947:1 (ledger),
-                          // 4.986:1 (microfilm) -- also clears Surface/WindowBg (bright
-                          // on dark only grows further: 5.575-7.973:1 across both).
-                          // One shared value for all three rather than three
-                          // independently-minimal ones: they share an identical
-                          // baseline StatusRed and land close enough in SurfaceRaised
-                          // luminance that a single voice reads as more deliberate than
-                          // three near-identical reds a pixel apart.
+                         // -- StatusRed above was tuned against Surface/WindowBg and
+                         // falls short of SurfaceRaised (one step lighter in dark mode)
+                         // for graphite/ledger/microfilm: 4.11:1/4.34:1/4.38:1, all
+                         // below this app's 4.5 floor (paper 5.44, manila 5.81, carbon
+                         // 4.93, blueprint 5.94 already cleared it). paper/manila/
+                         // carbon/blueprint reuse StatusRed verbatim below -- same
+                         // pattern as light StatusGreen reusing Success. graphite/
+                         // ledger/microfilm get a brighter red, (234,130,130) -- found
+                         // by stepping StatusRed's (229,115,115) up while keeping R
+                         // dominant (so it still reads red, not pink) until
+                         // ContrastRatio vs SurfaceRaised cleared 4.55 with real
+                         // margin: measured 4.689:1 (graphite), 4.947:1 (ledger),
+                         // 4.986:1 (microfilm) -- also clears Surface/WindowBg (bright
+                         // on dark only grows further: 5.575-7.973:1 across both).
+                         // One shared value for all three rather than three
+                         // independently-minimal ones: they share an identical
+                         // baseline StatusRed and land close enough in SurfaceRaised
+                         // luminance that a single voice reads as more deliberate than
+                         // three near-identical reds a pixel apart.
     Rgb TileDefaultBg, // dashboard tile with no configured color
     Rgb SurfaceRaised, // floating surfaces (the alert toast's card, Processing's
-                        // running-file chip, Match & Merge's side panel) -- one
-                        // step LIGHTER than Surface in dark mode, unchanged from
-                        // Surface in light (light's Surface is already near-white;
-                        // the shadow does the lifting there instead). Materialized
-                        // 2026-08-09 (byte-identical to the Mix(Surface, white,
-                        // 0.06) derivation ThemeManager.cs used to compute this at
-                        // publish time) so a per-scheme StatusRedRaised, tuned
-                        // against the REAL background one call site actually
-                        // paints on, has something concrete to be tuned against.
+                       // running-file chip, Match & Merge's side panel) -- one
+                       // step LIGHTER than Surface in dark mode, unchanged from
+                       // Surface in light (light's Surface is already near-white;
+                       // the shadow does the lifting there instead). Materialized
+                       // 2026-08-09 (byte-identical to the Mix(Surface, white,
+                       // 0.06) derivation ThemeManager.cs used to compute this at
+                       // publish time) so a per-scheme StatusRedRaised, tuned
+                       // against the REAL background one call site actually
+                       // paints on, has something concrete to be tuned against.
     Rgb BorderStrong,  // emphasized borders (focus rings, active dividers)
     Rgb AccentBronze,  // warm secondary accent (badges, highlights on graphite)
-    // ------------------------------------------------------- hover/pressed
-    // Hover-tint strength review, round 2 (2026-08-08). Round 1 raised a
-    // SINGLE derived Mix(Surface, Text, amount) shared by every hover/
-    // pressed surface in the app. A parallel audit found that mechanism
-    // fundamentally can't work: Mix moves the background toward Text, which
-    // simultaneously (a) grows the surround-delta and (b) shrinks contrast
-    // for every OTHER foreground that can sit on it -- and two status
-    // colours were found to ALREADY be below the 4.5:1 floor at even the
-    // old, barely-there 0.08 amount (StatusGreen light 4.343:1, StatusRed
-    // dark 3.945:1), which no test had ever caught. These three fields
-    // replace that shared formula with hand-tuned, per-palette constants --
-    // same pattern as StatusAmber/StatusGreen/StatusRed above -- split into
-    // two tiers by what can actually render underneath them, verified by
-    // reading every real IsMouseOver/IsSubmenuOpen consumer in Styles.xaml
-    // and every window, not assumed:
-    //
-    //   CHROME tier (SurfaceHover/SurfacePressed) -- MenuItem (all three
-    //   templates), TabItem/SectionTab, ChipButton's resting fill, and
-    //   MainWindow's Rescan button. None of these ever paints anything but
-    //   Theme.Text underneath while hovered/pressed in THIS app: the one
-    //   theoretical exception (IsEnabled="False" combined with a hover/
-    //   highlight state, which would show SubtleText instead) is provably
-    //   unreachable here -- grep confirms zero MenuItem/TabItem in
-    //   src/OrdoSort.Wpf/**/*.xaml ever binds or sets IsEnabled. Free to be
-    //   strong: bounded only by Theme.Text, which has enormous headroom
-    //   (>=6.5:1 at every value chosen here, both palettes).
-    //
-    //   ROW tier (RowHover) -- DataGridRow (BulkRename/MatchMerge/History/
-    //   Triage, newly added this round -- Styles.xaml had NO DataGridRow
-    //   style at all before this, confirmed by the parallel audit),
-    //   ListBoxItem (RouteList/LabelMaker/ManageSaved/UnlockWindow -- whose
-    //   FileList Note column is exactly where StatusGreen/StatusRed were
-    //   found broken), the Calendar family's day/month/nav buttons (whose
-    //   IsInactive state pairs SubtleText with the SAME hover trigger), and
-    //   ReadyView's "open inbox" button (whose BigCount can render
-    //   StatusRed mid-hover when CountAlertOn is set). Bounded by the
-    //   TIGHTEST of Text/SubtleText/StatusAmber/StatusGreen/StatusRed in
-    //   each palette -- verified by brute-force byte search, not estimated:
-    //   in light mode Surface is already pure white (255,255,255), so
-    //   there is NO headroom to lighten further, and StatusGreen's own
-    //   luminance (0.1548) caps how far this can darken before contrast
-    //   against it drops below 4.5 -- the safe zone is only
-    //   RGB 241-254, and even PURE BLACK does not recover it (WCAG's
-    //   (Lfg+0.05)/(Lbg+0.05) tops out at 4.10 for StatusGreen against
-    //   black, still short of 4.5). No "pressed" variant exists: none of
-    //   this tier's consumers have a WPF IsPressed concept (DataGridRow and
-    //   ListBoxItem have none; the Calendar/inbox buttons' existing styles
-    //   never gained one).
-    //
-    // Every consumer verified against ITS OWN real rendered background by
-    // HighlightContrastTests (resolved brushes, not the resource value
-    // read directly) -- see that file's Hover/Pressed-strength region.
+                       // ------------------------------------------------------- hover/pressed
+                       // Hover-tint strength review, round 2 (2026-08-08). Round 1 raised a
+                       // SINGLE derived Mix(Surface, Text, amount) shared by every hover/
+                       // pressed surface in the app. A parallel audit found that mechanism
+                       // fundamentally can't work: Mix moves the background toward Text, which
+                       // simultaneously (a) grows the surround-delta and (b) shrinks contrast
+                       // for every OTHER foreground that can sit on it -- and two status
+                       // colours were found to ALREADY be below the 4.5:1 floor at even the
+                       // old, barely-there 0.08 amount (StatusGreen light 4.343:1, StatusRed
+                       // dark 3.945:1), which no test had ever caught. These three fields
+                       // replace that shared formula with hand-tuned, per-palette constants --
+                       // same pattern as StatusAmber/StatusGreen/StatusRed above -- split into
+                       // two tiers by what can actually render underneath them, verified by
+                       // reading every real IsMouseOver/IsSubmenuOpen consumer in Styles.xaml
+                       // and every window, not assumed:
+                       //
+                       //   CHROME tier (SurfaceHover/SurfacePressed) -- MenuItem (all three
+                       //   templates), TabItem/SectionTab, ChipButton's resting fill, and
+                       //   MainWindow's Rescan button. None of these ever paints anything but
+                       //   Theme.Text underneath while hovered/pressed in THIS app: the one
+                       //   theoretical exception (IsEnabled="False" combined with a hover/
+                       //   highlight state, which would show SubtleText instead) is provably
+                       //   unreachable here -- grep confirms zero MenuItem/TabItem in
+                       //   src/OrdoSort.Wpf/**/*.xaml ever binds or sets IsEnabled. Free to be
+                       //   strong: bounded only by Theme.Text, which has enormous headroom
+                       //   (>=6.5:1 at every value chosen here, both palettes).
+                       //
+                       //   ROW tier (RowHover) -- DataGridRow (BulkRename/MatchMerge/History/
+                       //   Triage, newly added this round -- Styles.xaml had NO DataGridRow
+                       //   style at all before this, confirmed by the parallel audit),
+                       //   ListBoxItem (RouteList/LabelMaker/ManageSaved/UnlockWindow -- whose
+                       //   FileList Note column is exactly where StatusGreen/StatusRed were
+                       //   found broken), the Calendar family's day/month/nav buttons (whose
+                       //   IsInactive state pairs SubtleText with the SAME hover trigger), and
+                       //   ReadyView's "open inbox" button (whose BigCount can render
+                       //   StatusRed mid-hover when CountAlertOn is set). Bounded by the
+                       //   TIGHTEST of Text/SubtleText/StatusAmber/StatusGreen/StatusRed in
+                       //   each palette -- verified by brute-force byte search, not estimated:
+                       //   in light mode Surface is already pure white (255,255,255), so
+                       //   there is NO headroom to lighten further, and StatusGreen's own
+                       //   luminance (0.1548) caps how far this can darken before contrast
+                       //   against it drops below 4.5 -- the safe zone is only
+                       //   RGB 241-254, and even PURE BLACK does not recover it (WCAG's
+                       //   (Lfg+0.05)/(Lbg+0.05) tops out at 4.10 for StatusGreen against
+                       //   black, still short of 4.5). No "pressed" variant exists: none of
+                       //   this tier's consumers have a WPF IsPressed concept (DataGridRow and
+                       //   ListBoxItem have none; the Calendar/inbox buttons' existing styles
+                       //   never gained one).
+                       //
+                       // Every consumer verified against ITS OWN real rendered background by
+                       // HighlightContrastTests (resolved brushes, not the resource value
+                       // read directly) -- see that file's Hover/Pressed-strength region.
     Rgb SurfaceHover,   // chrome hover (Text-only)
     Rgb SurfacePressed, // chrome pressed (Text-only), stronger than SurfaceHover
     Rgb RowHover)       // row/list hover (Text+SubtleText+StatusAmber+StatusGreen+StatusRed)

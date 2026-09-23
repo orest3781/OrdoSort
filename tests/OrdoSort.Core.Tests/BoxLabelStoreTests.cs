@@ -54,8 +54,11 @@ public class BoxLabelStoreTests : IDisposable
     public void ConcurrentIncrementsNeverCollide()
     {
         var p = PathOf("box-labels.json");
-        BoxLabelStore.Mutate(p, d => { d.LabelClients.Add(
-            new LabelClient { Id = "ACME", NextNumber = 1 }); return 0; });
+        BoxLabelStore.Mutate(p, d =>
+        {
+            d.LabelClients.Add(new LabelClient { Id = "ACME", NextNumber = 1 });
+            return 0;
+        });
 
         var starts = new System.Collections.Concurrent.ConcurrentBag<long>();
         Parallel.For(0, 8, _ =>
@@ -96,8 +99,11 @@ public class BoxLabelStoreTests : IDisposable
     public void CallbackIOExceptionPropagatesWithoutRetryAndFileSurvives()
     {
         var p = PathOf("box-labels.json");
-        BoxLabelStore.Mutate(p, d => { d.LabelClients.Add(
-            new LabelClient { Id = "A", NextNumber = 3 }); return 0; });
+        BoxLabelStore.Mutate(p, d =>
+        {
+            d.LabelClients.Add(new LabelClient { Id = "A", NextNumber = 3 });
+            return 0;
+        });
         var calls = 0;
         Assert.Throws<IOException>(() =>
             BoxLabelStore.Mutate<int>(p, d => { calls++; throw new IOException("callback io bug"); }));

@@ -850,11 +850,11 @@ public class StandardiseNamesViewModelTests : IDisposable
         var row = vm.Results.Single();
         var pathBeforePeel = row.CurrentPath;
         var resultBeforePeel = row.Result;   // fix round 1, item 10: captured so the
-                                              // assertion below proves Result CHANGED,
-                                              // not merely that it is non-empty (the
-                                              // pre-peel filename is also non-empty,
-                                              // so that check passed even with the
-                                              // failure branch deleted)
+                                             // assertion below proves Result CHANGED,
+                                             // not merely that it is non-empty (the
+                                             // pre-peel filename is also non-empty,
+                                             // so that check passed even with the
+                                             // failure branch deleted)
 
         using (File.Open(pathBeforePeel, FileMode.Open, FileAccess.Read, FileShare.Read))
         {

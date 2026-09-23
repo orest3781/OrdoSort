@@ -50,9 +50,13 @@ public class ImageToPdfTests
     }
 
     [Theory]
-    [InlineData("png", true)] [InlineData("jpg", true)] [InlineData("TIFF", true)]
-    [InlineData("bmp", true)] [InlineData("gif", true)]
-    [InlineData("docx", false)] [InlineData("pdf", false)]
+    [InlineData("png", true)]
+    [InlineData("jpg", true)]
+    [InlineData("TIFF", true)]
+    [InlineData("bmp", true)]
+    [InlineData("gif", true)]
+    [InlineData("docx", false)]
+    [InlineData("pdf", false)]
     public void HandlesTheImageTypesAndNothingElse(string extension, bool handled) =>
         _fx.Invoke(() => Assert.Equal(handled, new ImageToPdf().Handles(extension)));
 

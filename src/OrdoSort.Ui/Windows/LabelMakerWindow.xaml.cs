@@ -92,7 +92,8 @@ public partial class LabelMakerWindow : Window
     {
         var vm = (LabelMakerViewModel)DataContext;
         var preview = new PrintPreviewWindow(LabelPrinting.BuildDocument(items, vm.DateStyle), jobName,
-            msg => vm.Dialogs.Warn(msg, vm.AppTitle), _previewTitle) { Owner = this };
+            msg => vm.Dialogs.Warn(msg, vm.AppTitle), _previewTitle);
+        preview.Owner = this;
         preview.ShowDialog();
         return preview.Printed;
     }

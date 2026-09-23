@@ -15,9 +15,14 @@ public class TextToPdfTests
     }
 
     [Theory]
-    [InlineData("txt", true)] [InlineData("log", true)] [InlineData("md", true)] [InlineData("json", true)]
+    [InlineData("txt", true)]
+    [InlineData("log", true)]
+    [InlineData("md", true)]
+    [InlineData("json", true)]
     [InlineData("TXT", true)]
-    [InlineData("docx", false)] [InlineData("pdf", false)] [InlineData("csv", false)]
+    [InlineData("docx", false)]
+    [InlineData("pdf", false)]
+    [InlineData("csv", false)]
     public void HandlesOnlyTextTypesNotSpreadsheetsOrDocuments(string extension, bool handled) =>
         Assert.Equal(handled, Converter.Handles(extension));
 

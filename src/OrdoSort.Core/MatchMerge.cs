@@ -214,7 +214,7 @@ public static partial class MatchMerge
                 && a[diffs[0]] == b[diffs[1]] && a[diffs[1]] == b[diffs[0]];   // adjacent swap
         }
         var (shorter, longer) = a.Length < b.Length ? (a, b) : (b, a);
-        for (int i = 0, j = 0, skipped = 0; i <= shorter.Length; )
+        for (int i = 0, j = 0, skipped = 0; i <= shorter.Length;)
         {
             if (i == shorter.Length) return true;       // remainder is the inserted letter
             if (j >= longer.Length) return false;

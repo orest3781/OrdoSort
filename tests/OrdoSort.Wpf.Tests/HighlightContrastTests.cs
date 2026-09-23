@@ -946,8 +946,8 @@ public class HighlightContrastTests
     public static IEnumerable<object[]> PalettesAndSelection()
     {
         foreach (var s in ThemePalette.Schemes)
-        foreach (var selected in new[] { false, true })
-            yield return new object[] { s.Key, selected };
+            foreach (var selected in new[] { false, true })
+                yield return new object[] { s.Key, selected };
     }
 
     /// <summary>Theme-coverage final review (2026-08-02), Finding 1:
@@ -1272,8 +1272,8 @@ public class HighlightContrastTests
     public static IEnumerable<object[]> CalendarDayStates()
     {
         foreach (var s in ThemePalette.Schemes)
-        foreach (var state in new[] { "default", "today", "selected", "inactive", "disabled" })
-            yield return new object[] { state, s.Key };
+            foreach (var state in new[] { "default", "today", "selected", "inactive", "disabled" })
+                yield return new object[] { state, s.Key };
     }
 
     [Theory, MemberData(nameof(CalendarDayStates))]
@@ -2093,8 +2093,8 @@ public class HighlightContrastTests
     public static IEnumerable<object[]> HoverUnselectedNoteCases()
     {
         foreach (var s in ThemePalette.Schemes)
-        foreach (var status in new[] { "Ready", "NeedsPassword", "Unreadable" })
-            yield return new object[] { s.Key, status };
+            foreach (var status in new[] { "Ready", "NeedsPassword", "Unreadable" })
+                yield return new object[] { s.Key, status };
     }
 
     [Theory, MemberData(nameof(HoverUnselectedNoteCases))]

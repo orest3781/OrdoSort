@@ -254,8 +254,8 @@ public static class PdfMerge
                 var zipDir = Path.GetDirectoryName(Path.GetFullPath(zipPath))!;
                 var zipStem = Path.GetFileNameWithoutExtension(zipPath);
                 var target = pickOutput(Path.Combine(zipDir, zipStem + ".pdf"));
-                return SaveNew(output, target, zipPath, mergeable.Count, skipped)
-                    with { Notes = notes.Count > 0 ? notes : null };
+                var saved = SaveNew(output, target, zipPath, mergeable.Count, skipped);
+                return saved with { Notes = notes.Count > 0 ? notes : null };
             }
             finally
             {
@@ -357,8 +357,8 @@ public static class PdfMerge
 
             var target = Collision.FreeFile(
                 Path.Combine(Path.GetDirectoryName(Path.GetFullPath(source))!, DefaultName(mergeable)));
-            return SaveNew(output, target, source, mergeable.Count, 0)
-                with { Notes = notes.Count > 0 ? notes : null };
+            var saved = SaveNew(output, target, source, mergeable.Count, 0);
+            return saved with { Notes = notes.Count > 0 ? notes : null };
         }
         finally
         {

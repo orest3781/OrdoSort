@@ -141,12 +141,12 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     private void Toggle(FilenameList.Columns flag, bool on) =>
         Columns = on ? Columns | flag : Columns & ~flag;
 
-    public bool ShowNumber   { get => Has(FilenameList.Columns.Number);   set => Toggle(FilenameList.Columns.Number, value); }
-    public bool ShowSize     { get => Has(FilenameList.Columns.Size);     set => Toggle(FilenameList.Columns.Size, value); }
+    public bool ShowNumber { get => Has(FilenameList.Columns.Number); set => Toggle(FilenameList.Columns.Number, value); }
+    public bool ShowSize { get => Has(FilenameList.Columns.Size); set => Toggle(FilenameList.Columns.Size, value); }
     public bool ShowModified { get => Has(FilenameList.Columns.Modified); set => Toggle(FilenameList.Columns.Modified, value); }
-    public bool ShowFolder   { get => Has(FilenameList.Columns.Folder);   set => Toggle(FilenameList.Columns.Folder, value); }
+    public bool ShowFolder { get => Has(FilenameList.Columns.Folder); set => Toggle(FilenameList.Columns.Folder, value); }
     public bool ShowFullPath { get => Has(FilenameList.Columns.FullPath); set => Toggle(FilenameList.Columns.FullPath, value); }
-    public bool ShowPages    { get => Has(FilenameList.Columns.Pages);    set => Toggle(FilenameList.Columns.Pages, value); }
+    public bool ShowPages { get => Has(FilenameList.Columns.Pages); set => Toggle(FilenameList.Columns.Pages, value); }
 
     private string _nameFilter = "";
     public string NameFilter

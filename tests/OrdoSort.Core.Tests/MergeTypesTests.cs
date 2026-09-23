@@ -3,14 +3,21 @@ namespace OrdoSort.Core.Tests;
 public class MergeTypesTests
 {
     [Theory]
-    [InlineData("pdf", "pdf")] [InlineData("docx", "word")] [InlineData("rtf", "word")]
-    [InlineData("csv", "excel")] [InlineData("xlsx", "excel")] [InlineData("pptx", "powerpoint")]
-    [InlineData("TIF", "images")] [InlineData("json", "text")]
+    [InlineData("pdf", "pdf")]
+    [InlineData("docx", "word")]
+    [InlineData("rtf", "word")]
+    [InlineData("csv", "excel")]
+    [InlineData("xlsx", "excel")]
+    [InlineData("pptx", "powerpoint")]
+    [InlineData("TIF", "images")]
+    [InlineData("json", "text")]
     public void EveryHandledExtensionKnowsItsGroup(string extension, string group) =>
         Assert.Equal(group, MergeTypes.GroupOf(extension));
 
     [Theory]
-    [InlineData("exe")] [InlineData("mp4")] [InlineData("")]
+    [InlineData("exe")]
+    [InlineData("mp4")]
+    [InlineData("")]
     public void AForeignTypeHasNoGroup(string extension) =>
         Assert.Null(MergeTypes.GroupOf(extension));
 
@@ -20,7 +27,8 @@ public class MergeTypesTests
     // and this repo has a PHI history. Locked in as a test so a future
     // change cannot silently re-add them without someone noticing.
     [Theory]
-    [InlineData("htm")] [InlineData("html")]
+    [InlineData("htm")]
+    [InlineData("html")]
     public void WebDocumentsAreNotInTheWordGroup(string extension) =>
         Assert.Null(MergeTypes.GroupOf(extension));
 
@@ -61,8 +69,11 @@ public class MergeTypesTests
     /// independently, extension group by extension group, rather than
     /// leaning on one Assert.Equal to carry the whole claim.</summary>
     [Theory]
-    [InlineData(MergeTypes.Word)] [InlineData(MergeTypes.Excel)] [InlineData(MergeTypes.PowerPoint)]
-    [InlineData(MergeTypes.Images)] [InlineData(MergeTypes.Text)]
+    [InlineData(MergeTypes.Word)]
+    [InlineData(MergeTypes.Excel)]
+    [InlineData(MergeTypes.PowerPoint)]
+    [InlineData(MergeTypes.Images)]
+    [InlineData(MergeTypes.Text)]
     public void EveryNewerGroupStartsOffByDefault(string group) =>
         Assert.DoesNotContain(group, MergeTypes.Load(null));
 

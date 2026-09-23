@@ -428,8 +428,11 @@ public class LabelMakerViewModelTests : IDisposable
         try
         {
             var path = Path.Combine(dir, "box-labels.json");
-            BoxLabelStore.Mutate(path, d => { d.LabelClients.Add(
-                new LabelClient { Id = "ACME", DestroyDays = 30, NextNumber = 10 }); return 0; });
+            BoxLabelStore.Mutate(path, d =>
+            {
+                d.LabelClients.Add(new LabelClient { Id = "ACME", DestroyDays = 30, NextNumber = 10 });
+                return 0;
+            });
 
             var vm = Vm(path);                    // window opens, sees NextNumber 10
             // another station advances the counter AFTER our window opened:
@@ -873,7 +876,7 @@ public class LabelMakerViewModelTests : IDisposable
         var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 7 });
         var vm = Vm(path);
         vm.Clients.Single().DestroyDaysText = "45";   // a pending edit — otherwise TryPersist never
-                                                       // attempts a write at all (zero-edit close)
+                                                      // attempts a write at all (zero-edit close)
 
         // Simulate a crash mid-write elsewhere: the file exists but is now
         // empty. BoxLabelStore.Mutate refuses to treat that as "no clients

@@ -30,8 +30,8 @@ public enum MessageKind
 public partial class MessageWindow : Window
 {
     // Segoe Fluent Icons, matching the glyphs the rest of the app uses.
-    private const string WarningGlyph  = "\uE7BA";
-    private const string InfoGlyph     = "\uE946";
+    private const string WarningGlyph = "\uE7BA";
+    private const string InfoGlyph = "\uE946";
     private const string QuestionGlyph = "\uE9CE";
 
     private bool _answeredYes;

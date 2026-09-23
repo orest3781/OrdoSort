@@ -41,9 +41,13 @@ public class TableToPdfTests
     }
 
     [Theory]
-    [InlineData("csv", true)] [InlineData("tsv", true)] [InlineData("xlsx", true)]
+    [InlineData("csv", true)]
+    [InlineData("tsv", true)]
+    [InlineData("xlsx", true)]
     [InlineData("CSV", true)]
-    [InlineData("docx", false)] [InlineData("pdf", false)] [InlineData("png", false)]
+    [InlineData("docx", false)]
+    [InlineData("pdf", false)]
+    [InlineData("png", false)]
     public void HandlesOnlyWhatItCanRead(string extension, bool handled) =>
         Assert.Equal(handled, Converter.Handles(extension));
 

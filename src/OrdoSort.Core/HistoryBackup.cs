@@ -85,17 +85,17 @@ public static class HistoryBackup
             // after Dispose, which would block the move below and hold the
             // shared DB open on the server.
             using (var source = new SqliteConnection(new SqliteConnectionStringBuilder
-                   {
-                       DataSource = dbPath,
-                       Mode = SqliteOpenMode.ReadOnly,
-                       DefaultTimeout = BusyTimeoutSeconds,
-                       Pooling = false,
-                   }.ToString()))
+            {
+                DataSource = dbPath,
+                Mode = SqliteOpenMode.ReadOnly,
+                DefaultTimeout = BusyTimeoutSeconds,
+                Pooling = false,
+            }.ToString()))
             using (var target = new SqliteConnection(new SqliteConnectionStringBuilder
-                   {
-                       DataSource = temp,
-                       Pooling = false,
-                   }.ToString()))
+            {
+                DataSource = temp,
+                Pooling = false,
+            }.ToString()))
             {
                 source.Open();
                 using (var cmd = source.CreateCommand())

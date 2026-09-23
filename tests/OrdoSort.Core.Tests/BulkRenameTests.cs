@@ -30,10 +30,22 @@ public class BulkRenameParserTests
             ParseReviewStem("JONES_ADAM_8 2_1962_ACME RECORDS 100000004-1 01 26_24_X"));
 
     [Theory]
-    [InlineData("JR")] [InlineData("SR")] [InlineData("JR.")] [InlineData("SENIOR")]
-    [InlineData("II")] [InlineData("III")] [InlineData("IV")] [InlineData("V")]
-    [InlineData("VI")] [InlineData("VII")] [InlineData("VIII")] [InlineData("IX")]
-    [InlineData("X")] [InlineData("2ND")] [InlineData("3RD")] [InlineData("4TH")]
+    [InlineData("JR")]
+    [InlineData("SR")]
+    [InlineData("JR.")]
+    [InlineData("SENIOR")]
+    [InlineData("II")]
+    [InlineData("III")]
+    [InlineData("IV")]
+    [InlineData("V")]
+    [InlineData("VI")]
+    [InlineData("VII")]
+    [InlineData("VIII")]
+    [InlineData("IX")]
+    [InlineData("X")]
+    [InlineData("2ND")]
+    [InlineData("3RD")]
+    [InlineData("4TH")]
     public void AllGenerationFormsBothPositions(string gen)
     {
         Assert.Equal(("BROWN", "DAVID"), ParseReviewStem($"BROWN_{gen}_DAVID{Tail}"));

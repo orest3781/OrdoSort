@@ -5,13 +5,13 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using Rectangle = System.Windows.Shapes.Rectangle;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.Theme;
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Views;
 using OrdoSort.Wpf.Windows;
+using Rectangle = System.Windows.Shapes.Rectangle;
 
 namespace OrdoSort.Wpf.Tests;
 

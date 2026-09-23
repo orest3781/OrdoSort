@@ -1033,21 +1033,35 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         "deferred" => () => OpenDeferredCommand.Execute(null),
         "history-backup" => () => OpenHistoryBackupFolderCommand.Execute(null),
         "alert" => () => OpenToastCommand.Execute(null),
-        _ => () => { },
+        _ => NoNoticeAction,
     };
 
     private Action NoticeDismissFor(string key) => key switch
     {
-        "deferred" => () => { _deferredDismissed = true; RefreshNotices(); },
-        "history-backup" => () => { _historyBackupDismissed = true; RefreshNotices(); },
+        "deferred" => DismissDeferredNotice,
+        "history-backup" => DismissHistoryBackupNotice,
         // The toast's dismiss IS HideToast -- there is no separate dismissed
         // flag to track: the same auto-hide/re-show lifecycle that already
         // governed the floating toast (ToastVisible false, then true again
         // on the next RaiseNewAlerts) is exactly the re-raise behaviour a
         // dismissed flag would otherwise exist to reproduce.
         "alert" => () => HideToast(),
-        _ => () => { },
+        _ => NoNoticeAction,
     };
+
+    private static void NoNoticeAction() { }
+
+    private void DismissDeferredNotice()
+    {
+        _deferredDismissed = true;
+        RefreshNotices();
+    }
+
+    private void DismissHistoryBackupNotice()
+    {
+        _historyBackupDismissed = true;
+        RefreshNotices();
+    }
 
     internal void FlashTick()
     {
