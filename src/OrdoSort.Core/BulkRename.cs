@@ -273,7 +273,14 @@ public static partial class BulkRename
                 continue;
             }
             var candidate = Path.Combine(dir, newStem + ext);
-            if (SameFile(Path.GetFileName(candidate), Path.GetFileName(source)))
+            // Ordinal, case-SENSITIVE — the same reasoning as PlanTidy's
+            // Changed verdict below. SameFile is case-insensitive by design,
+            // so Case = upper on "smith.pdf" (or Find "smith" -> "Smith")
+            // was reported as "unchanged" and silently skipped. SameFile
+            // still guards the on-disk collision test in Free() below, which
+            // is what lets a case-only target (which File.Exists reports as
+            // taken — by the source itself) through without a counter.
+            if (string.Equals(Path.GetFileName(candidate), Path.GetFileName(source), StringComparison.Ordinal))
             {
                 planned.Add(new PlannedRename(source, source, false, "", manual));
                 continue;

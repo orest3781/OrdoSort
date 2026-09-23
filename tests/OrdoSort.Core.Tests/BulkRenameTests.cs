@@ -280,6 +280,28 @@ public class BulkRenameFsTests : IDisposable
         Assert.True(pr.Manual);
     }
 
+    /// <summary>Case = upper on "smith.pdf" must rename it to "SMITH.pdf".
+    /// Plan used to decide "unchanged" with the case-insensitive SameFile,
+    /// so the rename was silently reported as already done — the same trap
+    /// PlanTidy's ACaseOnlyDifferenceIsStillARenameNotAnAlreadyStandardisedNoOp
+    /// pins for Standardise names.</summary>
+    [Fact]
+    public void ACaseOnlyRenameIsPlannedAndLandsOnDisk()
+    {
+        var src = Touch("smith.pdf");
+        var pr = Plan(new[] { src }, new RenameOp(Case: "upper"))[0];
+        Assert.True(pr.Changed);
+        Assert.Equal("SMITH.pdf", Path.GetFileName(pr.Target));
+        Assert.Equal("", pr.Note);
+
+        var outcome = Assert.Single(Execute(new[] { pr }));
+        Assert.NotNull(outcome.Final);
+        Assert.Equal("SMITH.pdf", Path.GetFileName(Directory.GetFiles(_dir).Single()));
+
+        Assert.Empty(Revert(new[] { outcome }));
+        Assert.Equal("smith.pdf", Path.GetFileName(Directory.GetFiles(_dir).Single()));
+    }
+
     [Fact]
     public void ReviewMergeEndToEnd()
     {
