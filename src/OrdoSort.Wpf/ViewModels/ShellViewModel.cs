@@ -1288,14 +1288,18 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         if (_busy) return;
         var cfg = _cfg;
         var cfgPath = _cfgPath;
+        // One list for the probes AND the buttons: a save during the scan
+        // below can swap _cfg.Routes, and the problems must line up with
+        // the routes they were probed for.
+        var routes = cfg.Routes;
         // the scan AND the destination probes (ProbeWritable touches every
         // route folder — a network round trip each) run off the UI thread
         var (scan, problems) = await _scheduler.Run(() =>
             (Scanner.Scan(ResolvePath(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode),
-             cfg.Routes.Select(r => Config.ValidateRoute(r, cfgPath)).ToList()));
+             routes.Select(r => Config.ValidateRoute(r, cfgPath)).ToList()));
         if (Screen == Screen.Processing) return;   // a double Start raced us
         if (scan.Count == 0) { Rescan(); return; }
-        BuildRoutes(problems);
+        BuildRoutes(routes, problems);
         _session.Start(scan.Matching);
         _lastRoute = null;
         MarkRouteState();   // Enter always has a target now — mark it before the first document
@@ -1327,12 +1331,12 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         if (aspect is > 0) FitViewerToPage?.Invoke(aspect.Value);
     }
 
-    private void BuildRoutes(IReadOnlyList<string> problems)
+    private void BuildRoutes(IReadOnlyList<Route> routes, IReadOnlyList<string> problems)
     {
         Routes.Clear();
         var p = _palette();
-        for (var i = 0; i < _cfg.Routes.Count; i++)
-            Routes.Add(new RouteButtonViewModel(i, _cfg.Routes[i], p,
+        for (var i = 0; i < routes.Count; i++)
+            Routes.Add(new RouteButtonViewModel(i, routes[i], p,
                 i < problems.Count ? problems[i] : ""));
         RoutesRebuilt?.Invoke();
     }
@@ -1388,9 +1392,13 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // _busy is set BEFORE the first await: without it, a fast second
         // Enter/Ctrl+1 would start a second commit during ReleaseAsync's
         // yield, capturing the same textbox text and mislabeling the next doc.
+        // Index into the session's own buttons, not _cfg.Routes: a mid-session
+        // save can replace _cfg.Routes with a peer's reordered list, and the
+        // button (and hotkey) the user pressed must still file where it says.
         if (_busy || Screen != Screen.Processing || _session.Current is null
-            || index >= _cfg.Routes.Count) return;
-        if (Routes.Count > index && !Routes[index].Enabled) return;
+            || index < 0 || index >= Routes.Count) return;
+        if (!Routes[index].Enabled) return;
+        var route = Routes[index].Route;
         _busy = true;
         try
         {
@@ -1398,7 +1406,6 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             await _viewer.ReleaseAsync();
             try
             {
-                var route = _cfg.Routes[index];
                 // the move itself can be a copy+delete across SMB shares —
                 // never on the UI thread
                 var outcome = await _scheduler.Run(() => _session.CommitCurrent(typed, route));
@@ -1971,7 +1978,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         try
         {
             var target = EnterTargetIndex();
-            var route = target is { } i && i < _cfg.Routes.Count ? _cfg.Routes[i] : null;
+            // the session's button, same as OnRouteAsync files through
+            var route = target is { } i && i < Routes.Count ? Routes[i].Route : null;
             var result = Naming.BuildTarget(
                 Path.GetFileName(current), TypedName,
                 route?.NamingMode, _session.SessionMode,

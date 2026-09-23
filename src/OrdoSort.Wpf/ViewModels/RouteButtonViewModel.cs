@@ -26,6 +26,15 @@ public sealed class RouteButtonViewModel : ObservableObject
     public bool IsLastUsed { get => _isLastUsed; internal set => Set(ref _isLastUsed, value); }
 
     public int Index { get; }
+
+    /// <summary>The destination this button files into, captured when the
+    /// session started. Filing goes through THIS, never a fresh index lookup
+    /// in the live config: a mid-session save (Match &amp; merge, a merge-type
+    /// toggle) re-reads the shared destinations from disk, and a peer that
+    /// reordered or removed them must not turn the "Tax" button into a
+    /// different folder.</summary>
+    public Route Route { get; }
+
     public string Label { get; }
     public bool Enabled { get; }
     public string? DisabledReason { get; }
@@ -39,6 +48,7 @@ public sealed class RouteButtonViewModel : ObservableObject
     public RouteButtonViewModel(int index, Route route, ThemePalette palette, string problem)
     {
         Index = index;
+        Route = route;
 
         // configured hotkey binds when parseable; else the classic Ctrl+1-9
         Gesture = HotkeyParser.ToGesture(route.Hotkey)
