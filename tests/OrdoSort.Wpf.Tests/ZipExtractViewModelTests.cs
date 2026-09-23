@@ -155,6 +155,51 @@ public class ZipExtractViewModelTests
         Assert.StartsWith("Created a.zip", vm.Status);
     }
 
+    /// <summary>Zip, Zip to and Extract are separate commands, and each one
+    /// only blocks a second press of itself — so Extract could start over
+    /// the same list while a Zip was still running. Every batch command must
+    /// be disabled (and told to re-query) while any batch runs, and a direct
+    /// call must not start a second batch either.</summary>
+    [Fact]
+    public async Task NoOtherBatchCanStartWhileAZipIsRunning()
+    {
+        using var dir = new TempDir();
+        var file = dir.File("a.txt");
+        var zip = dir.File("b.zip");
+        var extractCalls = 0;
+        var extractRequeried = false;
+        var extractRequeriedDuring = false;
+        bool? zipEnabledDuring = null, zipAsEnabledDuring = null, extractEnabledDuring = null;
+        ZipExtractViewModel? vm = null;
+        vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(), uiContext: null,
+            zipper: (_, _) =>
+            {
+                zipEnabledDuring = vm!.ZipCommand.CanExecute(null);
+                zipAsEnabledDuring = vm.ZipAsCommand.CanExecute(null);
+                extractEnabledDuring = vm.ExtractCommand.CanExecute(null);
+                extractRequeriedDuring = extractRequeried;
+                vm.ExtractAsync().GetAwaiter().GetResult();   // a second batch tries to start mid-zip
+                return new Zipper.ZipResult("ok", Path.Combine(dir.Path, "out.zip"));
+            },
+            extractor: (path, _, _) =>
+            {
+                extractCalls++;
+                return new Zipper.UnzipResult(path, "ok", Path.Combine(dir.Path, "b"));
+            },
+            zipProbe: (p, _) => new Zipper.ZipProbeResult(p, "not_encrypted"));
+        await vm.AddPaths(new[] { file, zip });
+        vm.ExtractCommand.CanExecuteChanged += (_, _) => extractRequeried = true;
+
+        await vm.ZipAsync(null);
+
+        Assert.False(zipEnabledDuring);
+        Assert.False(zipAsEnabledDuring);
+        Assert.False(extractEnabledDuring);
+        Assert.True(extractRequeriedDuring);   // WPF was told to grey the button out
+        Assert.Equal(0, extractCalls);
+        Assert.True(vm.ExtractCommand.CanExecute(null));   // enabled again once the zip finished
+    }
+
     [Fact]
     public async Task AddPathsDedupesDropsMissingPathsAndSetsAddNote()
     {

@@ -32,9 +32,12 @@ public sealed class ZipExtractViewModel : ZipListViewModel
         _extractor = extractor ?? Zipper.Extract;
         _zipProbe = zipProbe ?? Zipper.Probe;
 
-        ZipCommand = new AsyncRelayCommand(() => ZipAsync(null), () => Rows.Count > 0);
-        ZipAsCommand = new AsyncRelayCommand(ZipWithDialogAsync, () => Rows.Count > 0);
-        ExtractCommand = new AsyncRelayCommand(ExtractAsync, () => RunnableZips > 0);
+        // !IsBusy on all three: each command only blocks a second press of
+        // itself, so without it Zip, Zip to and Extract could overlap on
+        // the same list (see the base class's IsBusy).
+        ZipCommand = new AsyncRelayCommand(() => ZipAsync(null), () => Rows.Count > 0 && !IsBusy);
+        ZipAsCommand = new AsyncRelayCommand(ZipWithDialogAsync, () => Rows.Count > 0 && !IsBusy);
+        ExtractCommand = new AsyncRelayCommand(ExtractAsync, () => RunnableZips > 0 && !IsBusy);
     }
 
     /// <summary>Anything that exists — a PDF is valid input here, just for
@@ -88,6 +91,7 @@ public sealed class ZipExtractViewModel : ZipListViewModel
     internal async Task ZipAsync(string? outputPath)
     {
         if (Rows.Count == 0) return;
+        if (IsBusy) return;   // another batch owns the list — see IsBusy
         var paths = Rows.Select(r => r.Path).ToList();
         var itemCount = paths.Count;
         // Busy and a status line BEFORE the work, as RunBatchAsync does for

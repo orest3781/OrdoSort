@@ -77,6 +77,46 @@ public class MergePdfsViewModelTests
         Assert.Equal("1 merged · 1 had nothing to merge · 1 needs a password · 1 failed", vm.Status);
     }
 
+    /// <summary>Merge and Merge to… are separate commands, and each one only
+    /// blocks a second press of itself — so Merge to… could start a second
+    /// batch over the same rows while Merge was still running. Both must be
+    /// disabled (and told to re-query) while any batch runs, and a direct
+    /// call must not start a second batch either.</summary>
+    [Fact]
+    public async Task NoSecondMergeCanStartWhileAMergeIsRunning()
+    {
+        using var dir = new TempDir();
+        var zipCalls = 0;
+        var mergeToRequeried = false;
+        var mergeToRequeriedDuring = false;
+        bool? mergeEnabledDuring = null, mergeToEnabledDuring = null;
+        MergePdfsViewModel? vm = null;
+        vm = MakeVm(
+            zipMerger: (path, _, _) =>
+            {
+                zipCalls++;
+                if (zipCalls == 1)
+                {
+                    mergeEnabledDuring = vm!.MergeCommand.CanExecute(null);
+                    mergeToEnabledDuring = vm.MergeToCommand.CanExecute(null);
+                    mergeToRequeriedDuring = mergeToRequeried;
+                    vm.MergeAsync(null).GetAwaiter().GetResult();   // a second batch tries to start mid-merge
+                }
+                return Ok(path, path + ".out.pdf", 1);
+            },
+            fileMerger: (paths, _, _, _) => Ok(paths[0], paths[0] + ".out.pdf", paths.Count));
+        await vm.AddPaths(new[] { dir.File("a.zip"), dir.File("c.pdf") });
+        vm.MergeToCommand.CanExecuteChanged += (_, _) => mergeToRequeried = true;
+
+        await vm.MergeAsync(null);
+
+        Assert.False(mergeEnabledDuring);
+        Assert.False(mergeToEnabledDuring);
+        Assert.True(mergeToRequeriedDuring);   // WPF was told to grey the button out
+        Assert.Equal(1, zipCalls);
+        Assert.Equal("2 merged", vm.Status);
+    }
+
     [Fact]
     public async Task StatusOmitsZeroPartsWhenEverythingMerges()
     {

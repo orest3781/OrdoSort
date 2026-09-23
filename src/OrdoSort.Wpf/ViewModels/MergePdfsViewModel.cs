@@ -197,8 +197,11 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
             .Select(g => new MergeTypeToggle(this, g, GroupLabels.TryGetValue(g, out var label) ? label : g))
             .ToList();
 
-        MergeCommand = new AsyncRelayCommand(() => MergeAsync(null), () => RunnableRows > 0);
-        MergeToCommand = new AsyncRelayCommand(MergeToAsync, () => RunnableLooseDocuments > 0);
+        // !IsBusy on both: each command only blocks a second press of
+        // itself, so without it Merge and Merge to… could run two batches
+        // over the same rows at once (see the base class's IsBusy).
+        MergeCommand = new AsyncRelayCommand(() => MergeAsync(null), () => RunnableRows > 0 && !IsBusy);
+        MergeToCommand = new AsyncRelayCommand(MergeToAsync, () => RunnableLooseDocuments > 0 && !IsBusy);
     }
 
     /// <summary>Every document, image, text file and zip this window can
@@ -451,6 +454,11 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
     /// nothing could ever see it).</summary>
     internal async Task MergeAsync(string? outputPath)
     {
+        // Checked before the snapshot below, not just in RunBatchAsync: a
+        // second call must not swap _activeIncludeTypes under a run that is
+        // still reading it.
+        if (IsBusy) return;
+
         // Snapshotted ONCE, here, before any unit runs (review Important 3)
         // — see _activeIncludeTypes's own doc comment for why a live read of
         // _enabledTypes was not good enough on its own even with the toggle

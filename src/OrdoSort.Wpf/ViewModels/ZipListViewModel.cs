@@ -337,7 +337,7 @@ public abstract class ZipListViewModel : ObservableObject
     /// are the two mappings they share.</summary>
     protected abstract (ZipItemRowStatus Status, string Note)? Probe(ZipItemRow row, IReadOnlyList<string> savedPasswords);
 
-    /// <summary>Raised whenever the list changes so a subclass can refresh
+    /// <summary>Raised whenever the list (or IsBusy) changes so a subclass can refresh
     /// its own button texts and command enablement.</summary>
     protected virtual void OnRowsChanged() { }
 
@@ -354,11 +354,25 @@ public abstract class ZipListViewModel : ObservableObject
     /// to stay reachable during a run, since pressing it is what actually
     /// stops one (see ClearCommand above). Protected so a subclass operation
     /// that does not go through RunBatchAsync — ZipAsync — can still declare
-    /// itself busy.</summary>
+    /// itself busy.
+    ///
+    /// Also gates every batch command: each is its own AsyncRelayCommand,
+    /// which only blocks a second press of ITSELF, so Merge and Merge to…
+    /// (or Zip, Zip to and Extract) could otherwise run two batches over the
+    /// same rows at once — double merges, one shared set of password
+    /// candidates, and IsBusy cleared by whichever finished first. The
+    /// subclasses' CanExecute reads IsBusy, so a change here re-queries them
+    /// through OnRowsChanged, the one place each subclass already refreshes
+    /// its commands.</summary>
     public bool IsBusy
     {
         get => _isBusy;
-        protected set { if (Set(ref _isBusy, value)) Raise(nameof(IsIdle)); }
+        protected set
+        {
+            if (!Set(ref _isBusy, value)) return;
+            Raise(nameof(IsIdle));
+            OnRowsChanged();
+        }
     }
 
     /// <summary>The inverse of IsBusy — Remove selected is a Click handler
@@ -581,6 +595,9 @@ public abstract class ZipListViewModel : ObservableObject
         IReadOnlyList<TallyClause> clauses)
     {
         if (units.Count == 0) return;   // nothing runnable — re-add to retry
+        // The commands are disabled while busy (see IsBusy); this is the
+        // same belt-and-braces guard for a direct caller.
+        if (IsBusy) return;
 
         var token = _cts.Token;
         var counts = new int[clauses.Count];
