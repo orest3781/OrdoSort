@@ -477,6 +477,33 @@ public class StandardiseNamesViewModelTests : IDisposable
         Assert.True(File.Exists(b));           // the second file was never touched
     }
 
+    /// <summary>The window's drop target is the whole window, which Add
+    /// files… being disabled does nothing to stop — so a drop mid-batch
+    /// reaches AddFilesAsync, and used to be ignored without a word, leaving
+    /// the owner to think the files were taken. It must say why.</summary>
+    [Fact]
+    public async Task ADropWhileABatchIsRunningSaysToDropAgainLater()
+    {
+        var a = _dir.File("smith.pdf");
+        var b = _dir.File("jones.pdf");
+        var scheduler = new ControlledWorkScheduler();
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, scheduler);
+
+        var first = vm.AddFilesAsync(new[] { a });   // its intake check is queued: the batch is running
+        Assert.True(vm.IsBusy);
+
+        await vm.AddFilesAsync(new[] { b });
+
+        Assert.Contains("drop again", vm.Status);
+        Assert.Equal(1, scheduler.Queued);   // the second drop dispatched nothing
+
+        scheduler.ReleaseAll();
+        await first;
+        Assert.True(File.Exists(b));
+    }
+
     // ------------------------------------------------------- Remove last segment
 
     [Fact]

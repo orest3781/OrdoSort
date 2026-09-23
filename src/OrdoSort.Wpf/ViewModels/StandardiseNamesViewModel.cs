@@ -280,7 +280,17 @@ public sealed class StandardiseNamesViewModel : ObservableObject
     /// merely an empty status message.</summary>
     public async Task AddFilesAsync(IEnumerable<string> paths)
     {
-        if (IsBusy) return;
+        if (IsBusy)
+        {
+            // Add files… is disabled while busy, but the drop target is the
+            // whole window, so a drop still lands here mid-batch. Refusing it
+            // without a word left the owner thinking the files were taken.
+            // Status, not AddNote: a batch that renames writes its own
+            // Status when it finishes, replacing this, whereas AddNote would
+            // keep saying "still renaming" long after it had stopped.
+            Status = "Still renaming — drop again when this batch finishes.";
+            return;
+        }
         IsBusy = true;
         try
         {
