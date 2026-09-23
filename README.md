@@ -169,7 +169,7 @@ title there.
 ## Build & test
 
 ```
-check.bat          # restore, build Release, run every test - the same steps as CI
+check.bat          # restore, format check, build Release, run every test - the same steps as CI
 check.bat core     # only tests/OrdoSort.Core.Tests (about a minute)
 check.bat wpf      # only tests/OrdoSort.Wpf.Tests
 ```

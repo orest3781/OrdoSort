@@ -32,6 +32,15 @@ jobs:
           dotnet-version: "8.0.x"
       - name: Restore
         run: dotnet restore
+      # Cheapest check first. Rules live in .editorconfig; to fix a failure
+      # locally run `dotnet format OrdoSort.sln` (check.bat runs this too).
+      # Whitespace and code style only: analyzer warnings are the build's job.
+      # Two steps, not one multi-line run: PowerShell only reports the last
+      # command's exit code, which would hide a whitespace failure.
+      - name: Format check (whitespace)
+        run: dotnet format whitespace OrdoSort.sln --verify-no-changes --no-restore -v q
+      - name: Format check (style)
+        run: dotnet format style OrdoSort.sln --verify-no-changes --no-restore -v q
       - name: Build
         run: dotnet build --no-restore -c Release
       - name: Test
