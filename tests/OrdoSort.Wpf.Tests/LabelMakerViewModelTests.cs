@@ -1080,6 +1080,90 @@ public class LabelMakerViewModelTests : IDisposable
         Assert.False(printed);
     }
 
+    // ------------------------------------------- Save PDF that can't write
+
+    [Fact]
+    public void SavingOverAPdfOpenInAViewerUsesNoBoxNumbers()
+    {
+        // The usual reason a save fails: last time's PDF is still open in a
+        // viewer. The claim used to run first, so every retry burned another
+        // batch of numbers while the screen kept showing the old one.
+        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = 5 });
+        var vm = Vm(path);
+        var dest = Path.Combine(_dir, "open-in-viewer.pdf");
+        _dialogs.NextSaveFile = dest;
+
+        using (new FileStream(dest, FileMode.Create, FileAccess.ReadWrite, FileShare.Read))
+            vm.SavePdf();
+
+        var warning = Assert.Single(_dialogs.Warnings).Message;
+        Assert.Contains("Couldn't save it", warning);
+        Assert.Contains("No box numbers were used", warning);
+        Assert.Equal(5, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+        Assert.Equal("5", vm.Selected!.NextNumberText);
+        Assert.Empty(_opened);
+    }
+
+    [Fact]
+    public void ARenderFailureAfterTheClaimSaysWhichNumbersWereUsedUp()
+    {
+        // Rarer (a disk filling mid-write): the claim has landed and cannot
+        // be taken back, so the screen must catch up and the user must be
+        // told which numbers are gone.
+        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = 5 });
+        var vm = Vm(path);
+        vm.RenderPdfTo = (_, _, _) => throw new IOException("There is not enough space on the disk.");
+        _dialogs.NextSaveFile = Path.Combine(_dir, "disk-full.pdf");
+
+        vm.SavePdf();
+
+        var warning = Assert.Single(_dialogs.Warnings).Message;
+        Assert.Contains("not enough space", warning);
+        Assert.Contains("ABCD00000005 – ABCD00000014", warning);
+        Assert.Equal(15, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+        Assert.Equal("15", vm.Selected!.NextNumberText);
+    }
+
+    [Fact]
+    public void ARefusedClaimLeavesNoPdfBehindAndAnExistingOneUntouched()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = 10 });
+        var vm = Vm(path);
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single().NextNumber = BoxLabels.MaxNumber - 1; return 0; });
+
+        var fresh = Path.Combine(_dir, "fresh.pdf");
+        _dialogs.NextSaveFile = fresh;
+        vm.SavePdf();
+        Assert.False(File.Exists(fresh));   // not a stray 0-byte file
+
+        var existing = Path.Combine(_dir, "existing.pdf");
+        File.WriteAllText(existing, "last week's labels");
+        _dialogs.NextSaveFile = existing;
+        vm.SavePdf();
+        Assert.Equal("last week's labels", File.ReadAllText(existing));
+
+        Assert.Equal(2, _dialogs.Warnings.Count);   // both refused by the ceiling check
+    }
+
+    [Fact]
+    public void SavingOverALongerOldFileLeavesOnlyTheNewPdf()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = 5 });
+        var vm = Vm(path);
+        var dest = Path.Combine(_dir, "reused.pdf");
+        File.WriteAllBytes(dest, new byte[2_000_000]);   // longer than one sheet's PDF
+        _dialogs.NextSaveFile = dest;
+
+        vm.SavePdf();
+
+        var bytes = File.ReadAllBytes(dest);
+        Assert.True(bytes.Length < 2_000_000);
+        Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(bytes, 0, 4));
+        Assert.Contains("%%EOF", System.Text.Encoding.ASCII.GetString(bytes, bytes.Length - 16, 16));
+        Assert.Empty(_dialogs.Warnings);
+    }
+
     // ------------------------------------- unexpected failures are reported
 
     /// <summary>Stands in for anything the claim was not written to expect:

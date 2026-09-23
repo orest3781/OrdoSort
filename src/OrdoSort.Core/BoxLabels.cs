@@ -251,28 +251,53 @@ public static class BoxLabels
     public static void RenderPdf(string path, IReadOnlyList<Item> items,
         string dateStyle = DateStyleBars)
     {
-        if (items.Count == 0) throw new ArgumentException("Nothing to print.");
-        using var doc = new PdfDocument();
-        var cutLine = new XPen(XColor.FromArgb(210, 210, 210), 0.4);
-
-        for (var i = 0; i < items.Count; i++)
-        {
-            if (i % PerSheet == 0) AddPage(doc);
-            var page = doc.Pages[doc.PageCount - 1];
-            using var gfx = XGraphics.FromPdfPage(page);
-            var (x, y) = SlotOrigin(i % PerSheet);
-            var d = ComposeDrawing(items[i], dateStyle);
-            foreach (var b in d.Bars)
-                gfx.DrawRectangle(XBrushes.Black, x + b.X, y + b.Y, b.W, b.H);
-            foreach (var t in d.Texts)
-                gfx.DrawString(t.Text,
-                    new XFont(t.Mono ? "Consolas" : "Segoe UI", t.Size, XFontStyleEx.Bold),
-                    t.White ? XBrushes.White : XBrushes.Black,
-                    new XRect(x + t.X, y + t.Y, t.W, t.H), XStringFormats.Center);
-            gfx.DrawRectangle(cutLine, x + d.CutGuide.X, y + d.CutGuide.Y,
-                d.CutGuide.W, d.CutGuide.H);
-        }
+        using var doc = ComposePdf(items, dateStyle);
         doc.Save(path);
+    }
+
+    /// <summary>Render into a stream the caller already holds open, and leave
+    /// it open. The label maker opens the target file BEFORE it claims box
+    /// numbers, so a file it cannot write (open in a PDF viewer, say) fails
+    /// while no number has been used yet.</summary>
+    public static void RenderPdf(Stream destination, IReadOnlyList<Item> items,
+        string dateStyle = DateStyleBars)
+    {
+        using var doc = ComposePdf(items, dateStyle);
+        doc.Save(destination, closeStream: false);
+    }
+
+    private static PdfDocument ComposePdf(IReadOnlyList<Item> items, string dateStyle)
+    {
+        if (items.Count == 0) throw new ArgumentException("Nothing to print.");
+        var doc = new PdfDocument();
+        try
+        {
+            var cutLine = new XPen(XColor.FromArgb(210, 210, 210), 0.4);
+
+            for (var i = 0; i < items.Count; i++)
+            {
+                if (i % PerSheet == 0) AddPage(doc);
+                var page = doc.Pages[doc.PageCount - 1];
+                using var gfx = XGraphics.FromPdfPage(page);
+                var (x, y) = SlotOrigin(i % PerSheet);
+                var d = ComposeDrawing(items[i], dateStyle);
+                foreach (var b in d.Bars)
+                    gfx.DrawRectangle(XBrushes.Black, x + b.X, y + b.Y, b.W, b.H);
+                foreach (var t in d.Texts)
+                    gfx.DrawString(t.Text,
+                        new XFont(t.Mono ? "Consolas" : "Segoe UI", t.Size, XFontStyleEx.Bold),
+                        t.White ? XBrushes.White : XBrushes.Black,
+                        new XRect(x + t.X, y + t.Y, t.W, t.H), XStringFormats.Center);
+                gfx.DrawRectangle(cutLine, x + d.CutGuide.X, y + d.CutGuide.Y,
+                    d.CutGuide.W, d.CutGuide.H);
+            }
+            return doc;
+        }
+        catch
+        {
+            doc.Dispose();
+            throw;
+        }
     }
 
     private static void AddPage(PdfDocument doc)

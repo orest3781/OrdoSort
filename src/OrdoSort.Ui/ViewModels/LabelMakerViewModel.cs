@@ -615,20 +615,15 @@ public sealed class LabelMakerViewModel : ObservableObject
         var typedStart = TypedStartFor(b.Client);
 
         long claimedStart;
+        long? claimedBeforeFailure = null;   // written by the offload, read after the await
         try
         {
             // Claim from the fresh file INSIDE the offload, same reasoning as
             // Print(): the PDF that lands on disk must carry the claimed
             // numbers. The claim is now alongside the render (both are file
-            // work, neither belongs on the UI thread) — if the claim throws,
-            // the render below never runs, and nothing lands on disk.
-            claimedStart = await _scheduler.Run(() =>
-            {
-                var start = ClaimNumbersCore(b.Client, b.Count, typedStart);
-                var items = RebuildFromClaim(b, start);
-                BoxLabels.RenderPdf(dest, items, dateStyle);
-                return start;
-            });
+            // work, neither belongs on the UI thread).
+            claimedStart = await _scheduler.Run(() => WritePdfForClaim(dest, b, typedStart, dateStyle,
+                start => claimedBeforeFailure = start));
         }
         catch (ConfigException ex)
         {
@@ -637,7 +632,23 @@ public sealed class LabelMakerViewModel : ObservableObject
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _dialogs.Warn("Couldn't save it: " + ex.Message, _appTitle);
+            if (claimedBeforeFailure is not { } used)
+            {
+                _dialogs.Warn("Couldn't save it: " + ex.Message + "\n\nNo box numbers were used.",
+                    _appTitle);
+                return;
+            }
+            // The claim landed and cannot be taken back (another station may
+            // already have claimed the numbers after it), so the screen must
+            // show where the list now stands and the user must know which
+            // numbers are gone.
+            SetClaimedNumber(b.Client, used + b.Count);
+            _dialogs.Warn(
+                "Couldn't save it: " + ex.Message + "\n\n" +
+                $"Box numbers {BoxLabels.Compose(b.Client.Id, used)} – " +
+                $"{BoxLabels.Compose(b.Client.Id, used + b.Count - 1)} were used up by this " +
+                "attempt and will not be issued again.",
+                _appTitle);
             return;
         }
 
@@ -649,6 +660,44 @@ public sealed class LabelMakerViewModel : ObservableObject
         Status = $"Saved {b.Count} label{(b.Count == 1 ? "" : "s")} "
             + $"({sheets} sheet{(sheets == 1 ? "" : "s")}) — print at 100% scale.";
         try { _openFile(dest); } catch { /* viewer trouble isn't a label problem */ }
+    }
+
+    /// <summary>Writes the PDF. Real code renders with PdfSharp; tests
+    /// inject a failure to reach the render-failed-after-the-claim path.</summary>
+    internal Action<Stream, IReadOnlyList<BoxLabels.Item>, string> RenderPdfTo { get; set; } =
+        BoxLabels.RenderPdf;
+
+    /// <summary>Open the target, claim, render — in that order, off the UI
+    /// thread. Returns the claimed start.
+    ///
+    /// The target is opened BEFORE the claim so the common failure — the
+    /// file is open in a PDF viewer — is hit while no box number has been
+    /// used. OpenOrCreate rather than Create so a claim that then fails
+    /// leaves an existing file as it was; a file this call created is
+    /// removed again. <paramref name="onClaimed"/> reports the claim the
+    /// moment it lands, so a render failure after it can say which numbers
+    /// were used up.</summary>
+    private long WritePdfForClaim(string dest,
+        (List<BoxLabels.Item> Items, LabelClientVm Client, long Start, int Count) b,
+        long? typedStart, string dateStyle, Action<long> onClaimed)
+    {
+        var existedBefore = File.Exists(dest);
+        using var output = new FileStream(dest, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
+        long start;
+        try
+        {
+            start = ClaimNumbersCore(b.Client, b.Count, typedStart);
+        }
+        catch
+        {
+            output.Dispose();
+            if (!existedBefore) File.Delete(dest);
+            throw;
+        }
+        onClaimed(start);
+        RenderPdfTo(output, RebuildFromClaim(b, start), dateStyle);
+        output.SetLength(output.Position);   // drop the tail of a longer old file
+        return start;
     }
 
     /// <summary>Merge only the clients touched this session back into the
