@@ -47,6 +47,19 @@ public static class ZipScenarios
             && vm.Status.Contains(archiveName, StringComparison.Ordinal),
             $"status was \"{vm.Status}\"");
 
+    /// <summary>Waits for the zip's result to reach the window. Settle can't
+    /// do it here: since UX-07, ZipAsync sets "Zipping N items…" directly,
+    /// before the work, and only the final "Created …" (or the failure
+    /// message) arrives through the uiContext.Post hop. Status is therefore
+    /// non-empty before the result lands, so Settle's predicate is already
+    /// true and it returns without pumping; the status checks then read
+    /// "Zipping…". The command runs synchronously under InlineScheduler up
+    /// to that Post, so draining the dispatcher is waiting on exactly the
+    /// posted result.</summary>
+    private static void AwaitZipResult(ScenarioContext ctx) =>
+        ctx.Check("the window applied the zip's result", Drained(),
+            "the dispatcher queue never drained");
+
     private static void FilesAndFolder(ScenarioContext ctx)
     {
         var a = ctx.Fx.Pdf("src/one.pdf", "ALPHA");
@@ -69,7 +82,7 @@ public static class ZipScenarios
             string.Join(", ", vm.Rows.Select(r => $"{r.Display}:{r.Kind}")));
 
         vm.ZipCommand.Execute(null);
-        Settle(ctx, () => vm.Status);
+        AwaitZipResult(ctx);
 
         var zips = Archives(ctx);
         ctx.Check("exactly one archive written", zips.Length == 1, $"got {zips.Length}");
@@ -100,7 +113,7 @@ public static class ZipScenarios
         ctx.Check("the source is listed", vm.Rows.Count == 1, $"got {vm.Rows.Count}");
 
         vm.ZipAsCommand.Execute(null);
-        Settle(ctx, () => vm.Status);
+        AwaitZipResult(ctx);
 
         ctx.FileExists(target);
         CheckCreated(ctx, vm, "chosen-name.zip");
@@ -146,7 +159,7 @@ public static class ZipScenarios
         ctx.Check("the source is listed", vm.Rows.Count == 1, $"got {vm.Rows.Count}");
 
         vm.ZipCommand.Execute(null);
-        Settle(ctx, () => vm.Status);
+        AwaitZipResult(ctx);
 
         ctx.BytesUnchanged(taken, before, "the archive already there is untouched");
 
@@ -197,7 +210,7 @@ public static class ZipScenarios
         ctx.Check("the source is listed", vm.Rows.Count == 1, $"got {vm.Rows.Count}");
 
         vm.ZipAsCommand.Execute(null);
-        Settle(ctx, () => vm.Status);
+        AwaitZipResult(ctx);
 
         CheckCreated(ctx, vm, "taken.zip");
 
@@ -225,7 +238,7 @@ public static class ZipScenarios
         ctx.Check("both sources listed", vm.Rows.Count == 2, $"got {vm.Rows.Count}");
 
         vm.ZipCommand.Execute(null);
-        Settle(ctx, () => vm.Status);
+        AwaitZipResult(ctx);
 
         var zips = Archives(ctx);
         ctx.Check("archive written", zips.Length == 1, $"got {zips.Length}");
