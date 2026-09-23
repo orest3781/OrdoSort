@@ -553,7 +553,16 @@ public static class Zipper
     /// the drive root, and a drive-qualified one ("C:\evil.txt") makes
     /// Path.Combine discard the folder altogether — all three arrive verbatim
     /// from SharpZipLib. Checked before a byte is written; the caller's
-    /// created-gate cleanup removes whatever this call created up to then.</summary>
+    /// created-gate cleanup removes whatever this call created up to then.
+    ///
+    /// Also refuses a name that stays inside the folder but that Windows
+    /// can't hold as a filename — "Invoice 3:4.pdf" is legal on a Mac. The
+    /// colon is the dangerous one: FileStream doesn't reject it, it writes
+    /// the bytes into an NTFS alternate data stream of a 0-byte "Invoice 3",
+    /// so the extract would report "ok" while the document silently vanished.
+    /// Same rule, and the same check, Naming.RejectIllegal applies to typed
+    /// names. Run AFTER the outside check so "C:\evil.txt" is still reported
+    /// as the escape it is, not as a bad character.</summary>
     private static string GuardedTarget(string dir, string entryName)
     {
         var relative = entryName.Replace('/', Path.DirectorySeparatorChar);
@@ -561,6 +570,17 @@ public static class Zipper
         var full = Path.GetFullPath(Path.Combine(root, relative));
         if (Path.IsPathRooted(relative) || !full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"refused '{entryName}' — it would land outside the output folder");
+        foreach (var segment in relative.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                Naming.RejectIllegal(segment);
+            }
+            catch (ArgumentException ex)
+            {
+                throw new InvalidDataException($"refused '{entryName}' — {ex.Message}");
+            }
+        }
         return full;
     }
 

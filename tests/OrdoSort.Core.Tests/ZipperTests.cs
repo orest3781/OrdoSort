@@ -379,6 +379,30 @@ public class ZipperTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(_dir, "slip")));
     }
 
+    /// <summary>A zip made on a Mac can carry a name Windows forbids —
+    /// "Invoice 3:4.pdf" is legal there. It stays inside the output folder,
+    /// so the ZipSlip check above lets it through, and FileStream on Windows
+    /// then writes the bytes into an NTFS alternate data stream of a 0-byte
+    /// "Invoice 3": the document silently vanishes while the extract reports
+    /// "ok" (the trap Naming's reserved-character comment documents). Such
+    /// an entry must be refused readably, naming the entry, and leave no
+    /// output folder behind.</summary>
+    [Theory]
+    [InlineData("Invoice 3:4.pdf")]
+    [InlineData("sub/a:b.txt")]
+    [InlineData("what?.txt")]
+    public void EntryWithAWindowsIllegalCharacterIsRefusedNotWrittenToAnAlternateStream(string entryName)
+    {
+        var zipPath = MakeZip("mac.zip", ("fine.txt", "ok"), (entryName, "the document"));
+
+        var r = Zipper.Extract(zipPath, NoPasswords, null);
+
+        Assert.Equal("error", r.Status);
+        Assert.Contains(entryName, r.Message);
+        Assert.Contains("Windows forbids", r.Message);
+        Assert.False(Directory.Exists(Path.Combine(_dir, "mac")));
+    }
+
     [Fact]
     public void CorruptZipIsAReadableErrorAndLeavesNoOutputFolder()
     {
