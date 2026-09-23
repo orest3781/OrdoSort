@@ -84,8 +84,24 @@ public static class Scanner
     public static int CountFiles(string? folder)
     {
         if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder)) return 0;
-        try { return Directory.GetFiles(folder).Length; } catch { return 0; }
+        try { return VisibleFiles(folder).Length; } catch { return 0; }
     }
+
+    /// <summary>A folder's files, leaving out what isn't a document someone
+    /// set aside: hidden and system files (a share's desktop.ini and
+    /// Thumbs.db) and dot-files (a .gitkeep placeholder), which would
+    /// otherwise show as "files waiting". The attribute test runs inside the
+    /// directory listing itself — no extra per-file round trip over SMB.
+    /// IgnoreInaccessible is off so an unreadable folder still throws, as
+    /// Directory.GetFiles did, and the callers' own catch decides.</summary>
+    private static string[] VisibleFiles(string folder) =>
+        Directory.GetFiles(folder, "*", new EnumerationOptions
+        {
+            AttributesToSkip = FileAttributes.Hidden | FileAttributes.System,
+            IgnoreInaccessible = false,
+        })
+        .Where(f => !System.IO.Path.GetFileName(f).StartsWith('.'))
+        .ToArray();
 
     /// <summary>Set-aside folder summary: how many files, and how old the
     /// oldest is in whole days — age is the point in a retention shop. Never
@@ -115,7 +131,7 @@ public static class Scanner
             return new DeferredInfo(0, null);
         try
         {
-            var files = Directory.GetFiles(folder);
+            var files = VisibleFiles(folder);
             if (files.Length == 0) return new DeferredInfo(0, null);
             return new DeferredInfo(files.Length, OldestAgeDays(files.Select(SafeMtime), now ?? DateTime.Now));
         }

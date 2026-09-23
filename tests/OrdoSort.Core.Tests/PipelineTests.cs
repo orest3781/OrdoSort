@@ -148,6 +148,32 @@ public class PipelineTests : IDisposable
     }
 
     [Fact]
+    public void SetAsideCountsLeaveOutHiddenSystemAndDotFiles()
+    {
+        // desktop.ini / Thumbs.db (hidden + system on a Windows share) and a
+        // placeholder like .gitkeep are not documents waiting in set-aside.
+        MakePdf(_inbox, "20240101--real.pdf");
+        var desktopIni = Path.Combine(_inbox, "desktop.ini");
+        File.WriteAllText(desktopIni, "[.ShellClassInfo]");
+        File.SetAttributes(desktopIni, FileAttributes.Hidden | FileAttributes.System);
+        var hidden = Path.Combine(_inbox, "hidden.pdf");
+        File.WriteAllText(hidden, "x");
+        File.SetAttributes(hidden, FileAttributes.Hidden);
+        File.WriteAllText(Path.Combine(_inbox, ".gitkeep"), "");
+        try
+        {
+            Assert.Equal(1, Scanner.CountFiles(_inbox));
+            Assert.Equal(1, Scanner.DeferredSummary(_inbox, DateTime.Now).Count);
+        }
+        finally
+        {
+            // a system/hidden file can refuse the fixture's recursive delete
+            File.SetAttributes(desktopIni, FileAttributes.Normal);
+            File.SetAttributes(hidden, FileAttributes.Normal);
+        }
+    }
+
+    [Fact]
     public void DeferredSummaryMissingFolderIsZeroNotCrash() =>
         Assert.Equal(0, Scanner.DeferredSummary(@"Z:\nope\gone").Count);
 
