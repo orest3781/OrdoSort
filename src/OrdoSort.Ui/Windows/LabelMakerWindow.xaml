@@ -81,6 +81,17 @@
                 <Grid>
                     <ListBox ItemsSource="{Binding Clients}" SelectedItem="{Binding Selected}"
                              AutomationProperties.Name="Clients">
+                        <!-- Without a name, a screen reader announced each row
+                             as its CLR type, "OrdoSort.Wpf.ViewModels.LabelClientVm".
+                             The client id is what the row shows, so it is what
+                             the row says. BasedOn keeps the shared ListBoxItem
+                             style: an explicit ItemContainerStyle replaces it
+                             otherwise. -->
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                <Setter Property="AutomationProperties.Name" Value="{Binding Id}" />
+                            </Style>
+                        </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
                             <!-- Id gets a LOCAL Foreground bound back to the
                                  generated ListBoxItem — Styles.xaml's

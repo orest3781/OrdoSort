@@ -59,6 +59,18 @@ public class AccessibleNameTests
     /// that are not (an icon glyph, an arrow) are caught anyway, because their
     /// derived name comes out empty and the assertion below is about the
     /// RESULT, not the declaration.</summary>
+    /// <summary>Windows whose list rows are known to announce a type name,
+    /// found when the ListBoxItem rule below was added alongside the label
+    /// maker's fix (2026-09-23) and not yet fixed. Named here so every OTHER
+    /// window is held to the rule now; delete an entry when its window gets
+    /// the same AutomationProperties.Name fix, and never add one.</summary>
+    private static readonly HashSet<string> KnownUnnamedListRows = new()
+    {
+        "SettingsWindow",      // RouteEditVm, WatchSectionVm, WatchEditVm rows
+        "ManageSavedWindow",   // SavedPassword rows
+        "UnlockWindow",        // UnlockFileRow rows
+    };
+
     private static bool NeedsAName(DependencyObject d) => d switch
     {
         // A control that some OTHER control's template put there carries its
@@ -80,6 +92,11 @@ public class AccessibleNameTests
         FrameworkElement { Name: "FindTextBox" } => false,
         // Grid internals likewise: the grid is named, its cells are content.
         DataGridCell or DataGridColumnHeader or DataGridRow => false,
+        // A list's rows are what a screen reader walks with the arrow keys.
+        // A row bound to a view model with no ToString and no
+        // AutomationProperties.Name announces its CLR type name — see
+        // LooksLikeATypeName.
+        ListBoxItem => true,
         TextBox or PasswordBox or ComboBox or DataGrid or ListBox or CheckBox or RadioButton => true,
         Button b => IsIconOnly(b),
         _ => false,
@@ -124,70 +141,24 @@ public class AccessibleNameTests
 
     private static string Trim(string s) => s.Length <= 30 ? s : s[..30] + "…";
 
+    /// <summary>"OrdoSort.Wpf.ViewModels.LabelClientVm" is not empty, so an
+    /// emptiness check passes it — but it is what WPF falls back to for a
+    /// list row whose item has no ToString and no AutomationProperties.Name,
+    /// and a screen reader reads it out verbatim. A dotted run of three or
+    /// more PascalCase identifiers is a namespace-qualified type, not
+    /// anything this app shows a person.</summary>
+    private static bool LooksLikeATypeName(string name) =>
+        System.Text.RegularExpressions.Regex.IsMatch(name, @"^[A-Z]\w*(\.[A-Z]\w*){2,}$");
+
     [Theory, MemberData(nameof(Windows))]
     public void EveryValueCarryingControlCanSayWhatItIs(string windowName) => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
         var probe = WindowOverflowTests.Registry()[windowName];
         var (window, cleanup) = probe.Build();
-        window.Left = -20000; window.Top = 0; window.ShowActivated = false;
-        window.WindowStartupLocation = WindowStartupLocation.Manual;
         try
         {
-            window.Show();
-            window.UpdateLayout();
-            OverflowProbe.PumpRender();
-            window.UpdateLayout();
-
-            var content = (FrameworkElement)window.Content;
-            var checkedCount = 0;
-            var nameless = new List<string>();
-
-            var tabs = Descendants(content).OfType<TabControl>().FirstOrDefault();
-            var passes = tabs is null
-                ? new[] { (object?)null }
-                : tabs.Items.Cast<object>().ToArray();
-
-            foreach (var tab in passes)
-            {
-                if (tabs is not null && tab is not null)
-                {
-                    tabs.SelectedItem = tab;
-                    window.UpdateLayout();
-                    OverflowProbe.PumpRender();
-                    window.UpdateLayout();
-                }
-
-                foreach (var d in Descendants(content))
-                {
-                    if (d is not UIElement el || !NeedsAName(d)) continue;
-                    if (el is FrameworkElement { IsVisible: false }) continue;
-                    checkedCount++;
-
-                    var peer = UIElementAutomationPeer.CreatePeerForElement(el);
-                    var name = peer?.GetName() ?? "";
-                    if (!string.IsNullOrWhiteSpace(name)) continue;
-                    var where = tab is TabItem ti ? $"[tab {ti.Header}] " : "";
-                    nameless.Add(where + Describe(d));
-                }
-            }
-
-            // Distinct: a tabbed window walks shared chrome once per tab, and
-            // the same offender reported five times is noise, not evidence.
-            nameless = nameless.Distinct().ToList();
-
-            // Guard the TRAVERSAL, not the count of value controls. About has
-            // two text buttons and nothing else — legitimately zero — so a
-            // blanket "must have found some" floor fails a window that is
-            // simply small, which is a floor that gets deleted rather than
-            // fixed. What actually needs proving is that the walk happened.
-            Assert.True(Descendants(content).Count() > 5,
-                $"{windowName}: the visual-tree walk found almost nothing, so a pass here " +
-                "would prove nothing about the window");
-            Assert.True(nameless.Count == 0,
-                $"{windowName}: {nameless.Count} control(s) report no accessible name, so a " +
-                $"screen reader announces the control type and nothing else (examined {checkedCount}):\n  " +
-                string.Join("\n  ", nameless));
+            AssertEveryControlCanSayWhatItIs(windowName, window);
         }
         finally
         {
@@ -195,4 +166,93 @@ public class AccessibleNameTests
             cleanup?.Invoke();
         }
     });
+
+    /// <summary>The label maker is not in the shared window registry (its
+    /// layout has its own suite, LabelMakerOverflowTests), so it is walked
+    /// here on its own — with a client in the list, because an empty list has
+    /// no rows to name. The rows used to announce themselves as
+    /// "OrdoSort.Wpf.ViewModels.LabelClientVm".</summary>
+    [Fact]
+    public void EveryControlInTheLabelMakerCanSayWhatItIs() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
+        var vm = new OrdoSort.Wpf.ViewModels.LabelMakerViewModel(null, boxLabelsPath, new FakeDialogs(),
+            "Box labels");
+        vm.Clients.Add(new OrdoSort.Wpf.ViewModels.LabelClientVm { Id = "MEDR", NextNumberText = "42" });
+        vm.Clients.Add(new OrdoSort.Wpf.ViewModels.LabelClientVm { Id = "ACME", NextNumberText = "7" });
+        vm.Selected = vm.Clients[0];
+        var window = new OrdoSort.Wpf.Windows.LabelMakerWindow(vm, "Box labels", "Print preview");
+        try
+        {
+            AssertEveryControlCanSayWhatItIs("LabelMakerWindow", window);
+        }
+        finally
+        {
+            window.Close();
+            try { File.Delete(boxLabelsPath); } catch { /* best effort */ }
+        }
+    });
+
+    private static void AssertEveryControlCanSayWhatItIs(string windowName, Window window)
+    {
+        window.Left = -20000; window.Top = 0; window.ShowActivated = false;
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        window.Show();
+        window.UpdateLayout();
+        OverflowProbe.PumpRender();
+        window.UpdateLayout();
+
+        var content = (FrameworkElement)window.Content;
+        var checkedCount = 0;
+        var nameless = new List<string>();
+
+        var tabs = Descendants(content).OfType<TabControl>().FirstOrDefault();
+        var passes = tabs is null
+            ? new[] { (object?)null }
+            : tabs.Items.Cast<object>().ToArray();
+
+        foreach (var tab in passes)
+        {
+            if (tabs is not null && tab is not null)
+            {
+                tabs.SelectedItem = tab;
+                window.UpdateLayout();
+                OverflowProbe.PumpRender();
+                window.UpdateLayout();
+            }
+
+            foreach (var d in Descendants(content))
+            {
+                if (d is not UIElement el || !NeedsAName(d)) continue;
+                if (d is ListBoxItem && KnownUnnamedListRows.Contains(windowName)) continue;
+                if (el is FrameworkElement { IsVisible: false }) continue;
+                checkedCount++;
+
+                var peer = UIElementAutomationPeer.CreatePeerForElement(el);
+                var name = peer?.GetName() ?? "";
+                if (!string.IsNullOrWhiteSpace(name) && !LooksLikeATypeName(name)) continue;
+                var where = tab is TabItem ti ? $"[tab {ti.Header}] " : "";
+                var heard = name.Length > 0 ? $" — announced as \"{name}\"" : "";
+                nameless.Add(where + Describe(d) + heard);
+            }
+        }
+
+        // Distinct: a tabbed window walks shared chrome once per tab, and
+        // the same offender reported five times is noise, not evidence.
+        nameless = nameless.Distinct().ToList();
+
+        // Guard the TRAVERSAL, not the count of value controls. About has
+        // two text buttons and nothing else — legitimately zero — so a
+        // blanket "must have found some" floor fails a window that is
+        // simply small, which is a floor that gets deleted rather than
+        // fixed. What actually needs proving is that the walk happened.
+        Assert.True(Descendants(content).Count() > 5,
+            $"{windowName}: the visual-tree walk found almost nothing, so a pass here " +
+            "would prove nothing about the window");
+        Assert.True(nameless.Count == 0,
+            $"{windowName}: {nameless.Count} control(s) report no usable accessible name, so a " +
+            $"screen reader announces the control type and nothing else (examined {checkedCount}):\n  " +
+            string.Join("\n  ", nameless));
+    }
 }
