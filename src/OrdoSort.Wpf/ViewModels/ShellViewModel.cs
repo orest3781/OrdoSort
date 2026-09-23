@@ -192,7 +192,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             OpenFolder(Path.GetDirectoryName(Path.GetFullPath(_cfgPath)) ?? ""));
         RouteCommand = new AsyncRelayCommand<int>(OnRouteAsync);
         SkipCommand = new AsyncRelayCommand(OnSkipAsync);
-        UndoCommand = new AsyncRelayCommand(OnUndoAsync, () => _session.CanUndo);
+        UndoCommand = new AsyncRelayCommand(OnUndoAsync, () => CanUndo);
         StopCommand = new RelayCommand(StopSession);
         ExportHistoryCommand = new RelayCommand(ExportHistory);
 
@@ -396,6 +396,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 Raise(nameof(IsProcessing));
                 Raise(nameof(IsDone));
                 Raise(nameof(TileControlsVisible));
+                RaiseUndoState();   // undo is only offered inside a session
             }
         }
     }
@@ -521,6 +522,10 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     public void Rescan()
     {
+        // Mid-commit/undo the screen belongs to that operation: dropping to
+        // Ready underneath it would let the undo's own LoadCurrentAsync put
+        // the session back up (or leave the viewer pointing at a moved file).
+        if (_busy) return;
         _loadedPath = null;
         Screen = Screen.Ready;
         _viewer.Blank();
@@ -1275,7 +1280,12 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private bool _previewIsWarning;
     public bool PreviewIsWarning { get => _previewIsWarning; private set => Set(ref _previewIsWarning, value); }
 
-    public bool CanUndo => _session.CanUndo;
+    /// <summary>Undo belongs to the session on screen. Once it has been left
+    /// for the Ready dashboard the undo stack still holds its filings, but
+    /// undoing one there would move a file back into the inbox with nothing
+    /// on screen to show it — so only Processing and Done offer it.</summary>
+    public bool CanUndo =>
+        (Screen == Screen.Processing || Screen == Screen.Done) && _session.CanUndo;
 
     private void RaiseProgress() => ProgressLine = $"{_session.Pos + 1} / {_session.Total}";
 
@@ -1484,7 +1494,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     internal async Task OnUndoAsync()
     {
-        if (_busy) return;
+        if (_busy || (Screen != Screen.Processing && Screen != Screen.Done)) return;
         if (!_session.CanUndo) { ShowStatusNote("Nothing to undo."); return; }
         _busy = true;
         try

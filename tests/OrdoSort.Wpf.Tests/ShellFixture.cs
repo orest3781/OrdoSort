@@ -20,7 +20,9 @@ public sealed class ShellFixture : IDisposable
     public RecordingSoundService Sounds { get; } = new();
     public ShellViewModel Shell { get; }
 
-    public ShellFixture(Action<Config>? tweak = null)
+    /// <param name="scheduler">Defaults to <see cref="InlineWorkScheduler"/>;
+    /// pass another to hold background work open mid-flight.</param>
+    public ShellFixture(Action<Config>? tweak = null, IWorkScheduler? scheduler = null)
     {
         Dir = Path.Combine(Path.GetTempPath(), "ordoshell_" + Guid.NewGuid());
         Inbox = Path.Combine(Dir, "inbox");
@@ -42,7 +44,7 @@ public sealed class ShellFixture : IDisposable
         Watch = new FolderWatchService(debounceMs: 600_000, pollMs: 600_000);
         Shell = new ShellViewModel(Cfg, CfgPath, Viewer, Dialogs, Watch,
             uiContext: null, palette: () => Theme.ThemePalette.Light,
-            scheduler: new InlineWorkScheduler(), sounds: Sounds);
+            scheduler: scheduler ?? new InlineWorkScheduler(), sounds: Sounds);
     }
 
     /// <summary>Drop a file matching the inbox pattern (YYYYMMDD--ID.pdf).</summary>
