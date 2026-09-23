@@ -53,6 +53,27 @@ public class CommitSkipFileTests : IDisposable
     }
 
     [Fact]
+    public void AFileMissingFromAReachableInboxIsVanished()
+    {
+        var src = Path.Combine(_inbox, "gone.pdf");   // never created
+        Assert.True(Commit.SkipFile(src, _deferred).Vanished);
+        Assert.True(Commit.CommitFile(src, "", new Route { Path = _deferred }, Naming.ModeInsert).Vanished);
+    }
+
+    [Fact]
+    public void AnUnreachableInboxIsAnErrorNotAVanishedFile()
+    {
+        // A dropped share makes File.Exists answer false for a document that
+        // never left; that must not be logged as vanished and passed over.
+        var src = Path.Combine(_root, "share-offline", "20240115--111111.pdf");
+        var skip = Assert.Throws<CommitError>(() => Commit.SkipFile(src, _deferred));
+        Assert.Contains("inbox folder is not reachable", skip.Message);
+        var commit = Assert.Throws<CommitError>(() =>
+            Commit.CommitFile(src, "", new Route { Path = _deferred }, Naming.ModeInsert));
+        Assert.Contains("inbox folder is not reachable", commit.Message);
+    }
+
+    [Fact]
     public void ARaceAtTheFinalMomentIsReportedAsTheSameActionableCommitErrorItsSiblingsProduce()
     {
         var src = MakePdf(_inbox, "20240115--111111.pdf");

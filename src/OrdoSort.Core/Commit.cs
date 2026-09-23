@@ -82,10 +82,28 @@ public static class Commit
                 $"remove the copy at {src} by hand.");
     }
 
+    /// <summary>True when <paramref name="src"/> is really gone from a
+    /// folder that is itself reachable. File.Exists also answers false for
+    /// any I/O error, so on an inbox share that drops for a moment every
+    /// document would otherwise read as vanished — logged as such, and
+    /// skipped for the rest of the session though it never left. When the
+    /// folder can't be reached either, that is an outage, not a vanished
+    /// file, and it is reported as one.</summary>
+    private static bool SourceVanished(string src)
+    {
+        if (File.Exists(src)) return false;
+        var dir = Path.GetDirectoryName(src);
+        if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
+            throw new CommitError($"The inbox folder is not reachable right now: " +
+                                  $"{(string.IsNullOrEmpty(dir) ? "(unknown)" : dir)}. " +
+                                  "Nothing was moved — try again once it is back.");
+        return true;
+    }
+
     public static CommitOutcome CommitFile(
         string src, string typedName, Route route, string globalMode)
     {
-        if (!File.Exists(src))
+        if (SourceVanished(src))
             return new CommitOutcome(true, null, null);
 
         var destDir = route.Path ?? "";
@@ -121,7 +139,7 @@ public static class Commit
 
     public static SkipOutcome SkipFile(string src, string deferredDir)
     {
-        if (!File.Exists(src))
+        if (SourceVanished(src))
             return new SkipOutcome(true, null, "");
         if (string.IsNullOrWhiteSpace(deferredDir) || !Directory.Exists(deferredDir))
             throw new CommitError($"Set-aside folder is not available: " +
