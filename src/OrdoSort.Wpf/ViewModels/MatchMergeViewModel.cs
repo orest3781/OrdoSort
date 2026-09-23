@@ -497,7 +497,8 @@ public sealed class MatchMergeViewModel : ObservableObject
     }
 
     /// <summary>Adopt a batch of rename outcomes (one-click merges or review
-    /// picks): follow renamed files, re-match, and REPLACE _outcomes — this
+    /// picks): follow renamed files, re-match, and REPLACE _outcomes when the
+    /// batch renamed at least one file — this
     /// call's outcomes become the new "last merge" batch, the same replace
     /// (not accumulate) rule BulkRenameViewModel.Apply follows, so "Undo
     /// last merge" only ever undoes the last DoMerge or the last review
@@ -508,8 +509,16 @@ public sealed class MatchMergeViewModel : ObservableObject
         var finals = renamed.ToDictionary(o => o.Source, o => o.Final!);
         for (var i = 0; i < _files.Count; i++)
             if (finals.TryGetValue(_files[i], out var f)) _files[i] = f;
-        _outcomes = renamed;
-        UndoCommand.RaiseCanExecuteChanged();
+        // Guarded on this batch having renamed something (the same rule as
+        // StandardiseNamesViewModel's "Fix round 1, item 1"): closing Review
+        // matches with no picks, or a DoMerge where every file failed,
+        // touched nothing on disk and must not wipe the undo record of the
+        // real merge before it.
+        if (renamed.Count > 0)
+        {
+            _outcomes = renamed;
+            UndoCommand.RaiseCanExecuteChanged();
+        }
         Refresh();
         var failed = outcomes.Where(o => o.Final == null).ToList();
         if (failed.Count > 0)

@@ -1980,4 +1980,27 @@ public class MatchMergeViewModelTests : IDisposable
         Assert.All(batch2Merged, p => Assert.False(File.Exists(p)));
         Assert.All(batch1Merged, p => Assert.True(File.Exists(p)));        // ...batch 1 is untouched
     }
+
+    // Closing Review matches with no picks hands Absorb an empty list; that
+    // used to replace _outcomes with nothing, so "Undo last merge" for the
+    // real batch before it was lost while Status still said "Merged 1 file."
+
+    [Fact]
+    public void AnAbsorbThatRenamedNothingKeepsTheEarlierMergeUndoable()
+    {
+        var vm = Vm();
+        vm.LoadRosterFrom(WriteRoster());
+        var f = Touch("20240126-EVANS-FRANK.pdf");
+        vm.AddFiles(new[] { f });
+        vm.MergeCommand.Execute(null);
+        var merged = Path.Combine(_dir, "20240126-EVANS-FRANK-176797656.pdf");
+        Assert.True(File.Exists(merged));
+
+        vm.Absorb(new List<BulkRename.RenameOutcome>());   // Review closed with no picks
+
+        Assert.True(vm.UndoCommand.CanExecute(null));
+        vm.UndoCommand.Execute(null);
+        Assert.True(File.Exists(f));
+        Assert.False(File.Exists(merged));
+    }
 }
