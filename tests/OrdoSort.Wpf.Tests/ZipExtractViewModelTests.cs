@@ -170,6 +170,7 @@ public class ZipExtractViewModelTests
         var extractRequeried = false;
         var extractRequeriedDuring = false;
         bool? zipEnabledDuring = null, zipAsEnabledDuring = null, extractEnabledDuring = null;
+        Task? secondBatch = null;
         ZipExtractViewModel? vm = null;
         vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(), uiContext: null,
             zipper: (_, _) =>
@@ -178,7 +179,10 @@ public class ZipExtractViewModelTests
                 zipAsEnabledDuring = vm.ZipAsCommand.CanExecute(null);
                 extractEnabledDuring = vm.ExtractCommand.CanExecute(null);
                 extractRequeriedDuring = extractRequeried;
-                vm.ExtractAsync().GetAwaiter().GetResult();   // a second batch tries to start mid-zip
+                // A second batch tries to start mid-zip. The busy guard returns
+                // before any await, so the task is already complete here —
+                // checked below rather than blocked on (xUnit1031).
+                secondBatch = vm.ExtractAsync();
                 return new Zipper.ZipResult("ok", Path.Combine(dir.Path, "out.zip"));
             },
             extractor: (path, _, _) =>
@@ -192,6 +196,9 @@ public class ZipExtractViewModelTests
 
         await vm.ZipAsync(null);
 
+        Assert.NotNull(secondBatch);
+        Assert.True(secondBatch!.IsCompleted);   // refused at once, not queued
+        await secondBatch;
         Assert.False(zipEnabledDuring);
         Assert.False(zipAsEnabledDuring);
         Assert.False(extractEnabledDuring);

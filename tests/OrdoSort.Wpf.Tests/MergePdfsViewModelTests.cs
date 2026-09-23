@@ -90,6 +90,7 @@ public class MergePdfsViewModelTests
         var mergeToRequeried = false;
         var mergeToRequeriedDuring = false;
         bool? mergeEnabledDuring = null, mergeToEnabledDuring = null;
+        Task? secondBatch = null;
         MergePdfsViewModel? vm = null;
         vm = MakeVm(
             zipMerger: (path, _, _) =>
@@ -100,7 +101,10 @@ public class MergePdfsViewModelTests
                     mergeEnabledDuring = vm!.MergeCommand.CanExecute(null);
                     mergeToEnabledDuring = vm.MergeToCommand.CanExecute(null);
                     mergeToRequeriedDuring = mergeToRequeried;
-                    vm.MergeAsync(null).GetAwaiter().GetResult();   // a second batch tries to start mid-merge
+                    // A second batch tries to start mid-merge. The busy guard
+                    // returns before any await, so the task is already complete
+                    // here — checked below rather than blocked on (xUnit1031).
+                    secondBatch = vm.MergeAsync(null);
                 }
                 return Ok(path, path + ".out.pdf", 1);
             },
@@ -110,6 +114,9 @@ public class MergePdfsViewModelTests
 
         await vm.MergeAsync(null);
 
+        Assert.NotNull(secondBatch);
+        Assert.True(secondBatch!.IsCompleted);   // refused at once, not queued
+        await secondBatch;
         Assert.False(mergeEnabledDuring);
         Assert.False(mergeToEnabledDuring);
         Assert.True(mergeToRequeriedDuring);   // WPF was told to grey the button out
