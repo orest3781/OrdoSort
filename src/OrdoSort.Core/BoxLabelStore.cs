@@ -84,9 +84,30 @@ public static class BoxLabelStore
     /// callback throws before the write completes. Must not be called
     /// reentrantly on the same path from within its own callback — the
     /// exclusive handle is still open, so a nested call would just spin
-    /// until its own outer call's retry budget expires.</summary>
+    /// until its own outer call's retry budget expires.
+    ///
+    /// Every file error — at the open, the read or the write — comes back as
+    /// a <see cref="ConfigException"/> naming the file. The file lives on a
+    /// share, and a share that drops mid-read or mid-write is an ordinary
+    /// day, not a crash: callers warn on ConfigException and must not be left
+    /// holding a raw IOException they never expected.</summary>
     public static T Mutate<T>(string fullPath, Func<BoxLabelsDoc, T> mutate,
-        int maxWaitMs = DefaultMaxWaitMs)
+        int maxWaitMs = DefaultMaxWaitMs) =>
+        Mutate(fullPath, mutate, maxWaitMs, OpenExclusive);
+
+    private static FileStream OpenExclusive(string fullPath) =>
+        new(fullPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+
+    private static ConfigException FileError(IOException ex, string fullPath) =>
+        new(IsContention(ex)
+            ? $"another station is using the box-labels file — try again ({fullPath})"
+            : $"box-labels file error: {ex.Message} ({fullPath})");
+
+    /// <summary><see cref="Mutate{T}(string, Func{BoxLabelsDoc, T}, int)"/>
+    /// with the exclusive open handed in, so a test can supply a stream that
+    /// fails part-way through the way a dropped share does.</summary>
+    internal static T Mutate<T>(string fullPath, Func<BoxLabelsDoc, T> mutate,
+        int maxWaitMs, Func<string, FileStream> openExclusive)
     {
         var dir = Path.GetDirectoryName(Path.GetFullPath(fullPath));
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
@@ -103,8 +124,7 @@ public static class BoxLabelStore
             FileStream? fs = null;
             try
             {
-                fs = new FileStream(fullPath, FileMode.OpenOrCreate,
-                    FileAccess.ReadWrite, FileShare.None);
+                fs = openExclusive(fullPath);
             }
             catch (IOException ex) when (IsContention(ex) && sw.ElapsedMilliseconds + RetryDelayMs <= maxWaitMs)
             {
@@ -113,9 +133,7 @@ public static class BoxLabelStore
             }
             catch (IOException ex)
             {
-                throw new ConfigException(IsContention(ex)
-                    ? $"another station is using the box-labels file — try again ({fullPath})"
-                    : $"box-labels file error: {ex.Message} ({fullPath})");
+                throw FileError(ex, fullPath);
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -125,8 +143,15 @@ public static class BoxLabelStore
             using (fs)
             {
                 string text;
-                using (var reader = new StreamReader(fs, leaveOpen: true))
+                try
+                {
+                    using var reader = new StreamReader(fs, leaveOpen: true);
                     text = reader.ReadToEnd();
+                }
+                catch (IOException ex)
+                {
+                    throw FileError(ex, fullPath);
+                }
 
                 BoxLabelsDoc doc;
                 try
@@ -177,10 +202,20 @@ public static class BoxLabelStore
                 // 0-byte state the old SetLength(0)-first order did.
                 var bytes = new UTF8Encoding(false).GetBytes(
                     JsonSerializer.Serialize(doc, Opts) + "\n");
-                fs.Seek(0, SeekOrigin.Begin);
-                fs.Write(bytes, 0, bytes.Length);
-                fs.SetLength(bytes.Length);
-                fs.Flush(flushToDisk: true);
+                try
+                {
+                    fs.Seek(0, SeekOrigin.Begin);
+                    fs.Write(bytes, 0, bytes.Length);
+                    fs.SetLength(bytes.Length);
+                    fs.Flush(flushToDisk: true);
+                }
+                catch (IOException ex)
+                {
+                    // How much of the write reached the disk is unknown. The
+                    // next claim re-reads the file, and its guards (empty
+                    // file, invalid JSON) refuse a damaged one.
+                    throw FileError(ex, fullPath);
+                }
                 return result;
             }
         }

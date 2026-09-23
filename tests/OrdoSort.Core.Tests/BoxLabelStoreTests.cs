@@ -188,4 +188,53 @@ public class BoxLabelStoreTests : IDisposable
         Assert.Contains("box-labels file error", ex.Message);
         Assert.DoesNotContain("another station", ex.Message);
     }
+
+    /// <summary>Stands in for a share that drops after the exclusive open
+    /// succeeded: the open works, then the read or the write fails with the
+    /// IOException Windows gives for a vanished network name.</summary>
+    private sealed class DroppingFileStream : FileStream
+    {
+        private readonly bool _failRead;
+
+        public DroppingFileStream(string path, bool failRead)
+            : base(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None) =>
+            _failRead = failRead;
+
+        private static IOException Dropped() =>
+            new("The specified network name is no longer available.");
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            _failRead ? throw Dropped() : base.Read(buffer, offset, count);
+
+        public override int Read(Span<byte> buffer) =>
+            _failRead ? throw Dropped() : base.Read(buffer);
+
+        public override void Write(byte[] buffer, int offset, int count) => throw Dropped();
+
+        public override void Write(ReadOnlySpan<byte> buffer) => throw Dropped();
+    }
+
+    [Theory]
+    [InlineData(true)]    // dropped while reading the counters
+    [InlineData(false)]   // dropped while writing them back
+    public void AShareDroppingAfterTheOpenIsReportedAsAStoreErrorNamingTheFile(bool failRead)
+    {
+        // Callers warn on ConfigException. A raw IOException from the read or
+        // the write escaped every one of them, so a dropped share mid-print
+        // ended the print with no message at all.
+        var p = PathOf("box-labels.json");
+        BoxLabelStore.Mutate(p, d =>
+        {
+            d.LabelClients.Add(new LabelClient { Id = "A", NextNumber = 3 });
+            return 0;
+        });
+
+        var ex = Assert.Throws<ConfigException>(() => BoxLabelStore.Mutate(p,
+            d => { d.LabelClients.Single().NextNumber = 13; return 0; },
+            maxWaitMs: 0, openExclusive: path => new DroppingFileStream(path, failRead)));
+
+        Assert.Contains("no longer available", ex.Message);
+        Assert.Contains(p, ex.Message);
+        Assert.Equal(3, BoxLabelStore.Read(p).LabelClients.Single().NextNumber);
+    }
 }
