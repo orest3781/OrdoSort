@@ -175,4 +175,55 @@ public class DebouncedProbeTests
         WaitFor(() => { lock (applied) return applied.Count == 1; }, "the result should eventually apply");
         lock (applied) Assert.Equal(new[] { "value 19" }, applied);
     }
+
+    /// <summary>The generation check used to run only BEFORE the result was
+    /// posted to the UI thread. A Resolve fast path (the user cleared the
+    /// box) that ran on the UI thread after that check but before the posted
+    /// callback got its turn was then overwritten by the stale probe result.
+    /// The queued context lets the test land the Resolve in exactly that gap.</summary>
+    [Fact]
+    public void AResolveBetweenPostAndApplyIsNotOverwrittenByTheStaleResult()
+    {
+        var scheduler = new ManualWorkScheduler();
+        var ui = new QueuedSynchronizationContext();
+        var applied = new List<string>();
+        var probe = new DebouncedProbe<string>(scheduler, ui, v => { lock (applied) applied.Add(v); }, intervalMs: 0);
+
+        probe.Trigger(() => "probe (stale)", immediate: true);
+        WaitFor(() => scheduler.PendingCount == 1, "the probe's work should reach the scheduler");
+        scheduler.Release(0);
+        WaitFor(() => ui.QueuedCount == 1, "the probe's result should be posted to the UI thread");
+
+        // On the "UI thread", before the posted callback runs: a fast-path answer.
+        probe.Resolve("cleared", "", () => "never probed");
+        ui.RunQueued();
+
+        lock (applied) Assert.Equal(new[] { "cleared" }, applied);
+    }
+}
+
+/// <summary>A UI context that only queues posts; the test decides when the
+/// "UI thread" gets round to running them.</summary>
+internal sealed class QueuedSynchronizationContext : SynchronizationContext
+{
+    private readonly object _gate = new();
+    private readonly List<(SendOrPostCallback Callback, object? State)> _queued = new();
+
+    public int QueuedCount { get { lock (_gate) return _queued.Count; } }
+
+    public override void Post(SendOrPostCallback d, object? state)
+    {
+        lock (_gate) _queued.Add((d, state));
+    }
+
+    public void RunQueued()
+    {
+        List<(SendOrPostCallback Callback, object? State)> batch;
+        lock (_gate)
+        {
+            batch = _queued.ToList();
+            _queued.Clear();
+        }
+        foreach (var (callback, state) in batch) callback(state);
+    }
 }

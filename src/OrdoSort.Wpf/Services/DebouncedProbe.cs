@@ -132,10 +132,21 @@ public sealed class DebouncedProbe<T> : IDisposable where T : class
         // Superseded by a later keystroke (or a cancel) while the probe was
         // in flight — that newer call owns the timer now and will apply its
         // own result; this stale one must never win the race and overwrite it.
-        lock (_gate) { if (_generation != generation) return; }
+        if (!IsCurrent(generation)) return;
 
         if (_uiContext is null) _apply(result);
-        else _uiContext.Post(_ => _apply(result), null);
+        else _uiContext.Post(_ =>
+        {
+            // Checked again on the UI thread: a Resolve fast path or Cancel
+            // can land between the check above and this callback running,
+            // and its answer must not be overwritten by this now-stale one.
+            if (IsCurrent(generation)) _apply(result);
+        }, null);
+    }
+
+    private bool IsCurrent(long generation)
+    {
+        lock (_gate) return _generation == generation;
     }
 
     /// <summary>Same guarantee as <see cref="Cancel"/>, for good reason:
