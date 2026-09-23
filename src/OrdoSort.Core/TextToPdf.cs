@@ -135,8 +135,11 @@ public sealed class TextToPdf : IDocumentConverter
     /// drove the page count to zero and failed at <c>Save</c> instead of
     /// converting at all. This checks LENGTH, not content, and measures
     /// nothing — it does not reintroduce the unbounded <c>measure(line)</c>
-    /// call the paragraph above explains removing.</summary>
-    private static List<string> WrapLine(string line, double maxWidth, Func<string, double> measure)
+    /// call the paragraph above explains removing.
+    ///
+    /// Internal so <see cref="TableToPdf"/> wraps an over-wide spreadsheet
+    /// cell with this same, already-proven loop rather than a second copy.</summary>
+    internal static List<string> WrapLine(string line, double maxWidth, Func<string, double> measure)
     {
         if (line.Length == 0) return [line];
 

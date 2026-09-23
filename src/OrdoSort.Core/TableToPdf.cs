@@ -75,12 +75,56 @@ public sealed class TableToPdf : IDocumentConverter
 
         try
         {
-            return new("ok", Render(table, PageWidthPt, PageHeightPt, MarginPt, RowHeightPt, FontSizePt), note);
+            EnsureFontResolver();
+            using var scratch = new PdfDocument();
+            using var scratchGfx = XGraphics.FromPdfPage(scratch.AddPage());
+            var font = new XFont("Segoe UI", FontSizePt);
+            // Render's own column-measuring formula (raw width + padding), so
+            // a wrapped piece that fits here still fits when Render sizes the
+            // column from it.
+            double Measure(string text) => scratchGfx.MeasureString(text ?? "", font).Width + CellPaddingPt;
+
+            var fitted = WrapWideCells(table, PageWidthPt - 2 * MarginPt, Measure);
+            return new("ok", Render(fitted, PageWidthPt, PageHeightPt, MarginPt, RowHeightPt, FontSizePt), note);
         }
         catch (Exception ex)
         {
             return new("error", null, $"couldn't lay it out: {ex.Message}", displayName);
         }
+    }
+
+    /// <summary>Split any cell wider than <paramref name="maxWidth"/> onto
+    /// continuation rows directly below its own, so no column is ever wider
+    /// than the page. Before this, <see cref="TablePages.Paginate"/> gave an
+    /// over-wide column a page of its own at its FULL width and DrawString
+    /// ran past the page edge: the end of a long note simply wasn't in the
+    /// PDF, with status "ok". Pieces come from <see cref="TextToPdf.WrapLine"/>,
+    /// the same loop a long text line goes through. A wrapped row's other
+    /// cells stay on its first line, with blanks below them, so each source
+    /// row still reads as one block; rows with nothing too wide pass through
+    /// untouched. Pagination keeps its fixed row height, which is why this
+    /// adds rows instead of making one row taller.
+    ///
+    /// The header row is wrapped the same way: its continuation lines show
+    /// once, under the first page's heading, rather than being lost. Only
+    /// the first line repeats on later pages.</summary>
+    internal static List<List<string>> WrapWideCells(
+        IReadOnlyList<List<string>> table, double maxWidth, Func<string, double> measure)
+    {
+        var result = new List<List<string>>(table.Count);
+        foreach (var row in table)
+        {
+            var pieces = row.Select(cell => TextToPdf.WrapLine(cell ?? "", maxWidth, measure)).ToList();
+            var lineCount = pieces.Count == 0 ? 1 : pieces.Max(p => p.Count);
+            if (lineCount == 1)
+            {
+                result.Add(row);
+                continue;
+            }
+            for (var line = 0; line < lineCount; line++)
+                result.Add(pieces.Select(p => line < p.Count ? p[line] : "").ToList());
+        }
+        return result;
     }
 
     /// <summary>The core (non-Windows-specific) PdfSharp build resolves NO

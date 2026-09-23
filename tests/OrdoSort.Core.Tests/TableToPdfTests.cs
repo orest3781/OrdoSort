@@ -169,6 +169,50 @@ public class TableToPdfTests
             $"expected drawing the header row to add meaningfully more content than the {pdfBodyOnly.Length}-byte header-less output; got {pdfWithHeader.Length}");
     }
 
+    /// <summary>A cell wider than the page used to get a page of its own at
+    /// its full width, and DrawString ran straight past the page edge: the
+    /// end of a long note was simply not on the page, with status "ok".
+    /// 20,000 characters is far more than one 720pt line holds, so once it
+    /// wraps it needs several pages; left unwrapped it is one row on one
+    /// page. One column on purpose: with two, the over-wide column's own
+    /// page already made the count 2 without any wrapping.</summary>
+    [Fact]
+    public void AnOverlongCellWrapsOntoFurtherLinesInsteadOfRunningOffThePage()
+    {
+        var csv = "note\n" + new string('x', 20_000) + "\n";
+
+        var r = Converter.ToPdf(System.Text.Encoding.UTF8.GetBytes(csv),
+            "notes.csv", Array.Empty<string>(), null);
+
+        Assert.Equal("ok", r.Status);
+        Assert.True(PageCountOf(r.Pdf!) > 1, "the long note should have wrapped onto more lines than fit one page");
+    }
+
+    /// <summary>The wrap itself, with a character-count measure so it is
+    /// exact: every piece fits the width, nothing is lost or reordered, a
+    /// row with nothing too wide is untouched, and a wrapped row's other
+    /// cells sit on its first line with blanks below them.</summary>
+    [Fact]
+    public void WrapWideCellsKeepsEveryPieceWithinTheWidthAndLosesNothing()
+    {
+        static double Measure(string text) => text.Length;
+        var table = new List<List<string>>
+        {
+            new() { "id", "note" },
+            new() { "1", "abcdefghij" },   // 10 wide into a width of 4
+            new() { "2", "ok" },
+        };
+
+        var wrapped = TableToPdf.WrapWideCells(table, 4, Measure);
+
+        Assert.Equal(new[] { "id", "note" }, wrapped[0]);
+        Assert.Equal(new[] { "1", "abcd" }, wrapped[1]);
+        Assert.Equal(new[] { "", "efgh" }, wrapped[2]);
+        Assert.Equal(new[] { "", "ij" }, wrapped[3]);
+        Assert.Equal(new[] { "2", "ok" }, wrapped[4]);
+        Assert.Equal(5, wrapped.Count);
+    }
+
     [Fact]
     public void PagesComeOutLandscapeNotTextsPortrait()
     {
