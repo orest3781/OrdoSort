@@ -47,7 +47,7 @@ public sealed class TableToPdf : IDocumentConverter
         {
             table = extension == "xlsx"
                 ? XlsxTable.Read(new MemoryStream(source))
-                : Csv.Parse(Csv.ReadText(source));
+                : Csv.ReadDelimited(source, extension);
         }
         catch (Exception ex)
         {

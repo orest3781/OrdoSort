@@ -9,15 +9,17 @@ namespace OrdoSort.Core;
 /// and the history exporter need exactly this and nothing more.</summary>
 internal static class Csv
 {
-    /// <summary>Parse delimited text into rows of fields. The delimiter is
-    /// sniffed from the first line (up to the first '\n', before any
-    /// parsing): tabs and commas are counted, and tab wins only if it
-    /// strictly outnumbers comma — otherwise, including the no-delimiter
-    /// single-column case, comma wins. RFC-4180-ish: quoted fields may embed
-    /// commas, quotes ("") and newlines. Blank rows are filtered.</summary>
-    internal static List<List<string>> Parse(string text)
+    /// <summary>Parse delimited text into rows of fields. A known
+    /// <paramref name="delimiter"/> (a .tsv's tab — see
+    /// <see cref="ReadDelimited"/>) is used as given; null means sniff it
+    /// from the first line (up to the first '\n', before any parsing): tabs
+    /// and commas are counted, and tab wins only if it strictly outnumbers
+    /// comma — otherwise, including the no-delimiter single-column case,
+    /// comma wins. RFC-4180-ish: quoted fields may embed commas, quotes ("")
+    /// and newlines. Blank rows are filtered.</summary>
+    internal static List<List<string>> Parse(string text, char? delimiter = null)
     {
-        var delimiter = SniffDelimiter(text);
+        var separator = delimiter ?? SniffDelimiter(text);
         var rows = new List<List<string>>();
         var row = new List<string>();
         var field = new StringBuilder();
@@ -48,7 +50,7 @@ internal static class Csv
             // means a document disappears from a production or TAT count.
             else if (c == '"' && field.Length == 0) inQuotes = true;
             else if (c == '"') field.Append(c);
-            else if (c == delimiter) { row.Add(field.ToString()); field.Clear(); }
+            else if (c == separator) { row.Add(field.ToString()); field.Clear(); }
             else if (c == '\r') { }
             else if (c == '\n')
             {
@@ -104,7 +106,19 @@ internal static class Csv
     internal static List<List<string>> ReadTable(string path) =>
         path.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)
             ? XlsxTable.Read(path)
-            : Parse(ReadText(File.ReadAllBytes(path)));
+            : ReadDelimited(File.ReadAllBytes(path), Path.GetExtension(path).TrimStart('.'));
+
+    /// <summary>Decode and parse delimited-text bytes, taking the delimiter
+    /// from <paramref name="extension"/> (no leading dot) when it names one:
+    /// a .tsv is split on tabs, full stop. Sniffing the first line alone got
+    /// a .tsv wrong whenever its header had more commas than tabs — a
+    /// "Name (last, first)" heading is ordinary — and split the whole file
+    /// on commas. Anything else (.csv, or no telling extension) is still
+    /// sniffed, since a ".csv" that is really tab-separated is common too.
+    /// The one rule both TableToPdf and <see cref="ReadTable"/> use.</summary>
+    internal static List<List<string>> ReadDelimited(byte[] bytes, string extension) =>
+        Parse(ReadText(bytes),
+            extension.Equals("tsv", StringComparison.OrdinalIgnoreCase) ? '\t' : null);
 
     /// <summary>Decode delimited text: an explicit BOM wins, otherwise the
     /// bytes are decoded as UTF-8 and, only if that is not valid UTF-8, as

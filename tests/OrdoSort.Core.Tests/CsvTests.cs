@@ -119,6 +119,38 @@ public class CsvTests : IDisposable
         Assert.Equal(new[] { "1", "2" }, rows[1]);
     }
 
+    /// <summary>A .tsv says what its delimiter is. Sniffing the first line
+    /// alone got it wrong whenever the header had more commas than tabs —
+    /// "Name (last, first)" style headings are ordinary — so the whole file
+    /// was split on commas: columns merged across tabs and split mid-value.
+    /// The extension decides; sniffing is only for .csv and anything else.</summary>
+    [Fact]
+    public void ATsvWhoseHeaderHasMoreCommasThanTabsIsStillSplitOnTabs()
+    {
+        var text = "Name (last, first)\tReceived (m, d, y)\tId\nSmith, John\t1, 2, 2026\t7\n";
+        var expectedHeader = new[] { "Name (last, first)", "Received (m, d, y)", "Id" };
+        var expectedRow = new[] { "Smith, John", "1, 2, 2026", "7" };
+
+        var fromBytes = Csv.ReadDelimited(Encoding.UTF8.GetBytes(text), "tsv");
+        Assert.Equal(expectedHeader, fromBytes[0]);
+        Assert.Equal(expectedRow, fromBytes[1]);
+
+        var path = Path.Combine(_dir, "roster.TSV");
+        File.WriteAllText(path, text);
+        var fromPath = Csv.ReadTable(path);
+        Assert.Equal(expectedHeader, fromPath[0]);
+        Assert.Equal(expectedRow, fromPath[1]);
+    }
+
+    [Fact]
+    public void ACsvIsStillSniffedSoATabbedCsvKeepsWorking()
+    {
+        var rows = Csv.ReadDelimited(Encoding.UTF8.GetBytes("A\tB\n1\t2\n"), "csv");
+
+        Assert.Equal(new[] { "A", "B" }, rows[0]);
+        Assert.Equal(new[] { "1", "2" }, rows[1]);
+    }
+
     // ------------------------------------- stray quotes (regression)
 
     /// <summary>A quote that is not at the start of a field is literal, and
