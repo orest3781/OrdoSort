@@ -321,6 +321,41 @@ public class BulkRenameBatchTests : IDisposable
         Assert.Contains("Couldn't read", vm.AddNote);
     }
 
+    /// <summary>"Add a folder's files…" used to list the folder with
+    /// Directory.GetFiles on the UI thread, outside any catch, so a share
+    /// folder that had gone away by the time it was listed crashed to the
+    /// global error dialog. It now goes through the view model's intake and
+    /// says what happened.</summary>
+    [Fact]
+    public async Task AddingAFolderThatIsNoLongerThereSaysSoInsteadOfCrashing()
+    {
+        var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler(), probeDelayMs: 0);
+
+        await vm.AddFolderAsync(Path.Combine(_dir, "gone"));
+
+        Assert.Contains("no longer there", vm.AddNote);
+        Assert.Empty(vm.Preview);
+    }
+
+    [Fact]
+    public async Task AddingAFolderAddsItsOwnFilesButNotItsSubfolders()
+    {
+        var a = Touch("a.pdf");
+        var b = Touch("b.pdf");
+        Directory.CreateDirectory(Path.Combine(_dir, "sub"));
+        var c = Path.Combine(_dir, "sub", "c.pdf");
+        File.WriteAllText(c, "x");
+        var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler(), probeDelayMs: 0);
+
+        await vm.AddFolderAsync(_dir);
+        Assert.Equal("", vm.AddNote);
+
+        // Read the list back through intake's own dedupe: a and b are
+        // already in it, c (in the subfolder) is not.
+        await vm.AddFilesAsync(new[] { a, b, c });
+        Assert.Equal("1 added · 2 ignored (2 already listed)", vm.AddNote);
+    }
+
     // ---- 3. cancel ---------------------------------------------------------
 
     /// <summary>Cancel stops the files that haven't started and says what

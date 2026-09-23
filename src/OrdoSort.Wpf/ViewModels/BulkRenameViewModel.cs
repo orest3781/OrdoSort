@@ -351,6 +351,44 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         Refresh(immediate: true);
     }
 
+    /// <summary>"Add a folder's files…": the folder's own files (not its
+    /// subfolders'), through the same intake as a drop. The listing runs off
+    /// the UI thread through Intake.Expand, which never throws — the window
+    /// used to call Directory.GetFiles on the UI thread, so a share folder
+    /// that couldn't be listed, or a network that dropped between the picker
+    /// and the listing, went straight to the global crash dialog (the same
+    /// defect MatchMergeWindow.AddExpanded fixed for itself). Whatever stops
+    /// the folder yielding files is said in AddNote rather than left as an
+    /// add that silently did nothing.</summary>
+    /// <param name="folder">The folder the picker returned.</param>
+    public async Task AddFolderAsync(string folder)
+    {
+        Intake.Expanded expanded;
+        try
+        {
+            expanded = await _scheduler.Run(() => Intake.Expand(new[] { folder }, recursive: false, extensions: null));
+        }
+        catch (Exception ex)
+        {
+            // Same net as AddFilesAsync: the window discards this Task.
+            AddNote = $"Couldn't read that folder: {ex.Message}";
+            return;
+        }
+
+        if (expanded.Files.Count > 0) await AddFilesAsync(expanded.Files);
+
+        // Written AFTER the add so it isn't replaced by AddFilesAsync's own
+        // (possibly empty) note. Expand counts a folder that is no longer
+        // there as Ignored; an unreadable one just yields nothing, because
+        // IgnoreInaccessible applies to the folder itself as well.
+        if (expanded.Error.Length > 0)
+            AddNote = expanded.Error;
+        else if (expanded.Ignored > 0)
+            AddNote = "Couldn't open that folder — it's no longer there.";
+        else if (expanded.Files.Count == 0)
+            AddNote = "No files found in that folder — it's empty, or it can't be read from here.";
+    }
+
     public void RemoveFiles(IEnumerable<string> sources)
     {
         // The button is disabled mid-batch (IsIdle), but the guard lives here

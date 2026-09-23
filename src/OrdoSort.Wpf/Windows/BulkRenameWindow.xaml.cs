@@ -53,8 +53,9 @@ public partial class BulkRenameWindow : Window
     private void OnAddFolder(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFolderDialog();
-        if (dlg.ShowDialog(this) == true)
-            _ = _vm.AddFilesAsync(Directory.GetFiles(dlg.FolderName));
+        // The listing belongs to the view model, off the UI thread and
+        // unable to throw — see AddFolderAsync.
+        if (dlg.ShowDialog(this) == true) _ = _vm.AddFolderAsync(dlg.FolderName);
     }
 
     private void OnJumpToNextStray(object sender, RoutedEventArgs e)
