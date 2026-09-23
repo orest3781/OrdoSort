@@ -38,8 +38,8 @@ public partial class App : Application
             var logged = LogCrash(ex.Exception);
             dialogs.Warn(
                 "Box Labels hit a problem it wasn't expecting and stopped what it was doing.\n\n" +
-                "No box number was lost: a number is only ever claimed when a sheet is actually " +
-                "printed or saved, and that claim is written before anything is shown.\n\n" +
+                "If this happened while printing or saving labels, the box numbers for them may " +
+                "already have been used. Those numbers are skipped, never handed out twice.\n\n" +
                 (logged
                     ? "The technical details were written to crash.log, beside the program."
                     : "The technical details could not be written to crash.log — the folder the " +

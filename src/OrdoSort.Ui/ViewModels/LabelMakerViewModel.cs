@@ -586,7 +586,15 @@ public sealed class LabelMakerViewModel : ObservableObject
         }
         SetClaimedNumber(b.Client, start + b.Count);
         var items = RebuildFromClaim(b, start);
-        if (!PrintSheets(items, $"Box labels {items[0].Code}")) return;   // cancelled
+        if (!PrintSheets(items, $"Box labels {items[0].Code}"))
+        {
+            // Cancelled in the preview. The claim already landed and is not
+            // taken back (another station may have claimed after it), so
+            // say plainly which numbers were skipped.
+            Status = $"Cancelled — {items[0].Code} – {items[^1].Code} were not printed "
+                + "and will not be issued again.";
+            return;
+        }
         var sheets = (b.Count + BoxLabels.PerSheet - 1) / BoxLabels.PerSheet;
         Status = $"Sent {b.Count} label{(b.Count == 1 ? "" : "s")} "
             + $"({sheets} sheet{(sheets == 1 ? "" : "s")}) to the printer.";

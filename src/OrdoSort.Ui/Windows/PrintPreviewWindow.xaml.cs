@@ -7,7 +7,9 @@ namespace OrdoSort.Wpf.Windows;
 
 /// <summary>A DocumentViewer whose print button (and Ctrl+P) runs OUR print
 /// flow — the window must know whether the job was actually sent, so the
-/// label counter only advances for real prints.
+/// label maker can say whether the sheets went out. The box numbers on them
+/// were already claimed before this preview opened; not printing does not
+/// give them back.
 ///
 /// DocumentViewer chrome (Task 2, theme-coverage audit, 2026-08-02): before
 /// this task Styles.xaml had no ToolBar style at all, so the toolbar across
@@ -60,8 +62,9 @@ public sealed class PreviewDocumentViewer : DocumentViewer
 /// that will spool, with the viewer's zoom and page navigation, plus a
 /// printer picker and copies — Print spools straight to the chosen queue
 /// with no OS dialog (Windows 11's print dialog shows a bogus "no preview"
-/// pane for XPS jobs; this window IS the preview). Cancel/Esc leaves the
-/// label counter untouched.</summary>
+/// pane for XPS jobs; this window IS the preview). Cancel/Esc sends nothing
+/// to the printer, but the box numbers shown were claimed before this window
+/// opened and stay used: they are skipped, never issued twice.</summary>
 public partial class PrintPreviewWindow : Window
 {
     private readonly FixedDocument _doc;

@@ -132,7 +132,8 @@ public class LabelMakerViewModelTests : IDisposable
         // user backing out of the OS print dialog AFTER the claim landed
         // cannot get the numbers back — reopening the file to "un-claim"
         // would just recreate the race this store exists to close. The
-        // counter moves; only the "sent to printer" status line does not.
+        // counter moves, and the status line says which numbers were skipped
+        // rather than claiming anything went to the printer.
         var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = 5 });
         var vm = Vm(path);
         vm.PrintSheets = (_, _) => false;   // user backed out
@@ -141,7 +142,9 @@ public class LabelMakerViewModelTests : IDisposable
 
         Assert.Equal("15", vm.Selected!.NextNumberText);
         Assert.Equal(15, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
-        Assert.Equal("", vm.Status);
+        Assert.Contains("ABCD00000005 – ABCD00000014", vm.Status);
+        Assert.Contains("not printed", vm.Status);
+        Assert.DoesNotContain("printer", vm.Status);
         Assert.Empty(_dialogs.Warnings);
     }
 
