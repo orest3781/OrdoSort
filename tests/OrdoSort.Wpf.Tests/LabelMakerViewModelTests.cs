@@ -1080,6 +1080,56 @@ public class LabelMakerViewModelTests : IDisposable
         Assert.False(printed);
     }
 
+    // ------------------------------------- unexpected failures are reported
+
+    /// <summary>Stands in for anything the claim was not written to expect:
+    /// the offloaded work blows up with something that is not a
+    /// ConfigException.</summary>
+    private sealed class ThrowingWorkScheduler : OrdoSort.Wpf.Services.IWorkScheduler
+    {
+        public Task<T> Run<T>(Func<T> work) => throw new InvalidOperationException("unexpected");
+        public Task Run(Action work) => throw new InvalidOperationException("unexpected");
+    }
+
+    /// <summary>Print and Save PDF are fire-and-forget (<c>_ = PrintAsync()</c>),
+    /// and a faulted Task that nobody awaits is simply dropped — so anything
+    /// but the exceptions they caught by name vanished with no message and
+    /// nothing in crash.log.</summary>
+    [Fact]
+    public void AnUnexpectedPrintFailureIsReportedAndLoggedInsteadOfVanishing()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = 5 });
+        var vm = new LabelMakerViewModel(null, path, _dialogs, AppTitle, () => Today, _opened.Add,
+            new ThrowingWorkScheduler());
+        Exception? logged = null;
+        vm.UnexpectedError += ex => logged = ex;
+        vm.PrintSheets = (_, _) => true;
+
+        vm.Print();
+
+        Assert.IsType<InvalidOperationException>(logged);
+        var warning = Assert.Single(_dialogs.Warnings);
+        Assert.Contains("Printing", warning.Message);
+        Assert.Equal(AppTitle, warning.Title);
+        Assert.False(vm.IsPrinting);   // the button comes back
+    }
+
+    [Fact]
+    public void AnUnexpectedSavePdfFailureIsReportedAndLoggedInsteadOfVanishing()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = 5 });
+        var vm = new LabelMakerViewModel(null, path, _dialogs, AppTitle, () => Today, _opened.Add,
+            new ThrowingWorkScheduler());
+        Exception? logged = null;
+        vm.UnexpectedError += ex => logged = ex;
+        _dialogs.NextSaveFile = Path.Combine(_dir, "never.pdf");
+
+        vm.SavePdf();
+
+        Assert.IsType<InvalidOperationException>(logged);
+        Assert.Contains("Saving the PDF", Assert.Single(_dialogs.Warnings).Message);
+    }
+
     // ----------------------------------------------------------- date style
 
     [Fact]

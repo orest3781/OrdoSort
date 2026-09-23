@@ -366,12 +366,14 @@ public partial class MainWindow : Window
     // name of a product its user does not have. Shell.Cfg.LabelClients is the
     // pre-split config's inline roster, migrated on first open — the
     // standalone has no config.json and passes none.
-    private void OnLabelMaker(object sender, RoutedEventArgs e) =>
-        new Windows.LabelMakerWindow(
-            new LabelMakerViewModel(Shell.Cfg.LabelClients, Shell.BoxLabelsPath, Dialogs,
-                "OrdoSort — label maker"),
-            "OrdoSort — Box labels", "OrdoSort — Print preview")
+    private void OnLabelMaker(object sender, RoutedEventArgs e)
+    {
+        var vm = new LabelMakerViewModel(Shell.Cfg.LabelClients, Shell.BoxLabelsPath, Dialogs,
+            "OrdoSort — label maker");
+        vm.UnexpectedError += ex => App.LogCrash(ex);
+        new Windows.LabelMakerWindow(vm, "OrdoSort — Box labels", "OrdoSort — Print preview")
         { Owner = this }.ShowDialog();
+    }
 
     private void OnFilenameList(object sender, RoutedEventArgs e)
     {

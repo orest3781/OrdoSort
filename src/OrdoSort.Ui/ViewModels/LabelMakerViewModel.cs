@@ -519,13 +519,41 @@ public sealed class LabelMakerViewModel : ObservableObject
             : BoxLabels.Batch(b.Client.Id, claimedStart, b.Count, b.Items[0].Created,
                 int.Parse(b.Client.DestroyDaysText.Trim()));
 
+    /// <summary>Raised for an exception Print or Save PDF did not expect, so
+    /// the host can write it to its crash log. The user is warned either
+    /// way.</summary>
+    public event Action<Exception>? UnexpectedError;
+
+    /// <summary>Log and tell the user. The claim may already have landed
+    /// before the failure, and this cannot know, so the message says so
+    /// rather than promising the numbers are untouched.</summary>
+    private void ReportUnexpected(Exception ex, string action)
+    {
+        UnexpectedError?.Invoke(ex);
+        _dialogs.Warn(
+            $"{action} didn't finish.\n\n{ex.Message}\n\n" +
+            "Box numbers may already have been used up for it — check the next label " +
+            "number before trying again. The technical details were written to crash.log.",
+            _appTitle);
+    }
+
     internal void Print() => _ = PrintAsync();
 
     /// <summary>The claim (<see cref="ClaimNumbersCore"/>) runs off the UI
     /// thread, so this whole method is async; <see cref="Print"/> is the
     /// fire-and-forget wrapper PrintCommand actually calls, matching the
-    /// RelayCommand shape every other command in this view model uses.</summary>
+    /// RelayCommand shape every other command in this view model uses.
+    ///
+    /// Never throws: a discarded Task drops its exception, so anything
+    /// PrintCoreAsync does not handle by name is reported here instead of
+    /// vanishing.</summary>
     internal async Task PrintAsync()
+    {
+        try { await PrintCoreAsync(); }
+        catch (Exception ex) { ReportUnexpected(ex, "Printing the labels"); }
+    }
+
+    private async Task PrintCoreAsync()
     {
         if (BuildBatch() is not { } b) return;
         if (PrintSheets is null)
@@ -569,8 +597,15 @@ public sealed class LabelMakerViewModel : ObservableObject
     /// <summary>The claim (<see cref="ClaimNumbersCore"/>) and the PDF render
     /// both run off the UI thread, so this whole method is async; <see
     /// cref="SavePdf"/> is the fire-and-forget wrapper SavePdfCommand
-    /// actually calls, matching <see cref="PrintAsync"/>'s shape.</summary>
+    /// actually calls, matching <see cref="PrintAsync"/>'s shape — including
+    /// never throwing.</summary>
     internal async Task SavePdfAsync()
+    {
+        try { await SavePdfCoreAsync(); }
+        catch (Exception ex) { ReportUnexpected(ex, "Saving the PDF"); }
+    }
+
+    private async Task SavePdfCoreAsync()
     {
         if (BuildBatch() is not { } b) return;
         var dest = _dialogs.AskSaveFile("PDF files (*.pdf)|*.pdf",

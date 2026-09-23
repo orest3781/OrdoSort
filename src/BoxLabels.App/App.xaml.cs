@@ -94,6 +94,7 @@ public partial class App : Application
         // migrationSeed is null: that migration reads a pre-split OrdoSort
         // config.json, and a machine running only this app has never had one.
         var vm = new LabelMakerViewModel(null, _labelsFile, _dialogs, Title);
+        vm.UnexpectedError += ex => LogCrash(ex);
         var window = new LabelMakerWindow(vm, Title, $"{Title} — Print preview",
             standalone: true, storeBar: new LabelStoreBar(_labelsFile, ChangeStoreFile));
         MainWindow = window;
