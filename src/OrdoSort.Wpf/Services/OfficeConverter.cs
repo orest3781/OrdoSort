@@ -110,7 +110,11 @@ namespace OrdoSort.Wpf.Services;
 /// background-worker Task (see PdfMerge's own sequential foreach over a
 /// merge's documents), so there is nothing concurrent to protect against
 /// yet, and a lock would be complexity guarding a scenario that does not
-/// exist in this codebase.</summary>
+/// exist in this codebase. The one exception is <see cref="Dispose"/>,
+/// which the window calls from another thread while a conversion can be
+/// mid-<c>OfficeSession.Start</c> (seconds long): see
+/// <see cref="AdoptSession"/> for the lock that keeps a session started in
+/// that window from outliving the converter as an orphaned process.</summary>
 public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsRestorationWarnings
 {
     private const string WordProgId = "Word.Application";
@@ -164,6 +168,10 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
     /// that was holding them has been quit and force-killed.</summary>
     private readonly List<string> _generatedTempDirs = [];
     private bool _disposed;
+
+    /// <summary>Guards <see cref="_disposed"/> against the session fields'
+    /// publication -- see <see cref="AdoptSession"/>.</summary>
+    private readonly object _sessionGate = new();
 
     /// <summary>Filled whenever restoring DisplayAlerts or AutomationSecurity
     /// after a conversion fails -- empty in the overwhelmingly common case
@@ -579,8 +587,9 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
     private OfficeSession EnsureWord()
     {
         if (_word is not null) return _word;
-        _word = OfficeSession.Start(WordProgId, WordProcessName, displayAlertsNoneValue: 0);
-        dynamic app = _word.App;
+        var session = AdoptSession(
+            OfficeSession.Start(WordProgId, WordProcessName, displayAlertsNoneValue: 0), ref _word);
+        dynamic app = session.App;
         // DisplayAlerts/AutomationSecurity are captured here, once, but SET
         // and RESTORED per conversion (see ConvertWord) rather than for the
         // whole session. Visible is never written at all -- see this
@@ -590,27 +599,30 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
         // the only thing writing it here ever did was hide a BORROWED
         // session's window.
         _wordFlagsBeforeThisClassTouchedThem = new AppFlags(app.DisplayAlerts, TryGetAutomationSecurity(app));
-        return _word;
+        return session;
     }
 
     private OfficeSession EnsureExcel()
     {
         if (_excel is not null) return _excel;
-        _excel = OfficeSession.Start(ExcelProgId, ExcelProcessName, displayAlertsNoneValue: 0);
-        dynamic app = _excel.App;
+        var session = AdoptSession(
+            OfficeSession.Start(ExcelProgId, ExcelProcessName, displayAlertsNoneValue: 0), ref _excel);
+        dynamic app = session.App;
         // Same shape as EnsureWord -- see its own comment. Excel's
         // per-document hiding is workbook.Windows(1).Visible = false, set
         // in ConvertExcel right after Workbooks.Open (Excel has no
         // Documents.Open-style Visible parameter to pass there directly).
         _excelFlagsBeforeThisClassTouchedThem = new AppFlags(app.DisplayAlerts, TryGetAutomationSecurity(app));
-        return _excel;
+        return session;
     }
 
     private OfficeSession EnsurePowerPoint()
     {
         if (_powerPoint is not null) return _powerPoint;
-        _powerPoint = OfficeSession.Start(PowerPointProgId, PowerPointProcessName, displayAlertsNoneValue: 1); // ppAlertsNone
-        dynamic app = _powerPoint.App;
+        var session = AdoptSession(
+            OfficeSession.Start(PowerPointProgId, PowerPointProcessName, displayAlertsNoneValue: 1), // ppAlertsNone
+            ref _powerPoint);
+        dynamic app = session.App;
         // Visible is deliberately left alone (measured: refused outright,
         // every run). DisplayAlerts is captured here, once, but SET and
         // RESTORED per conversion (see ConvertPowerPoint), the same move as
@@ -627,7 +639,31 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
         // behaves differently here degrades to a no-op rather than failing
         // setup.
         try { _powerPointDisplayAlertsBeforeThisClassTouchedThem = app.DisplayAlerts; } catch { /* best effort */ }
-        return _powerPoint;
+        return session;
+    }
+
+    /// <summary>Publish a freshly started session into its field -- unless
+    /// <see cref="Dispose"/> ran while <c>OfficeSession.Start</c> was still
+    /// launching the app (seconds, on the conversion's background thread).
+    /// Dispose saw a null field then and quit nothing, so publishing the
+    /// session anyway would leave a WINWORD/EXCEL/POWERPNT process that
+    /// nothing will ever quit or kill. Instead it is disposed right here --
+    /// same Quit-then-kill path Dispose would have used -- and the
+    /// conversion ends with <see cref="ObjectDisposedException"/>, the same
+    /// contract <see cref="ToPdf"/> already has for a disposed converter
+    /// (ToPdf's own catch turns it into an "error" result).</summary>
+    private OfficeSession AdoptSession(OfficeSession fresh, ref OfficeSession? slot)
+    {
+        lock (_sessionGate)
+        {
+            if (!_disposed)
+            {
+                slot = fresh;
+                return fresh;
+            }
+        }
+        fresh.Dispose();
+        throw new ObjectDisposedException(nameof(OfficeConverter));
     }
 
     // AutomationSecurity is unmeasured by Task 1 (unlike DisplayAlerts,
@@ -699,12 +735,21 @@ public sealed class OfficeConverter : IDocumentConverter, IDisposable, IReportsR
     /// conversion time did not.</summary>
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        OfficeSession? word, excel, powerPoint;
+        lock (_sessionGate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            word = _word; _word = null;
+            excel = _excel; _excel = null;
+            powerPoint = _powerPoint; _powerPoint = null;
+        }
 
-        _word?.Dispose(); _word = null;
-        _excel?.Dispose(); _excel = null;
-        _powerPoint?.Dispose(); _powerPoint = null;
+        // Outside the lock: each can take seconds (Quit, then the force-kill
+        // grace period), and AdoptSession only needs _disposed to be settled.
+        word?.Dispose();
+        excel?.Dispose();
+        powerPoint?.Dispose();
 
         SweepTempDirs(_generatedTempDirs);
     }
