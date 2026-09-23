@@ -1818,6 +1818,35 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             }
         }
 
+        // Settings is only reachable from Ready, but Ready stays live under
+        // the awaits below (backup, new History, watcher re-registration —
+        // all network round trips). A session started in that window would
+        // have its _session and History swapped out and its screen dropped
+        // to Ready mid-commit. Holding _busy refuses Start (and commit/undo)
+        // for the whole apply; clearing StartEnabled shows it.
+        if (_busy)
+        {
+            _dialogs.Warn("Your settings weren't applied because OrdoSort was still busy " +
+                          "filing. Reopen Settings and press OK again.",
+                          "OrdoSort — settings not applied");
+            return;
+        }
+        _busy = true;
+        StartEnabled = false;
+        try
+        {
+            await ApplySettingsCoreAsync(cfg);
+        }
+        finally
+        {
+            _busy = false;
+            Rescan();   // re-derives StartEnabled from a fresh scan, even after a failure
+        }
+    }
+
+    private async Task ApplySettingsCoreAsync(Config cfg)
+    {
+
         // history_db stays deliberately unconfined here too — see the
         // constructor's comment on its own ResolvePath(cfg.HistoryDb, ...)
         // call above for why, and for the verified residual exposure.
@@ -1937,7 +1966,6 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         Raise(nameof(TileVisibilityIndex));
         Raise(nameof(TileControlsVisible));
         SettingsApplied?.Invoke();
-        Rescan();
     }
 
     /// <summary>File → Export history: the whole audit table as a spreadsheet
