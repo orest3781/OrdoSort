@@ -791,6 +791,31 @@ public class LabelMakerViewModelTests : IDisposable
         Assert.Equal(15, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);   // the claim's write stands
     }
 
+    [Fact]
+    public void AnEditedNumberThatWasThenPrintedCannotRollBackAPeersLaterAdvanceOnClose()
+    {
+        // Station A types a number, then prints: the claim writes its own
+        // end number to disk. Station B then prints the next range. When A
+        // closes, the number on A's screen is the claim's end number, which
+        // B has already used — writing it back would reissue B's boxes. The
+        // typed edit was consumed by the print, so the close must not treat
+        // it as a pending deliberate correction any more.
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 100 });
+        var vm = Vm(path);
+        vm.PrintSheets = (_, _) => true;
+
+        vm.Selected!.NextNumberText = "101";   // a deliberate edit...
+        vm.Print();                             // ...consumed by this print
+
+        // station B prints the next range after A's claim
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "ABCD").NextNumber = 500; return 0; });
+
+        vm.TryPersist();
+
+        Assert.Equal(500, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+    }
+
     // ------------------------------------------------ QC-06: parse failures
 
     [Theory]

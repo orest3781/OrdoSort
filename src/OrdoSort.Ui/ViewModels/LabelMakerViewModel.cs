@@ -469,9 +469,19 @@ public sealed class LabelMakerViewModel : ObservableObject
 
     /// <summary>Push a post-claim number onto the VM without marking the
     /// client dirty — the store already holds the advanced number, so this is
-    /// display-only (see the merge-Persist notes on <see cref="_dirty"/>).</summary>
+    /// display-only (see the merge-Persist notes on <see cref="_dirty"/>).
+    ///
+    /// Only ever called after a claim has landed, so it also retires any
+    /// typed number on this client: the claim has already written the
+    /// number that follows the batch. Left in <see cref="_numberEdited"/>,
+    /// the on-screen end number would be written back on close as if it
+    /// were a fresh correction, rolling back any range a peer printed in
+    /// between and reissuing those box numbers. The row stays in
+    /// <see cref="_dirty"/> — other fields may still be unsaved, and a
+    /// dirty row without a number edit already lets the disk win.</summary>
     private void SetClaimedNumber(LabelClientVm client, long value)
     {
+        _numberEdited.Remove(client);
         _suppressDirty = true;
         try { client.NextNumberText = value.ToString(); }
         finally { _suppressDirty = false; }
