@@ -71,7 +71,9 @@ public partial class App : Application
 
         _dialogs = dialogs;
         _settingsPath = LabelsFileSettings.PathIn(AppContext.BaseDirectory);
-        if (ResolveLabelsFile(e.Args, _settingsPath, dialogs) is not { } labelsFile)
+        _chooser = new LabelsFileChooser(dialogs, Title, AskForLabelsFile);
+        if (_chooser.Resolve(e.Args, _settingsPath, LabelsFileSettings.FolderReachable,
+                chosen => Remember(_settingsPath, chosen, dialogs)) is not { } labelsFile)
         {
             Shutdown(0);   // the user cancelled the picker; nothing to show
             return;
@@ -82,6 +84,7 @@ public partial class App : Application
     }
 
     private BoxLabelDialogs _dialogs = null!;
+    private LabelsFileChooser _chooser = null!;
     private string _settingsPath = "";
     private string _labelsFile = "";
 
@@ -110,7 +113,7 @@ public partial class App : Application
     /// larger change to code both applications share.</summary>
     private void ChangeStoreFile()
     {
-        if (PickAndCheck(_dialogs) is not { } chosen) return;
+        if (_chooser.PickAndCheck() is not { } chosen) return;
         if (string.Equals(chosen, _labelsFile, StringComparison.OrdinalIgnoreCase)) return;
 
         var old = MainWindow;
@@ -146,88 +149,6 @@ public partial class App : Application
         finally
         {
             ShutdownMode = ShutdownMode.OnMainWindowClose;
-        }
-    }
-
-    /// <summary>Which box-labels.json to open, asking the user when there is
-    /// nothing remembered or what was remembered has gone away. Null means
-    /// they cancelled and the app should close.
-    ///
-    /// The rules live in LabelsFileSettings.Decide, which is a pure function
-    /// and tested. This is only the part that cannot be: showing a message and
-    /// opening a picker.</summary>
-    private string? ResolveLabelsFile(string[] args, string settingsPath, BoxLabelDialogs dialogs)
-    {
-        var decision = LabelsFileSettings.Decide(args, settingsPath, LabelsFileSettings.FolderReachable);
-        if (decision.Prompt == LabelsFilePrompt.None) return decision.Path;
-
-        var (message, kind) = LabelsFilePrompts.PromptFor(decision.Prompt, decision.Path);
-        if (kind == MessageKind.Info) dialogs.Info(message, Title);
-        else dialogs.Warn(message, Title);
-
-        var chosen = PickAndCheck(dialogs);
-        if (chosen is null) return null;
-
-        // Honour the decision rather than always saving: a --file run is a
-        // one-off and must leave the remembered path exactly as it was.
-        if (decision.PersistChoice) Remember(settingsPath, chosen, dialogs);
-        return chosen;
-    }
-
-    /// <summary>Pick a box-labels file and refuse the ones that are not one.
-    /// Null means the user cancelled.
-    ///
-    /// Loops rather than closing on a bad pick: being told "that isn't it" and
-    /// then having the app exit would leave someone with no way forward but to
-    /// start it again and guess better.</summary>
-    internal string? PickAndCheck(BoxLabelDialogs dialogs)
-    {
-        while (true)
-        {
-            var chosen = AskForLabelsFile();
-            if (chosen is null) return null;
-
-            switch (LabelsFileCheck.Classify(chosen))
-            {
-                case LabelsFileKind.Store:
-                case LabelsFileKind.EmptyObject:
-                    return chosen;
-
-                // Legitimate for the first station ever to set this up, and
-                // also exactly how someone starts a private list by mistake.
-                // The buttons say which is which; a plain Yes/No here would
-                // make the safe answer the one you have to think about.
-                case LabelsFileKind.Missing when dialogs.Confirm(
-                        $"There is no file there yet:\n\n{chosen}\n\n" +
-                        "Box Labels will start a NEW, empty box-number list.\n\n" +
-                        "If you meant to join the list the other stations already print from, " +
-                        "choose that file instead — two separate lists will eventually put the " +
-                        "same number on two different boxes.",
-                        Title, "Start a new list", "Choose another file"):
-                    return chosen;
-
-                case LabelsFileKind.Missing:
-                    break;   // they chose to look again
-
-                case LabelsFileKind.NotAStore:
-                    dialogs.Warn(
-                        $"That does not look like a box labels file:\n\n{chosen}\n\n" +
-                        "It is a settings file of some kind, but it has no client list in it — " +
-                        "it may belong to another program. Using it would write box-label " +
-                        "settings into it.\n\n" +
-                        "Choose the shared box-labels.json instead.",
-                        Title);
-                    break;
-
-                case LabelsFileKind.Unreadable:
-                    dialogs.Warn(
-                        $"That file cannot be read as a box labels file:\n\n{chosen}\n\n" +
-                        "It may be damaged, empty, or not a settings file at all. If it is the " +
-                        "right file and it is damaged, restore it from a backup before using it " +
-                        "— the running box numbers live in it.",
-                        Title);
-                    break;
-            }
         }
     }
 
