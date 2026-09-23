@@ -449,8 +449,14 @@ public sealed class LabelMakerViewModel : ObservableObject
     /// the scheduler (UX-05: a contended file can hold this for the store's
     /// whole retry budget). Throws <see cref="ConfigException"/> on a
     /// busy/corrupt file OR a ceiling-breaking batch — the write never lands
-    /// in either case.</summary>
-    private long ClaimNumbersCore(LabelClientVm client, int count) =>
+    /// in either case.
+    ///
+    /// <paramref name="typedStart"/> is the number the user typed (or Reset
+    /// to 1) and has not yet used; when given, the batch starts there instead
+    /// of at the on-disk number (owner's decision, 2026-09-23: the preview
+    /// promises the typed number, so the sheets must carry it). Read from
+    /// the VM by <see cref="TypedStartFor"/> on the UI thread, never in here.</summary>
+    private long ClaimNumbersCore(LabelClientVm client, int count, long? typedStart) =>
         BoxLabelStore.Mutate(_boxLabelsPath, doc =>
         {
             var c = doc.LabelClients.FirstOrDefault(x => x.Id == client.Id);
@@ -459,13 +465,22 @@ public sealed class LabelMakerViewModel : ObservableObject
                 c = client.ToClient();
                 doc.LabelClients.Add(c);
             }
-            var s = c.NextNumber;
+            var s = typedStart ?? c.NextNumber;
             if (s + count - 1 > BoxLabels.MaxNumber)
                 throw new ConfigException(
                     "this batch would pass label 99 999 999 — reset or renumber the client");
             c.NextNumber = s + count;
             return s;
         });
+
+    /// <summary>The number the user typed on this client and has not used
+    /// yet, or null when the number box is untouched (then the claim starts
+    /// from the fresh file). BuildBatch has already refused a number that
+    /// does not parse, so a null here never hides a typing mistake.</summary>
+    private long? TypedStartFor(LabelClientVm client) =>
+        _numberEdited.Contains(client) && long.TryParse(client.NextNumberText.Trim(), out var typed)
+            ? typed
+            : null;
 
     /// <summary>Push a post-claim number onto the VM without marking the
     /// client dirty — the store already holds the advanced number, so this is
@@ -513,14 +528,17 @@ public sealed class LabelMakerViewModel : ObservableObject
         }
         // Claim from the fresh file FIRST: several stations may be printing,
         // so the sheets that actually go out must carry the claimed numbers,
-        // not whatever was on screen when this window opened. Off the UI
-        // thread, as SavePdfAsync already does — the store can wait seconds
-        // on a contended file (UX-05).
+        // not whatever was on screen when this window opened. The one
+        // exception is a number the user typed: that is the start they asked
+        // for (see ClaimNumbersCore). Off the UI thread, as SavePdfAsync
+        // already does — the store can wait seconds on a contended file
+        // (UX-05).
         long start;
+        var typedStart = TypedStartFor(b.Client);   // read on the UI thread before offloading
         IsPrinting = true;
         try
         {
-            start = await _scheduler.Run(() => ClaimNumbersCore(b.Client, b.Count));
+            start = await _scheduler.Run(() => ClaimNumbersCore(b.Client, b.Count, typedStart));
         }
         catch (ConfigException ex)
         {
@@ -552,6 +570,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             $"labels_{b.Client.Id}_{b.Start:D8}.pdf");
         if (dest is null) return;
         var dateStyle = _dateStyle;   // read on the UI thread before offloading
+        var typedStart = TypedStartFor(b.Client);
 
         long claimedStart;
         try
@@ -563,7 +582,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             // the render below never runs, and nothing lands on disk.
             claimedStart = await _scheduler.Run(() =>
             {
-                var start = ClaimNumbersCore(b.Client, b.Count);
+                var start = ClaimNumbersCore(b.Client, b.Count, typedStart);
                 var items = RebuildFromClaim(b, start);
                 BoxLabels.RenderPdf(dest, items, dateStyle);
                 return start;

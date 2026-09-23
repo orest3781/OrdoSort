@@ -450,6 +450,90 @@ public class LabelMakerViewModelTests : IDisposable
         finally { Directory.Delete(dir, true); }
     }
 
+    // ------------------------------------ a typed number is the batch start
+    // Owner's decision, 2026-09-23: when the user has typed a number into
+    // "Next label number" (or pressed Reset to 1), Print and Save PDF start
+    // from THAT number, not the one on disk. The preview already promises
+    // it ("Prints MEDR00000001 – ..."), and the sheets must match the
+    // preview. An untouched number still claims from the fresh file (see
+    // PrintClaimsNumbersFromTheFreshFileNotTheScreen above).
+
+    [Fact]
+    public void PrintAfterResetToOneStartsAtOneAsThePreviewSays()
+    {
+        var path = PathWith(new LabelClient { Id = "MEDR", DestroyDays = 30, NextNumber = 4242 });
+        var vm = Vm(path);
+        _dialogs.ConfirmAnswer = true;
+        vm.ResetNumberCommand.Execute(null);
+        vm.LabelCountText = "3";
+        Assert.Contains("MEDR00000001 – MEDR00000003", vm.Preview);
+        IReadOnlyList<BoxLabels.Item>? sent = null;
+        vm.PrintSheets = (items, _) => { sent = items; return true; };
+
+        vm.Print();
+
+        Assert.Equal("MEDR00000001", sent![0].Code);
+        Assert.Equal("MEDR00000003", sent[2].Code);
+        Assert.Equal(4, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+        Assert.Equal("4", vm.Selected!.NextNumberText);
+    }
+
+    [Fact]
+    public void PrintStartsFromATypedNumberEvenWhenAPeerHasSinceAdvancedTheFile()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 100 });
+        var vm = Vm(path);
+        vm.Selected!.NextNumberText = "200";   // deliberate correction
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "ABCD").NextNumber = 150; return 0; });
+        vm.LabelCountText = "5";
+        IReadOnlyList<BoxLabels.Item>? sent = null;
+        vm.PrintSheets = (items, _) => { sent = items; return true; };
+
+        vm.Print();
+
+        Assert.Equal("ABCD00000200", sent![0].Code);
+        Assert.Equal(205, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+        Assert.Empty(_dialogs.Warnings);
+    }
+
+    [Fact]
+    public void SavePdfStartsFromATypedNumber()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 100 });
+        var vm = Vm(path);
+        vm.Selected!.NextNumberText = "7";
+        vm.LabelCountText = "2";
+        _dialogs.NextSaveFile = Path.Combine(_dir, "typed.pdf");
+
+        vm.SavePdf();
+
+        Assert.True(File.Exists(Path.Combine(_dir, "typed.pdf")));
+        Assert.Equal(9, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+        Assert.Equal("9", vm.Selected!.NextNumberText);
+        Assert.Empty(_dialogs.Warnings);
+    }
+
+    [Fact]
+    public void ATypedNumberIsUsedOnceThenTheNextPrintClaimsFromTheFileAgain()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 100 });
+        var vm = Vm(path);
+        vm.Selected!.NextNumberText = "200";
+        vm.LabelCountText = "5";
+        IReadOnlyList<BoxLabels.Item>? sent = null;
+        vm.PrintSheets = (items, _) => { sent = items; return true; };
+        vm.Print();   // 200-204, file now 205
+
+        // a peer prints 205-299 before this station's second print
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "ABCD").NextNumber = 300; return 0; });
+        vm.Print();
+
+        Assert.Equal("ABCD00000300", sent![0].Code);   // not the stale on-screen 205
+        Assert.Equal(305, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+    }
+
     // --------------------------------------------------------- merge-Persist
 
     [Fact]
