@@ -1697,7 +1697,7 @@ public class SettingsViewModelTests : IDisposable
         // RouteEditVm.Problem -> Config.ValidateRoute creates+deletes a real
         // probe file in the destination folder — the other named offender.
         var vm = new SettingsViewModel(new Config(), _dialogs,
-            validateRoute: r => { Thread.Sleep(300); return Config.ValidateRoute(r); });
+            validateRoute: r => { Thread.Sleep(300); return Config.ValidateRoute(r, configPath: null); });
         vm.AddRouteCommand.Execute(null);
         var route = vm.Routes[0];
         route.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(route.Problem)) _ = route.Problem; };
@@ -1741,7 +1741,7 @@ public class SettingsViewModelTests : IDisposable
         // now needs a 60-SECOND stall between two consecutive statements, which
         // would fail this suite for louder reasons long first.
         var vm = new SettingsViewModel(new Config(), _dialogs,
-            validateRoute: r => { Interlocked.Increment(ref calls); return Config.ValidateRoute(r); },
+            validateRoute: r => { Interlocked.Increment(ref calls); return Config.ValidateRoute(r, configPath: null); },
             probeDelayMs: 60_000);
         vm.AddRouteCommand.Execute(null);   // blank Path: the ctor's own priming check is synchronous, no I/O
         var route = vm.Routes[0];
@@ -1828,7 +1828,7 @@ public class SettingsViewModelTests : IDisposable
     public void ClearingARoutePathCancelsTheInFlightValidateRouteProbe()
     {
         var vm = new SettingsViewModel(new Config(), _dialogs,
-            validateRoute: r => { Thread.Sleep(500); return Config.ValidateRoute(r); });
+            validateRoute: r => { Thread.Sleep(500); return Config.ValidateRoute(r, configPath: null); });
         vm.AddRouteCommand.Execute(null);
         var route = vm.Routes[0];
 

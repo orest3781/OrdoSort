@@ -17,6 +17,16 @@ public sealed class Route
 
     // Hand-edited per-route keys survive a load/save round trip
     [JsonExtensionData] public Dictionary<string, System.Text.Json.JsonElement> Extras { get; set; } = new();
+
+    /// <summary>A copy of this route with a different destination — so a
+    /// resolved path can be filed to without rewriting the route that came
+    /// from (and is saved back to) a shared config.json.</summary>
+    internal Route WithPath(string path)
+    {
+        var copy = (Route)MemberwiseClone();
+        copy.Path = path;
+        return copy;
+    }
 }
 
 /// <summary>A folder shown as a tile on the Ready dashboard while it holds
@@ -798,11 +808,24 @@ public sealed class Config
         }
     }
 
-    /// <summary>Readable error for one unusable destination, or "" if good.</summary>
-    public static string ValidateRoute(Route route)
+    /// <summary>Where a route's destination really is: a relative path lands
+    /// beside config.json (the inbox / deferred / names_file / history_db
+    /// rule), an absolute one stays as typed. A blank path stays blank —
+    /// Path.Combine(dir, "") is dir, and an unset route must keep being
+    /// refused, not file into config.json's own folder.</summary>
+    public static string ResolveRoutePath(string configPath, string routePath) =>
+        string.IsNullOrWhiteSpace(routePath) ? routePath : ResolveBeside(configPath, routePath);
+
+    /// <summary>Readable error for one unusable destination, or "" if good.
+    /// <paramref name="configPath"/> is the config.json a relative route path
+    /// resolves beside (see <see cref="ResolveRoutePath"/>), so this checks
+    /// the same folder a commit would file into. Null only where no config
+    /// file is known; the path is then checked as typed.</summary>
+    public static string ValidateRoute(Route route, string? configPath)
     {
         var raw = route.Path?.Trim() ?? "";
         if (raw.Length == 0) return "no destination path configured";
+        if (configPath is not null) raw = ResolveRoutePath(configPath, raw);
         if (!Directory.Exists(raw))
             return File.Exists(raw)
                 ? $"destination is not a folder: {raw}"

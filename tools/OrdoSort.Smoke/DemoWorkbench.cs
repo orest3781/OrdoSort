@@ -95,7 +95,7 @@ public static class DemoWorkbench
 
         // 2. every destination is real and writable
         var badRoutes = cfg.Routes
-            .Select(r => (r.Label, Problem: OrdoSort.Core.Config.ValidateRoute(r)))
+            .Select(r => (r.Label, Problem: OrdoSort.Core.Config.ValidateRoute(r, Path.Combine(root, "config.json"))))
             .Where(x => x.Problem.Length > 0).ToList();
         Check("all 10 destinations are writable", badRoutes.Count == 0,
             badRoutes.Count == 0 ? "" : string.Join("; ", badRoutes.Select(b => $"{b.Label}: {b.Problem}")));

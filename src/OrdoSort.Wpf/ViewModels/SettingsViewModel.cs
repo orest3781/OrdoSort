@@ -57,7 +57,9 @@ public sealed class RouteEditVm : ObservableObject, IDisposable
         IWorkScheduler? scheduler = null, SynchronizationContext? uiContext = null,
         int probeDelayMs = 300)
     {
-        _validateRoute = validateRoute ?? Config.ValidateRoute;
+        // SettingsViewModel always passes its config-aware validator; this
+        // default (no config file known) only serves a standalone row.
+        _validateRoute = validateRoute ?? (r => Config.ValidateRoute(r, configPath: null));
         _problemProbe = new DebouncedProbe<string>(scheduler ?? new TaskWorkScheduler(),
             uiContext, v => Set(ref _problem, v, nameof(Problem)), probeDelayMs);
         TriggerProblemCheck();   // blank Path answers "no destination path configured" synchronously
@@ -608,7 +610,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         _cfgPath = cfgPath;
         _directoryExists = directoryExists ?? Directory.Exists;
         _fileExists = fileExists ?? File.Exists;
-        _validateRoute = validateRoute ?? Config.ValidateRoute;
+        // Resolve relative routes beside the config file, as a commit will.
+        _validateRoute = validateRoute ?? (r => Config.ValidateRoute(r, cfgPath));
         _folderStatus = folderStatus ?? FolderMonitor.Status;
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _uiContext = uiContext;

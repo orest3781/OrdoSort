@@ -1292,7 +1292,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // route folder — a network round trip each) run off the UI thread
         var (scan, problems) = await _scheduler.Run(() =>
             (Scanner.Scan(ResolvePath(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode),
-             cfg.Routes.Select(Config.ValidateRoute).ToList()));
+             cfg.Routes.Select(r => Config.ValidateRoute(r, cfgPath)).ToList()));
         if (Screen == Screen.Processing) return;   // a double Start raced us
         if (scan.Count == 0) { Rescan(); return; }
         BuildRoutes(problems);

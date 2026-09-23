@@ -123,14 +123,19 @@ public sealed class Session
     public Commit.CommitOutcome CommitCurrent(string typedName, Route route)
     {
         var src = Current ?? throw new CommitError("No document is loaded.");
-        var outcome = Commit.CommitFile(src, typedName, route, SessionMode);
+        // A relative route lands beside config.json, not against whatever
+        // directory the app was launched from. Resolved here, the one place a
+        // route reaches Commit, on a copy: the route itself keeps its path as
+        // typed (same reason _cfgPath is stored rather than applied up front).
+        var target = route.WithPath(Config.ResolveRoutePath(_cfgPath, route.Path));
+        var outcome = Commit.CommitFile(src, typedName, target, SessionMode);
         if (outcome.Vanished) { LogVanished(src); return outcome; }
 
         var result = outcome.NameResult!;
         var rowId = TryLog(() => _history.LogCommit(
             src, Path.GetFileName(src), result.Filename,
             Naming.IsBlankName(typedName) ? "" : typedName, result.ModeUsed,
-            result.SuffixApplied, route.Label, route.Path, tagged: false,
+            result.SuffixApplied, target.Label, target.Path, tagged: false,
             result.CollisionSuffix), out var failure);
 
         // the file is GONE from the inbox — advance regardless, or the next

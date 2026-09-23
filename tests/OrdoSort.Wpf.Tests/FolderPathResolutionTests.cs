@@ -1,3 +1,4 @@
+using OrdoSort.Core;
 using OrdoSort.Wpf.ViewModels;
 
 namespace OrdoSort.Wpf.Tests;
@@ -95,5 +96,45 @@ public class FolderPathResolutionTests
 
         Assert.False(fx.Shell.HasDeferred,
             $"expected no set-aside alert for a blank Deferred folder, got \"{fx.Shell.DeferredAlert}\"");
+    }
+
+    // A relative route destination files beside config.json (Session), so the
+    // Start-time route check must look there too — otherwise the button is
+    // disabled as "does not exist" for a folder a commit would use happily.
+    [Fact]
+    public void ARelativeRouteIsCheckedBesideTheConfigFileWhenProcessingStarts()
+    {
+        using var fx = new ShellFixture(cfg => cfg.Routes[0].Path = "relative-filed");
+        Directory.CreateDirectory(Path.Combine(fx.Dir, "relative-filed"));
+        fx.AddInboxFile();
+        fx.Shell.Initialize();
+
+        fx.Shell.StartProcessing();
+
+        var button = Assert.Single(fx.Shell.Routes);
+        Assert.True(button.Enabled,
+            $"expected the relative route resolved beside the config file at {fx.Dir}, " +
+            $"but it was disabled: {button.DisabledReason}");
+    }
+
+    [Fact]
+    public void SettingsWarningsCheckARelativeRouteBesideTheConfigFile()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ordoroutewarn_" + Guid.NewGuid());
+        Directory.CreateDirectory(Path.Combine(dir, "relative-filed"));
+        try
+        {
+            var cfgPath = Path.Combine(dir, "config.json");
+            var cfg = new Config
+            {
+                Inbox = dir,
+                Deferred = dir,
+                Routes = { new Route { Label = "Filed", Path = "relative-filed" } },
+            };
+            var vm = new SettingsViewModel(cfg, new FakeDialogs(), cfgPath: cfgPath);
+
+            Assert.DoesNotContain(vm.Warnings(), w => w.Contains("\"Filed\""));
+        }
+        finally { Directory.Delete(dir, recursive: true); }
     }
 }
