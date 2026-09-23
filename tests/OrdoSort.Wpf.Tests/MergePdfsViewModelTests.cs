@@ -798,6 +798,27 @@ public class MergePdfsViewModelTests
         Assert.True(converter.Disposed);
     }
 
+    /// <summary>OfficeConverter's teardown waits up to seconds per Office
+    /// app (Quit, then the force-kill grace period). Dispose is called from
+    /// MergePdfsWindow.OnClosed on the UI thread, so the converter's own
+    /// Dispose must be handed to the scheduler, not run in the call.</summary>
+    [Fact]
+    public void DisposingTheViewModelTearsTheConverterDownOffTheCallingThread()
+    {
+        var scheduler = new ControlledWorkScheduler();
+        var converter = new DisposableConverter();
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), scheduler,
+            converter: converter);
+        var queuedBefore = scheduler.Queued;
+
+        vm.Dispose();
+
+        Assert.False(converter.Disposed);                  // the UI thread didn't wait for it
+        Assert.Equal(queuedBefore + 1, scheduler.Queued);
+        scheduler.ReleaseNewest();
+        Assert.True(converter.Disposed);
+    }
+
     // ---- Fix round 1: the warning drain, and the .ppt probe wording -----
 
     /// <summary>Reports whatever warnings it already holds, on demand — no

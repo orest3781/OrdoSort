@@ -576,7 +576,14 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        (_converter as IDisposable)?.Dispose();
+        // Through the scheduler, not inline: OfficeConverter's teardown is
+        // Quit() then a force-kill grace period (WaitForExit, 4s) per Office
+        // app it started, and this runs from OnClosed on the UI thread —
+        // inline, closing the window froze the whole app for that long.
+        // Nothing to observe on the returned task: OfficeConverter.Dispose
+        // is best-effort by design and swallows its own COM/process errors.
+        if (_converter is IDisposable disposable)
+            _ = Scheduler.Run(disposable.Dispose);
     }
 
     private bool _disposed;
