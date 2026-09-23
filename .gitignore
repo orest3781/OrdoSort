@@ -1,4 +1,6 @@
-# Build output
+# Build output: everything builds into artifacts/ (UseArtifactsOutput in
+# Directory.Build.props). bin/ and obj/ stay listed for old checkouts and IDEs.
+/artifacts/
 bin/
 obj/
 [Dd]ebug/

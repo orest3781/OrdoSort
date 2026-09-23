@@ -30,6 +30,13 @@
          prevent, and not something a user-facing version display should
          show. -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- Every project builds into one ignored artifacts\ folder at the repo
+         root (artifacts\bin\<project>\<config>, artifacts\obj\...) instead
+         of a bin\ and obj\ beside each project: one place to look, one place
+         to delete. .NET 8's built-in layout; it has to be set here, in
+         Directory.Build.props, because the SDK reads it before the project
+         file. run.bat launches artifacts\bin\OrdoSort.Wpf\debug\OrdoSort.exe. -->
+    <UseArtifactsOutput>true</UseArtifactsOutput>
   </PropertyGroup>
 
 </Project>

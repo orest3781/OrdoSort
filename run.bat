@@ -19,7 +19,7 @@ if not exist "%CONFIG%" (
     exit /b 1
 )
 
-set "EXE=%~dp0src\OrdoSort.Wpf\bin\Debug\net8.0-windows\OrdoSort.exe"
+set "EXE=%~dp0artifacts\bin\OrdoSort.Wpf\debug\OrdoSort.exe"
 
 rem Always build. This used to build only when the exe was missing, which
 rem meant run.bat would happily launch a binary from days ago and show you
