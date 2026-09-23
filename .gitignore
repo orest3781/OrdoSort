@@ -17,7 +17,7 @@ publish-boxlabels/
 # depth — same trap as /sounds/ below.
 /evidence/
 
-# The full-size workbench (demo-full.bat regenerates it from scratch)
+# The full-size workbench (scripts\demo-full.bat regenerates it from scratch)
 demo-full/
 
 # Scratch audio: source material for the synthesized alert sounds. The ones

@@ -8,7 +8,7 @@
 | Run | `run.bat` (demo workbench) or `run.bat <config.json>` |
 | Test | `check.bat core` (fast) / `check.bat wpf` |
 | Check | `check.bat` - restore, build Release, all tests; mirrors CI. Run before saying work is done |
-| End-to-end | `e2e.bat` |
+| End-to-end | `scripts\e2e.bat` |
 
 # C# guidelines
 

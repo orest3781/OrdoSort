@@ -42,7 +42,7 @@
        with no edits between them.
 
        This is scoped to Debug deliberately: Release builds are what
-       publish.bat ships, and reproducible release bytes are worth more than
+       scripts\publish.bat ships, and reproducible release bytes are worth more than
        local convenience. Release binaries need a real code-signing
        certificate, not this.
 

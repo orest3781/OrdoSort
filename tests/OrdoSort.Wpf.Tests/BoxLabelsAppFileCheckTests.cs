@@ -73,7 +73,7 @@ public sealed class BoxLabelsAppFileCheckTests : IDisposable
     /// The config is written by Config.Save — the app's own writer — so it
     /// has exactly the shape a real station's file has, and the test is
     /// hermetic. It used to copy demo-full/config.json, which is gitignored,
-    /// so it could only pass on a machine that had run demo-full.bat and
+    /// so it could only pass on a machine that had run scripts\demo-full.bat and
     /// failed every CI run.</summary>
     [Fact]
     public void OrdoSortsOwnConfigIsRefused()

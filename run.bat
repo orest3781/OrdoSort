@@ -13,7 +13,7 @@ if "%CONFIG%"=="" (
 if not exist "%CONFIG%" (
     echo Config not found: %CONFIG%
     echo.
-    echo Run  demo-full.bat  for the full workbench ^(ten routes, 300 documents^),
+    echo Run  scripts\demo-full.bat  for the full workbench ^(ten routes, 300 documents^),
     echo or pass your own config path.
     pause
     exit /b 1

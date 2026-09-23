@@ -22,7 +22,7 @@ namespace OrdoSort.Wpf.Tests;
 /// change carries a risk in each direction: losing the override puts Debug
 /// back under the permanent block, and letting it leak past its
 /// <c>'$(Configuration)' == 'Debug'</c> condition would cost Release — the
-/// configuration publish.bat ships — its reproducible bytes. A test that only
+/// configuration scripts\publish.bat ships — its reproducible bytes. A test that only
 /// checked Debug would pass just as happily if the condition were deleted
 /// altogether.
 ///
@@ -65,7 +65,7 @@ public class NonDeterministicDebugBuildTests
 #else
         Assert.True(isReproducible,
             $"{Path.GetFileName(path)} was compiled non-deterministically in Release. Release is " +
-            "what publish.bat ships and its bytes must stay reproducible. Either the Debug-only " +
+            "what scripts\\publish.bat ships and its bytes must stay reproducible. Either the Debug-only " +
             "<Deterministic>false</Deterministic> in Directory.Build.targets has leaked past its " +
             "condition, or the build was given -p:Deterministic=false on the command line — a " +
             "global property, which overrides the targets file in every configuration. Check for " +

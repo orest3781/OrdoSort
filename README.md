@@ -32,7 +32,7 @@ Unzip anywhere and run — the app reads (or creates on first run) a
 `config.json` beside the exe, or takes `--config <path>`. Every setting lives
 in that one file except the box labels, which keep their running box numbers
 in `box-labels.json` beside it (shared with Box Labels). Locally,
-`publish.bat` builds the same portable exe into `publish\`.
+`scripts\publish.bat` builds the same portable exe into `publish\`.
 
 To cut a release: `git tag v1.0.0 && git push origin v1.0.0` — the Release
 workflow tests, builds, zips, and publishes.
@@ -186,7 +186,7 @@ labels, same barcode — it is the identical code, not a reimplementation.
 Download it from a release (`boxlabels-vX-…zip`), or build it locally:
 
 ```
-publish-boxlabels.bat        ->  publish-boxlabels\BoxLabels.exe
+scripts\publish-boxlabels.bat    ->  publish-boxlabels\BoxLabels.exe
 ```
 
 **It shares OrdoSort's box numbers.** Both programs read and write the same
@@ -236,7 +236,7 @@ the same window, so either can be used, and neither can drift from the other.
 ## The end-to-end suite
 
 ```
-e2e.bat
+scripts\e2e.bat
 ```
 
 (or `dotnet run --project tools\OrdoSort.Smoke -- e2e` — the bat wraps that
@@ -247,7 +247,7 @@ in a throwaway temp folder, then writes `evidence\<timestamp>\report.html`:
 one row per scenario, with the assertions it ran and a screenshot of the
 window.
 
-Run a single surface with `e2e.bat zip` (or `unzip`, `zipmerge`, `unlock`, …
+Run a single surface with `scripts\e2e.bat zip` (or `unzip`, `zipmerge`, `unlock`, …
 — the filter is exact-match-first, so `zip` selects Zip alone rather than
 dragging in Zip merge), and add `--keep` to leave that run's fixtures on
 disk for inspection. It drives real WPF windows and WebView2, so it needs a
@@ -256,7 +256,7 @@ than alongside the headless unit tests in `ci.yml`.
 
 ## Run the demo
 
-Run `demo-full.bat` once to generate the workbench (300 inbox documents,
+Run `scripts\demo-full.bat` once to generate the workbench (300 inbox documents,
 ten routes, three monitored folders), then launch with `run.bat`, or:
 
 ```
@@ -265,11 +265,11 @@ dotnet run --project src/OrdoSort.Wpf -- --config demo-full\config.json
 
 ## The workbench
 
-`demo-full.bat` builds the thing you actually test against, under `demo-full\`:
+`scripts\demo-full.bat` builds the thing you actually test against, under `demo-full\`:
 
 ```
-demo-full.bat            300 inbox documents
-demo-full.bat 2000       a deeper inbox (~4s, ~9 MB)
+scripts\demo-full.bat    300 inbox documents
+scripts\demo-full.bat 2000  a deeper inbox (~4s, ~9 MB)
 
 dotnet run --project src/OrdoSort.Wpf -- --config demo-full\config.json
 ```
