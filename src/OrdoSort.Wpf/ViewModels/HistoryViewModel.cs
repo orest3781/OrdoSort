@@ -143,6 +143,17 @@ public sealed class HistoryViewModel : ObservableObject
             Rows.Clear();
             foreach (var r in rows) Rows.Add(r);
         }
+        catch (Exception ex) when (IsDatabaseOrFileError(ex))
+        {
+            // Every caller discards this Task (the constructor and Show all
+            // both fire and forget it), so an exception left in it reaches
+            // nobody: a busy or locked DB on a share used to leave an empty
+            // grid with no word of why. Say so where the rows would be, and
+            // out loud.
+            FooterText = "Couldn't load the history: " + ex.Message;
+            _dialogs.Warn("Couldn't load the history: " + ex.Message, "OrdoSort");
+            return;
+        }
         finally
         {
             IsBusy = false;
@@ -179,9 +190,17 @@ public sealed class HistoryViewModel : ObservableObject
             var count = await _scheduler.Run(() => history.ExportCsv(dest));
             _dialogs.Info($"Exported {count} rows to {dest}", "OrdoSort");
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (IsDatabaseOrFileError(ex))
         {
             _dialogs.Warn("Couldn't save it: " + ex.Message, "OrdoSort");
         }
     }
+
+    /// <summary>The failures a history DB on a share really produces: the
+    /// file side (IO, access) and the SQLite side (busy or locked past the
+    /// busy timeout, a dropped share mid-query). ExportCommand discards the
+    /// ExportAsync Task just as LoadAsync's callers do, so a SqliteException
+    /// left out of this filter vanished without a word.</summary>
+    private static bool IsDatabaseOrFileError(Exception ex) =>
+        ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException;
 }

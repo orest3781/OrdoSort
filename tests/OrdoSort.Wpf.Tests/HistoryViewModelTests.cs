@@ -1,4 +1,5 @@
 using OrdoSort.Core;
+using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.ViewModels;
 
 namespace OrdoSort.Wpf.Tests;
@@ -198,5 +199,57 @@ public class HistoryViewModelTests : IDisposable
         vm.ExportCommand.Execute(null);
         Assert.True(File.Exists(dest));
         Assert.Single(_dialogs.Infos);
+    }
+
+    /// <summary>Stands in for a history DB on a share that is busy or
+    /// locked: once <see cref="Fail"/> is set, every offloaded query throws
+    /// the SqliteException Microsoft.Data.Sqlite raises for SQLITE_BUSY.
+    /// Until then it runs work inline, like InlineWorkScheduler.</summary>
+    private sealed class LockedDbScheduler : IWorkScheduler
+    {
+        public bool Fail { get; set; }
+
+        public Task<T> Run<T>(Func<T> work) => Fail
+            ? throw new Microsoft.Data.Sqlite.SqliteException("database is locked", 5)
+            : Task.FromResult(work());
+
+        public Task Run(Action work)
+        {
+            if (Fail) throw new Microsoft.Data.Sqlite.SqliteException("database is locked", 5);
+            work();
+            return Task.CompletedTask;
+        }
+    }
+
+    // LoadAsync is fire-and-forget and ExportAsync caught only IO errors, so
+    // a busy or locked DB used to vanish: an empty grid with no message, or
+    // an Export click that did nothing at all.
+
+    [Fact]
+    public void ALoadThatHitsALockedDatabaseSaysSoInsteadOfShowingAnEmptyGrid()
+    {
+        Seed(3);
+        var vm = new HistoryViewModel(_history, _dialogs, new LockedDbScheduler { Fail = true });
+
+        Assert.False(vm.IsBusy);
+        var warning = Assert.Single(_dialogs.Warnings);
+        Assert.Contains("database is locked", warning.Message);
+        Assert.Contains("database is locked", vm.FooterText);
+    }
+
+    [Fact]
+    public void AnExportThatHitsALockedDatabaseSaysSo()
+    {
+        Seed(2);
+        var scheduler = new LockedDbScheduler();
+        var vm = new HistoryViewModel(_history, _dialogs, scheduler);
+        _dialogs.NextSaveFile = Path.Combine(_dir, "out.csv");
+        scheduler.Fail = true;
+
+        vm.ExportCommand.Execute(null);
+
+        var warning = Assert.Single(_dialogs.Warnings);
+        Assert.Contains("database is locked", warning.Message);
+        Assert.Empty(_dialogs.Infos);
     }
 }
