@@ -1970,11 +1970,20 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     /// <summary>File → Export history: the whole audit table as a spreadsheet
     /// (with the formula-injection guard History applies).</summary>
-    internal void ExportHistory() => _ = ExportHistoryAsync();
+    internal void ExportHistory() => _ = RunGuarded(ExportHistoryAsync(),
+        "Exporting the history",
+        "The history itself is unchanged, but the spreadsheet may be missing or incomplete. " +
+        "Try the export again.");
 
     internal async Task ExportHistoryAsync()
     {
-        if (HistorySwapping) return;   // mid-swap, the handle is being replaced
+        if (HistorySwapping)
+        {
+            // mid-swap, the handle is being replaced — same answer the
+            // History window gives, so the menu item never just does nothing
+            _dialogs.Info("One moment — the history database is being switched over.", "OrdoSort");
+            return;
+        }
         var dest = _dialogs.AskSaveFile("Spreadsheet files (*.csv)|*.csv", "ordosort_history.csv");
         if (dest is null) return;
         try
