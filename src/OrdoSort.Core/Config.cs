@@ -549,7 +549,7 @@ public sealed class Config
 
     /// <summary>A null list becomes empty; a list with null ENTRIES (a stray
     /// comma in hand-edited JSON) drops them rather than keeping a null item.</summary>
-    private static List<T> Clean<T>(List<T>? items) where T : class =>
+    internal static List<T> Clean<T>(List<T>? items) where T : class =>
         items is null ? new() : items.Where(i => i is not null).ToList();
 
     /// <summary>Write config.json (everything except the box labels) and

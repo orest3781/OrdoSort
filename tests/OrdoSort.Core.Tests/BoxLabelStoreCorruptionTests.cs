@@ -76,4 +76,52 @@ public class BoxLabelStoreCorruptionTests : IDisposable
         Assert.True(small > 0, "the file must never end up empty");
         Assert.Empty(BoxLabelStore.Read(path).LabelClients);
     }
+
+    // Hand-edited nulls. Config.Load already applies this rule to the same
+    // list read through config.json (Config.Clean): a null list is empty, a
+    // null entry — a stray comma, a half-deleted row — is dropped. The store
+    // must agree, or the label maker hits a NullReferenceException where
+    // the user should have got a readable warning or a working window.
+
+    [Fact]
+    public void ReadTurnsANullClientListIntoAnEmptyOne()
+    {
+        var path = Path.Combine(_dir, "box-labels.json");
+        File.WriteAllText(path, "{ \"label_clients\": null }");
+
+        Assert.Empty(BoxLabelStore.Read(path).LabelClients);
+    }
+
+    [Fact]
+    public void ReadDropsNullClientEntriesAndKeepsTheRest()
+    {
+        var path = Path.Combine(_dir, "box-labels.json");
+        File.WriteAllText(path,
+            "{ \"label_clients\": [ null, { \"id\": \"ACME\", \"next_number\": 250 }, { \"id\": null } ] }");
+
+        var clients = BoxLabelStore.Read(path).LabelClients;
+
+        Assert.Equal(2, clients.Count);
+        Assert.Equal(250, clients.Single(c => c.Id == "ACME").NextNumber);
+        Assert.Contains(clients, c => c.Id == "");   // a null id reads as blank, not null
+    }
+
+    [Fact]
+    public void MutateDropsNullClientEntriesSoTheCallbackCanSearchTheList()
+    {
+        var path = Path.Combine(_dir, "box-labels.json");
+        File.WriteAllText(path,
+            "{ \"label_clients\": [ null, { \"id\": \"ACME\", \"next_number\": 250 } ] }");
+
+        var start = BoxLabelStore.Mutate(path, d =>
+        {
+            var c = d.LabelClients.First(x => x.Id == "ACME");
+            var s = c.NextNumber;
+            c.NextNumber += 10;
+            return s;
+        });
+
+        Assert.Equal(250, start);
+        Assert.Equal(260, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+    }
 }

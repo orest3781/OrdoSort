@@ -27,6 +27,19 @@ public static class BoxLabelStore
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
+    /// <summary>The nulls a hand-edited file can carry — <c>"label_clients":
+    /// null</c>, a stray null entry, a null id — read the way Config.Load
+    /// already reads the same list: empty list, entry dropped, blank id.
+    /// Without this, both the label maker and a claim's own search of the
+    /// list stopped on a NullReferenceException instead of working.</summary>
+    private static BoxLabelsDoc CleanHandEdits(BoxLabelsDoc doc)
+    {
+        doc.LabelClients = Config.Clean(doc.LabelClients);
+        foreach (var c in doc.LabelClients) { c.Id ??= ""; c.Extras ??= new(); }
+        doc.Extras ??= new();
+        return doc;
+    }
+
     /// <summary>Non-exclusive read for display with retries. Missing file = no clients yet.
     /// If another station holds the file, retries at 150ms intervals within maxWaitMs.</summary>
     public static BoxLabelsDoc Read(string fullPath, int maxWaitMs = DefaultMaxWaitMs)
@@ -44,8 +57,8 @@ public static class BoxLabelStore
                 var text = reader.ReadToEnd();
                 try
                 {
-                    return JsonSerializer.Deserialize<BoxLabelsDoc>(text, Opts)
-                           ?? new BoxLabelsDoc();
+                    return CleanHandEdits(JsonSerializer.Deserialize<BoxLabelsDoc>(text, Opts)
+                                          ?? new BoxLabelsDoc());
                 }
                 catch (JsonException ex)
                 {
@@ -176,8 +189,7 @@ public static class BoxLabelStore
                 {
                     throw new ConfigException($"Config file {fullPath} is not valid JSON: {ex.Message}");
                 }
-                doc.LabelClients ??= new();
-                doc.Extras ??= new();
+                CleanHandEdits(doc);
                 doc.DateStyle = BoxLabels.NormalizeDateStyle(doc.DateStyle);
 
                 var result = mutate(doc);   // outside every classification catch
