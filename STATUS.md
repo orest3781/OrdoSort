@@ -7,6 +7,8 @@
 | One config file: destinations, monitored folders, alerts moved into `config.json`; `box-labels.json` stays separate | ✅ Done | 2026-09-22. Old `destinations.json`/`monitored-folders.json`/`alerts.json` are no longer read (no migration, by decision). Settings "Data files" tab keeps only the box-labels path. Committed and pushed 2026-09-22 |
 | Box Labels in the GitHub release (`boxlabels-vX-win-x64[-selfcontained].zip`) | ✅ Done | 2026-09-22. `release.yml` builds and attaches both; self-contained publish checked locally. Not yet run on GitHub. Committed and pushed 2026-09-22 |
 | `check.bat` - the one check command (mirrors CI) | ✅ Done | Added 2026-09-13; README, CLAUDE.md and Quick start point at it. Committed and pushed 2026-09-22 |
+| Whole-app review and fix pass | 🔄 In progress | 2026-09-23. Five area reviews; 22 findings fixed with tests, one commit each (`9741260`..`6f6f3ae`), on local `main`, not pushed. Box-labels findings (9, incl. a high one: box numbers can be issued twice) wait on the owner's call — see Next |
+| Repo cleanup | ✅ Done | 2026-09-23, local `main`, not pushed. Scripts other than check/run moved to `scripts\`; old tools to `docs\legacy-scripts\`; tracked `dev\` setup (`run.bat dev\config.json`); `.editorconfig` + format check in check.bat and CI; all build output in `artifacts\`; ~820 MB of local clutter and the fixer worktrees removed |
 | S:\ → A:\DEV path rewrite (45 files, comments and docs only) | ✅ Done | Committed `1f5b8de` and pushed 2026-09-09. `.gitignore` now points at `A:\DEV\_ARCHIVE\OrdoSort-samples` |
 
 ## Next
@@ -20,6 +22,10 @@
 - [ ] Settings → Destinations list rows announce as "OrdoSort.Wpf.ViewModels.RouteEditVm" to screen readers (UI Automation name is the type name, not the label). Seen in QC 2026-09-22
 - [ ] `BulkRenameBatchTests.NeitherClearNorRemoveCanTouchTheListWhileTheBatchRuns` failed once in a full run 2026-09-22, passed 5/5 alone — timing-flaky
 - [ ] Three xUnit1031 warnings in `OrdoSort.Wpf.Tests` — blocking task calls in `BulkRenameSortedNavigationTests` and `DeleteKeyTests`, which xUnit says can deadlock
+- [ ] 🚫 Box-labels review findings (9): the high one — editing the number then printing, then closing, can roll a peer's counter back so box numbers repeat; Print ignores a typed number / Reset to 1; Box Labels app skips the file check for `--file` and a remembered path; post-claim failures vanish silently; Save PDF burns numbers on a failed write; misleading "no number lost" text; client rows announce as a type name; first-run seed can overwrite a peer's counters; null `label_clients` crashes. Blocked on: should Print use the typed number, or refuse until it's saved?
+- [ ] Monitored-folder (watch folder) paths are still read as typed, so a relative one resolves against the app's start folder — destinations were fixed to resolve beside config.json (`061e195`); `dev\config.json` uses absolute watch paths until this is done
+- [ ] The set-aside count includes every file, so `dev\set-aside\.gitkeep` shows "1 set-aside file waiting" — and a share's `desktop.ini` / `Thumbs.db` would too. Decide whether hidden/system/dot files should count
+- [ ] The five real-WebView2 tests (`WebViewPdfViewerGuardBehaviourTests`) fail, and the suite slows from ~2 to ~15 min, while another OrdoSort is running: all instances share `%LOCALAPPDATA%\OrdoSort\WebView2`. Confirmed on the pre-fix commit too. Tests should use their own user-data folder
 
 ## Blocked
 | Item | Blocked on | Since |
@@ -46,11 +52,15 @@
 | `check.bat` full run (2026-09-22, after review fixes) | ✅ 910 Core passed; 2,312 of 2,313 Wpf passed. The one failure (`BulkRenameBatchTests.NeitherClearNorRemoveCanTouchTheListWhileTheBatchRuns`) passed 5 of 5 reruns — flaky, unrelated. 3 known xUnit1031 warnings | Release workflow not run on GitHub yet |
 | Hand QC: real OrdoSort.exe driven via UI Automation (2026-09-22) | ✅ Data files tab shows only Box labels; added a destination + alert, OK saved both into config.json; old destinations.json ignored; old `destinations_file` key dropped; box-labels.json created | Monitored-folder edit not driven by hand (covered by tests) |
 | Code review (/code-review high, 2026-09-22) | ✅ 6 of 7 findings fixed with tests: box-labels lock no longer breaks the shared-section refresh; Unlock fallback save keeps peers' destinations; duplicate key / locked config.json no longer crashes Settings; box_labels_file may not be config.json; refresh failure now warns instead of saving stale data | Finding 4 (notice about leftover old side files) declined by owner — see Decisions |
+| `check.bat` full run (2026-09-23, all fixes + cleanup, artifacts layout) | ✅ Format check clean; 930 Core + 2,335 Wpf = 3,265 passed, 0 failed; 3 known xUnit1031 warnings | Not yet run on GitHub CI (not pushed) |
+| Whole-app review merge (2026-09-23) | ✅ 21 fixer commits reviewed by hand before cherry-picking; one conflict (route validation) resolved by combining both fixes; `git cherry` confirmed every commit landed | Box-labels findings not fixed yet |
+| Dev setup and moved scripts, by hand (2026-09-23) | ✅ `run.bat dev\config.json` launches from `artifacts\`; Box labels shows the three dev clients; `scripts\publish-boxlabels.bat` works from another folder | `scripts\e2e.bat` and `scripts\demo-full.bat` not run after the move |
 | Box Labels self-contained publish (2026-09-22, local) | ✅ BoxLabels.exe ~74 MB built | — |
 | Merged tree identical to the tested tree | ✅ `git diff feature/box-labels-standalone HEAD` empty | — |
 | BoxLabels.exe run by hand after the merge | ⬜ Not started | The standalone app has not been launched since merging |
 
 ## Quick start
 ```bash
-check.bat        # or: check.bat core
+check.bat                    # or: check.bat core
+run.bat dev\config.json      # try a change by hand
 ```
