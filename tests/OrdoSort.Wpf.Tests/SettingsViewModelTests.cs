@@ -1397,6 +1397,63 @@ public class SettingsViewModelTests : IDisposable
         Assert.Equal("A", selected.Label);
     }
 
+    // A drag starts with a click, so the dragged row is ALREADY selected:
+    // re-selecting it after the drop is a no-op Set, and Up/Down were never
+    // told to re-query — drag the first row to the bottom and Up stayed
+    // greyed out. A WPF button only re-reads CanExecute on
+    // CanExecuteChanged, so that event is the behaviour under test.
+
+    [Fact]
+    public void DraggingTheSelectedRouteTellsUpAndDownToRequery()
+    {
+        var cfg = new Config
+        {
+            Routes =
+            {
+                new Route { Label = "A", Path = _dir },
+                new Route { Label = "B", Path = _dir },
+                new Route { Label = "C", Path = _dir },
+            },
+        };
+        var vm = new SettingsViewModel(cfg, _dialogs);
+        var a = vm.Routes[0];
+        vm.SelectedRoute = a;
+        Assert.False(vm.RouteUpCommand.CanExecute(null));
+        var upRequeried = false;
+        var downRequeried = false;
+        vm.RouteUpCommand.CanExecuteChanged += (_, _) => upRequeried = true;
+        vm.RouteDownCommand.CanExecuteChanged += (_, _) => downRequeried = true;
+
+        vm.DropRoute(a, over: null);   // dropped below the last row
+
+        Assert.Equal(new[] { "B", "C", "A" }, vm.Routes.Select(r => r.Label).ToArray());
+        Assert.Same(a, vm.SelectedRoute);
+        Assert.True(upRequeried);
+        Assert.True(downRequeried);
+        Assert.True(vm.RouteUpCommand.CanExecute(null));
+        Assert.False(vm.RouteDownCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void DraggingTheSelectedFolderTellsUpAndDownToRequery()
+    {
+        var vm = new SettingsViewModel(
+            WatchCfg(("A", "Day"), ("B", "Day"), ("C", "Day")), _dialogs);
+        var a = vm.WatchFolders[0];
+        vm.SelectedWatch = a;
+        var upRequeried = false;
+        var downRequeried = false;
+        vm.WatchUpCommand.CanExecuteChanged += (_, _) => upRequeried = true;
+        vm.WatchDownCommand.CanExecuteChanged += (_, _) => downRequeried = true;
+
+        vm.DropWatch(a, vm.WatchFolders[2]);   // A onto C
+
+        Assert.Equal(new[] { "B", "C", "A" }, vm.WatchFolders.Select(w => w.Label).ToArray());
+        Assert.True(upRequeried);
+        Assert.True(downRequeried);
+        Assert.True(vm.WatchUpCommand.CanExecute(null));
+    }
+
     [Fact]
     public void DropOnAHeaderJoinsThatGroupAndTheDefaultHeaderClearsTheSection()
     {

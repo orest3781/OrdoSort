@@ -1871,6 +1871,33 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     /// <summary>Drop semantics for the grouped list: the drop position
     /// implies both the new section and the new flat position.</summary>
+    /// <summary>Drag-and-drop reorder of the routes list: drop
+    /// <paramref name="dragged"/> onto <paramref name="over"/>'s position,
+    /// or below the last row when it lands on no row. Lives here rather than
+    /// in SettingsWindow's code-behind so the Up/Down re-query that follows
+    /// it is testable — see <see cref="RequeryRouteMoves"/>.</summary>
+    /// <param name="dragged">The route being moved.</param>
+    /// <param name="over">The route it was dropped on, or null for empty space.</param>
+    public void DropRoute(RouteEditVm dragged, RouteEditVm? over)
+    {
+        var from = Routes.IndexOf(dragged);
+        var to = over is null ? Routes.Count - 1 : Routes.IndexOf(over);
+        if (from >= 0 && to >= 0 && from != to) Routes.Move(from, to);
+        SelectedRoute = dragged;
+        RequeryRouteMoves();
+    }
+
+    /// <summary>A drag starts with a click, so the dragged row is almost
+    /// always ALREADY the selection: re-selecting it is a no-op Set that
+    /// raises nothing, and without this Up/Down kept the enablement of the
+    /// row's OLD position (drag the first route to the bottom and Up stayed
+    /// greyed out). Same re-query MoveRoute does after its own move.</summary>
+    private void RequeryRouteMoves()
+    {
+        RouteUpCommand.RaiseCanExecuteChanged();
+        RouteDownCommand.RaiseCanExecuteChanged();
+    }
+
     public void DropWatch(WatchEditVm dragged, object? over)
     {
         if (ReferenceEquals(dragged, over)) return;
@@ -1911,6 +1938,11 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             }
         }
         SelectedWatch = dragged;
+        // Same no-op-Set trap as DropRoute (see RequeryRouteMoves): the
+        // dragged folder is usually already selected, so Up/Down must be
+        // told its position changed, as MoveWatch does.
+        WatchUpCommand.RaiseCanExecuteChanged();
+        WatchDownCommand.RaiseCanExecuteChanged();
     }
 
     private string _uiFontFamily = "";

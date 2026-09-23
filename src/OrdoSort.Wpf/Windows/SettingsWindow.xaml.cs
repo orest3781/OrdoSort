@@ -244,20 +244,11 @@ public partial class SettingsWindow : Window
         var over = RowItemAt(list, e.OriginalSource);
         if (list == RouteList && e.Data.GetData(typeof(RouteEditVm)) is RouteEditVm route)
         {
-            MoveWithin(_vm.Routes, route, over as RouteEditVm);
-            _vm.SelectedRoute = route;
+            _vm.DropRoute(route, over as RouteEditVm);
         }
         else if (list == WatchList && e.Data.GetData(typeof(WatchEditVm)) is WatchEditVm watch)
         {
             _vm.DropWatch(watch, over);
         }
-    }
-
-    private static void MoveWithin<T>(System.Collections.ObjectModel.ObservableCollection<T> items,
-        T dragged, T? target) where T : class
-    {
-        var from = items.IndexOf(dragged);
-        var to = target is null ? items.Count - 1 : items.IndexOf(target);
-        if (from >= 0 && to >= 0 && from != to) items.Move(from, to);
     }
 }
