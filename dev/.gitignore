@@ -1,0 +1,9 @@
+# A small, safe config to run the app against while developing:
+#   run.bat dev\config.json
+# Documents you drop in or file while trying things out stay local; only the
+# config, the box-labels store, names.txt and the empty folders are tracked.
+inbox/*
+set-aside/*
+routes/*/*
+watch/*/*
+!.gitkeep

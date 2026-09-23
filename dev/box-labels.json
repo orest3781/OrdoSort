@@ -1,0 +1,20 @@
+{
+  "label_clients": [
+    {
+      "id": "ACME",
+      "destroy_days": 2555,
+      "next_number": 1
+    },
+    {
+      "id": "NGC",
+      "destroy_days": 730,
+      "next_number": 4200
+    },
+    {
+      "id": "MERID",
+      "destroy_days": 90,
+      "next_number": 1
+    }
+  ],
+  "date_style": "bars"
+}

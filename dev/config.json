@@ -1,0 +1,101 @@
+{
+  "inbox": "inbox",
+  "deferred": "set-aside",
+  "names_file": "names.txt",
+  "history_db": "history.sqlite",
+  "naming_mode": "insert",
+  "sort": "size_desc",
+  "enter_commits": true,
+  "uppercase_names": true,
+  "routes": [
+    {
+      "label": "Invoices",
+      "path": "routes/invoices",
+      "hotkey": "Ctrl+1",
+      "append_suffix": true,
+      "suffix": "_INV",
+      "naming_mode": null,
+      "color": "#2E7D32"
+    },
+    {
+      "label": "Statements",
+      "path": "routes/statements",
+      "hotkey": "Ctrl+2",
+      "append_suffix": false,
+      "suffix": "",
+      "naming_mode": null,
+      "color": "#1565C0"
+    },
+    {
+      "label": "Correspondence",
+      "path": "routes/correspondence",
+      "hotkey": "Ctrl+3",
+      "append_suffix": false,
+      "suffix": "",
+      "naming_mode": null,
+      "color": "#6A1B9A"
+    },
+    {
+      "label": "Medical records",
+      "path": "routes/medical-records",
+      "hotkey": "Ctrl+4",
+      "append_suffix": true,
+      "suffix": "_MED",
+      "naming_mode": null,
+      "color": "#00838F"
+    }
+  ],
+  "merge_headers": {
+    "first": "First Name",
+    "last": "Last Name",
+    "control": "Control ID"
+  },
+  "merge_roster": "",
+  "merge_columns": [],
+  "merge_types": "",
+  "watch_folders": [
+    {
+      "label": "Failed transfers",
+      "path": "A:/DEV/OrdoSort/dev/watch/failed-transfers",
+      "recursive": true,
+      "filetypes": "pdf",
+      "color": "#C0392B",
+      "section": "Failed queues"
+    },
+    {
+      "label": "Scanner out",
+      "path": "A:/DEV/OrdoSort/dev/watch/scanner-out",
+      "recursive": false,
+      "filetypes": "pdf",
+      "color": "#455A64",
+      "section": "Scanner queues"
+    }
+  ],
+  "alert_texts": [
+    "URGENT",
+    "RUSH",
+    "STAT"
+  ],
+  "monitor_title": "Needs attention",
+  "flash_alerts": true,
+  "poll_seconds": 15,
+  "tile_visibility": "active",
+  "ui_font_family": "",
+  "ui_font_size": 0,
+  "theme": "auto",
+  "word_separator": "",
+  "saved_passwords": [
+    {
+      "label": "Test payer",
+      "password": "test1234"
+    }
+  ],
+  "sounds": {
+    "enabled": true,
+    "new_alert": "",
+    "filed": "none",
+    "set_aside": "none",
+    "error": ""
+  },
+  "box_labels_file": "box-labels.json"
+}

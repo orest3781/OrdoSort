@@ -177,6 +177,16 @@ check.bat wpf      # only tests/OrdoSort.Wpf.Tests
 Both applications and all tests are in `OrdoSort.sln`, so `check.bat` covers
 Box Labels too. Plain `dotnet build` / `dotnet test` still work.
 
+To try a change by hand, run against the small tracked dev setup — four
+destinations, two monitored folders, three box-label clients:
+
+```
+run.bat dev\config.json
+```
+
+Documents you drop into `dev\` stay local (see `dev\.gitignore`). For a large,
+realistic inbox, use the demo workbench below instead.
+
 ## Box Labels, on its own
 
 `BoxLabels.exe` is the box-label maker as a separate program, for someone who
