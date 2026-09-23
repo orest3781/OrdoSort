@@ -86,6 +86,21 @@ public class LabelMakerViewModelTests : IDisposable
     }
 
     [Fact]
+    public void ASeedThatLosesTheRaceToAnotherStationLeavesThatStationsCountersAlone()
+    {
+        // Two stations upgrade at once. Both see no box-labels file (the
+        // check runs outside the lock); the other station seeds first and
+        // prints up to 250. This station's seed then runs against a store
+        // that already has clients, and must not reset ACME back to 7.
+        var path = PathWith(new LabelClient { Id = "ACME", DestroyDays = 45, NextNumber = 250 });
+        var staleSeed = new[] { new LabelClient { Id = "ACME", DestroyDays = 45, NextNumber = 7 } };
+
+        LabelMakerViewModel.SeedFromLegacyClients(path, staleSeed);
+
+        Assert.Equal(250, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+    }
+
+    [Fact]
     public void LoadsClientsFromConfigAndSelectsTheFirst()
     {
         var path = PathWith(

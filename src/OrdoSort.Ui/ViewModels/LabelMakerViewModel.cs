@@ -150,17 +150,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             // migration never gets another chance — the inline counters are
             // gone for good the next time anything saves config.json.
             if (!File.Exists(boxLabelsPath) && migrationSeed is { Count: > 0 })
-            {
-                BoxLabelStore.Mutate(boxLabelsPath, d =>
-                {
-                    d.LabelClients = migrationSeed.Select(c => new LabelClient
-                    {
-                        Id = c.Id, DestroyDays = c.DestroyDays, NextNumber = c.NextNumber,
-                        Extras = c.Extras,
-                    }).ToList();
-                    return 0;
-                });
-            }
+                SeedFromLegacyClients(boxLabelsPath, migrationSeed);
 
             var doc = BoxLabelStore.Read(boxLabelsPath);
             _dateStyle = BoxLabels.NormalizeDateStyle(doc.DateStyle);
@@ -249,6 +239,27 @@ public sealed class LabelMakerViewModel : ObservableObject
 
         Selected = Clients.FirstOrDefault();   // after the commands the setter pokes
     }
+
+    /// <summary>First-run migration of a pre-split config's inline clients
+    /// into the store.
+    ///
+    /// The caller's File.Exists check runs outside the lock, so two stations
+    /// upgrading at once can both get here. The one that loses the race must
+    /// not replace the winner's roster with its own seed: the winner may
+    /// already have printed, and resetting its counters would issue those
+    /// box numbers again. So the seed only lands on a store that, read under
+    /// the lock, still has no clients.</summary>
+    internal static void SeedFromLegacyClients(string boxLabelsPath, IReadOnlyList<LabelClient> seed) =>
+        BoxLabelStore.Mutate(boxLabelsPath, d =>
+        {
+            if (d.LabelClients.Count > 0) return 0;
+            d.LabelClients = seed.Select(c => new LabelClient
+            {
+                Id = c.Id, DestroyDays = c.DestroyDays, NextNumber = c.NextNumber,
+                Extras = c.Extras,
+            }).ToList();
+            return 0;
+        });
 
     /// <summary>Sends composed sheets to a printer; returns false when the
     /// user cancels the print dialog. Supplied by the window (WPF PrintDialog
