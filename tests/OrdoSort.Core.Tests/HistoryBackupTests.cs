@@ -12,10 +12,23 @@ public class HistoryBackupTests : IDisposable
         Directory.CreateDirectory(_dir);
         _db = Path.Combine(_dir, "history.sqlite");
         _backups = Path.Combine(_dir, "backups");
-        File.WriteAllText(_db, "DBDATA");
+        // A real audit database with one row: the backup goes through
+        // SQLite, so the source has to be one.
+        using var seed = new History(_db);
+        LogOneRow(seed, "first");
     }
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
+
+    private static void LogOneRow(History history, string name) =>
+        history.LogCommit(@"C:\in\a.pdf", "a.pdf", name + ".pdf", name, "replace", "",
+            "Main", @"C:\out", tagged: false, collisionSuffix: "");
+
+    private static int CountRows(string dbPath)
+    {
+        using var h = new History(dbPath);
+        return h.Count();
+    }
 
     [Fact]
     public void CopiesOncePerDay()
@@ -24,13 +37,46 @@ public class HistoryBackupTests : IDisposable
         var first = HistoryBackup.BackupDaily(_db, _backups, day);
         Assert.NotNull(first);
         Assert.True(File.Exists(Path.Combine(_backups, "history-20260720.sqlite")));
-        Assert.Equal("DBDATA", File.ReadAllText(first!));
+        Assert.Equal(1, CountRows(first!));
 
         // same day again: does not re-copy (even if the DB changed since)
-        File.WriteAllText(_db, "CHANGED");
+        using (var h = new History(_db)) LogOneRow(h, "second");
         HistoryBackup.BackupDaily(_db, _backups, day);
-        Assert.Equal("DBDATA", File.ReadAllText(first!));   // still the morning's copy
+        Assert.Equal(1, CountRows(first!));   // still the morning's copy
         Assert.Single(Directory.GetFiles(_backups));
+    }
+
+    [Fact]
+    public void BackupWhileAnotherStationHasTheDbOpenIsACompleteCopy()
+    {
+        // Other workstations keep the shared DB open all day; the backup
+        // must neither need them closed nor miss their committed rows.
+        using var otherStation = new History(_db);
+        LogOneRow(otherStation, "second");
+
+        var dest = HistoryBackup.BackupDaily(_db, _backups, new DateTime(2026, 7, 20));
+
+        Assert.NotNull(dest);
+        Assert.Equal(2, CountRows(dest!));
+    }
+
+    [Fact]
+    public void FailedBackupLeavesNothingThatCountsAsTodaysBackup()
+    {
+        // A copy that did not produce a complete, readable database must not
+        // land at today's name: "already backed up today" is judged by that
+        // file existing, so a bad file there would never be retried.
+        var broken = Path.Combine(_dir, "broken.sqlite");
+        File.WriteAllText(broken, "not a sqlite database");
+        var day = new DateTime(2026, 7, 20);
+
+        Assert.Null(HistoryBackup.BackupDaily(broken, _backups, day));
+        Assert.Empty(Directory.GetFiles(_backups));   // no partial left behind
+
+        // The next attempt that day (once the DB is readable) does the backup.
+        var retried = HistoryBackup.BackupDaily(_db, _backups, day);
+        Assert.NotNull(retried);
+        Assert.Equal(1, CountRows(retried!));
     }
 
     [Fact]

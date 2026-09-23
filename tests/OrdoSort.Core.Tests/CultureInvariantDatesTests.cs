@@ -94,7 +94,7 @@ public class CultureInvariantDatesTests
             try
             {
                 var db = Path.Combine(dir, "history.sqlite");
-                File.WriteAllText(db, "x");
+                using (new History(db)) { }   // backups go through SQLite
                 var dest = HistoryBackup.BackupDaily(db, backups, new DateTime(2026, 8, 2));
                 Assert.Equal("history-20260802.sqlite", Path.GetFileName(dest));
             }
