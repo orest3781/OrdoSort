@@ -499,6 +499,46 @@ public class ZipperTests : IDisposable
         Assert.Equal("doc.txt", Assert.Single(archive.Entries).FullName);
     }
 
+    /// <summary>The retry above is for the PLACEMENT — a destination someone
+    /// briefly holds open. A source file Zipper can't read is not that: it
+    /// won't clear in the next few milliseconds, and each retry used to
+    /// rebuild the whole archive, so a Save-As with one locked source file
+    /// rebuilt it 50 times (a multi-minute apparent hang on a big folder)
+    /// before failing, while the default-name branch failed at once. The
+    /// build must run once and fail straight away, leaving the previous file
+    /// at the destination untouched and no temp file behind.</summary>
+    [Fact]
+    public void SaveAsWithAnUnreadableSourceFailsOnTheFirstAttemptWithoutRebuilding()
+    {
+        var source = Path.Combine(_dir, "locked.txt");
+        File.WriteAllText(source, "contents");
+        var dest = Path.Combine(_dir, "archive.zip");
+        File.WriteAllText(dest, "the previous archive");
+
+        var attemptsSeen = new List<int>();
+        AtomicPlace.BeforeAttempt = (destination, attempt) =>
+        {
+            if (destination != dest) return;   // process-wide seam; not our write
+            attemptsSeen.Add(attempt);
+        };
+        Zipper.ZipResult r;
+        try
+        {
+            using var lockSource = new FileStream(source, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            r = Zipper.CreateZip(new[] { source }, dest);
+        }
+        finally
+        {
+            AtomicPlace.BeforeAttempt = null;
+        }
+
+        Assert.Equal("error", r.Status);
+        Assert.Equal(new[] { 0 }, attemptsSeen);
+        Assert.Equal("the previous archive", File.ReadAllText(dest));
+        Assert.Equal(new[] { "archive.zip", "locked.txt" },
+            Directory.GetFiles(_dir).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal));
+    }
+
     // ------------------------------------------------------ passwords
 
     [Theory]

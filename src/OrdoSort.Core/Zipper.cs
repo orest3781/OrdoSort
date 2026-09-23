@@ -152,7 +152,7 @@ public static class Zipper
             // deletes the pre-existing file up front: if the build or the
             // placement fails, outputPath is left exactly as the user last
             // saw it, because nothing above ever touched it.
-            if (!AtomicPlace.TryReplace(outputPath, tmp => BuildArchive(tmp, existing), out var placeError))
+            if (!AtomicPlace.TryReplace(outputPath, tmp => BuildArchiveOnce(tmp, existing), out var placeError))
                 return new ZipResult("error", null, $"couldn't create the zip: {placeError}");
             return new ZipResult("ok", outputPath);
         }
@@ -232,6 +232,37 @@ public static class Zipper
             }
         }
     }
+
+    /// <summary>The Save-As branch's writeTemp: <see cref="BuildArchive"/>,
+    /// with its IO failures taken out of AtomicPlace's retry. AtomicPlace
+    /// retries every IOException/UnauthorizedAccessException from writeTemp
+    /// up to <see cref="AtomicPlace.Attempts"/> times, because for a config
+    /// file a failed write is a network blip. Here the write is the whole
+    /// archive build, and its usual IO failure — a source file someone has
+    /// open, an access-denied subfolder — does not clear in milliseconds:
+    /// retrying rebuilt the entire archive 50 times (a long apparent hang on
+    /// a big folder) before failing anyway, while the default-name branch
+    /// failed at once. Wrapped in an exception type AtomicPlace does not
+    /// retry, the build runs once; the MOVE onto the destination keeps its
+    /// retry, which is the part a briefly-held destination needs. Done here
+    /// rather than in AtomicPlace so its semantics stay the same for every
+    /// other caller.</summary>
+    private static void BuildArchiveOnce(string path, IReadOnlyList<string> existing)
+    {
+        try
+        {
+            BuildArchive(path, existing);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new ArchiveBuildFailedException(ex);
+        }
+    }
+
+    /// <summary>Carries a build failure past AtomicPlace's retry filter with
+    /// the original message intact, so the user still reads the real cause
+    /// ("being used by another process", "access denied").</summary>
+    private sealed class ArchiveBuildFailedException(Exception inner) : Exception(inner.Message, inner);
 
     // PlaceAtomically lived here — a byte-for-byte copy of
     // Config.WriteAtomic's retry loop, as its own doc comment admitted
