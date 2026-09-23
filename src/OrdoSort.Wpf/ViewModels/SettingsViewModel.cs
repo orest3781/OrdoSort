@@ -1869,8 +1869,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         WatchFolders.Any(w => string.Equals(w.Section.Trim(), name, StringComparison.CurrentCultureIgnoreCase))
         || _stickySections.Any(s => string.Equals(s, name, StringComparison.CurrentCultureIgnoreCase));
 
-    /// <summary>Drop semantics for the grouped list: the drop position
-    /// implies both the new section and the new flat position.</summary>
     /// <summary>Drag-and-drop reorder of the routes list: drop
     /// <paramref name="dragged"/> onto <paramref name="over"/>'s position,
     /// or below the last row when it lands on no row. Lives here rather than
@@ -1898,6 +1896,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         RouteDownCommand.RaiseCanExecuteChanged();
     }
 
+    /// <summary>Drop semantics for the grouped list: the drop position
+    /// implies both the new section and the new flat position.</summary>
     public void DropWatch(WatchEditVm dragged, object? over)
     {
         if (ReferenceEquals(dragged, over)) return;
