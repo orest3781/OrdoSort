@@ -26,6 +26,10 @@ public sealed class Session
     // cached from a Config snapshot that could theoretically go stale.
     private readonly string _cfgPath;
     private readonly LinkedList<UndoEntry> _undo = new();
+    // Queue indexes already found vanished. UndoLast rewinds Pos to the
+    // restored document, so a vanished one after it comes round again; it
+    // must not get a second <vanished> row or a second count.
+    private readonly HashSet<int> _vanishedSeen = new();
 
     public string SessionMode { get; set; }
     public List<string> Queue { get; private set; } = new();
@@ -48,6 +52,7 @@ public sealed class Session
         Queue = queue.ToList();
         Pos = Filed = Skipped = Vanished = 0;
         _undo.Clear();
+        _vanishedSeen.Clear();
         RowIds.Clear();
         SessionMode = _cfg.NamingMode;
     }
@@ -210,6 +215,12 @@ public sealed class Session
 
     private void LogVanished(string src)
     {
+        // Already found missing (and already reported, row or AuditError) on
+        // an earlier pass, before an undo rewound past it: just move on. Only
+        // reached once the file is found missing again, so one that came
+        // back is filed normally instead.
+        if (!_vanishedSeen.Add(Pos)) { Pos++; return; }
+
         TryLog(() => _history.LogCommit(
             src, Path.GetFileName(src), Path.GetFileName(src), "", SessionMode,
             "", VanishedLabel, "", tagged: false, ""), out var failure);

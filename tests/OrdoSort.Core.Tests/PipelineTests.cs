@@ -303,6 +303,59 @@ public class PipelineTests : IDisposable
     }
 
     [Fact]
+    public void UndoPastAVanishedDocumentDoesNotLogOrCountItTwice()
+    {
+        // Undo rewinds Pos to the restored document, so a vanished one after
+        // it comes round again. It already has its <vanished> row; a second
+        // row and a second count would say two documents went missing.
+        using var h = new History(Path.Combine(_root, "h.sqlite"));
+        var cfg = new Config { Inbox = _inbox, Deferred = _deferred };
+        var s = new Session(cfg, h, _cfgPath);
+        var a = MakePdf(_inbox, "20240101--1.pdf");
+        var ghost = Path.Combine(_inbox, "20240102--2.pdf");   // never created
+        var c = MakePdf(_inbox, "20240103--3.pdf");
+        s.Start(new[] { a, ghost, c });
+
+        s.CommitCurrent("SMITH JOHN", Dest);
+        Assert.True(s.CommitCurrent("JONES", Dest).Vanished);
+        Assert.Equal(1, s.Vanished);
+        s.UndoLast();                                    // a is back, Pos = 0
+
+        s.CommitCurrent("SMITH JOHN", Dest);             // a again
+        Assert.Equal(ghost, s.Current);                  // the ghost comes round
+        Assert.True(s.CommitCurrent("JONES", Dest).Vanished);
+
+        Assert.Equal(1, s.Vanished);
+        Assert.Single(h.Rows(), r => (string)r["route_label"] == Session.VanishedLabel);
+        Assert.Equal(c, s.Current);                      // still moves on past it
+    }
+
+    [Fact]
+    public void AVanishedDocumentThatReturnsAfterUndoIsFiledNormally()
+    {
+        // Remembering the ghost must not skip it blindly: if it is back in
+        // the inbox by the time it comes round again, it files as usual.
+        using var h = new History(Path.Combine(_root, "h.sqlite"));
+        var cfg = new Config { Inbox = _inbox, Deferred = _deferred };
+        var s = new Session(cfg, h, _cfgPath);
+        var a = MakePdf(_inbox, "20240101--1.pdf");
+        var returning = Path.Combine(_inbox, "20240102--2.pdf");
+        s.Start(new[] { a, returning });
+
+        s.CommitCurrent("SMITH JOHN", Dest);
+        Assert.True(s.CommitCurrent("JONES", Dest).Vanished);
+        s.UndoLast();
+        MakePdf(_inbox, "20240102--2.pdf");               // it came back
+
+        s.CommitCurrent("SMITH JOHN", Dest);
+        var outcome = s.CommitCurrent("JONES", Dest);
+
+        Assert.False(outcome.Vanished);
+        Assert.Equal(2, s.Filed);
+        Assert.Equal(1, s.Vanished);                     // the earlier miss still counts once
+    }
+
+    [Fact]
     public void SessionSkipAndExtend()
     {
         using var h = new History(Path.Combine(_root, "h.sqlite"));
