@@ -1057,6 +1057,29 @@ public class LabelMakerViewModelTests : IDisposable
         Assert.Equal("", vm.Status);   // warned and halted, not warned and printed anyway
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-5)]
+    public void PrintRefusesANumberBelowOneOnDiskAndLeavesTheCounterUnchanged(long onDisk)
+    {
+        // A hand-edited file can hold 0 or a negative number. The screen
+        // still shows the number from when the window opened, so only the
+        // claim's read of the fresh file can catch it — and it must refuse
+        // before writing, not advance the file and then fail to build labels.
+        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = 10 });
+        var vm = Vm(path);
+        BoxLabelStore.Mutate(path, d =>
+            { d.LabelClients.Single(c => c.Id == "ABCD").NextNumber = onDisk; return 0; });
+        var printed = false;
+        vm.PrintSheets = (_, _) => { printed = true; return true; };
+
+        vm.Print();
+
+        Assert.Contains("not a box number", Assert.Single(_dialogs.Warnings).Message);
+        Assert.Equal(onDisk, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+        Assert.False(printed);
+    }
+
     // ----------------------------------------------------------- date style
 
     [Fact]

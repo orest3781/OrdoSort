@@ -466,6 +466,13 @@ public sealed class LabelMakerViewModel : ObservableObject
                 doc.LabelClients.Add(c);
             }
             var s = typedStart ?? c.NextNumber;
+            // A hand-edited file can hold 0 or less. Refused here, before
+            // the write: advancing the file first and then failing to build
+            // the labels would move the counter for sheets never produced.
+            if (s < 1)
+                throw new ConfigException(
+                    $"the box-labels file says {client.Id}'s next number is {s}, which is not a box "
+                    + $"number — set it to 1 or more before printing ({_boxLabelsPath})");
             if (s + count - 1 > BoxLabels.MaxNumber)
                 throw new ConfigException(
                     "this batch would pass label 99 999 999 — reset or renumber the client");
