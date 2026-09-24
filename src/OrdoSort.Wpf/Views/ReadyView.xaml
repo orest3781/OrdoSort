@@ -189,12 +189,29 @@
         <!-- monitored folders: grid of cards at the top -->
         <ItemsControl Grid.Row="0" ItemsSource="{Binding TileGroups}" Focusable="False"
                       Visibility="{Binding DashboardVisible, Converter={StaticResource BoolToVis}}">
+            <!-- Each group (and, below, each tile) is also an entry in the
+                 screen-reader tree; unnamed, it was announced as its CLR type
+                 ("OrdoSort.Wpf.ViewModels.TileGroupViewModel"). The container
+                 stays the default ContentPresenter — TileCascade reads its
+                 AlternationIndex — this only names it. -->
+            <ItemsControl.ItemContainerStyle>
+                <Style TargetType="ContentPresenter">
+                    <Setter Property="AutomationProperties.Name" Value="{Binding Title}" />
+                </Style>
+            </ItemsControl.ItemContainerStyle>
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
                     <StackPanel>
                         <TextBlock Text="{Binding Title}" Style="{StaticResource SectionHeaderFirst}" />
                         <ItemsControl ItemsSource="{Binding Tiles}" Focusable="False"
                                       AlternationCount="8">
+                            <!-- Same as the group entry above: named with the text
+                                 the tile's own button already announces. -->
+                            <ItemsControl.ItemContainerStyle>
+                                <Style TargetType="ContentPresenter">
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding Display}" />
+                                </Style>
+                            </ItemsControl.ItemContainerStyle>
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <!-- Columns bound off the ANCESTOR ItemsControl's own

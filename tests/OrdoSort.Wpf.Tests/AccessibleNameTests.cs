@@ -171,6 +171,58 @@ public class AccessibleNameTests
         finally { window.Close(); }
     });
 
+    /// <summary>The Ready dashboard's monitored-folder tiles, read the way a
+    /// screen reader reads them: through the automation tree, where each
+    /// ItemsControl also exposes an entry per data item. Those entries had no
+    /// name, so they were announced as "OrdoSort.Wpf.ViewModels.TileGroupViewModel"
+    /// and "...TileViewModel" (seen live through UI Automation, 2026-09-23).
+    /// The dashboard is a view, not a registry window, so the per-window rule
+    /// above never walked it.</summary>
+    [Fact]
+    public void DashboardTileGroupsAndTilesAnnounceTheirTitleAndCount() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        using var fx = new ShellFixture(cfg =>
+        {
+            var failed = Path.Combine(cfg.Inbox, "..", "failed");
+            var scanner = Path.Combine(cfg.Inbox, "..", "scanner");
+            Directory.CreateDirectory(failed);
+            Directory.CreateDirectory(scanner);
+            File.WriteAllText(Path.Combine(failed, "a.pdf"), "x");
+            File.WriteAllText(Path.Combine(scanner, "b.pdf"), "x");
+            cfg.WatchFolders.Add(new WatchFolder { Label = "Failed transfers", Path = failed, Section = "Failed queues" });
+            cfg.WatchFolders.Add(new WatchFolder { Label = "Scanner out", Path = scanner });
+        });
+        fx.Shell.Initialize();
+        var view = new OrdoSort.Wpf.Views.ReadyView { DataContext = fx.Shell, Width = 700, Height = 1200 };
+        var host = new Window
+        {
+            Content = view, Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual, Width = 700, Height = 600,
+        };
+        try
+        {
+            host.Show();
+            host.UpdateLayout();
+            OverflowProbe.PumpRender();
+            host.UpdateLayout();
+
+            var names = new List<string>();
+            void Walk(AutomationPeer peer)
+            {
+                names.Add(peer.GetName());
+                foreach (var child in peer.GetChildren() ?? new List<AutomationPeer>()) Walk(child);
+            }
+            Walk(UIElementAutomationPeer.CreatePeerForElement(view)!);
+
+            Assert.DoesNotContain(names, LooksLikeATypeName);
+            Assert.Contains("Failed queues", names);                       // the section's own entry
+            Assert.Contains(names, n => n.StartsWith("Failed transfers", StringComparison.Ordinal));
+            Assert.Contains(names, n => n.StartsWith("Scanner out", StringComparison.Ordinal));
+        }
+        finally { host.Close(); }
+    });
+
     [Theory, MemberData(nameof(Windows))]
     public void EveryValueCarryingControlCanSayWhatItIs(string windowName) => _fx.Invoke(() =>
     {
