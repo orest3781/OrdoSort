@@ -154,7 +154,7 @@ public sealed class HighlightContrastFixture : IDisposable
             AddIfMissing("PasswordStatus", new OrdoSort.Wpf.Views.PasswordStatusConverter());
             AddIfMissing("FontFamilyString", new OrdoSort.Wpf.Views.FontFamilyStringConverter());
             AddIfMissing("FontSizeText", new OrdoSort.Wpf.Views.FontSizeTextConverter());
-            AddIfMissing("AppFontFamily", new FontFamily("Segoe UI Variable Text, Segoe UI"));
+            AddIfMissing("AppFontFamily", OrdoSort.Wpf.Theme.AppFonts.CreateDefault());
             AddIfMissing("AppFontSize", 14.0);
             dispatcher = Dispatcher.CurrentDispatcher;
             // ready must be set from ON this thread, after Dispatcher.CurrentDispatcher

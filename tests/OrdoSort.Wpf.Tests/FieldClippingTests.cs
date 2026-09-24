@@ -59,7 +59,7 @@ public class FieldClippingTests
 
     public static TheoryData<string, double> Fonts() => new()
     {
-        { "Segoe UI Variable Text, Segoe UI", 14.0 },
+        { OrdoSort.Wpf.Theme.AppFonts.DefaultChain, 14.0 },
         { "Consolas", 14.0 },   // the family that exposed UI-25
         { "Consolas", 18.0 },
     };
@@ -70,7 +70,7 @@ public class FieldClippingTests
         ThemeManager.Apply(_fx.App, dark: false);
         var oldFamily = _fx.App.Resources["AppFontFamily"];
         var oldSize = _fx.App.Resources["AppFontSize"];
-        _fx.App.Resources["AppFontFamily"] = new FontFamily(family);
+        _fx.App.Resources["AppFontFamily"] = new FontFamily(OrdoSort.Wpf.Theme.AppFonts.FontBaseUri, family);
         _fx.App.Resources["AppFontSize"] = size;
 
         // A real destination path, long enough that its routes share a prefix —

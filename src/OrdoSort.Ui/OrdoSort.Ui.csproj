@@ -30,6 +30,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The brand typeface, embedded so both executables carry it and it
+         never depends on what is installed. AppFonts resolves it by pack
+         URI. Licence: Fonts/OFL.txt, repeated in THIRD-PARTY-NOTICES. -->
+    <Resource Include="Fonts\*.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- "OrdoSort" is OrdoSort.Wpf's AssemblyName, not a folder. It is a
          friend rather than a plain consumer because members like
          AsyncRelayCommand.Completion were deliberately kept off the public

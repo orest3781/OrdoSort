@@ -372,7 +372,8 @@ public class WindowOverflowTests
         var defaultFont = _fx.App.Resources["AppFontSize"];
         var defaultFamily = _fx.App.Resources["AppFontFamily"];
         _fx.App.Resources["AppFontSize"] = fontSize;
-        _fx.App.Resources["AppFontFamily"] = new System.Windows.Media.FontFamily(fontFamily);
+        _fx.App.Resources["AppFontFamily"] = new System.Windows.Media.FontFamily(
+            OrdoSort.Wpf.Theme.AppFonts.FontBaseUri, fontFamily);
 
         var (window, cleanup) = probe.Build();
         window.Left = -20000; window.Top = 0; window.ShowActivated = false;

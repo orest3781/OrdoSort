@@ -67,7 +67,7 @@ public partial class App : Application
         ThemeManager.Start(this, "auto");
         // The XAML placeholder is replaced by the shared default, so the two
         // applications cannot drift apart on the font they fall back to.
-        Resources["AppFontFamily"] = new FontFamily(AppFonts.DefaultChain);
+        Resources["AppFontFamily"] = AppFonts.CreateDefault();
 
         _dialogs = dialogs;
         _settingsPath = LabelsFileSettings.PathIn(AppContext.BaseDirectory);

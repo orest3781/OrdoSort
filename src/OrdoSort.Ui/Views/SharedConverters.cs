@@ -6,7 +6,7 @@ using OrdoSort.Wpf.Theme;
 namespace OrdoSort.Wpf.Views;
 
 /// <summary>Config font-family string → FontFamily; blank means the app
-/// default (Segoe UI). Drives the live sample on the Appearance page.</summary>
+/// default (the bundled brand face). Drives the live sample on the Appearance page.</summary>
 public sealed class FontFamilyStringConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -14,11 +14,11 @@ public sealed class FontFamilyStringConverter : IValueConverter
         var name = (value as string)?.Trim() ?? "";
         try
         {
-            return new FontFamily(name.Length == 0 ? AppFonts.DefaultChain : name);
+            return AppFonts.Create(name);
         }
         catch (ArgumentException)
         {
-            return new FontFamily(AppFonts.DefaultChain);
+            return AppFonts.CreateDefault();
         }
     }
 

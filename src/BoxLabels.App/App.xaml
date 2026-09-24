@@ -22,7 +22,7 @@
             </ResourceDictionary.MergedDictionaries>
             <!-- Load-time placeholders: the styles above consume these two
                  keys, so they must exist before any window is built.
-                 OnStartup replaces them with AppFonts.DefaultChain, which is
+                 OnStartup replaces them with AppFonts.CreateDefault(), which is
                  the real source of truth for both applications. -->
             <FontFamily x:Key="AppFontFamily">Segoe UI Variable Text, Segoe UI</FontFamily>
             <sys:Double x:Key="AppFontSize" xmlns:sys="clr-namespace:System;assembly=mscorlib">14</sys:Double>

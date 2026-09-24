@@ -530,7 +530,9 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     // KeyValuePair: WPF binds properties, not tuple fields
     public static readonly KeyValuePair<string, string>[] FontChoices =
     {
-        new("", "(system default)"),
+        new("", "Atkinson Hyperlegible Next (default)"),
+        // The pre-rebrand default, for anyone who prefers the Windows look.
+        new("Segoe UI Variable Text, Segoe UI", "Segoe UI Variable"),
         new("Segoe UI", "Segoe UI"),
         new("Tahoma", "Tahoma"),
         new("Verdana", "Verdana"),
