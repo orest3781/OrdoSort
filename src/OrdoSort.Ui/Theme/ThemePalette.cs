@@ -63,25 +63,8 @@ public sealed record ThemePalette(
                        // Theme.StatusRedRaised instead of Theme.StatusRed. See
                        // StatusRedRaised's own comment for the replacement values.
     Rgb StatusRedRaised, // the red status voice, readable on SurfaceRaised specifically
-                         // -- StatusRed above was tuned against Surface/WindowBg and
-                         // falls short of SurfaceRaised (one step lighter in dark mode)
-                         // for graphite/ledger/microfilm: 4.11:1/4.34:1/4.38:1, all
-                         // below this app's 4.5 floor (paper 5.44, manila 5.81, carbon
-                         // 4.93, blueprint 5.94 already cleared it). paper/manila/
-                         // carbon/blueprint reuse StatusRed verbatim below -- same
-                         // pattern as light StatusGreen reusing Success. graphite/
-                         // ledger/microfilm get a brighter red, (234,130,130) -- found
-                         // by stepping StatusRed's (229,115,115) up while keeping R
-                         // dominant (so it still reads red, not pink) until
-                         // ContrastRatio vs SurfaceRaised cleared 4.55 with real
-                         // margin: measured 4.689:1 (graphite), 4.947:1 (ledger),
-                         // 4.986:1 (microfilm) -- also clears Surface/WindowBg (bright
-                         // on dark only grows further: 5.575-7.973:1 across both).
-                         // One shared value for all three rather than three
-                         // independently-minimal ones: they share an identical
-                         // baseline StatusRed and land close enough in SurfaceRaised
-                         // luminance that a single voice reads as more deliberate than
-                         // three near-identical reds a pixel apart.
+                         // -- StatusRed was tuned against Surface/WindowBg and can fall
+                         // short of SurfaceRaised (one step lighter in dark mode).
     Rgb TileDefaultBg, // dashboard tile with no configured color
     Rgb SurfaceRaised, // floating surfaces (the alert toast's card, Processing's
                        // running-file chip, Match & Merge's side panel) -- one
@@ -94,7 +77,7 @@ public sealed record ThemePalette(
                        // against the REAL background one call site actually
                        // paints on, has something concrete to be tuned against.
     Rgb BorderStrong,  // emphasized borders (focus rings, active dividers)
-    Rgb AccentBronze,  // warm secondary accent (badges, highlights on graphite)
+    Rgb AccentBronze,  // the brand accent: focus rings, badges, selected tabs
                        // ------------------------------------------------------- hover/pressed
                        // Hover-tint strength review, round 2 (2026-08-08). Round 1 raised a
                        // SINGLE derived Mix(Surface, Text, amount) shared by every hover/
@@ -151,13 +134,19 @@ public sealed record ThemePalette(
     Rgb SurfacePressed, // chrome pressed (Text-only), stronger than SurfaceHover
     Rgb RowHover)       // row/list hover (Text+SubtleText+StatusAmber+StatusGreen+StatusRed)
 {
+    // Brand palette "ink & bronze" (2026-09 rebrand): warm paper and ink in
+    // light, graphite and brass in dark. Every text pairing is enforced to
+    // >= 4.5:1 by ThemeTests.TextPairs; the tightest in light is StatusGreen
+    // on WindowBg at 4.62:1. Status, warning and danger colours are
+    // unchanged from the pre-rebrand palettes, which the hover-tint and
+    // status reviews above tuned.
     public static ThemePalette Light { get; } = new(
-        WindowBg: new(247, 248, 249),
+        WindowBg: new(245, 243, 238),   // warm paper
         Surface: new(255, 255, 255),
-        Text: new(23, 26, 31),
-        SubtleText: new(84, 90, 99),
-        Border: new(186, 192, 200),
-        Accent: new(45, 50, 58),
+        Text: new(28, 31, 36),          // ink, 14.9:1 on WindowBg
+        SubtleText: new(88, 93, 102),
+        Border: new(195, 189, 176),
+        Accent: new(36, 40, 46),        // primary action: an ink button
         AccentText: new(255, 255, 255),
         Warning: new(255, 236, 179),
         WarningText: new(102, 60, 0),
@@ -165,112 +154,55 @@ public sealed record ThemePalette(
         DangerText: new(255, 255, 255),
         Success: new(46, 125, 50),
         StatusAmber: new(146, 90, 4),
-        // Success itself already clears 4.5:1 in light (5.13:1 Surface,
-        // 4.82:1 WindowBg) -- reused verbatim rather than inventing a
-        // second light green nobody needs.
+        // Success itself clears 4.5:1 here (4.62:1 WindowBg, 5.13:1
+        // Surface) -- reused verbatim.
         StatusGreen: new(46, 125, 50),
-        // Danger itself already clears 4.5:1 in light as foreground text
-        // (5.44:1 Surface, 5.11:1 WindowBg) -- reused verbatim, same
-        // reasoning as StatusGreen's light value above.
+        // Danger clears 4.5:1 as foreground text here -- reused verbatim.
         StatusRed: new(192, 57, 43),
-        // SurfaceRaised == Surface here (5.44:1 unchanged) -- reused
-        // verbatim, same reasoning as StatusGreen/StatusRed's light values
-        // above.
+        // SurfaceRaised == Surface in light, so StatusRed already clears it.
         StatusRedRaised: new(192, 57, 43),
-        TileDefaultBg: new(228, 230, 233),
-        // Light's Surface is already near-white; SurfaceRaised == Surface
-        // unchanged (see the field's own comment on the record above).
+        TileDefaultBg: new(232, 229, 222),
+        // Light's Surface is already white; the shadow does the lifting.
         SurfaceRaised: new(255, 255, 255),
-        BorderStrong: new(120, 128, 138),
-        AccentBronze: new(140, 109, 63),
-        // Chrome tier, Text-only: darkest safe boundary against Text alone
-        // (Text-only, byte search) is v=130 -- these sit well inside it
-        // with real margin. Hover 1.729:1 surround-delta vs Surface (Text
-        // stays 10.09:1); Pressed 2.649:1 (Text 6.59:1).
-        SurfaceHover: new(196, 197, 198),
-        SurfacePressed: new(158, 159, 161),
-        // Row tier, round 3 (2026-08-08): a CHROMATIC tint, not a neutral
-        // grey -- round 2's neutral RowHover held luminance near Surface to
-        // protect the five foregrounds and, as a direct result, measured as
-        // LESS visible than what it replaced (see ThemeManager.cs's own
-        // comment at this field for the full round 1/2/3 CIE76 table).
-        // Surface is already pure white, so there is no headroom to
-        // *darken* into without re-breaking StatusGreen -- the fix is to
-        // hold L* and shift HUE instead: warm, in this app's own bronze
-        // family (AccentBronze is Lab hue ~78-85 deg; this sits at ~100
-        // deg, still the same warm/gold quadrant), by dropping blue while
-        // keeping red/green high, the cheapest channel for WCAG luminance
-        // to spend (0.0722 weight vs green's 0.7152). CIE76 vs Surface:
-        // 15.07 (round 1 grey measured 8.09, round 2 grey measured only
-        // 1.84 -- an order of magnitude fainter than what this round
-        // fixes). Legibility (ContrastRatio, unaffected by the metric
-        // switch): Text 16.48:1, SubtleText 6.57:1, StatusAmber 5.38:1,
-        // StatusGreen 4.84:1, StatusRed 5.14:1 -- all comfortably >=4.5,
-        // the tightest (StatusGreen) with a real 0.34 margin, not pinned.
+        BorderStrong: new(122, 116, 104),
+        // Brand bronze, 5.71:1 on WindowBg.
+        AccentBronze: new(122, 90, 38),
+        // Chrome tier (Text-only): the same lightness as before the rebrand,
+        // tinted warm to sit on paper.
+        SurfaceHover: new(198, 196, 191),
+        SurfacePressed: new(160, 158, 153),
         RowHover: new(255, 249, 220));
 
     public static ThemePalette Dark { get; } = new(
         WindowBg: new(26, 28, 31),
-        Surface: new(38, 41, 45),
-        Text: new(233, 235, 238),
-        SubtleText: new(168, 173, 180),
-        Border: new(76, 82, 90),
-        Accent: new(205, 210, 218),
-        AccentText: new(23, 26, 31),
+        Surface: new(36, 39, 43),
+        Text: new(236, 234, 229),        // warm off-white
+        SubtleText: new(169, 173, 179),
+        Border: new(74, 78, 85),
+        Accent: new(214, 210, 202),      // primary action: a paper button
+        AccentText: new(26, 28, 31),
         Warning: new(84, 62, 8),
         WarningText: new(255, 224, 130),
         Danger: new(192, 57, 43),
         DangerText: new(255, 255, 255),
         Success: new(46, 125, 50),
         StatusAmber: new(240, 173, 78),
-        // A lighter green than Success (which fails 4.5:1 here): 7.26:1
-        // vs Surface, 8.49:1 vs WindowBg -- comparable margin to
-        // StatusAmber's own dark-mode pair (7.51:1 / 8.78:1).
+        // A lighter green than Success, which fails 4.5:1 on dark surfaces.
         StatusGreen: new(129, 199, 132),
-        // A lighter red than Danger (which fails 4.5:1 here as foreground
-        // text): 4.89:1 vs Surface, 5.72:1 vs WindowBg. Red's WCAG-relative
-        // luminance ceiling is lower than green's/amber's at any hue that
-        // still reads as "red" rather than pink -- this is the brightest
-        // red-toned value found that stays clearly red while clearing the
-        // floor with real margin, not a token chosen to just barely pass.
+        // A lighter red than Danger, which fails 4.5:1 as dark-mode text.
         StatusRed: new(229, 115, 115),
-        // StatusRed above falls short against SurfaceRaised specifically
-        // (4.11:1, this scheme's own MainWindowToastIconContrast pin before
-        // the fix) -- brighter red found by stepping up while staying
-        // clearly red: 4.689:1 vs this palette's SurfaceRaised (51,53,57),
-        // real margin over the 4.5 floor. See the field's own comment on
-        // the record above for the full search.
+        // Brighter again for SurfaceRaised, one step lighter than Surface.
         StatusRedRaised: new(234, 130, 130),
-        TileDefaultBg: new(54, 58, 63),
-        // Mix(Surface, white, 0.06), materialized (byte-identical to the
-        // pre-2026-08-09 ThemeManager derivation).
-        SurfaceRaised: new(51, 53, 57),
-        BorderStrong: new(110, 118, 128),
-        AccentBronze: new(201, 169, 106),
-        // Chrome tier, Text-only, LIGHTENING (not darkening -- dark mode's
-        // Surface (38,41,45) is already near-black, so darkening further
-        // caps at only ~1.44:1 no matter what; going toward Text's own
-        // near-white luminance has far more real room once SubtleText/
-        // StatusColours are off the table). Text-only safe boundary
-        // (byte search) is v=106 before Text itself enters its own
-        // contrast valley; these sit inside it with margin. Hover 1.780:1
-        // surround-delta (Text 6.87:1); Pressed 2.502:1 (Text 4.89:1).
+        TileDefaultBg: new(52, 56, 61),
+        // Mix(Surface, white, 0.06).
+        SurfaceRaised: new(49, 52, 56),
+        BorderStrong: new(110, 116, 124),
+        // Brand brass, 8.14:1 on WindowBg.
+        AccentBronze: new(210, 174, 107),
+        // Chrome tier lightens toward Text in dark mode (darkening has no
+        // room left below a near-black Surface).
         SurfaceHover: new(77, 79, 83),
         SurfacePressed: new(99, 101, 105),
-        // Row tier, round 3 (2026-08-08): same chromatic-not-neutral fix as
-        // Light's RowHover above -- round 2's neutral grey here (25,26,28)
-        // measured CIE76 7.37 against Surface, weaker than round 1's grey
-        // (8.73) despite being the "fixed" version (see ThemeManager.cs's
-        // own comment at this field for the full table). Holds L* close to
-        // Surface's own (16.4 vs this value's 16.4) rather than darkening
-        // further, and shifts hue warm instead -- red up, blue down,
-        // green nearly untouched (green carries 0.7152 of WCAG luminance
-        // weight, blue only 0.0722, so this is the cheap axis to spend),
-        // landing at Lab hue ~70 deg, the same warm/gold quadrant as
-        // AccentBronze's ~78-85 deg. CIE76 vs Surface: 15.59. Legibility:
-        // Text 12.24:1, SubtleText 6.48:1, StatusAmber 7.51:1, StatusGreen
-        // 7.27:1, StatusRed 4.90:1 -- all >=4.5, StatusRed (the tightest,
-        // same one round 1 broke at 3.71:1) with a real 0.40 margin.
         RowHover: new(52, 38, 24));
 
     // ------------------------------------------------------ scheme registry
