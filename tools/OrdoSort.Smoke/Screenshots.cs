@@ -36,12 +36,12 @@ public static class Screenshots
         // shots by registry key.
         var themes = themeArg switch
         {
-            "light" => new[] { ("light", ThemePalette.FindScheme("paper")!) },
-            "dark" => new[] { ("dark", ThemePalette.FindScheme("graphite")!) },
+            "light" => new[] { ("light", ThemePalette.FindScheme("light")!) },
+            "dark" => new[] { ("dark", ThemePalette.FindScheme("dark")!) },
             "both" => new[]
             {
-                ("light", ThemePalette.FindScheme("paper")!),
-                ("dark", ThemePalette.FindScheme("graphite")!),
+                ("light", ThemePalette.FindScheme("light")!),
+                ("dark", ThemePalette.FindScheme("dark")!),
             },
             "all" => ThemePalette.Schemes.Select(s => (s.Key, s)).ToArray(),
             _ when ThemePalette.FindScheme(themeArg) is { } s => new[] { (s.Key, s) },

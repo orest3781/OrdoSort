@@ -1460,7 +1460,7 @@ public class HighlightContrastTests
     [Fact]
     public void ReadyViewTileGridIsTwoColumnsCompactThreeColumnsWide() => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, ThemePalette.FindScheme("paper")!);
+        ThemeManager.Apply(_fx.App, ThemePalette.FindScheme("light")!);
 
         using var fx = new ShellFixture(cfg =>
         {
@@ -1510,7 +1510,7 @@ public class HighlightContrastTests
     [Fact]
     public void ReadyViewShowsTheQuietLineAndHidesTilesWhenAllQuiet() => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, ThemePalette.FindScheme("paper")!);
+        ThemeManager.Apply(_fx.App, ThemePalette.FindScheme("light")!);
 
         using var fx = new ShellFixture(cfg =>
         {

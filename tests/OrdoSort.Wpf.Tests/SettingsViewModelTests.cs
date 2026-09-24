@@ -1096,12 +1096,7 @@ public class SettingsViewModelTests : IDisposable
         Assert.True(vm.ThemeDark);
         Assert.False(vm.ThemeAuto);
         Assert.True(vm.TryBuildResult());
-        // Normalize-on-save (SettingsViewModel.NormalizeSchemeKey): the legacy
-        // ThemeDark adapter now writes the scheme key it maps to ("graphite"),
-        // not the literal legacy string "dark" — see
-        // ThemeSeedingSelectsExactlyOneCardForEveryLegacyAndSchemeValue below
-        // for the full seed/normalize matrix.
-        Assert.Equal("graphite", vm.Result!.Theme);
+        Assert.Equal("dark", vm.Result!.Theme);
 
         var vm2 = new SettingsViewModel(vm.Result, _dialogs);
         Assert.True(vm2.ThemeDark);
@@ -1111,14 +1106,13 @@ public class SettingsViewModelTests : IDisposable
     [InlineData("auto", true, null)]
     [InlineData("", true, null)]
     [InlineData("bogus-not-a-scheme", true, null)]
-    [InlineData("light", false, "paper")]
-    [InlineData("dark", false, "graphite")]
-    [InlineData("paper", false, "paper")]
-    [InlineData("graphite", false, "graphite")]
-    [InlineData("ledger", false, "ledger")]
-    [InlineData("LEDGER", false, "ledger")]   // FindScheme is case-insensitive
-    [InlineData("blueprint", false, "blueprint")]
-    public void ThemeSeedingSelectsExactlyOneCardForEveryLegacyAndSchemeValue(
+    [InlineData("light", false, "light")]
+    [InlineData("dark", false, "dark")]
+    [InlineData("DARK", false, "dark")]   // FindScheme is case-insensitive
+    // Config.Load migrates retired keys before Settings ever sees them; a
+    // raw one reaching the dialog anyway is just unknown, so Auto.
+    [InlineData("ledger", true, null)]
+    public void ThemeSeedingSelectsExactlyOneCard(
         string seed, bool expectAuto, string? expectSchemeKey)
     {
         var vm = new SettingsViewModel(new Config { Inbox = _dir, Theme = seed }, _dialogs);
@@ -1158,19 +1152,19 @@ public class SettingsViewModelTests : IDisposable
         var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs);
         Assert.True(vm.AutoSelected);
 
-        var ledger = vm.SchemeOptions.Single(o => o.Key == "ledger");
-        ledger.IsSelected = true;
+        var light = vm.SchemeOptions.Single(o => o.Key == "light");
+        light.IsSelected = true;
 
-        Assert.True(ledger.IsSelected);
+        Assert.True(light.IsSelected);
         Assert.False(vm.AutoSelected);
-        Assert.All(vm.SchemeOptions.Where(o => !ReferenceEquals(o, ledger)), o => Assert.False(o.IsSelected));
+        Assert.All(vm.SchemeOptions.Where(o => !ReferenceEquals(o, light)), o => Assert.False(o.IsSelected));
         Assert.True(vm.TryBuildResult());
-        Assert.Equal("ledger", vm.Result!.Theme);
+        Assert.Equal("light", vm.Result!.Theme);
 
-        var carbon = vm.SchemeOptions.Single(o => o.Key == "carbon");
-        carbon.IsSelected = true;
-        Assert.True(carbon.IsSelected);
-        Assert.False(ledger.IsSelected);
+        var dark = vm.SchemeOptions.Single(o => o.Key == "dark");
+        dark.IsSelected = true;
+        Assert.True(dark.IsSelected);
+        Assert.False(light.IsSelected);
         Assert.False(vm.AutoSelected);
 
         vm.AutoSelected = true;

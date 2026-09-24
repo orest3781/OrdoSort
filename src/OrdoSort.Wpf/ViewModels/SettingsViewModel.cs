@@ -1978,19 +1978,10 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     // ------------------------------------------------------------- theme
     //
-    // ThemeMode is the single source of truth — "auto" or any
-    // ThemePalette.Schemes key. SchemeOptions (one VM per registry entry,
-    // registry order) and AutoSelected are the bindable surface the
-    // Appearance tab's cards actually use; ThemeAuto/ThemeLight/ThemeDark
-    // below survive as thin BACKWARD-COMPATIBLE adapters purely because
-    // something still binds them (grepped: ThemeModeRoundTripsThroughTheRadiosIntoTheResult
-    // in SettingsViewModelTests.cs, and the Auto card's own
-    // IsChecked="{Binding ThemeAuto}" in SettingsWindow.xaml, left exactly as
-    // it was per the brief). They are no longer backed by their own field —
-    // "light"/"dark" resolve through NormalizeSchemeKey to their scheme
-    // ("paper"/"graphite"), so ThemeLight/ThemeDark read true for EITHER the
-    // legacy string or the scheme key, and setting either one now writes the
-    // scheme key, not the legacy string.
+    // ThemeMode is the single source of truth: "auto", "light" or "dark".
+    // SchemeOptions (one VM per ThemePalette.Schemes entry, registry order)
+    // and AutoSelected are what the Appearance tab's cards bind;
+    // ThemeAuto/ThemeLight/ThemeDark are thin adapters over the same field.
     private string _themeMode = "auto";
     public string ThemeMode
     {
@@ -2006,18 +1997,11 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>"light"/"dark" (legacy) and "auto" normalize to their scheme
-    /// key ("paper"/"graphite") or "" (Auto); any registry key normalizes to
-    /// itself (registry casing); anything unrecognized also falls back to ""
-    /// (Auto) — the same defensive fallback ThemeManager.SetMode already
-    /// applies to a bad config value, so a garbage Theme string still leaves
-    /// exactly one card selected instead of none.</summary>
-    private static string NormalizeSchemeKey(string mode) => mode switch
-    {
-        "light" => "paper",
-        "dark" => "graphite",
-        _ => ThemePalette.FindScheme(mode)?.Key ?? "",
-    };
+    /// <summary>A registry key ("light"/"dark", registry casing), or "" for
+    /// Auto. Anything unrecognized also falls back to "" (Auto), the same
+    /// defensive fallback ThemeManager.SetMode applies, so a garbage Theme
+    /// string still leaves exactly one card selected instead of none.</summary>
+    private static string NormalizeSchemeKey(string mode) => ThemePalette.FindScheme(mode)?.Key ?? "";
 
     /// <summary>Keeps the "exactly one of {Auto, one scheme} selected"
     /// invariant in sync with ThemeMode. Guarded for the brief window during
@@ -2043,14 +2027,12 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>One option VM per <see cref="ThemePalette.Schemes"/> entry,
-    /// registry order — the Light/Dark theme-picker cards used to be
-    /// hand-built; now they're data-driven so a new registry scheme needs no
-    /// XAML edit.</summary>
+    /// registry order: the Light and Dark cards beside Auto.</summary>
     public ObservableCollection<SchemeOptionVm> SchemeOptions { get; }
 
     public bool ThemeAuto { get => AutoSelected; set => AutoSelected = value; }
-    public bool ThemeLight { get => NormalizeSchemeKey(_themeMode) == "paper"; set { if (value) ThemeMode = "paper"; } }
-    public bool ThemeDark { get => NormalizeSchemeKey(_themeMode) == "graphite"; set { if (value) ThemeMode = "graphite"; } }
+    public bool ThemeLight { get => NormalizeSchemeKey(_themeMode) == "light"; set { if (value) ThemeMode = "light"; } }
+    public bool ThemeDark { get => NormalizeSchemeKey(_themeMode) == "dark"; set { if (value) ThemeMode = "dark"; } }
 
     // ----------------------------------------------------------- collections
     public ObservableCollection<RouteEditVm> Routes { get; }
@@ -2361,10 +2343,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         cfg.Sounds.Error = ErrorSound.Spec;
         cfg.UiFontFamily = UiFontFamily;
         cfg.UiFontSize = UiFontSizeText.Trim().Length == 0 ? 0 : int.Parse(UiFontSizeText.Trim());
-        // Deliberate one-way normalization: a legacy "light"/"dark" seed (or
-        // any string that isn't literally "auto" or a live registry key)
-        // never round-trips verbatim — it writes back as the scheme key it
-        // resolved to (or "auto" if nothing matched). See NormalizeSchemeKey.
+        // Anything that isn't a live registry key writes back as "auto".
         cfg.Theme = NormalizeSchemeKey(_themeMode) is { Length: > 0 } schemeKey ? schemeKey : "auto";
         cfg.Routes = Routes.Select(r => r.ToRoute()).ToList();
         cfg.WatchFolders = WatchFolders.Select(w => w.ToWatchFolder()).ToList();

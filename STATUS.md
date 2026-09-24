@@ -10,6 +10,7 @@
 | Whole-app review and fix pass | ✅ Done | 2026-09-23. Five area reviews: 22 findings fixed (pushed), then the 9 box-labels findings (11 commits `8fbafe3`..`7f02e90`, local) once the owner decided Print uses the typed number. Every fix has a test; every fixer commit reviewed by hand before merging |
 | Config save on a network share when File.Replace is denied (PR #6) + release workflow attaches zips to an existing release (PR #7) | ✅ Done | 2026-09-24, from a phone (Claude Code cloud session), merged to `main`; version bumped to 1.6.1, **not yet tagged or released**. The PR said check.bat still needed a Windows run: done 2026-09-24 — 941 Core + 2,364 Wpf passed |
 | Repo cleanup | ✅ Done | 2026-09-23, local `main`, not pushed. Scripts other than check/run moved to `scripts\`; old tools to `docs\legacy-scripts\`; tracked `dev\` setup (`run.bat dev\config.json`); `.editorconfig` + format check in check.bat and CI; all build output in `artifacts\`; ~820 MB of local clutter and the fixer worktrees removed |
+| Rebrand (plan: `~/.claude/plans/i-want-you-to-floofy-fiddle.md`) | 🔄 In progress | Owner picked (2026-09-24): concept **A** (tab dividers), palette **A** (ink & bronze), **Atkinson Hyperlegible Next**, font files approved. Review page: https://claude.ai/artifact/DkgUJTfP1CVYSPSdTuccrw. Phase 2 step 1 done: seven schemes cut to light/dark (paper→light, graphite→dark, the other five→auto). Next: new palettes |
 | S:\ → A:\DEV path rewrite (45 files, comments and docs only) | ✅ Done | Committed `1f5b8de` and pushed 2026-09-09. `.gitignore` now points at `A:\DEV\_ARCHIVE\OrdoSort-samples` |
 
 ## Next
@@ -48,6 +49,7 @@
 ## Dead ends
 | Tried | Why it failed |
 |---|---|
+| Dark (ink) icon plate for the rebrand | Only 26-44% of the icon reached 3:1 on the dark taskbar (#202020). A plate needs luminance 0.14-0.26 to clear 3:1 on both taskbars; slate `#647080` and brass `#8A6A34` do |
 
 ## Decisions
 | Date | Decision | Why |

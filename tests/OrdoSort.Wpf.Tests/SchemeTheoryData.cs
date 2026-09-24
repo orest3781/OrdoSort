@@ -14,8 +14,8 @@ namespace OrdoSort.Wpf.Tests;
 ///
 /// Yields each <see cref="ThemePalette.Schemes"/> KEY (a plain string), never
 /// a <see cref="ThemeScheme"/> object: xUnit can serialize/display a string
-/// theory parameter (so the test explorer shows and can re-run "paper",
-/// "graphite", "ledger", … individually) but cannot do the same for an
+/// theory parameter (so the test explorer shows and can re-run "light" and
+/// "dark" individually) but cannot do the same for an
 /// arbitrary record, which would collapse every case into one indistinguishable
 /// "MemberDataRow" entry. Callers resolve the key back to a scheme with
 /// <c>ThemePalette.FindScheme(schemeKey)!</c>.

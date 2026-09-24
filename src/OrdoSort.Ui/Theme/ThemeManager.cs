@@ -12,34 +12,23 @@ namespace OrdoSort.Wpf.Theme;
 /// way.</summary>
 public static class ThemeManager
 {
-    /// <summary>Reflects the APPLIED scheme's <c>IsDark</c> — the legacy
-    /// auto/light/dark pair resolves to the paper/graphite schemes below, so
-    /// this stays correct for those too. Feeds TitleBar's DWM dark-titlebar
-    /// call.</summary>
+    /// <summary>Reflects the APPLIED scheme's <c>IsDark</c>. Feeds TitleBar's
+    /// DWM dark-titlebar call.</summary>
     public static bool IsDark { get; private set; }
 
-    /// <summary>The applied scheme's palette. Backed by a field (not derived
-    /// from <see cref="IsDark"/>) so a future non-paper/graphite scheme
-    /// resolves to ITS OWN palette rather than being folded into just
-    /// Light/Dark.</summary>
+    /// <summary>The applied scheme's palette.</summary>
     public static ThemePalette Current { get; private set; } = ThemePalette.Light;
 
-    /// <summary>"auto" (follow Windows), "light", "dark", or any
-    /// <see cref="ThemePalette.Schemes"/> key (case-insensitive as typed;
-    /// normalized to the registry's own casing) — the config's theme key.
-    /// Only "auto" reacts to the OS preference changing; a pinned scheme key
-    /// behaves like "light"/"dark" in that respect (fixed until SetMode is
-    /// called again).</summary>
+    /// <summary>"auto" (follow Windows), "light" or "dark": the config's
+    /// theme key. Only "auto" reacts to the OS preference changing; a pinned
+    /// light/dark stays fixed until SetMode is called again.</summary>
     public static string Mode { get; private set; } = "auto";
 
-    // The auto pair's two endpoints, as registry schemes — Apply(app, bool)
+    // The auto pair's two endpoints, as registry schemes. Apply(app, bool)
     // below is a thin wrapper over Apply(app, ThemeScheme) so there is
-    // exactly one brush-publication loop for both the legacy bool entry
-    // point and arbitrary scheme keys. Resolved via FindScheme rather than
-    // referencing ThemePalette.Light/Dark directly so this stays correct if
-    // the registry ever reassigns which scheme is "the" light/dark default.
-    private static readonly ThemeScheme LightScheme = ThemePalette.FindScheme("paper")!;
-    private static readonly ThemeScheme DarkScheme = ThemePalette.FindScheme("graphite")!;
+    // exactly one brush-publication loop.
+    private static readonly ThemeScheme LightScheme = ThemePalette.FindScheme("light")!;
+    private static readonly ThemeScheme DarkScheme = ThemePalette.FindScheme("dark")!;
 
     /// <summary>Indirection over <c>SystemParameters.HighContrast</c> — a
     /// static BCL property that can't be faked directly — so tests can
@@ -62,26 +51,20 @@ public static class ThemeManager
                 // the CURRENT scheme as-is (not derived again from the OS
                 // light/dark preference, and NOT collapsed to the auto
                 // pair) so the SystemColors step-aside gate re-evaluates
-                // live, regardless of whether Mode is "auto", pinned to a
-                // fixed light/dark choice, or pinned to an arbitrary
-                // registry scheme key.
+                // live, whether Mode is "auto" or pinned to light/dark.
                 app.Dispatcher.BeginInvoke(() => Reapply(app));
             else if (Mode == "auto" &&
                 e.Category is UserPreferenceCategory.General or UserPreferenceCategory.Color)
-                // Only "auto" ever reaches here — a pinned scheme key (or a
-                // pinned legacy "light"/"dark") sets Mode to something other
-                // than "auto", so the OS preference changing never re-themes
-                // a pinned choice. Same gate that already protected legacy
-                // "light"/"dark"; scheme keys get it for free.
+                // Only "auto" follows the OS; a pinned light/dark never
+                // re-themes when the Windows preference changes.
                 app.Dispatcher.BeginInvoke(() => Apply(app, ReadOsPrefersDark()));
         };
     }
 
-    /// <summary>Accepts "auto", "light", "dark", or any case-insensitive
-    /// <see cref="ThemePalette.Schemes"/> key (e.g. "graphite"). Unknown or
-    /// blank keys fall back to "auto" rather than throwing — Config
-    /// validates the key upstream, so this is a defensive default, not the
-    /// primary guard.</summary>
+    /// <summary>Accepts "auto", "light" or "dark", case-insensitive.
+    /// Unknown or blank keys fall back to "auto" rather than throwing:
+    /// Config validates the key upstream, so this is a defensive default,
+    /// not the primary guard.</summary>
     public static void SetMode(Application app, string mode)
     {
         var scheme = ThemePalette.FindScheme(mode);
@@ -92,12 +75,11 @@ public static class ThemeManager
             return;
         }
 
-        Mode = mode is "light" or "dark" ? mode : "auto";
-        Apply(app, Mode == "dark" || (Mode == "auto" && ReadOsPrefersDark()));
+        Mode = "auto";
+        Apply(app, ReadOsPrefersDark());
     }
 
-    /// <summary>The auto pair, fixed: dark → the graphite scheme, light →
-    /// paper. Kept as its own overload (rather than folded into the
+    /// <summary>The auto pair: dark → the "dark" scheme, light → "light". Kept as its own overload (rather than folded into the
     /// <see cref="ThemeScheme"/> overload) because two test files
     /// (AppearancePreviewTests, ThemeHighContrastTests) call it directly by
     /// this exact bool signature — routes through the same scheme-aware core
@@ -106,8 +88,7 @@ public static class ThemeManager
     public static void Apply(Application app, bool dark) =>
         Apply(app, dark ? DarkScheme : LightScheme);
 
-    /// <summary>Pins the app to an explicit registry scheme (e.g. the
-    /// "graphite" entry SetMode resolves a matching config key to).</summary>
+    /// <summary>Pins the app to an explicit registry scheme.</summary>
     public static void Apply(Application app, ThemeScheme scheme) =>
         ApplyCore(app, scheme.Palette, scheme.IsDark);
 
@@ -153,7 +134,7 @@ public static class ThemeManager
         r["Theme.StatusGreen"] = Brush(p.StatusGreen);
         r["Theme.StatusRed"] = Brush(p.StatusRed);
         // The toast-icon gap (StatusRed short of 4.5:1 vs SurfaceRaised in
-        // graphite/ledger/microfilm) closed 2026-08-09 -- see
+        // the dark scheme) closed 2026-08-09 -- see
         // ThemePalette.cs's StatusRedRaised field comment for the values.
         r["Theme.StatusRedRaised"] = Brush(p.StatusRedRaised);
         r["Theme.TileDefaultBg"] = Brush(p.TileDefaultBg);

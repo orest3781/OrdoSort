@@ -106,15 +106,27 @@ public sealed class Config
         "size_asc", "size_desc",
     };
 
-    /// <summary>Named theme-scheme keys "theme" also accepts, alongside the
-    /// legacy auto/light/dark trio. Mirrors OrdoSort.Wpf.Theme.ThemePalette.
-    /// Schemes' keys exactly — Core cannot reference Wpf, so there is no
-    /// compile-time link between the two lists. OrdoSort.Wpf.Tests.ThemeTests.
-    /// ConfigSchemeWhitelistAndRegistryStayInLockstep is the drift guard that
-    /// keeps them in sync at test time; extend both lists together whenever a
-    /// new scheme ships (ledger, microfilm, manila, carbon, blueprint are
-    /// planned next).</summary>
-    public static readonly IReadOnlyList<string> SchemeKeys = new[] { "paper", "graphite", "ledger", "microfilm", "manila", "carbon", "blueprint" };
+    /// <summary>Theme keys retired in the 2026-09 rebrand, when the seven
+    /// colour schemes became one light and one dark. A config still carrying
+    /// one loads as "auto".</summary>
+    private static readonly string[] RetiredThemeKeys = { "ledger", "microfilm", "manila", "carbon", "blueprint" };
+
+    /// <summary>Maps a stored "theme" value onto today's auto/light/dark.
+    /// "paper" and "graphite" were the light and dark schemes before the
+    /// rebrand, so they keep what those users saw; the five retired schemes
+    /// become "auto". Anything else is returned trimmed and lower-cased so
+    /// validation can still reject garbage. Shared with Box Labels, whose
+    /// own settings file stores the same key.</summary>
+    /// <param name="theme">The raw stored value; null means unset.</param>
+    /// <returns>"auto", "light", "dark", or the cleaned unknown value.</returns>
+    public static string MigrateTheme(string? theme)
+    {
+        var key = (theme ?? "auto").Trim().ToLowerInvariant();
+        if (key == "paper") return "light";
+        if (key == "graphite") return "dark";
+        if (Array.IndexOf(RetiredThemeKeys, key) >= 0) return "auto";
+        return key;
+    }
 
     [JsonPropertyName("inbox")] public string Inbox { get; set; } = "";
     [JsonPropertyName("deferred")] public string Deferred { get; set; } = "";
@@ -292,10 +304,8 @@ public sealed class Config
         if (cfg.WordSeparator.Contains(' '))
             throw new ConfigException(
                 "word_separator must not contain a space — substitution would loop forever");
-        if (cfg.Theme is not ("auto" or "light" or "dark") && !SchemeKeys.Contains(cfg.Theme))
-            throw new ConfigException(
-                $"theme must be one of auto/light/dark or a scheme key " +
-                $"({string.Join('/', SchemeKeys)}), got \"{cfg.Theme}\"");
+        if (cfg.Theme is not ("auto" or "light" or "dark"))
+            throw new ConfigException($"theme must be one of auto/light/dark, got \"{cfg.Theme}\"");
         if (cfg.PollSeconds is < MinPollSeconds or > MaxPollSeconds)
             throw new ConfigException(
                 $"poll_seconds must be {MinPollSeconds}-{MaxPollSeconds}, " +
@@ -510,7 +520,7 @@ public sealed class Config
         MonitorTitle ??= "Monitored folders";
         TileVisibility ??= "active";
         UiFontFamily ??= "";
-        Theme ??= "auto";
+        Theme = MigrateTheme(Theme);
         WordSeparator ??= "";
 
         BoxLabelsFile ??= DefaultBoxLabelsFile;

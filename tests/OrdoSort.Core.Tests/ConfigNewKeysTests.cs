@@ -175,38 +175,32 @@ public class ConfigNewKeysTests : IDisposable
         Assert.Contains("theme", ex.Message);
     }
 
-    // Named theme schemes (2026-08-08): "theme" also accepts a
-    // Config.SchemeKeys entry, additive alongside the legacy auto/light/dark
-    // trio — see Config.SchemeKeys' own doc comment for why this list is
-    // hand-mirrored from OrdoSort.Wpf.Theme.ThemePalette.Schemes rather than
-    // referenced directly (Core cannot reference Wpf).
+    // The 2026-09 rebrand cut seven colour schemes down to light and dark.
+    // Old configs must still load: the two schemes that WERE light and dark
+    // keep their look, the five retired ones fall back to following Windows.
     [Theory]
-    [InlineData("paper")]
-    [InlineData("graphite")]
-    [InlineData("ledger")]
-    [InlineData("microfilm")]
-    [InlineData("manila")]
-    [InlineData("carbon")]
-    [InlineData("blueprint")]
-    public void ThemeAcceptsSchemeKeys(string scheme) =>
-        Assert.Equal(scheme, LoadJson($"{{ \"theme\": \"{scheme}\" }}").Theme);
+    [InlineData("paper", "light")]
+    [InlineData("graphite", "dark")]
+    [InlineData("ledger", "auto")]
+    [InlineData("microfilm", "auto")]
+    [InlineData("manila", "auto")]
+    [InlineData("carbon", "auto")]
+    [InlineData("blueprint", "auto")]
+    public void RetiredSchemeKeysLoadAsTheirReplacement(string stored, string expected) =>
+        Assert.Equal(expected, LoadJson($"{{ \"theme\": \"{stored}\" }}").Theme);
 
-    // Validation is case-SENSITIVE today for auto/light/dark (the pattern
-    // match `cfg.Theme is not ("auto" or "light" or "dark")` is an ordinal
-    // string comparison) — "AUTO" already throws before this change, and
-    // scheme keys join that exact same check, so they inherit the same
-    // case-sensitivity rather than gaining their own case-insensitive rule.
+    [Fact]
+    public void MigratedThemeSavesBackUnderItsNewKey() =>
+        Assert.Equal("light", RoundTrip(new Config { Theme = "paper" }).Theme);
+
     [Theory]
-    [InlineData("AUTO")]
-    [InlineData("Light")]
-    [InlineData("DARK")]
-    [InlineData("PAPER")]
-    [InlineData("Graphite")]
-    public void ThemeRejectsCaseVariantsJustLikeItAlwaysHas(string mode)
-    {
-        var ex = Assert.Throws<ConfigException>(() => LoadJson($"{{ \"theme\": \"{mode}\" }}"));
-        Assert.Contains("theme", ex.Message);
-    }
+    [InlineData("AUTO", "auto")]
+    [InlineData(" Light ", "light")]
+    [InlineData("DARK", "dark")]
+    [InlineData("PAPER", "light")]
+    [InlineData("Ledger", "auto")]
+    public void ThemeIgnoresCaseAndSurroundingSpaces(string stored, string expected) =>
+        Assert.Equal(expected, LoadJson($"{{ \"theme\": \"{stored}\" }}").Theme);
 
     [Theory]
     [InlineData("")]
@@ -217,11 +211,17 @@ public class ConfigNewKeysTests : IDisposable
         Assert.Contains("theme", ex.Message);
     }
 
-    [Fact]
-    public void ThemeDarkRoundTripsUnchanged() =>
-        Assert.Equal("dark", RoundTrip(new Config { Theme = "dark" }).Theme);
+    [Theory]
+    [InlineData("auto")]
+    [InlineData("light")]
+    [InlineData("dark")]
+    public void CurrentThemeKeysRoundTripUnchanged(string mode) =>
+        Assert.Equal(mode, RoundTrip(new Config { Theme = mode }).Theme);
 
-    [Fact]
-    public void ThemePaperRoundTripsUnchanged() =>
-        Assert.Equal("paper", RoundTrip(new Config { Theme = "paper" }).Theme);
+    [Theory]
+    [InlineData(null, "auto")]
+    [InlineData("graphite", "dark")]
+    [InlineData("sepia", "sepia")]
+    public void MigrateThemeMapsOnlyKnownKeys(string? stored, string expected) =>
+        Assert.Equal(expected, Config.MigrateTheme(stored));
 }
