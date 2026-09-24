@@ -175,7 +175,9 @@ check.bat wpf      # only tests/OrdoSort.Wpf.Tests
 ```
 
 Both applications and all tests are in `OrdoSort.sln`, so `check.bat` covers
-Box Labels too. Plain `dotnet build` / `dotnet test` still work.
+Box Labels too. Plain `dotnet build` / `dotnet test` still work. A test project
+that runs zero tests fails the run (`tests	est.runsettings`), so a test DLL
+that Windows blocks from loading can't pass as green.
 
 To try a change by hand, run against the small tracked dev setup — four
 destinations, two monitored folders, three box-label clients:

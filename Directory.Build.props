@@ -37,6 +37,9 @@
          Directory.Build.props, because the SDK reads it before the project
          file. run.bat launches artifacts\bin\OrdoSort.Wpf\debug\OrdoSort.exe. -->
     <UseArtifactsOutput>true</UseArtifactsOutput>
+    <!-- One set of test settings for every `dotnet test`, however it is run:
+         a test project that runs no tests fails the run. See the file. -->
+    <RunSettingsFilePath>$(MSBuildThisFileDirectory)tests\test.runsettings</RunSettingsFilePath>
   </PropertyGroup>
 
 </Project>
