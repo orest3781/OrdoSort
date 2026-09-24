@@ -11,3 +11,5 @@
 *.sqlite  binary
 *.xlsx    binary
 *.zip     binary
+*.ttf     binary
+*.woff2   binary
