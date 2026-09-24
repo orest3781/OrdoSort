@@ -37,6 +37,7 @@ public class AtomicPlaceTests : IDisposable
         AtomicPlace.BeforeAttempt = null;                        // process-wide seam — never leak it to another test
         AtomicPlace.Sleep = (_, delayMs) => Thread.Sleep(delayMs);   // ditto — restore the real sleep
         AtomicPlace.BeforeSweep = null;                          // ditto — never leak a sweep hook either
+        AtomicPlace.ReplaceFile = (tmp, dest) => File.Replace(tmp, dest, null);   // ditto — restore the real replace
         try { Directory.Delete(_dir, true); } catch { /* best effort */ }
     }
 
@@ -76,6 +77,53 @@ public class AtomicPlaceTests : IDisposable
         Assert.True(AtomicPlace.TryReplace(dest, Writes("new"), out _));
 
         Assert.Equal("new", File.ReadAllText(dest));
+        Assert.Empty(StrayTempFiles());
+    }
+
+    /// <summary>What a network share does to File.Replace: it copies the old
+    /// file's ACL and owner onto the new one, which a user with plain Modify
+    /// rights isn't allowed to do, so it is denied on every save. The save
+    /// must still land, as an ordinary rename-over.</summary>
+    [Fact]
+    public void ReplaceFallsBackToARenameWhenTheShareDeniesFileReplace()
+    {
+        var dest = Dest("config.json");
+        File.WriteAllText(dest, "old");
+        var realReplace = AtomicPlace.ReplaceFile;
+        AtomicPlace.ReplaceFile = (tmp, target) =>
+        {
+            if (target != dest) { realReplace(tmp, target); return; }   // process-wide seam
+            throw new UnauthorizedAccessException($"Access to the path '{target}' is denied.");
+        };
+
+        Assert.True(AtomicPlace.TryReplace(dest, Writes("new"), out var error));
+
+        Assert.Equal("", error);
+        Assert.Equal("new", File.ReadAllText(dest));
+        Assert.Empty(StrayTempFiles());
+    }
+
+    /// <summary>The rename fallback is only for "access denied". Any other
+    /// File.Replace failure is retried and then reported as before, with the
+    /// old file left alone, not quietly renamed over.</summary>
+    [Fact]
+    public void AReplaceFailureOtherThanAccessDeniedIsNotRenamedOver()
+    {
+        var dest = Dest("config.json");
+        File.WriteAllText(dest, "old");
+        var realReplace = AtomicPlace.ReplaceFile;
+        AtomicPlace.ReplaceFile = (tmp, target) =>
+        {
+            if (target != dest) { realReplace(tmp, target); return; }   // process-wide seam
+            throw new IOException("the network name is no longer available");
+        };
+        AtomicPlace.Sleep = (_, _) => { };
+
+        var ok = AtomicPlace.TryReplace(dest, Writes("new"), out var error);
+
+        Assert.False(ok);
+        Assert.Contains("network name", error);
+        Assert.Equal("old", File.ReadAllText(dest));
         Assert.Empty(StrayTempFiles());
     }
 
