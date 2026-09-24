@@ -148,6 +148,34 @@ public class PipelineTests : IDisposable
     }
 
     [Fact]
+    public void TheInboxScanSkipsHiddenSystemAndDotFilesEntirely()
+    {
+        // Owner's decision (2026-09-23), the same rule as set-aside: a
+        // share's desktop.ini / Thumbs.db and a .gitkeep placeholder are not
+        // documents — not queued, and not "other files ignored" either. A
+        // hidden PDF is skipped too: hidden means "not for the user".
+        MakePdf(_inbox, "20240101--real.pdf");
+        File.WriteAllText(Path.Combine(_inbox, "notes.txt"), "a visible non-PDF is still reported");
+        var desktopIni = Path.Combine(_inbox, "desktop.ini");
+        File.WriteAllText(desktopIni, "[.ShellClassInfo]");
+        File.SetAttributes(desktopIni, FileAttributes.Hidden | FileAttributes.System);
+        var hiddenPdf = MakePdf(_inbox, "20240102--hidden.pdf");
+        File.SetAttributes(hiddenPdf, FileAttributes.Hidden);
+        File.WriteAllText(Path.Combine(_inbox, ".gitkeep"), "");
+        try
+        {
+            var r = Scanner.Scan(_inbox);
+            Assert.Equal("20240101--real.pdf", Path.GetFileName(Assert.Single(r.Matching)));
+            Assert.Equal(1, r.IgnoredCount);   // notes.txt only
+        }
+        finally
+        {
+            File.SetAttributes(desktopIni, FileAttributes.Normal);
+            File.SetAttributes(hiddenPdf, FileAttributes.Normal);
+        }
+    }
+
+    [Fact]
     public void SetAsideCountsLeaveOutHiddenSystemAndDotFiles()
     {
         // desktop.ini / Thumbs.db (hidden + system on a Windows share) and a

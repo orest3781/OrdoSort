@@ -52,7 +52,9 @@ public static class Scanner
                 : new ScanResult(Array.Empty<string>(), 0, $"Inbox folder does not exist: {inbox}");
 
         string[] files;
-        try { files = Directory.GetFiles(inbox); }
+        // Hidden, system and dot files are not documents: not queued, and
+        // not counted as ignored (see VisibleFiles).
+        try { files = VisibleFiles(inbox); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return new ScanResult(Array.Empty<string>(), 0, $"Can't read the inbox folder: {ex.Message}");
@@ -87,10 +89,11 @@ public static class Scanner
         try { return VisibleFiles(folder).Length; } catch { return 0; }
     }
 
-    /// <summary>A folder's files, leaving out what isn't a document someone
-    /// set aside: hidden and system files (a share's desktop.ini and
-    /// Thumbs.db) and dot-files (a .gitkeep placeholder), which would
-    /// otherwise show as "files waiting". The attribute test runs inside the
+    /// <summary>A folder's files, leaving out what isn't a document: hidden
+    /// and system files (a share's desktop.ini and Thumbs.db) and dot-files
+    /// (a .gitkeep placeholder), which would otherwise show as set-aside
+    /// "files waiting" or inbox "other files ignored" — and a hidden PDF is
+    /// not queued for filing (owner's decision, 2026-09-23). The attribute test runs inside the
     /// directory listing itself — no extra per-file round trip over SMB.
     /// IgnoreInaccessible is off so an unreadable folder still throws, as
     /// Directory.GetFiles did, and the callers' own catch decides.</summary>
