@@ -566,7 +566,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                     Scanner.Scan(ResolvePath(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode),
                     Scanner.DeferredSummary(ResolveDeferredPath(cfg.Deferred, cfgPath)),
                     wantStatuses
-                        ? FolderMonitor.All(cfg.WatchFolders, cfg.AlertTexts)
+                        ? FolderMonitor.All(cfg.WatchFolders, cfg.AlertTexts, cfgPath)
                             .Where(s => mode == "all" || s.HasFiles || s.Error.Length > 0)
                             .ToList()
                         : null));

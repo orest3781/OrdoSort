@@ -41,6 +41,17 @@ public sealed class WatchFolder
     [JsonPropertyName("section")] public string Section { get; set; } = "";
 
     [JsonExtensionData] public Dictionary<string, System.Text.Json.JsonElement> Extras { get; set; } = new();
+
+    /// <summary>A copy of this folder with a different path — so a resolved
+    /// path can be watched without rewriting the entry that came from (and
+    /// is saved back to) a shared config.json. Same reason as
+    /// <see cref="Route.WithPath"/>.</summary>
+    internal WatchFolder WithPath(string path)
+    {
+        var copy = (WatchFolder)MemberwiseClone();
+        copy.Path = path;
+        return copy;
+    }
 }
 
 /// <summary>One box-label client: its own retention offset (created date +
@@ -808,24 +819,24 @@ public sealed class Config
         }
     }
 
-    /// <summary>Where a route's destination really is: a relative path lands
-    /// beside config.json (the inbox / deferred / names_file / history_db
-    /// rule), an absolute one stays as typed. A blank path stays blank —
-    /// Path.Combine(dir, "") is dir, and an unset route must keep being
-    /// refused, not file into config.json's own folder.</summary>
-    public static string ResolveRoutePath(string configPath, string routePath) =>
-        string.IsNullOrWhiteSpace(routePath) ? routePath : ResolveBeside(configPath, routePath);
+    /// <summary>Where a destination or monitored folder really is: a relative
+    /// path lands beside config.json (the inbox / deferred / names_file /
+    /// history_db rule), an absolute one stays as typed. A blank path stays
+    /// blank — Path.Combine(dir, "") is dir, and an unset folder must keep
+    /// being refused, not file into (or watch) config.json's own folder.</summary>
+    public static string ResolveFolderPath(string configPath, string folderPath) =>
+        string.IsNullOrWhiteSpace(folderPath) ? folderPath : ResolveBeside(configPath, folderPath);
 
     /// <summary>Readable error for one unusable destination, or "" if good.
     /// <paramref name="configPath"/> is the config.json a relative route path
-    /// resolves beside (see <see cref="ResolveRoutePath"/>), so this checks
+    /// resolves beside (see <see cref="ResolveFolderPath"/>), so this checks
     /// the same folder a commit would file into. Null only where no config
     /// file is known; the path is then checked as typed.</summary>
     public static string ValidateRoute(Route route, string? configPath)
     {
         var raw = route.Path?.Trim() ?? "";
         if (raw.Length == 0) return "no destination path configured";
-        if (configPath is not null) raw = ResolveRoutePath(configPath, raw);
+        if (configPath is not null) raw = ResolveFolderPath(configPath, raw);
         if (!Directory.Exists(raw))
             return File.Exists(raw)
                 ? $"destination is not a folder: {raw}"

@@ -861,6 +861,60 @@ public class SettingsViewModelTests : IDisposable
         Assert.Empty(_dialogs.Warnings);
     }
 
+    // ---- relative destination / monitored-folder paths resolve beside
+    // config.json in Settings too, the same place filing and the dashboard
+    // look — not against the folder the app happened to start in.
+
+    [Fact]
+    public void ARelativeWatchFolderIsCheckedBesideTheConfigFile()
+    {
+        var cfgPath = Path.Combine(_dir, "config.json");
+        Directory.CreateDirectory(Path.Combine(_dir, "watch", "failed"));
+        var vm = new SettingsViewModel(new Config
+        {
+            Inbox = _dir,
+            WatchFolders = { new WatchFolder { Label = "Failed", Path = Path.Combine("watch", "failed") } },
+        }, _dialogs, cfgPath: cfgPath);
+
+        WaitFor(() => vm.WatchFolders[0].Problem == "",
+            "a relative folder that exists beside config.json must not read as missing");
+        Assert.DoesNotContain(vm.Warnings(), w => w.Contains("Failed"));
+    }
+
+    [Fact]
+    public void AMissingRelativeWatchFolderWarnsWithTheFullPathItWillUse()
+    {
+        var cfgPath = Path.Combine(_dir, "config.json");
+        var vm = new SettingsViewModel(new Config
+        {
+            Inbox = _dir,
+            WatchFolders = { new WatchFolder { Label = "Gone", Path = "not-here" } },
+        }, _dialogs, cfgPath: cfgPath);
+
+        Assert.Contains(vm.Warnings(), w => w.Contains(Path.Combine(_dir, "not-here")));
+    }
+
+    [Fact]
+    public void CreateFolderMakesARelativeDestinationOrWatchFolderBesideTheConfigFile()
+    {
+        var cfgPath = Path.Combine(_dir, "config.json");
+        var vm = new SettingsViewModel(new Config
+        {
+            Inbox = _dir,
+            Routes = { new Route { Label = "Invoices", Path = Path.Combine("routes", "invoices") } },
+            WatchFolders = { new WatchFolder { Label = "Failed", Path = Path.Combine("watch", "failed") } },
+        }, _dialogs, cfgPath: cfgPath);
+        vm.SelectedRoute = vm.Routes[0];
+        vm.SelectedWatch = vm.WatchFolders[0];
+
+        vm.CreateRouteFolderCommand.Execute(null);
+        vm.CreateWatchFolderCommand.Execute(null);
+
+        Assert.True(Directory.Exists(Path.Combine(_dir, "routes", "invoices")));
+        Assert.True(Directory.Exists(Path.Combine(_dir, "watch", "failed")));
+        Assert.Empty(_dialogs.Warnings);
+    }
+
     [Fact]
     public void OpenFolderOnAMissingPathWarnsInsteadOfThrowing()
     {

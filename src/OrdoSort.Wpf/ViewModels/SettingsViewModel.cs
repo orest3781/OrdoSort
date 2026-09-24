@@ -695,7 +695,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         Routes = new ObservableCollection<RouteEditVm>(
             current.Routes.Select(r => RouteEditVm.From(r, _validateRoute, _scheduler, _uiContext, _probeDelayMs)));
         WatchFolders = new ObservableCollection<WatchEditVm>(
-            current.WatchFolders.Select(w => WatchEditVm.From(w, _directoryExists, _scheduler, _uiContext, _probeDelayMs)));
+            current.WatchFolders.Select(w => WatchEditVm.From(w, FolderExists, _scheduler, _uiContext, _probeDelayMs)));
 
         // Session-sticky seed: every section PRESENT WHEN SETTINGS OPENED
         // (see the _stickySections field for the full rule). AddSection()
@@ -730,7 +730,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         {
             // "Add folder": born into the SELECTED folder's section, right
             // after it — not teleported to the default group at the far end
-            var vm = new WatchEditVm(_directoryExists, _scheduler, _uiContext, _probeDelayMs)
+            var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs)
             {
                 Label = "New folder",
                 Section = SelectedWatch?.Section ?? "",
@@ -1065,7 +1065,13 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// checking one location and a note claiming another is how the tab
     /// ended up telling users something false in the first place.</summary>
     private string ResolveFolderPath(string p) =>
-        !Path.IsPathRooted(p) && _cfgPath is { } cfgPath ? Config.ResolveBeside(cfgPath, p) : p;
+        _cfgPath is { } cfgPath ? Config.ResolveFolderPath(cfgPath, p) : p;
+
+    /// <summary>Directory.Exists (or its test seam) for a destination or
+    /// monitored folder as the app will really use it: resolved beside
+    /// config.json when relative. Handed to each folder row, whose own
+    /// "folder doesn't exist" note would otherwise check the start folder.</summary>
+    private bool FolderExists(string p) => _directoryExists(ResolveFolderPath(p));
 
     private string _namesFileNote = "";
     public string NamesFileNote => _namesFileNote;
@@ -1264,10 +1270,11 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>One-click fix for "folder doesn't exist" — creates the whole
-    /// tree; failures come back as a dialog, not a crash.</summary>
+    /// tree; failures come back as a dialog, not a crash. A relative path is
+    /// created beside config.json, where filing and watching will look.</summary>
     private void CreateFolder(string? path, Action refresh)
     {
-        var p = path?.Trim() ?? "";
+        var p = ResolveFolderPath(path?.Trim() ?? "");
         if (p.Length == 0)
         {
             _dialogs.Warn("Pick a folder path first.", "OrdoSort");
@@ -1288,7 +1295,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     private void OpenFolderOrExplain(string? path)
     {
-        var p = path?.Trim() ?? "";
+        var p = ResolveFolderPath(path?.Trim() ?? "");
         if (p.Length > 0 && Directory.Exists(p))
             System.Diagnostics.Process.Start(
                 new System.Diagnostics.ProcessStartInfo(p) { UseShellExecute = true });
@@ -1493,6 +1500,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         }
 
         var wf = w.ToWatchFolder();
+        wf.Path = ResolveFolderPath(wf.Path.Trim());   // preview the folder the dashboard will watch
         var alertTerms = AlertTerms.ToList();
         FolderMonitor.FolderStatus? fastPath = string.IsNullOrWhiteSpace(wf.Path)
             ? new FolderMonitor.FolderStatus(wf.Label, wf.Path, wf.Color, 0,
@@ -1803,7 +1811,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// (an empty group's folder lands at the end of the flat list).</summary>
     public void AddFolderToSection(WatchSectionVm h)
     {
-        var vm = new WatchEditVm(_directoryExists, _scheduler, _uiContext, _probeDelayMs)
+        var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs)
         {
             Label = "New folder",
             Section = h.IsDefault ? "" : h.Header,
@@ -1867,7 +1875,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         for (var n = 2; SectionKeyExists(name); n++)
             name = $"New section {n}";
         TrackSticky(name);   // EXPLICITLY created — the other of the two things that makes a section sticky
-        var vm = new WatchEditVm(_directoryExists, _scheduler, _uiContext, _probeDelayMs) { Label = "New folder", Section = name };
+        var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs) { Label = "New folder", Section = name };
         WatchFolders.Add(vm);
         SelectedWatch = vm;
         var header = WatchRows.OfType<WatchSectionVm>().FirstOrDefault(h =>
@@ -2279,8 +2287,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         }
         foreach (var w in WatchFolders)
         {
-            if (w.Path.Trim().Length > 0 && !_directoryExists(w.Path.Trim()))
-                warnings.Add($"\"{w.Label.Trim()}\": folder doesn't exist: {w.Path.Trim()}");
+            if (w.Path.Trim().Length > 0 && !FolderExists(w.Path.Trim()))
+                warnings.Add($"\"{w.Label.Trim()}\": folder doesn't exist: {ResolveFolderPath(w.Path.Trim())}");
         }
         return warnings;
     }

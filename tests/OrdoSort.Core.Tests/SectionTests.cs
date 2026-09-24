@@ -28,7 +28,7 @@ public class SectionTests : IDisposable
         Directory.CreateDirectory(folder);
         File.WriteAllText(Path.Combine(folder, "doc.pdf"), "x");
         var w = new WatchFolder { Label = "W", Path = folder, Section = "Incoming" };
-        var status = Assert.Single(FolderMonitor.All(new List<WatchFolder> { w }, new List<string>()));
+        var status = Assert.Single(FolderMonitor.All(new List<WatchFolder> { w }, new List<string>(), Path.Combine(_dir, "config.json")));
         Assert.Equal("Incoming", status.Section);
     }
 }

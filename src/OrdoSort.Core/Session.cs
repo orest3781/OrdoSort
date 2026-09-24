@@ -132,7 +132,7 @@ public sealed class Session
         // directory the app was launched from. Resolved here, the one place a
         // route reaches Commit, on a copy: the route itself keeps its path as
         // typed (same reason _cfgPath is stored rather than applied up front).
-        var target = route.WithPath(Config.ResolveRoutePath(_cfgPath, route.Path));
+        var target = route.WithPath(Config.ResolveFolderPath(_cfgPath, route.Path));
         var outcome = Commit.CommitFile(src, typedName, target, SessionMode);
         if (outcome.Vanished) { LogVanished(src); return outcome; }
 

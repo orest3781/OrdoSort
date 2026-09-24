@@ -93,9 +93,17 @@ public static class FolderMonitor
     }
 
     /// <summary>Status for every configured watch folder, in order.</summary>
-    public static List<FolderStatus> All(IEnumerable<WatchFolder> folders, IEnumerable<string> alertTerms)
+    /// <summary>Status of every monitored folder. A relative path is watched
+    /// beside <paramref name="configPath"/>, where the destinations, inbox and
+    /// set-aside folder resolve too — not against whatever folder the app was
+    /// started from. The returned status carries the resolved path, so a
+    /// tile opens the folder it counted.</summary>
+    public static List<FolderStatus> All(IEnumerable<WatchFolder> folders, IEnumerable<string> alertTerms,
+        string configPath)
     {
         var terms = alertTerms.ToList();
-        return folders.Select(f => Status(f, terms)).ToList();
+        return folders
+            .Select(f => Status(f.WithPath(Config.ResolveFolderPath(configPath, f.Path)), terms))
+            .ToList();
     }
 }

@@ -247,8 +247,36 @@ public class FolderMonitorTests : IDisposable
         var a = Wf("aaa");
         var b = Wf("bbb");
         Touch(a.Path, "x.pdf");
-        var all = FolderMonitor.All(new[] { a, b }, Array.Empty<string>());
+        var all = FolderMonitor.All(new[] { a, b }, Array.Empty<string>(), Path.Combine(_dir, "config.json"));
         Assert.Equal(new[] { "aaa", "bbb" }, all.Select(s => s.Label));
+    }
+
+    [Fact]
+    public void ARelativeFolderIsWatchedBesideConfigJsonNotTheStartFolder()
+    {
+        // Destinations, inbox and set-aside all resolve beside config.json;
+        // a monitored folder resolved against the process's current
+        // directory instead, which differs by shortcut and by station.
+        var cfgDir = Directory.CreateDirectory(Path.Combine(_dir, "cfg")).FullName;
+        Directory.CreateDirectory(Path.Combine(cfgDir, "watch", "failed"));
+        File.WriteAllText(Path.Combine(cfgDir, "watch", "failed", "x.pdf"), "x");
+        var wf = new WatchFolder { Label = "Failed", Path = Path.Combine("watch", "failed") };
+
+        var status = Assert.Single(FolderMonitor.All(new[] { wf }, Array.Empty<string>(),
+            Path.Combine(cfgDir, "config.json")));
+
+        Assert.Equal("", status.Error);
+        Assert.Equal(1, status.Count);
+        Assert.Equal(Path.Combine(cfgDir, "watch", "failed"), status.Path);   // a tile opens what it counted
+        Assert.Equal(Path.Combine("watch", "failed"), wf.Path);   // the config's own entry is left as typed
+    }
+
+    [Fact]
+    public void ABlankFolderStaysUnsetRatherThanWatchingTheConfigFolder()
+    {
+        var status = Assert.Single(FolderMonitor.All(new[] { new WatchFolder { Label = "Unset", Path = "" } },
+            Array.Empty<string>(), Path.Combine(_dir, "config.json")));
+        Assert.Equal("no path configured", status.Error);
     }
 
     [Fact]
