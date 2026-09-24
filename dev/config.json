@@ -56,7 +56,7 @@
   "watch_folders": [
     {
       "label": "Failed transfers",
-      "path": "A:/DEV/OrdoSort/dev/watch/failed-transfers",
+      "path": "watch/failed-transfers",
       "recursive": true,
       "filetypes": "pdf",
       "color": "#C0392B",
@@ -64,7 +64,7 @@
     },
     {
       "label": "Scanner out",
-      "path": "A:/DEV/OrdoSort/dev/watch/scanner-out",
+      "path": "watch/scanner-out",
       "recursive": false,
       "filetypes": "pdf",
       "color": "#455A64",
