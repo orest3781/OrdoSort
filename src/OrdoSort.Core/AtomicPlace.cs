@@ -307,6 +307,15 @@ internal static class AtomicPlace
         }
     }
 
+    /// <summary>Test seam over the File.Replace call in
+    /// <see cref="MoveOverExisting"/>, defaulting to the real thing. Lets a
+    /// test make the replace refuse with "access denied" the way a network
+    /// share does, which no local filesystem a test runs on will do on its
+    /// own. Same "settable only by tests, reset in Dispose" contract as
+    /// <see cref="BeforeAttempt"/>.</summary>
+    internal static Action<string, string> ReplaceFile =
+        (tmp, destination) => File.Replace(tmp, destination, destinationBackupFileName: null);
+
     private static void MoveOverExisting(string tmp, string destination)
     {
         // File.Replace preserves the destination's ACLs and is the
@@ -314,10 +323,32 @@ internal static class AtomicPlace
         // destination to exist — hence the fallback for first creation. A
         // single attempt: Place's loop above is what retries it, on the
         // same terms as a failed write.
-        if (File.Exists(destination))
-            File.Replace(tmp, destination, destinationBackupFileName: null);
-        else
+        if (!File.Exists(destination))
+        {
             File.Move(tmp, destination);
+            return;
+        }
+
+        try
+        {
+            ReplaceFile(tmp, destination);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // ReplaceFile does more than rename: it copies the destination's
+            // ACL, owner and attributes onto the replacement, which needs
+            // WRITE_DAC-level rights a user with plain Modify on a network
+            // share doesn't have — and the destination was usually last
+            // written by ANOTHER station's user. So on a share, File.Replace
+            // is denied on every save while an ordinary rename-over is
+            // allowed (QC: "access denied" saving a config on a share).
+            // File.Move with overwrite is still one rename on the server, so
+            // readers still see old or new, never half; the new file just
+            // takes the folder's inherited ACL instead of the old file's.
+            // A genuinely transient denial (the destination delete-pending)
+            // fails this too and falls to Place's retry like before.
+            File.Move(tmp, destination, overwrite: true);
+        }
     }
 
     private static void MoveOnlyIfAbsent(string tmp, string destination)
