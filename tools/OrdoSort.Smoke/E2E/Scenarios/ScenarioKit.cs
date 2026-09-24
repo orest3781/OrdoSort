@@ -69,6 +69,12 @@ public static class ScenarioKit
     /// string directly instead, the way those 7 sites do now.</summary>
     public static void Settle(ScenarioContext ctx, Func<string> status, int timeoutMs = 15000)
     {
+        // Drain first. A window that shows a "working…" line BEFORE the work
+        // (Zip's "Zipping 3 items…", since 2026-09-05) makes "non-empty"
+        // true at once, so without this the checks read the working line
+        // instead of the result the run Posts afterwards — the E2E suite
+        // failed on exactly that from 2026-09-05 until this.
+        Drained(timeoutMs);
         var settled = E2EPump.Until(
             () => status().Length > 0 || ctx.Dialogs.Warnings.Count > 0, timeoutMs);
         ctx.Check("the window reported a result", settled,

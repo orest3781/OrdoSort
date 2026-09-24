@@ -16,7 +16,7 @@
 - [x] Merge `feature/box-labels-standalone` into `main` — long-lived branch, house rule says short-lived
 - [x] Decide whether `feature/box-labels-standalone` and `docs/refinement-tracker` should stay — deleted 2026-09-12, local and on GitHub, both fully merged into `main`
 - [x] CI red on `main` since 2026-09-10: `BoxLabelsAppFileCheckTests.OrdoSortsOwnConfigIsRefused` copied the gitignored `demo-full\config.json`. Fixed 2026-09-22: it now writes its config with `Config.Save`
-- [ ] E2E red on `main` since 2026-09-09: the suite prints `E2E FAIL:` with an empty reason — find what fails and make it say so
+- [x] E2E red on `main` since 2026-09-05/09: four Zip scenarios read the status line before the run's result arrived — `7144633` added a "Zipping N items…" line before the work, which made ScenarioKit.Settle's "status is non-empty" wait true at once. Settle now drains queued UI work first. Fixed 2026-09-23; all 46 scenarios pass locally
 - [x] Draft PR #4 (`claude/consolidate-save-files-4m6plg`) superseded by `0a778e0` — closed 2026-09-22 with a note; its branch is still on GitHub
 - [ ] A `check.bat wpf` run hung for an hour on 2026-09-22 (testhost idle, one test already done); two reruns of the same code passed in under 3 min. Likely the deadlock-prone tests below
 - [ ] Settings → Destinations list rows announce as "OrdoSort.Wpf.ViewModels.RouteEditVm" to screen readers (UI Automation name is the type name, not the label). Seen in QC 2026-09-22
