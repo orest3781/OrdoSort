@@ -94,9 +94,11 @@ public sealed class UnlockFileRow : ObservableObject
     /// <summary>FileName + Note. Kept only because HighlightContrastTests
     /// and UnlockReadinessProbeTests still assert this exact combined
     /// string (checked before this split, per the plan's own instruction) —
-    /// UnlockWindow.xaml itself no longer binds it: Task 1 Step 3 splits
-    /// FileName and Note into two separately-coloured TextBlocks in its
-    /// ItemTemplate, which a single concatenated string can't support.</summary>
+    /// UnlockWindow.xaml doesn't SHOW it: Task 1 Step 3 splits FileName and
+    /// Note into two separately-coloured TextBlocks in its ItemTemplate,
+    /// which a single concatenated string can't support. It is the row's
+    /// screen-reader name (AutomationProperties.Name), where one string is
+    /// exactly what's wanted.</summary>
     public string DisplayText => FileName + Note;
 
     /// <summary>Full path always; the probe's own message appended when

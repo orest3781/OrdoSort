@@ -69,6 +69,15 @@
                      ItemsSource="{Binding Saved}" SelectedItem="{Binding SelectedSavedEntry}"
                      MinHeight="60"
                      AutomationProperties.Name="Saved passwords">
+                <!-- Each row is announced by its label — never the password.
+                     Without a name it was read out as its CLR type
+                     (SavedPassword). BasedOn keeps the shared row style: an
+                     explicit ItemContainerStyle replaces it otherwise. -->
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                        <Setter Property="AutomationProperties.Name" Value="{Binding Label}" />
+                    </Style>
+                </ListBox.ItemContainerStyle>
                 <!-- Label gets a LOCAL Foreground bound back to the generated
                      ListBoxItem — see Styles.xaml's ListBoxItem style
                      comment: an ItemTemplate's LOCAL ContentTemplate

@@ -2082,3 +2082,27 @@ public class ApplySettingsTests
         File.WriteAllText(cfgPath, node.ToJsonString());
     }
 }
+
+/// <summary>What a screen reader hears for each row of the monitored-folders
+/// list (bound as AutomationProperties.Name in SettingsWindow.xaml).</summary>
+public class WatchRowAccessibleNameTests
+{
+    [Fact]
+    public void AFolderRowIsNamedByItsLabelAndFollowsAnEdit()
+    {
+        using var row = WatchEditVm.From(new WatchFolder { Label = "Failed transfers", Path = "" });
+        var raised = new List<string?>();
+        row.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        Assert.Equal("Failed transfers", row.AccessibleName);
+        row.Label = "Rejected";
+
+        Assert.Equal("Rejected", row.AccessibleName);
+        Assert.Contains(nameof(WatchEditVm.AccessibleName), raised);
+    }
+
+    [Fact]
+    public void ASectionHeaderSaysItIsASection() =>
+        Assert.Equal("Section: Failed queues",
+            new WatchSectionVm { Header = "Failed queues" }.AccessibleName);
+}

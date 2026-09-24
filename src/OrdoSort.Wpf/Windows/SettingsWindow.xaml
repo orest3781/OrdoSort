@@ -454,6 +454,10 @@
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <!-- Without a name a screen reader announced each
+                                             row as its CLR type (RouteEditVm); the row says
+                                             the label it shows. -->
+                                        <Setter Property="AutomationProperties.Name" Value="{Binding Label}" />
                                     </Style>
                                 </ListBox.ItemContainerStyle>
                                 <!-- Label gets a LOCAL Foreground bound back to
@@ -870,6 +874,10 @@
                                     <ListBox.ItemContainerStyle>
                                         <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                            <!-- Section headers and folders both expose
+                                                 AccessibleName ("Section: …" / the label),
+                                                 so one Setter names either kind of row. -->
+                                            <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}" />
                                         </Style>
                                     </ListBox.ItemContainerStyle>
                                     <ListBox.Resources>

@@ -82,6 +82,10 @@
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <!-- File name plus its readiness note (DisplayText), so a
+                                 screen reader hears the same thing the row shows;
+                                 without a name it announced the CLR type. -->
+                            <Setter Property="AutomationProperties.Name" Value="{Binding DisplayText}" />
                         </Style>
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
@@ -92,9 +96,8 @@
                                  (status-colour-vocabulary plan, 2026-08-08, Task 1
                                  Step 2) specifically so the NOTE alone can carry a
                                  status colour without tinting the filename next to
-                                 it — DisplayText still exists (UnlockViewModel.cs)
-                                 only because two test suites assert the combined
-                                 string; nothing here binds to it anymore.
+                                 it — DisplayText (UnlockViewModel.cs) is now bound
+                                 only as the row's screen-reader name, above.
                                  ToolTipText is unchanged: the full path, plus the
                                  probe's own message on a second line for the four
                                  states worth mentioning.

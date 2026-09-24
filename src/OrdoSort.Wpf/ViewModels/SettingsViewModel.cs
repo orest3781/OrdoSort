@@ -217,7 +217,18 @@ public sealed class WatchEditVm : ObservableObject, IDisposable
         TriggerProblemCheck();   // blank Path answers "no folder chosen yet" synchronously
     }
 
-    public string Label { get => _label; set => Set(ref _label, value); }
+    public string Label
+    {
+        get => _label;
+        set { if (Set(ref _label, value)) Raise(nameof(AccessibleName)); }
+    }
+
+    /// <summary>What a screen reader announces for this row of the
+    /// monitored-folders list: the folder's label, the same text the row
+    /// shows. Shares its name with <see cref="WatchSectionVm.AccessibleName"/>
+    /// so the one row style can bind both kinds of row.</summary>
+    public string AccessibleName => Label;
+
     public string Path
     {
         get => _path;
@@ -382,6 +393,12 @@ public sealed class WatchSectionVm : ObservableObject
     public bool IsDefault { get; init; }
     public bool IsEditing { get => _isEditing; set => Set(ref _isEditing, value); }
     public string EditText { get => _editText; set => Set(ref _editText, value); }
+
+    /// <summary>What a screen reader announces for this row of the
+    /// monitored-folders list. The list mixes section headers with folders
+    /// (<see cref="WatchEditVm.AccessibleName"/>), so the header says it is
+    /// one; without a name the row was read out as its CLR type.</summary>
+    public string AccessibleName => $"Section: {Header}";
 }
 
 /// <summary>One row of the sound picker: which sound plays for one moment.

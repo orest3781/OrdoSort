@@ -4,7 +4,10 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Media;
+using OrdoSort.Core;
 using OrdoSort.Wpf.Theme;
+using OrdoSort.Wpf.ViewModels;
+using OrdoSort.Wpf.Windows;
 
 namespace OrdoSort.Wpf.Tests;
 
@@ -59,18 +62,6 @@ public class AccessibleNameTests
     /// that are not (an icon glyph, an arrow) are caught anyway, because their
     /// derived name comes out empty and the assertion below is about the
     /// RESULT, not the declaration.</summary>
-    /// <summary>Windows whose list rows are known to announce a type name,
-    /// found when the ListBoxItem rule below was added alongside the label
-    /// maker's fix (2026-09-23) and not yet fixed. Named here so every OTHER
-    /// window is held to the rule now; delete an entry when its window gets
-    /// the same AutomationProperties.Name fix, and never add one.</summary>
-    private static readonly HashSet<string> KnownUnnamedListRows = new()
-    {
-        "SettingsWindow",      // RouteEditVm, WatchSectionVm, WatchEditVm rows
-        "ManageSavedWindow",   // SavedPassword rows
-        "UnlockWindow",        // UnlockFileRow rows
-    };
-
     private static bool NeedsAName(DependencyObject d) => d switch
     {
         // A control that some OTHER control's template put there carries its
@@ -150,6 +141,36 @@ public class AccessibleNameTests
     private static bool LooksLikeATypeName(string name) =>
         System.Text.RegularExpressions.Regex.IsMatch(name, @"^[A-Z]\w*(\.[A-Z]\w*){2,}$");
 
+    /// <summary>A saved-password row is announced by its label and nothing
+    /// else. A screen reader speaks the name aloud, so a binding that ever
+    /// reached the password (or the row's type, which once carried it in a
+    /// ToString) would read a secret to anyone in earshot.</summary>
+    [Fact]
+    public void ASavedPasswordRowIsAnnouncedByItsLabelNeverItsPassword() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new UnlockViewModel(new Config(), () => true);
+        vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
+        var window = new ManageSavedWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            OverflowProbe.PumpRender();
+            window.UpdateLayout();
+
+            var row = Descendants((DependencyObject)window.Content).OfType<ListBoxItem>().Single();
+            var name = UIElementAutomationPeer.CreatePeerForElement(row)!.GetName();
+            Assert.Equal("Test client", name);
+            Assert.DoesNotContain("hunter2", name);
+        }
+        finally { window.Close(); }
+    });
+
     [Theory, MemberData(nameof(Windows))]
     public void EveryValueCarryingControlCanSayWhatItIs(string windowName) => _fx.Invoke(() =>
     {
@@ -225,7 +246,6 @@ public class AccessibleNameTests
             foreach (var d in Descendants(content))
             {
                 if (d is not UIElement el || !NeedsAName(d)) continue;
-                if (d is ListBoxItem && KnownUnnamedListRows.Contains(windowName)) continue;
                 if (el is FrameworkElement { IsVisible: false }) continue;
                 checkedCount++;
 
