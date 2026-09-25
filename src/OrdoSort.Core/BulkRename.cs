@@ -63,12 +63,30 @@ public static partial class BulkRename
     [GeneratedRegex(@"-{2,}")]
     private static partial Regex DashRunRegex();
 
+    // Segment separators: underscore, space and dash. A run of them is one
+    // break, so "A__B" and "A_ B" are two pieces, never an empty one between.
+    [GeneratedRegex(@"[_ \-]+")]
+    private static partial Regex SegmentSeparatorRegex();
+
+    /// <summary>What goes between the pieces of a name that Bulk rename
+    /// rebuilds. <see cref="Original"/> keeps each piece's own separator.</summary>
+    public enum SegmentJoin { Original, Dash, Underscore, Space }
+
+    /// <summary>One piece of a filename stem.</summary>
+    /// <param name="Text">The piece itself, never empty.</param>
+    /// <param name="SeparatorBefore">The separator run in front of it in the
+    /// original name ("" for a first piece with nothing before it), kept so
+    /// <see cref="SegmentJoin.Original"/> can rejoin exactly.</param>
+    public sealed record StemSegment(string Text, string SeparatorBefore);
+
     public sealed record RenameOp(
         string Find = "", string Replace = "",
         string Prefix = "", string Suffix = "",
         string Case = "keep",       // keep | upper | lower
         string ReceivedDate = "",   // YYYYMMDD -> review-file rebuild
-        IReadOnlyCollection<int>? DeleteSegments = null, bool DeleteLastSegment = false);
+        IReadOnlyCollection<int>? DeleteSegments = null, bool DeleteLastSegment = false,
+        SegmentJoin Join = SegmentJoin.Original,
+        string DatePrefix = "");    // YYYYMMDD put in front, or "" for none
 
     public sealed record PlannedRename(
         string Source, string Target, bool Changed, string Note = "", bool Manual = false);
@@ -126,10 +144,64 @@ public static partial class BulkRename
         return string.Join('-', kept);
     }
 
-    /// <summary>Order: review-file rebuild -> segment deletion -> find/replace -> affixes -> case.
+    /// <summary>The pieces of <paramref name="stem"/>, split at runs of
+    /// underscores, spaces and dashes. Separators at the very start or end
+    /// don't make empty pieces.</summary>
+    public static IReadOnlyList<StemSegment> SplitSegments(string stem)
+    {
+        var pieces = new List<StemSegment>();
+        var position = 0;
+        var separator = "";
+        foreach (Match match in SegmentSeparatorRegex().Matches(stem))
+        {
+            if (match.Index > position)
+                pieces.Add(new StemSegment(stem[position..match.Index], separator));
+            separator = match.Value;
+            position = match.Index + match.Length;
+        }
+        if (position < stem.Length) pieces.Add(new StemSegment(stem[position..], separator));
+        return pieces;
+    }
+
+    private static string Joiner(SegmentJoin join) => join switch
+    {
+        SegmentJoin.Underscore => "_",
+        SegmentJoin.Space => " ",
+        _ => "-",   // Dash, and Original's choice for a date it adds itself
+    };
+
+    /// <summary>The stem with <paramref name="dropped"/> (1-based) pieces
+    /// removed and the rest joined per <paramref name="join"/>. Left exactly
+    /// as it was when nothing is dropped and the join is Original, so a
+    /// name nobody asked to change is never tidied behind their back.</summary>
+    private static string ApplySegments(string stem, IReadOnlySet<int>? dropped, SegmentJoin join)
+    {
+        var anyDropped = dropped is { Count: > 0 };
+        if (!anyDropped && join == SegmentJoin.Original) return stem;
+        var kept = SplitSegments(stem).Where((_, i) => !(anyDropped && dropped!.Contains(i + 1))).ToList();
+        var result = new System.Text.StringBuilder();
+        for (var i = 0; i < kept.Count; i++)
+        {
+            if (i > 0) result.Append(join == SegmentJoin.Original ? kept[i].SeparatorBefore : Joiner(join));
+            result.Append(kept[i].Text);
+        }
+        return result.ToString();
+    }
+
+    /// <summary>Whether <paramref name="dropped"/> removes every piece of
+    /// <paramref name="stem"/>.</summary>
+    private static bool DropsEverything(string stem, IReadOnlySet<int>? dropped)
+    {
+        if (dropped is not { Count: > 0 }) return false;
+        var count = SplitSegments(stem).Count;
+        return count > 0 && Enumerable.Range(1, count).All(dropped.Contains);
+    }
+
+    /// <summary>Order: review-file rebuild -> segment deletion -> dropped
+    /// pieces + join -> find/replace -> affixes -> date prefix -> case.
     /// Returns null when review mode is on and the stem doesn't match the
     /// layout (the caller skips the file, readably).</summary>
-    public static string? TransformStem(string stem, RenameOp op)
+    public static string? TransformStem(string stem, RenameOp op, IReadOnlySet<int>? dropped = null)
     {
         var outp = stem;
         if (!string.IsNullOrEmpty(op.ReceivedDate))
@@ -140,9 +212,12 @@ public static partial class BulkRename
                    $"-{parts.Value.First.ToUpperInvariant()}";
         }
         outp = DeleteSegmentsFromStem(outp, op.DeleteSegments ?? Array.Empty<int>(), op.DeleteLastSegment);
+        outp = ApplySegments(outp, dropped, op.Join);
         if (!string.IsNullOrEmpty(op.Find))
             outp = outp.Replace(op.Find, op.Replace);
         outp = $"{op.Prefix}{outp}{op.Suffix}";
+        if (op.DatePrefix.Length > 0)
+            outp = $"{op.DatePrefix}{Joiner(op.Join)}{outp}";
         return op.Case switch
         {
             "upper" => outp.ToUpperInvariant(),
@@ -233,10 +308,13 @@ public static partial class BulkRename
 
     /// <summary>Compute the batch, in input order. Touches nothing on disk
     /// beyond existence checks. <paramref name="overrides"/> maps a source
-    /// path to a hand-edited target STEM that beats the operation.</summary>
+    /// path to a hand-edited target STEM that beats the operation;
+    /// <paramref name="droppedSegments"/> maps a source path to the 1-based
+    /// pieces (<see cref="SplitSegments"/>) to leave out of that file's name.</summary>
     public static List<PlannedRename> Plan(
         IEnumerable<string> paths, RenameOp op,
-        IReadOnlyDictionary<string, string>? overrides = null)
+        IReadOnlyDictionary<string, string>? overrides = null,
+        IReadOnlyDictionary<string, IReadOnlySet<int>>? droppedSegments = null)
     {
         var planned = new List<PlannedRename>();
         var taken = new Dictionary<string, HashSet<string>>();
@@ -248,7 +326,14 @@ public static partial class BulkRename
             var stem = Path.GetFileNameWithoutExtension(source);
 
             var manual = overrides is not null && overrides.ContainsKey(source);
-            var newStem = manual ? overrides![source] : TransformStem(stem, op);
+            IReadOnlySet<int>? dropped = null;
+            droppedSegments?.TryGetValue(source, out dropped);
+            if (!manual && DropsEverything(stem, dropped))
+            {
+                planned.Add(new PlannedRename(source, source, false, "every segment dropped — skipped"));
+                continue;
+            }
+            var newStem = manual ? overrides![source] : TransformStem(stem, op, dropped);
 
             if (newStem is null)
             {

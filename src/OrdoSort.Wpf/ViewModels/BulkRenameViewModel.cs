@@ -150,7 +150,7 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null, int probeDelayMs = 300)
     {
-        _plan = plan ?? Plan;
+        _plan = plan ?? ((paths, op, overrides) => Plan(paths, op, overrides));
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _plansProbe = new DebouncedProbe<List<PlannedRename>>(
             _scheduler, uiContext, ApplyPlans, probeDelayMs);
