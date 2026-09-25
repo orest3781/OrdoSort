@@ -4,14 +4,22 @@ using OrdoSort.Core;
 
 namespace BoxLabelsApp.Services;
 
-/// <summary>The one thing this app has to remember: where the shared
-/// box-labels.json lives.</summary>
+/// <summary>What this app remembers: where the shared box-labels.json lives,
+/// and the Auto/Light/Dark choice.</summary>
 public sealed class LabelsFileDoc
 {
     [JsonPropertyName("box_labels_file")] public string BoxLabelsFile { get; set; } = "";
+
+    /// <summary>"auto", "light" or "dark", the same values OrdoSort's
+    /// config.json "theme" takes.</summary>
+    [JsonPropertyName("theme")] public string Theme { get; set; } = "auto";
+
+    /// <summary>Keys this version doesn't know, kept so a hand-written or
+    /// newer file survives being saved by this one.</summary>
+    [JsonExtensionData] public Dictionary<string, JsonElement>? Extras { get; set; }
 }
 
-/// <summary>Reads and writes that one setting, and works out which file to
+/// <summary>Reads and writes those settings, and works out which file to
 /// open for a given run.
 ///
 /// The file sits beside the exe, the way OrdoSort's config.json does, so the
@@ -50,30 +58,69 @@ public static class LabelsFileSettings
     /// OrdoSort applies to the same key name in its own config.</summary>
     public static string Read(string settingsPath)
     {
-        try
-        {
-            if (!File.Exists(settingsPath)) return "";
-            var doc = JsonSerializer.Deserialize<LabelsFileDoc>(
-                File.ReadAllText(settingsPath), Opts);
-            var value = doc?.BoxLabelsFile?.Trim() ?? "";
-            return value.Length == 0 ? "" : Config.ResolveBeside(settingsPath, value);
-        }
-        catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
-        {
-            return "";
-        }
+        var value = ReadDoc(settingsPath).BoxLabelsFile?.Trim() ?? "";
+        return value.Length == 0 ? "" : Config.ResolveBeside(settingsPath, value);
+    }
+
+    /// <summary>The remembered theme: "auto", "light" or "dark". Pre-rebrand
+    /// scheme names migrate the way OrdoSort's config does
+    /// (<see cref="Config.MigrateTheme"/>); anything else, a missing file or
+    /// a damaged one is "auto", for the same reason <see cref="Read"/>
+    /// forgives a damaged file.</summary>
+    public static string ReadTheme(string settingsPath)
+    {
+        var theme = Config.MigrateTheme(ReadDoc(settingsPath).Theme);
+        return theme is "light" or "dark" ? theme : "auto";
     }
 
     /// <summary>Remember this box-labels.json for next launch. Throws on a
     /// genuinely unwritable location — the caller reports that, because
     /// silently forgetting the choice would make the app ask again on every
-    /// single launch with no explanation.</summary>
+    /// single launch with no explanation. Other settings in the file are
+    /// kept.</summary>
     public static void Write(string settingsPath, string boxLabelsFile)
+    {
+        var doc = ReadDoc(settingsPath);
+        doc.BoxLabelsFile = boxLabelsFile;
+        WriteDoc(settingsPath, doc);
+    }
+
+    /// <summary>Remember the Auto/Light/Dark choice. Throws on an unwritable
+    /// location, like <see cref="Write"/>; the remembered store path is
+    /// kept.</summary>
+    /// <param name="theme">"auto", "light" or "dark".</param>
+    /// <exception cref="ArgumentException">Any other value.</exception>
+    public static void WriteTheme(string settingsPath, string theme)
+    {
+        if (theme is not ("auto" or "light" or "dark"))
+            throw new ArgumentException($"theme must be auto, light or dark, got \"{theme}\"", nameof(theme));
+        var doc = ReadDoc(settingsPath);
+        doc.Theme = theme;
+        WriteDoc(settingsPath, doc);
+    }
+
+    /// <summary>The whole file, or a fresh one when it is missing or
+    /// damaged. Every writer starts here, so saving one setting never erases
+    /// the other.</summary>
+    private static LabelsFileDoc ReadDoc(string settingsPath)
+    {
+        try
+        {
+            if (!File.Exists(settingsPath)) return new LabelsFileDoc();
+            return JsonSerializer.Deserialize<LabelsFileDoc>(File.ReadAllText(settingsPath), Opts)
+                ?? new LabelsFileDoc();
+        }
+        catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
+        {
+            return new LabelsFileDoc();
+        }
+    }
+
+    private static void WriteDoc(string settingsPath, LabelsFileDoc doc)
     {
         var dir = Path.GetDirectoryName(Path.GetFullPath(settingsPath));
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        File.WriteAllText(settingsPath,
-            JsonSerializer.Serialize(new LabelsFileDoc { BoxLabelsFile = boxLabelsFile }, Opts) + "\n");
+        File.WriteAllText(settingsPath, JsonSerializer.Serialize(doc, Opts) + "\n");
     }
 
     /// <summary>The "--file &lt;path&gt;" argument, or null when it isn't

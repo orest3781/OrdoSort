@@ -171,6 +171,80 @@ public sealed class BoxLabelsAppSettingsTests : IDisposable
         Assert.Null(LabelsFileSettings.FromArgs(args));
     }
 
+    // ------------------------------------------------------------------- theme
+
+    [Fact]
+    public void WithNoSettingsFileTheThemeFollowsWindows() =>
+        Assert.Equal("auto", LabelsFileSettings.ReadTheme(SettingsPath));
+
+    [Theory]
+    [InlineData("light")]
+    [InlineData("dark")]
+    [InlineData("auto")]
+    public void ARememberedThemeComesBackOnTheNextLaunch(string theme)
+    {
+        LabelsFileSettings.WriteTheme(SettingsPath, theme);
+
+        Assert.Equal(theme, LabelsFileSettings.ReadTheme(SettingsPath));
+    }
+
+    /// <summary>Both settings live in one file, so saving either one must
+    /// keep the other. Losing the store path would send the station back to
+    /// first run; losing the theme would just be annoying.</summary>
+    [Fact]
+    public void SavingTheThemeKeepsTheRememberedStore()
+    {
+        var share = @"\\server\records\box-labels.json";
+        LabelsFileSettings.Write(SettingsPath, share);
+
+        LabelsFileSettings.WriteTheme(SettingsPath, "dark");
+
+        Assert.Equal(share, LabelsFileSettings.Read(SettingsPath));
+        Assert.Equal("dark", LabelsFileSettings.ReadTheme(SettingsPath));
+    }
+
+    [Fact]
+    public void SavingTheStoreKeepsTheRememberedTheme()
+    {
+        LabelsFileSettings.WriteTheme(SettingsPath, "light");
+
+        LabelsFileSettings.Write(SettingsPath, @"\\server\records\box-labels.json");
+
+        Assert.Equal("light", LabelsFileSettings.ReadTheme(SettingsPath));
+    }
+
+    /// <summary>A key a person wrote by hand, or a newer version added, is
+    /// not this version's to delete.</summary>
+    [Fact]
+    public void KeysThisVersionDoesNotKnowSurviveASave()
+    {
+        File.WriteAllText(SettingsPath, "{ \"box_labels_file\": \"a.json\", \"station\": \"front desk\" }");
+
+        LabelsFileSettings.WriteTheme(SettingsPath, "dark");
+
+        Assert.Contains("\"station\": \"front desk\"", File.ReadAllText(SettingsPath));
+    }
+
+    /// <summary>The old OrdoSort scheme names map the same way config.json's
+    /// do; anything unreadable follows Windows rather than stopping the app
+    /// over a cosmetic setting.</summary>
+    [Theory]
+    [InlineData("{ \"theme\": \"graphite\" }", "dark")]
+    [InlineData("{ \"theme\": \"Paper\" }", "light")]
+    [InlineData("{ \"theme\": \"ledger\" }", "auto")]
+    [InlineData("{ \"theme\": \"purple\" }", "auto")]
+    [InlineData("{ this is not json", "auto")]
+    public void AnOldOrUnreadableThemeIsReadSafely(string contents, string expected)
+    {
+        File.WriteAllText(SettingsPath, contents);
+
+        Assert.Equal(expected, LabelsFileSettings.ReadTheme(SettingsPath));
+    }
+
+    [Fact]
+    public void OnlyAutoLightOrDarkCanBeSaved() =>
+        Assert.Throws<ArgumentException>(() => LabelsFileSettings.WriteTheme(SettingsPath, "ledger"));
+
     // ------------------------------------------------------------ reachability
 
     [Fact]

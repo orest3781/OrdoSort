@@ -62,15 +62,15 @@ public partial class App : Application
             LogCrash(ex.ExceptionObject as Exception);
 
         // Theme FIRST, before anything that can raise a dialog: the dialogs
-        // below are real WPF windows and resolve Theme.* brushes. "auto"
-        // follows the OS — this app has no settings page to override it from.
-        ThemeManager.Start(this, "auto");
+        // below are real WPF windows and resolve Theme.* brushes. The choice
+        // is made in the store bar and remembered beside the exe.
+        _settingsPath = LabelsFileSettings.PathIn(AppContext.BaseDirectory);
+        ThemeManager.Start(this, LabelsFileSettings.ReadTheme(_settingsPath));
         // The XAML placeholder is replaced by the shared default, so the two
         // applications cannot drift apart on the font they fall back to.
         Resources["AppFontFamily"] = AppFonts.CreateDefault();
 
         _dialogs = dialogs;
-        _settingsPath = LabelsFileSettings.PathIn(AppContext.BaseDirectory);
         _chooser = new LabelsFileChooser(dialogs, Title, AskForLabelsFile);
         if (_chooser.Resolve(e.Args, _settingsPath, LabelsFileSettings.FolderReachable,
                 chosen => Remember(_settingsPath, chosen, dialogs)) is not { } labelsFile)
@@ -96,7 +96,8 @@ public partial class App : Application
         var vm = new LabelMakerViewModel(null, _labelsFile, _dialogs, Title);
         vm.UnexpectedError += ex => LogCrash(ex);
         var window = new LabelMakerWindow(vm, Title, $"{Title} — Print preview",
-            standalone: true, storeBar: new LabelStoreBar(_labelsFile, ChangeStoreFile));
+            standalone: true,
+            storeBar: new LabelStoreBar(_labelsFile, ChangeStoreFile, ThemeManager.Mode, SetTheme));
         MainWindow = window;
         window.Show();
         // Only now is there a main window whose closing should end the process.
@@ -150,6 +151,25 @@ public partial class App : Application
         finally
         {
             ShutdownMode = ShutdownMode.OnMainWindowClose;
+        }
+    }
+
+    /// <summary>The store bar's Auto/Light/Dark switch: apply now, then
+    /// remember. A failed save leaves the theme applied for this run and says
+    /// so, the same way <see cref="Remember"/> does.</summary>
+    private void SetTheme(string mode)
+    {
+        ThemeManager.SetMode(this, mode);
+        try
+        {
+            LabelsFileSettings.WriteTheme(_settingsPath, ThemeManager.Mode);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _dialogs.Warn(
+                "Box Labels switched the theme, but couldn't remember it for next time:\n\n" +
+                ex.Message,
+                Title);
         }
     }
 

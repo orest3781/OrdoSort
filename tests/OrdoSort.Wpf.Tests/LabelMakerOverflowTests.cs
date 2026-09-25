@@ -120,7 +120,8 @@ public class LabelMakerOverflowTests
         vm.Selected = vm.Clients[0];
         var window = new LabelMakerWindow(vm, "Box Labels", "Box Labels — Print preview",
             standalone: true,
-            storeBar: new LabelStoreBar(@"\\server\records\box-labels.json", () => { }))
+            // with the theme switch showing: the widest the bar gets
+            storeBar: new LabelStoreBar(@"\\server\records\box-labels.json", () => { }, "auto", _ => { }))
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,

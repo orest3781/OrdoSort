@@ -17,7 +17,12 @@ namespace OrdoSort.Wpf.Windows;
 /// <param name="Path">Shown in full; trimmed with a tooltip when too long.</param>
 /// <param name="ChangeFile">Invoked by the button. The host owns everything
 /// that follows — picking, validating, and swapping the window.</param>
-public sealed record LabelStoreBar(string Path, Action ChangeFile);
+/// <param name="ThemeMode">The theme in force: "auto", "light" or "dark".</param>
+/// <param name="SetTheme">Invoked with the new mode when the user picks one.
+/// Null hides the switch. BoxLabels.exe has no settings page, so this bar is
+/// its only place to choose.</param>
+public sealed record LabelStoreBar(string Path, Action ChangeFile,
+    string ThemeMode = "auto", Action<string>? SetTheme = null);
 
 public partial class LabelMakerWindow : Window
 {
@@ -51,6 +56,16 @@ public partial class LabelMakerWindow : Window
             StorePathText.Text = storeBar.Path;
             StorePathText.ToolTip = storeBar.Path;   // trimmed in the bar; whole on hover
             ChangeStoreButton.Click += (_, _) => storeBar.ChangeFile();
+            if (storeBar.SetTheme is { } setTheme)
+            {
+                ThemeSwitch.Visibility = Visibility.Visible;
+                var buttons = new[] { (ThemeAutoButton, "auto"), (ThemeLightButton, "light"), (ThemeDarkButton, "dark") };
+                foreach (var (button, mode) in buttons)
+                {
+                    button.IsChecked = mode == storeBar.ThemeMode;
+                    button.Checked += (_, _) => setTheme(mode);
+                }
+            }
 
             // The window has to grow by exactly what the bar takes, or it
             // takes the room from the form instead. The Grid below has a *

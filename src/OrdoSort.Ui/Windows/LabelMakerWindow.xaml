@@ -26,6 +26,25 @@
                 <Button x:Name="ChangeStoreButton" DockPanel.Dock="Right"
                         Content="Change file…" MinWidth="112" Margin="12,0,0,0"
                         AutomationProperties.Name="Change box labels file" />
+                <!-- Auto/Light/Dark: collapsed unless the host passes
+                     LabelStoreBar.SetTheme. OrdoSort picks its theme on the
+                     Settings page instead. -->
+                <StackPanel x:Name="ThemeSwitch" DockPanel.Dock="Right" Orientation="Horizontal"
+                            Visibility="Collapsed" Margin="12,0,0,0"
+                            AutomationProperties.Name="Theme">
+                    <TextBlock Text="Theme:" Style="{StaticResource FieldLabel}"
+                               VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <RadioButton x:Name="ThemeAutoButton" GroupName="BoxLabelsTheme" Content="Auto"
+                                 VerticalAlignment="Center" Margin="0,0,10,0"
+                                 AutomationProperties.Name="Theme: follow Windows"
+                                 ToolTip="Follow the Windows light/dark setting" />
+                    <RadioButton x:Name="ThemeLightButton" GroupName="BoxLabelsTheme" Content="Light"
+                                 VerticalAlignment="Center" Margin="0,0,10,0"
+                                 AutomationProperties.Name="Theme: light" />
+                    <RadioButton x:Name="ThemeDarkButton" GroupName="BoxLabelsTheme" Content="Dark"
+                                 VerticalAlignment="Center"
+                                 AutomationProperties.Name="Theme: dark" />
+                </StackPanel>
                 <TextBlock DockPanel.Dock="Left" Text="Labels file:"
                            Style="{StaticResource FieldLabel}"
                            VerticalAlignment="Center" Margin="0,0,8,0" />

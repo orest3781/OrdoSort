@@ -85,4 +85,38 @@ public class LabelStoreBarTests : IDisposable
         }
         finally { window.Close(); }
     });
+
+    [Fact]
+    public void WithoutAHostActionThereIsNoThemeSwitch() => _fx.Invoke(() =>
+    {
+        var window = new LabelMakerWindow(Vm(), "Box Labels", "Box Labels — Print preview",
+            standalone: true, storeBar: new LabelStoreBar("x.json", () => { }));
+        try
+        {
+            Assert.Equal(Visibility.Collapsed, window.ThemeSwitch.Visibility);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public void TheThemeSwitchShowsTheCurrentThemeAndReportsAPick() => _fx.Invoke(() =>
+    {
+        var picked = new List<string>();
+        var window = new LabelMakerWindow(Vm(), "Box Labels", "Box Labels — Print preview",
+            standalone: true, storeBar: new LabelStoreBar("x.json", () => { }, "dark", picked.Add));
+        try
+        {
+            Assert.Equal(Visibility.Visible, window.ThemeSwitch.Visibility);
+            Assert.True(window.ThemeDarkButton.IsChecked);
+            Assert.False(window.ThemeAutoButton.IsChecked);
+            // showing the saved choice is not a new choice
+            Assert.Empty(picked);
+
+            window.ThemeLightButton.IsChecked = true;
+
+            Assert.Equal(new[] { "light" }, picked);
+            Assert.False(window.ThemeDarkButton.IsChecked);
+        }
+        finally { window.Close(); }
+    });
 }
