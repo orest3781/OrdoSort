@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/logo-concept.jpg" alt="OrdoSort — every document, where it belongs" width="480">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/lockup-dark.png">
+    <img src="docs/brand/lockup-light.png" alt="OrdoSort: three stepped index tabs beside the OrdoSort wordmark" width="360">
+  </picture>
 </p>
 
 # OrdoSort
@@ -10,6 +13,8 @@ press one of your destination buttons (or its hotkey), and the file is renamed
 and moved. A dashboard shows what's waiting, monitored folders light up when
 they need attention, and every move is written to an audit log that is backed
 up daily — so you can always answer *where did that go, and when?*
+
+The name: *ordo* is Latin for order. Brand guide: [docs/brand/BRAND.md](docs/brand/BRAND.md).
 
 Built with C# / .NET 8 + WPF. PDFs render in **WebView2** (Edge's engine,
 already on the machine), so no PDF library ships with the app.
