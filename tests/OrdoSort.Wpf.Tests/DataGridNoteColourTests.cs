@@ -218,7 +218,7 @@ public class DataGridNoteColourTests
     public void BulkRenameSkippedNoteIsAmberUnlessSelected(string schemeKey, bool selected) => _fx.Invoke(() =>
         AssertBulkRenameNoteColour(schemeKey, selected,
             new RenameRow(@"C:\inbox\c.pdf", "c.pdf", "c.pdf",
-                "doesn't match the review-file layout — skipped",
+                "every segment dropped — skipped",
                 changed: false, manual: false, needsName: true, editSeed: "c.pdf", noteIsProblem: true),
             p => p.StatusAmber));
 

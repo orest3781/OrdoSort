@@ -38,7 +38,7 @@ public sealed class RenameRow
     public bool NeedsName { get; }
 
     /// <summary>True when Plan() itself had something to say about this row —
-    /// its Note carries text ("doesn't match the review-file layout —
+    /// its Note carries text ("every segment dropped —
     /// skipped", "name was taken — using a counter", an illegal-name
     /// rejection, …) rather than only the ViewModel's own "edited by hand"/
     /// "(no change)" annotations. NOT the same set as <see cref="NeedsName"/>:

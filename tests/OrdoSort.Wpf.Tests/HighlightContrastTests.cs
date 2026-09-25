@@ -1935,7 +1935,7 @@ public class HighlightContrastTests
 
         var vm = new BulkRenameViewModel();
         vm.Preview.Add(new RenameRow(@"C:\inbox\c.pdf", "c.pdf", "c.pdf",
-            "doesn't match the review-file layout — skipped",
+            "every segment dropped — skipped",
             changed: false, manual: false, needsName: true, editSeed: "c.pdf", noteIsProblem: true));
         var window = new BulkRenameWindow(vm)
         {

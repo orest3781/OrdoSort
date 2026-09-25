@@ -100,15 +100,6 @@ public class BulkRenameParserTests
     public void NonMatchingReturnsNull(string stem) =>
         Assert.Null(ParseReviewStem(stem));
 
-    [Fact]
-    public void ReviewModeRebuildsToDateLastFirst() =>
-        Assert.Equal("20240126-BROWN-ADAM",
-            TransformStem("BROWN_ADAM_4_25_1966_ACME_R", new RenameOp(ReceivedDate: "20240126")));
-
-    [Fact]
-    public void NonMatchingReviewFileTransformsToNull() =>
-        Assert.Null(TransformStem("notes", new RenameOp(ReceivedDate: "20240126")));
-
     [Theory]
     [InlineData("20240115-SCANRUN7-SMITH JOHN-12345", new[] { 2 }, false, "20240115-SMITH JOHN-12345")]
     [InlineData("a-b-c", new[] { 1, 3 }, false, "b")]
@@ -121,27 +112,6 @@ public class BulkRenameParserTests
     [InlineData("a-b", new[] { 1 }, true, "a-b")]               // everything would go: untouched
     public void SegmentDeletionFollowsTheRules(string stem, int[] positions, bool last, string expected) =>
         Assert.Equal(expected, DeleteSegmentsFromStem(stem, positions, last));
-
-    [Fact]
-    public void SegmentDeleteRunsAfterReviewRenameAndBeforeFindReplace()
-    {
-        var op = new RenameOp(
-            Find: "SMITH", Replace: "X", Prefix: "", Suffix: "", Case: "keep",
-            ReceivedDate: "", DeleteSegments: new[] { 1 }, DeleteLastSegment: false);
-        // stem "JUNK-SMITH JOHN": delete seg 1 -> "SMITH JOHN", then find/replace -> "X JOHN"
-        Assert.Equal("X JOHN", TransformStem("JUNK-SMITH JOHN", op));
-    }
-
-    [Fact]
-    public void SegmentDeleteAppliesToTheReviewRebuiltStem()
-    {
-        // A review-file stem rebuilds to "<date>-LAST-FIRST"; deleting segment 2
-        // must remove LAST from the REBUILT name, proving segment delete runs after rebuild
-        var op = new RenameOp(ReceivedDate: "20240126", DeleteSegments: new[] { 2 });
-        // "BROWN_ADAM_4_25_1966_ACME_R" rebuilds to "20240126-BROWN-ADAM"
-        // delete segment 2 -> "20240126-ADAM"
-        Assert.Equal("20240126-ADAM", TransformStem("BROWN_ADAM_4_25_1966_ACME_R", op));
-    }
 }
 
 /// <summary>TidyStem is pure, so this table is cheap and is where the real
@@ -312,14 +282,6 @@ public class BulkRenameFsTests : IDisposable
 
         Assert.Empty(Revert(new[] { outcome }));
         Assert.Equal("smith.pdf", Path.GetFileName(Directory.GetFiles(_dir).Single()));
-    }
-
-    [Fact]
-    public void ReviewMergeEndToEnd()
-    {
-        var src = Touch("BROWN_ADAM_4_25_1966_ACME_R.pdf");
-        var pr = Plan(new[] { src }, new RenameOp(ReceivedDate: "20240126"))[0];
-        Assert.Equal("20240126-BROWN-ADAM.pdf", Path.GetFileName(pr.Target));
     }
 }
 

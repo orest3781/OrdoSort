@@ -83,8 +83,6 @@ public static partial class BulkRename
         string Find = "", string Replace = "",
         string Prefix = "", string Suffix = "",
         string Case = "keep",       // keep | upper | lower
-        string ReceivedDate = "",   // YYYYMMDD -> review-file rebuild
-        IReadOnlyCollection<int>? DeleteSegments = null, bool DeleteLastSegment = false,
         SegmentJoin Join = SegmentJoin.Original,
         string DatePrefix = "");    // YYYYMMDD put in front, or "" for none
 
@@ -114,7 +112,9 @@ public static partial class BulkRename
 
     /// <summary>(last, first) from a review-file filename stem, or null when
     /// the stem doesn't follow the layout. A multi-part last name comes back
-    /// space-joined: "VAN DYKE".</summary>
+    /// space-joined: "VAN DYKE". Match &amp; Merge reads names with it;
+    /// Bulk rename stopped using it when its segment controls replaced the
+    /// one-click review rebuild (2026-09-25).</summary>
     public static (string Last, string First)? ParseReviewStem(string stem)
     {
         var m = ReviewRegex().Match(stem);
@@ -197,22 +197,11 @@ public static partial class BulkRename
         return count > 0 && Enumerable.Range(1, count).All(dropped.Contains);
     }
 
-    /// <summary>Order: review-file rebuild -> segment deletion -> dropped
-    /// pieces + join -> find/replace -> affixes -> date prefix -> case.
-    /// Returns null when review mode is on and the stem doesn't match the
-    /// layout (the caller skips the file, readably).</summary>
-    public static string? TransformStem(string stem, RenameOp op, IReadOnlySet<int>? dropped = null)
+    /// <summary>Order: dropped segments + join -> find/replace -> affixes ->
+    /// date prefix -> case.</summary>
+    public static string TransformStem(string stem, RenameOp op, IReadOnlySet<int>? dropped = null)
     {
-        var outp = stem;
-        if (!string.IsNullOrEmpty(op.ReceivedDate))
-        {
-            var parts = ParseReviewStem(outp);
-            if (parts is null) return null;
-            outp = $"{op.ReceivedDate}-{parts.Value.Last.ToUpperInvariant()}" +
-                   $"-{parts.Value.First.ToUpperInvariant()}";
-        }
-        outp = DeleteSegmentsFromStem(outp, op.DeleteSegments ?? Array.Empty<int>(), op.DeleteLastSegment);
-        outp = ApplySegments(outp, dropped, op.Join);
+        var outp = ApplySegments(stem, dropped, op.Join);
         if (!string.IsNullOrEmpty(op.Find))
             outp = outp.Replace(op.Find, op.Replace);
         outp = $"{op.Prefix}{outp}{op.Suffix}";
@@ -230,7 +219,7 @@ public static partial class BulkRename
     /// YYYYMMDD-LASTNAME-FIRSTNAME-CONTROLID shape for a supplied
     /// <paramref name="date"/> (8 digits, already validated by the caller —
     /// see StandardiseDateWindow.IsValidDate — this function trusts it the
-    /// same way TransformStem trusts RenameOp.ReceivedDate). Pure: no
+    /// same way TransformStem trusts RenameOp.DatePrefix). Pure: no
     /// filesystem, no clock, so the same input always produces the same
     /// output, which is what makes re-dropping a file this tool already
     /// produced a no-op rather than a guess.
@@ -335,12 +324,6 @@ public static partial class BulkRename
             }
             var newStem = manual ? overrides![source] : TransformStem(stem, op, dropped);
 
-            if (newStem is null)
-            {
-                planned.Add(new PlannedRename(source, source, false,
-                    "doesn't match the review-file layout — skipped"));
-                continue;
-            }
             if (string.IsNullOrWhiteSpace(newStem))
             {
                 planned.Add(new PlannedRename(source, source, false,
@@ -398,13 +381,11 @@ public static partial class BulkRename
     /// from TidyStem, for one already-validated <paramref name="date"/> —
     /// bypassing Plan/TransformStem/RenameOp entirely.
     ///
-    /// Why not go through Plan(): TidyStem's fixed (stem, date) shape has
-    /// nowhere to plug into RenameOp's five free-form knobs
-    /// (Find/Replace/affixes/Case/ReceivedDate) without inventing a field
-    /// for a transform none of the others share — ReceivedDate already
-    /// means something else (a last/first REBUILD off ParseReviewStem's
-    /// regex), so reusing it here would silently change what review mode
-    /// does. What Plan() does that this deliberately leaves out: pre-
+    /// Why not go through Plan(): TidyStem's fixed (stem, date) shape
+    /// (strip a date, uppercase, normalise separators, re-date) has nowhere
+    /// to plug into RenameOp's free-form knobs without inventing a field for
+    /// a transform none of the others share. What Plan() does that this
+    /// deliberately leaves out: pre-
     /// resolving a same-batch collision against a "taken" set before
     /// anything touches disk. Plan() needs that because it renders a live
     /// PREVIEW ahead of a separate Rename click — the name it shows has to
