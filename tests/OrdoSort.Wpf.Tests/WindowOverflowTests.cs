@@ -88,7 +88,7 @@ public class WindowOverflowTests
     /// builders would guarantee the two drift.</summary>
     internal static Dictionary<string, Probe> Registry() => new()
     {
-        ["BulkRenameWindow"] = new(700, 820, 520, 640, () =>
+        ["BulkRenameWindow"] = new(700, 820, 600, 700, () =>
         {
             var vm = new BulkRenameViewModel();
             vm.Preview.Add(new RenameRow(@"C:\inbox\old-name-before-review.pdf", "old-name-before-review.pdf",

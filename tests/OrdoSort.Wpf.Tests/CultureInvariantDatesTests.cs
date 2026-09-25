@@ -112,19 +112,18 @@ public class CultureInvariantDatesTests : IDisposable
             // THIS thread inside Refresh either way.
             var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
             vm.AddFilesAsync(new[] { path });
-            vm.ReviewMode = true;
-            vm.ReceivedDate = new DateTime(2026, 8, 2);
+            vm.Join = OrdoSort.Core.BulkRename.SegmentJoin.Dash;
+            vm.KeepFirst(2);
+            vm.AddDate = true;
+            vm.Date = new DateTime(2026, 8, 2);
 
             // Value conjoined into the wait (not just Count == 1): the
-            // AddFiles-generation compute can still land after the
-            // ReviewMode/ReceivedDate ones supersede it, satisfying a
-            // count-only wait on the WRONG (pre-review-mode) preview and
-            // making the strict Assert.Equal below intermittently fail. Every
-            // other test in this suite already conjoins the value; finding 3
-            // (final review, 2026-08-05 debounce pair) brings these two in
-            // line.
+            // AddFiles-generation compute can still land after the later ones
+            // supersede it, satisfying a count-only wait on the WRONG preview
+            // and making the strict Assert.Equal below intermittently fail
+            // (finding 3, final review, 2026-08-05 debounce pair).
             WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "20260802-SMITH-JOHN.pdf",
-                "the preview should eventually compute the review-mode rebuild");
+                "the preview should eventually compute the dated name");
             var row = Assert.Single(vm.Preview);
             Assert.Equal("20260802-SMITH-JOHN.pdf", row.NewName);
         });
@@ -138,17 +137,18 @@ public class CultureInvariantDatesTests : IDisposable
     public void StrayEditSeedIsCultureInvariant(string culture) =>
         UnderCulture(culture, () =>
         {
-            var path = MakeFile("whatever.pdf");   // doesn't match the review layout
+            var path = MakeFile("whatever.pdf");   // one segment: dropping it leaves nothing
             // InlineWorkScheduler for the same reason as the theory above.
             var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
             vm.AddFilesAsync(new[] { path });
-            vm.ReviewMode = true;
-            vm.ReceivedDate = new DateTime(2026, 8, 2);
+            vm.AddDate = true;
+            vm.Date = new DateTime(2026, 8, 2);
+            vm.SetSegmentKept(1, kept: false);
 
             // Same value-conjoined wait as above, for the same reason: a
             // count-only wait can be satisfied by the AddFiles-generation
             // compute (EditSeed == the plain filename, NeedsName == false)
-            // before the ReviewMode/ReceivedDate recompute supersedes it.
+            // before the later recompute supersedes it.
             WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].EditSeed == "20260802-",
                 "the preview should eventually compute the stray's date-prefixed edit seed");
             var row = Assert.Single(vm.Preview);

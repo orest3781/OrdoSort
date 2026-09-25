@@ -651,7 +651,7 @@ public class DataGridSelectionContrastTests
             win.UpdateLayout();
             var grid = FindDescendant<DataGrid>(win)
                 ?? throw new InvalidOperationException("no DataGrid descendant under BulkRenameWindow");
-            var (text, _) = ResolveCell(grid, "New name  ·  click or press F2 to edit");
+            var (text, _) = ResolveCell(grid, "New name");
 
             Assert.Equal(p.SubtleText, ToRgb(text.Foreground));
             var unselectedRatio = ThemePalette.ContrastRatio(ToRgb(text.Foreground), p.Surface);
@@ -689,7 +689,7 @@ public class DataGridSelectionContrastTests
             win.UpdateLayout();
             var grid = FindDescendant<DataGrid>(win)
                 ?? throw new InvalidOperationException("no DataGrid descendant under BulkRenameWindow");
-            var (text, _) = ResolveCell(grid, "New name  ·  click or press F2 to edit");
+            var (text, _) = ResolveCell(grid, "New name");
 
             Assert.Equal(FontWeights.Bold, text.FontWeight);
             Assert.Equal(p.Text, ToRgb(text.Foreground));   // Changed=true: not SubtleText

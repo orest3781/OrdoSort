@@ -1145,19 +1145,20 @@ public class BulkRenameViewModelTests : IDisposable
     {
         var vm = new BulkRenameViewModel();
         await vm.AddFilesAsync(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf"),
-                            Touch("notes_only.pdf") });
-        vm.ReceivedDate = new DateTime(2024, 1, 26);
-        vm.ReviewMode = true;
+                            Touch("notes.pdf") });
+        // Nothing selected, so this drops segment 1 from both files: BROWN goes,
+        // and "notes" (one segment) is left with nothing, which needs a person.
+        vm.SetSegmentKept(1, kept: false);
         WaitFor(() => vm.CountsLine.Contains("1 will change"),
             "CountsLine should eventually report the one file that changed");
-        // was "1 won't (name didn't parse)" — a dead end. It now names the
-        // number of files waiting on you, which is the thing to act on.
         Assert.Contains("1 need a name", vm.CountsLine);
     }
 
     /// <summary>Six strays in a batch of seventy-five is the real workload, so
     /// the tool has to make those six quick to fix rather than make the other
-    /// sixty-nine expressible in a pattern language.
+    /// sixty-nine expressible in a pattern language. Here the strays are the
+    /// one-segment names, left with nothing once segment 1 is dropped from
+    /// every file.
     ///
     /// Waits for the probe to settle before returning so the four tests below
     /// that assert on Preview/NeedsNameCount immediately after calling this
@@ -1171,12 +1172,13 @@ public class BulkRenameViewModelTests : IDisposable
         await vm.AddFilesAsync(new[]
         {
             Touch("SMITH_JOHN_5_5_2024_ACME_RECORDS_1-1__08_02_24_1019_X.pdf"),
-            Touch("oddball one.pdf"),
+            Touch("oddball.pdf"),
             Touch("GARCIA_MARIA_8_5_2024_ACME_RECORDS_2-1__08_02_24_1020_X.pdf"),
-            Touch("oddball two.pdf"),
+            Touch("loner.pdf"),
         });
-        vm.ReceivedDate = new DateTime(2024, 8, 2);
-        vm.ReviewMode = true;
+        vm.Date = new DateTime(2024, 8, 2);
+        vm.AddDate = true;
+        vm.SetSegmentKept(1, kept: false);
         WaitFor(() => vm.NeedsNameCount == 2, "the batch's preview should settle before the caller asserts on it");
         return vm;
     }
@@ -1313,27 +1315,25 @@ public class BulkRenameViewModelTests : IDisposable
         Assert.Equal("Rename 1 file", vm.RenameButtonText);
     }
 
+    /// <summary>The owner's review files, done with the general controls that
+    /// replaced the one-click "Review files" rebuild (2026-09-25): keep the
+    /// first two segments, join with a dash, date in front.</summary>
     [Fact]
-    public async Task ReviewTransformParsesTheMedicalFaxNames()
+    public async Task KeepFirstTwoWithADashAndADateGivesTheReviewShape()
     {
         var vm = new BulkRenameViewModel();
         await vm.AddFilesAsync(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf") });
-        vm.ReceivedDate = new DateTime(2024, 1, 26);
-        vm.ReviewMode = true;
-        // Fix round 2, item 2(b): snapshot Preview into a local list FIRST,
-        // rather than reading .Count then [0] off the live, still-mutating
-        // ObservableCollection directly — the two reads are not atomic with
-        // each other, so a background rebuild landing between them could
-        // shrink or clear the collection out from under the indexer. This
-        // was the actual flake (ArgumentOutOfRangeException from inside the
-        // predicate); WaitFor's own updated catch is the backstop for
-        // whatever a snapshot can't fully rule out (ToList() itself can
-        // still race the SAME rebuild while enumerating).
+        vm.Date = new DateTime(2024, 1, 26);
+        vm.AddDate = true;
+        vm.Join = OrdoSort.Core.BulkRename.SegmentJoin.Dash;
+        vm.KeepFirst(2);
+        // Snapshot first: Count and the indexer are not atomic with each other
+        // against a rebuild landing between them (fix round 2, item 2(b)).
         WaitFor(() =>
         {
             var snapshot = vm.Preview.ToList();
             return snapshot.Count == 1 && snapshot[0].NewName == "20240126-BROWN-ADAM.pdf";
-        }, "the preview should eventually reflect the review-mode rebuild");
+        }, "the preview should eventually show date-LAST-FIRST");
     }
 
     [Fact]
@@ -1457,57 +1457,125 @@ public class BulkRenameViewModelTests : IDisposable
         Assert.Contains("Renamed 1 file", vm.Status);
     }
 
+    /// <summary>Clicking a chip is the whole gesture: the chip's IsKept setter
+    /// hands the change to the view model.</summary>
     [Fact]
-    public async Task DeleteSegment2ProducesCorrectPreview()
+    public async Task ClickingASegmentChipDropsItFromThePreview()
     {
         var vm = new BulkRenameViewModel();
         await vm.AddFilesAsync(new[] { Touch("A-B-C.pdf") });
-        vm.DeleteSeg2 = true;
+        Assert.Equal(new[] { "A", "B", "C" }, vm.SegmentChips.Select(c => c.Text));
+
+        vm.SegmentChips[1].IsKept = false;
 
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
-            "the preview should eventually reflect DeleteSeg2");
+            "the preview should eventually drop segment 2");
         Assert.True(vm.Preview[0].Changed);
+        Assert.Equal("Segment 2: B, dropped", vm.SegmentChips[1].AccessibleName);
     }
 
     [Fact]
-    public async Task DeleteSegment2AndLastProducesCorrectPreview()
+    public async Task DroppingTwoSegmentsProducesCorrectPreview()
     {
         var vm = new BulkRenameViewModel();
         await vm.AddFilesAsync(new[] { Touch("A-B-C.pdf") });
-        vm.DeleteSeg2 = true;
-        vm.DeleteSegLast = true;
+        vm.SetSegmentKept(2, kept: false);
+        vm.SetSegmentKept(3, kept: false);
 
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A.pdf",
-            "the preview should eventually reflect DeleteSeg2 + DeleteSegLast");
+            "the preview should eventually drop segments 2 and 3");
         Assert.True(vm.Preview[0].Changed);
     }
 
     [Fact]
-    public async Task UncheckedDeleteSegmentsReturnsOriginal()
+    public async Task KeepingASegmentAgainReturnsTheOriginal()
     {
         var vm = new BulkRenameViewModel();
         await vm.AddFilesAsync(new[] { Touch("A-B-C.pdf") });
-        vm.DeleteSeg2 = true;
+        vm.SetSegmentKept(2, kept: false);
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
-            "the preview should eventually reflect DeleteSeg2");
+            "the preview should eventually drop segment 2");
 
-        vm.DeleteSeg2 = false;
+        vm.SetSegmentKept(2, kept: true);
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-B-C.pdf",
-            "the preview should eventually revert once DeleteSeg2 is unchecked");
+            "the preview should eventually revert once segment 2 is kept again");
         Assert.False(vm.Preview[0].Changed);
     }
 
     [Fact]
-    public async Task HandEditedTargetStillOverridesDeleteSegments()
+    public async Task SegmentEditsChangeOnlyTheSelectedFiles()
     {
-        // Same shape as HandEditSurvivesAnOpChange's false-green (the
-        // override value doesn't change across the final step, so a
-        // value-only WaitFor could pass against leftover state without
-        // observing the DeleteSeg2=false recompute) — lower risk here since
-        // DeleteSeg2 is itself immediate (0ms), so nothing races ahead and
-        // discards its compute outright the way the debounced Find/Replace
-        // one could be discarded above. Fixed the same way regardless, so
-        // this test actually proves what its name claims.
+        var vm = new BulkRenameViewModel();
+        var a = Touch("A_1_X.pdf");
+        var b = Touch("B_2_Y.pdf");
+        await vm.AddFilesAsync(new[] { a, b });
+        vm.SelectedSources = new[] { a };
+
+        vm.KeepFirst(1);
+
+        WaitFor(() =>
+        {
+            var rows = vm.Preview.ToList();
+            return rows.Count == 2 && rows[0].NewName == "A.pdf";
+        }, "the selected file should keep only its first segment");
+        Assert.False(vm.Preview[1].Changed);
+    }
+
+    [Fact]
+    public async Task WithNothingSelectedSegmentEditsChangeEveryFile()
+    {
+        var vm = new BulkRenameViewModel();
+        await vm.AddFilesAsync(new[] { Touch("A_1_X.pdf"), Touch("B_2_Y_Z.pdf") });
+
+        vm.KeepFirst(2);
+
+        WaitFor(() =>
+        {
+            var rows = vm.Preview.ToList();
+            return rows.Count == 2 && rows[0].NewName == "A_1.pdf" && rows[1].NewName == "B_2.pdf";
+        }, "both files should keep their first two segments, counted per file");
+        Assert.Contains("all 2 files", vm.SegmentBarCaption);
+    }
+
+    [Fact]
+    public async Task TheSegmentBarShowsTheFirstSelectedFile()
+    {
+        var vm = new BulkRenameViewModel();
+        var a = Touch("A_1.pdf");
+        var b = Touch("B_2_Y.pdf");
+        await vm.AddFilesAsync(new[] { a, b });
+        Assert.Equal(new[] { "A", "1" }, vm.SegmentChips.Select(c => c.Text));
+
+        vm.SelectedSources = new[] { b };
+
+        Assert.Equal(new[] { "B", "2", "Y" }, vm.SegmentChips.Select(c => c.Text));
+        Assert.Contains("B_2_Y.pdf", vm.SegmentBarCaption);
+        Assert.Contains("1 selected file", vm.SegmentBarCaption);
+    }
+
+    [Fact]
+    public async Task ARemovedFileForgetsItsSegmentEdits()
+    {
+        var vm = new BulkRenameViewModel();
+        var a = Touch("A_1_X.pdf");
+        await vm.AddFilesAsync(new[] { a });
+        vm.KeepFirst(1);
+        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A.pdf", "keep-first should land");
+
+        vm.RemoveFiles(new[] { a });
+        await vm.AddFilesAsync(new[] { a });
+
+        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A_1_X.pdf",
+            "the file comes back with every segment");
+        Assert.All(vm.SegmentChips, c => Assert.True(c.IsKept));
+    }
+
+    [Fact]
+    public async Task HandEditedTargetStillOverridesDroppedSegments()
+    {
+        // Calls are counted, not values polled: the override's value doesn't
+        // change across the last step, so a value-only wait could pass on
+        // leftover state without observing that recompute at all.
         var calls = 0;
         var vm = new BulkRenameViewModel(scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
         var src = Touch("A-B-C.pdf");
@@ -1516,21 +1584,18 @@ public class BulkRenameViewModelTests : IDisposable
         // Baseline, not a literal — see CountingWorkScheduler's own comment.
         var afterAdd = calls;
 
-        vm.DeleteSeg2 = true;
+        vm.SetSegmentKept(2, kept: false);
         WaitFor(() => calls == afterAdd + 1 && vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
-            "the preview should eventually reflect DeleteSeg2");
+            "the preview should eventually drop segment 2");
 
         vm.SetOverride(src, "CUSTOM-NAME.pdf");
         WaitFor(() => calls == afterAdd + 2 && vm.Preview.Count == 1 && vm.Preview[0].NewName == "CUSTOM-NAME.pdf",
             "the preview should eventually reflect the hand edit");
         Assert.True(vm.Preview[0].Manual);
 
-        vm.DeleteSeg2 = false;
-        // wait for THIS recompute specifically before asserting — same
-        // calls-alone-doesn't-guard-Preview hazard as HandEditSurvivesAnOpChange,
-        // so Preview.Count == 1 is conjoined here too.
+        vm.SetSegmentKept(2, kept: true);
         WaitFor(() => calls == afterAdd + 3 && vm.Preview.Count == 1,
-            "the DeleteSeg2=false-triggered recompute should land before asserting");
+            "the keep-again recompute should land before asserting");
         Assert.Equal("CUSTOM-NAME.pdf", vm.Preview[0].NewName);   // the override still beat the op
     }
 
@@ -1578,20 +1643,24 @@ public class BulkRenameViewModelTests : IDisposable
         Assert.Empty(vm.SelectedSources);   // and the rows it dropped are no longer claimed as selected
     }
 
+    /// <summary>After a batch, every segment edit, the join and the date are
+    /// cleared, for the same reason Find and the affixes are: left set, the
+    /// same rule would re-render over names that already carry its result.</summary>
     [Fact]
-    public async Task DeleteSegmentsResetAfterApply()
+    public async Task SegmentEditsJoinAndDateResetAfterApply()
     {
         var vm = new BulkRenameViewModel();
         var src = Touch("A-B-C.pdf");
         await vm.AddFilesAsync(new[] { src });
-        vm.DeleteSeg2 = true;
+        vm.Join = OrdoSort.Core.BulkRename.SegmentJoin.Underscore;
+        vm.AddDate = true;
+        vm.SetSegmentKept(2, kept: false);
+        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].Changed, "the edit should land before Rename");
         await vm.ApplyAsync();
 
-        Assert.False(vm.DeleteSeg1);
-        Assert.False(vm.DeleteSeg2);
-        Assert.False(vm.DeleteSeg3);
-        Assert.False(vm.DeleteSeg4);
-        Assert.False(vm.DeleteSegLast);
+        Assert.All(vm.SegmentChips, c => Assert.True(c.IsKept));
+        Assert.Equal(OrdoSort.Core.BulkRename.SegmentJoin.Original, vm.Join);
+        Assert.False(vm.AddDate);
     }
 }
 

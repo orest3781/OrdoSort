@@ -518,7 +518,7 @@ public class AutoFitColumnTests
             ShowOffscreen(win);
             var grid = FindDescendant<DataGrid>(win)!;
             var star = Assert.Single(grid.Columns.Where(c => c.Width.IsStar));
-            Assert.Equal("New name  ·  click or press F2 to edit", star.Header);
+            Assert.Equal("New name", star.Header);
         }
         finally { win.Close(); }
     });

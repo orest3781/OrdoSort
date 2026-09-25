@@ -5,7 +5,7 @@ namespace OrdoSort.Wpf.Tests;
 /// <summary>The ONE shared MemberData source every RENDERED contrast-bucket
 /// theory suite migrated off bool-dark uses (rendered-contrast-per-scheme
 /// migration, 2026-08-09): HighlightContrastTests, DataGridSelectionContrastTests,
-/// DataGridNoteColourTests, CaptionSizingTests, BulkRenameDeleteSegLastLabelTests,
+/// DataGridNoteColourTests, CaptionSizingTests, BulkRenameSegmentChipTests,
 /// CopyAndTerminologyTests (its three contrast theories only), and
 /// ContentTemplateSetterTests (ClosedComboBoxStillShowsTheSelectedItemLegibly
 /// only) — see each file's own doc comment for why it's in this set and

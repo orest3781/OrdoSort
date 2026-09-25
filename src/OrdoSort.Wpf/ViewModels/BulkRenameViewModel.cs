@@ -79,10 +79,49 @@ public sealed class RenameRow
 /// a batch of it — through ApplyAsync/UndoBatchAsync/AddFilesAsync rather than
 /// through the probe, since they are single deliberate actions with nothing to
 /// debounce and a progress line and a cancel of their own.</summary>
+/// <summary>One piece of the segment bar: a segment of the file the bar is
+/// showing, which the user keeps or drops by clicking it. Setting
+/// <see cref="IsKept"/> hands the change to the view model, which applies it
+/// to every targeted file, not only the one on show.</summary>
+public sealed class SegmentChip : ObservableObject
+{
+    private readonly Action<int, bool> _setKept;
+    private bool _isKept;
+
+    public SegmentChip(int position, string text, bool isKept, Action<int, bool> setKept)
+    {
+        Position = position;
+        Text = text;
+        _isKept = isKept;
+        _setKept = setKept;
+    }
+
+    /// <summary>1-based, as BulkRename.Plan counts segments.</summary>
+    public int Position { get; }
+    public string Text { get; }
+
+    public bool IsKept
+    {
+        get => _isKept;
+        set
+        {
+            if (!Set(ref _isKept, value)) return;
+            Raise(nameof(AccessibleName));
+            _setKept(Position, value);
+        }
+    }
+
+    public string AccessibleName => $"Segment {Position}: {Text}, {(IsKept ? "kept" : "dropped")}";
+}
+
 public sealed class BulkRenameViewModel : ObservableObject, IDisposable
 {
     private readonly List<string> _files = new();
     private readonly Dictionary<string, string> _overrides = new();   // source -> hand-edited stem
+
+    // source -> 1-based segments left out of that file's name. Per file, so
+    // one batch can hold files of different layouts, each trimmed its own way.
+    private readonly Dictionary<string, SortedSet<int>> _dropped = new();
     private List<RenameOutcome> _lastOutcomes = new();
 
     // Final-review finding 1 (2026-08-05 debounce pair): the plan Apply()
@@ -125,8 +164,8 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     // the setter would be caught, because a synchronous call bypasses the
     // scheduler entirely. This is what actually stands in for the real
     // File.Exists cost finding 5.2 is about.
-    private readonly Func<IEnumerable<string>, RenameOp,
-        IReadOnlyDictionary<string, string>?, List<PlannedRename>> _plan;
+    private readonly Func<IEnumerable<string>, RenameOp, IReadOnlyDictionary<string, string>?,
+        IReadOnlyDictionary<string, IReadOnlySet<int>>?, List<PlannedRename>> _plan;
 
     // The renames and the undo run here too, not only the preview (audit
     // QC-04). One File.Move per file against a share is the same cost the
@@ -146,11 +185,12 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     public ObservableCollection<RenameRow> Preview { get; } = new();
 
     public BulkRenameViewModel(
-        Func<IEnumerable<string>, RenameOp, IReadOnlyDictionary<string, string>?, List<PlannedRename>>? plan = null,
+        Func<IEnumerable<string>, RenameOp, IReadOnlyDictionary<string, string>?,
+            IReadOnlyDictionary<string, IReadOnlySet<int>>?, List<PlannedRename>>? plan = null,
         IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null, int probeDelayMs = 300)
     {
-        _plan = plan ?? ((paths, op, overrides) => Plan(paths, op, overrides));
+        _plan = plan ?? Plan;
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _plansProbe = new DebouncedProbe<List<PlannedRename>>(
             _scheduler, uiContext, ApplyPlans, probeDelayMs);
@@ -176,8 +216,10 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         // leaving the fixup matching nothing and an empty grid under
         // "Renamed 12 files.". Same defect QC-05 describes in ZipTools and
         // Unlock; this is the third place it can happen.
+        KeepFirstCommand = new RelayCommand<int>(KeepFirst, _ => !IsBusy);
+        ResetSegmentsCommand = new RelayCommand(ResetSegments, () => !IsBusy);
         ClearCommand = new RelayCommand(
-            () => { _files.Clear(); _overrides.Clear(); Refresh(immediate: true); },
+            () => { _files.Clear(); _overrides.Clear(); _dropped.Clear(); Refresh(immediate: true); RebuildChips(); },
             () => !IsBusy);
     }
 
@@ -188,16 +230,29 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     }
 
     // ------------------------------------------------------------ op fields
-    // ReviewMode/ReceivedDate/CaseIndex/DeleteSeg* are single clicks, not a
-    // keystroke burst — immediate keeps them feeling as responsive as they
-    // did when Refresh ran synchronously. Find/Replace/Prefix/Suffix are
+    // Join/AddDate/Date/CaseIndex and the segment clicks are single clicks,
+    // not a keystroke burst — immediate keeps them feeling as responsive as
+    // they did when Refresh ran synchronously. Find/Replace/Prefix/Suffix are
     // typed, so THEY debounce — that's the literal per-keystroke churn
     // finding 5.2 is about.
-    private bool _reviewMode;
-    public bool ReviewMode { get => _reviewMode; set { if (Set(ref _reviewMode, value)) Refresh(immediate: true); } }
 
-    private DateTime _receivedDate = DateTime.Today;
-    public DateTime ReceivedDate { get => _receivedDate; set { if (Set(ref _receivedDate, value)) Refresh(immediate: true); } }
+    /// <summary>The "Join with" choices, in the order the window lists them.</summary>
+    public static IReadOnlyList<KeyValuePair<SegmentJoin, string>> JoinChoices { get; } = new KeyValuePair<SegmentJoin, string>[]
+    {
+        new(SegmentJoin.Original, "Keep original"),
+        new(SegmentJoin.Dash, "- (dash)"),
+        new(SegmentJoin.Underscore, "_ (underscore)"),
+        new(SegmentJoin.Space, "space"),
+    };
+
+    private SegmentJoin _join = SegmentJoin.Original;
+    public SegmentJoin Join { get => _join; set { if (Set(ref _join, value)) Refresh(immediate: true); } }
+
+    private bool _addDate;
+    public bool AddDate { get => _addDate; set { if (Set(ref _addDate, value)) Refresh(immediate: true); } }
+
+    private DateTime _date = DateTime.Today;
+    public DateTime Date { get => _date; set { if (Set(ref _date, value)) Refresh(immediate: true); } }
 
     private string _find = "";
     public string Find { get => _find; set { if (Set(ref _find, value)) Refresh(); } }
@@ -215,20 +270,95 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     private int _caseIndex;
     public int CaseIndex { get => _caseIndex; set { if (Set(ref _caseIndex, value)) Refresh(immediate: true); } }
 
-    private bool _deleteSeg1;
-    public bool DeleteSeg1 { get => _deleteSeg1; set { if (Set(ref _deleteSeg1, value)) Refresh(immediate: true); } }
+    // ------------------------------------------------------------ segments
 
-    private bool _deleteSeg2;
-    public bool DeleteSeg2 { get => _deleteSeg2; set { if (Set(ref _deleteSeg2, value)) Refresh(immediate: true); } }
+    /// <summary>The pieces of the file the segment bar is showing: the first
+    /// selected file, or the first file when nothing is selected.</summary>
+    public ObservableCollection<SegmentChip> SegmentChips { get; } = new();
 
-    private bool _deleteSeg3;
-    public bool DeleteSeg3 { get => _deleteSeg3; set { if (Set(ref _deleteSeg3, value)) Refresh(immediate: true); } }
+    private string _segmentBarCaption = "";
 
-    private bool _deleteSeg4;
-    public bool DeleteSeg4 { get => _deleteSeg4; set { if (Set(ref _deleteSeg4, value)) Refresh(immediate: true); } }
+    /// <summary>Which file the bar shows and which files a click changes.</summary>
+    public string SegmentBarCaption { get => _segmentBarCaption; private set => Set(ref _segmentBarCaption, value); }
 
-    private bool _deleteSegLast;
-    public bool DeleteSegLast { get => _deleteSegLast; set { if (Set(ref _deleteSegLast, value)) Refresh(immediate: true); } }
+    /// <summary>The files a segment click, Keep first or Reset changes: the
+    /// selection, or every file when nothing is selected.</summary>
+    private IReadOnlyList<string> ChipTargets => _selectedSources.Count > 0 ? _selectedSources : _files;
+
+    /// <summary>The "Keep first" buttons. Five covers the review files'
+    /// LAST-FIRST (two) with room for longer names; past that, click the
+    /// segments themselves.</summary>
+    public static IReadOnlyList<int> KeepFirstChoices { get; } = new[] { 1, 2, 3, 4, 5 };
+
+    public RelayCommand<int> KeepFirstCommand { get; }
+    public RelayCommand ResetSegmentsCommand { get; }
+
+    /// <summary>Keep or drop one segment position in every targeted file. A
+    /// file shorter than <paramref name="position"/> simply has nothing
+    /// there to drop.</summary>
+    public void SetSegmentKept(int position, bool kept)
+    {
+        if (IsBusy) return;
+        foreach (var source in ChipTargets)
+        {
+            if (kept)
+            {
+                if (_dropped.TryGetValue(source, out var set) && set.Remove(position) && set.Count == 0)
+                    _dropped.Remove(source);
+            }
+            else
+            {
+                if (!_dropped.TryGetValue(source, out var set)) _dropped[source] = set = new SortedSet<int>();
+                set.Add(position);
+            }
+        }
+        Refresh(immediate: true);
+        RebuildChips();
+    }
+
+    /// <summary>Keep the first <paramref name="count"/> segments of every
+    /// targeted file and drop the rest; counted per file, so files of
+    /// different lengths all end up with the same leading pieces.</summary>
+    public void KeepFirst(int count)
+    {
+        if (IsBusy || count < 1) return;
+        foreach (var source in ChipTargets)
+        {
+            var total = SplitSegments(Path.GetFileNameWithoutExtension(source)).Count;
+            if (total <= count) _dropped.Remove(source);
+            else _dropped[source] = new SortedSet<int>(Enumerable.Range(count + 1, total - count));
+        }
+        Refresh(immediate: true);
+        RebuildChips();
+    }
+
+    /// <summary>Put back every segment of the targeted files.</summary>
+    public void ResetSegments()
+    {
+        if (IsBusy) return;
+        foreach (var source in ChipTargets) _dropped.Remove(source);
+        Refresh(immediate: true);
+        RebuildChips();
+    }
+
+    private void RebuildChips()
+    {
+        SegmentChips.Clear();
+        var shown = _selectedSources.Count > 0 ? _selectedSources[0] : _files.FirstOrDefault();
+        if (shown is null)
+        {
+            SegmentBarCaption = "Add files to see their segments.";
+            return;
+        }
+        _dropped.TryGetValue(shown, out var dropped);
+        var pieces = SplitSegments(Path.GetFileNameWithoutExtension(shown));
+        for (var i = 0; i < pieces.Count; i++)
+            SegmentChips.Add(new SegmentChip(i + 1, pieces[i].Text, dropped?.Contains(i + 1) != true, SetSegmentKept));
+        var targets = _selectedSources.Count > 0
+            ? $"{_selectedSources.Count} selected file{(_selectedSources.Count == 1 ? "" : "s")}"
+            : $"all {_files.Count} file{(_files.Count == 1 ? "" : "s")}";
+        SegmentBarCaption = $"Segments of {Path.GetFileName(shown)} · changes {targets}";
+    }
 
     private string _status = "";
     public string Status { get => _status; private set => Set(ref _status, value); }
@@ -263,6 +393,8 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
             UndoCommand.RaiseCanExecuteChanged();
             CancelCommand.RaiseCanExecuteChanged();
             ClearCommand.RaiseCanExecuteChanged();
+            KeepFirstCommand.RaiseCanExecuteChanged();
+            ResetSegmentsCommand.RaiseCanExecuteChanged();
             Raise(nameof(IsIdle));
         }
     }
@@ -286,23 +418,16 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
 
     private RenameOp CurrentOp()
     {
-        var deletePositions = new List<int>();
-        if (DeleteSeg1) deletePositions.Add(1);
-        if (DeleteSeg2) deletePositions.Add(2);
-        if (DeleteSeg3) deletePositions.Add(3);
-        if (DeleteSeg4) deletePositions.Add(4);
-
         return new(
             // Trimmed here, not in the setters: the boxes update per keystroke,
             // and trimming the stored text would eat the space before the next
             // word. Find/Replace stay as typed — they match existing names (UX-35).
             Find: Find, Replace: Replace, Prefix: Prefix.Trim(), Suffix: Suffix.Trim(),
             Case: CaseIndex switch { 1 => "upper", 2 => "lower", _ => "keep" },
-            // Invariant: this stem is rebuilt into the actual on-disk file
-            // name (BulkRename.TransformStem), so it can't vary by station.
-            ReceivedDate: ReviewMode ? ReceivedDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture) : "",
-            DeleteSegments: deletePositions.Count > 0 ? deletePositions : null,
-            DeleteLastSegment: DeleteSegLast);
+            Join: Join,
+            // Invariant: the date becomes part of the on-disk file name, so it
+            // can't vary by station.
+            DatePrefix: AddDate ? Date.ToString("yyyyMMdd", CultureInfo.InvariantCulture) : "");
     }
 
     /// <summary>Dedupe, canonicalisation and the status line all come from
@@ -349,6 +474,7 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
             AlreadyListed = offThread.AlreadyListed + settled.AlreadyListed,
         }).Note("file");
         Refresh(immediate: true);
+        RebuildChips();
     }
 
     /// <summary>"Add a folder's files…": the folder's own files (not its
@@ -400,9 +526,11 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         {
             _files.Remove(s);
             _overrides.Remove(s);
+            _dropped.Remove(s);
         }
         AddNote = "";
         Refresh(immediate: true);
+        RebuildChips();
     }
 
     /// <summary>Drop the rows the grid selection holds — read from the
@@ -433,6 +561,7 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
             // selection); every reader here assumes a real, if empty, list.
             _selectedSources = value ?? Array.Empty<string>();
             Raise(nameof(SelectedSources));
+            RebuildChips();
         }
     }
 
@@ -484,14 +613,21 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         private set => Set(ref _needsNameCount, value);
     }
 
-    /// <summary>What a stray's editor opens with. In review mode the batch
-    /// already has a date, so seed the prefix and let the caret sit after it —
-    /// the typing left to do is the name, which is the part only a person can
-    /// supply. Invariant, like the op's own ReceivedDate above: this seed
-    /// becomes the file name unless the person changes it, and it must match
-    /// the shape every other file in the same batch just got.</summary>
+    /// <summary>What a stray's editor opens with. When the batch is adding a
+    /// date, seed it and let the caret sit after it — the typing left to do
+    /// is the name, which is the part only a person can supply. Invariant,
+    /// like the op's own DatePrefix: this seed becomes the file name unless
+    /// the person changes it, and it must match the shape every other file in
+    /// the same batch just got.</summary>
     private string SeedFor(string fallback) =>
-        ReviewMode ? ReceivedDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture) + "-" : fallback;
+        AddDate
+            ? Date.ToString("yyyyMMdd", CultureInfo.InvariantCulture) + Join switch
+            {
+                SegmentJoin.Underscore => "_",
+                SegmentJoin.Space => " ",
+                _ => "-",
+            }
+            : fallback;
 
     /// <summary>The next row still waiting on a name, wrapping. -1 when there
     /// are none, so Enter simply commits on a finished batch.</summary>
@@ -534,6 +670,8 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         var op = CurrentOp();
         var filesSnapshot = _files.ToList();
         var overridesSnapshot = new Dictionary<string, string>(_overrides);
+        var droppedSnapshot = _dropped.ToDictionary(
+            kv => kv.Key, kv => (IReadOnlySet<int>)new HashSet<int>(kv.Value));
 
         if (filesSnapshot.Count == 0)
         {
@@ -547,7 +685,7 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _plansProbe.Trigger(() => _plan(filesSnapshot, op, overridesSnapshot), immediate);
+        _plansProbe.Trigger(() => _plan(filesSnapshot, op, overridesSnapshot, droppedSnapshot), immediate);
     }
 
     /// <summary>Everything from the old synchronous Refresh from
@@ -677,9 +815,11 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
             // state that can't quietly do that; Undo covers the half that ran.
             Find = Replace = Prefix = Suffix = "";
             CaseIndex = 0;
-            ReviewMode = false;
-            DeleteSeg1 = DeleteSeg2 = DeleteSeg3 = DeleteSeg4 = DeleteSegLast = false;
+            AddDate = false;
+            Join = SegmentJoin.Original;
+            _dropped.Clear();
             Refresh(immediate: true);
+            RebuildChips();
             UndoCommand.RaiseCanExecuteChanged();
             // Last, so the tool only becomes usable again once its list agrees
             // with the disk.

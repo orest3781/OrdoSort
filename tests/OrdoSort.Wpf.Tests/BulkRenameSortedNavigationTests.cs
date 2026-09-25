@@ -56,12 +56,15 @@ public class BulkRenameSortedNavigationTests : IDisposable
         vm.AddFilesAsync(new[]
         {
             Touch("SMITH_JOHN_5_5_2024_ACME_RECORDS_1-1__08_02_24_1019_X.pdf"),
-            Touch("oddball one.pdf"),
+            Touch("oddball.pdf"),
             Touch("GARCIA_MARIA_8_5_2024_ACME_RECORDS_2-1__08_02_24_1020_X.pdf"),
-            Touch("oddball two.pdf"),
+            Touch("loner.pdf"),
         }).GetAwaiter().GetResult();
-        vm.ReceivedDate = new DateTime(2024, 8, 2);
-        vm.ReviewMode = true;
+        // One-segment names are left with nothing once segment 1 is dropped
+        // from every file: those two are the strays.
+        vm.Date = new DateTime(2024, 8, 2);
+        vm.AddDate = true;
+        vm.SetSegmentKept(1, kept: false);
         WaitFor(() => vm.NeedsNameCount == 2, "the batch's preview should settle first");
 
         _fx.Invoke(() =>

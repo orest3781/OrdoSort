@@ -117,6 +117,31 @@ public static class Screenshots
                 new ManageSavedWindow(new UnlockViewModel(Config.Load(cfgPath), () => true)));
             Capture(notes, outdir, theme, "BulkRename", () =>
                 new BulkRenameWindow(new BulkRenameViewModel()));
+            // The segment controls at work on review-style names: first two
+            // segments kept, joined with a dash, a date in front.
+            BulkRenameViewModel? segmentsVm = null;
+            Capture(notes, outdir, theme, "BulkRename-segments", () =>
+            {
+                var folder = Directory.CreateDirectory(Path.Combine(scratch, "bulk-rename-" + theme)).FullName;
+                var files = new[]
+                {
+                    "EVANS_BRIAN 5_14_1998_ACME_RECORDS_100000002-1_X.pdf",
+                    "BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf",
+                    "GARCIA_MARIA_8_5_2024_ACME_RECORDS_2-1_X.pdf",
+                }.Select(name =>
+                {
+                    var path = Path.Combine(folder, name);
+                    File.WriteAllText(path, "x");
+                    return path;
+                }).ToList();
+                segmentsVm = new BulkRenameViewModel();
+                segmentsVm.AddFilesAsync(files).GetAwaiter().GetResult();
+                segmentsVm.Join = OrdoSort.Core.BulkRename.SegmentJoin.Dash;
+                segmentsVm.AddDate = true;
+                segmentsVm.Date = new DateTime(2026, 9, 25);
+                segmentsVm.KeepFirst(2);
+                return new BulkRenameWindow(segmentsVm);
+            }, ready: () => segmentsVm is { Preview.Count: 3 } vm && vm.Preview.All(r => r.Changed));
             Capture(notes, outdir, theme, "MatchMerge", () =>
                 new MatchMergeWindow(new MatchMergeViewModel(Config.Load(cfgPath), _ => { }, dialogs)));
 

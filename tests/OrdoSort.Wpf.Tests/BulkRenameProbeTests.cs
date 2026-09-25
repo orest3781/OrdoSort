@@ -83,10 +83,11 @@ public class BulkRenameProbeTests : IDisposable
     /// the real File.Exists cost finding 5.2 is about, so a setter that
     /// regresses to calling this synchronously WILL block for real.</summary>
     private static List<PlannedRename> SlowPlan(int delayMs,
-        IEnumerable<string> paths, RenameOp op, IReadOnlyDictionary<string, string>? overrides)
+        IEnumerable<string> paths, RenameOp op, IReadOnlyDictionary<string, string>? overrides,
+        IReadOnlyDictionary<string, IReadOnlySet<int>>? dropped)
     {
         Thread.Sleep(delayMs);
-        return Plan(paths, op, overrides);
+        return Plan(paths, op, overrides, dropped);
     }
 
     /// <summary>Counts how many times the scheduler is actually asked to run
@@ -108,7 +109,7 @@ public class BulkRenameProbeTests : IDisposable
     public async Task SettingFindReturnsPromptlyEvenWhilePlanItselfIsSlow()
     {
         var a = Touch("scan_001.pdf");
-        var vm = new BulkRenameViewModel(plan: (paths, op, overrides) => SlowPlan(300, paths, op, overrides));
+        var vm = new BulkRenameViewModel(plan: (paths, op, overrides, dropped) => SlowPlan(300, paths, op, overrides, dropped));
         await vm.AddFilesAsync(new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle before the timing measurement");
 
@@ -126,7 +127,7 @@ public class BulkRenameProbeTests : IDisposable
     public async Task ThePreviewEventuallyReflectsTheSlowPlansResult()
     {
         var a = Touch("scan_001.pdf");
-        var vm = new BulkRenameViewModel(plan: (paths, op, overrides) => SlowPlan(300, paths, op, overrides));
+        var vm = new BulkRenameViewModel(plan: (paths, op, overrides, dropped) => SlowPlan(300, paths, op, overrides, dropped));
         await vm.AddFilesAsync(new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle first");
 
@@ -177,7 +178,7 @@ public class BulkRenameProbeTests : IDisposable
         await vm.AddFilesAsync(new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle before the timing measurement");
 
-        vm.DeleteSeg2 = true;   // one of the five DeleteSeg* flags — a single click, not typed text
+        vm.SetSegmentKept(2, kept: false);   // a segment chip click, not typed text
 
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
             "a discrete toggle should resolve promptly, not after the full debounce window",
