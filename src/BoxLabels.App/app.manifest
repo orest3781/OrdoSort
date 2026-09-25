@@ -22,7 +22,7 @@
   for this to take effect.
 -->
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="1.0.0.0" name="OrdoSort.app"/>
+  <assemblyIdentity version="1.0.0.0" name="BoxLabels.app"/>
 
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>

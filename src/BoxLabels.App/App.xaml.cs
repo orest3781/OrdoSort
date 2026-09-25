@@ -83,6 +83,9 @@ public partial class App : Application
         ShowLabelMaker();
     }
 
+    /// <summary>This app's own icon, the one BrandArt generates.</summary>
+    internal static readonly Uri AppIconUri = new("pack://application:,,,/BoxLabels;component/app.ico");
+
     private BoxLabelDialogs _dialogs = null!;
     private LabelsFileChooser _chooser = null!;
     private string _settingsPath = "";
@@ -98,6 +101,9 @@ public partial class App : Application
         var window = new LabelMakerWindow(vm, Title, $"{Title} — Print preview",
             standalone: true,
             storeBar: new LabelStoreBar(_labelsFile, ChangeStoreFile, ThemeManager.Mode, SetTheme));
+        // Set here, not in the shared XAML: OrdoSort opens the same window
+        // off its Tools menu and must not wear the Box Labels icon.
+        window.Icon = System.Windows.Media.Imaging.BitmapFrame.Create(AppIconUri);
         MainWindow = window;
         window.Show();
         // Only now is there a main window whose closing should end the process.

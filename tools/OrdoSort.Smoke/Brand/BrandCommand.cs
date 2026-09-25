@@ -22,6 +22,11 @@ public static class BrandCommand
         ["docs/brand/mark-boxlabels.svg"] = BrandArt.ToSvg(BrandArt.BoxLabels.Master, BrandIcon.MasterGrid),
     };
 
+    /// <summary>Equal apart from line endings, which git may rewrite to CRLF
+    /// on checkout.</summary>
+    public static bool SameText(string expected, string actual) =>
+        expected.Replace("\r\n", "\n") == actual.Replace("\r\n", "\n");
+
     /// <summary>The .ico frames for an icon, in <see cref="BrandArt.IconSizes"/> order.</summary>
     public static List<(int Size, byte[] Png)> IcoFrames(BrandIcon icon) =>
         BrandArt.IconSizes.Select(size => (size, BrandRender.Png(BrandRender.Icon(icon, size)))).ToList();
@@ -47,7 +52,7 @@ public static class BrandCommand
             var path = Path.Combine(root, relative);
             if (check)
             {
-                if (!File.Exists(path) || File.ReadAllText(path) != content)
+                if (!File.Exists(path) || !SameText(content, File.ReadAllText(path)))
                     failures.Add($"{relative} is out of date; run: dotnet run --project tools/OrdoSort.Smoke -- brand .");
                 continue;
             }
