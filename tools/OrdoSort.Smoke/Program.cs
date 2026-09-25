@@ -23,6 +23,7 @@ if (args.Length > 0 && args[0] == "reentrancy") return Reentrancy.Run();
 if (args.Length > 0 && args[0] == "demo-full") return DemoWorkbench.Run(args);
 if (args.Length > 0 && args[0] == "sounds") return SoundSet.Run(args);
 if (args.Length > 0 && args[0] == "e2e") return OrdoSort.Smoke.E2E.E2ERunner.Run(args);
+if (args.Length > 0 && args[0] == "brand") return OrdoSort.Smoke.Brand.BrandCommand.Run(args);
 
 // hard watchdog: never hang CI
 _ = Task.Run(async () =>
