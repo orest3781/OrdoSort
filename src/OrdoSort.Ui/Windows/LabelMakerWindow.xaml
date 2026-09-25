@@ -57,7 +57,10 @@
         </Border>
 
         <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
-            <Button DockPanel.Dock="Right" Content="Close" Width="96" IsCancel="True" />
+            <!-- IsCancel closes the window only when it was opened as a
+                 dialog (OrdoSort). BoxLabels.exe shows it as its main window,
+                 so the constructor wires Click to Close() there. -->
+            <Button x:Name="CloseButton" DockPanel.Dock="Right" Content="Close" Width="96" IsCancel="True" />
             <Button DockPanel.Dock="Right" Command="{Binding SavePdfCommand}"
                     Width="110" Margin="0,0,8,0" AutomationProperties.Name="Save PDF">
                 <StackPanel Orientation="Horizontal">

@@ -35,7 +35,8 @@ public partial class LabelMakerWindow : Window
     /// XAML says ShowInTaskbar="False" and CenterOwner. In BoxLabels.exe it
     /// IS the application: it has no owner to centre on, and a window with no
     /// taskbar button and no owner is one the user cannot alt-tab back to.
-    /// <paramref name="standalone"/> switches those two, and nothing else.
+    /// <paramref name="standalone"/> switches those two, and makes the Close
+    /// button close a window that is not a dialog.
     ///
     /// <paramref name="storeBar"/> is null in OrdoSort, which is what keeps
     /// that window unchanged — see <see cref="LabelStoreBar"/>.</summary>
@@ -49,6 +50,10 @@ public partial class LabelMakerWindow : Window
         {
             ShowInTaskbar = true;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            // IsCancel alone only ends a dialog, and here this is a main
+            // window. Not wired in OrdoSort, where IsCancel already closes
+            // the dialog and a second Close() would run mid-close.
+            CloseButton.Click += (_, _) => Close();
         }
         if (storeBar is not null)
         {

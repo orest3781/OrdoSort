@@ -86,6 +86,35 @@ public class LabelStoreBarTests : IDisposable
         finally { window.Close(); }
     });
 
+    /// <summary>BoxLabels.exe shows this as its main window, not a dialog,
+    /// and a Cancel button (IsCancel) only ends dialogs: the Close button
+    /// did nothing there (reported 2026-09-25). Clicked through its
+    /// automation peer so the button's real click path runs.</summary>
+    [Fact]
+    public void TheCloseButtonClosesTheStandaloneWindow() => _fx.Invoke(() =>
+    {
+        var window = new LabelMakerWindow(Vm(), "Box Labels", "Box Labels — Print preview",
+            standalone: true, storeBar: new LabelStoreBar("x.json", () => { }))
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        var closed = false;
+        window.Closed += (_, _) => closed = true;
+        window.Show();
+        try
+        {
+            var peer = new System.Windows.Automation.Peers.ButtonAutomationPeer(window.CloseButton);
+            ((System.Windows.Automation.Provider.IInvokeProvider)peer.GetPattern(
+                System.Windows.Automation.Peers.PatternInterface.Invoke)).Invoke();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { },
+                System.Windows.Threading.DispatcherPriority.Background);
+
+            Assert.True(closed, "the Close button left the Box Labels window open");
+        }
+        finally { if (!closed) window.Close(); }
+    });
+
     [Fact]
     public void WithoutAHostActionThereIsNoThemeSwitch() => _fx.Invoke(() =>
     {
