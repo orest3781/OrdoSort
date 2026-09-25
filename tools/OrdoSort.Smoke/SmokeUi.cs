@@ -13,6 +13,10 @@ internal static class SmokeUi
     {
         var app = new App { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         app.InitializeComponent();   // App.xaml resources
+        // App.xaml only holds a placeholder font; the real app replaces it at
+        // startup. Without this every smoke window, screenshot included,
+        // would render in Segoe UI instead of the bundled default.
+        App.ApplyFont(app, new OrdoSort.Core.Config());
         ThemeManager.Apply(app, dark: false);
         return app;
     }

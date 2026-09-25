@@ -1497,7 +1497,7 @@
                         </ItemsControl>
                     </WrapPanel>
                     <TextBlock Style="{StaticResource CaptionText}" Margin="0,6,0,0" TextWrapping="Wrap"
-                               Text="Every text pairing in every scheme meets WCAG AA contrast — enforced by the test suite." />
+                               Text="Every text pairing meets WCAG AA contrast in both themes — enforced by the test suite." />
 
                     <TextBlock Text="Text" Style="{StaticResource SectionHeader}" />
                     <Grid Style="{StaticResource FieldRow}">
