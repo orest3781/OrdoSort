@@ -381,7 +381,27 @@ public class E2EHarnessTests
         Assert.IsType<DispatcherSynchronizationContext>(afterInstall);
         Assert.IsType<DispatcherSynchronizationContext>(afterAPumpHasComeAndGone);
     }
+}
 
+/// <summary>Tests that build a real window on a thread of their own. They
+/// must never run beside <see cref="HighlightContrastFixture"/>'s collection:
+/// that fixture boots the process's one Application, and a window built on
+/// another thread reads the same Application resources. The shared styles
+/// load lazily from BAML, and two threads reading them at once corrupt the
+/// reader ("Found unknown BAML record", "Unexpected record in Baml stream"),
+/// failing hundreds of unrelated window tests. That is the intermittent
+/// failure STATUS.md used to blame on a stale incremental build (2026-09-24).
+/// xUnit runs a collection with parallelization disabled after all the
+/// others, on its own.</summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public class OwnThreadWindowCollection
+{
+    public const string Name = "Windows built on their own thread";
+}
+
+[Collection(OwnThreadWindowCollection.Name)]
+public class RoutingLoopContextTests
+{
     /// <summary>Regression coverage for a defect found in Task 13, in the
     /// PRE-EXISTING standalone smoke harness rather than in any new code.
     ///

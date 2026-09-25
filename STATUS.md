@@ -39,7 +39,7 @@
 - [ ] PR #7 unproven path: that a release created on github.com (no tag push) triggers the Release workflow at all. Only a real phone release will show it
 - [ ] Draft PR #5 (phone session's E2E fix) is superseded by `e16bf95` on main — close it
 - [ ] QC-15, second half: Copies > 1 prints the same barcode on several boxes (docs/superpowers/refinement-master-checklist.md). The false "counter untouched" wording half is fixed
-- [ ] Intermittent: an incremental Release build leaves stale BAML and ~1,130 WPF tests fail ("Provide value on StaticResourceExtension threw", "Unexpected record in Baml stream"). Seen twice on 2026-09-23 — after the box-labels merge, and after a XAML change built via the test project, then the Release exe run, then check.bat. Two deliberate reproductions of that second sequence both passed. Suspect Windows Application Control interfering with freshly built DLLs. Workaround: `dotnet build OrdoSort.sln -c Release --no-incremental`, then rerun
+- [x] Intermittent: hundreds of WPF tests fail with "Unexpected record in Baml stream" / "Found unknown BAML record". Fixed 2026-09-24. Not a stale build: `E2EHarnessTests.RoutingLoopInstallsTheUiContextBeforeItBuildsTheWindow` built a MainWindow on its own thread while the shared test Application ran in parallel, and two threads read the lazily loaded shared styles at once. Reproduced 3 in 6 runs; after moving it to a non-parallel collection (`RoutingLoopContextTests`), 8 in 8 clean
 - [ ] CI build-and-test took ~15 min on 2026-09-23 (was ~8). Everything passed; watch whether it stays slow
 
 ## Blocked
