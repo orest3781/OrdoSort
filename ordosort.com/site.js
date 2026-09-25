@@ -4,48 +4,34 @@
 
   const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // --- color scheme switcher ------------------------------------------
-  // 7 keys + isDark only; the actual colors live in styles.css.
-  const SCHEMES = [
-    ['paper', false], ['graphite', true], ['ledger', true], ['microfilm', true],
-    ['manila', false], ['carbon', true], ['blueprint', false]
-  ];
-  const chips = [...document.querySelectorAll('.chip')];
+  // --- theme toggle ------------------------------------------------------
+  // Auto follows the system (no data-theme, the CSS media query decides);
+  // Light and Dark pin it and are remembered. The saved choice is applied
+  // before first paint by the inline script in <head>; this wires the
+  // buttons and the gallery's forced screenshot variants.
+  const KEY = 'ordosort-theme';
+  const toggle = document.querySelector('.theme-toggle');
+  const buttons = toggle ? [...toggle.querySelectorAll('button')] : [];
 
-  function apply(key) {
-    const scheme = SCHEMES.find(s => s[0] === key);
-    if (!scheme) return;
-    html.dataset.theme = key;
-    html.classList.toggle('force-dark', scheme[1]);
-    html.classList.toggle('force-light', !scheme[1]);
-    chips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.scheme === key)));
+  function apply(choice) {
+    if (choice === 'light' || choice === 'dark') html.dataset.theme = choice;
+    else delete html.dataset.theme;
+    html.classList.toggle('force-dark', choice === 'dark');
+    html.classList.toggle('force-light', choice === 'light');
+    buttons.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeChoice === choice)));
   }
 
-  let idx = -1;
-  let timer;
-  let cycling = !REDUCE && chips.length > 0;
-
-  function stopCycling() {
-    if (!cycling) return;
-    cycling = false;
-    clearInterval(timer);
-  }
-
-  chips.forEach(chip => {
-    chip.addEventListener('click', () => {
-      stopCycling();
-      apply(chip.dataset.scheme);
-    });
-  });
-
-  if (cycling) {
-    timer = setInterval(() => {
-      idx = (idx + 1) % SCHEMES.length;
-      apply(SCHEMES[idx][0]);
-    }, 4000);
-    const stop = () => stopCycling();
-    addEventListener('pointerdown', stop, { once: true, passive: true });
-    addEventListener('keydown', stop, { once: true });
+  if (toggle) {
+    toggle.hidden = false;
+    apply(html.dataset.theme || 'auto');
+    buttons.forEach(b => b.addEventListener('click', () => {
+      const choice = b.dataset.themeChoice;
+      apply(choice);
+      try {
+        if (choice === 'auto') localStorage.removeItem(KEY);
+        else localStorage.setItem(KEY, choice);
+      } catch (e) { /* storage blocked: the choice lasts for this visit only */ }
+    }));
   }
 
   // --- scroll reveals ---------------------------------------------------

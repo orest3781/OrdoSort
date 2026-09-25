@@ -6,7 +6,7 @@
   <title>OrdoSort — Every document, where it belongs</title>
   <meta name="description" content="OrdoSort watches your inbox folder: name each arriving PDF, press a destination key, and it's renamed, moved, and audit-logged. A filing workbench for Windows.">
   <link rel="canonical" href="https://ordosort.com/">
-  <meta name="theme-color" content="#F7F8F9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#F5F3EE" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#1A1C1F" media="(prefers-color-scheme: dark)">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="OrdoSort">
@@ -14,7 +14,7 @@
   <meta property="og:description" content="Name each arriving PDF, press a destination key — renamed, moved, audit-logged. A filing workbench for Windows.">
   <meta property="og:url" content="https://ordosort.com/">
   <meta property="og:image" content="https://ordosort.com/assets/og.png">
-  <meta property="og:image:alt" content="The OrdoSort brand mark and wordmark, with the tagline 'Every document, where it belongs.' on a dark card">
+  <meta property="og:image:alt" content="The OrdoSort mark, three stepped index tabs, beside the OrdoSort wordmark and the tagline 'Every document, where it belongs.' on a dark card">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="OrdoSort — Every document, where it belongs">
   <meta name="twitter:description" content="Name each arriving PDF, press a destination key — renamed, moved, audit-logged. A filing workbench for Windows.">
@@ -22,7 +22,11 @@
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="alternate icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="preload" href="assets/fonts/AtkinsonHyperlegibleNext-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles.css">
+  <!-- Theme before first paint: a saved Light/Dark choice must not flash the other theme. -->
+  <script>try{var t=localStorage.getItem("ordosort-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
     <!-- Vercel Web Analytics -->
     <script defer src="/_vercel/insights/script.js"></script>
 </head>
@@ -30,19 +34,33 @@
 <header class="site-header">
   <div class="container header-row">
     <a class="brand" href="#top" aria-label="OrdoSort — home">
-      <!-- BRAND MARK: swap this inline SVG (and assets/favicon.svg) when final logo art lands -->
-      <svg viewBox="0 0 64 64" width="26" height="26" aria-hidden="true" class="mark">
-        <path class="m-steel" opacity=".55" d="M32 38 8 50l24 12 24-12z"/>
-        <path class="m-bronze" d="M32 22 8 34l24 12 24-12z"/>
-        <path class="m-steel" d="M32 6 8 18l24 12 24-12z"/>
+      <!-- BRAND-MARK:BEGIN (generated: dotnet run --project tools/OrdoSort.Smoke -- brand .) -->
+      <svg class="mark" viewBox="0 0 48 48" width="28" height="28" aria-hidden="true">
+        <path fill="#647080" d="M11,3 H37 A8,8 0 0 1 45,11 V37 A8,8 0 0 1 37,45 H11 A8,8 0 0 1 3,37 V11 A8,8 0 0 1 11,3 Z"/>
+        <path fill="#3A424D" d="M9,11 H19 V27 H9 Z"/>
+        <path fill="#828C99" d="M19,16 H29 V27 H19 Z"/>
+        <path fill="#E0B96A" d="M29,21 H39 V27 H29 Z"/>
+        <path fill="#F4F1EA" d="M9,26 H39 V39 H9 Z"/>
+        <path fill="#6E7885" d="M13,30 H31 V31.5 H13 Z"/>
+        <path fill="#6E7885" d="M13,33.5 H25 V35 H13 Z"/>
       </svg>
+      <!-- BRAND-MARK:END -->
       <span class="wordmark">OrdoSort</span>
     </a>
-    <nav class="site-nav" aria-label="Page">
-      <a href="#features">Features</a>
-      <a href="#screenshots">Screenshots</a>
-      <a href="#download">Download</a>
-    </nav>
+    <div class="header-end">
+      <nav class="site-nav" aria-label="Page">
+        <a href="#features">Features</a>
+        <a href="#screenshots">Screenshots</a>
+        <a href="#download">Download</a>
+      </nav>
+      <!-- The same three choices the apps offer. Without JavaScript the page
+           simply follows the system setting, so the toggle starts hidden. -->
+      <div class="theme-toggle" role="group" aria-label="Theme" hidden>
+        <button type="button" data-theme-choice="auto" aria-pressed="true">Auto</button>
+        <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+        <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -92,36 +110,6 @@
         </div>
       </div>
 
-      <div class="scheme-switcher" role="group" aria-label="Preview a color scheme">
-        <button type="button" class="chip" data-scheme="paper" aria-pressed="false">
-          <span class="chip-swatch" data-theme="paper" aria-hidden="true"><span class="chip-bg"></span><span class="chip-accent"></span></span>
-          <span class="chip-name">Paper</span>
-        </button>
-        <button type="button" class="chip" data-scheme="graphite" aria-pressed="false">
-          <span class="chip-swatch" data-theme="graphite" aria-hidden="true"><span class="chip-bg"></span><span class="chip-accent"></span></span>
-          <span class="chip-name">Graphite</span>
-        </button>
-        <button type="button" class="chip" data-scheme="ledger" aria-pressed="false">
-          <span class="chip-swatch" data-theme="ledger" aria-hidden="true"><span class="chip-bg"></span><span class="chip-accent"></span></span>
-          <span class="chip-name">Ledger</span>
-        </button>
-        <button type="button" class="chip" data-scheme="microfilm" aria-pressed="false">
-          <span class="chip-swatch" data-theme="microfilm" aria-hidden="true"><span class="chip-bg"></span><span class="chip-accent"></span></span>
-          <span class="chip-name">Microfilm</span>
-        </button>
-        <button type="button" class="chip" data-scheme="manila" aria-pressed="false">
-          <span class="chip-swatch" data-theme="manila" aria-hidden="true"><span class="chip-bg"></span><span class="chip-accent"></span></span>
-          <span class="chip-name">Manila</span>
-        </button>
-        <button type="button" class="chip" data-scheme="carbon" aria-pressed="false">
-          <span class="chip-swatch" data-theme="carbon" aria-hidden="true"><span class="chip-bg"></span><span class="chip-accent"></span></span>
-          <span class="chip-name">Carbon</span>
-        </button>
-        <button type="button" class="chip" data-scheme="blueprint" aria-pressed="false">
-          <span class="chip-swatch" data-theme="blueprint" aria-hidden="true"><span class="chip-bg"></span><span class="chip-accent"></span></span>
-          <span class="chip-name">Blueprint</span>
-        </button>
-      </div>
     </div>
   </section>
 
@@ -183,8 +171,9 @@
         </div>
         <div class="card">
           <h3>Easy on the eyes</h3>
-          <p>Follows Windows light or dark mode live. Every text color pairing is held
-          to WCAG AA contrast — enforced by a unit test.</p>
+          <p>Follows Windows light or dark mode live, or stays on the one you pick. The
+          type is Atkinson Hyperlegible, designed so I, l and 1 never look alike. Every
+          text color pairing is held to WCAG AA contrast, enforced by a unit test.</p>
         </div>
       </div>
     </div>
@@ -198,30 +187,30 @@
           <picture class="pic-default">
             <source srcset="assets/shot-settings-dark.png" media="(prefers-color-scheme: dark)">
             <img class="shot" src="assets/shot-settings-light.png" loading="lazy"
-                 alt="The Settings window on the Appearance page: seven color scheme cards with live previews"
+                 alt="The Settings window on the Appearance page: Auto, Light and Dark theme cards with live previews"
                  width="880" height="820">
           </picture>
           <img class="shot shot-light" src="assets/shot-settings-light.png" loading="lazy"
-               alt="The Settings window on the Appearance page: seven color scheme cards with live previews"
+               alt="The Settings window on the Appearance page: Auto, Light and Dark theme cards with live previews"
                width="880" height="820">
           <img class="shot shot-dark" src="assets/shot-settings-dark.png" loading="lazy"
-               alt="The Settings window on the Appearance page: seven color scheme cards with live previews"
+               alt="The Settings window on the Appearance page: Auto, Light and Dark theme cards with live previews"
                width="880" height="820">
-          <figcaption>Seven color schemes, previewed live in Settings</figcaption>
+          <figcaption>Light, dark, or follow Windows, previewed live in Settings</figcaption>
         </figure>
         <figure>
           <picture class="pic-default">
             <source srcset="assets/shot-labels-dark.png" media="(prefers-color-scheme: dark)">
             <img class="shot" src="assets/shot-labels-light.png" loading="lazy"
                  alt="The Box labels tool: a live label preview with barcode and print layout"
-                 width="680" height="560">
+                 width="680" height="572">
           </picture>
           <img class="shot shot-light" src="assets/shot-labels-light.png" loading="lazy"
                alt="The Box labels tool: a live label preview with barcode and print layout"
-               width="680" height="560">
+               width="680" height="572">
           <img class="shot shot-dark" src="assets/shot-labels-dark.png" loading="lazy"
                alt="The Box labels tool: a live label preview with barcode and print layout"
-               width="680" height="560">
+               width="680" height="572">
           <figcaption>Box labels with barcodes, printed at exact scale</figcaption>
         </figure>
       </div>

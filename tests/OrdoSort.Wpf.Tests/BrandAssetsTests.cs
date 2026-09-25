@@ -43,6 +43,15 @@ public class BrandAssetsTests
     }
 
     [Fact]
+    public void TheWebsiteHeaderMarkMatchesTheArt()
+    {
+        var index = File.ReadAllText(Path.Combine(FindRepoRoot(), BrandCommand.IndexHtml));
+
+        Assert.True(BrandCommand.SameText(BrandCommand.WithInlineMark(index), index),
+            "the header mark in ordosort.com/index.html is out of date; run the brand generator");
+    }
+
+    [Fact]
     public void BoxLabelsLoadsItsOwnIcon() => _fx.Invoke(() =>
     {
         var icon = BitmapFrame.Create(BoxLabelsApp.App.AppIconUri);

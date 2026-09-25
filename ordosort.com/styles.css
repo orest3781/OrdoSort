@@ -1,51 +1,44 @@
-/* ordosort.com — tokens are the app's ThemePalette.cs, verbatim */
-:root {
-  --bg: #F7F8F9; --surface: #FFFFFF; --text: #171A1F; --subtle: #545A63;
-  --border: #BAC0C8; --accent: #2D323A; --accent-text: #FFFFFF; --bronze: #8C6D3F;
-  --tile: #E4E6E9;
-  --radius: 4px;
-  --ease: cubic-bezier(.2,.7,.3,1);
-  color-scheme: light dark;
+/* ordosort.com — tokens are the app's ThemePalette.cs (brand palette,
+   2026-09): light is ink & bronze on warm paper, dark is graphite & brass.
+   Three states, like the apps: no data-theme follows the system; the header
+   toggle sets data-theme="light" or "dark" on <html>. */
+
+/* Atkinson Hyperlegible Next, self-hosted (SIL OFL, assets/fonts/OFL.txt).
+   The app bundles the same three weights. */
+@font-face {
+  font-family: "Atkinson Hyperlegible Next"; font-weight: 400; font-style: normal; font-display: swap;
+  src: url("assets/fonts/AtkinsonHyperlegibleNext-Regular.woff2") format("woff2");
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1A1C1F; --surface: #26292D; --text: #E9EBEE; --subtle: #A8ADB4;
-    --border: #4C525A; --accent: #CDD2DA; --accent-text: #171A1F; --bronze: #C9A96A;
-    --tile: #363A3F;
-  }
+@font-face {
+  font-family: "Atkinson Hyperlegible Next"; font-weight: 600; font-style: normal; font-display: swap;
+  src: url("assets/fonts/AtkinsonHyperlegibleNext-SemiBold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Next"; font-weight: 700 800; font-style: normal; font-display: swap;
+  src: url("assets/fonts/AtkinsonHyperlegibleNext-Bold.woff2") format("woff2");
 }
 
-/* named color schemes — same 8 tokens + --tile, chosen via the switcher.
-   Plain attribute selectors (not `:root[data-theme]`) so the same rules also
-   scope the chip swatches below; placed after the dark media block above so
-   an explicit scheme always wins the cascade regardless of OS preference. */
-[data-theme="paper"] {
-  --bg: #F7F8F9; --surface: #FFFFFF; --text: #171A1F; --subtle: #545A63;
-  --border: #BAC0C8; --accent: #2D323A; --accent-text: #FFFFFF; --bronze: #8C6D3F; --tile: #E4E6E9;
+:root {
+  --bg: #F5F3EE; --surface: #FFFFFF; --text: #1C1F24; --subtle: #585D66;
+  --border: #C3BDB0; --accent: #24282E; --accent-text: #FFFFFF; --bronze: #7A5A26;
+  --tile: #E8E5DE;
+  --radius: 4px;
+  --ease: cubic-bezier(.2,.7,.3,1);
+  color-scheme: light;
 }
-[data-theme="graphite"] {
-  --bg: #1A1C1F; --surface: #26292D; --text: #E9EBEE; --subtle: #A8ADB4;
-  --border: #4C525A; --accent: #CDD2DA; --accent-text: #171A1F; --bronze: #C9A96A; --tile: #363A3F;
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1A1C1F; --surface: #24272B; --text: #ECEAE5; --subtle: #A9ADB3;
+    --border: #4A4E55; --accent: #D6D2CA; --accent-text: #1A1C1F; --bronze: #D2AE6B;
+    --tile: #34383D;
+    color-scheme: dark;
+  }
 }
-[data-theme="ledger"] {
-  --bg: #151A16; --surface: #1F2721; --text: #E7ECE6; --subtle: #A6AFA6;
-  --border: #4A544B; --accent: #CBD6C4; --accent-text: #151A16; --bronze: #D2B25E; --tile: #303A32;
-}
-[data-theme="microfilm"] {
-  --bg: #151922; --surface: #1E2430; --text: #E6EAF2; --subtle: #A3ABBA;
-  --border: #495163; --accent: #C4CEE0; --accent-text: #151922; --bronze: #6FAEC6; --tile: #2E3646;
-}
-[data-theme="manila"] {
-  --bg: #F4EEE1; --surface: #FBF7EC; --text: #2A2418; --subtle: #5E5644;
-  --border: #BFB6A0; --accent: #1F3A5F; --accent-text: #FFFFFF; --bronze: #7A5E30; --tile: #E9E0CC;
-}
-[data-theme="carbon"] {
-  --bg: #0F1013; --surface: #1A1B1F; --text: #F2F2F5; --subtle: #B0B1BA;
-  --border: #464852; --accent: #ADA0D6; --accent-text: #0F1013; --bronze: #8E82B8; --tile: #282930;
-}
-[data-theme="blueprint"] {
-  --bg: #E9EFF6; --surface: #F7FAFD; --text: #182740; --subtle: #49586E;
-  --border: #AAB8C8; --accent: #23538F; --accent-text: #FFFFFF; --bronze: #2D65A0; --tile: #DBE5F0;
+:root[data-theme="dark"] {
+  --bg: #1A1C1F; --surface: #24272B; --text: #ECEAE5; --subtle: #A9ADB3;
+  --border: #4A4E55; --accent: #D6D2CA; --accent-text: #1A1C1F; --bronze: #D2AE6B;
+  --tile: #34383D;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; margin: 0; }
@@ -54,13 +47,13 @@ html { scroll-behavior: smooth; }
 
 body {
   background: var(--bg); color: var(--text);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: "Atkinson Hyperlegible Next", system-ui, -apple-system, "Segoe UI", sans-serif;
   line-height: 1.6;
 }
 .container { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
 img { max-width: 100%; height: auto; display: block; }
 a { color: var(--bronze); }
-a:focus-visible, .btn:focus-visible, .chip:focus-visible {
+a:focus-visible, .btn:focus-visible {
   outline: 2px solid var(--bronze); outline-offset: 2px; border-radius: var(--radius);
 }
 section[id] { scroll-margin-top: 72px; }
@@ -75,14 +68,30 @@ section[id] { scroll-margin-top: 72px; }
 .header-row { display: flex; align-items: center; justify-content: space-between; height: 56px; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
 .wordmark { font-weight: 700; font-size: 1.1rem; letter-spacing: .02em; }
-.m-steel { fill: var(--accent); } .m-bronze { fill: var(--bronze); }
+.header-end { display: flex; align-items: center; gap: 22px; }
 .site-nav { display: flex; gap: 22px; }
 .site-nav a { color: var(--subtle); text-decoration: none; font-size: .95rem; position: relative; }
 .site-nav a:hover { color: var(--bronze); }
 @media (max-width: 520px) {
   .header-row { flex-wrap: wrap; height: auto; padding: 8px 20px; row-gap: 2px; }
   .site-nav { gap: 16px; }
+  .header-end { flex-wrap: wrap; gap: 6px 16px; }
 }
+
+/* theme toggle: Auto / Light / Dark, the same choice the apps offer */
+.theme-toggle {
+  display: inline-flex; padding: 2px; gap: 2px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+}
+.theme-toggle[hidden] { display: none; }
+.theme-toggle button {
+  font: inherit; font-size: .8rem; line-height: 1.4; cursor: pointer;
+  border: 0; border-radius: 999px; padding: 3px 10px;
+  background: transparent; color: var(--subtle);
+}
+.theme-toggle button:hover { color: var(--text); }
+.theme-toggle button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+.theme-toggle button:focus-visible { outline: 2px solid var(--bronze); outline-offset: 1px; }
 
 /* buttons */
 .btn {
@@ -145,29 +154,6 @@ section[id] { scroll-margin-top: 72px; }
   border-radius: var(--radius); font-weight: 600;
 }
 
-/* scheme switcher */
-.scheme-switcher {
-  display: flex; flex-wrap: wrap; justify-content: center;
-  gap: 8px; margin-top: 22px;
-}
-.chip {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 6px 12px 6px 6px; border: 1px solid var(--border); border-radius: 999px;
-  background: var(--surface); color: var(--text);
-  font: inherit; font-size: .85rem; cursor: pointer;
-}
-.chip:hover { border-color: var(--bronze); }
-.chip[aria-pressed="true"] {
-  border-color: var(--bronze);
-  background: color-mix(in srgb, var(--bronze) 14%, var(--surface));
-}
-.chip-swatch {
-  display: inline-flex; width: 18px; height: 18px; flex-shrink: 0;
-  border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
-}
-.chip-bg { flex: 2; background: var(--bg); }
-.chip-accent { flex: 1; background: var(--accent); }
-
 /* sections */
 section { padding: 56px 0; }
 .section-title { font-size: 1.75rem; margin-bottom: 28px; text-align: center; }
@@ -224,9 +210,9 @@ html.force-dark .shot-dark { display: block; }
    visitor with JS blocked (site.js never runs, html.js never gets added)
    always sees full, un-hidden content. */
 @media (prefers-reduced-motion: no-preference) {
-  /* scheme-switch recolor transition on the major surfaces */
+  /* theme-switch recolor transition on the major surfaces */
   html, body, .site-header, .card, .hero-mock, .mock-titlebar, .mock-tile,
-  .mock-cta, .chip, .btn, .step-n, .shot {
+  .mock-cta, .btn, .step-n, .shot, .theme-toggle button {
     transition: background-color .3s var(--ease), color .3s var(--ease), border-color .3s var(--ease);
   }
 
@@ -241,12 +227,6 @@ html.force-dark .shot-dark { display: block; }
     transition: transform .15s var(--ease);
   }
   .site-nav a:hover::after { transform: scaleX(1); }
-
-  /* brand-mark diamonds: slight per-path stagger on header hover */
-  .mark path { transition: transform .15s var(--ease); transform-box: fill-box; }
-  .site-header:hover .mark path:nth-child(1) { transform: translateY(1px); }
-  .site-header:hover .mark path:nth-child(2) { transform: translateY(-1px); }
-  .site-header:hover .mark path:nth-child(3) { transform: translateY(1px); }
 
   /* scroll reveals: three how-it-works steps + six feature cards */
   html.js .steps .card, html.js .feature-grid .card {
