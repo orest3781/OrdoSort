@@ -435,7 +435,7 @@
 
             <TextBlock Grid.Row="4" Style="{StaticResource SubtleText}" Margin="0,6,0,0"
                        TextWrapping="Wrap"
-                       Text="Applied in order: segments, Find &amp; replace, Add, Format. F2 or Enter edits a New name by hand (clear it to undo). Extensions never change." />
+                       Text="Applied in order: segments, Find &amp; replace, Add, Format. Type to jump to a file; F2 or Enter edits a New name by hand (clear it to undo). Extensions never change." />
         </Grid>
     </DockPanel>
 </Window>

@@ -479,4 +479,89 @@ public sealed class ExplorerColumnsTests : IDisposable
         Walk(grid);
         return headers.First(h => h.Column is not null && (string)h.Column.Header == text);
     }
+
+    // ---- rule 12: type to jump -------------------------------------------
+
+    [Fact]
+    public void TypingJumpsToTheNextRowStartingWithTheLetter() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var now = new DateTime(2026, 9, 25, 12, 0, 0);
+        var bed = Build(clock: () => now, rows: new[]
+        {
+            new Row { Name = "alpha" }, new Row { Name = "bravo" }, new Row { Name = "beta" }, new Row { Name = "charlie" },
+        });
+        try
+        {
+            Settle(bed.Window);
+
+            Assert.True(bed.Explorer.TypeAhead("b"));
+            Assert.Equal("bravo", ((Row)bed.Grid.SelectedItem).Name);
+
+            now = now.AddSeconds(2);                // a second press after the window: next "b"
+            bed.Explorer.TypeAhead("b");
+            Assert.Equal("beta", ((Row)bed.Grid.SelectedItem).Name);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    [Fact]
+    public void LettersTypedWithinASecondRefineTheMatch() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var now = new DateTime(2026, 9, 25, 12, 0, 0);
+        var bed = Build(clock: () => now, rows: new[] { new Row { Name = "bravo" }, new Row { Name = "beta" } });
+        try
+        {
+            Settle(bed.Window);
+
+            bed.Explorer.TypeAhead("b");
+            now = now.AddMilliseconds(300);
+            bed.Explorer.TypeAhead("e");
+
+            Assert.Equal("beta", ((Row)bed.Grid.SelectedItem).Name);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    /// <summary>Review focus 5: while a cell is being edited, typing is the
+    /// edit, not a jump.</summary>
+    [Fact]
+    public void TypingInsideAnEditIsLeftToTheEditor() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new[] { new Row { Name = "alpha" }, new Row { Name = "bravo" } });
+        try
+        {
+            Settle(bed.Window);
+            bed.Grid.SelectedIndex = 0;
+            bed.Grid.CurrentCell = new DataGridCellInfo(bed.Grid.Items[0], bed.Column("Note"));
+            bed.Grid.BeginEdit();
+            Settle(bed.Window);
+
+            Assert.False(bed.Explorer.TypeAhead("b"));
+            Assert.Equal("alpha", ((Row)bed.Grid.SelectedItem).Name);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    // ---- rule 13: empty space clears the selection ------------------------
+
+    [Fact]
+    public void ClickingBelowTheLastRowClearsTheSelection() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new[] { new Row { Name = "alpha" }, new Row { Name = "bravo" } });
+        try
+        {
+            Settle(bed.Window);
+            bed.Grid.SelectedIndex = 1;
+            var presenter = FindDescendant<ItemsPresenter>(bed.Grid)!;
+
+            Assert.True(bed.Explorer.ClearIfEmptySpace(presenter));
+
+            Assert.Null(bed.Grid.SelectedItem);
+        }
+        finally { bed.Window.Close(); }
+    });
 }

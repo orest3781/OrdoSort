@@ -83,7 +83,7 @@ public partial class BulkRenameWindow : Window
         // Delete = the Remove selected button, as in the Filename list (UX-32);
         // never while a cell editor is open, where Delete edits text —
         // _editing now comes from the grid's own BeginningEdit, so this
-        // covers an editor opened by double-click or type-to-edit too, not
+        // covers an editor opened by double-click too, not
         // only the ones this window's BeginEdit helper started.
         if (!_editing && e.Key == System.Windows.Input.Key.Delete)
         {
@@ -127,7 +127,7 @@ public partial class BulkRenameWindow : Window
     private bool _editing;
 
     /// <summary>The grid reports every way into a cell editor — double-click,
-    /// type-to-edit, F2 — where the window's own BeginEdit helper knew only
+    /// F2 — where the window's own BeginEdit helper knew only
     /// its own. Delete and Enter consult this flag, and Delete removes rows,
     /// so it has to be true whenever an editor is open, not only when this
     /// code opened it.</summary>

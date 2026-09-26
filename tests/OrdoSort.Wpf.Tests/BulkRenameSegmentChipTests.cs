@@ -1,12 +1,14 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.Theme;
 using OrdoSort.Wpf.ViewModels;
+using OrdoSort.Wpf.Views;
 using OrdoSort.Wpf.Windows;
 
 namespace OrdoSort.Wpf.Tests;
@@ -128,4 +130,40 @@ public class BulkRenameSegmentChipTests : IDisposable
         }
         return results;
     }
+
+    /// <summary>Rule 12 in Bulk rename: typing jumps to a file instead of
+    /// starting an edit on its New name; the existing F2 path still edits.</summary>
+    [Fact]
+    public void TypingJumpsInsteadOfStartingAnEdit() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var files = new[] { "alpha_one.pdf", "bravo_two.pdf" }.Select(n =>
+        {
+            var path = Path.Combine(_dir, n);
+            File.WriteAllText(path, "x");
+            return path;
+        }).ToList();
+        var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
+        vm.AddFilesAsync(files).GetAwaiter().GetResult();
+        var win = new BulkRenameWindow(vm)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = 0, ShowActivated = false,
+        };
+        try
+        {
+            win.Show();
+            win.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { },
+                System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            var grid = FindAllDescendants<DataGrid>(win).Single();
+            grid.SelectedIndex = 0;
+
+            Assert.True(ExplorerColumns.For(grid)!.TypeAhead("b"));
+
+            Assert.Equal(1, grid.SelectedIndex);
+            Assert.False(Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase tb
+                && FindAllDescendants<System.Windows.Controls.Primitives.TextBoxBase>(grid).Contains(tb));
+        }
+        finally { win.Close(); }
+    });
 }
