@@ -79,7 +79,7 @@ public sealed class HighlightContrastCollection : ICollectionFixture<HighlightCo
 /// cannot access this object because a different thread owns it" the moment
 /// it touches any DispatcherObject member (e.g. <c>Application.Windows</c>)
 /// from its OWN thread. Both reproduced empirically while adding
-/// <see cref="DataGridStarColumnTests"/> as a second consumer (Task 1,
+/// a second consumer (the since-retired DataGridStarColumnTests, Task 1,
 /// 2026-08-02) — fixed by switching every consumer from
 /// <c>IClassFixture&lt;&gt;</c> to the shared collection, which guarantees
 /// xunit constructs this fixture exactly once for however many test classes
@@ -221,8 +221,8 @@ public sealed class HighlightContrastFixture : IDisposable
 public class HighlightContrastTests
 {
     /// <summary>Shared with every other test class that needs the same
-    /// <see cref="HighlightContrastFixture"/> (currently also
-    /// <see cref="DataGridStarColumnTests"/>) via <c>[Collection(Name)]</c> —
+    /// <see cref="HighlightContrastFixture"/> (every window suite) via
+    /// <c>[Collection(Name)]</c> —
     /// see <see cref="HighlightContrastCollection"/> and the fixture's own
     /// class doc for why a second, independent instance is unsafe.</summary>
     public const string Name = "HighlightContrastFixture collection";

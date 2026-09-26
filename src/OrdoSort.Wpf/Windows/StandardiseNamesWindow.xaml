@@ -50,9 +50,9 @@
                  caption — while every element still stayed inside the
                  window, invisible to NoTextElementEscapesTheWindow, which
                  measures escape past the window edge, not one element
-                 overlapping another (see AutoFitColumnTests'
-                 StandardiseNames_ToolbarButtonsDoNotOverlapALongNoteAtMin
-                 Width for the dedicated fact this needed instead). -->
+                 overlapping another (see StandardiseNamesWindowTests'
+                 ToolbarButtonsDoNotOverlapALongNoteAtMinWidth for the
+                 dedicated fact this needed instead). -->
             <DockPanel Margin="0,0,0,10">
                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" HorizontalAlignment="Left">
                     <Button Content="Add files…" Click="OnAddFiles" Margin="0,0,10,0"
@@ -110,38 +110,16 @@
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
-                        <!-- Current name: the filler (Width="*") — the
-                             file's name as it was AT DROP TIME, the least
-                             predictable string in the row. Used to wrap, not
-                             trim; table-rules Rule 4 reverses that app-wide —
-                             trims with an ellipsis instead, and shows the
-                             full name as a tooltip once it actually is
-                             trimmed, both now inherited from
-                             GridCellTextSelectionAware's own base. -->
+                        <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
                         <DataGridTextColumn Header="Current name" Binding="{Binding Current}"
-                                            Width="*" MinWidth="180">
+                                            Width="380">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Result: content-sized; DataGridColumnCap
-                             (code-behind) gives it its content width when
-                             that fits beside Current name, and a
-                             proportional, trimmed share (table-rules Rule 4 —
-                             used to say "wrapped" here) when it doesn't —
-                             same mechanism as MergePdfsWindow/ZipToolsWindow's
-                             own Result column. Failed is Theme.StatusRed — a
-                             genuine failure. Skipped is Theme.StatusAmber —
-                             "needs attention" (status-colour-vocabulary
-                             plan): PlanTidy turned the name away rather than
-                             producing one. Unchanged is Theme.SubtleText —
-                             informational, not a problem: the file was
-                             already exactly right. Renamed (the ordinary,
-                             successful case) gets no trigger at all, the
-                             same plain-text default a successful row already
-                             has in every sibling tool's own Result column. -->
+                        <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
                         <DataGridTextColumn x:Name="ResultColumn" Header="Result" Binding="{Binding Result}"
-                                            Width="Auto">
+                                            Width="300">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                     <Style.Triggers>

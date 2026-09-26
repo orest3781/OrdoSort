@@ -13,8 +13,7 @@ namespace OrdoSort.Wpf.Tests;
 /// messages (Task 7 Steps 2–3) and the header/binding divergence that lets
 /// this grid say "Destination" while still binding <c>Route</c> (Task 9,
 /// audit finding I4) — both unaffected by, and still passing after, every
-/// column-sizing change below. Built the same headless way as
-/// <see cref="DataGridStarColumnTests"/> (off-screen Show()+UpdateLayout()
+/// column-sizing change below. Built headless (off-screen Show()+UpdateLayout()
 /// on the shared <see cref="HighlightContrastFixture"/> STA thread) so real
 /// Styles.xaml resources and the real production XAML are exercised, not a
 /// hand-copied stand-in.
@@ -25,27 +24,14 @@ namespace OrdoSort.Wpf.Tests;
 /// nor a ToolTip. <see cref="TextColumnsTrimRatherThanWrap"/> now asserts
 /// the opposite for all four, reading the REALIZED cell rather than
 /// declared Setters (see that fact's own doc comment for why): trimmed with
-/// an ellipsis, one line, and the full value reachable as a ToolTip —
-/// DataGridColumnCap's autofit still gives each its content width when
-/// that fits and a proportional share when it doesn't, but the share that
-/// can't hold its content now cuts it off instead of growing the row.
-/// <see cref="WhenIsNotCappedBecauseItsContentIsBounded"/> confirms
-/// <c>When</c> was deliberately taken OUT of that governed set instead of
-/// joining the other four: its value is a timestamp History formats
-/// itself, always 16 characters, so it is sized to its own content rather
-/// than ever needing to trim or wrap a date — asserted as its MaxWidth
-/// reading WPF's own uncapped default, PositiveInfinity, which only holds
-/// if DataGridColumnCap genuinely never assigns it one (see that fact's own
-/// doc comment for why that isn't a vacuous default-value check).
+/// an ellipsis, one line, and the full value reachable as a ToolTip.
+/// Column widths are fixed and set by the user (table rules v2).
 ///
 /// What this suite CANNOT verify: that the four columns' own row heights on
 /// a REAL, on-screen display look uniform end to end — TextColumnsTrimRatherThanWrap
 /// measures ActualHeight on an off-screen window, which reflects real WPF
 /// layout, just never painted; a person visually scanning the grid is not
-/// what this proves. <see cref="AutoFitColumnTests"/> (this window's own
-/// column-cap facts) and <see cref="DataGridColumnCapTests"/> (the class
-/// itself, on a bare grid built in code) are the suites that exercise the
-/// same underlying mechanism from other angles.</summary>
+/// what this proves.</summary>
 [Collection(HighlightContrastTests.Name)]
 public class HistoryWindowXamlTests
 {
@@ -57,8 +43,7 @@ public class HistoryWindowXamlTests
     {
         var dbPath = Path.Combine(Path.GetTempPath(), "ordo_test_history_" + Guid.NewGuid() + ".sqlite");
         var history = new History(dbPath);
-        // InlineWorkScheduler: see DataGridStarColumnTests' identical comment —
-        // HistoryViewModel's constructor kicks off an async LoadAsync; inline
+        // InlineWorkScheduler: HistoryViewModel's constructor kicks off an async LoadAsync; inline
         // makes it finish synchronously before this method returns.
         var vm = new HistoryViewModel(history, new FakeDialogs(), new InlineWorkScheduler());
         beforeShow?.Invoke(vm);
@@ -207,21 +192,16 @@ public class HistoryWindowXamlTests
         }
     });
 
-    /// <summary>Long enough to overflow any of the four governed columns'
-    /// caps at this window's own default width, at any reasonable font
-    /// size — the same reasoning AutoFitColumnTests.VeryLongValue documents
-    /// for itself, restated locally since this class doesn't share that
-    /// one.</summary>
+    /// <summary>Long enough to overflow any of the four text columns at
+    /// their starting widths, at any reasonable font size.</summary>
     private const string VeryLongValue =
         "A-Very-Long-History-Derived-Value-That-Keeps-Going-Well-Past-Any-Sensible-Column-Width-000000000000.pdf";
 
     /// <summary>Table-rules Rule 4 (this branch) reverses the 2026-08-29
     /// decision this fact used to assert: the four text columns trimmed
     /// with an ellipsis before that date, moved to wrapping that day, and
-    /// move BACK to trimming here — DataGridColumnCap's autofit still gives
-    /// each its content width when that fits and a proportional share when
-    /// it doesn't, but a share that can't hold its content now cuts it off
-    /// with "…" rather than growing the row, and the cell's own full text
+    /// move BACK to trimming here — a column narrower than its content
+    /// cuts it off with "…" rather than growing the row, and the cell's own full text
     /// reaches a ToolTip on hover instead of being left off screen.
     ///
     /// Read off the REALIZED cell on a seeded row carrying
@@ -280,35 +260,6 @@ public class HistoryWindowXamlTests
                 $"absorbs the overflow now — the row is {row.ActualHeight}px against a {lineHeight}px line");
 
             Assert.Equal(text.Text, text.ToolTip as string);
-        }
-        finally { Cleanup(win, history, dbPath); }
-    });
-
-    /// <summary>When holds a timestamp History formats itself — bounded, 16
-    /// characters — so it is no longer one of the governed columns: sized
-    /// to its content, never asked to give way, never wrapped mid-date.
-    /// An uncapped column's MaxWidth is WPF's default, infinity.
-    ///
-    /// Not a vacuous default-value check: <c>BuildWindow</c> does
-    /// <c>Show()</c> plus <c>UpdateLayout()</c>, which is enough to run
-    /// DataGridColumnCap's own <c>Recalculate</c> at least once — if When
-    /// were still in the governed set (put <c>WhenColumn</c> back into the
-    /// <c>Track</c> call in HistoryWindow.xaml.cs to check), that pass would
-    /// assign it a real, finite cap, not leave WPF's default standing.
-    /// Confirmed by that exact revert: a reviewer put WhenColumn back into
-    /// Track and this fact caught it with a genuine 55px MaxWidth, not
-    /// PositiveInfinity.</summary>
-    [Fact]
-    public void WhenIsNotCappedBecauseItsContentIsBounded() => _fx.Invoke(() =>
-    {
-        ThemeManager.Apply(_fx.App, dark: false);
-        var (win, history, dbPath) = BuildWindow();
-        try
-        {
-            var grid = FindDescendant<DataGrid>(win)!;
-            var when = grid.Columns.First(c => (string)c.Header == "When");
-            Assert.True(double.IsPositiveInfinity(when.MaxWidth),
-                $"When should not be governed by DataGridColumnCap: MaxWidth is {when.MaxWidth}");
         }
         finally { Cleanup(win, history, dbPath); }
     });

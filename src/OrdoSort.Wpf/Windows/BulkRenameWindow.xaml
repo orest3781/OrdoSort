@@ -309,34 +309,9 @@
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
-                        <!-- Current name: content-sized; DataGridColumnCap
-                             gives it its content width when that fits and a
-                             proportional, trimmed share (table-rules Rule 4 —
-                             used to say "wrapped" here) when it doesn't —
-                             same mechanism and reasoning as
-                             MatchMergeWindow's analogous "File" column: this
-                             is the file's EXISTING name, the least
-                             predictable string in the row, and not what a
-                             rename batch exists to verify, so it's capped
-                             rather than made the filler.
-
-                             2026-08-07 autofit-columns superseded the prior
-                             (2026-08-02 audit-remediation) shape here, which
-                             made BOTH this column and New name star with a
-                             shared MinWidth="120" floor specifically so
-                             neither collapsed to WPF's bare 20px default under
-                             a headless Show() (DataGridStarColumnTests still
-                             covers that collapse for the one star column
-                             remaining below). That reasoning about a
-                             120px floor and this window's on-screen MinWidth
-                             (700px) no longer applies to THIS column now that
-                             it isn't star at all — flagging that explicitly
-                             since a stale comment describing sizing the code
-                             no longer has is exactly the trap this repo keeps
-                             hitting. See New name's own comment below for
-                             where that floor reasoning now lives. -->
+                        <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
                         <DataGridTextColumn x:Name="CurrentColumn" Header="Current name" Binding="{Binding Current}"
-                                            IsReadOnly="True" Width="Auto">
+                                            IsReadOnly="True" Width="300">
                             <!-- BasedOn GridCellTextSelectionAware (Theme/
                                  Styles.xaml), not plain GridCellText or the
                                  bare {x:Type TextBlock} style: no status
@@ -350,24 +325,9 @@
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- New name: the filler (Width="*", MinWidth="120" —
-                             the same floor HistoryWindow's own star columns
-                             use, so a headless Show() clamps rather than
-                             collapses it to WPF's bare 20px default; see
-                             DataGridStarColumnTests). This is the column the
-                             whole window exists to produce, and the one a
-                             person edits directly (click or F2), so it gets
-                             whatever width Current name and Note don't need —
-                             now ALL of the leftover, not half of it, since
-                             Current name moved to a capped Auto column above
-                             instead of also being star. It is also a
-                             participant in DataGridColumnCap's split: when
-                             the columns can't all have their content width it
-                             gets a proportional share, never under this
-                             floor, and trims with an ellipsis (table-rules
-                             Rule 4 — used to wrap). -->
+                        <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
                         <DataGridTextColumn Header="New name"
-                                            Binding="{Binding NewName}" Width="*" MinWidth="120">
+                                            Binding="{Binding NewName}" Width="300">
                             <!-- BasedOn GridCellText for the shared Theme.Text
                                  default — but the Changed="False" DataTrigger
                                  below still needs its own trailing "let
@@ -411,13 +371,9 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Note: content-sized; DataGridColumnCap gives it its
-                             content width when that fits and a proportional,
-                             trimmed share (table-rules Rule 4 — used to say
-                             "wrapped" here) when it doesn't. Was a
-                             fixed 220px regardless of what it held. -->
+                        <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
                         <DataGridTextColumn x:Name="NoteColumn" Header="Note" Binding="{Binding Note}"
-                                            IsReadOnly="True" Width="Auto">
+                                            IsReadOnly="True" Width="160">
                             <!-- BasedOn plain GridCellText, NOT
                                  GridCellTextSelectionAware, for the shared
                                  Theme.Text default; this column's own status
@@ -479,7 +435,7 @@
 
             <TextBlock Grid.Row="4" Style="{StaticResource SubtleText}" Margin="0,6,0,0"
                        TextWrapping="Wrap"
-                       Text="Applied in order: segments, Find &amp; replace, Add, Format. F2 or Enter edits a New name by hand (clear it to undo). Extensions never change." />
+                       Text="Applied in order: segments, Find &amp; replace, Add, Format. Type to jump to a file; F2 or Enter edits a New name by hand (clear it to undo). Extensions never change." />
         </Grid>
     </DockPanel>
 </Window>

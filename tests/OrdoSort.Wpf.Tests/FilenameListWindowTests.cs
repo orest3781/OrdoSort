@@ -122,4 +122,93 @@ public class FilenameListWindowTests
             window.Close();
         }
     });
+
+    /// <summary>The header checklist and the export share one switch: hiding
+    /// Size from the header menu also drops it from the export (table rules
+    /// v2, rule 4).</summary>
+    [Fact]
+    public void TheHeaderMenuFlipsTheSameFlagTheExportReads() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs());
+        var window = new FilenameListWindow(vm);
+        window.Left = -20000; window.Top = 0; window.ShowActivated = false;
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            vm.ShowSize = true;
+            var explorer = OrdoSort.Wpf.Views.ExplorerColumns.For(window.NamesGrid)!;
+            var size = window.NamesGrid.Columns.Single(c => (string)c.Header == "Size");
+
+            var menu = explorer.BuildHeaderMenu(size);
+            menu.Items.OfType<MenuItem>().Single(i => (string)i.Header == "Size")
+                .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+
+            Assert.False(vm.ShowSize);
+            Assert.Equal(Visibility.Collapsed, size.Visibility);
+            Assert.False(menu.Items.OfType<MenuItem>().Single(i => (string)i.Header == "File name").IsEnabled);
+        }
+        finally { window.Close(); }
+    });
+
+    /// <summary>Final review, Important 3: with the # column shown it sits
+    /// first, but typing still jumps by file name (the anchor), as in Explorer.</summary>
+    [Fact]
+    public void TypingJumpsByFileNameEvenWithTheRowNumberColumnFirst() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs()) { ShowNumber = true };
+        foreach (var name in new[] { "alpha.pdf", "bravo.pdf" })
+            vm.Rows.Add(new OrdoSort.Core.FilenameList.FileRow(name, 1024, DateTime.Today, @"C:\inbox", @"C:\inbox\" + name));
+        var window = new FilenameListWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            var explorer = OrdoSort.Wpf.Views.ExplorerColumns.For(window.NamesGrid)!;
+
+            Assert.True(explorer.TypeAhead("b"));
+
+            Assert.Equal("bravo.pdf", ((OrdoSort.Core.FilenameList.FileRow)window.NamesGrid.SelectedItem).Name);
+        }
+        finally { window.Close(); }
+    });
+
+    /// <summary>Final review, Important 3: the # column's value comes from
+    /// the row itself, so fitting it measures the largest row number, not an
+    /// empty string (which shrank it to 40px and cut "120" to "1…").</summary>
+    [Fact]
+    public void FittingTheRowNumberColumnMakesRoomForTheLargestNumber() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs()) { ShowNumber = true };
+        for (var i = 0; i < 120; i++)
+            vm.Rows.Add(new OrdoSort.Core.FilenameList.FileRow($"f{i}.pdf", 1, DateTime.Today, @"C:\inbox", $@"C:\inbox{i}.pdf"));
+        var window = new FilenameListWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            var grid = window.NamesGrid;
+            var explorer = OrdoSort.Wpf.Views.ExplorerColumns.For(grid)!;
+            var widest = new System.Windows.Media.FormattedText("120", System.Globalization.CultureInfo.CurrentUICulture,
+                FlowDirection.LeftToRight, new System.Windows.Media.Typeface(grid.FontFamily, FontStyles.Normal,
+                    FontWeights.Normal, FontStretches.Normal), grid.FontSize, System.Windows.Media.Brushes.Black,
+                System.Windows.Media.VisualTreeHelper.GetDpi(grid).PixelsPerDip).WidthIncludingTrailingWhitespace;
+
+            Assert.True(explorer.MeasureFit(window.NumberColumn) >= widest + 24,
+                $"fit {explorer.MeasureFit(window.NumberColumn)} leaves no room for \"120\" ({widest}px + 24 padding)");
+        }
+        finally { window.Close(); }
+    });
 }

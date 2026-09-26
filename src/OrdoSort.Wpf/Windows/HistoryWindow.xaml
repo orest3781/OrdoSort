@@ -33,13 +33,9 @@
         </DockPanel>
 
         <Grid>
-            <!-- x:Name: HistoryWindow.xaml.cs tracks this grid's own live
-                 ActualWidth (DataGridColumnCap.Track) to keep Name/
-                 Destination's caps correct as the window is resized. When
-                 left the governed set the same day (2026-08-29): it's a
-                 16-character timestamp History formats itself, sized to
-                 itself rather than asked to give way — see its own column
-                 comment below. -->
+            <!-- x:Name: HistoryWindow.xaml.cs attaches ExplorerColumns to
+                 this grid (table rules v2: fixed widths the user sizes,
+                 remembered per PC). -->
             <DataGrid x:Name="HistoryGrid" ItemsSource="{Binding RowsView}"
                       AutomationProperties.Name="Filing history" AutoGenerateColumns="False"
                       IsReadOnly="True" HeadersVisibility="Column"
@@ -92,12 +88,9 @@
                      Theme/Styles.xaml on why that trigger can't just live in
                      the shared base for columns like these. -->
                 <DataGrid.Columns>
-                    <!-- When: a 16-character timestamp History formats itself
-                         — bounded content, so it is sized to itself and left
-                         out of DataGridColumnCap's split (2026-08-29); the
-                         four text columns below are the participants. -->
+                    <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
                     <DataGridTextColumn x:Name="WhenColumn" Header="When" Binding="{Binding When}"
-                                        Width="Auto">
+                                        Width="140">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                 <Style.Triggers>
@@ -125,42 +118,8 @@
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    <!-- MinWidth="120": a DataGridColumn's default MinWidth is
-                         20px, and a Show() that's never subsequently resized
-                         (this app's own headless Screenshots.cs QA tool; any
-                         other headless/CI render) can leave Width="*" columns
-                         stuck at that bare 20px forever — WPF only recomputes
-                         star-column widths from a genuine later SizeChanged,
-                         which a real on-screen window gets for free
-                         (WM_SIZE/WM_ACTIVATE) but a headless
-                         Show()+UpdateLayout() never does. At this window's
-                         DEFAULT size (980px), a real, interactively-shown
-                         window is unaffected either way (confirmed:
-                         screenshotting the live app resolves these to their
-                         fair share, ~222px each, 0 rows and 5 rows alike).
-                         This floor is NOT just a QA-harness accommodation,
-                         though: measured (2026-08-02 audit-remediation, with
-                         the four columns to the right still fixed-pixel then)
-                         with a real on-screen resize down to this window's
-                         own MinWidth (700px above) — pre-fix, a real user
-                         shrinking the window that far fair-shares these two
-                         columns down to 82px each; post-fix, the same resize
-                         clamps them to this 120px floor instead. That
-                         specific on-screen number was NOT re-measured for
-                         2026-08-07's change (this session cannot drive a real
-                         on-screen resize — see task-1-report.md) but the
-                         underlying math only improves it: When/Name/
-                         Destination are now capped-Auto rather than always
-                         reserving their old full fixed width, so Original/
-                         Filed-as have at least as much room to fair-share at
-                         any window size as they did before, never less.
-                         Since 2026-08-29 the same 120px is also the floor of
-                         these two columns' share in DataGridColumnCap's
-                         proportional split; they used to wrap rather than
-                         trim when they gave way, reversed app-wide by
-                         table-rules Rule 4 — they trim with an ellipsis now,
-                         like every other cell. -->
-                    <DataGridTextColumn Header="Original" Binding="{Binding Original}" Width="*" MinWidth="120">
+                    <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
+                    <DataGridTextColumn Header="Original" Binding="{Binding Original}" Width="240">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                 <Style.Triggers>
@@ -180,7 +139,7 @@
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    <DataGridTextColumn Header="Filed as" Binding="{Binding FiledAs}" Width="*" MinWidth="120">
+                    <DataGridTextColumn Header="Filed as" Binding="{Binding FiledAs}" Width="240">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                 <Style.Triggers>
@@ -200,14 +159,9 @@
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    <!-- Name and Destination: content-sized; DataGridColumnCap
-                         gives each its content width when the four text
-                         columns fit and a proportional share — trimmed with
-                         an ellipsis, table-rules Rule 4 (used to say
-                         "wrapped, never trimmed" here; 2026-08-29 is when
-                         that WAS true) — when they don't. -->
+                    <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
                     <DataGridTextColumn x:Name="NameColumn" Header="Name" Binding="{Binding Name}"
-                                        Width="Auto">
+                                        Width="140">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                 <Style.Triggers>
@@ -238,7 +192,7 @@
                          verbatim (History.Columns) and is machine-read, so it
                          does NOT follow this rename. -->
                     <DataGridTextColumn x:Name="DestinationColumn" Header="Destination" Binding="{Binding Route}"
-                                        Width="Auto">
+                                        Width="160">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                 <Style.Triggers>
@@ -279,7 +233,7 @@
                          the two numeric "Pages" columns. The owner's instruction
                          covers it the same way: every column aligns left, no
                          exceptions carved out for how a checkbox usually reads. -->
-                    <DataGridCheckBoxColumn Header="Undone" Binding="{Binding Reverted}" Width="Auto">
+                    <DataGridCheckBoxColumn Header="Undone" Binding="{Binding Reverted}" Width="80">
                         <DataGridCheckBoxColumn.ElementStyle>
                             <Style TargetType="CheckBox">
                                 <Setter Property="AutomationProperties.Name" Value="Undone" />

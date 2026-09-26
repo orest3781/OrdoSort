@@ -16,7 +16,7 @@ public partial class MatchMergeWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
-        DataGridColumnCap.Track(MatchGrid, FileColumn, NoteColumn);
+        ExplorerColumns.Attach(MatchGrid, "MatchMerge");
         Loaded += async (_, _) => await _vm.AutoLoadRosterAsync();
     }
 

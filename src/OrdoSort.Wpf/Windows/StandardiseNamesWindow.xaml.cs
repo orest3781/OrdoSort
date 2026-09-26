@@ -16,7 +16,7 @@ public partial class StandardiseNamesWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
-        DataGridColumnCap.Track(ResultsGrid, ResultColumn);
+        ExplorerColumns.Attach(ResultsGrid, "StandardiseNames");
     }
 
     /// <summary>Refuses the close outright while a batch is running, rather

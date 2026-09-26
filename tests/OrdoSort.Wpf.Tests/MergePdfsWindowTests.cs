@@ -82,9 +82,8 @@ public class MergePdfsWindowTests
         // thread affinity of their own until a WPF DataGrid starts observing
         // them, and InlineWorkScheduler with no uiContext means nothing here
         // needs a Dispatcher at all. This is what lets the test await
-        // naturally instead of blocking inside the STA lambda the way
-        // AutoFitColumnTests.ShowOffscreenAndDriveCurrent has to for a REAL
-        // async operation (WebView2 init) that only exists once its window
+        // naturally instead of blocking inside the STA lambda the way a
+        // test has to for a REAL async operation (WebView2 init) that only exists once its window
         // is realized — no such requirement here.
         using var dir = new TempDir();
         var word = dir.File("a.docx");
@@ -196,4 +195,30 @@ public class MergePdfsWindowTests
         Assert.Equal(MergeTypes.AllGroups.Count, MergeTypes.AllGroups.Count(g =>
             MergeTypes.ExtensionsOf(g).All(e => filter.Contains($"*.{e}"))));
     }
+
+    /// <summary>Final review, Important 2: the merge follows the list's own
+    /// order, so the grid must not offer a sort (a remembered sort would show
+    /// A to Z while the PDF comes out in the order the files were added).</summary>
+    [Fact]
+    public void TheListCannotBeSortedBecauseItsOrderIsTheMergeOrder() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(),
+            zipProbe: (p, _) => new Zipper.ZipProbeResult(p, "not_encrypted"),
+            pdfProbe: (p, _) => new Unlock.ProbeResult("not_encrypted", p));
+        var window = new MergePdfsWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            var grid = Assert.Single(Descendants<DataGrid>((DependencyObject)window.Content));
+
+            Assert.False(grid.CanUserSortColumns);
+        }
+        finally { window.Close(); }
+    });
 }

@@ -269,4 +269,53 @@ public class StandardiseNamesWindowTests
             finally { window.Close(); }
         });
     }
+
+    /// <summary>At this window's MinWidth (580) the toolbar's buttons once
+    /// painted across a long AddNote caption (about 119px of overlap) while
+    /// nothing escaped the window, so WindowOverflowTests could not see it.
+    /// Declaring the buttons first (Dock="Left") fixed it; this checks the
+    /// two real on-screen rectangles share no horizontal space. Moved here
+    /// from the retired AutoFitColumnTests (2026-09-25): it is about the
+    /// toolbar, not column sizing.</summary>
+    [Fact]
+    public void ToolbarButtonsDoNotOverlapALongNoteAtMinWidth() => _fx.Invoke(() =>
+    {
+        using var dir = new TempDir();
+        var first = dir.File("smith, john_A12345.pdf");
+        var second = dir.File("jones-report.pdf");
+        var missing = System.IO.Path.Combine(dir.Path, "does-not-exist-anymore.pdf");
+        var duplicate = System.IO.Path.Combine(dir.Path, "SMITH, JOHN_A12345.PDF");   // case-only dup of `first`
+        var dialogs = new FakeDialogs();
+        dialogs.DateAnswers.Enqueue("20260115");
+        var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+#pragma warning disable xUnit1031 // safe: InlineWorkScheduler runs every awaited step synchronously
+        vm.AddFilesAsync(new[] { first, second, missing, duplicate }).GetAwaiter().GetResult();
+#pragma warning restore xUnit1031
+        Assert.True(vm.AddNote.Length > 20, $"precondition: AddNote should be long — got \"{vm.AddNote}\"");
+
+        var win = new StandardiseNamesWindow(vm)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20000, Top = 0, ShowActivated = false,
+        };
+        win.Width = win.MinWidth;
+        try
+        {
+            win.Show();
+            win.UpdateLayout();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                () => { }, System.Windows.Threading.DispatcherPriority.Render);
+            win.UpdateLayout();
+            var undoButton = Descendants<Button>(win).First(b => Equals(b.Content, "Undo last batch"));
+            var noteText = Descendants<TextBlock>(win).First(t => t.Text == vm.AddNote);
+            var undoRight = undoButton.TransformToAncestor(win)
+                .TransformBounds(new Rect(0, 0, undoButton.ActualWidth, undoButton.ActualHeight)).Right;
+            var noteLeft = noteText.TransformToAncestor(win)
+                .TransformBounds(new Rect(0, 0, noteText.ActualWidth, noteText.ActualHeight)).Left;
+
+            Assert.True(undoRight <= noteLeft + 0.5,
+                $"Undo last batch (right edge {undoRight}px) overlaps AddNote (left edge {noteLeft}px)");
+        }
+        finally { win.Close(); }
+    });
 }

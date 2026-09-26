@@ -214,12 +214,12 @@
                          it. See the constructor and SyncColumnVisibility in
                          FilenameListWindow.xaml.cs. -->
                     <DataGrid.Columns>
-                        <DataGridTextColumn x:Name="NumberColumn" Header="#" Width="Auto" MinWidth="30"
+                        <DataGridTextColumn x:Name="NumberColumn" Header="#" Width="50"
                                             Binding="{Binding (ItemsControl.AlternationIndex),
                                               RelativeSource={RelativeSource AncestorType=DataGridRow},
                                               Converter={StaticResource PlusOne}}">
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellNumber}" />
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
 
@@ -231,7 +231,7 @@
                              already showing an ellipsis for, unconditionally (shown
                              even when Name fit and nothing was trimmed at all), which
                              is exactly the noise Rule 4 exists to stop. -->
-                        <DataGridTextColumn Header="File name" Binding="{Binding Name}" Width="*" MinWidth="180">
+                        <DataGridTextColumn x:Name="FileNameColumn" Header="File name" Binding="{Binding Name}" Width="320">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
                             </DataGridTextColumn.ElementStyle>
@@ -257,9 +257,9 @@
                              this cell (its own Enabled default is True) and show PageCell
                              a second time instead of PageNote. -->
                         <DataGridTextColumn x:Name="PagesColumn" Header="Pages"
-                                            Binding="{Binding PageCell}" Width="Auto" MinWidth="60">
+                                            Binding="{Binding PageCell}" Width="70">
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellNumber}">
                                     <Setter Property="views:TrimmedTextTooltip.Enabled" Value="False" />
                                     <Setter Property="ToolTip" Value="{Binding PageNote}" />
                                 </Style>
@@ -267,13 +267,13 @@
                         </DataGridTextColumn>
 
                         <DataGridTextColumn x:Name="SizeColumn" Header="Size" Binding="{Binding Size}"
-                                            Width="Auto" MinWidth="60">
+                                            Width="80">
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellNumber}" />
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
 
-                        <DataGridTextColumn x:Name="ModifiedColumn" Header="Modified" Width="Auto" MinWidth="120"
+                        <DataGridTextColumn x:Name="ModifiedColumn" Header="Modified" Width="140"
                                             Binding="{Binding Modified, StringFormat='yyyy-MM-dd HH:mm'}">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
@@ -286,7 +286,7 @@
                              for why the unconditional same-field ToolTip this column
                              used to declare is gone rather than kept. -->
                         <DataGridTextColumn x:Name="FolderColumn" Header="Folder" Binding="{Binding Folder}"
-                                            Width="Auto" MinWidth="100">
+                                            Width="180">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
                             </DataGridTextColumn.ElementStyle>
@@ -298,7 +298,7 @@
                              for why the unconditional same-field ToolTip this column
                              used to declare is gone rather than kept. -->
                         <DataGridTextColumn x:Name="FullPathColumn" Header="Full path" Binding="{Binding FullPath}"
-                                            Width="Auto" MinWidth="140">
+                                            Width="320">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
                             </DataGridTextColumn.ElementStyle>

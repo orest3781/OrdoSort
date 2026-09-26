@@ -346,7 +346,7 @@ public class UndoRaceCollection
 /// class a future change adds. <see cref="EveryClassThatReachesMoveNeverOverwriteSharesTheCollection"/>
 /// below is the structural replacement: it derives its own class set by
 /// reading every .cs file under tests/OrdoSort.Core.Tests off disk (same
-/// repo-root walk as DataGridSizingCoverageTests/TextWrapCoverageTests in
+/// repo-root walk as TextWrapCoverageTests in
 /// OrdoSort.Wpf.Tests) instead of naming classes, so a new caller is a
 /// candidate the moment it exists. The five tests above are kept anyway —
 /// they're cheap, they name today's specific set for a reader who doesn't
@@ -513,7 +513,7 @@ public class UndoRaceTestCollectionMembershipTests
         var classes = ClassesReachingMoveNeverOverwrite().Distinct(StringComparer.Ordinal).ToList();
 
         // Same "did the scan actually examine anything" floor as
-        // DataGridSizingCoverageTests/TextWrapCoverageTests: a scan that
+        // TextWrapCoverageTests: a scan that
         // quietly matches nothing (a moved directory, a renamed method)
         // would make the loop below pass vacuously — exactly the QC-09
         // failure mode this whole pass exists to close. Five classes reach

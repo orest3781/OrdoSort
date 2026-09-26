@@ -145,6 +145,10 @@ workflow tests, builds, zips, and publishes.
     archive asks for its password; one unopenable document merges nothing
     from its group rather than a document with pages quietly missing.
 
+  Tables work like File Explorer's Details view: drag or double-click column
+  dividers, right-click a header to show or hide columns, Ctrl + Plus fits
+  all; layouts are remembered per PC.
+
 ## Structure
 
 ```
