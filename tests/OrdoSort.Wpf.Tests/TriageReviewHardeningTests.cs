@@ -419,6 +419,26 @@ public class TriageReviewHardeningTests
         finally { win.Close(); }
     });
 
+    /// <summary>The Why sentences run to about 60 characters (2026-09-26),
+    /// so the column starts wide enough to read one without widening it.</summary>
+    [Fact]
+    public void TheWhyColumnStartsWideEnoughForItsSentences() => _fx.Invoke(() =>
+    {
+        var item = Item(@"C:\inbox\doc.pdf", Candidate("1"), Candidate("2")) with
+        {
+            Why = "2 people in the spreadsheet have this exact name",
+        };
+        var win = Build(new[] { "Control ID" }, item);
+        try
+        {
+            ShowCurrent(win);
+
+            var why = win.Candidates.Columns.Single(c => (string)c.Header == "Why");
+            Assert.Equal(300, why.Width.Value);
+        }
+        finally { win.Close(); }
+    });
+
     private static MatchMerge.Candidate Candidate(string controlId) =>
         new(controlId, new Dictionary<string, string> { ["Control ID"] = controlId });
 

@@ -43,9 +43,11 @@ public partial class TriageWindow : Window
     /// below) predates and is independent of which of the two this column
     /// does with what doesn't fit.
     ///
-    /// 150px: the roster is what a person reads to make the decision; Why
-    /// is supporting context and gives up the room.</summary>
-    private const double WhyColumnWidth = 150;
+    /// 300px: the plain-words reasons (2026-09-26) run to about 60
+    /// characters — "Surname matches; first name BRIAN vs BRYAN (1 letter
+    /// off)" — and a reason cut to "Surname and first na…" explains nothing.
+    /// The user sizes it from there (table rules v2).</summary>
+    private const double WhyColumnWidth = 300;
 
     /// <summary>Starting width of each roster column (table rules v2: fixed
     /// widths the user sizes; ExplorerColumns remembers them per roster
