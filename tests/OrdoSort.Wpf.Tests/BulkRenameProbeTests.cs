@@ -20,6 +20,16 @@ namespace OrdoSort.Wpf.Tests;
 /// SettingsViewModelTests' probes do.</summary>
 public class BulkRenameProbeTests : IDisposable
 {
+    /// <summary>Adds the files and ticks them all: every control changes only
+    /// ticked files (2026-09-26), and these tests are about the rename rule,
+    /// not which files are picked.</summary>
+    private static async Task AddAndTickAsync(BulkRenameViewModel vm, IEnumerable<string> paths)
+    {
+        var list = paths.ToList();
+        await vm.AddFilesAsync(list);
+        vm.SelectedSources = list;
+    }
+
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordobulkprobe_" + Guid.NewGuid());
 
     public BulkRenameProbeTests() => Directory.CreateDirectory(_dir);
@@ -84,10 +94,10 @@ public class BulkRenameProbeTests : IDisposable
     /// regresses to calling this synchronously WILL block for real.</summary>
     private static List<PlannedRename> SlowPlan(int delayMs,
         IEnumerable<string> paths, RenameOp op, IReadOnlyDictionary<string, string>? overrides,
-        IReadOnlyDictionary<string, IReadOnlySet<int>>? dropped)
+        IReadOnlyDictionary<string, IReadOnlySet<int>>? dropped, IReadOnlySet<string>? ticked)
     {
         Thread.Sleep(delayMs);
-        return Plan(paths, op, overrides, dropped);
+        return Plan(paths, op, overrides, dropped, ticked);
     }
 
     /// <summary>Counts how many times the scheduler is actually asked to run
@@ -109,7 +119,7 @@ public class BulkRenameProbeTests : IDisposable
     public async Task SettingFindReturnsPromptlyEvenWhilePlanItselfIsSlow()
     {
         var a = Touch("scan_001.pdf");
-        var vm = new BulkRenameViewModel(plan: (paths, op, overrides, dropped) => SlowPlan(300, paths, op, overrides, dropped));
+        var vm = new BulkRenameViewModel(plan: (paths, op, overrides, dropped, ticked) => SlowPlan(300, paths, op, overrides, dropped, ticked));
         await vm.AddFilesAsync(new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle before the timing measurement");
 
@@ -127,8 +137,8 @@ public class BulkRenameProbeTests : IDisposable
     public async Task ThePreviewEventuallyReflectsTheSlowPlansResult()
     {
         var a = Touch("scan_001.pdf");
-        var vm = new BulkRenameViewModel(plan: (paths, op, overrides, dropped) => SlowPlan(300, paths, op, overrides, dropped));
-        await vm.AddFilesAsync(new[] { a });
+        var vm = new BulkRenameViewModel(plan: (paths, op, overrides, dropped, ticked) => SlowPlan(300, paths, op, overrides, dropped, ticked));
+        await AddAndTickAsync(vm, new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle first");
 
         vm.Find = "scan";
@@ -147,7 +157,7 @@ public class BulkRenameProbeTests : IDisposable
         var a = Touch("scan_001.pdf");
         var vm = new BulkRenameViewModel(
             scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
-        await vm.AddFilesAsync(new[] { a });
+        await AddAndTickAsync(vm, new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle before the keystroke burst starts");
         var callsBeforeTyping = calls;
 
@@ -175,7 +185,7 @@ public class BulkRenameProbeTests : IDisposable
         // waited it out like a typed field, the WaitFor below (timeout well
         // under this) would fail
         var vm = new BulkRenameViewModel(probeDelayMs: 5000);
-        await vm.AddFilesAsync(new[] { a });
+        await AddAndTickAsync(vm, new[] { a });
         WaitFor(() => vm.Preview.Count == 1, "the initial add should settle before the timing measurement");
 
         vm.SetSegmentKept(2, kept: false);   // a segment chip click, not typed text

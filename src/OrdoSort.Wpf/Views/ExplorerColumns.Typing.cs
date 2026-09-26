@@ -36,7 +36,7 @@ internal sealed partial class ExplorerColumns
         _typed = continuing && !(_typed.Length == 1 && _typed == text) ? _typed + text : text;
 
         var first = (_explicitAnchor as DataGridTextColumn)
-            ?? _grid.Columns.Where(c => c.Visibility == Visibility.Visible).OrderBy(c => c.DisplayIndex)
+            ?? _grid.Columns.Where(c => c.Visibility == Visibility.Visible && !IsControlColumn(c)).OrderBy(c => c.DisplayIndex)
                 .FirstOrDefault() as DataGridTextColumn;
         if (first?.Binding is not BindingBase binding) return true;
 

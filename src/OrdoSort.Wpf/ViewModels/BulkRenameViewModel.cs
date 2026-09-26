@@ -9,7 +9,7 @@ namespace OrdoSort.Wpf.ViewModels;
 
 /// <summary>One preview row: current name → new name. NewName is settable so
 /// the DataGrid can commit a hand edit (routed back via SetOverride).</summary>
-public sealed class RenameRow
+public sealed class RenameRow : ObservableObject
 {
     public RenameRow(string source, string current, string newName,
         string note, bool changed, bool manual, bool needsName, string editSeed,
@@ -17,25 +17,49 @@ public sealed class RenameRow
     {
         Source = source;
         Current = current;
-        NewName = newName;
-        Note = note;
-        Changed = changed;
-        Manual = manual;
-        NeedsName = needsName;
-        EditSeed = editSeed;
-        NoteIsProblem = noteIsProblem;
+        _newName = newName;
+        _note = note;
+        _changed = changed;
+        _manual = manual;
+        _needsName = needsName;
+        _editSeed = editSeed;
+        _noteIsProblem = noteIsProblem;
     }
+
+    /// <summary>Takes a new plan for the same file in place. Ticking a row
+    /// re-plans the batch (2026-09-26); rebuilding every row for that would
+    /// cost the grid its selection, current cell and scroll position on
+    /// every click.</summary>
+    internal void Update(string newName, string note, bool changed, bool manual, bool needsName,
+        string editSeed, bool noteIsProblem)
+    {
+        NewName = newName;
+        Set(ref _note, note, nameof(Note));
+        Set(ref _changed, changed, nameof(Changed));
+        Set(ref _manual, manual, nameof(Manual));
+        Set(ref _needsName, needsName, nameof(NeedsName));
+        Set(ref _editSeed, editSeed, nameof(EditSeed));
+        Set(ref _noteIsProblem, noteIsProblem, nameof(NoteIsProblem));
+    }
+
+    private string _newName;
+    private string _note;
+    private bool _changed;
+    private bool _manual;
+    private bool _needsName;
+    private string _editSeed;
+    private bool _noteIsProblem;
 
     public string Source { get; }
     public string Current { get; }
-    public string NewName { get; set; }
-    public string Note { get; }
-    public bool Changed { get; }
-    public bool Manual { get; }
+    public string NewName { get => _newName; set => Set(ref _newName, value); }
+    public string Note => _note;
+    public bool Changed => _changed;
+    public bool Manual => _manual;
 
     /// <summary>The operation couldn't produce a name for this one, so it needs
     /// a human. These are the handful in a batch worth navigating between.</summary>
-    public bool NeedsName { get; }
+    public bool NeedsName => _needsName;
 
     /// <summary>True when Plan() itself had something to say about this row —
     /// its Note carries text ("every segment dropped —
@@ -53,12 +77,12 @@ public sealed class RenameRow
     /// Changed alike hold whether the row's Note is empty ("edited by hand")
     /// or a real problem plus that suffix ("name was taken … — edited by
     /// hand").</summary>
-    public bool NoteIsProblem { get; }
+    public bool NoteIsProblem => _noteIsProblem;
 
     /// <summary>What the editor should open with. For a stray in review mode
     /// that's the batch's date prefix, so only the name has to be typed and it
     /// can't drift out of format; otherwise it's what the row already says.</summary>
-    public string EditSeed { get; }
+    public string EditSeed => _editSeed;
 }
 
 /// <summary>Bulk rename: drop files, describe the change once, watch the live
@@ -165,7 +189,7 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     // scheduler entirely. This is what actually stands in for the real
     // File.Exists cost finding 5.2 is about.
     private readonly Func<IEnumerable<string>, RenameOp, IReadOnlyDictionary<string, string>?,
-        IReadOnlyDictionary<string, IReadOnlySet<int>>?, List<PlannedRename>> _plan;
+        IReadOnlyDictionary<string, IReadOnlySet<int>>?, IReadOnlySet<string>?, List<PlannedRename>> _plan;
 
     // The renames and the undo run here too, not only the preview (audit
     // QC-04). One File.Move per file against a share is the same cost the
@@ -186,7 +210,7 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
 
     public BulkRenameViewModel(
         Func<IEnumerable<string>, RenameOp, IReadOnlyDictionary<string, string>?,
-            IReadOnlyDictionary<string, IReadOnlySet<int>>?, List<PlannedRename>>? plan = null,
+            IReadOnlyDictionary<string, IReadOnlySet<int>>?, IReadOnlySet<string>?, List<PlannedRename>>? plan = null,
         IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null, int probeDelayMs = 300)
     {
@@ -282,8 +306,9 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     public string SegmentBarCaption { get => _segmentBarCaption; private set => Set(ref _segmentBarCaption, value); }
 
     /// <summary>The files a segment click, Keep first or Reset changes: the
-    /// selection, or every file when nothing is selected.</summary>
-    private IReadOnlyList<string> ChipTargets => _selectedSources.Count > 0 ? _selectedSources : _files;
+    /// ticked (selected) files only. Nothing ticked changes nothing
+    /// (2026-09-26, owner's call).</summary>
+    private IReadOnlyList<string> ChipTargets => _selectedSources;
 
     /// <summary>The "Keep first" buttons. Five covers the review files'
     /// LAST-FIRST (two) with room for longer names; past that, click the
@@ -344,19 +369,22 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     private void RebuildChips()
     {
         SegmentChips.Clear();
-        var shown = _selectedSources.Count > 0 ? _selectedSources[0] : _files.FirstOrDefault();
-        if (shown is null)
+        if (_files.Count == 0)
         {
             SegmentBarCaption = "Add files to see their segments.";
             return;
         }
+        if (_selectedSources.Count == 0)
+        {
+            SegmentBarCaption = "Tick files to change them.";
+            return;
+        }
+        var shown = _selectedSources[0];
         _dropped.TryGetValue(shown, out var dropped);
         var pieces = SplitSegments(Path.GetFileNameWithoutExtension(shown));
         for (var i = 0; i < pieces.Count; i++)
             SegmentChips.Add(new SegmentChip(i + 1, pieces[i].Text, dropped?.Contains(i + 1) != true, SetSegmentKept));
-        var targets = _selectedSources.Count > 0
-            ? $"{_selectedSources.Count} selected file{(_selectedSources.Count == 1 ? "" : "s")}"
-            : $"all {_files.Count} file{(_files.Count == 1 ? "" : "s")}";
+        var targets = $"{_selectedSources.Count} ticked file{(_selectedSources.Count == 1 ? "" : "s")}";
         SegmentBarCaption = $"Segments of {Path.GetFileName(shown)} · changes {targets}";
     }
 
@@ -559,9 +587,14 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
             // A WPF selection handler can hand over an empty-or-null
             // sequence (SelectedItems.OfType<…>() on a momentarily empty
             // selection); every reader here assumes a real, if empty, list.
-            _selectedSources = value ?? Array.Empty<string>();
+            var next = value ?? Array.Empty<string>();
+            var changed = !new HashSet<string>(next, StringComparer.OrdinalIgnoreCase)
+                .SetEquals(_selectedSources);
+            _selectedSources = next;
             Raise(nameof(SelectedSources));
             RebuildChips();
+            // With no files there is nothing for the ticks to re-plan.
+            if (changed && _files.Count > 0) Refresh(immediate: true);
         }
     }
 
@@ -672,6 +705,7 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         var overridesSnapshot = new Dictionary<string, string>(_overrides);
         var droppedSnapshot = _dropped.ToDictionary(
             kv => kv.Key, kv => (IReadOnlySet<int>)new HashSet<int>(kv.Value));
+        var tickedSnapshot = new HashSet<string>(_selectedSources, StringComparer.OrdinalIgnoreCase);
 
         if (filesSnapshot.Count == 0)
         {
@@ -685,7 +719,7 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _plansProbe.Trigger(() => _plan(filesSnapshot, op, overridesSnapshot, droppedSnapshot), immediate);
+        _plansProbe.Trigger(() => _plan(filesSnapshot, op, overridesSnapshot, droppedSnapshot, tickedSnapshot), immediate);
     }
 
     /// <summary>Everything from the old synchronous Refresh from
@@ -710,10 +744,34 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         // nothing on screen to tell the difference from a real removal.
         var wasSelected = _selectedSources;
 
-        Preview.Clear();
-        _changed = 0;
-        foreach (var pr in plans)
+        _rebuildingPreview = true;
+        try
         {
+            RebuildPreview(plans, wasSelected);
+        }
+        finally { _rebuildingPreview = false; }
+    }
+
+    private bool _rebuildingPreview;
+
+    /// <summary>True while Preview is being rebuilt. A rebuild that adds or
+    /// drops rows Resets the grid, which clears its selection and then gets
+    /// it back from RestoreSelection; the window must not push those echoes
+    /// down here as ticks — the ticks feed the plan, so taking them would
+    /// re-plan with nothing ticked, round and round.</summary>
+    public bool IsRebuildingPreview => _rebuildingPreview;
+
+    private void RebuildPreview(List<PlannedRename> plans, IReadOnlyList<string> wasSelected)
+    {
+        // Same files in the same order: update the rows in place, so the grid
+        // keeps its selection (the ticks), current cell and scroll position.
+        var inPlace = Preview.Count == plans.Count
+            && plans.Select(p => p.Source).SequenceEqual(Preview.Select(r => r.Source));
+        if (!inPlace) Preview.Clear();
+        _changed = 0;
+        for (var index = 0; index < plans.Count; index++)
+        {
+            var pr = plans[index];
             var newName = Path.GetFileName(pr.Changed ? pr.Target : pr.Source);
             var notes = new List<string>();
             if (pr.Note.Length > 0) notes.Add(pr.Note);
@@ -723,15 +781,19 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
             // the operation had something to say about why it produced nothing:
             // that is a file waiting on a person, not one that simply matched
             var needsName = !pr.Changed && pr.Note.Length > 0;
-            Preview.Add(new RenameRow(pr.Source, Path.GetFileName(pr.Source), newName,
-                string.Join(" — ", notes), pr.Changed, pr.Manual, needsName,
-                needsName ? SeedFor(newName) : newName, noteIsProblem: pr.Note.Length > 0));
+            var note = string.Join(" — ", notes);
+            var seed = needsName ? SeedFor(newName) : newName;
+            if (inPlace)
+                Preview[index].Update(newName, note, pr.Changed, pr.Manual, needsName, seed, pr.Note.Length > 0);
+            else
+                Preview.Add(new RenameRow(pr.Source, Path.GetFileName(pr.Source), newName,
+                    note, pr.Changed, pr.Manual, needsName, seed, noteIsProblem: pr.Note.Length > 0));
         }
-        RestoreSelection(wasSelected);
+        if (!inPlace) RestoreSelection(wasSelected);
         NeedsNameCount = Preview.Count(r => r.NeedsName);
         CountsLine = _files.Count == 0
             ? ""
-            : $"{_files.Count} file{(_files.Count == 1 ? "" : "s")} · {_changed} will change"
+            : $"{_files.Count} file{(_files.Count == 1 ? "" : "s")} · {_selectedSources.Count} ticked · {_changed} will change"
               + (NeedsNameCount > 0 ? $" · {NeedsNameCount} need a name" : "");
         Raise(nameof(RenameButtonText));
         RenameCommand.RaiseCanExecuteChanged();

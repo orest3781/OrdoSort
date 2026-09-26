@@ -112,6 +112,7 @@ public class CultureInvariantDatesTests : IDisposable
             // THIS thread inside Refresh either way.
             var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
             vm.AddFilesAsync(new[] { path });
+            vm.SelectedSources = new[] { path };   // only ticked files change (2026-09-26)
             vm.Join = OrdoSort.Core.BulkRename.SegmentJoin.Dash;
             vm.KeepFirst(2);
             vm.AddDate = true;
@@ -141,6 +142,7 @@ public class CultureInvariantDatesTests : IDisposable
             // InlineWorkScheduler for the same reason as the theory above.
             var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
             vm.AddFilesAsync(new[] { path });
+            vm.SelectedSources = new[] { path };   // only ticked files change (2026-09-26)
             vm.AddDate = true;
             vm.Date = new DateTime(2026, 8, 2);
             vm.SetSegmentKept(1, kept: false);

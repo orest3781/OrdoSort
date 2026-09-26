@@ -41,6 +41,7 @@ public class BulkRenameSegmentChipTests : IDisposable
         File.WriteAllText(file, "x");
         var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
         vm.AddFilesAsync(new[] { file }).GetAwaiter().GetResult();
+        vm.SelectedSources = new[] { file };   // only ticked files change (2026-09-26)
         vm.SetSegmentKept(2, kept: false);
 
         var win = new BulkRenameWindow(vm)

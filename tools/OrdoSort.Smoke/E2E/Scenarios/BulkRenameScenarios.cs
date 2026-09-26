@@ -109,6 +109,7 @@ public static class BulkRenameScenarios
         vm.AddFilesAsync(new[] { a, b });
         E2EPump.Until(() => vm.Preview.Count == 2, 8000);
         ctx.Check("preview shows both files", vm.Preview.Count == 2, $"got {vm.Preview.Count}");
+        vm.SelectedSources = new[] { a, b };   // only ticked files change
 
         // A real rule: prefix every stem. Waiting on Changed rather than
         // Count — Count is already 2 and would never flip false — is what
@@ -199,6 +200,7 @@ public static class BulkRenameScenarios
 
         vm.AddFilesAsync(new[] { a });
         E2EPump.Until(() => vm.Preview.Count == 1, 8000);
+        vm.SelectedSources = new[] { a };   // only ticked files change
 
         vm.Prefix = "OK-";
         var offered = E2EPump.Until(() => vm.Preview.Count == 1 && vm.Preview[0].Changed, 8000);

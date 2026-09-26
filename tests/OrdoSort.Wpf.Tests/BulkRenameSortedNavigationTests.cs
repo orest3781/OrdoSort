@@ -53,13 +53,15 @@ public class BulkRenameSortedNavigationTests : IDisposable
         // Built OUTSIDE the STA call so WaitFor can poll without starving a
         // dispatcher; the window is built inside it.
         var vm = new BulkRenameViewModel();
-        vm.AddFilesAsync(new[]
+        var files = new[]
         {
             Touch("SMITH_JOHN_5_5_2024_ACME_RECORDS_1-1__08_02_24_1019_X.pdf"),
             Touch("oddball.pdf"),
             Touch("GARCIA_MARIA_8_5_2024_ACME_RECORDS_2-1__08_02_24_1020_X.pdf"),
             Touch("loner.pdf"),
-        }).GetAwaiter().GetResult();
+        };
+        vm.AddFilesAsync(files).GetAwaiter().GetResult();
+        vm.SelectedSources = files;   // only ticked files change (2026-09-26)
         // One-segment names are left with nothing once segment 1 is dropped
         // from every file: those two are the strays.
         vm.Date = new DateTime(2024, 8, 2);
@@ -87,13 +89,17 @@ public class BulkRenameSortedNavigationTests : IDisposable
                 win.PreviewGrid.UpdateLayout();
 
                 // From the first stray, the next stray is the other one — the
-                // pre-fix index arithmetic lands on SMITH instead.
-                win.PreviewGrid.SelectedItem = vm.Preview[1];
+                // pre-fix index arithmetic lands on SMITH instead. The current
+                // row, not the selection: the selection is the ticks.
+                win.PreviewGrid.CurrentCell = new System.Windows.Controls.DataGridCellInfo(vm.Preview[1], win.PreviewGrid.Columns[1]);
                 win.NextStrayButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
 
                 var opened = Assert.IsType<RenameRow>(win.PreviewGrid.CurrentCell.Item);
                 Assert.True(opened.NeedsName, $"opened {Path.GetFileName(opened.Source)}, which does not need a name");
                 Assert.Same(vm.Preview[3], opened);
+                // jumping to a stray leaves every file ticked
+                Assert.Equal(4, win.PreviewGrid.SelectedItems.Count);
+                Assert.Equal(4, vm.SelectedSources.Count);
             }
             finally
             {

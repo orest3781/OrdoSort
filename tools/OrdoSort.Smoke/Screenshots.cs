@@ -136,6 +136,7 @@ public static class Screenshots
                 }).ToList();
                 segmentsVm = new BulkRenameViewModel();
                 segmentsVm.AddFilesAsync(files).GetAwaiter().GetResult();
+                segmentsVm.SelectedSources = files;   // only ticked files change
                 segmentsVm.Join = OrdoSort.Core.BulkRename.SegmentJoin.Dash;
                 segmentsVm.AddDate = true;
                 segmentsVm.Date = new DateTime(2026, 9, 25);

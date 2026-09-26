@@ -976,6 +976,16 @@ public class UnlockViewModelTests : IDisposable
 
 public class BulkRenameViewModelTests : IDisposable
 {
+    /// <summary>Adds the files and ticks them all: every control changes only
+    /// ticked files (2026-09-26), and these tests are about the rename rule,
+    /// not which files are picked.</summary>
+    private static async Task AddAndTickAsync(BulkRenameViewModel vm, IEnumerable<string> paths)
+    {
+        var list = paths.ToList();
+        await vm.AddFilesAsync(list);
+        vm.SelectedSources = list.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordobulk_" + Guid.NewGuid());
 
     public BulkRenameViewModelTests() => Directory.CreateDirectory(_dir);
@@ -1103,17 +1113,17 @@ public class BulkRenameViewModelTests : IDisposable
         // Awaited, not polled: the intake's File.Exists checks moved off the
         // UI thread with the renames (audit QC-04), so AddNote is settled
         // when the returned task is — it still doesn't go through the probe.
-        await vm.AddFilesAsync(new[] { a, b, a });   // duplicate ignored
+        await AddAndTickAsync(vm, new[] { a, b, a });   // duplicate ignored
         Assert.Contains("2 added", vm.AddNote);
         Assert.Contains("1 ignored", vm.AddNote);
 
         vm.Find = "scan";
         vm.Replace = "fax";
-        WaitFor(() => vm.CountsLine == "2 files · 1 will change",
+        WaitFor(() => vm.CountsLine == "2 files · 2 ticked · 1 will change",
             "CountsLine should eventually reflect the Find/Replace once the debounced probe completes");
 
         vm.RemoveFiles(new[] { b });
-        WaitFor(() => vm.CountsLine == "1 file · 1 will change",
+        WaitFor(() => vm.CountsLine == "1 file · 1 ticked · 1 will change",
             "CountsLine should eventually reflect the removal");
         Assert.Single(vm.Preview);
     }
@@ -1144,7 +1154,7 @@ public class BulkRenameViewModelTests : IDisposable
     public async Task CountsLineCallsOutTheRowsStillWaitingOnAName()
     {
         var vm = new BulkRenameViewModel();
-        await vm.AddFilesAsync(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf"),
+        await AddAndTickAsync(vm, new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf"),
                             Touch("notes.pdf") });
         // Nothing selected, so this drops segment 1 from both files: BROWN goes,
         // and "notes" (one segment) is left with nothing, which needs a person.
@@ -1169,7 +1179,7 @@ public class BulkRenameViewModelTests : IDisposable
     private async Task<BulkRenameViewModel> BatchWithStrays()
     {
         var vm = new BulkRenameViewModel();
-        await vm.AddFilesAsync(new[]
+        await AddAndTickAsync(vm, new[]
         {
             Touch("SMITH_JOHN_5_5_2024_ACME_RECORDS_1-1__08_02_24_1019_X.pdf"),
             Touch("oddball.pdf"),
@@ -1264,7 +1274,7 @@ public class BulkRenameViewModelTests : IDisposable
         // preview — were left guarded by nothing at all.
         var calls = 0;
         var vm = new BulkRenameViewModel(scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
-        await vm.AddFilesAsync(new[] { Touch("scan_001.pdf") });
+        await AddAndTickAsync(vm, new[] { Touch("scan_001.pdf") });
         WaitFor(() => vm.Preview.Count == 1, "the initial add's compute should land");
         var afterAdd = calls;
 
@@ -1288,7 +1298,7 @@ public class BulkRenameViewModelTests : IDisposable
     public async Task PrefixAndSuffixAreTrimmedInTheOperationButNotInTheBox()
     {
         var vm = new BulkRenameViewModel();
-        await vm.AddFilesAsync(new[] { Touch("scan_001.pdf") });
+        await AddAndTickAsync(vm, new[] { Touch("scan_001.pdf") });
         WaitFor(() => vm.Preview.Count == 1, "the initial add's compute should land");
 
         vm.Prefix = " X";
@@ -1304,7 +1314,7 @@ public class BulkRenameViewModelTests : IDisposable
     public async Task FindReplacePreviewMatchesThePlan()
     {
         var vm = new BulkRenameViewModel();
-        await vm.AddFilesAsync(new[] { Touch("scan_001.pdf"), Touch("keep.pdf") });
+        await AddAndTickAsync(vm, new[] { Touch("scan_001.pdf"), Touch("keep.pdf") });
         vm.Find = "scan";
         vm.Replace = "fax";
 
@@ -1322,7 +1332,7 @@ public class BulkRenameViewModelTests : IDisposable
     public async Task KeepFirstTwoWithADashAndADateGivesTheReviewShape()
     {
         var vm = new BulkRenameViewModel();
-        await vm.AddFilesAsync(new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf") });
+        await AddAndTickAsync(vm, new[] { Touch("BROWN_ADAM_4_25_1966_ACME_RECORDS_100000001-1_X.pdf") });
         vm.Date = new DateTime(2024, 1, 26);
         vm.AddDate = true;
         vm.Join = OrdoSort.Core.BulkRename.SegmentJoin.Dash;
@@ -1351,7 +1361,7 @@ public class BulkRenameViewModelTests : IDisposable
         var calls = 0;
         var vm = new BulkRenameViewModel(scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
         var src = Touch("scan_001.pdf");
-        await vm.AddFilesAsync(new[] { src });
+        await AddAndTickAsync(vm, new[] { src });
         WaitFor(() => vm.Preview.Count == 1, "the initial add's compute should land");
         // Baseline, not a literal — see CountingWorkScheduler's own comment
         // for what the literals came to mean once the intake started sharing
@@ -1387,7 +1397,7 @@ public class BulkRenameViewModelTests : IDisposable
     {
         var vm = new BulkRenameViewModel();
         var src = Touch("scan_001.pdf");
-        await vm.AddFilesAsync(new[] { src });
+        await AddAndTickAsync(vm, new[] { src });
         vm.Find = "scan";
         vm.Replace = "fax";
         // Post finding-1 fix, Apply() executes the plan Preview last
@@ -1435,7 +1445,7 @@ public class BulkRenameViewModelTests : IDisposable
     {
         var vm = new BulkRenameViewModel();
         var src = Touch("scan_001.pdf");
-        await vm.AddFilesAsync(new[] { src });
+        await AddAndTickAsync(vm, new[] { src });
         vm.Find = "scan";
         vm.Replace = "fax";
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "fax_001.pdf",
@@ -1463,7 +1473,7 @@ public class BulkRenameViewModelTests : IDisposable
     public async Task ClickingASegmentChipDropsItFromThePreview()
     {
         var vm = new BulkRenameViewModel();
-        await vm.AddFilesAsync(new[] { Touch("A-B-C.pdf") });
+        await AddAndTickAsync(vm, new[] { Touch("A-B-C.pdf") });
         Assert.Equal(new[] { "A", "B", "C" }, vm.SegmentChips.Select(c => c.Text));
 
         vm.SegmentChips[1].IsKept = false;
@@ -1478,7 +1488,7 @@ public class BulkRenameViewModelTests : IDisposable
     public async Task DroppingTwoSegmentsProducesCorrectPreview()
     {
         var vm = new BulkRenameViewModel();
-        await vm.AddFilesAsync(new[] { Touch("A-B-C.pdf") });
+        await AddAndTickAsync(vm, new[] { Touch("A-B-C.pdf") });
         vm.SetSegmentKept(2, kept: false);
         vm.SetSegmentKept(3, kept: false);
 
@@ -1491,7 +1501,7 @@ public class BulkRenameViewModelTests : IDisposable
     public async Task KeepingASegmentAgainReturnsTheOriginal()
     {
         var vm = new BulkRenameViewModel();
-        await vm.AddFilesAsync(new[] { Touch("A-B-C.pdf") });
+        await AddAndTickAsync(vm, new[] { Touch("A-B-C.pdf") });
         vm.SetSegmentKept(2, kept: false);
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
             "the preview should eventually drop segment 2");
@@ -1521,20 +1531,120 @@ public class BulkRenameViewModelTests : IDisposable
         Assert.False(vm.Preview[1].Changed);
     }
 
+    // ---- ticked files only (2026-09-26): every control changes only the
+    // ticked (selected) files, as one recipe; nothing ticked changes nothing.
+
     [Fact]
-    public async Task WithNothingSelectedSegmentEditsChangeEveryFile()
+    public async Task WithNothingTickedNothingChanges()
     {
         var vm = new BulkRenameViewModel();
         await vm.AddFilesAsync(new[] { Touch("A_1_X.pdf"), Touch("B_2_Y_Z.pdf") });
 
         vm.KeepFirst(2);
+        vm.Find = "A";
+        vm.Replace = "Q";
+        vm.Join = BulkRename.SegmentJoin.Dash;
 
-        WaitFor(() =>
-        {
-            var rows = vm.Preview.ToList();
-            return rows.Count == 2 && rows[0].NewName == "A_1.pdf" && rows[1].NewName == "B_2.pdf";
-        }, "both files should keep their first two segments, counted per file");
-        Assert.Contains("all 2 files", vm.SegmentBarCaption);
+        WaitFor(() => vm.Preview.Count == 2 && vm.CountsLine.Contains("0 ticked"),
+            "the preview should settle with nothing ticked");
+        Assert.All(vm.Preview, r => Assert.False(r.Changed));
+        Assert.Equal("Tick files to change them.", vm.SegmentBarCaption);
+        Assert.Empty(vm.SegmentChips);
+    }
+
+    [Fact]
+    public async Task FindAndReplaceChangesOnlyTheTickedFiles()
+    {
+        var vm = new BulkRenameViewModel();
+        var a = Touch("a_x.pdf");
+        var b = Touch("b_x.pdf");
+        await vm.AddFilesAsync(new[] { a, b });
+        vm.SelectedSources = new[] { b };
+
+        vm.Find = "x";
+        vm.Replace = "y";
+
+        WaitFor(() => vm.Preview.Count == 2 && vm.Preview[1].NewName == "b_y.pdf",
+            "the ticked file should get the replacement");
+        Assert.False(vm.Preview[0].Changed);
+        Assert.Equal("2 files · 1 ticked · 1 will change", vm.CountsLine);
+    }
+
+    [Fact]
+    public async Task TheJoinSeparatorChangesOnlyTheTickedFiles()
+    {
+        var vm = new BulkRenameViewModel();
+        var a = Touch("a_1.pdf");
+        var b = Touch("b_2.pdf");
+        await vm.AddFilesAsync(new[] { a, b });
+        vm.SelectedSources = new[] { a };
+
+        vm.Join = BulkRename.SegmentJoin.Dash;
+
+        WaitFor(() => vm.Preview.Count == 2 && vm.Preview[0].NewName == "a-1.pdf",
+            "the ticked file should be rejoined with a dash");
+        Assert.False(vm.Preview[1].Changed);
+    }
+
+    /// <summary>One recipe: the controls apply to whatever is ticked NOW.
+    /// Unticking a file takes the recipe off it; ticking another puts it on.</summary>
+    [Fact]
+    public async Task TheRecipeFollowsTheTicksRatherThanStayingOnEarlierFiles()
+    {
+        var vm = new BulkRenameViewModel();
+        var a = Touch("a_x.pdf");
+        var b = Touch("b_x.pdf");
+        await vm.AddFilesAsync(new[] { a, b });
+        vm.SelectedSources = new[] { a };
+        vm.Find = "x";
+        vm.Replace = "y";
+        WaitFor(() => vm.Preview.Count == 2 && vm.Preview[0].NewName == "a_y.pdf", "a should change first");
+
+        vm.SelectedSources = new[] { b };
+
+        WaitFor(() => vm.Preview.Count == 2 && vm.Preview[1].NewName == "b_y.pdf",
+            "the recipe should move to the newly ticked file");
+        Assert.False(vm.Preview[0].Changed);
+    }
+
+    /// <summary>The owner's review files with one odd surname now take two
+    /// renames: everyone keeps two segments, then VAN DYKE alone keeps three.
+    /// Segment picks stay remembered per file while it is unticked.</summary>
+    [Fact]
+    public async Task TheMixedReviewBatchIsTwoPassesAndEachFileKeepsItsOwnPicks()
+    {
+        var vm = new BulkRenameViewModel();
+        var evans = Touch("EVANS_BRIAN 5_14_1998_ACME.pdf");
+        var vanDyke = Touch("VAN_DYKE_ANNA_3_2_1975_ACME.pdf");
+        await vm.AddFilesAsync(new[] { evans, vanDyke });
+        vm.SelectedSources = new[] { evans, vanDyke };
+        vm.KeepFirst(2);
+        vm.Join = BulkRename.SegmentJoin.Dash;
+        WaitFor(() => vm.Preview.Count == 2 && vm.Preview[0].NewName == "EVANS-BRIAN.pdf", "pass one previews");
+
+        vm.SelectedSources = new[] { vanDyke };
+        vm.KeepFirst(3);
+
+        WaitFor(() => vm.Preview.Count == 2 && vm.Preview[1].NewName == "VAN-DYKE-ANNA.pdf",
+            "VAN DYKE alone keeps three");
+        Assert.False(vm.Preview[0].Changed);
+
+        vm.SelectedSources = new[] { evans, vanDyke };
+        WaitFor(() => vm.Preview.Count == 2 && vm.Preview[0].NewName == "EVANS-BRIAN.pdf"
+            && vm.Preview[1].NewName == "VAN-DYKE-ANNA.pdf", "each file keeps its own picks when re-ticked");
+    }
+
+    [Fact]
+    public async Task AHandEditedNameAppliesWhileItsFileIsUnticked()
+    {
+        var vm = new BulkRenameViewModel();
+        var a = Touch("a_x.pdf");
+        await vm.AddFilesAsync(new[] { a });
+
+        vm.SetOverride(a, "MINE");
+
+        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "MINE.pdf", "the hand edit applies");
+        Assert.Contains("edited by hand", vm.Preview[0].Note);
     }
 
     [Fact]
@@ -1544,13 +1654,13 @@ public class BulkRenameViewModelTests : IDisposable
         var a = Touch("A_1.pdf");
         var b = Touch("B_2_Y.pdf");
         await vm.AddFilesAsync(new[] { a, b });
-        Assert.Equal(new[] { "A", "1" }, vm.SegmentChips.Select(c => c.Text));
+        Assert.Empty(vm.SegmentChips);   // nothing ticked yet
 
         vm.SelectedSources = new[] { b };
 
         Assert.Equal(new[] { "B", "2", "Y" }, vm.SegmentChips.Select(c => c.Text));
         Assert.Contains("B_2_Y.pdf", vm.SegmentBarCaption);
-        Assert.Contains("1 selected file", vm.SegmentBarCaption);
+        Assert.Contains("1 ticked file", vm.SegmentBarCaption);
     }
 
     [Fact]
@@ -1558,12 +1668,12 @@ public class BulkRenameViewModelTests : IDisposable
     {
         var vm = new BulkRenameViewModel();
         var a = Touch("A_1_X.pdf");
-        await vm.AddFilesAsync(new[] { a });
+        await AddAndTickAsync(vm, new[] { a });
         vm.KeepFirst(1);
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A.pdf", "keep-first should land");
 
         vm.RemoveFiles(new[] { a });
-        await vm.AddFilesAsync(new[] { a });
+        await AddAndTickAsync(vm, new[] { a });
 
         WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A_1_X.pdf",
             "the file comes back with every segment");
@@ -1579,7 +1689,7 @@ public class BulkRenameViewModelTests : IDisposable
         var calls = 0;
         var vm = new BulkRenameViewModel(scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
         var src = Touch("A-B-C.pdf");
-        await vm.AddFilesAsync(new[] { src });
+        await AddAndTickAsync(vm, new[] { src });
         WaitFor(() => vm.Preview.Count == 1, "the initial add's compute should land");
         // Baseline, not a literal — see CountingWorkScheduler's own comment.
         var afterAdd = calls;
@@ -1624,16 +1734,19 @@ public class BulkRenameViewModelTests : IDisposable
         await vm.AddFilesAsync(new[] { alpha, beta, gamma });
         WaitFor(() => vm.Preview.Count == 3, "the add should settle first");
 
+        // What the window does with the grid's echo of a Reset: ignore it
+        // while the preview is rebuilding (IsRebuildingPreview).
         vm.Preview.CollectionChanged += (_, e) =>
         {
-            if (e.Action == NotifyCollectionChangedAction.Reset)
+            if (e.Action == NotifyCollectionChangedAction.Reset && !vm.IsRebuildingPreview)
                 vm.SelectedSources = Array.Empty<string>();
         };
 
         vm.SelectedSources = new[] { alpha, beta };
         vm.Prefix = "X-";   // one more character typed into "At start:"
-        WaitFor(() => vm.Preview.Count == 3 && vm.Preview.All(r => r.Changed),
-            "the rebuilt preview should reflect the prefix");
+        // only the two ticked rows take the prefix (2026-09-26)
+        WaitFor(() => vm.Preview.Count == 3 && vm.Preview.Count(r => r.Changed) == 2,
+            "the rebuilt preview should reflect the prefix on the ticked rows");
 
         vm.RemoveSelected();
 
@@ -1651,7 +1764,7 @@ public class BulkRenameViewModelTests : IDisposable
     {
         var vm = new BulkRenameViewModel();
         var src = Touch("A-B-C.pdf");
-        await vm.AddFilesAsync(new[] { src });
+        await AddAndTickAsync(vm, new[] { src });
         vm.Join = OrdoSort.Core.BulkRename.SegmentJoin.Underscore;
         vm.AddDate = true;
         vm.SetSegmentKept(2, kept: false);

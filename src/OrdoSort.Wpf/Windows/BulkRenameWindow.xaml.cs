@@ -17,9 +17,12 @@ public partial class BulkRenameWindow : Window
         DataContext = vm;
         // Explorer-style columns (table rules v2): fixed widths the user
         // sets, remembered per PC.
-        ExplorerColumns.Attach(PreviewGrid, "BulkRename");
+        // Current name is the anchor: the tick column sits before it.
+        ExplorerColumns.Attach(PreviewGrid, "BulkRename", anchor: CurrentColumn);
         _vm.SelectionRestored += OnSelectionRestored;
         Closed += (_, _) => _vm.SelectionRestored -= OnSelectionRestored;
+        // Files ticked before the window opened show as ticked.
+        PreviewGrid.Loaded += (_, _) => OnSelectionRestored(this, _vm.SelectedSources);
     }
 
     /// <summary>Re-applies a selection the view model preserved across a
@@ -40,11 +43,44 @@ public partial class BulkRenameWindow : Window
                 PreviewGrid.SelectedItems.Add(row);
     }
 
-    private void OnSelectionChanged(object sender, SelectionChangedEventArgs e) =>
+    private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateTickAllBox();
+        // A rebuild's Reset clears the grid's selection and then restores it;
+        // neither is the user ticking anything (see IsRebuildingPreview).
+        if (_vm.IsRebuildingPreview) return;
         _vm.SelectedSources = PreviewGrid.SelectedItems
             .OfType<RenameRow>()
             .Select(r => r.Source)
             .ToList();
+    }
+
+    private void UpdateTickAllBox()
+    {
+        var ticked = PreviewGrid.SelectedItems.Count;
+        TickAllBox.IsChecked = ticked == 0 ? false : ticked == PreviewGrid.Items.Count ? true : null;
+    }
+
+    /// <summary>A click on a row's tick box adds or removes just that row,
+    /// as Ctrl-click does, instead of the grid's plain click, which would
+    /// select that row alone.</summary>
+    private void OnTickBoxMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: RenameRow row }
+            || PreviewGrid.ItemContainerGenerator.ContainerFromItem(row) is not DataGridRow container) return;
+        container.IsSelected = !container.IsSelected;
+        e.Handled = true;
+    }
+
+    /// <summary>Ticks every file unless every file is already ticked, as
+    /// Explorer's header box does. Decided from the rows, not from the box:
+    /// WPF's own toggle takes a part-ticked box to off.</summary>
+    private void OnTickAllClick(object sender, RoutedEventArgs e)
+    {
+        if (PreviewGrid.SelectedItems.Count < PreviewGrid.Items.Count) PreviewGrid.SelectAll();
+        else PreviewGrid.UnselectAll();
+        UpdateTickAllBox();
+    }
 
     private void OnAddFiles(object sender, RoutedEventArgs e)
     {
@@ -64,7 +100,9 @@ public partial class BulkRenameWindow : Window
     {
         // By source path, not by grid position: the grid may be sorted
         // (UX-02), and only the view model's insertion order is stable.
-        var next = _vm.NextNeedingName((PreviewGrid.SelectedItem as RenameRow)?.Source);
+        // From the current row, not the selection: the selection is the
+        // ticked set now, and moving between strays must not change it.
+        var next = _vm.NextNeedingName((PreviewGrid.CurrentCell.Item as RenameRow)?.Source);
         if (next is not null) BeginEdit(next);
     }
 
@@ -106,10 +144,10 @@ public partial class BulkRenameWindow : Window
     /// the name — the only part a person actually has to supply.</summary>
     private void BeginEdit(RenameRow row)
     {
-        var column = PreviewGrid.Columns.FirstOrDefault(c => !c.IsReadOnly);
-        if (column is null) return;
-        PreviewGrid.CurrentCell = new DataGridCellInfo(row, column);
-        PreviewGrid.ScrollIntoView(row, column);
+        // By name: the tick column is editable too, and comes first. The
+        // current cell moves, the selection (the ticks) does not.
+        PreviewGrid.CurrentCell = new DataGridCellInfo(row, NewNameColumn);
+        PreviewGrid.ScrollIntoView(row, NewNameColumn);
         PreviewGrid.BeginEdit();   // OnBeginningEdit below sets _editing
         // the editor exists only after BeginEdit, so seed on the next beat
         Dispatcher.BeginInvoke(() =>

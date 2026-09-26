@@ -22,6 +22,16 @@ namespace OrdoSort.Wpf.Tests;
 /// happened once the scheduler ran it".</summary>
 public class BulkRenameBatchTests : IDisposable
 {
+    /// <summary>Adds the files and ticks them all: every control changes only
+    /// ticked files (2026-09-26), and these tests are about the rename rule,
+    /// not which files are picked.</summary>
+    private static async Task AddAndTickAsync(BulkRenameViewModel vm, IEnumerable<string> paths)
+    {
+        var list = paths.ToList();
+        await vm.AddFilesAsync(list);
+        vm.SelectedSources = list;
+    }
+
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordobulkbatch_" + Guid.NewGuid());
 
     public BulkRenameBatchTests() => Directory.CreateDirectory(_dir);
@@ -160,7 +170,10 @@ public class BulkRenameBatchTests : IDisposable
         var scheduler = new QueuedWorkScheduler();
         var vm = new BulkRenameViewModel(scheduler: scheduler, probeDelayMs: 0);
         foreach (var n in names) Touch(n);
-        vm.AddFilesAsync(names.Select(n => Path.Combine(_dir, n)).ToList());
+        var paths = names.Select(n => Path.Combine(_dir, n)).ToList();
+        vm.AddFilesAsync(paths);
+        scheduler.Settle(() => vm.Preview.Count == names.Length, "the files should land before they are ticked");
+        vm.SelectedSources = paths;   // only ticked files change (2026-09-26)
         vm.Prefix = "NEW-";
         scheduler.Settle(
             () => vm.Preview.Count == names.Length && vm.Preview.All(r => r.Changed),
