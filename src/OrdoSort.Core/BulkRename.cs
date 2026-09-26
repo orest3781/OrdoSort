@@ -299,22 +299,44 @@ public static partial class BulkRename
     /// beyond existence checks. <paramref name="overrides"/> maps a source
     /// path to a hand-edited target STEM that beats the operation;
     /// <paramref name="droppedSegments"/> maps a source path to the 1-based
-    /// pieces (<see cref="SplitSegments"/>) to leave out of that file's name.</summary>
+    /// pieces (<see cref="SplitSegments"/>) to leave out of that file's name.
+    /// <paramref name="included"/> is the set of files the operation and the
+    /// segment drops apply to (Bulk rename's ticked files); null means every
+    /// file. A file outside it keeps its name, unless it has a hand edit —
+    /// that is the file's own explicit choice — and its name stays claimed,
+    /// so no ticked file is renamed onto it.</summary>
     public static List<PlannedRename> Plan(
         IEnumerable<string> paths, RenameOp op,
         IReadOnlyDictionary<string, string>? overrides = null,
-        IReadOnlyDictionary<string, IReadOnlySet<int>>? droppedSegments = null)
+        IReadOnlyDictionary<string, IReadOnlySet<int>>? droppedSegments = null,
+        IReadOnlySet<string>? included = null)
     {
         var planned = new List<PlannedRename>();
         var taken = new Dictionary<string, HashSet<string>>();
+        HashSet<string> Claimed(string dir)
+        {
+            if (!taken.TryGetValue(dir.ToLowerInvariant(), out var claimed))
+                taken[dir.ToLowerInvariant()] = claimed = new(StringComparer.OrdinalIgnoreCase);
+            return claimed;
+        }
 
-        foreach (var source in paths)
+        var sources = paths.ToList();
+        foreach (var source in sources)
+            if (included is not null && !included.Contains(source) && overrides?.ContainsKey(source) != true)
+                Claimed(Path.GetDirectoryName(source) ?? "").Add(Path.GetFileName(source));
+
+        foreach (var source in sources)
         {
             var dir = Path.GetDirectoryName(source) ?? "";
             var ext = Path.GetExtension(source);
             var stem = Path.GetFileNameWithoutExtension(source);
 
             var manual = overrides is not null && overrides.ContainsKey(source);
+            if (!manual && included is not null && !included.Contains(source))
+            {
+                planned.Add(new PlannedRename(source, source, false, ""));
+                continue;
+            }
             IReadOnlySet<int>? dropped = null;
             droppedSegments?.TryGetValue(source, out dropped);
             if (!manual && DropsEverything(stem, dropped))
@@ -354,8 +376,7 @@ public static partial class BulkRename
                 continue;
             }
 
-            if (!taken.TryGetValue(dir.ToLowerInvariant(), out var claimed))
-                taken[dir.ToLowerInvariant()] = claimed = new(StringComparer.OrdinalIgnoreCase);
+            var claimed = Claimed(dir);
 
             bool Free(string p) =>
                 !claimed.Contains(Path.GetFileName(p)) &&

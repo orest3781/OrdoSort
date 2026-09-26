@@ -273,7 +273,7 @@
                           CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column"
                           BeginningEdit="OnBeginningEdit" CellEditEnding="OnCellEditEnding" SelectionMode="Extended"
                           SelectionChanged="OnSelectionChanged"
-                          PreviewKeyDown="OnGridKeyDown">
+                          PreviewKeyDown="OnGridKeyDown" FrozenColumnCount="1">
                     <DataGrid.RowStyle>
                         <!-- Local RowStyle, BasedOn the shared GridRow style
                              (Theme/Styles.xaml) — GridRow carries the
@@ -309,6 +309,32 @@
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
+                        <!-- The tick box IS the row's selection, as File
+                             Explorer's item check boxes are (2026-09-26):
+                             ticking selects the row, selecting ticks it, and
+                             every control changes only ticked files. Frozen,
+                             so ExplorerColumns keeps it first and never drags,
+                             fits, hides or saves it. -->
+                        <DataGridTemplateColumn x:Name="TickColumn" Width="40" CanUserResize="False"
+                                                CanUserSort="False" CanUserReorder="False">
+                            <DataGridTemplateColumn.Header>
+                                <CheckBox x:Name="TickAllBox" Click="OnTickAllClick"
+                                          AutomationProperties.Name="Tick all files" />
+                            </DataGridTemplateColumn.Header>
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <!-- Focusable False: the keyboard stays on
+                                         the grid, where Ctrl+Space, Shift+arrows
+                                         and Ctrl+A tick rows. -->
+                                    <CheckBox HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Focusable="False"
+                                              IsChecked="{Binding IsSelected, Mode=TwoWay,
+                                                  RelativeSource={RelativeSource AncestorType=DataGridRow}}"
+                                              PreviewMouseLeftButtonDown="OnTickBoxMouseDown"
+                                              AutomationProperties.Name="{Binding Current, StringFormat=Tick {0}}" />
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                         <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
                         <DataGridTextColumn x:Name="CurrentColumn" Header="Current name" Binding="{Binding Current}"
                                             IsReadOnly="True" Width="300">
@@ -326,7 +352,7 @@
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
                         <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
-                        <DataGridTextColumn Header="New name"
+                        <DataGridTextColumn x:Name="NewNameColumn" Header="New name"
                                             Binding="{Binding NewName}" Width="300">
                             <!-- BasedOn GridCellText for the shared Theme.Text
                                  default — but the Changed="False" DataTrigger
@@ -435,7 +461,7 @@
 
             <TextBlock Grid.Row="4" Style="{StaticResource SubtleText}" Margin="0,6,0,0"
                        TextWrapping="Wrap"
-                       Text="Applied in order: segments, Find &amp; replace, Add, Format. Type to jump to a file; F2 or Enter edits a New name by hand (clear it to undo). Extensions never change." />
+                       Text="Changes apply to ticked files only, in order: segments, Find &amp; replace, Add, Format. Type to jump to a file; F2 or Enter edits a New name by hand (clear it to undo). Extensions never change." />
         </Grid>
     </DockPanel>
 </Window>

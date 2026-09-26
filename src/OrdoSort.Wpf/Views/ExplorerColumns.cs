@@ -97,14 +97,23 @@ internal sealed partial class ExplorerColumns
     public static ExplorerColumns? For(DataGrid grid) => (ExplorerColumns?)grid.GetValue(InstanceProperty);
 
     /// <summary>The column that is never hidden or dragged.</summary>
-    public DataGridColumn? Anchor =>
-        _explicitAnchor ?? _grid.Columns.OrderBy(c => c.DisplayIndex).FirstOrDefault();
+    public DataGridColumn? Anchor => _explicitAnchor ?? FirstDataColumn();
+
+    private DataGridColumn? FirstDataColumn() =>
+        _grid.Columns.Where(c => !IsControlColumn(c)).OrderBy(c => c.DisplayIndex).FirstOrDefault();
 
     // The anchor is "kept first" only if it was first when the grid opened;
     // an explicit anchor elsewhere (the File list's File name) just stays put.
     private DataGridColumn? _pinnedFirst;
 
     private static string? HeaderOf(DataGridColumn column) => column.Header as string;
+
+    /// <summary>A control column — the grid's frozen columns, such as Bulk
+    /// rename's tick boxes — is part of the table's furniture, not its data:
+    /// it stays in front in declared order and is never dragged, fitted,
+    /// hidden or saved.</summary>
+    private bool IsControlColumn(DataGridColumn column) =>
+        _grid.Columns.IndexOf(column) < _grid.FrozenColumnCount;
 
     /// <summary>Applies the saved layout once, when the grid first loads:
     /// widths, visibility, order, then sort. Columns the save doesn't
@@ -114,7 +123,7 @@ internal sealed partial class ExplorerColumns
     {
         if (_applied) return;
         _applied = true;
-        _pinnedFirst = _grid.Columns.OrderBy(c => c.DisplayIndex).FirstOrDefault();
+        _pinnedFirst = FirstDataColumn();
         if (_explicitAnchor is not null && _explicitAnchor != _pinnedFirst) _pinnedFirst = null;
 
         var saved = _store?.Load(_key);
@@ -131,7 +140,8 @@ internal sealed partial class ExplorerColumns
         // Order: saved positions first (stable for ties), unknown columns after.
         var ordered = _grid.Columns
             .Select((column, declared) => (column, declared,
-                rank: HeaderOf(column) is { } h && byHeader.TryGetValue(h, out var l) ? l.DisplayIndex : int.MaxValue))
+                rank: IsControlColumn(column) ? int.MinValue
+                    : HeaderOf(column) is { } h && byHeader.TryGetValue(h, out var l) ? l.DisplayIndex : int.MaxValue))
             .OrderBy(t => t.rank).ThenBy(t => t.declared)
             .Select(t => t.column)
             .ToList();
@@ -163,14 +173,19 @@ internal sealed partial class ExplorerColumns
 
     private void OnColumnReordering(object? sender, DataGridColumnReorderingEventArgs e)
     {
-        if (e.Column == Anchor) e.Cancel = true;
+        if (e.Column == Anchor || IsControlColumn(e.Column)) e.Cancel = true;
     }
 
-    /// <summary>After any reorder, puts the pinned first column back first.</summary>
+    /// <summary>After any reorder, puts the control columns back in front
+    /// and the pinned first column straight after them.</summary>
     public void KeepAnchorFirst()
     {
-        var pinned = _pinnedFirst ?? (_applied ? null : _grid.Columns.OrderBy(c => c.DisplayIndex).FirstOrDefault());
-        if (pinned is not null && pinned.DisplayIndex != 0) pinned.DisplayIndex = 0;
+        var controls = _grid.Columns.Where(IsControlColumn).ToList();
+        for (var i = 0; i < controls.Count; i++)
+            if (controls[i].DisplayIndex != i) controls[i].DisplayIndex = i;
+        var pinned = _pinnedFirst ?? (_applied ? null : FirstDataColumn());
+        if (pinned is not null && !IsControlColumn(pinned) && pinned.DisplayIndex != controls.Count)
+            pinned.DisplayIndex = controls.Count;
     }
 
     /// <summary>Writes the current layout to the store. Called when the grid

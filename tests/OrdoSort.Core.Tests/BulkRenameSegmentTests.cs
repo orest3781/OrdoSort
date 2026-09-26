@@ -158,4 +158,67 @@ public class BulkRenameSegmentTests
         Assert.Equal("MINE.pdf", Path.GetFileName(plan.Target));
         Assert.True(plan.Manual);
     }
+
+    // ---- ticked files only (2026-09-26) -----------------------------------
+
+    private static IReadOnlySet<string> Ticked(params string[] sources) =>
+        new HashSet<string>(sources, StringComparer.OrdinalIgnoreCase);
+
+    [Fact]
+    public void OnlyTickedFilesChange()
+    {
+        var a = Src("a_x.pdf");
+        var b = Src("b_x.pdf");
+
+        var plans = Plan(new[] { a, b }, new RenameOp(Find: "x", Replace: "y"), included: Ticked(a));
+
+        Assert.Equal("a_y.pdf", Path.GetFileName(plans[0].Target));
+        Assert.False(plans[1].Changed);
+        Assert.Equal("", plans[1].Note);
+    }
+
+    [Fact]
+    public void NothingTickedChangesNothing()
+    {
+        var a = Src("a_x.pdf");
+
+        var plan = Plan(new[] { a }, new RenameOp(Prefix: "NEW", Join: SegmentJoin.Dash), included: Ticked()).Single();
+
+        Assert.False(plan.Changed);
+    }
+
+    [Fact]
+    public void AnUntickedFilesSegmentDropsWaitUntilItIsTickedAgain()
+    {
+        var a = Src("A_ONE_X.pdf");
+
+        var plan = Plan(new[] { a }, new RenameOp(), droppedSegments: Drops(a, 3), included: Ticked()).Single();
+
+        Assert.False(plan.Changed);
+    }
+
+    [Fact]
+    public void AHandEditedNameAppliesEvenWhenUnticked()
+    {
+        var a = Src("a_x.pdf");
+        var overrides = new Dictionary<string, string> { [a] = "MINE" };
+
+        var plan = Plan(new[] { a }, new RenameOp(), overrides, included: Ticked()).Single();
+
+        Assert.Equal("MINE.pdf", Path.GetFileName(plan.Target));
+        Assert.True(plan.Manual);
+    }
+
+    [Fact]
+    public void ATickedFileCannotTakeTheNameAnUntickedFileInTheBatchIsKeeping()
+    {
+        // b stays "b.pdf"; a would become "b.pdf" too, so it gets a counter.
+        var a = Src("a.pdf");
+        var b = Src("b.pdf");
+
+        var plans = Plan(new[] { b, a }, new RenameOp(Find: "a", Replace: "b"), included: Ticked(a));
+
+        Assert.False(plans[0].Changed);
+        Assert.Equal("b (2).pdf", Path.GetFileName(plans[1].Target));
+    }
 }

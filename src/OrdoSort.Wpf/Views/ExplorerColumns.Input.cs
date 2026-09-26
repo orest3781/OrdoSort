@@ -58,7 +58,8 @@ internal sealed partial class ExplorerColumns
     /// <summary>Sizes every visible column to its content (Ctrl + Plus).</summary>
     public void FitAll()
     {
-        foreach (var column in _grid.Columns.Where(c => c.Visibility == Visibility.Visible)) FitColumn(column);
+        foreach (var column in _grid.Columns.Where(c => c.Visibility == Visibility.Visible && !IsControlColumn(c)))
+            FitColumn(column);
     }
 
     private string ValueOf(object item, BindingBase binding)
@@ -122,7 +123,8 @@ internal sealed partial class ExplorerColumns
 
     private void OnPreviewMouseRightButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (FindAncestor<DataGridColumnHeader>(e.OriginalSource as DependencyObject) is not { Column: { } column } header)
+        if (FindAncestor<DataGridColumnHeader>(e.OriginalSource as DependencyObject) is not { Column: { } column } header
+            || IsControlColumn(column))
             return;
         var menu = BuildHeaderMenu(column);
         menu.PlacementTarget = header;

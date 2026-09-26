@@ -600,4 +600,77 @@ public sealed class ExplorerColumnsTests : IDisposable
         }
         finally { bed.Window.Close(); }
     });
+
+    // ---- frozen control columns (Bulk rename's tick boxes, 2026-09-26) ----
+
+    /// <summary>Puts a frozen, header-less control column (a tick box) in
+    /// front of the bed's columns, as Bulk rename declares its tick column.</summary>
+    private static DataGridColumn AddFrozenTickColumn(Bed bed)
+    {
+        var ticks = new DataGridCheckBoxColumn { Width = new DataGridLength(40) };
+        bed.Grid.Columns.Insert(0, ticks);
+        bed.Grid.FrozenColumnCount = 1;
+        return ticks;
+    }
+
+    [Fact]
+    public void AFrozenControlColumnStaysFirstUnderASavedOrder() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var store = new TableLayoutStore(Path.Combine(_dir, "table-columns.json"));
+        store.Save("Test", new TableLayout(new[]
+        {
+            new ColumnLayout("Note", 150, true, 0),
+            new ColumnLayout("Name", 200, true, 1),
+            new ColumnLayout("Kind", 90, true, 2),
+        }, null, null));
+        var bed = Build(store: store, rows: new Row { Name = "a" });
+        var ticks = AddFrozenTickColumn(bed);
+        try
+        {
+            Settle(bed.Window);
+
+            // the control column first, then the anchor (the first data
+            // column), then the saved order
+            Assert.Equal(0, ticks.DisplayIndex);
+            Assert.Equal(1, bed.Column("Name").DisplayIndex);
+            Assert.Equal(2, bed.Column("Note").DisplayIndex);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    [Fact]
+    public void AFrozenControlColumnIsPutBackFirstAfterAReorder() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = "a" });
+        var ticks = AddFrozenTickColumn(bed);
+        try
+        {
+            Settle(bed.Window);
+
+            bed.Column("Kind").DisplayIndex = 0;   // as a drop in front of it leaves it
+            bed.Explorer.KeepAnchorFirst();
+
+            Assert.Equal(0, ticks.DisplayIndex);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    [Fact]
+    public void FitAllLeavesAFrozenControlColumnAlone() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = "a" });
+        var ticks = AddFrozenTickColumn(bed);
+        try
+        {
+            Settle(bed.Window);
+
+            bed.Explorer.FitAll();
+
+            Assert.Equal(40, ticks.Width.Value);
+        }
+        finally { bed.Window.Close(); }
+    });
 }
