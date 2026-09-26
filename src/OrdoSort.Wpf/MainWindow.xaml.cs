@@ -266,30 +266,8 @@ public partial class MainWindow : Window
     /// geometry — the Screen change that calls one is what eventually raises
     /// the other — so it adjusts a real, current layout rather than
     /// predicting one.</summary>
-    private void FitViewerTo(double aspect)
-    {
-        // The compact dashboard has no viewer to fit, and a maximized window
-        // cannot be resized without unmaximizing it first, which is a bigger
-        // surprise than a pane that does not match the page.
-        if (_compact || WindowState != WindowState.Normal) return;
-
-        // EnterNormal assigned Width moments ago; ActualWidth only catches up
-        // once a layout pass has run over that assignment, and the fit is
-        // measured from the pane as it actually is.
-        UpdateLayout();
-        if (Viewer.ActualHeight <= 0) return;
-
-        // The monitor this window is actually on, NOT the primary. This code
-        // moves a window the user has already placed, so measuring it against
-        // SystemParameters.WorkArea (always the primary's) relocated a window
-        // sitting on a secondary monitor onto the primary at every session
-        // start — see MonitorWorkArea for the numbers.
-        var workArea = MonitorWorkArea.For(this);
-        var width = FitMath.WindowWidthFor(ActualWidth, Viewer.ActualWidth, Viewer.ActualHeight,
-            aspect, MinWidth, workArea.Width);
-        Width = width;
-        Left = FitMath.LeftFor(Left, width, workArea);
-    }
+    // replaced by ProcessingWindow.FitToPage (Task 3)
+    private void FitViewerTo(double aspect) { }
 
     private void EnterNormal()
     {
