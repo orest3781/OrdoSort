@@ -18,6 +18,7 @@
 | S:\ → A:\DEV path rewrite (45 files, comments and docs only) | ✅ Done | Committed `1f5b8de` and pushed 2026-09-09. `.gitignore` now points at `A:\DEV\_ARCHIVE\OrdoSort-samples` |
 
 ## Next
+- [ ] Flaky under full-suite load (2 of 3 runs, 2026-09-25; 5/5 alone): `FolderPathResolutionTests.SettingsWarningsCheckARelativeRouteBesideTheConfigFile` fails in its `Directory.Delete` cleanup because `Config.ProbeWritable`'s `.ordosort_probe_*` file is still held open by another process (likely antivirus)
 - [ ] An EMPTY table whose columns run past the right edge shows no horizontal scrollbar (History with no filings, 2026-09-25 live check); check whether it appears once rows exist, and whether Explorer shows one for an empty folder
 - [ ] Unexplained once, 2026-09-25: during a UI Automation run Bulk rename opened 1260px wide instead of 820 (the run that navigated the Open dialog to a folder first). Not reproduced in three later runs; watch for it
 - [ ] Smoke `screenshots` renders DataGrids off-screen with collapsed columns (headers read "I", star column not filling): seen in BulkRename and MatchMerge shots 2026-09-25. The live app lays them out fine, so it's the capture, not the app; the website/README shots with grids are affected
