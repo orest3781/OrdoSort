@@ -21,6 +21,9 @@ One view model, `ShellViewModel`, drives all three screens (`Screen.Ready`, `Pro
 | X on the Processing window mid-session | Stops the session, exactly as Stop / Esc does today |
 | Last document filed | The Processing window shows the Done summary (with Undo); Back to dashboard or X closes it |
 | Size when it opens | The whole first page fits: the viewer takes the page's shape at the tallest height the screen allows |
+| Which screen | Always the dashboard's screen, every session |
+| When the viewer starts | At launch, as today (in the hidden Processing window); a failure is reported at launch |
+| Tiles during a session | Keep updating, on the poll timer only — filing a document never triggers a monitored-folder scan |
 
 ## Design
 
@@ -32,7 +35,7 @@ One view model, `ShellViewModel`, drives all three screens (`Screen.Ready`, `Pro
 | `ProcessingWindow` (new) | PDF viewer, splitter, Processing screen, Done screen | Opens per session, fitted to the first page |
 
 - The Processing window is created once, at start-up, and hidden between sessions. It owns the one WebView2 viewer that `ShellViewModel` is given, so the view model's constructor does not change.
-- The viewer starts up when the Processing window is first shown. Starting a session waits for it before loading the first document.
+- The viewer starts at launch: the Processing window is shown off-screen, without activating, just long enough for the viewer to start, then hidden. A viewer that fails is reported at launch, as today; sessions still run with an empty pane. Starting a session waits for that same start-up, never a second one.
 - `MainWindow` loses the compact/normal mode switch (`EnterCompact`, `EnterNormal`, the viewer columns); the dashboard is always compact.
 
 ### Session flow
@@ -72,6 +75,21 @@ When a session starts, the Processing window is sized once from the first page's
 - The dashboard's alerts, taskbar flash and badge.
 - Settings, Tools and every tool window.
 - The app's exit path (`OnExit`, `FinishClosingWhenIdle`).
+
+## Risks and mitigations (reviewed with the owner, 2026-09-26)
+
+| # | Risk | Mitigation |
+|---|---|---|
+| 1 | The viewer would start late and fail late | Start it at launch in the hidden window (see Windows) |
+| 2 | Monitored-folder scans while filing slow saving on a share | During a session, tiles refresh on the poll timer only (a new `FolderWatchService.Polled` event); an inbox change from filing never rescans them. Filing time is measured before and after |
+| 3 | The Processing window's cancelled close blocks Windows shutdown or sign-out | On `SessionEnding` it closes for real, like the dashboard |
+| 4 | Every alert flashes the taskbar while filing | No taskbar flash while the Processing window is active; sound and toast unchanged |
+| 5 | Refresh ends a session or wipes Done | Hidden while a session is open |
+| 6 | X mid-commit hides a half-finished move | The window stays until the commit finishes |
+| 7 | Messages pop up over the corner dashboard | Messages go over the Processing window while it is open |
+| 8 | A label shared by the Ready and session screens shows the wrong text | Done has its own text; a test fails if the Ready screen and the session screens bind the same view-model text |
+| 9 | Very wide page, second monitor, unreadable PDF | Capped to the work area, centred on the dashboard's monitor, last size kept on bad input |
+| 10 | The real-Edge E2E suite drives the old single window | `scripts\e2e.bat` passes before merge, not only `check.bat` |
 
 ## Testing
 

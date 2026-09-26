@@ -18,12 +18,23 @@
 - Last document filed: the Processing window shows Done (with Undo); Back to dashboard or X hides it.
 - Fit on open: the viewer takes the page's shape at the full height of the work area of the dashboard's monitor; if that is wider than the work area, the height shrinks; centred on that monitor.
 - The dashboard's Refresh button must never end an open session.
+- The viewer starts at launch (the hidden Processing window, shown off-screen without activating, then hidden); a failure is reported at launch and never again at Start.
+- During a session, monitored-folder tiles refresh on the poll timer only; filing a document never triggers a monitored-folder scan.
+- The Processing window never blocks Windows shutdown or sign-out.
+- No taskbar flash for an alert while the Processing window is active.
+- `scripts\e2e.bat` passes before merge.
 - One way to do a thing: the old compact/normal switch (`EnterCompact`/`EnterNormal`/`FitViewerTo`) and `FitMath.WindowWidthFor`/`LeftFor` are removed, not kept alongside.
 - CRLF line endings in every `.cs`/`.xaml` (scratchpad `crlf.py`); `check.bat` runs `dotnet format` verify.
 
 ## Review Focus
 
-1. **The viewer fails to start** (no WebView2 runtime). Start must still open the Processing window and run the session with a blank viewer, warning once, as today's start-up warning does. Pinned in Task 3.
+Reviewed with the owner, 2026-09-26; the spec's "Risks and mitigations" table is the full list. Each line below is pinned by a test in the task named.
+
+1. **The viewer fails to start** (no WebView2 runtime). The warning comes at launch, once. Start still opens the Processing window and runs the session with a blank viewer, and does not warn again. Pinned in Task 3.
+6. **Windows shuts down or signs out mid-session.** The Processing window must close for real, never cancel the shutdown. Pinned in Task 3.
+7. **An alert arrives while you are filing.** No taskbar flash while the Processing window is active; the toast and sound still happen. Pinned in Task 3.
+8. **Filing on a slow share.** Each filed document must not trigger a monitored-folder scan; the tiles refresh on the poll timer. Pinned in Task 2, measured in Task 4.
+9. **A label shared by the Ready and session screens.** Pinned in Task 2 by a binding audit.
 2. **The dashboard sits on a second monitor.** The Processing window must fit and centre on that monitor, not the primary. Pinned in Task 1 (`FitMath` with an offset work area).
 3. **A very wide page** (landscape, or 2:1). The width is capped at the work area and the height shrinks; the window never hangs off-screen. Pinned in Task 1.
 4. **X pressed while a document is mid-commit** (`_busy`). `StopSession` refuses, so the window must stay open showing the session, not hide over a half-finished move. Pinned in Task 3.
@@ -167,6 +178,7 @@ git commit -m "feat(processing-window): fit the whole first page (FitMath.Sessio
 - Modify: `src/OrdoSort.Wpf/Views/ReadyView.xaml` (Start button caption binds `StartButtonText`)
 - Modify: `tests/OrdoSort.Wpf.Tests/DashboardTests.cs`
 - Create: `tests/OrdoSort.Wpf.Tests/SessionWindowShellTests.cs`
+- Modify: `src/OrdoSort.Wpf/Services/FolderWatchService.cs` (a `Polled` event from the poll timer)
 
 **Interfaces:**
 - Produces on `ShellViewModel`:
@@ -175,6 +187,8 @@ git commit -m "feat(processing-window): fit the whole first page (FitMath.Sessio
   - `public event Action? ShowSessionRequested` (the Start button while a session is open)
   - `public Func<Task>? PrepareSessionView { get; set; }` (awaited by `StartProcessingAsync` after `Screen = Processing`, before the first document loads)
   - `public string DoneTitle`, `public string DoneDetail` (the Done summary; `CountLine`/`DetailLine` stay the dashboard's)
+  - `internal void OnPoll()` (the poll timer's tick; the next refresh during a session includes the monitored folders)
+- Produces on `FolderWatchService`: `public event Action? Polled`, raised (on the same context as `Activity`) by the poll timer just before it raises `Activity`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -241,6 +255,57 @@ public class SessionWindowShellTests
         Assert.Equal("Session complete", fx.Shell.DoneTitle);
         Assert.Contains("set aside", fx.Shell.DoneDetail);
         Assert.NotEqual("Session complete", fx.Shell.CountLine);
+    }
+
+    /// <summary>Risk 2: filing a document moves it out of the inbox, which
+    /// the watcher reports as activity. That must not rescan every monitored
+    /// folder mid-session; the poll timer does, at the configured cadence.</summary>
+    [Fact]
+    public void DuringASessionTilesRefreshOnThePollTimerNotOnInboxActivity()
+    {
+        var watched = Path.Combine(Path.GetTempPath(), "ordowatch_" + Guid.NewGuid());
+        Directory.CreateDirectory(watched);
+        using var fx = new ShellFixture(cfg => cfg.WatchFolders.Add(new Core.WatchFolder { Label = "Scanner", Path = watched }));
+        try
+        {
+            File.WriteAllText(Path.Combine(watched, "a.pdf"), "x");
+            fx.AddInboxFile();
+            fx.AddInboxFile();
+            fx.Shell.Initialize();
+            fx.Shell.StartProcessing();
+            var before = Assert.Single(fx.Shell.Tiles).Count;
+
+            File.WriteAllText(Path.Combine(watched, "b.pdf"), "x");
+            fx.Shell.OnFolderActivity();                        // what filing a document looks like
+            Assert.Equal(before, Assert.Single(fx.Shell.Tiles).Count);
+
+            fx.Shell.OnPoll();
+            fx.Shell.OnFolderActivity();                        // the poll timer's refresh
+            Assert.Equal(before + 1, Assert.Single(fx.Shell.Tiles).Count);
+        }
+        finally { Directory.Delete(watched, true); }
+    }
+
+    /// <summary>Risk 8: the Ready screen and the session screens must not
+    /// bind the same view-model text, now that both are on screen at once.
+    /// Per-item bindings inside templates (a tile's Label, a route's Back)
+    /// are on different objects and are allowed.</summary>
+    [Fact]
+    public void TheReadyScreenAndTheSessionScreensBindNoCommonText()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (!File.Exists(Path.Combine(root.FullName, "OrdoSort.sln"))) root = root.Parent!;
+        var views = Path.Combine(root.FullName, "src", "OrdoSort.Wpf", "Views");
+        static HashSet<string> Bound(string file) =>
+            System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(file), @"\{Binding ([A-Za-z]+)")
+                .Select(m => m.Groups[1].Value).ToHashSet();
+        var perItem = new[] { "ActualWidth", "Back", "Fore", "Label", "Display", "Tooltip", "Title", "DataContext", "ElementName" };
+
+        var ready = Bound(Path.Combine(views, "ReadyView.xaml"));
+        var session = Bound(Path.Combine(views, "ProcessingView.xaml"));
+        session.UnionWith(Bound(Path.Combine(views, "DoneView.xaml")));
+
+        Assert.Empty(ready.Intersect(session).Except(perItem));
     }
 
     [Fact]
@@ -338,7 +403,8 @@ Expected: build errors for `PrepareSessionView`, `StartButtonText`, `IsSessionOp
 
   and make `StartEnabled`'s setter keep raising `StartCommand.RaiseCanExecuteChanged()`.
 - `StartProcessingAsync`: delete `DashboardVisible = false;`, `AllQuiet = false;` and `StopFlash();`. Keep `ApplyFlashAll();` only if it re-applies tile colours; otherwise delete it too. Insert `if (PrepareSessionView is { } prepare) await prepare();` immediately before `await RefreshCompleterAsync();`.
-- Refresh during a session: in the snapshot loop, `var wantStatuses = mode != "hidden";` (drop the `Screen != Screen.Processing` part). Split `ShowReady` into:
+- Refresh during a session (risk 2): add `private bool _tilesDue;` and `internal void OnPoll() => _tilesDue = true;`. Subscribe `_watch.Polled += OnPoll;` next to `_watch.Activity += OnFolderActivity;` and unsubscribe in `Dispose`. In the snapshot loop: `var wantStatuses = mode != "hidden" && (Screen == Screen.Ready || _tilesDue); _tilesDue = false;`. When `snap.Statuses` is null, `ShowDashboard` updates the counts and keeps the tiles it has.
+- `FolderWatchService`: the poll timer's callback becomes `_ => { RaisePolled(); RaiseActivity(); }`, where `RaisePolled` posts `Polled` through `_context` exactly as `RaiseActivity` posts `Activity` (and is a no-op after dispose). Split `ShowReady` into:
 
 ```csharp
     private void ShowReady(FolderSnapshot snap)
@@ -374,7 +440,7 @@ Expected: PASS. Any other Shell fact that pinned `CountLine == "Session complete
 - [ ] **Step 5: `check.bat`, then commit**
 
 ```bash
-git add src/OrdoSort.Wpf/ViewModels/ShellViewModel.cs src/OrdoSort.Wpf/Views/DoneView.xaml src/OrdoSort.Wpf/Views/ReadyView.xaml tests/OrdoSort.Wpf.Tests/DashboardTests.cs tests/OrdoSort.Wpf.Tests/SessionWindowShellTests.cs
+git add src/OrdoSort.Wpf/ViewModels/ShellViewModel.cs src/OrdoSort.Wpf/Services/FolderWatchService.cs src/OrdoSort.Wpf/Views/DoneView.xaml src/OrdoSort.Wpf/Views/ReadyView.xaml tests/OrdoSort.Wpf.Tests/DashboardTests.cs tests/OrdoSort.Wpf.Tests/SessionWindowShellTests.cs
 git commit -m "feat(processing-window): the dashboard stays live beside a session"
 ```
 
@@ -393,7 +459,7 @@ git commit -m "feat(processing-window): the dashboard stays live beside a sessio
 - Produces:
   - `ProcessingWindow(Func<Rect> dashboardWorkArea)`
   - `IPdfViewer Pdf`, `IDialogService Dialogs { get; set; }`
-  - `void Attach(ShellViewModel shell)`, `Task OpenForSessionAsync()`, `void BringToFront()`, `void CloseForReal()`
+  - `void Attach(ShellViewModel shell)`, `Task WarmUpAsync()`, `Task OpenForSessionAsync()`, `void BringToFront()`, `void CloseForReal()`
   - `internal void FitToPage(double aspect)`
   - `MainWindow.Processing` (internal, for tests and the smoke harness)
 
@@ -425,11 +491,22 @@ git commit -m "feat(processing-window): the dashboard stays live beside a sessio
     //  Assert.Contains(window.Processing.InputBindings.OfType<KeyBinding>(), b => b.Key == Key.D1)
     //  Assert.DoesNotContain(window.InputBindings.OfType<KeyBinding>(), b => b.Key == Key.D1)
 
-    [Fact] public void AViewerThatFailsToStartWarnsOnceAndTheSessionStillRuns()   // Review Focus 1
-    //  a ProcessingWindow whose viewer init returns false (WebViewPdfViewer.InitAsync
-    //  returns false when the runtime is missing: give ProcessingWindow an internal ctor
-    //  seam `Func<Task<bool>>? initViewer` for this test); two sessions in a row;
-    //  Assert.Single(dialogs.Warnings); Assert.True(Shell.IsProcessing) after each Start
+    [Fact] public void AViewerThatFailsToStartWarnsAtLaunchOnceAndSessionsStillRun()   // Review Focus 1
+    //  a ProcessingWindow built with the internal seam `Func<Task<bool>>? initViewer`
+    //  returning false and counting its calls; await WarmUpAsync() (launch);
+    //  Assert.Single(dialogs.Warnings); Assert.False(processing.IsVisible) after warm-up;
+    //  two sessions in a row: Assert.Single(dialogs.Warnings) still, init called once,
+    //  Assert.True(Shell.IsProcessing) after each Start
+
+    [Fact] public void WindowsShuttingDownClosesTheProcessingWindowForReal()   // Review Focus 6
+    //  start a session; raise the app's SessionEnding path (MainWindow sets _reallyExit on
+    //  Application.SessionEnding; invoke the same handler the way ShutdownDuringCommitTests
+    //  reaches OnExit); window.Processing.Close(); Assert.False(window.Processing.IsLoaded)
+
+    [Fact] public void NoTaskbarFlashWhileTheProcessingWindowIsActive()   // Review Focus 7
+    //  MainWindow's AlertArrived handler calls a `Func<bool> ShouldFlash` seam; with
+    //  window.Processing reporting active, an alert does not flash; with neither window
+    //  active, it does (assert through the seam's recorded calls)
 
     [Fact] public void TheRefreshButtonIsHiddenWhileASessionIsOpen()   // Review Focus 5
     //  start; the dashboard header's Rescan button: Visibility == Collapsed; finish to Done: still Collapsed
@@ -523,18 +600,34 @@ public partial class ProcessingWindow : Window
         };
     }
 
-    /// <summary>Shows the window and waits for its viewer, once per session,
-    /// before the first document loads. A viewer that cannot start is
-    /// reported once; the session still runs, with nothing in the pane.</summary>
-    public async Task OpenForSessionAsync()
+    /// <summary>Starts the viewer at launch (risk 1): shown off-screen and
+    /// without activating, just long enough for WebView2 to start, then
+    /// hidden. A viewer that cannot start is reported here, once.</summary>
+    public async Task WarmUpAsync()
     {
-        BringToFront();
-        _viewerStart ??= _initViewer();
-        if (!await _viewerStart && !_warned)
+        if (_viewerStart is not null) { await _viewerStart; return; }
+        var (left, top, taskbar) = (Left, Top, ShowInTaskbar);
+        Left = -32000; Top = -32000; ShowInTaskbar = false; ShowActivated = false;
+        Show();
+        _viewerStart = _initViewer();
+        var ok = await _viewerStart;
+        Hide();
+        (Left, Top, ShowInTaskbar, ShowActivated) = (left, top, taskbar, true);
+        if (!ok && !_warned)
         {
             _warned = true;
             Dialogs.Warn("The PDF viewer (WebView2) failed to start:\n\n" + _pdf.InitError, "OrdoSort");
         }
+    }
+
+    /// <summary>Shows the window for a session and waits for the viewer's
+    /// launch-time start-up (never a second one) before the first document
+    /// loads. A viewer that failed at launch is not reported again; the
+    /// session runs with nothing in the pane.</summary>
+    public async Task OpenForSessionAsync()
+    {
+        BringToFront();
+        await WarmUpAsync();
     }
 
     public void BringToFront()
@@ -582,7 +675,9 @@ public partial class ProcessingWindow : Window
 
 `MainWindow.xaml.cs`:
 - Constructor: `Processing = new ProcessingWindow(() => MonitorWorkArea.For(this));` before the Shell. Construct the Shell with `Processing.Pdf` and `new DialogRelay(() => Processing.IsVisible ? Processing.Dialogs : Dialogs)`. Then `Processing.Attach(Shell); Shell.PrepareSessionView = Processing.OpenForSessionAsync; Shell.ShowSessionRequested += Processing.BringToFront;`
-- Delete: `Viewer.CreationProperties`, `_pdf`, `ApplyWindowMode` and its `Screen` subscription, `EnterCompact`/`EnterNormal`/`FitViewerTo` and the bounds fields, `ViewerPanZone`/`_panZone`/`ViewerInputEnhancer` use, `RebindRouteHotkeys`/`_routeBindings`/the `RoutesRebuilt` subscription, and the viewer-init warning in `Loaded` (keep `Shell.Initialize()`).
+- Delete: `Viewer.CreationProperties`, `_pdf`, `ApplyWindowMode` and its `Screen` subscription, `EnterCompact`/`EnterNormal`/`FitViewerTo` and the bounds fields, `ViewerPanZone`/`_panZone`/`ViewerInputEnhancer` use, `RebindRouteHotkeys`/`_routeBindings`/the `RoutesRebuilt` subscription, and the viewer-init warning in `Loaded`. `Loaded` becomes `await Processing.WarmUpAsync(); Shell.Initialize();` (risk 1).
+- `AlertArrived`: flash only when neither window is active: `if (!IsActive && !Processing.IsActive) TaskbarFlash.Flash(this);`, through an internal `Func<bool> ShouldFlash` seam the test can observe (risk 4).
+- `app.SessionEnding += (_, _) => { _reallyExit = true; Processing.CloseForReal(); };` (risk 3).
 - The one-time parking that `EnterCompact(initial: true)` did (Width 470, top-right of the work area, `SizeToContent.Height`, `MaxHeight` = work area − 24, `MinWidth` 400) becomes a small `ParkDashboard()` called from the constructor; keep the `Tiles.CollectionChanged` re-fit without the `_compact` test.
 - `Closing`: keep the logic (a session is stopped, Done goes back to Ready); `Closed`: add `Processing.CloseForReal();` first.
 - `internal ProcessingWindow Processing { get; }`.
@@ -620,7 +715,9 @@ git add tests/OrdoSort.Wpf.Tests/WindowOverflowTests.cs tests/OrdoSort.Wpf.Tests
 git commit -m "test(processing-window): suites and smoke harness follow the session into its window; docs"
 ```
 
-- [ ] **Step 5: Live check** on a scratch copy of the Release build with `live/dev/config.json`:
+- [ ] **Step 5: E2E**: `scripts\e2e.bat` passes (risk 10). Fix the harness in this task if it doesn't; never skip a scenario.
+- [ ] **Step 6: Live check** on a scratch copy of the Release build with `live/dev/config.json`:
+  - [ ] Filing speed (risk 2): time filing ten documents on `main` and on this branch, same inbox, same monitored folders; report both. A slowdown over 10% is a finding for the final review.
   - [ ] Start opens the Processing window fitted to the first page; the dashboard stays in its corner.
   - [ ] The dashboard reads "Processing… (show)"; minimise the Processing window and press it to bring it back.
   - [ ] File one document; X mid-session stops the session.
