@@ -1674,15 +1674,24 @@
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}" />
         <Setter Property="RowBackground" Value="{DynamicResource Theme.Surface}" />
-        <Setter Property="AlternatingRowBackground" Value="{DynamicResource Theme.WindowBg}" />
+        <Setter Property="AlternatingRowBackground" Value="{DynamicResource Theme.Surface}" />
         <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource Theme.Border}" />
         <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource Theme.Border}" />
-        <Setter Property="GridLinesVisibility" Value="Horizontal" />
-        <!-- Columns keep their order and rows keep one height: dragging a
-             header sideways or a row edge down only ever makes a table look
-             broken. Resizing columns and sorting stay on. -->
-        <Setter Property="CanUserReorderColumns" Value="False" />
+        <!-- Table rules v2 (Explorer Details view): no row lines, no striping, drag-to-reorder on, one row height. -->
+        <Setter Property="GridLinesVisibility" Value="None" />
+        <Setter Property="CanUserReorderColumns" Value="True" />
         <Setter Property="CanUserResizeRows" Value="False" />
+    </Style>
+
+    <!-- The invisible, 8px-wide divider handles a column header resizes by. -->
+    <Style x:Key="HeaderGripper" TargetType="Thumb">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Border Background="Transparent" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- HorizontalContentAlignment="Left" (table-rules, Rule 1): every column
@@ -1702,6 +1711,45 @@
         <Setter Property="Padding" Value="12,6" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DataGridColumnHeader">
+                    <Grid>
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <Grid>
+                                <!-- Explorer's sort chevron: centred on the header's top edge -->
+                                <Path x:Name="SortChevron" Visibility="Collapsed"
+                                      HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0"
+                                      Stroke="{DynamicResource Theme.SubtleText}" StrokeThickness="1.2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Data="M 0,4 L 4,0 L 8,4" />
+                                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="Center" RecognizesAccessKey="True" />
+                            </Grid>
+                        </Border>
+                        <Thumb x:Name="PART_LeftHeaderGripper" HorizontalAlignment="Left" Width="8"
+                               Cursor="SizeWE" Style="{StaticResource HeaderGripper}" />
+                        <Thumb x:Name="PART_RightHeaderGripper" HorizontalAlignment="Right" Width="8"
+                               Cursor="SizeWE" Style="{StaticResource HeaderGripper}" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="SortDirection" Value="Ascending">
+                            <Setter TargetName="SortChevron" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="SortDirection" Value="Descending">
+                            <Setter TargetName="SortChevron" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="SortChevron" Property="Data" Value="M 0,0 L 4,4 L 8,0" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource Theme.SurfaceHover}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- Padding "12,4" (table-rules, Rule 2): horizontal only, left at "8,4"
@@ -1844,6 +1892,14 @@
                 <Setter Property="Foreground" Value="{DynamicResource Theme.AccentText}" />
             </DataTrigger>
         </Style.Triggers>
+    </Style>
+
+    <!-- Table rules v2, rule 9: a number column (sizes and counts) puts its
+         values on the right edge, as Explorer's Size column does. Stretch
+         plus TextAlignment keeps the ellipsis working. -->
+    <Style x:Key="GridCellNumber" TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="TextAlignment" Value="Right" />
     </Style>
 
     <!-- Named styles -->

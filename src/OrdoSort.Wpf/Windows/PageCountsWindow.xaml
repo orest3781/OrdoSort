@@ -107,7 +107,7 @@
                         <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
                         <DataGridTextColumn Header="Pages" Binding="{Binding Pages}" Width="70">
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellNumber}" />
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
                         <!-- fixed width; the user sizes it (table rules v2, rule 1) -->

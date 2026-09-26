@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Media;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Theme;
 using OrdoSort.Wpf.ViewModels;
@@ -175,84 +176,106 @@ public class SharedGridStyleTests
         finally { CleanupHistory(win, history, dbPath); }
     });
 
-    /// <summary>Columns keep their order and rows keep one height: dragging a
-    /// header sideways or a row edge down only ever makes a table look
-    /// broken. Column resizing and sorting stay on.</summary>
+    /// <summary>Table rules v2, rule 5: columns can be dragged to a new
+    /// place; rows keep one height.</summary>
     [Fact]
-    public void TablesDoNotLetColumnsBeReorderedOrRowsResized() => _fx.Invoke(() =>
+    public void ColumnsCanBeReorderedButRowsKeepOneHeight() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
         var (win, history, dbPath) = BuildHistoryWindowWithOneRow();
         try
         {
             var grid = FindDescendant<DataGrid>(win)!;
-
-            Assert.False(grid.CanUserReorderColumns);
+            Assert.True(grid.CanUserReorderColumns);
             Assert.False(grid.CanUserResizeRows);
-            Assert.True(grid.CanUserResizeColumns);
-            Assert.True(grid.CanUserSortColumns);
         }
         finally { CleanupHistory(win, history, dbPath); }
     });
 
-    /// <summary>Table-rules Rule 1's own regression case: PageCountsWindow's
-    /// "Pages" column used to declare HorizontalAlignment="Right" on the
-    /// reasoning that a column of numbers reads fastest lined up on the
-    /// ones place — the owner's instruction covers even that "genuine
-    /// reason." Nothing left column-local to remove it: GridCellTextSelectionAware's
-    /// own default now puts it at Left.</summary>
+    /// <summary>Rule 8: no lines between rows and no alternating shading,
+    /// as in Explorer's Details view.</summary>
     [Fact]
-    public void PageCountsPagesColumnAlignsLeftNotRight() => _fx.Invoke(() =>
+    public void RowsHaveNoLinesAndNoStriping() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var vm = new PageCountsViewModel(new FakeDialogs());
-        var row = new PageCountRow(@"C:\inbox\a.pdf");
-        row.Apply(new PageCounts.CountResult(row.Path, 42, ""));
-        vm.Rows.Add(row);
-        var win = new PageCountsWindow(vm)
-        {
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = -20000, Top = 0, ShowActivated = false,
-        };
-        win.Show();
-        win.UpdateLayout();
+        var (win, history, dbPath) = BuildHistoryWindowWithOneRow();
         try
         {
             var grid = FindDescendant<DataGrid>(win)!;
-            var column = grid.Columns.OfType<DataGridTextColumn>().First(c => (string)c.Header == "Pages");
-            var gridRow = (DataGridRow)grid.ItemContainerGenerator.ContainerFromIndex(0);
-            var text = (TextBlock)column.GetCellContent(gridRow);
-            Assert.Equal(HorizontalAlignment.Left, text.HorizontalAlignment);
+            Assert.Equal(DataGridGridLinesVisibility.None, grid.GridLinesVisibility);
+            Assert.Equal(((SolidColorBrush)grid.RowBackground).Color, ((SolidColorBrush)grid.AlternatingRowBackground).Color);
         }
-        finally { win.Close(); }
+        finally { CleanupHistory(win, history, dbPath); }
     });
 
-    /// <summary>Table-rules Rule 1's own regression case: FilenameListWindow's
-    /// "Pages" column, same reasoning and same fix as PageCountsWindow's
-    /// above — see PagesColumn's own comment in FilenameListWindow.xaml.</summary>
+    /// <summary>Rule 9: a number column's values sit on the right edge,
+    /// as in Explorer's Size column; header labels stay left. The shared
+    /// number style right-aligns (and stretches, so the ellipsis still
+    /// works), and every number column in the app uses it.</summary>
     [Fact]
-    public void FilenameListPagesColumnAlignsLeftNotRight() => _fx.Invoke(() =>
+    public void NumberColumnsRightAlignTheirValues() => _fx.Invoke(() =>
     {
-        ThemeManager.Apply(_fx.App, dark: false);
-        var vm = new FilenameListViewModel(new FakeDialogs()) { Columns = FilenameList.Columns.Pages };
-        vm.Rows.Add(new FilenameList.FileRow("a.pdf", 1024, DateTime.Today, @"C:\inbox",
-            @"C:\inbox\a.pdf", Pages: 42));
-        var win = new FilenameListWindow(vm)
+        var style = (Style)_fx.App.FindResource("GridCellNumber");
+        var setters = style.Setters.OfType<Setter>().ToList();
+        Assert.Contains(setters, s => s.Property == TextBlock.TextAlignmentProperty
+            && (TextAlignment)s.Value == TextAlignment.Right);
+        Assert.Contains(setters, s => s.Property == FrameworkElement.HorizontalAlignmentProperty
+            && (HorizontalAlignment)s.Value == HorizontalAlignment.Stretch);
+
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (!File.Exists(Path.Combine(root.FullName, "OrdoSort.sln"))) root = root.Parent!;
+        var windows = Path.Combine(root.FullName, "src", "OrdoSort.Wpf", "Windows");
+        foreach (var (file, header) in new[]
         {
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = -20000, Top = 0, ShowActivated = false,
-        };
-        win.Show();
-        win.UpdateLayout();
+            ("PageCountsWindow.xaml", "Pages"), ("FilenameListWindow.xaml", "Pages"),
+            ("FilenameListWindow.xaml", "Size"), ("FilenameListWindow.xaml", "#"),
+        })
+        {
+            var xaml = File.ReadAllText(Path.Combine(windows, file));
+            // Match the column tag itself: the File list's column menu has
+            // MenuItems with the same Header text earlier in the file.
+            var match = System.Text.RegularExpressions.Regex.Match(xaml,
+                $"<DataGridTextColumn\\s[^>]*Header=\"{System.Text.RegularExpressions.Regex.Escape(header)}\"");
+            var start = match.Success ? match.Index : -1;
+            var end = xaml.IndexOf("</DataGridTextColumn>", start, StringComparison.Ordinal);
+            Assert.True(start >= 0 && end > start, $"{file} has no {header} column");
+            Assert.Contains("GridCellNumber", xaml[start..end]);
+        }
+    });
+
+    [Fact]
+    public void HeaderLabelsAlignLeft() => _fx.Invoke(() =>
+    {
+        var style = (Style)_fx.App.FindResource(typeof(DataGridColumnHeader));
+        Assert.Contains(style.Setters.OfType<Setter>(), s => s.Property == Control.HorizontalContentAlignmentProperty
+            && (HorizontalAlignment)s.Value == HorizontalAlignment.Left);
+    });
+
+    /// <summary>Rule 6: the sorted header shows a chevron at 3:1 or better in
+    /// both themes.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheSortChevronIsVisible(bool dark) => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark);
+        var (win, history, dbPath) = BuildHistoryWindowWithOneRow();
         try
         {
             var grid = FindDescendant<DataGrid>(win)!;
-            var column = grid.Columns.OfType<DataGridTextColumn>().First(c => (string)c.Header == "Pages");
-            var gridRow = (DataGridRow)grid.ItemContainerGenerator.ContainerFromIndex(0);
-            var text = (TextBlock)column.GetCellContent(gridRow);
-            Assert.Equal(HorizontalAlignment.Left, text.HorizontalAlignment);
+            var column = grid.Columns.First(c => c.CanUserSort);
+            column.SortDirection = System.ComponentModel.ListSortDirection.Ascending;
+            win.UpdateLayout();
+            var header = FindAllDescendants<DataGridColumnHeader>(grid).First(h => h.Column == column);
+            var chevron = (System.Windows.Shapes.Path)header.Template.FindName("SortChevron", header);
+
+            Assert.Equal(Visibility.Visible, chevron.Visibility);
+            var stroke = ((SolidColorBrush)chevron.Stroke).Color;
+            var background = ((SolidColorBrush)header.Background).Color;
+            Assert.True(ThemePalette.ContrastRatio(new Rgb(stroke.R, stroke.G, stroke.B),
+                new Rgb(background.R, background.G, background.B)) >= 3);
         }
-        finally { win.Close(); }
+        finally { CleanupHistory(win, history, dbPath); }
     });
 
     /// <summary>Table-rules Rule 1's third regression case, and the only

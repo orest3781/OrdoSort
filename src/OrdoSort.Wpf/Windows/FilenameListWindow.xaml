@@ -219,7 +219,7 @@
                                               RelativeSource={RelativeSource AncestorType=DataGridRow},
                                               Converter={StaticResource PlusOne}}">
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellNumber}" />
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
 
@@ -259,7 +259,7 @@
                         <DataGridTextColumn x:Name="PagesColumn" Header="Pages"
                                             Binding="{Binding PageCell}" Width="70">
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellNumber}">
                                     <Setter Property="views:TrimmedTextTooltip.Enabled" Value="False" />
                                     <Setter Property="ToolTip" Value="{Binding PageNote}" />
                                 </Style>
@@ -269,7 +269,7 @@
                         <DataGridTextColumn x:Name="SizeColumn" Header="Size" Binding="{Binding Size}"
                                             Width="80">
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellNumber}" />
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
 
