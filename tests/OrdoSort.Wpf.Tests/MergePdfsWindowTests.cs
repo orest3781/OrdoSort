@@ -82,9 +82,8 @@ public class MergePdfsWindowTests
         // thread affinity of their own until a WPF DataGrid starts observing
         // them, and InlineWorkScheduler with no uiContext means nothing here
         // needs a Dispatcher at all. This is what lets the test await
-        // naturally instead of blocking inside the STA lambda the way
-        // AutoFitColumnTests.ShowOffscreenAndDriveCurrent has to for a REAL
-        // async operation (WebView2 init) that only exists once its window
+        // naturally instead of blocking inside the STA lambda the way a
+        // test has to for a REAL async operation (WebView2 init) that only exists once its window
         // is realized — no such requirement here.
         using var dir = new TempDir();
         var word = dir.File("a.docx");

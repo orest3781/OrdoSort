@@ -98,8 +98,8 @@ public class UnlockProbeWritesNothingTests : IDisposable
         // Path.GetTempPath()" version of this check was genuinely flaky --
         // `dotnet test OrdoSort.sln` runs Wpf.Tests as a SEPARATE concurrent
         // process sharing the same %TEMP%, and several pre-existing,
-        // unrelated Wpf.Tests classes (HistoryWindowXamlTests,
-        // AutoFitColumnTests, DataGridStarColumnTests) create a SQLite file
+        // unrelated Wpf.Tests classes (HistoryWindowXamlTests, for one)
+        // create a SQLite file
         // directly at the top level of Path.GetTempPath() named
         // "ordo_test_history_<guid>.sqlite" -- caught mid-flight by the
         // wide check, reproduced for real. That name does not start with

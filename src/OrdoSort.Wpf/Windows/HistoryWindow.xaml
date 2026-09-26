@@ -33,13 +33,9 @@
         </DockPanel>
 
         <Grid>
-            <!-- x:Name: HistoryWindow.xaml.cs tracks this grid's own live
-                 ActualWidth (DataGridColumnCap.Track) to keep Name/
-                 Destination's caps correct as the window is resized. When
-                 left the governed set the same day (2026-08-29): it's a
-                 16-character timestamp History formats itself, sized to
-                 itself rather than asked to give way — see its own column
-                 comment below. -->
+            <!-- x:Name: HistoryWindow.xaml.cs attaches ExplorerColumns to
+                 this grid (table rules v2: fixed widths the user sizes,
+                 remembered per PC). -->
             <DataGrid x:Name="HistoryGrid" ItemsSource="{Binding RowsView}"
                       AutomationProperties.Name="Filing history" AutoGenerateColumns="False"
                       IsReadOnly="True" HeadersVisibility="Column"

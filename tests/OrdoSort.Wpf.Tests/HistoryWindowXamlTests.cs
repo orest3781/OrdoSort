@@ -13,8 +13,7 @@ namespace OrdoSort.Wpf.Tests;
 /// messages (Task 7 Steps 2–3) and the header/binding divergence that lets
 /// this grid say "Destination" while still binding <c>Route</c> (Task 9,
 /// audit finding I4) — both unaffected by, and still passing after, every
-/// column-sizing change below. Built the same headless way as
-/// <see cref="DataGridStarColumnTests"/> (off-screen Show()+UpdateLayout()
+/// column-sizing change below. Built headless (off-screen Show()+UpdateLayout()
 /// on the shared <see cref="HighlightContrastFixture"/> STA thread) so real
 /// Styles.xaml resources and the real production XAML are exercised, not a
 /// hand-copied stand-in.
@@ -32,10 +31,7 @@ namespace OrdoSort.Wpf.Tests;
 /// a REAL, on-screen display look uniform end to end — TextColumnsTrimRatherThanWrap
 /// measures ActualHeight on an off-screen window, which reflects real WPF
 /// layout, just never painted; a person visually scanning the grid is not
-/// what this proves. <see cref="AutoFitColumnTests"/> (this window's own
-/// column-cap facts) and <see cref="DataGridColumnCapTests"/> (the class
-/// itself, on a bare grid built in code) are the suites that exercise the
-/// same underlying mechanism from other angles.</summary>
+/// what this proves.</summary>
 [Collection(HighlightContrastTests.Name)]
 public class HistoryWindowXamlTests
 {
@@ -47,8 +43,7 @@ public class HistoryWindowXamlTests
     {
         var dbPath = Path.Combine(Path.GetTempPath(), "ordo_test_history_" + Guid.NewGuid() + ".sqlite");
         var history = new History(dbPath);
-        // InlineWorkScheduler: see DataGridStarColumnTests' identical comment —
-        // HistoryViewModel's constructor kicks off an async LoadAsync; inline
+        // InlineWorkScheduler: HistoryViewModel's constructor kicks off an async LoadAsync; inline
         // makes it finish synchronously before this method returns.
         var vm = new HistoryViewModel(history, new FakeDialogs(), new InlineWorkScheduler());
         beforeShow?.Invoke(vm);
@@ -197,21 +192,16 @@ public class HistoryWindowXamlTests
         }
     });
 
-    /// <summary>Long enough to overflow any of the four governed columns'
-    /// caps at this window's own default width, at any reasonable font
-    /// size — the same reasoning AutoFitColumnTests.VeryLongValue documents
-    /// for itself, restated locally since this class doesn't share that
-    /// one.</summary>
+    /// <summary>Long enough to overflow any of the four text columns at
+    /// their starting widths, at any reasonable font size.</summary>
     private const string VeryLongValue =
         "A-Very-Long-History-Derived-Value-That-Keeps-Going-Well-Past-Any-Sensible-Column-Width-000000000000.pdf";
 
     /// <summary>Table-rules Rule 4 (this branch) reverses the 2026-08-29
     /// decision this fact used to assert: the four text columns trimmed
     /// with an ellipsis before that date, moved to wrapping that day, and
-    /// move BACK to trimming here — DataGridColumnCap's autofit still gives
-    /// each its content width when that fits and a proportional share when
-    /// it doesn't, but a share that can't hold its content now cuts it off
-    /// with "…" rather than growing the row, and the cell's own full text
+    /// move BACK to trimming here — a column narrower than its content
+    /// cuts it off with "…" rather than growing the row, and the cell's own full text
     /// reaches a ToolTip on hover instead of being left off screen.
     ///
     /// Read off the REALIZED cell on a seeded row carrying

@@ -1825,10 +1825,7 @@
          to produce), TextTrimming="CharacterEllipsis" (Rule 4 — trims
          instead of wrapping; TextWrapping is no longer set anywhere in
          this style precisely because trimming is now the default every
-         cell gets unless a column opts back into wrapping itself, which
-         only the star filler columns still forbidden by
-         DataGridSizingCoverageTests' EveryStarDataGridTextColumnTrimsInsteadOfWrapping
-         from doing so), and views:TrimmedTextTooltip.Enabled="True" (Rule
+         cell gets unless a column opts back into wrapping itself), and views:TrimmedTextTooltip.Enabled="True" (Rule
          4's other half — a tooltip of the cell's own full text, but only
          once CharacterEllipsis has actually trimmed it; see that class's
          own doc comment for why WPF's TextBlock has no IsTextTrimmed

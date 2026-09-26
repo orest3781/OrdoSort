@@ -33,15 +33,11 @@ namespace OrdoSort.Wpf.Views;
 /// "IsTextTrimmed" found nothing. That name exists only on an unrelated
 /// type of the same name — WinUI/UWP's Windows.UI.Xaml.Controls.TextBlock —
 /// which this app, built against net8.0-windows WPF, does not use.
-/// Trimmed-ness is instead measured the same way
-/// <see cref="DataGridColumnCap"/> already measures a cell's natural
-/// content width: FormattedText against the element's own font, compared
-/// here to the element's rendered ActualWidth rather than to a cap.
+/// Trimmed-ness is instead measured with FormattedText against the
+/// element's own font, compared to the element's rendered ActualWidth.
 ///
 /// SizeChanged, not a Binding to ActualWidth: FrameworkElement.ActualWidth
-/// changes do not reliably drive a WPF Binding refresh — the same reason
-/// DataGridColumnCap itself recomputes off SizeChanged/LayoutUpdated rather
-/// than a width Binding (see that class's own doc comment). A DataGrid's
+/// changes do not reliably drive a WPF Binding refresh. A DataGrid's
 /// row virtualization can also hand a RECYCLED TextBlock new bound Text at
 /// the SAME ActualWidth as the row it used to display — no resize, so no
 /// SizeChanged — which is why Text is watched separately, through a
@@ -163,10 +159,9 @@ public static class TrimmedTextTooltip
         text.ToolTip = IsTrimmed(text) ? text.Text : null;
     }
 
-    /// <summary>The same measurement <see cref="DataGridColumnCap"/>'s own
-    /// ContentWidths.TextWidthOf performs, for the same reason (no
-    /// IsTextTrimmed to read) — applied here to the LIVE rendered element's
-    /// ActualWidth rather than to a cap this class has no access to.</summary>
+    /// <summary>Measures the text's natural width with FormattedText (WPF
+    /// has no IsTextTrimmed to read) and compares it to the LIVE rendered
+    /// element's ActualWidth.</summary>
     private static bool IsTrimmed(TextBlock text)
     {
         if (string.IsNullOrEmpty(text.Text) || text.ActualWidth <= 0) return false;

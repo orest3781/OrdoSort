@@ -22,8 +22,8 @@ namespace OrdoSort.Wpf.Tests;
 /// Production code (<c>ThemeManager.Start</c>) never assigns to it.
 ///
 /// Joins <see cref="HighlightContrastCollection"/> (not its own
-/// <c>IClassFixture&lt;&gt;</c>) for the same reason
-/// <see cref="DataGridStarColumnTests"/> does — see
+/// <c>IClassFixture&lt;&gt;</c>) for the same reason every window suite
+/// does — see
 /// <see cref="HighlightContrastFixture"/>'s class doc for the two distinct
 /// crashes a second, independent instance reproduces.</summary>
 [Collection(HighlightContrastTests.Name)]
@@ -37,7 +37,7 @@ public class ThemeHighContrastTests
     /// (non-HC) state so a test that flips the seam never leaks a stale
     /// override into the shared <see cref="HighlightContrastFixture"/>
     /// Application/Resources that every other test class in this collection
-    /// (DataGridStarColumnTests, ProcessingViewImeGuardTests,
+    /// (ProcessingViewImeGuardTests,
     /// HighlightContrastTests) also depends on.</summary>
     private void ResetSeam() => _fx.Invoke(() =>
     {

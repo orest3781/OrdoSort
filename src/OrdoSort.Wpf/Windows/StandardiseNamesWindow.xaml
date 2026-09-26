@@ -50,9 +50,9 @@
                  caption — while every element still stayed inside the
                  window, invisible to NoTextElementEscapesTheWindow, which
                  measures escape past the window edge, not one element
-                 overlapping another (see AutoFitColumnTests'
-                 StandardiseNames_ToolbarButtonsDoNotOverlapALongNoteAtMin
-                 Width for the dedicated fact this needed instead). -->
+                 overlapping another (see StandardiseNamesWindowTests'
+                 ToolbarButtonsDoNotOverlapALongNoteAtMinWidth for the
+                 dedicated fact this needed instead). -->
             <DockPanel Margin="0,0,0,10">
                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" HorizontalAlignment="Left">
                     <Button Content="Add files…" Click="OnAddFiles" Margin="0,0,10,0"

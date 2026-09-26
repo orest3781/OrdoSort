@@ -47,10 +47,8 @@ file sealed class NoDialogs : IDialogService
 ///   real WebView2/Edge init. That exemption made its two cases measure
 ///   NOTHING: UIElement.IsVisible is false for any tree with no
 ///   PresentationSource, so OverflowProbe skipped every candidate and both
-///   cases passed over an empty list (QC-09). It is Show()n like the rest now
-///   — AutoFitColumnTests' ShowOffscreenAndDriveCurrent has been doing
-///   exactly that, off-screen and with the real init left running in the
-///   background, since fix round 1. Its builder still drives ShowCurrentAsync
+///   cases passed over an empty list (QC-09). It is Show()n like the rest now,
+///   off-screen, with the real init left running in the background. Its builder still drives ShowCurrentAsync
 ///   itself, before Show(), rather than waiting on that init to resolve.
 /// - MainWindow's ctor parks the window at 470 wide (EnterCompact), so the
 ///   width under test is applied AFTER Show(), the way a user's drag would
@@ -113,9 +111,7 @@ public class WindowOverflowTests
             // A widened Columns set with no ROW is an empty grid trivially
             // fitting at MinWidth — this class's own doc warns about exactly
             // that. Folder and FullPath get the long values here: they are
-            // the two columns that can actually run away (Width="Auto", no
-            // MinWidth cap and, as of this window, no DataGridColumnCap
-            // either — see DataGridSizingCoverageTests' KnownUncovered note).
+            // the two columns with the longest content.
             vm.Rows.Add(new FilenameList.FileRow(
                 "a-long-enough-filename-to-matter.pdf", 123456789,
                 new DateTime(2026, 8, 19, 14, 30, 0),

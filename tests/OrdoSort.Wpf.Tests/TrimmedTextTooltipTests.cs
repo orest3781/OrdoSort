@@ -7,18 +7,16 @@ namespace OrdoSort.Wpf.Tests;
 
 /// <summary>TrimmedTextTooltip directly, on a bare TextBlock — table-rules
 /// Rule 4's "only when trimmed" half, isolated from any specific window or
-/// grid the same way DataGridColumnCapTests isolates DataGridColumnCap's
-/// own arithmetic on a bare grid built in code. Every fact here constrains
+/// grid. Every fact here constrains
 /// a real, off-screen TextBlock to a real pixel width and reads its OWN
-/// realized ToolTip back — the same FormattedText-vs-ActualWidth
-/// measurement DataGridColumnCap.ContentWidths already uses for content
-/// width, applied here to trimmed-ness instead (see TrimmedTextTooltip's
+/// realized ToolTip back — a FormattedText-vs-ActualWidth
+/// measurement (see TrimmedTextTooltip's
 /// own doc comment for why: WPF's TextBlock has no IsTextTrimmed property
 /// to read directly).
 ///
-/// AutoFitColumnTests/HistoryWindowXamlTests already prove the POSITIVE
+/// HistoryWindowXamlTests already proves the POSITIVE
 /// case — a long value inside a real DataGrid column gets a tooltip — on
-/// several real windows; what they do not prove, because none of their own
+/// a real window; what it does not prove, because none of its own
 /// facts need a value short enough to fit, is the negative: a cell that
 /// isn't actually cut off must not show a tooltip at all ("a tooltip that
 /// repeats fully-visible text is noise," requirements.md). That gap is
@@ -89,8 +87,8 @@ public class TrimmedTextTooltipTests
     });
 
     /// <summary>A resize that goes from fitting to not fitting must pick up
-    /// a tooltip live, not just at construction — DataGridColumnCap's own
-    /// cap changes are exactly this shape: a live width change on an
+    /// a tooltip live, not just at construction — a user dragging a column
+    /// divider is exactly this shape: a live width change on an
     /// EXISTING cell, driven by SizeChanged the same way this class's own
     /// doc comment explains it must be (a Binding to ActualWidth would not
     /// reliably refresh here).</summary>

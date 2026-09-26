@@ -156,8 +156,7 @@ public class TextWrapCoverageTests
                 }
             }
         }
-        // Same sanity floor, and for the same reason, as
-        // DataGridSizingCoverageTests' reflection one: "no offenders" over an
+        // A sanity floor: "no offenders" over an
         // empty candidate list is a pass that means nothing, and every
         // candidate here can be waved through at once — by ExtractKey
         // over-matching so StyleHandsItWrapOrTrim acquits everything, or by
