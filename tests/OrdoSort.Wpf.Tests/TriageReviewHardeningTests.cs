@@ -397,6 +397,48 @@ public class TriageReviewHardeningTests
             : throw new InvalidOperationException(
                 $"grid row {row?.GetType().Name ?? "null"} carries no \"{header}\"");
 
+    /// <summary>An ambiguous file says why it is here too (2026-09-26): the
+    /// Why column shows the result's reason on every candidate row.</summary>
+    [Fact]
+    public void AnAmbiguousFileShowsItsWhyOnEveryRow() => _fx.Invoke(() =>
+    {
+        var item = Item(@"C:\inbox\doc.pdf", Candidate("1"), Candidate("2")) with
+        {
+            Why = "2 people in the spreadsheet have this exact name",
+        };
+        var win = Build(new[] { "Control ID" }, item);
+        try
+        {
+            ShowCurrent(win);
+
+            var why = win.Candidates.Columns.Single(c => (string)c.Header == "Why");
+            Assert.Equal(Visibility.Visible, why.Visibility);
+            Assert.All(win.Candidates.ItemsSource.Cast<Dictionary<string, string>>(),
+                row => Assert.Equal("2 people in the spreadsheet have this exact name", row["__why"]));
+        }
+        finally { win.Close(); }
+    });
+
+    /// <summary>The Why sentences run to about 60 characters (2026-09-26),
+    /// so the column starts wide enough to read one without widening it.</summary>
+    [Fact]
+    public void TheWhyColumnStartsWideEnoughForItsSentences() => _fx.Invoke(() =>
+    {
+        var item = Item(@"C:\inbox\doc.pdf", Candidate("1"), Candidate("2")) with
+        {
+            Why = "2 people in the spreadsheet have this exact name",
+        };
+        var win = Build(new[] { "Control ID" }, item);
+        try
+        {
+            ShowCurrent(win);
+
+            var why = win.Candidates.Columns.Single(c => (string)c.Header == "Why");
+            Assert.Equal(300, why.Width.Value);
+        }
+        finally { win.Close(); }
+    });
+
     private static MatchMerge.Candidate Candidate(string controlId) =>
         new(controlId, new Dictionary<string, string> { ["Control ID"] = controlId });
 

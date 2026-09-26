@@ -43,9 +43,11 @@ public partial class TriageWindow : Window
     /// below) predates and is independent of which of the two this column
     /// does with what doesn't fit.
     ///
-    /// 150px: the roster is what a person reads to make the decision; Why
-    /// is supporting context and gives up the room.</summary>
-    private const double WhyColumnWidth = 150;
+    /// 300px: the plain-words reasons (2026-09-26) run to about 60
+    /// characters — "Surname matches; first name BRIAN vs BRYAN (1 letter
+    /// off)" — and a reason cut to "Surname and first na…" explains nothing.
+    /// The user sizes it from there (table rules v2).</summary>
+    private const double WhyColumnWidth = 300;
 
     /// <summary>Starting width of each roster column (table rules v2: fixed
     /// widths the user sizes; ExplorerColumns remembers them per roster
@@ -309,7 +311,9 @@ public partial class TriageWindow : Window
 
         // suggested items get a leading "Why" column — every candidate carries
         // its own reason, and a match you can't explain is one you can't trust
-        var why = r.Status == "suggested";
+        // a suggested file has a reason per candidate; an ambiguous one has
+        // one reason for all of them (2026-09-26)
+        var why = r.Status == "suggested" || (r.Status == "ambiguous" && r.Why.Length > 0);
         if (why != _whyColumnShown)
         {
             if (why) Candidates.Columns.Insert(0, new DataGridTextColumn
@@ -387,7 +391,7 @@ public partial class TriageWindow : Window
                 var row = new Dictionary<string, string>();
                 foreach (var h in _headers)
                     row[h] = c.Row.TryGetValue(h, out var v) ? v : "";
-                if (why) row[WhyKey] = r.Suggestions![i].Reason;
+                if (why) row[WhyKey] = r.Status == "suggested" ? r.Suggestions![i].Reason : r.Why;
                 // from here on the ROW is this candidate's identity — nothing
                 // downstream may go back to indexing `candidates`, which the
                 // grid is free to display in any order it likes

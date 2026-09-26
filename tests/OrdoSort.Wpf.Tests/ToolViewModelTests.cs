@@ -1870,7 +1870,7 @@ public class MatchMergeViewModelTests : IDisposable
         Assert.True(vm.CanReview);
         var item = Assert.Single(vm.ReviewItems);
         Assert.Equal("suggested", item.Status);
-        Assert.Equal("all segments agree", Assert.Single(item.Suggestions!).Reason);
+        Assert.Equal("Same name, different order", Assert.Single(item.Suggestions!).Reason);
         Assert.Contains("Review 1 match", vm.ReviewButtonText);
         Assert.Contains("1 suggested", vm.BucketsLine);
     }

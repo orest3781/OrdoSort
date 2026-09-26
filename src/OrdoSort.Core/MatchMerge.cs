@@ -153,10 +153,14 @@ public static partial class MatchMerge
         return readings;
     }
 
+    /// <summary>One file's classification. <paramref name="Why"/> is an
+    /// ambiguous file's reason for needing a person, in plain words, shown on
+    /// every candidate row in Review matches; a suggested file carries one
+    /// reason per candidate in <paramref name="Suggestions"/> instead.</summary>
     public sealed record MatchResult(
         string Source, string Status, string Last = "", string First = "",
         IReadOnlyList<Candidate>? Candidates = null, string NewStem = "",
-        IReadOnlyList<Suggestion>? Suggestions = null, string Note = "");
+        IReadOnlyList<Suggestion>? Suggestions = null, string Note = "", string Why = "");
 
     public static string MergedStem(string stem, string controlId) => $"{stem}-{controlId}";
 
@@ -181,10 +185,54 @@ public static partial class MatchMerge
     /// hyphenated name never glues into one token on one side and splits
     /// apart on the other.</summary>
     private static IEnumerable<string> CleanTokens(string text) =>
+        SplitTokens(text).Where(t => t.Length > 1 && !t.All(char.IsDigit));
+
+    private static string[] SplitTokens(string text) =>
         string.Concat(FoldAccents(text).ToUpperInvariant()
                 .Select(c => char.IsWhiteSpace(c) ? ' ' : c))
-            .Split(new[] { '-', '_', ' ' }, StringSplitOptions.RemoveEmptyEntries)
-            .Where(t => t.Length > 1 && !t.All(char.IsDigit));
+            .Split(new[] { '-', '_', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+    /// <summary>The tokens of a stem's NAME part: after the date prefix and
+    /// up to the first all-digit chunk. "EVANS_BRIAN 5_14_1998_ACME_RECORDS"
+    /// gives EVANS, BRIAN — the words after the first number (a company, a
+    /// record number) say nothing about who the document is about. Used only
+    /// to word a suggestion's reason; matching itself reads every token.</summary>
+    internal static List<string> NamePartTokens(string stem)
+    {
+        var trimmed = TrailingIdRegex().Replace(stem, "");
+        var dated = DatedStemRegex().Match(trimmed);
+        if (dated.Success) trimmed = dated.Groups["rest"].Value;
+        return SplitTokens(trimmed).TakeWhile(t => !t.All(char.IsDigit)).Where(t => t.Length > 1).ToList();
+    }
+
+    /// <summary>Why a person was suggested, in plain words (2026-09-26):
+    /// which of the spreadsheet's name parts matched, a one-letter-off pair,
+    /// and what only one side has. <paramref name="rank"/> 1 (every part
+    /// agrees) says whether only the order or only the writing differs.</summary>
+    private static string SuggestionReason(int rank, IReadOnlyList<string> fileTokens,
+        IReadOnlyList<string> surnameTokens, IReadOnlyList<string> firstNameTokens,
+        IReadOnlyCollection<string> agreed, (string File, string Person)? near,
+        IReadOnlyList<string> spreadsheetOnly, IReadOnlyList<string> fileOnly)
+    {
+        if (rank == 1)
+            return fileTokens.SequenceEqual(surnameTokens.Concat(firstNameTokens))
+                ? "Same name, written differently"
+                : "Same name, different order";
+
+        var surname = surnameTokens.Any(agreed.Contains);
+        var firstName = firstNameTokens.Any(agreed.Contains);
+        var clauses = new List<string>
+        {
+            surname && firstName ? "Surname and first name match"
+            : surname ? "Surname matches"
+            : "First name matches",
+        };
+        if (near is { } n)
+            clauses.Add($"{(surnameTokens.Contains(n.Person) ? "surname" : "first name")} {n.File} vs {n.Person} (1 letter off)");
+        if (spreadsheetOnly.Count > 0) clauses.Add("spreadsheet adds " + string.Join(' ', spreadsheetOnly));
+        if (fileOnly.Count > 0) clauses.Add("file adds " + string.Join(' ', fileOnly));
+        return string.Join("; ", clauses);
+    }
 
     /// <summary>Name tokens of a stem, order-free: the date prefix, a trailing
     /// -id, all-digit tokens and single letters are all dropped — none of them
@@ -232,6 +280,7 @@ public static partial class MatchMerge
     {
         var fileTokens = NameTokens(stem);
         if (fileTokens.Count < 2) return new();
+        var namePart = NamePartTokens(stem);
 
         var ranked = new List<(int Rank, int Agreed, Suggestion S)>();
         // Dictionary<TKey,TValue> enumerates in insertion order in practice
@@ -242,6 +291,8 @@ public static partial class MatchMerge
         foreach (var ((last, first), candidates) in roster.People)
         {
             var personTokens = CleanTokens($"{last} {first}").Distinct().ToList();
+            var surnameTokens = CleanTokens(last).Distinct().ToList();
+            var firstNameTokens = CleanTokens(first).Distinct().ToList();
 
             var agreed = fileTokens.Intersect(personTokens).ToList();
             var fileLeft = fileTokens.Except(agreed).ToList();
@@ -278,12 +329,8 @@ public static partial class MatchMerge
                 : fileLeft.Count == 0 || personLeft.Count == 0 ? 2
                 : 3;
 
-            var reason = rank == 1
-                ? "all segments agree"
-                : string.Join(", ", agreed) + " agree"
-                  + (fileLeft.Count > 0 ? " · " + string.Join(", ", fileLeft) + " not in roster" : "")
-                  + (personLeft.Count > 0 ? " · roster also has " + string.Join(", ", personLeft) : "")
-                  + (near is { } m ? $" · {m.File} is one letter from {m.Person}" : "");
+            var reason = SuggestionReason(rank, fileTokens, surnameTokens, firstNameTokens, agreed, near,
+                personLeft, fileLeft.Where(namePart.Contains).ToList());
 
             foreach (var c in candidates)
                 ranked.Add((rank, agreeCount, new Suggestion(c, reason)));
@@ -380,7 +427,10 @@ public static partial class MatchMerge
                 // resolved to a different person — either way, more than one
                 // distinct person is a live possibility and this is not this
                 // tool's call to make silently
-                results.Add(new MatchResult(source, "ambiguous", hl, hf, candidates));
+                results.Add(new MatchResult(source, "ambiguous", hl, hf, candidates,
+                    Why: hits.Count == 1
+                        ? $"{candidates.Count} people in the spreadsheet have this exact name"
+                        : $"This name splits {hits.Count} ways, each matching someone in the spreadsheet"));
         }
         return results;
     }
