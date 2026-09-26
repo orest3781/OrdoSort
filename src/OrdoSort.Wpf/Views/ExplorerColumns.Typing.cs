@@ -21,8 +21,9 @@ internal sealed partial class ExplorerColumns
         if (TypeAhead(e.Text)) e.Handled = true;
     };
 
-    /// <summary>Jumps to the next row whose first visible column starts with
-    /// what was typed. Returns false (and leaves the keystroke alone) while a
+    /// <summary>Jumps to the next row whose anchor column (the File list's
+    /// File name; otherwise the first visible column) starts with what was
+    /// typed, as Explorer matches on Name. Returns false (and leaves the keystroke alone) while a
     /// cell is being edited, or for non-printing input.</summary>
     internal bool TypeAhead(string text)
     {
@@ -34,8 +35,9 @@ internal sealed partial class ExplorerColumns
         // Explorer: the same letter again moves on; a new letter refines.
         _typed = continuing && !(_typed.Length == 1 && _typed == text) ? _typed + text : text;
 
-        var first = _grid.Columns.Where(c => c.Visibility == Visibility.Visible).OrderBy(c => c.DisplayIndex)
-            .FirstOrDefault() as DataGridTextColumn;
+        var first = (_explicitAnchor as DataGridTextColumn)
+            ?? _grid.Columns.Where(c => c.Visibility == Visibility.Visible).OrderBy(c => c.DisplayIndex)
+                .FirstOrDefault() as DataGridTextColumn;
         if (first?.Binding is not BindingBase binding) return true;
 
         var items = _grid.Items.Cast<object>().Where(i => i != CollectionView.NewItemPlaceholder).ToList();

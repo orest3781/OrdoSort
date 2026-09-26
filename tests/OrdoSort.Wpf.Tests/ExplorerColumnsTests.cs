@@ -564,4 +564,40 @@ public sealed class ExplorerColumnsTests : IDisposable
         }
         finally { bed.Window.Close(); }
     });
+
+    /// <summary>Final review, Important 1: a real divider double-click is a
+    /// tunnelling press with ClickCount 2, then Control's own MouseDoubleClick
+    /// on the thumb (raised even when the press was handled), which the
+    /// header answers with Width = Auto. The column must end fixed at its fit,
+    /// not Auto, or it keeps growing as longer rows arrive (rule 1).</summary>
+    [Fact]
+    public void ADividerDoubleClickLeavesAFixedWidthNotAuto() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = new string('W', 80) });
+        try
+        {
+            Settle(bed.Window);
+            var header = FindHeader(bed.Grid, "Name");
+            var gripper = (System.Windows.Controls.Primitives.Thumb)header.Template.FindName("PART_RightHeaderGripper", header);
+            var press = new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0,
+                System.Windows.Input.MouseButton.Left)
+            { RoutedEvent = UIElement.PreviewMouseDownEvent };
+            // Real input raises the tunnelling PreviewMouseDown; WPF turns it into
+            // PreviewMouseLeftButtonDown on each element down the route.
+            // ClickCount's setter is internal; WPF sets it from the real click timing.
+            typeof(System.Windows.Input.MouseButtonEventArgs).GetProperty("ClickCount")!.SetValue(press, 2);
+
+            gripper.RaiseEvent(press);
+            gripper.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0,
+                System.Windows.Input.MouseButton.Left)
+            { RoutedEvent = Control.MouseDoubleClickEvent });
+            Settle(bed.Window);
+
+            var width = bed.Column("Name").Width;
+            Assert.False(width.IsAuto);
+            Assert.Equal(bed.Explorer.MeasureFit(bed.Column("Name")), width.Value);
+        }
+        finally { bed.Window.Close(); }
+    });
 }

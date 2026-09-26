@@ -5,6 +5,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace OrdoSort.Wpf.Views;
 
@@ -38,7 +39,11 @@ internal sealed partial class ExplorerColumns
     public double MeasureFit(DataGridColumn column)
     {
         var widest = TextWidth(HeaderOf(column) ?? "", FontWeights.SemiBold);
-        if (column is DataGridTextColumn { Binding: BindingBase binding })
+        // A row-number column (the File list's #) binds to its own row, which
+        // the detached probe can't reach; its widest value is the last number.
+        if (column is DataGridTextColumn { Binding: Binding { RelativeSource: not null } })
+            widest = Math.Max(widest, TextWidth(_grid.Items.Count.ToString(CultureInfo.CurrentCulture), FontWeights.Normal));
+        else if (column is DataGridTextColumn { Binding: BindingBase binding })
             foreach (var item in _grid.Items)
             {
                 if (item == CollectionView.NewItemPlaceholder) continue;
@@ -78,26 +83,33 @@ internal sealed partial class ExplorerColumns
     /// header divider.</summary>
     internal bool TryFitFromGripper(Thumb thumb)
     {
-        if (FindAncestor<DataGridColumnHeader>(thumb) is not { Column: { } column }) return false;
-        if (thumb.Name == "PART_RightHeaderGripper") { FitColumn(column); return true; }
+        if (GripperTarget(thumb) is not { } column) return false;
+        FitColumn(column);
+        return true;
+    }
+
+    private DataGridColumn? GripperTarget(Thumb thumb)
+    {
+        if (FindAncestor<DataGridColumnHeader>(thumb) is not { Column: { } column }) return null;
+        if (thumb.Name == "PART_RightHeaderGripper") return column;
         if (thumb.Name == "PART_LeftHeaderGripper")
-        {
-            var left = _grid.Columns.Where(c => c.Visibility == Visibility.Visible && c.DisplayIndex < column.DisplayIndex)
+            return _grid.Columns.Where(c => c.Visibility == Visibility.Visible && c.DisplayIndex < column.DisplayIndex)
                 .OrderByDescending(c => c.DisplayIndex).FirstOrDefault();
-            if (left is not null) FitColumn(left);
-            return left is not null;
-        }
-        return false;
+        return null;
     }
 
     // WPF's own divider double-click sets the column to Auto (which then
-    // re-grows as rows arrive, breaking rule 1). Handling the second press
-    // here, before the thumb sees it, replaces that with a fixed-width fit.
+    // re-grows as rows arrive, breaking rule 1). Marking the second press
+    // handled doesn't stop that: Control raises MouseDoubleClick on the thumb
+    // regardless, and the header answers it with Auto. So fit now, and fit
+    // again once that has run.
     private void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount == 2 && FindAncestor<Thumb>(e.OriginalSource as DependencyObject) is { } thumb
-            && TryFitFromGripper(thumb))
+            && GripperTarget(thumb) is { } column)
         {
+            FitColumn(column);
+            _grid.Dispatcher.BeginInvoke(() => FitColumn(column), DispatcherPriority.Input);
             e.Handled = true;
             return;
         }
