@@ -322,4 +322,161 @@ public sealed class ExplorerColumnsTests : IDisposable
 
         Assert.Single(reported);
     });
+
+    // ---- rule 3: fit to content ------------------------------------------
+
+    private static double TextWidth(DataGrid grid, string text, FontWeight weight)
+    {
+        var formatted = new FormattedText(text, System.Globalization.CultureInfo.CurrentUICulture,
+            FlowDirection.LeftToRight, new Typeface(grid.FontFamily, FontStyles.Normal, weight, FontStretches.Normal),
+            grid.FontSize, Brushes.Black, VisualTreeHelper.GetDpi(grid).PixelsPerDip);
+        return formatted.WidthIncludingTrailingWhitespace;
+    }
+
+    [Fact]
+    public void FittingAColumnUsesItsWidestValueIncludingRowsScrolledOutOfView() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var rows = Enumerable.Range(0, 300).Select(i => new Row { Name = "short" + i }).ToList();
+        rows.Add(new Row { Name = "the one very long name at the very bottom of the list.pdf" });
+        var bed = Build(rows: rows.ToArray());
+        try
+        {
+            Settle(bed.Window);
+
+            bed.Explorer.FitColumn(bed.Column("Name"));
+
+            var longest = TextWidth(bed.Grid, rows[^1].Name, FontWeights.Normal) + ExplorerColumns.CellHorizontalPadding;
+            Assert.True(bed.Column("Name").ActualWidth >= longest,
+                $"fit gave {bed.Column("Name").ActualWidth}px, the bottom row needs {longest}px");
+            Assert.True(bed.Column("Name").ActualWidth <= longest + 12, "fit should not pad far past the text");
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    [Fact]
+    public void FittingAnEmptyColumnFitsItsHeader() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = "a" });
+        try
+        {
+            Settle(bed.Window);
+
+            bed.Explorer.FitColumn(bed.Column("Note"));
+
+            var header = TextWidth(bed.Grid, "Note", FontWeights.SemiBold) + ExplorerColumns.CellHorizontalPadding;
+            Assert.True(bed.Column("Note").ActualWidth >= Math.Max(header, ExplorerColumns.MinColumnWidth));
+            Assert.True(bed.Column("Note").ActualWidth < 100);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    [Fact]
+    public void CtrlPlusFitsEveryVisibleColumn() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = new string('W', 80), Kind = "pdf", Note = "merged" });
+        try
+        {
+            Settle(bed.Window);
+
+            bed.Explorer.FitAll();
+
+            Assert.True(bed.Column("Name").ActualWidth > 200);
+            Assert.True(bed.Column("Kind").ActualWidth < 90);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    /// <summary>Review focus 4: fit measures every item without realizing
+    /// rows, fast enough for a big History.</summary>
+    [Fact]
+    public void FittingFiveThousandRowsIsQuick() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: Enumerable.Range(0, 5000).Select(i => new Row { Name = "file " + i }).ToArray());
+        try
+        {
+            Settle(bed.Window);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+
+            bed.Explorer.FitColumn(bed.Column("Name"));
+
+            Assert.True(clock.ElapsedMilliseconds < 2000, $"fit took {clock.ElapsedMilliseconds}ms");
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    [Fact]
+    public void TheCellPaddingFitUsesIsTheOneTheStyleDraws() => _fx.Invoke(() =>
+    {
+        var style = (Style)_fx.App.FindResource(typeof(DataGridCell));
+        var padding = style.Setters.OfType<Setter>().Single(s => s.Property == Control.PaddingProperty).Value;
+        var thickness = padding is Thickness t ? t : (Thickness)new ThicknessConverter().ConvertFrom(padding)!;
+
+        Assert.Equal(ExplorerColumns.CellHorizontalPadding, thickness.Left + thickness.Right);
+    });
+
+    // ---- rule 4: header menu -----------------------------------------------
+
+    [Fact]
+    public void TheHeaderMenuFitsAndHidesColumnsButNeverTheFirst() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = new string('W', 80), Kind = "pdf" });
+        try
+        {
+            Settle(bed.Window);
+
+            var menu = bed.Explorer.BuildHeaderMenu(bed.Column("Name"));
+            var items = menu.Items.OfType<MenuItem>().ToList();
+            Assert.Equal(new[] { "Size column to fit", "Size all columns to fit", "Name", "Kind", "Note" },
+                items.Select(i => (string)i.Header));
+            Assert.IsType<Separator>(menu.Items[2]);
+            Assert.False(items.Single(i => (string)i.Header == "Name").IsEnabled);
+
+            items.Single(i => (string)i.Header == "Kind").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Assert.Equal(Visibility.Collapsed, bed.Column("Kind").Visibility);
+
+            items[0].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));   // Size column to fit (Name)
+            Settle(bed.Window);
+            Assert.True(bed.Column("Name").ActualWidth > 200);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    [Fact]
+    public void ADoubleClickOnADividerFitsTheColumnToItsLeft() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = new string('W', 80) });
+        try
+        {
+            Settle(bed.Window);
+            var header = FindHeader(bed.Grid, "Name");
+            var gripper = (System.Windows.Controls.Primitives.Thumb)header.Template.FindName("PART_RightHeaderGripper", header);
+
+            Assert.True(bed.Explorer.TryFitFromGripper(gripper));
+
+            Assert.True(bed.Column("Name").ActualWidth > 200);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    internal static System.Windows.Controls.Primitives.DataGridColumnHeader FindHeader(DataGrid grid, string text)
+    {
+        var headers = new List<System.Windows.Controls.Primitives.DataGridColumnHeader>();
+        void Walk(DependencyObject node)
+        {
+            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(node); i++)
+            {
+                var child = VisualTreeHelper.GetChild(node, i);
+                if (child is System.Windows.Controls.Primitives.DataGridColumnHeader h) headers.Add(h);
+                Walk(child);
+            }
+        }
+        Walk(grid);
+        return headers.First(h => h.Column is not null && (string)h.Column.Header == text);
+    }
 }

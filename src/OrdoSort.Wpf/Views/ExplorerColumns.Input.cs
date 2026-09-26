@@ -1,0 +1,166 @@
+using System.Globalization;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
+
+namespace OrdoSort.Wpf.Views;
+
+internal sealed partial class ExplorerColumns
+{
+    /// <summary>Left plus right cell padding, as Theme/Styles.xaml's
+    /// DataGridCell style draws it (12 each side). A test keeps the two equal.</summary>
+    public const double CellHorizontalPadding = 24;
+
+    // A little room so a fitted value never trims on rounding.
+    private const double FitSlack = 4;
+
+    // Reused to evaluate a column's binding against each item without
+    // realizing a row.
+    private readonly TextBlock _probe = new();
+
+    partial void WireInputCore()
+    {
+        _grid.PreviewMouseLeftButtonDown += OnPreviewMouseLeftButtonDown;
+        _grid.PreviewMouseRightButtonUp += OnPreviewMouseRightButtonUp;
+        _grid.PreviewKeyDown += OnPreviewKeyDown;
+        WireTypingCore();
+    }
+
+    partial void WireTypingCore();
+
+    /// <summary>The width that shows every value of <paramref name="column"/>
+    /// whole, and its header, measured with the grid's font. Reads values
+    /// through the column's own binding, so formats and indexers come out
+    /// as the cells show them.</summary>
+    public double MeasureFit(DataGridColumn column)
+    {
+        var widest = TextWidth(HeaderOf(column) ?? "", FontWeights.SemiBold);
+        if (column is DataGridTextColumn { Binding: BindingBase binding })
+            foreach (var item in _grid.Items)
+            {
+                if (item == CollectionView.NewItemPlaceholder) continue;
+                widest = Math.Max(widest, TextWidth(ValueOf(item, binding), FontWeights.Normal));
+            }
+        return Math.Max(MinColumnWidth, Math.Ceiling(widest + CellHorizontalPadding + FitSlack));
+    }
+
+    /// <summary>Sizes one column to its content (the divider double-click).</summary>
+    public void FitColumn(DataGridColumn column) => column.Width = new DataGridLength(MeasureFit(column));
+
+    /// <summary>Sizes every visible column to its content (Ctrl + Plus).</summary>
+    public void FitAll()
+    {
+        foreach (var column in _grid.Columns.Where(c => c.Visibility == Visibility.Visible)) FitColumn(column);
+    }
+
+    private string ValueOf(object item, BindingBase binding)
+    {
+        _probe.DataContext = item;
+        _probe.SetBinding(TextBlock.TextProperty, binding);
+        var text = _probe.Text;
+        BindingOperations.ClearBinding(_probe, TextBlock.TextProperty);
+        return text ?? "";
+    }
+
+    private double TextWidth(string text, FontWeight weight)
+    {
+        if (text.Length == 0) return 0;
+        var typeface = new Typeface(_grid.FontFamily, FontStyles.Normal, weight, FontStretches.Normal);
+        return new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, typeface,
+            _grid.FontSize, Brushes.Black, VisualTreeHelper.GetDpi(_grid).PixelsPerDip).WidthIncludingTrailingWhitespace;
+    }
+
+    /// <summary>A double-click on a header divider fits the column to the
+    /// divider's LEFT, as in Explorer. Returns false when the thumb isn't a
+    /// header divider.</summary>
+    internal bool TryFitFromGripper(Thumb thumb)
+    {
+        if (FindAncestor<DataGridColumnHeader>(thumb) is not { Column: { } column }) return false;
+        if (thumb.Name == "PART_RightHeaderGripper") { FitColumn(column); return true; }
+        if (thumb.Name == "PART_LeftHeaderGripper")
+        {
+            var left = _grid.Columns.Where(c => c.Visibility == Visibility.Visible && c.DisplayIndex < column.DisplayIndex)
+                .OrderByDescending(c => c.DisplayIndex).FirstOrDefault();
+            if (left is not null) FitColumn(left);
+            return left is not null;
+        }
+        return false;
+    }
+
+    // WPF's own divider double-click sets the column to Auto (which then
+    // re-grows as rows arrive, breaking rule 1). Handling the second press
+    // here, before the thumb sees it, replaces that with a fixed-width fit.
+    private void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 2 && FindAncestor<Thumb>(e.OriginalSource as DependencyObject) is { } thumb
+            && TryFitFromGripper(thumb))
+        {
+            e.Handled = true;
+            return;
+        }
+        ClearSelectionOnEmptySpace(e);
+    }
+
+    partial void ClearSelectionOnEmptySpaceCore(MouseButtonEventArgs e);
+
+    private void ClearSelectionOnEmptySpace(MouseButtonEventArgs e) => ClearSelectionOnEmptySpaceCore(e);
+
+    private void OnPreviewMouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (FindAncestor<DataGridColumnHeader>(e.OriginalSource as DependencyObject) is not { Column: { } column } header)
+            return;
+        var menu = BuildHeaderMenu(column);
+        menu.PlacementTarget = header;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    /// <summary>Explorer's header menu: fit this column, fit all, then a
+    /// checklist of columns. The anchor column's entry is disabled.</summary>
+    public ContextMenu BuildHeaderMenu(DataGridColumn clicked)
+    {
+        var menu = new ContextMenu();
+        var fitOne = new MenuItem { Header = "Size column to fit" };
+        fitOne.Click += (_, _) => FitColumn(clicked);
+        var fitAll = new MenuItem { Header = "Size all columns to fit" };
+        fitAll.Click += (_, _) => FitAll();
+        menu.Items.Add(fitOne);
+        menu.Items.Add(fitAll);
+        menu.Items.Add(new Separator());
+        foreach (var column in _grid.Columns.OrderBy(c => c.DisplayIndex))
+        {
+            if (HeaderOf(column) is not { } header) continue;
+            var item = new MenuItem
+            {
+                Header = header, IsCheckable = true, IsChecked = _visibility.IsShown(column),
+                IsEnabled = column != Anchor,
+            };
+            var target = column;
+            item.Click += (_, _) => _visibility.SetShown(target, !_visibility.IsShown(target));
+            menu.Items.Add(item);
+        }
+        return menu;
+    }
+
+    // Ctrl + Plus, on the main keyboard or the keypad.
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key is Key.OemPlus or Key.Add)
+        {
+            FitAll();
+            e.Handled = true;
+        }
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? node) where T : DependencyObject
+    {
+        while (node is not null and not T)
+            node = node is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(node)
+                : LogicalTreeHelper.GetParent(node);
+        return node as T;
+    }
+}
