@@ -102,8 +102,9 @@ workflow tests, builds, zips, and publishes.
     passwords are stored as plain text in the shared `config.json` so they
     work from every station — the folder's own permissions are the security
     boundary.
-  - *Bulk rename* — find/replace, affixes, case, a hand-editable preview, and
-    batch undo.
+  - *Bulk rename* — click a name's segments to keep or drop them (per selected
+    file), keep the first N, change the separator, add a date in front, plus
+    find/replace, affixes, case, a hand-editable preview, and batch undo.
   - *Match & merge* — pair PDFs against a roster (CSV or Excel) by name and
     merge each person's ID into the filename, with a side-by-side *Review
     matches* view for the ambiguous and suggested ones.
