@@ -43,44 +43,14 @@ public partial class TriageWindow : Window
     /// below) predates and is independent of which of the two this column
     /// does with what doesn't fit.
     ///
-    /// FIX ROUND 5 (2026-08-08, "columns can't be moved and are hiding text"
-    /// task): was 260. Measured off-screen at the default 440px panel width
-    /// with the app's default 2-header roster pick ("First name"/"Control
-    /// ID"): 260 left the one capped roster column (Control ID) at a 76px
-    /// cap — roughly 8-9 characters before ellipsizing, the "hidden text"
-    /// the owner reported. The roster is what a person actually reads to
-    /// make the match/merge decision; Why is supporting context, not the
-    /// primary content the window exists to show, so it gave up the room
-    /// instead. Cut to 150: still comfortable for the short reason phrases
-    /// MatchMerge.cs's token pass actually generates ("token match on last
-    /// name" et al. — at the time this was measured, well under two wrapped
-    /// lines at this width; today it stays on one and ellipsizes instead if
-    /// it ever runs longer than that), while raising the default 2-header
-    /// roster cap from 76px to 169px and the 3-header cap (AutoFitColumnTests'
-    /// own worst case) from ~38px to 84.5px — both re-measured after this
-    /// change, see AutoFitColumnTests.</summary>
+    /// 150px: the roster is what a person reads to make the decision; Why
+    /// is supporting context and gives up the room.</summary>
     private const double WhyColumnWidth = 150;
 
-    /// <summary>Headroom subtracted from the roster-column budget for the
-    /// DataGrid's own border/padding — a possible vertical scrollbar (a long
-    /// candidate list scrolls) is reserved separately, by
-    /// <see cref="DataGridColumnCap.Track(DataGrid, Func{double, double},
-    /// DataGridColumn[])"/> itself, before this budget ever sees its
-    /// viewport width (fix round 5 — see that class's own doc comment).
-    /// Border/padding isn't exactly predictable from XAML-declared widths
-    /// alone, so this stays a deliberate, conservative buffer rather than
-    /// budgeting to the exact pixel and finding out empirically it wasn't
-    /// quite enough.</summary>
-    private const double SafetyMargin = 20;
-
-    /// <summary>Floor for the filler roster column. Smaller than History/
-    /// MatchMerge/BulkRename's 120px star-column floor because this grid's
-    /// whole side panel is only 380-440px wide (MinWidth-Width) — a fraction
-    /// of those windows' own grid area — and, unlike them, may ALSO have to
-    /// share that width with the fixed-260px Why column (see
-    /// WhyColumnWidth); the same absolute 120px floor would leave too little
-    /// for whatever capped roster columns sit alongside it.</summary>
-    private const double FillerMinWidth = 60;
+    /// <summary>Starting width of each roster column (table rules v2: fixed
+    /// widths the user sizes; ExplorerColumns remembers them per roster
+    /// header).</summary>
+    private const double RosterColumnWidth = 140;
 
     /// <summary>Resolves the shared Theme/Styles.xaml <c>GridCellText</c>
     /// style (NO selection-contrast trigger of its own — see
@@ -222,83 +192,16 @@ public partial class TriageWindow : Window
             // survived the window unless disposed here explicitly.
             Viewer.Dispose();
         };
-        // Roster columns: content-sized (Width="Auto") and capped, one
-        // filler (Width="*", MinWidth) absorbing the rest — same shape as
-        // MatchMerge/BulkRename. The FIRST header is the filler rather than
-        // the last: unlike MatchMerge/BulkRename's fixed schema, this app
-        // can't know in advance which arbitrary roster column a person
-        // picked to show here — but the roster's own default ("nothing
-        // ticked = the name and id columns") leads with a name-shaped field
-        // and follows with an id-shaped one, and a name is both more
-        // variable and the one worth reading in full, so the leading column
-        // gets the room and later ones are capped.
-        //
-        // The budget divides whatever's genuinely left of the side panel
-        // EVENLY among however many capped columns exist, rather than a flat
-        // per-column share: a flat share is exactly what shipped first here
-        // (2026-08-07) and fit at the default 2-header case only by
-        // coincidence — it would have overflowed at 3+.
-        //
-        // Critically, the budget ALSO reserves WhyColumnWidth: ShowCurrentAsync
-        // below inserts that column — fixed-width, never capped or resized —
-        // whenever the CURRENT item's Status is "suggested", and per
-        // MatchMerge.cs that's a normal, common queue, not a rare one the
-        // first version of this fix could afford to ignore (it didn't
-        // account for Why's column footprint at all, only reasoned about its
-        // wrapped CONTENT never growing sideways — true, but irrelevant to
-        // the fixed width the column itself always occupies once inserted).
-        // If this window's whole batch contains even one suggested item, Why
-        // can appear at ANY point during the review pass — reviewing one
-        // ambiguous item can be followed by a suggested one — so the budget
-        // reserves Why's full width from the START rather than only once
-        // it's actually on screen; a layout that fit before Why appeared and
-        // started needing a horizontal scrollbar the moment it did would be
-        // exactly the bug this task exists to prevent, just deferred to
-        // whenever the batch happens to reach a suggested item. couldShowWhy
-        // is therefore computed once, from the WHOLE batch, not the current
-        // item — it does not need to be recomputed as the review pass
-        // advances.
-        //
-        // FIX ROUND 5 (2026-08-08, "columns can't be moved and are hiding
-        // text" task): the cap used to be computed ONCE here, from
-        // SidePanelColumn's DECLARED Width (440) — but that column is
-        // actually resizable (TriageWindow.xaml's GridSplitter), so dragging
-        // it never revisited the cap. Measured directly: widening the panel
-        // from 440 to 700px left the roster cap frozen at 76px both before
-        // and after. Now tracked live via DataGridColumnCap.Track (the same
-        // mechanism MatchMerge/BulkRename/History already use for their own
-        // window-resize case), against Candidates' own live ActualWidth —
-        // not SidePanelColumn's, and with no separate margin subtraction:
-        // Candidates is the DockPanel's last, non-Dock'd child
-        // (DockPanel.LastChildFill, TriageWindow.xaml) so it fills the
-        // panel's already-margin-reduced content area on its own; its
-        // ActualWidth is already net of the DockPanel's own Margin="12" on
-        // each side. DataGridColumnCap.Track further reserves
-        // SystemParameters.VerticalScrollBarWidth from that before this
-        // formula ever sees it (a long candidate list scrolls), so
-        // SafetyMargin below only has to cover the grid's own border/padding.
-        var couldShowWhy = items.Any(i => i.Status == "suggested");
-        var cappedColumnCount = Math.Max(1, _headers.Count - 1);
-
-        double ComputeRosterColumnCap(double viewportWidth)
-        {
-            var rosterBudget = Math.Max(FillerMinWidth,
-                viewportWidth - SafetyMargin - (couldShowWhy ? WhyColumnWidth : 0));
-            return Math.Max(20, (rosterBudget - FillerMinWidth) / cappedColumnCount);
-        }
-
-        var cappedRosterColumns = new List<DataGridColumn>();
+        // Roster columns: one per picked roster header, each starting at
+        // RosterColumnWidth; the user sizes them from there (table rules v2).
         for (var i = 0; i < _headers.Count; i++)
         {
             var h = _headers[i];
-            var isFiller = i == 0;
             var column = new DataGridTextColumn
             {
                 Header = h,
                 Binding = RosterCellBinding(h),
-                Width = isFiller
-                    ? new DataGridLength(1, DataGridLengthUnitType.Star)
-                    : DataGridLength.Auto,
+                Width = new DataGridLength(RosterColumnWidth),
                 // BasedOn GridCellTextSelectionAware (Theme/Styles.xaml), the
                 // shared style MatchMergeWindow's File/Becomes and
                 // BulkRenameWindow's Current name XAML columns also use —
@@ -328,15 +231,11 @@ public partial class TriageWindow : Window
                 ElementStyle = new Style(typeof(TextBlock), GridCellTextSelectionAwareStyle),
             };
             ApplySortPath(column, h);
-            if (isFiller) column.MinWidth = FillerMinWidth;
-            else cappedRosterColumns.Add(column);
             Candidates.Columns.Add(column);
         }
-        // Track live (see FIX ROUND 5 note above) rather than setting a
-        // one-shot MaxWidth on each capped column here — this is also where
-        // a user's own manual column resize starts winning over the cap
-        // (DataGridColumnCap's own doc comment).
-        DataGridColumnCap.Track(Candidates, ComputeRosterColumnCap, cappedRosterColumns.ToArray());
+        // Explorer-style columns (table rules v2): fixed widths the user
+        // sizes, remembered per roster header.
+        ExplorerColumns.Attach(Candidates, "Triage");
         Loaded += async (_, _) => await InitAndShowAsync(_pdf.InitAsync);
     }
 

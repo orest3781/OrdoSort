@@ -86,31 +86,10 @@
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
-                        <!-- Item: the filler (Width="*") — the added file,
-                             folder or archive's own name. No status trigger of
-                             its own, so GridCellTextSelectionAware's shared
-                             default plus its trailing "let selection win"
-                             DataTrigger is the whole style; plain GridCellText
-                             carries no such trigger, and measured off-screen
-                             without one, Theme.Text on Theme.Accent ran
-                             1.26:1-2.14:1 across every scheme, nowhere near the
-                             4.5:1 floor. MinWidth is this column's floor in
-                             DataGridColumnCap's split: when Item and
-                             Result can't both have their content width,
-                             each gets a proportional share, never less
-                             than this. Used to wrap rather than trim — a name
-                             that had to give way went onto a second line
-                             rather than behind an ellipsis; table-rules Rule 4
-                             reverses that app-wide, so it trims now, like
-                             every other cell. Its own ToolTip stays, and
-                             TrimmedTextTooltip.Enabled is turned back off:
-                             this cell's tooltip deliberately shows the row's
-                             full PATH, not a repeat of the trimmed filename —
-                             a genuinely different field, so it keeps its own
-                             Setter rather than the shared trimmed-only one,
-                             which would otherwise silently take over ToolTip
-                             for this cell (its own Enabled default is True). -->
-                        <DataGridTextColumn Header="Item" Binding="{Binding Display}" Width="*" MinWidth="180">
+                        <!-- fixed width; the user sizes it (table rules v2, rule 1).
+                             Its tooltip is the row's full path, not a repeat of
+                             the trimmed name, so the trimmed-only tooltip is off. -->
+                        <DataGridTextColumn Header="Item" Binding="{Binding Display}" Width="360">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
                                     <Setter Property="views:TrimmedTextTooltip.Enabled" Value="False" />
@@ -118,26 +97,8 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Kind: content-sized — ZipItemRow.KindOf returns
-                             "folder"/"zip"/"pdf"/"word"/"excel"/"powerpoint"/
-                             "image"/"text", or "file" for anything none of
-                             those groups recognizes (Task 8 widened this well
-                             past the four values this comment used to name,
-                             the same shared KindOf MergePdfsWindow.xaml uses)
-                             — a quiet tag rather than a status, so SubtleText
-                             rather than GridCellText. SubtleText's own
-                             unconditional Foreground Setter outranks whatever
-                             this TextBlock would INHERIT from its ancestor
-                             DataGridCell, the Accent/AccentText pair the cell's
-                             IsSelected trigger paints included: measured
-                             off-screen without the trailing DataTrigger below,
-                             Theme.SubtleText on Theme.Accent ran 1.07:1-1.85:1
-                             across every scheme — a selected row's own tag
-                             unreadable against its own highlight. SubtleText is
-                             a different base from GridCellText, so this cannot
-                             delegate to GridCellTextSelectionAware and carries
-                             its own copy of that trigger. -->
-                        <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="Auto">
+                        <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
+                        <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="90">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
                                     <Style.Triggers>
@@ -153,22 +114,9 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Result: content-sized; DataGridColumnCap
-                             (code-behind) gives it its content width when that
-                             fits beside Item, and a proportional share —
-                             trimmed with an ellipsis, table-rules Rule 4 (used
-                             to say "wrapped, never trimmed" here) — when it
-                             doesn't. Error is Theme.StatusRed — a genuine
-                             failure, not "needs
-                             attention", so it must not borrow
-                             Theme.StatusAmber. NeedsPassword IS "needs
-                             attention" — a password nobody knew yet, and the
-                             row is still runnable — so it is amber
-                             (status-colour-vocabulary plan, 2026-08-08). NoPdfs
-                             is unreachable on this window; only a merge
-                             produces it. -->
+                        <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
                         <DataGridTextColumn x:Name="ItemsResultColumn" Header="Result" Binding="{Binding Note}"
-                                            Width="Auto">
+                                            Width="200">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                     <Style.Triggers>

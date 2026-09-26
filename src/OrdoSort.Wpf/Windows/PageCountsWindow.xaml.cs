@@ -15,7 +15,7 @@ public partial class PageCountsWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
-        DataGridColumnCap.Track(CountsGrid, NoteColumn);
+        ExplorerColumns.Attach(CountsGrid, "PageCounts");
     }
 
     private void OnAddFiles(object sender, RoutedEventArgs e)

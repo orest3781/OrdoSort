@@ -1,6 +1,8 @@
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using OrdoSort.Wpf.ViewModels;
+using OrdoSort.Wpf.Views;
 
 namespace OrdoSort.Wpf.Windows;
 
@@ -27,6 +29,12 @@ public partial class FilenameListWindow : Window
         // initial state matches Columns before any toggle happens, then
         // again every time one of the Show* properties changes.
         SyncColumnVisibility();
+        // Explorer-style columns (table rules v2). The header checklist flips
+        // the same view-model flags as the column toggles, so the export
+        // always matches what's shown. File name is the anchor: always shown,
+        // never dragged.
+        ExplorerColumns.Attach(NamesGrid, "FilenameList", anchor: FileNameColumn,
+            visibility: new FlagVisibility(this));
         _vm.PropertyChanged += OnVmPropertyChanged;
         _vm.SelectionRestored += OnSelectionRestored;
         Closed += (_, _) =>
@@ -140,5 +148,35 @@ public partial class FilenameListWindow : Window
     private void OnDrop(object sender, DragEventArgs e)
     {
         if (e.Data.GetData(DataFormats.FileDrop) is string[] paths) _vm.AddPaths(paths);
+    }
+
+    /// <summary>Maps a column to the view-model flag that shows it; columns
+    /// without a flag (File name) are always shown.</summary>
+    private sealed class FlagVisibility(FilenameListWindow window) : IColumnVisibility
+    {
+        public bool IsShown(DataGridColumn column) => Flag(column) is not { } get || get();
+
+        public void SetShown(DataGridColumn column, bool shown)
+        {
+            var vm = window._vm;
+            if (column == window.NumberColumn) vm.ShowNumber = shown;
+            else if (column == window.SizeColumn) vm.ShowSize = shown;
+            else if (column == window.ModifiedColumn) vm.ShowModified = shown;
+            else if (column == window.FolderColumn) vm.ShowFolder = shown;
+            else if (column == window.FullPathColumn) vm.ShowFullPath = shown;
+            else if (column == window.PagesColumn) vm.ShowPages = shown;
+        }
+
+        private Func<bool>? Flag(DataGridColumn column)
+        {
+            var vm = window._vm;
+            if (column == window.NumberColumn) return () => vm.ShowNumber;
+            if (column == window.SizeColumn) return () => vm.ShowSize;
+            if (column == window.ModifiedColumn) return () => vm.ShowModified;
+            if (column == window.FolderColumn) return () => vm.ShowFolder;
+            if (column == window.FullPathColumn) return () => vm.ShowFullPath;
+            if (column == window.PagesColumn) return () => vm.ShowPages;
+            return null;
+        }
     }
 }

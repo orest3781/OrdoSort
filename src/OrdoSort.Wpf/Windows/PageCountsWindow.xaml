@@ -72,18 +72,8 @@
                              not the least predictable thing on this row (Note
                              carries that), so it gets whatever width Pages and
                              Note don't need. -->
-                        <!-- MinWidth is load-bearing, not decoration: the cap on
-                             Note is computed as "the viewport minus everyone
-                             else's floor" (DataGridColumnCap), so this floor is
-                             exactly what stops a long error message squeezing
-                             the filename down to WPF's 20px default. 180 is the
-                             app's existing floor for a filename column. Since
-                             2026-08-29 the floor is this column's share floor in
-                             DataGridColumnCap's proportional split; the name
-                             used to wrap rather than trim when it gave way,
-                             reversed app-wide by table-rules Rule 4 — it trims
-                             with an ellipsis now, like every other cell. -->
-                        <DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="*" MinWidth="180">
+                        <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
+                        <DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="360">
                             <!-- BasedOn GridCellTextSelectionAware (Theme/
                                  Styles.xaml), not plain GridCellText or the
                                  bare {x:Type TextBlock} style: no status trigger
@@ -114,48 +104,15 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Pages: content-sized. Used to be right-aligned — a
-                             column of numbers reads fastest lined up on the
-                             ones place — but table-rules Rule 1 is explicit
-                             that every column aligns left with no exceptions,
-                             numeric columns named as the example of a
-                             "genuine reason" that still doesn't win. Left-
-                             aligned now, like every other column in the app;
-                             GridCellTextSelectionAware's own default already
-                             gets it there, so no ElementStyle override is
-                             needed for alignment at all any more. Blank for a
-                             row that's still Pending or that couldn't be
-                             counted at all (Note carries the explanation for
-                             the latter). BasedOn GridCellTextSelectionAware
-                             for the same reason as File above — no status
-                             trigger of its own, and the same measured
-                             selection-contrast failure applied here too
-                             before that fix (a selected row's page count is
-                             just as unreadable as its filename would have
-                             been). -->
-                        <DataGridTextColumn Header="Pages" Binding="{Binding Pages}" Width="Auto">
+                        <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
+                        <DataGridTextColumn Header="Pages" Binding="{Binding Pages}" Width="70">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Note: content-sized; DataGridColumnCap gives it its
-                             content width when that fits and a proportional,
-                             trimmed share (table-rules Rule 4 — used to say
-                             "wrapped" here) when it doesn't; amber
-                             whenever a row couldn't be counted (PageCounts.Count
-                             never puts anything else there) — the base Setter
-                             below is amber, reset to plain text only for the
-                             common case (Pending or counted cleanly, Note == "").
-                             Same recipe as BulkRenameWindow.xaml's Note column:
-                             a base Setter/DataTrigger pair here, PLUS its own
-                             trailing "let selection win" DataTrigger —
-                             GridCellText's own copy of that trigger doesn't
-                             reliably win once this style adds triggers of its
-                             own; see GridCellText's and BulkRenameWindow's Note
-                             column's doc comments for the measured contrast
-                             numbers that recipe exists to fix. -->
+                        <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
                         <DataGridTextColumn x:Name="NoteColumn" Header="Note" Binding="{Binding Note}"
-                                            Width="Auto">
+                                            Width="200">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                     <Setter Property="Foreground" Value="{DynamicResource Theme.StatusAmber}" />

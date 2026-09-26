@@ -122,4 +122,34 @@ public class FilenameListWindowTests
             window.Close();
         }
     });
+
+    /// <summary>The header checklist and the export share one switch: hiding
+    /// Size from the header menu also drops it from the export (table rules
+    /// v2, rule 4).</summary>
+    [Fact]
+    public void TheHeaderMenuFlipsTheSameFlagTheExportReads() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs());
+        var window = new FilenameListWindow(vm);
+        window.Left = -20000; window.Top = 0; window.ShowActivated = false;
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            vm.ShowSize = true;
+            var explorer = OrdoSort.Wpf.Views.ExplorerColumns.For(window.NamesGrid)!;
+            var size = window.NamesGrid.Columns.Single(c => (string)c.Header == "Size");
+
+            var menu = explorer.BuildHeaderMenu(size);
+            menu.Items.OfType<MenuItem>().Single(i => (string)i.Header == "Size")
+                .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+
+            Assert.False(vm.ShowSize);
+            Assert.Equal(Visibility.Collapsed, size.Visibility);
+            Assert.False(menu.Items.OfType<MenuItem>().Single(i => (string)i.Header == "File name").IsEnabled);
+        }
+        finally { window.Close(); }
+    });
 }

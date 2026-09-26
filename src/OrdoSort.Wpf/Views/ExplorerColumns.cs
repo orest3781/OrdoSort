@@ -38,7 +38,8 @@ internal sealed partial class ExplorerColumns
 
     private readonly DataGrid _grid;
     private readonly string _key;
-    private readonly TableLayoutStore _store;
+    // Null when this grid doesn't remember its layout (see RememberByDefault).
+    private readonly TableLayoutStore? _store;
     private readonly IColumnVisibility _visibility;
     private readonly Func<DateTime> _clock;
     private readonly Action<Exception> _reportSaveError;
@@ -52,7 +53,7 @@ internal sealed partial class ExplorerColumns
         _key = key;
         _explicitAnchor = anchor;
         _visibility = visibility ?? new OwnVisibility();
-        _store = store ?? new TableLayoutStore(TableLayoutStore.DefaultPath);
+        _store = store ?? (RememberByDefault ? new TableLayoutStore(TableLayoutStore.DefaultPath) : null);
         _clock = clock ?? (() => DateTime.UtcNow);
         _reportSaveError = reportSaveError ?? (ex => App.LogCrash(ex));
     }
@@ -86,6 +87,12 @@ internal sealed partial class ExplorerColumns
         return explorer;
     }
 
+    /// <summary>Whether a grid attached without its own store remembers its
+    /// layout. Always true in the app; the test assembly turns it off, since
+    /// every window a test builds would otherwise save its layout on close
+    /// and hand it to the next test that opens the same window.</summary>
+    internal static bool RememberByDefault { get; set; } = true;
+
     /// <summary>The behaviour attached to <paramref name="grid"/>, if any.</summary>
     public static ExplorerColumns? For(DataGrid grid) => (ExplorerColumns?)grid.GetValue(InstanceProperty);
 
@@ -110,7 +117,7 @@ internal sealed partial class ExplorerColumns
         _pinnedFirst = _grid.Columns.OrderBy(c => c.DisplayIndex).FirstOrDefault();
         if (_explicitAnchor is not null && _explicitAnchor != _pinnedFirst) _pinnedFirst = null;
 
-        var saved = _store.Load(_key);
+        var saved = _store?.Load(_key);
         if (saved is null) return;
         var byHeader = saved.Columns.GroupBy(c => c.Header).ToDictionary(g => g.Key, g => g.Last());
 
@@ -147,7 +154,7 @@ internal sealed partial class ExplorerColumns
     private void OnColumnsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (!_applied || e.NewItems is null) return;
-        var saved = _store.Load(_key);
+        var saved = _store?.Load(_key);
         if (saved is null) return;
         foreach (DataGridColumn column in e.NewItems)
             if (HeaderOf(column) is { } header && saved.Columns.LastOrDefault(c => c.Header == header) is { } layout)
@@ -171,6 +178,7 @@ internal sealed partial class ExplorerColumns
     /// losing a column width must not break closing a window.</summary>
     public void Save()
     {
+        if (_store is null) return;
         var columns = _grid.Columns
             .Where(c => HeaderOf(c) is not null)
             .Select(c => new ColumnLayout(HeaderOf(c)!, c.ActualWidth > 0 ? c.ActualWidth : c.Width.DisplayValue,

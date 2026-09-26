@@ -25,18 +25,8 @@ namespace OrdoSort.Wpf.Tests;
 /// nor a ToolTip. <see cref="TextColumnsTrimRatherThanWrap"/> now asserts
 /// the opposite for all four, reading the REALIZED cell rather than
 /// declared Setters (see that fact's own doc comment for why): trimmed with
-/// an ellipsis, one line, and the full value reachable as a ToolTip —
-/// DataGridColumnCap's autofit still gives each its content width when
-/// that fits and a proportional share when it doesn't, but the share that
-/// can't hold its content now cuts it off instead of growing the row.
-/// <see cref="WhenIsNotCappedBecauseItsContentIsBounded"/> confirms
-/// <c>When</c> was deliberately taken OUT of that governed set instead of
-/// joining the other four: its value is a timestamp History formats
-/// itself, always 16 characters, so it is sized to its own content rather
-/// than ever needing to trim or wrap a date — asserted as its MaxWidth
-/// reading WPF's own uncapped default, PositiveInfinity, which only holds
-/// if DataGridColumnCap genuinely never assigns it one (see that fact's own
-/// doc comment for why that isn't a vacuous default-value check).
+/// an ellipsis, one line, and the full value reachable as a ToolTip.
+/// Column widths are fixed and set by the user (table rules v2).
 ///
 /// What this suite CANNOT verify: that the four columns' own row heights on
 /// a REAL, on-screen display look uniform end to end — TextColumnsTrimRatherThanWrap
@@ -280,35 +270,6 @@ public class HistoryWindowXamlTests
                 $"absorbs the overflow now — the row is {row.ActualHeight}px against a {lineHeight}px line");
 
             Assert.Equal(text.Text, text.ToolTip as string);
-        }
-        finally { Cleanup(win, history, dbPath); }
-    });
-
-    /// <summary>When holds a timestamp History formats itself — bounded, 16
-    /// characters — so it is no longer one of the governed columns: sized
-    /// to its content, never asked to give way, never wrapped mid-date.
-    /// An uncapped column's MaxWidth is WPF's default, infinity.
-    ///
-    /// Not a vacuous default-value check: <c>BuildWindow</c> does
-    /// <c>Show()</c> plus <c>UpdateLayout()</c>, which is enough to run
-    /// DataGridColumnCap's own <c>Recalculate</c> at least once — if When
-    /// were still in the governed set (put <c>WhenColumn</c> back into the
-    /// <c>Track</c> call in HistoryWindow.xaml.cs to check), that pass would
-    /// assign it a real, finite cap, not leave WPF's default standing.
-    /// Confirmed by that exact revert: a reviewer put WhenColumn back into
-    /// Track and this fact caught it with a genuine 55px MaxWidth, not
-    /// PositiveInfinity.</summary>
-    [Fact]
-    public void WhenIsNotCappedBecauseItsContentIsBounded() => _fx.Invoke(() =>
-    {
-        ThemeManager.Apply(_fx.App, dark: false);
-        var (win, history, dbPath) = BuildWindow();
-        try
-        {
-            var grid = FindDescendant<DataGrid>(win)!;
-            var when = grid.Columns.First(c => (string)c.Header == "When");
-            Assert.True(double.IsPositiveInfinity(when.MaxWidth),
-                $"When should not be governed by DataGridColumnCap: MaxWidth is {when.MaxWidth}");
         }
         finally { Cleanup(win, history, dbPath); }
     });

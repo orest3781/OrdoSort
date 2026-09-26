@@ -15,7 +15,7 @@ public partial class ZipToolsWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
-        DataGridColumnCap.Track(ItemsGrid, ItemsResultColumn);
+        ExplorerColumns.Attach(ItemsGrid, "ZipTools");
     }
 
     private void OnAddFiles(object sender, RoutedEventArgs e)

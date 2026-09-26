@@ -130,27 +130,10 @@
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
-                        <!-- Item: the filler (Width="*").
-                             GridCellTextSelectionAware for the
-                             selection-contrast reason ZipToolsWindow.xaml
-                             records (Theme.Text on Theme.Accent measured
-                             1.26:1-2.14:1 without it). MinWidth is this
-                             column's floor in DataGridColumnCap's split: when
-                             Item and Result can't both have their content
-                             width, each gets a proportional share, never less
-                             than this. Used to wrap rather than trim — a name
-                             that had to give way went onto a second line
-                             rather than behind an ellipsis; table-rules Rule 4
-                             reverses that app-wide, so it trims now, like
-                             every other cell. Its own ToolTip stays, and
-                             TrimmedTextTooltip.Enabled is turned back off:
-                             this cell's tooltip deliberately shows the row's
-                             full PATH, not a repeat of the trimmed filename —
-                             a genuinely different field, so it keeps its own
-                             Setter rather than the shared trimmed-only one,
-                             which would otherwise silently take over ToolTip
-                             for this cell (its own Enabled default is True). -->
-                        <DataGridTextColumn Header="Item" Binding="{Binding Display}" Width="*" MinWidth="180">
+                        <!-- fixed width; the user sizes it (table rules v2, rule 1).
+                             Its tooltip is the row's full path, not a repeat of
+                             the trimmed name, so the trimmed-only tooltip is off. -->
+                        <DataGridTextColumn Header="Item" Binding="{Binding Display}" Width="360">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}">
                                     <Setter Property="views:TrimmedTextTooltip.Enabled" Value="False" />
@@ -165,7 +148,7 @@
                              so SubtleText, with its own copy of the
                              let-selection-win trigger, for the reason
                              ZipToolsWindow.xaml records. -->
-                        <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="Auto">
+                        <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="90">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
                                     <Style.Triggers>
@@ -181,21 +164,9 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- Result: content-sized; DataGridColumnCap
-                             (code-behind) gives it its content width when that
-                             fits beside Item, and a proportional share —
-                             trimmed with an ellipsis, table-rules Rule 4 (used
-                             to say "wrapped, never trimmed" here) — when it
-                             doesn't. Error is Theme.StatusRed — a genuine
-                             failure. NoPdfs and
-                             NeedsPassword are Theme.StatusAmber — "needs
-                             attention", not done and not broken: nothing
-                             failed, there was just nothing to merge, or a
-                             password nobody knew yet (status-colour-vocabulary
-                             plan, 2026-08-08). Driven off StatusKind, an enum,
-                             hence {x:Static}. -->
+                        <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
                         <DataGridTextColumn x:Name="ResultColumn" Header="Result" Binding="{Binding Note}"
-                                            Width="Auto">
+                                            Width="200">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                     <Style.Triggers>

@@ -16,7 +16,7 @@ public partial class MergePdfsWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
-        DataGridColumnCap.Track(ItemsGrid, ResultColumn);
+        ExplorerColumns.Attach(ItemsGrid, "MergePdfs");
     }
 
     private void OnAddFiles(object sender, RoutedEventArgs e)

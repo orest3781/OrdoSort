@@ -10,7 +10,7 @@ public partial class HistoryWindow : Window
     {
         InitializeComponent();
         DataContext = vm;
-        DataGridColumnCap.Track(HistoryGrid, NameColumn, DestinationColumn);
+        ExplorerColumns.Attach(HistoryGrid, "History");
 
         // The window exists to find a filing, so the first keystroke goes
         // to the Find box without a Tab or a click (UX-37) — the same
