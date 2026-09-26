@@ -309,7 +309,9 @@ public partial class TriageWindow : Window
 
         // suggested items get a leading "Why" column — every candidate carries
         // its own reason, and a match you can't explain is one you can't trust
-        var why = r.Status == "suggested";
+        // a suggested file has a reason per candidate; an ambiguous one has
+        // one reason for all of them (2026-09-26)
+        var why = r.Status == "suggested" || (r.Status == "ambiguous" && r.Why.Length > 0);
         if (why != _whyColumnShown)
         {
             if (why) Candidates.Columns.Insert(0, new DataGridTextColumn
@@ -387,7 +389,7 @@ public partial class TriageWindow : Window
                 var row = new Dictionary<string, string>();
                 foreach (var h in _headers)
                     row[h] = c.Row.TryGetValue(h, out var v) ? v : "";
-                if (why) row[WhyKey] = r.Suggestions![i].Reason;
+                if (why) row[WhyKey] = r.Status == "suggested" ? r.Suggestions![i].Reason : r.Why;
                 // from here on the ROW is this candidate's identity — nothing
                 // downstream may go back to indexing `candidates`, which the
                 // grid is free to display in any order it likes

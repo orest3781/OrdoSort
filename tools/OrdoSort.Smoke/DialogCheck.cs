@@ -54,7 +54,7 @@ public static class DialogCheck
             var dupHeaders = new[] { "Last", "Last", "Control" };
             var candidate = new MatchMerge.Candidate("111",
                 new Dictionary<string, string> { ["Last"] = "EVANS", ["Control"] = "111" });
-            var suggestion = new MatchMerge.Suggestion(candidate, "all segments agree");
+            var suggestion = new MatchMerge.Suggestion(candidate, "Same name, different order");
             var mixed = new List<MatchMerge.MatchResult>
             {
                 new("a.pdf", "ambiguous", "EVANS", "FRANK", Candidates: new[] { candidate }),

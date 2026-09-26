@@ -290,7 +290,7 @@ public class MatchMergeTests : IDisposable
         var s = MatchMerge.TokenMatches("20240126-FRANK-EVANS", roster);
         var hit = Assert.Single(s);
         Assert.Equal("111", hit.Candidate.ControlId);
-        Assert.Equal("all segments agree", hit.Reason);
+        Assert.Equal("Same name, different order", hit.Reason);
     }
 
     [Fact]
@@ -303,7 +303,7 @@ public class MatchMergeTests : IDisposable
         var s = MatchMerge.TokenMatches("20240126-MARY-SMITH-JONES", roster);
         var hit = Assert.Single(s);
         Assert.Equal("999", hit.Candidate.ControlId);
-        Assert.Equal("all segments agree", hit.Reason);
+        Assert.Equal("Same name, different order", hit.Reason);
     }
 
     [Fact]
@@ -314,8 +314,7 @@ public class MatchMergeTests : IDisposable
         // CRUZ+MARIA agree — 2 of the person's 4 tokens, so this is containment
         var hit = Assert.Single(s);
         Assert.Equal("222", hit.Candidate.ControlId);
-        Assert.Contains("CRUZ, MARIA agree", hit.Reason);
-        Assert.Contains("roster also has DE, LA", hit.Reason);
+        Assert.Equal("Surname and first name match; spreadsheet adds DE LA", hit.Reason);
     }
 
     [Fact]
@@ -324,8 +323,7 @@ public class MatchMergeTests : IDisposable
         var roster = TokenRoster(("SMITH", "MARY", "333"));
         var s = MatchMerge.TokenMatches("20240126-SMITH-MARY-LOUISE", roster);
         var hit = Assert.Single(s);
-        Assert.Contains("SMITH, MARY agree", hit.Reason);
-        Assert.Contains("LOUISE not in roster", hit.Reason);
+        Assert.Equal("Surname and first name match; file adds LOUISE", hit.Reason);
     }
 
     [Fact]
@@ -334,8 +332,7 @@ public class MatchMergeTests : IDisposable
         var roster = TokenRoster(("BENSON", "MICHAEL", "444"));
         var s = MatchMerge.TokenMatches("20240126-BENSON-MICHEAL", roster);
         var hit = Assert.Single(s);
-        Assert.Contains("MICHEAL", hit.Reason);
-        Assert.Contains("MICHAEL", hit.Reason);
+        Assert.Equal("Surname matches; first name MICHEAL vs MICHAEL (1 letter off)", hit.Reason);
     }
 
     [Fact]
@@ -394,7 +391,8 @@ public class MatchMergeTests : IDisposable
         var s = MatchMerge.TokenMatches("20240101-DE-LA-CRUZ-MARIA", roster);
         var hit = Assert.Single(s);
         Assert.Equal("222", hit.Candidate.ControlId);
-        Assert.Equal("all segments agree", hit.Reason);   // DE and LA agreed and say so
+        // same parts in the same order: only the spelling of the separators differs
+        Assert.Equal("Same name, written differently", hit.Reason);
     }
 
     [Fact]
@@ -424,7 +422,7 @@ public class MatchMergeTests : IDisposable
         var s = MatchMerge.TokenMatches("20240126-GARCÍA-MARÍA", roster);
         var hit = Assert.Single(s);
         Assert.Equal("888", hit.Candidate.ControlId);
-        Assert.Equal("all segments agree", hit.Reason);
+        Assert.Equal("Same name, written differently", hit.Reason);   // accents only
 
         var dir = Directory.CreateTempSubdirectory("ordoaccent_").FullName;
         try
@@ -554,5 +552,60 @@ public class MatchMergeTests : IDisposable
             Assert.Equal("no_match", results[2].Status);
         }
         finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    // ---- the Why text in plain words (2026-09-26) -------------------------
+
+    [Fact]
+    public void ASurnameTypoWithAMatchingFirstNameSaysWhichPartIsOff()
+    {
+        var roster = TokenRoster(("EVANS", "BRIAN", "111"));
+        var hit = Assert.Single(MatchMerge.TokenMatches("20240126-EVENS-BRIAN", roster));
+        Assert.Equal("First name matches; surname EVENS vs EVANS (1 letter off)", hit.Reason);
+    }
+
+    /// <summary>Only the NAME part of a filename is named in the reason: the
+    /// words after the first number (company, record numbers) are not
+    /// evidence of who the document is about and used to read
+    /// "· ACME, RECORDS not in roster".</summary>
+    [Fact]
+    public void WordsAfterTheNameNeverAppearInTheReason()
+    {
+        var roster = TokenRoster(("EVANS", "BRYAN", "111"));
+        var hit = Assert.Single(MatchMerge.TokenMatches(
+            "EVANS_BRIAN 5_14_1998_ACME_RECORDS_100000002-1_X", roster));
+        Assert.Equal("Surname matches; first name BRIAN vs BRYAN (1 letter off)", hit.Reason);
+    }
+
+    [Fact]
+    public void AnExactNameSharedByTwoPeopleSaysSo()
+    {
+        var roster = TokenRoster(("SMITH", "JOHN", "1"), ("SMITH", "JOHN", "2"));
+        var r = Assert.Single(MatchFiles(new[] { Touch("20240126-SMITH-JOHN.pdf") }, roster));
+        Assert.Equal("ambiguous", r.Status);
+        Assert.Equal("2 people in the spreadsheet have this exact name", r.Why);
+    }
+
+    [Fact]
+    public void ANameThatSplitsTwoWaysSaysSo()
+    {
+        var roster = TokenRoster(
+            ("GARCIA-LOPEZ-MARIA", "JOSE", "A"),
+            ("GARCIA-LOPEZ", "MARIA-JOSE", "B"));
+        var r = Assert.Single(MatchFiles(new[] { Touch("20240101-GARCIA-LOPEZ-MARIA-JOSE.pdf") }, roster));
+        Assert.Equal("ambiguous", r.Status);
+        Assert.Equal("This name splits 2 ways, each matching someone in the spreadsheet", r.Why);
+    }
+
+    [Fact]
+    public void RankingIsUnchangedByTheNewWording()
+    {
+        var roster = TokenRoster(
+            ("GARCIA LOPEZ", "MARIA", "CONTAIN"), ("GARCIA", "MARIA", "SAMESET"), ("GARCIA", "MARIE", "TYPO"));
+        var s = MatchMerge.TokenMatches("20240126-MARIA-GARCIA", roster);
+        Assert.Equal(new[] { "SAMESET", "CONTAIN", "TYPO" }, s.Select(x => x.Candidate.ControlId).ToArray());
+        Assert.Equal("Same name, different order", s[0].Reason);
+        Assert.Equal("Surname and first name match; spreadsheet adds LOPEZ", s[1].Reason);
+        Assert.Equal("Surname matches; first name MARIA vs MARIE (1 letter off)", s[2].Reason);
     }
 }
