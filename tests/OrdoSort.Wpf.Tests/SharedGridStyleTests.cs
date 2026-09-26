@@ -123,16 +123,15 @@ public class SharedGridStyleTests
         finally { CleanupHistory(win, history, dbPath); }
     });
 
-    /// <summary>Table-rules, Rule 2: DataGridCell's own horizontal Padding
-    /// is 12 (was 8), so text in neighbouring columns has 24px between it —
-    /// vertical is untouched. Read off a realized DataGridCell, not walked
-    /// out of the implicit Style's Setters: this app never keys the
-    /// DataGridCell style, so there is no StaticResource lookup by name to
-    /// piggyback on the way GridCellText's own tests do, and the realized
-    /// cell is what a user's own 24px gap actually depends on regardless of
-    /// which Style in the implicit lookup supplied it.</summary>
+    /// <summary>Table-rules, Rule 2: 12px on each side of a cell's text, so
+    /// neighbouring columns have 24px between them, and 4px above and below.
+    /// Measured where the text actually LANDS inside the cell, not read off
+    /// the Padding property: WPF's stock DataGridCell template ignores
+    /// Padding, and the fact this replaced (which asserted the property's
+    /// value) passed for weeks while every cell in the app drew its text
+    /// hard against the column edge (found 2026-09-25).</summary>
     [Fact]
-    public void DataGridCellPaddingIsTwelveHorizontalFourVertical() => _fx.Invoke(() =>
+    public void CellTextSitsTwelvePixelsInFromTheColumnEdge() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
         var (win, history, dbPath) = BuildHistoryWindowWithOneRow();
@@ -141,7 +140,57 @@ public class SharedGridStyleTests
             var grid = FindDescendant<DataGrid>(win)!;
             var row = (DataGridRow)grid.ItemContainerGenerator.ContainerFromIndex(0);
             var cell = FindAllDescendants<DataGridCell>(row).First();
-            Assert.Equal(new Thickness(12, 4, 12, 4), cell.Padding);
+            var text = FindDescendant<TextBlock>(cell)!;
+
+            var offset = text.TranslatePoint(new Point(0, 0), cell);
+
+            Assert.Equal(12, offset.X, 0.5);
+            Assert.Equal(4, offset.Y, 0.5);
+        }
+        finally { CleanupHistory(win, history, dbPath); }
+    });
+
+    /// <summary>A column's header label starts on the same vertical line as
+    /// the text in the cells under it, so a column reads as one column.</summary>
+    [Fact]
+    public void HeaderTextLinesUpWithCellText() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var (win, history, dbPath) = BuildHistoryWindowWithOneRow();
+        try
+        {
+            var grid = FindDescendant<DataGrid>(win)!;
+            var row = (DataGridRow)grid.ItemContainerGenerator.ContainerFromIndex(0);
+            var cell = FindAllDescendants<DataGridCell>(row).First();
+            var cellText = FindDescendant<TextBlock>(cell)!;
+            var header = FindAllDescendants<DataGridColumnHeader>(grid).First(h => h.Column == cell.Column);
+            var headerText = FindDescendant<TextBlock>(header)!;
+
+            var cellX = cellText.TranslatePoint(new Point(0, 0), grid).X;
+            var headerX = headerText.TranslatePoint(new Point(0, 0), grid).X;
+
+            Assert.True(Math.Abs(cellX - headerX) <= 1,
+                $"header text starts at {headerX:F1}px, the cell text under it at {cellX:F1}px");
+        }
+        finally { CleanupHistory(win, history, dbPath); }
+    });
+
+    /// <summary>Columns keep their order and rows keep one height: dragging a
+    /// header sideways or a row edge down only ever makes a table look
+    /// broken. Column resizing and sorting stay on.</summary>
+    [Fact]
+    public void TablesDoNotLetColumnsBeReorderedOrRowsResized() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var (win, history, dbPath) = BuildHistoryWindowWithOneRow();
+        try
+        {
+            var grid = FindDescendant<DataGrid>(win)!;
+
+            Assert.False(grid.CanUserReorderColumns);
+            Assert.False(grid.CanUserResizeRows);
+            Assert.True(grid.CanUserResizeColumns);
+            Assert.True(grid.CanUserSortColumns);
         }
         finally { CleanupHistory(win, history, dbPath); }
     });

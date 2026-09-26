@@ -280,6 +280,18 @@ public class DataGridColumnCapTests
             text.FontSize, Brushes.Black, null!, TextOptions.GetTextFormattingMode(text),
             VisualTreeHelper.GetDpi(text).PixelsPerDip).WidthIncludingTrailingWhitespace);
 
+    /// <summary>What a CELL needs to show <paramref name="cellText"/> whole:
+    /// the text plus the cell's own horizontal padding, which the cell
+    /// template draws (table-rules Rule 2). Header widths add the header's
+    /// padding themselves, so they keep using <see cref="ContentWidthOf"/>.</summary>
+    private static double CellWidthOf(TextBlock cellText)
+    {
+        DependencyObject? node = cellText;
+        while (node is not null and not DataGridCell) node = VisualTreeHelper.GetParent(node);
+        var padding = node is DataGridCell cell ? cell.Padding.Left + cell.Padding.Right : 0;
+        return ContentWidthOf(cellText) + padding;
+    }
+
     private static double LineHeightOf(TextBlock text) => text.FontSize * text.FontFamily.LineSpacing;
 
     /// <summary>The class's own budget, restated: the grid's width less the
@@ -303,7 +315,7 @@ public class DataGridColumnCapTests
         {
             ShowAndSettle(g.Window);
             var text = CellText(g.DataGrid, g.Note, 0);
-            var content = ContentWidthOf(text);
+            var content = CellWidthOf(text);
             Assert.True(Math.Abs(g.Note.ActualWidth - content) <= 2,
                 $"Note is {g.Note.ActualWidth}px for {content}px of content — expected the content width, give or take a pixel of slack");
             Assert.True(RowAt(g.DataGrid, 0).ActualHeight < 1.5 * LineHeightOf(text),
@@ -509,8 +521,8 @@ public class DataGridColumnCapTests
         try
         {
             ShowAndSettle(g.Window);
-            var noteContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 0));
-            var extraContent = ContentWidthOf(CellText(g.DataGrid, g.Extra, 0));
+            var noteContent = CellWidthOf(CellText(g.DataGrid, g.Note, 0));
+            var extraContent = CellWidthOf(CellText(g.DataGrid, g.Extra, 0));
             var expectedRatio = noteContent / extraContent;
             var actualRatio = g.Note.MaxWidth / g.Extra.MaxWidth;
             Assert.True(Math.Abs(actualRatio - expectedRatio) < 0.15,
@@ -629,8 +641,8 @@ public class DataGridColumnCapTests
         try
         {
             ShowAndSettle(g.Window);
-            var shortContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 0));
-            var longContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 4));
+            var shortContent = CellWidthOf(CellText(g.DataGrid, g.Note, 0));
+            var longContent = CellWidthOf(CellText(g.DataGrid, g.Note, 4));
             Assert.True(longContent > 3 * shortContent,
                 $"the outlier ({longContent}px) needs to be dramatically longer than the short rows " +
                 $"({shortContent}px), or this fact cannot tell the percentile from the maximum");
@@ -660,7 +672,7 @@ public class DataGridColumnCapTests
         try
         {
             ShowAndSettle(g.Window);
-            var content = ContentWidthOf(CellText(g.DataGrid, g.Note, 0));
+            var content = CellWidthOf(CellText(g.DataGrid, g.Note, 0));
             // MaxWidth (the cap PercentileOf computes), not ActualWidth: a
             // cap inflated well past what "a solitary note" actually needs
             // would still leave ActualWidth sitting at the content's own
@@ -729,7 +741,7 @@ public class DataGridColumnCapTests
         try
         {
             ShowAndSettle(g.Window);
-            var noteContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 0));
+            var noteContent = CellWidthOf(CellText(g.DataGrid, g.Note, 0));
 
             var header = FindAllDescendants<DataGridColumnHeader>(g.DataGrid).First(h => h.Column == g.Extra);
             var headerText = FindDescendant<TextBlock>(header)!;
@@ -761,6 +773,34 @@ public class DataGridColumnCapTests
         finally { g.Window.Close(); }
     });
 
+    /// <summary>The owner's exception to Rule 5 (2026-09-25): a column marked
+    /// ShrinkWhenEmpty stays at its own header width when every cell is
+    /// blank, so its room goes to the columns that have something to show.
+    /// Bulk rename's Note column is blank on most batches and was taking
+    /// about 250px of blank space while file names were cut short.</summary>
+    [Fact]
+    public void AnEmptyColumnMarkedShrinkWhenEmptyKeepsItsHeaderWidth() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var g = BuildPair(2000, 40, new PairRow { Name = "x", Note = Ms(50), Extra = "" });
+        DataGridColumnCap.SetShrinkWhenEmpty(g.Extra, true);
+        try
+        {
+            ShowAndSettle(g.Window);
+            var header = FindAllDescendants<DataGridColumnHeader>(g.DataGrid).First(h => h.Column == g.Extra);
+            var headerText = FindDescendant<TextBlock>(header)!;
+            var ownHeaderFloor = ContentWidthOf(headerText) + header.Padding.Left + header.Padding.Right;
+            Assert.True(g.Note.ActualWidth > ownHeaderFloor + 20,
+                "this fact needs Note meaningfully wider than Extra's header, or matching it and " +
+                "keeping the header width would look the same");
+
+            Assert.True(Math.Abs(g.Extra.ActualWidth - ownHeaderFloor) <= 2,
+                $"Extra is empty and marked ShrinkWhenEmpty; it should sit at its own {ownHeaderFloor}px " +
+                $"header, not borrow its neighbour's width: {g.Extra.ActualWidth}px");
+        }
+        finally { g.Window.Close(); }
+    });
+
     /// <summary>Table-rules, Rule 5's other branch: the FIRST column, if
     /// empty, matches the one to its RIGHT instead — BuildLeading's own
     /// shape (a governed column first, the star filler second) is what
@@ -785,7 +825,7 @@ public class DataGridColumnCapTests
         try
         {
             ShowAndSettle(g.Window);
-            var nameContent = ContentWidthOf(CellText(g.DataGrid, g.Name, 0));
+            var nameContent = CellWidthOf(CellText(g.DataGrid, g.Name, 0));
 
             var header = FindAllDescendants<DataGridColumnHeader>(g.DataGrid).First(h => h.Column == g.First);
             var headerText = FindDescendant<TextBlock>(header)!;
@@ -822,7 +862,7 @@ public class DataGridColumnCapTests
         try
         {
             ShowAndSettle(g.Window);
-            var wideNoteContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 0));
+            var wideNoteContent = CellWidthOf(CellText(g.DataGrid, g.Note, 0));
             var wideExtra = g.Extra.ActualWidth;
             Assert.True(Math.Abs(wideExtra - g.Note.ActualWidth) <= 2,
                 $"precondition: Extra should adopt Note's own rendered {g.Note.ActualWidth}px while " +
@@ -834,7 +874,7 @@ public class DataGridColumnCapTests
             g.Rows.Add(new PairRow { Name = "x", Note = Ms(5), Extra = "" });
             Settle(g.Window);
 
-            var narrowNoteContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 0));
+            var narrowNoteContent = CellWidthOf(CellText(g.DataGrid, g.Note, 0));
             Assert.True(narrowNoteContent < wideNoteContent - 20,
                 $"this fact needs the new Note ({narrowNoteContent}px) meaningfully narrower than the " +
                 $"old one ({wideNoteContent}px), or a ratchet and a correct shrink would look identical");
@@ -900,8 +940,8 @@ public class DataGridColumnCapTests
         try
         {
             ShowAndSettle(g.Window);
-            var filledContent = ContentWidthOf(CellText(g.DataGrid, g.Note, 2));
-            var nameContent = ContentWidthOf(CellText(g.DataGrid, g.Name, 0));
+            var filledContent = CellWidthOf(CellText(g.DataGrid, g.Note, 2));
+            var nameContent = CellWidthOf(CellText(g.DataGrid, g.Name, 0));
             Assert.True(Math.Abs(filledContent - nameContent) > 20,
                 $"this fact needs Note's own filled content ({filledContent}px) and Name's content " +
                 $"({nameContent}px) to differ meaningfully, or Rule 3's answer and Rule 5's would be " +

@@ -592,6 +592,11 @@ public class AutoFitColumnTests
     public void BulkRename_UserDraggedCurrentNameColumnSurvivesBeyondTheCapAndStaysPinnedAfterResize() => _fx.Invoke(() =>
     {
         var win = BuildBulkRenameWindow(currentValue: VeryLongValue, noteValue: "");
+        // Room for the drag: with Note blank it keeps only its header width
+        // (ShrinkWhenEmpty), so Current name's cap already sits near the edge
+        // of the default 820px window, and a drag 50px past it would be
+        // squeezed by the grid running out of width, not by a re-clamp.
+        win.Width = 1000;
         try
         {
             ShowOffscreen(win);

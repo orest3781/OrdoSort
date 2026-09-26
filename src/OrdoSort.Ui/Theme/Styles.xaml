@@ -1678,6 +1678,11 @@
         <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource Theme.Border}" />
         <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource Theme.Border}" />
         <Setter Property="GridLinesVisibility" Value="Horizontal" />
+        <!-- Columns keep their order and rows keep one height: dragging a
+             header sideways or a row edge down only ever makes a table look
+             broken. Resizing columns and sorting stay on. -->
+        <Setter Property="CanUserReorderColumns" Value="False" />
+        <Setter Property="CanUserResizeRows" Value="False" />
     </Style>
 
     <!-- HorizontalContentAlignment="Left" (table-rules, Rule 1): every column
@@ -1692,7 +1697,9 @@
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}" />
         <Setter Property="BorderThickness" Value="0,0,1,1" />
-        <Setter Property="Padding" Value="8,6" />
+        <!-- 12 across, matching DataGridCell's own 12 below, so a header's
+             label starts on the same line as the text in its column. -->
+        <Setter Property="Padding" Value="12,6" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
     </Style>
@@ -1707,6 +1714,24 @@
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Foreground" Value="{DynamicResource Theme.Text}" />
         <Setter Property="Background" Value="Transparent" />
+        <!-- WPF's stock cell template ignores Padding, so without this the
+             12px above never reached the screen and text sat hard against
+             every column edge (found 2026-09-25; SharedGridStyleTests
+             measures where the text lands). -->
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DataGridCell">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"
+                                          SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
         <Style.Triggers>
             <Trigger Property="IsSelected" Value="True">
                 <Setter Property="Background" Value="{DynamicResource Theme.Accent}" />

@@ -652,6 +652,20 @@ internal static class DataGridColumnCap
     /// floors at the second column's own header downstream — substituted in
     /// name, but not in any way that moves its final width away from where
     /// it would have landed anyway.</summary>
+    /// <summary>Opts one column out of Rule 5: when every cell is blank it
+    /// keeps its own header width instead of borrowing its neighbour's, so
+    /// the room goes to columns with something to show. The owner's call for
+    /// Bulk rename's Note column (2026-09-25), which is blank on most
+    /// batches while file names beside it get cut short.</summary>
+    public static readonly DependencyProperty ShrinkWhenEmptyProperty =
+        DependencyProperty.RegisterAttached("ShrinkWhenEmpty", typeof(bool), typeof(DataGridColumnCap),
+            new PropertyMetadata(false));
+
+    public static bool GetShrinkWhenEmpty(DataGridColumn column) => (bool)column.GetValue(ShrinkWhenEmptyProperty);
+
+    public static void SetShrinkWhenEmpty(DataGridColumn column, bool value) =>
+        column.SetValue(ShrinkWhenEmptyProperty, value);
+
     private static HashSet<int> ApplyEmptyColumnNeighbourRule(
         DataGrid grid, List<DataGridColumn> participants, List<double> natural, List<DataGridRow> rows)
     {
@@ -673,7 +687,7 @@ internal static class DataGridColumnCap
 
         for (var i = 0; i < participants.Count; i++)
         {
-            if (!IsBlank(participants[i], rows)) continue;
+            if (GetShrinkWhenEmpty(participants[i]) || !IsBlank(participants[i], rows)) continue;
 
             var position = visualOrder.IndexOf(participants[i]);
             if (position < 0) continue;   // not laid out yet this pass — the header floor alone is correct
@@ -761,7 +775,10 @@ internal static class DataGridColumnCap
             {
                 var width = column.GetCellContent(row) switch
                 {
-                    TextBlock text => TextWidthOf(text),
+                    // The cell's own padding is part of what the text needs:
+                    // the cell template draws it (table-rules Rule 2), so a
+                    // width of the bare text would trim every value by it.
+                    TextBlock text => TextWidthOf(text) + CellPaddingOf(text),
                     // No governed column in this app is anything but a
                     // DataGridTextColumn today, so this branch is never
                     // exercised — kept so a future non-text tracked column
@@ -840,6 +857,15 @@ internal static class DataGridColumnCap
             return text is null
                 ? header.DesiredSize.Width
                 : TextWidthOf(text) + header.Padding.Left + header.Padding.Right;
+        }
+
+        /// <summary>The horizontal padding of the DataGridCell holding
+        /// <paramref name="text"/>, or 0 when it isn't in one.</summary>
+        private static double CellPaddingOf(TextBlock text)
+        {
+            DependencyObject? node = text;
+            while (node is not null and not DataGridCell) node = VisualTreeHelper.GetParent(node);
+            return node is DataGridCell cell ? cell.Padding.Left + cell.Padding.Right : 0;
         }
 
         private double TextWidthOf(TextBlock text)
