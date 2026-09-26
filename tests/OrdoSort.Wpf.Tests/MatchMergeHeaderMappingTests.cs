@@ -430,12 +430,12 @@ public sealed class MatchMergeHeaderMappingTests : IDisposable
     }
 
     // --------------------------------------------------------- finding B4
-    // RebuildColumnPicks used to run only from the initial LoadRosterFrom
-    // guess; correcting a header combo afterwards left ColumnPicks
-    // pre-ticking the STALE guessed column forever.
+    // The column picker used to be rebuilt only from the initial
+    // LoadRosterFrom guess; correcting a header combo afterwards left it
+    // showing the STALE guessed column forever.
 
     [Fact]
-    public void CorrectingAHeaderComboRebuildsColumnPicksInsteadOfStayingOnTheStaleGuess()
+    public void CorrectingAHeaderComboChangesTheShownIdColumnInsteadOfStayingOnTheStaleGuess()
     {
         // "Control ID" (2/2 signal) beats "Alt ID" (1/2 signal), so Control
         // auto-guesses "Control ID" first.
@@ -443,18 +443,19 @@ public sealed class MatchMergeHeaderMappingTests : IDisposable
         var vm = MakeVm();
         vm.LoadRosterFrom(path);
         Assert.Equal("Control ID", vm.ControlHeader);
-        Assert.True(vm.ColumnPicks.Single(p => p.Name == "Control ID").IsChosen);
-        Assert.False(vm.ColumnPicks.Single(p => p.Name == "Alt ID").IsChosen);
+        Assert.Contains("Control ID", vm.ChosenColumns);
+        Assert.DoesNotContain("Alt ID", vm.ChosenColumns);
 
         // The user corrects the guess — "Alt ID" is actually the real id column.
         vm.ControlHeader = "Alt ID";
 
-        Assert.True(vm.ColumnPicks.Single(p => p.Name == "Alt ID").IsChosen);     // now pre-ticked
-        Assert.False(vm.ColumnPicks.Single(p => p.Name == "Control ID").IsChosen); // stale guess dropped
+        Assert.Contains("Alt ID", vm.ChosenColumns);            // now shown
+        Assert.DoesNotContain("Control ID", vm.ChosenColumns);  // stale guess dropped
+        Assert.Contains("Alt ID", vm.IdentityHeaders);          // and locked on in Review matches
     }
 
     // --------------------------------------------------------- finding B5
-    // ChosenColumns/ColumnPicks persist a global (not per-roster) pick
+    // ChosenColumns persists a global (not per-roster) pick
     // list. A saved pick set from a roster with entirely different header
     // spellings can overlap the NEW roster only on some unrelated column
     // (e.g. both happen to have "Notes") — the identity headers must still
@@ -478,9 +479,8 @@ public sealed class MatchMergeHeaderMappingTests : IDisposable
         Assert.Equal("Surname", vm.LastHeader);
         Assert.Equal("Given Name", vm.FirstHeader);
         Assert.Equal("ID Number", vm.ControlHeader);
-        // the stale saved list ticks only "Notes" in the picker...
-        Assert.False(vm.ColumnPicks.Single(p => p.Name == "Surname").IsChosen);
-        // ...but ChosenColumns — what Review matches actually renders — must
+        // the stale saved list names only "Notes" of this roster's columns,
+        // but ChosenColumns — what Review matches actually renders — must
         // never lack the columns that say who a row is about.
         Assert.Contains("Surname", vm.ChosenColumns);
         Assert.Contains("Given Name", vm.ChosenColumns);

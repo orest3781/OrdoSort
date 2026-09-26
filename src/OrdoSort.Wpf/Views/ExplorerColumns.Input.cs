@@ -147,14 +147,24 @@ internal sealed partial class ExplorerColumns
         foreach (var column in _grid.Columns.OrderBy(c => c.DisplayIndex))
         {
             if (HeaderOf(column) is not { } header) continue;
+            // with a chooser, the menu is the quick way to hide; the chooser
+            // is the way to find and show the rest
+            if (_chooseColumns is not null && !_visibility.IsShown(column)) continue;
             var item = new MenuItem
             {
                 Header = header, IsCheckable = true, IsChecked = _visibility.IsShown(column),
-                IsEnabled = column != Anchor,
+                IsEnabled = column != Anchor && _visibility.CanChange(column),
             };
             var target = column;
             item.Click += (_, _) => _visibility.SetShown(target, !_visibility.IsShown(target));
             menu.Items.Add(item);
+        }
+        if (_chooseColumns is { } choose)
+        {
+            menu.Items.Add(new Separator());
+            var more = new MenuItem { Header = "More columns…" };
+            more.Click += (_, _) => choose();
+            menu.Items.Add(more);
         }
         return menu;
     }

@@ -11,24 +11,6 @@ public sealed record MatchRow(string Source, string File, string Becomes, string
     string Status);
 
 /// <summary>One roster header in the column picker.</summary>
-public sealed class HeaderPick : ObservableObject
-{
-    private readonly Action _changed;
-    public HeaderPick(string name, bool chosen, Action changed)
-    {
-        Name = name;
-        _isChosen = chosen;
-        _changed = changed;
-    }
-    public string Name { get; }
-    private bool _isChosen;
-    public bool IsChosen
-    {
-        get => _isChosen;
-        set { if (Set(ref _isChosen, value)) _changed(); }
-    }
-}
-
 /// <summary>Match &amp; merge: load a roster CSV, map its headers, drop PDFs in,
 /// merge each person's Control ID into the filename. Unambiguous matches merge
 /// in one click; ambiguous or suggested ones go to Review matches. Header
@@ -87,29 +69,25 @@ public sealed class MatchMergeViewModel : ObservableObject
     private string _rosterPath = "";
     public string RosterPath { get => _rosterPath; private set => Set(ref _rosterPath, value); }
 
-    // RebuildColumnPicks alongside ReloadRoster on every combo change (not
-    // just the initial LoadRosterFrom guess) — otherwise a user CORRECTING
-    // a wrong auto-guess leaves ColumnPicks pre-ticking the stale column
-    // the picker never gets told to drop.
     private string? _firstHeader;
     public string? FirstHeader
     {
         get => _firstHeader;
-        set { if (Set(ref _firstHeader, value)) { ReloadRoster(); RebuildColumnPicks(); } }
+        set { if (Set(ref _firstHeader, value)) ReloadRoster(); }
     }
 
     private string? _lastHeader;
     public string? LastHeader
     {
         get => _lastHeader;
-        set { if (Set(ref _lastHeader, value)) { ReloadRoster(); RebuildColumnPicks(); } }
+        set { if (Set(ref _lastHeader, value)) ReloadRoster(); }
     }
 
     private string? _controlHeader;
     public string? ControlHeader
     {
         get => _controlHeader;
-        set { if (Set(ref _controlHeader, value)) { ReloadRoster(); RebuildColumnPicks(); } }
+        set { if (Set(ref _controlHeader, value)) ReloadRoster(); }
     }
 
     private string _status = "";
@@ -149,7 +127,23 @@ public sealed class MatchMergeViewModel : ObservableObject
         _results.Where(r => r.Status is "ambiguous" or "suggested").ToList();
     public IReadOnlyList<string> RosterHeaders => _roster?.Headers ?? Array.Empty<string>();
 
-    public ObservableCollection<HeaderPick> ColumnPicks { get; } = new();
+    /// <summary>Every column Review matches can show: the spreadsheet's
+    /// headers, once each, in spreadsheet order.</summary>
+    public IReadOnlyList<string> ReviewColumnHeaders => Headers.Distinct().ToList();
+
+    /// <summary>The columns mapped to Last, First and Control: Review matches
+    /// locks them on, since they say who a row is.</summary>
+    public IReadOnlyList<string> IdentityHeaders =>
+        new[] { LastHeader, FirstHeader, ControlHeader }.Where(h => h is not null).Cast<string>().Distinct().ToList();
+
+    /// <summary>Saves what Review matches has on show (its header menu or
+    /// More columns…), for next time and for every station sharing the
+    /// config.</summary>
+    public void SetReviewColumns(IEnumerable<string> shown)
+    {
+        _cfg.MergeColumns = shown.Distinct().ToList();
+        _saveCfg?.Invoke();
+    }
 
     /// <summary>The headers Review matches shows. ALWAYS includes whichever
     /// headers are currently mapped to First/Last/Control — a saved pick
@@ -158,7 +152,7 @@ public sealed class MatchMergeViewModel : ObservableObject
     /// among this roster's columns), and Review matches (and its per-row
     /// identity) must never be handed a column set with no name/id field to
     /// file against. Any additionally-picked columns follow, in roster order
-    /// (ColumnPicks is built by walking Headers); with nothing extra picked,
+    /// (the saved list is walked in Headers order); with nothing extra picked,
     /// the identity headers alone come back in MAPPED order (Last, First,
     /// Control). Either way the result is de-duplicated: a roster with a
     /// repeated column name must never hand Review matches (and its per-row
@@ -167,34 +161,10 @@ public sealed class MatchMergeViewModel : ObservableObject
     {
         get
         {
-            var identity = new[] { LastHeader, FirstHeader, ControlHeader }
-                .Where(h => h is not null).Cast<string>();
-            var picked = ColumnPicks.Where(p => p.IsChosen).Select(p => p.Name);
-            return identity.Concat(picked).Distinct().ToList();
+            var saved = new HashSet<string>(_cfg.MergeColumns);
+            var picked = Headers.Distinct().Where(saved.Contains);
+            return IdentityHeaders.Concat(picked).Distinct().ToList();
         }
-    }
-
-    private void RebuildColumnPicks()
-    {
-        // no saved choice = the mapped name and id columns come pre-ticked, so
-        // the picker always shows the truth of what Review matches will show —
-        // and the first extra tick ADDS to them rather than replacing them.
-        // Distinct: a roster with a repeated column name must get one pick
-        // per NAME, not one per column.
-        ColumnPicks.Clear();
-        foreach (var h in Headers.Distinct())
-        {
-            var chosen = _cfg.MergeColumns.Count == 0
-                ? h == LastHeader || h == FirstHeader || h == ControlHeader
-                : _cfg.MergeColumns.Contains(h);
-            ColumnPicks.Add(new HeaderPick(h, chosen, OnColumnPicked));
-        }
-    }
-
-    private void OnColumnPicked()
-    {
-        _cfg.MergeColumns = ColumnPicks.Where(p => p.IsChosen).Select(p => p.Name).ToList();
-        _saveCfg?.Invoke();
     }
 
     private void BrowseRoster()
@@ -296,7 +266,6 @@ public sealed class MatchMergeViewModel : ObservableObject
         Raise(nameof(ControlHeader));
         _fillingHeaders = false;
         ReloadRoster();
-        RebuildColumnPicks();
     }
 
     /// <summary>Joins role names the way a sentence would: "Control",

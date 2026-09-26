@@ -439,6 +439,100 @@ public class TriageReviewHardeningTests
         finally { win.Close(); }
     });
 
+    // ---- choosing spreadsheet columns in Review matches (2026-09-26) -------
+
+    private static readonly string[] AllColumns = { "Last", "First", "DOB", "Address", "Control" };
+    private static readonly string[] IdentityColumns = { "Last", "First", "Control" };
+
+    private static MatchMerge.MatchResult PersonItem() =>
+        new(@"C:\inbox\doc.pdf", "ambiguous", "SMITH", "JOHN", Candidates: new List<MatchMerge.Candidate>
+        {
+            new("1", new Dictionary<string, string>
+                { ["Last"] = "SMITH", ["First"] = "JOHN", ["DOB"] = "1970", ["Address"] = "1 Elm St", ["Control"] = "1" }),
+            new("2", new Dictionary<string, string>
+                { ["Last"] = "SMITH", ["First"] = "JOHN", ["DOB"] = "1985", ["Address"] = "9 Oak Rd", ["Control"] = "2" }),
+        });
+
+    private static (TriageWindow Win, List<IReadOnlyList<string>> Saves) BuildWithColumns(params string[] shown)
+    {
+        var saves = new List<IReadOnlyList<string>>();
+        var win = new TriageWindow(new List<MatchMerge.MatchResult> { PersonItem() },
+            new ReviewColumns(AllColumns, IdentityColumns, shown, saves.Add))
+        { Dialogs = new FakeDialogs() };
+        return (win, saves);
+    }
+
+    private static DataGridColumn Column(TriageWindow win, string header) =>
+        win.Candidates.Columns.Single(c => (string)c.Header == header);
+
+    [Fact]
+    public void EverySpreadsheetColumnIsBuiltAndOnlyTheChosenOnesShow() => _fx.Invoke(() =>
+    {
+        var (win, _) = BuildWithColumns("Last", "First", "Control");
+        try
+        {
+            ShowCurrent(win);
+
+            Assert.Equal(AllColumns, win.Candidates.Columns.Select(c => (string)c.Header).Where(AllColumns.Contains));
+            Assert.Equal(Visibility.Collapsed, Column(win, "DOB").Visibility);
+            Assert.Equal(Visibility.Visible, Column(win, "Last").Visibility);
+            Assert.Equal("1970", win.Candidates.ItemsSource.Cast<Dictionary<string, string>>().First()["DOB"]);
+        }
+        finally { win.Close(); }
+    });
+
+    [Fact]
+    public void UntickingAColumnInTheHeaderMenuHidesItAndSavesTheChoice() => _fx.Invoke(() =>
+    {
+        var (win, saves) = BuildWithColumns("Last", "First", "DOB", "Control");
+        try
+        {
+            ShowCurrent(win);
+            var menu = OrdoSort.Wpf.Views.ExplorerColumns.For(win.Candidates)!.BuildHeaderMenu(Column(win, "DOB"));
+
+            menu.Items.OfType<MenuItem>().Single(i => (string)i.Header == "DOB")
+                .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+
+            Assert.Equal(Visibility.Collapsed, Column(win, "DOB").Visibility);
+            Assert.Equal(new[] { "Last", "First", "Control" }, saves.Last());
+        }
+        finally { win.Close(); }
+    });
+
+    [Fact]
+    public void TheNameAndIdColumnsAreLockedInTheHeaderMenu() => _fx.Invoke(() =>
+    {
+        var (win, _) = BuildWithColumns("Last", "First", "DOB", "Control");
+        try
+        {
+            ShowCurrent(win);
+            var menu = OrdoSort.Wpf.Views.ExplorerColumns.For(win.Candidates)!.BuildHeaderMenu(Column(win, "DOB"));
+            var items = menu.Items.OfType<MenuItem>().ToList();
+
+            Assert.All(IdentityColumns, h => Assert.False(items.Single(i => (string)i.Header == h).IsEnabled));
+            Assert.True(items.Single(i => (string)i.Header == "DOB").IsEnabled);
+            Assert.Contains(items, i => (string)i.Header == "More columns…");
+        }
+        finally { win.Close(); }
+    });
+
+    [Fact]
+    public void ApplyingAChoiceFromMoreColumnsShowsItAndSavesItInSpreadsheetOrder() => _fx.Invoke(() =>
+    {
+        var (win, saves) = BuildWithColumns("Last", "First", "DOB", "Control");
+        try
+        {
+            ShowCurrent(win);
+
+            win.ApplyColumnChoice(new[] { "Address", "Last", "First", "Control" });
+
+            Assert.Equal(Visibility.Visible, Column(win, "Address").Visibility);
+            Assert.Equal(Visibility.Collapsed, Column(win, "DOB").Visibility);
+            Assert.Equal(new[] { "Last", "First", "Address", "Control" }, saves.Last());
+        }
+        finally { win.Close(); }
+    });
+
     private static MatchMerge.Candidate Candidate(string controlId) =>
         new(controlId, new Dictionary<string, string> { ["Control ID"] = controlId });
 
