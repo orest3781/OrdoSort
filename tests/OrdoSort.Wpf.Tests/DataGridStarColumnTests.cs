@@ -111,13 +111,11 @@ public class DataGridStarColumnTests
     private static readonly Dictionary<string, int> ExpectedStarColumnCount = new()
     {
         ["History"] = 2,       // Original, Filed as — the measured exception; see HistoryWindow.xaml
-        ["BulkRename"] = 1,    // New name only (Current name is capped-Auto now)
         ["MatchMerge"] = 1,    // Becomes only (File is capped-Auto)
     };
 
     [Theory]
     [InlineData("History")]
-    [InlineData("BulkRename")]
     [InlineData("MatchMerge")]
     public void StarColumnsNeverCollapseBelowTheirMinimum(string windowName) => _fx.Invoke(() =>
     {
@@ -153,10 +151,6 @@ public class DataGridStarColumnTests
                 // pumping needed.
                 var vm = new HistoryViewModel(history, new FakeDialogs(), new InlineWorkScheduler());
                 win = new HistoryWindow(vm);
-            }
-            else if (windowName == "BulkRename")
-            {
-                win = new BulkRenameWindow(new BulkRenameViewModel());
             }
             else
             {

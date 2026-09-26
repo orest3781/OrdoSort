@@ -15,10 +15,9 @@ public partial class BulkRenameWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
-        // Note is blank on most batches; it keeps its header width rather
-        // than taking room the file names need (owner's call, 2026-09-25).
-        DataGridColumnCap.SetShrinkWhenEmpty(NoteColumn, true);
-        DataGridColumnCap.Track(PreviewGrid, CurrentColumn, NoteColumn);
+        // Explorer-style columns (table rules v2): fixed widths the user
+        // sets, remembered per PC.
+        ExplorerColumns.Attach(PreviewGrid, "BulkRename");
         _vm.SelectionRestored += OnSelectionRestored;
         Closed += (_, _) => _vm.SelectionRestored -= OnSelectionRestored;
     }
