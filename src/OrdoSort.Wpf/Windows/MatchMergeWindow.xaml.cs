@@ -54,7 +54,9 @@ public partial class MatchMergeWindow : Window
         // files; TriageWindow disposes its own Viewer on Closed, so its
         // browser process doesn't outlive THIS window either, across
         // repeated review passes
-        var win = new TriageWindow(items, _vm.ChosenColumns) { Owner = this };
+        var win = new TriageWindow(items, new ReviewColumns(
+            _vm.ReviewColumnHeaders, _vm.IdentityHeaders, _vm.ChosenColumns, _vm.SetReviewColumns))
+        { Owner = this };
         win.ShowDialog();
         _vm.Absorb(win.Outcomes);
     }

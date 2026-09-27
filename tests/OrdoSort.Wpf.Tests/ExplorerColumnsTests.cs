@@ -42,7 +42,7 @@ public sealed class ExplorerColumnsTests : UiTest, IDisposable
     }
 
     internal Bed Build(double windowWidth = 900, TableLayoutStore? store = null, Func<DateTime>? clock = null,
-        params Row[] rows)
+        IColumnVisibility? visibility = null, Action? chooseColumns = null, params Row[] rows)
     {
         var items = new ObservableCollection<Row>(rows);
         var grid = new DataGrid { ItemsSource = items, AutoGenerateColumns = false, CanUserAddRows = false };
@@ -53,7 +53,8 @@ public sealed class ExplorerColumnsTests : UiTest, IDisposable
                 ElementStyle = (Style)_fx.App.FindResource("GridCellText"),
             });
         store ??= new TableLayoutStore(Path.Combine(_dir, "table-columns.json"));
-        var explorer = ExplorerColumns.Attach(grid, "Test", store: store, clock: clock);
+        var explorer = ExplorerColumns.Attach(grid, "Test", store: store, clock: clock,
+            visibility: visibility, chooseColumns: chooseColumns);
         var window = new Window
         {
             Width = windowWidth, Height = 400, Content = grid,
@@ -659,6 +660,105 @@ public sealed class ExplorerColumnsTests : UiTest, IDisposable
             bed.Explorer.FitAll();
 
             Assert.Equal(40, ticks.Width.Value);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    // ---- locked columns and "More columns…" (Review matches, 2026-09-26) ---
+
+    /// <summary>Plain Visibility, with some columns locked on — as Review
+    /// matches locks the name and id columns.</summary>
+    private sealed class LockedVisibility(params string[] locked) : IColumnVisibility
+    {
+        public bool IsShown(DataGridColumn column) => column.Visibility == Visibility.Visible;
+        public void SetShown(DataGridColumn column, bool shown) =>
+            column.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+        public bool CanChange(DataGridColumn column) => !locked.Contains((string)column.Header);
+    }
+
+    private static List<object> MenuHeaders(ContextMenu menu) =>
+        menu.Items.Cast<object>().Select(i => i is MenuItem m ? m.Header : "---").ToList();
+
+    [Fact]
+    public void ALockedColumnCannotBeUntickedInTheHeaderMenu() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(visibility: new LockedVisibility("Kind"), rows: new Row { Name = "a" });
+        try
+        {
+            Settle(bed.Window);
+
+            var menu = bed.Explorer.BuildHeaderMenu(bed.Column("Note"));
+
+            Assert.False(menu.Items.OfType<MenuItem>().Single(i => (string)i.Header == "Kind").IsEnabled);
+            Assert.True(menu.Items.OfType<MenuItem>().Single(i => (string)i.Header == "Note").IsEnabled);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    /// <summary>As in Explorer: with a chooser, the menu lists only the
+    /// columns on show, and "More columns…" opens the full list.</summary>
+    [Fact]
+    public void WithAChooserTheMenuListsOnlyShownColumnsAndOffersMoreColumns() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var opened = 0;
+        var bed = Build(chooseColumns: () => opened++, rows: new Row { Name = "a" });
+        try
+        {
+            bed.Column("Note").Visibility = Visibility.Collapsed;
+            Settle(bed.Window);
+
+            var menu = bed.Explorer.BuildHeaderMenu(bed.Column("Name"));
+            Assert.Equal(new object[] { "Size column to fit", "Size all columns to fit", "---", "Name", "Kind", "---", "More columns…" },
+                MenuHeaders(menu));
+
+            menu.Items.OfType<MenuItem>().Single(i => (string)i.Header == "More columns…")
+                .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Assert.Equal(1, opened);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    [Fact]
+    public void WithoutAChooserTheMenuStillListsEveryColumn() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = "a" });
+        try
+        {
+            bed.Column("Note").Visibility = Visibility.Collapsed;
+            Settle(bed.Window);
+
+            Assert.Equal(new object[] { "Size column to fit", "Size all columns to fit", "---", "Name", "Kind", "Note" },
+                MenuHeaders(bed.Explorer.BuildHeaderMenu(bed.Column("Name"))));
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    private sealed class OwnerKeptVisibility : IColumnVisibility
+    {
+        public bool IsShown(DataGridColumn column) => column.Visibility == Visibility.Visible;
+        public void SetShown(DataGridColumn column, bool shown) =>
+            column.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+        public bool RestoreFromLayout => false;
+    }
+
+    /// <summary>Review matches keeps which spreadsheet columns show in the
+    /// shared config; the per-PC layout must not overrule it, or two PCs
+    /// would keep undoing each other's choice.</summary>
+    [Fact]
+    public void AnOwnerThatKeepsVisibilityIsNotOverruledByTheSavedLayout() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var store = new TableLayoutStore(Path.Combine(_dir, "table-columns.json"));
+        store.Save("Test", new TableLayout(new[] { new ColumnLayout("Note", 150, false, 2) }, null, null));
+        var bed = Build(store: store, visibility: new OwnerKeptVisibility(), rows: new Row { Name = "a" });
+        try
+        {
+            Settle(bed.Window);
+
+            Assert.Equal(Visibility.Visible, bed.Column("Note").Visibility);
         }
         finally { bed.Window.Close(); }
     });

@@ -1990,7 +1990,8 @@ public class MatchMergeViewModelTests : IDisposable
         // nothing picked yet -> the mapped name and id columns
         Assert.Equal(new[] { "Last", "First", "Control" }, vm.ChosenColumns);
 
-        vm.ColumnPicks.Single(p => p.Name == "DOB").IsChosen = true;
+        // Review matches hands back what is on show (2026-09-26)
+        vm.SetReviewColumns(new[] { "Last", "First", "DOB", "Control" });
         Assert.Contains("DOB", vm.ChosenColumns);
         Assert.Equal(new[] { "Last", "First", "DOB", "Control" }, cfg.MergeColumns);
         Assert.True(saves > 0);
@@ -1998,7 +1999,9 @@ public class MatchMergeViewModelTests : IDisposable
         // a fresh VM against the same config restores the choice
         var vm2 = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs());
         vm2.LoadRosterFrom(roster);
-        Assert.True(vm2.ColumnPicks.Single(p => p.Name == "DOB").IsChosen);
+        Assert.Contains("DOB", vm2.ChosenColumns);
+        Assert.Equal(new[] { "Last", "First", "DOB", "Dept", "Control" }, vm2.ReviewColumnHeaders);
+        Assert.Equal(new[] { "Last", "First", "Control" }, vm2.IdentityHeaders);
     }
 
     [Fact]
@@ -2013,7 +2016,7 @@ public class MatchMergeViewModelTests : IDisposable
         var vm = Vm();
         vm.LoadRosterFrom(roster);
 
-        Assert.Equal(2, vm.ColumnPicks.Count);             // one pick per DISTINCT header
+        Assert.Equal(2, vm.ReviewColumnHeaders.Count);     // one column per DISTINCT header
         Assert.Equal(vm.ChosenColumns.Count, vm.ChosenColumns.Distinct().Count());
     }
 

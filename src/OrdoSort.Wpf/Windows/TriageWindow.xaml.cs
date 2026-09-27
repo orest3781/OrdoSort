@@ -11,6 +11,14 @@ using OrdoSort.Wpf.Views;
 
 namespace OrdoSort.Wpf.Windows;
 
+/// <summary>The spreadsheet columns Review matches can show (2026-09-26):
+/// <paramref name="All"/> in spreadsheet order, the <paramref name="Locked"/>
+/// name and id columns that always show, the ones <paramref name="Shown"/>
+/// to start with, and where the choice is saved when it changes.</summary>
+public sealed record ReviewColumns(
+    IReadOnlyList<string> All, IReadOnlyList<string> Locked, IReadOnlyList<string> Shown,
+    Action<IReadOnlyList<string>> Save);
+
 /// <summary>One file at a time: ambiguous matches and token-pass
 /// suggestions; pick the row the document belongs to, or skip. The PDF
 /// appears in Edge (left) and every candidate's full roster row on the
@@ -98,6 +106,11 @@ public partial class TriageWindow : Window
 
     private readonly List<MatchMerge.MatchResult> _items;
     private readonly IReadOnlyList<string> _headers;
+    private readonly HashSet<string> _lockedHeaders;
+    // header -> its roster column; by reference, since a spreadsheet can
+    // have a column of its own called "Why"
+    private readonly Dictionary<string, DataGridColumn> _rosterColumns = new(StringComparer.Ordinal);
+    private readonly Action<IReadOnlyList<string>> _saveColumns;
     private readonly WebViewPdfViewer _pdf;
     private readonly Func<System.Windows.Rect?> _panZone;
     private int _index;
@@ -161,18 +174,36 @@ public partial class TriageWindow : Window
 
     public List<BulkRename.RenameOutcome> Outcomes { get; } = new();
 
+    /// <summary>Review matches with a fixed set of columns, all shown and
+    /// nothing saved.</summary>
     public TriageWindow(List<MatchMerge.MatchResult> items, IReadOnlyList<string> headers)
-        : this(items, headers, initViewer: null) { }
+        : this(items, new ReviewColumns(headers, Array.Empty<string>(), headers, _ => { }))
+    {
+    }
 
     /// <param name="initViewer">Starts the PDF viewer when the window loads;
     /// null starts the real WebView2. Tests pass a stand-in so a window test
     /// never starts Edge (docs/testing.md).</param>
     internal TriageWindow(List<MatchMerge.MatchResult> items, IReadOnlyList<string> headers,
         Func<Task<bool>>? initViewer)
+        : this(items, new ReviewColumns(headers, Array.Empty<string>(), headers, _ => { }), initViewer)
+    {
+    }
+
+    public TriageWindow(List<MatchMerge.MatchResult> items, ReviewColumns columns)
+        : this(items, columns, initViewer: null)
+    {
+    }
+
+    internal TriageWindow(List<MatchMerge.MatchResult> items, ReviewColumns columns,
+        Func<Task<bool>>? initViewer)
     {
         InitializeComponent();
         _items = items;
-        _headers = headers;
+        _headers = columns.All.Distinct(StringComparer.Ordinal).ToList();
+        _lockedHeaders = new HashSet<string>(columns.Locked, StringComparer.Ordinal);
+        _saveColumns = columns.Save;
+        var shown = new HashSet<string>(columns.Shown, StringComparer.Ordinal);
         Dialogs = new DialogService(this);
         Viewer.CreationProperties = new Microsoft.Web.WebView2.Wpf.CoreWebView2CreationProperties
         {
@@ -201,8 +232,11 @@ public partial class TriageWindow : Window
             // survived the window unless disposed here explicitly.
             Viewer.Dispose();
         };
-        // Roster columns: one per picked roster header, each starting at
-        // RosterColumnWidth; the user sizes them from there (table rules v2).
+        // Roster columns: one per spreadsheet header, each starting at
+        // RosterColumnWidth (the user sizes them from there, table rules v2);
+        // only the chosen and the locked ones show. Building every column up
+        // front is what lets the header menu and More columns… show one
+        // without rebuilding the grid.
         for (var i = 0; i < _headers.Count; i++)
         {
             var h = _headers[i];
@@ -238,14 +272,61 @@ public partial class TriageWindow : Window
                 // showed the same text a second time even when nothing was
                 // cut off — exactly the noise Rule 4 exists to stop.
                 ElementStyle = new Style(typeof(TextBlock), GridCellTextSelectionAwareStyle),
+                Visibility = shown.Contains(h) || _lockedHeaders.Contains(h) ? Visibility.Visible : Visibility.Collapsed,
             };
             ApplySortPath(column, h);
             Candidates.Columns.Add(column);
+            _rosterColumns[h] = column;
         }
         // Explorer-style columns (table rules v2): fixed widths the user
         // sizes, remembered per roster header.
-        ExplorerColumns.Attach(Candidates, "Triage");
+        ExplorerColumns.Attach(Candidates, "Triage", visibility: new RosterVisibility(this),
+            chooseColumns: OpenColumnChooser);
         Loaded += async (_, _) => await InitAndShowAsync(initViewer ?? _pdf.InitAsync);
+    }
+
+    /// <summary>Which spreadsheet columns show: kept by this window and saved
+    /// through <see cref="ReviewColumns.Save"/> (the shared config), not by
+    /// the per-PC table layout. The name and id columns are locked on.</summary>
+    private sealed class RosterVisibility(TriageWindow window) : IColumnVisibility
+    {
+        public bool IsShown(DataGridColumn column) => column.Visibility == Visibility.Visible;
+
+        public void SetShown(DataGridColumn column, bool shown)
+        {
+            column.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+            if (window._rosterColumns.ContainsValue(column)) window.SaveColumnChoice();
+        }
+
+        public bool CanChange(DataGridColumn column) =>
+            !window._rosterColumns.ContainsValue(column) || !window._lockedHeaders.Contains((string)column.Header);
+
+        public bool RestoreFromLayout => false;
+    }
+
+    private DataGridColumn? RosterColumn(string header) => _rosterColumns.GetValueOrDefault(header);
+
+    private IReadOnlyList<string> ShownHeaders() =>
+        _headers.Where(h => RosterColumn(h)?.Visibility == Visibility.Visible).ToList();
+
+    private void SaveColumnChoice() => _saveColumns(ShownHeaders());
+
+    private void OpenColumnChooser()
+    {
+        if (ColumnChooserWindow.Ask(this, _headers, _lockedHeaders, ShownHeaders()) is { } chosen)
+            ApplyColumnChoice(chosen);
+    }
+
+    /// <summary>Shows exactly <paramref name="chosen"/> plus the locked
+    /// columns, and saves the choice in spreadsheet order.</summary>
+    internal void ApplyColumnChoice(IReadOnlyList<string> chosen)
+    {
+        var wanted = new HashSet<string>(chosen, StringComparer.Ordinal);
+        foreach (var h in _headers)
+            if (RosterColumn(h) is { } column)
+                column.Visibility = wanted.Contains(h) || _lockedHeaders.Contains(h)
+                    ? Visibility.Visible : Visibility.Collapsed;
+        SaveColumnChoice();
     }
 
     /// <summary>One roster cell's binding: bound to the ROW, with the header

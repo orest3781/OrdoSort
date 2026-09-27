@@ -13,6 +13,15 @@ internal interface IColumnVisibility
 {
     bool IsShown(DataGridColumn column);
     void SetShown(DataGridColumn column, bool shown);
+
+    /// <summary>False for a column the owner keeps on show (Review matches'
+    /// name and id columns); its header-menu entry is disabled.</summary>
+    bool CanChange(DataGridColumn column) => true;
+
+    /// <summary>False when the owner keeps which columns show itself (Review
+    /// matches, in the shared config): the per-PC layout then restores
+    /// widths and order only.</summary>
+    bool RestoreFromLayout => true;
 }
 
 /// <summary>Makes one DataGrid behave like File Explorer's Details view
@@ -44,11 +53,13 @@ internal sealed partial class ExplorerColumns
     private readonly Func<DateTime> _clock;
     private readonly Action<Exception> _reportSaveError;
     private readonly DataGridColumn? _explicitAnchor;
+    private readonly Action? _chooseColumns;
     private bool _applied;
 
     private ExplorerColumns(DataGrid grid, string key, DataGridColumn? anchor, IColumnVisibility? visibility,
-        TableLayoutStore? store, Func<DateTime>? clock, Action<Exception>? reportSaveError)
+        TableLayoutStore? store, Func<DateTime>? clock, Action<Exception>? reportSaveError, Action? chooseColumns)
     {
+        _chooseColumns = chooseColumns;
         _grid = grid;
         _key = key;
         _explicitAnchor = anchor;
@@ -70,11 +81,15 @@ internal sealed partial class ExplorerColumns
     /// <param name="clock">Time source for type-ahead; tests pass their own.</param>
     /// <param name="reportSaveError">Where a failed save is reported;
     /// defaults to crash.log.</param>
+    /// <param name="chooseColumns">Opens the table's full column chooser. When
+    /// given, the header menu lists only the columns on show and ends with
+    /// "More columns…", as in Explorer — for tables with too many columns
+    /// for one menu (Review matches' spreadsheet columns).</param>
     public static ExplorerColumns Attach(DataGrid grid, string key, DataGridColumn? anchor = null,
         IColumnVisibility? visibility = null, TableLayoutStore? store = null, Func<DateTime>? clock = null,
-        Action<Exception>? reportSaveError = null)
+        Action<Exception>? reportSaveError = null, Action? chooseColumns = null)
     {
-        var explorer = new ExplorerColumns(grid, key, anchor, visibility, store, clock, reportSaveError);
+        var explorer = new ExplorerColumns(grid, key, anchor, visibility, store, clock, reportSaveError, chooseColumns);
         grid.SetValue(InstanceProperty, explorer);
         grid.MinColumnWidth = MinColumnWidth;
         grid.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
@@ -134,7 +149,7 @@ internal sealed partial class ExplorerColumns
             if (HeaderOf(column) is { } header && byHeader.TryGetValue(header, out var layout))
             {
                 column.Width = new DataGridLength(Math.Max(MinColumnWidth, layout.Width));
-                if (column != Anchor) _visibility.SetShown(column, layout.Visible);
+                if (column != Anchor && _visibility.RestoreFromLayout) _visibility.SetShown(column, layout.Visible);
             }
 
         // Order: saved positions first (stable for ties), unknown columns after.
