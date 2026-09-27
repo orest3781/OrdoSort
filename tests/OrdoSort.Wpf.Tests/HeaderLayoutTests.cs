@@ -18,11 +18,10 @@ namespace OrdoSort.Wpf.Tests;
 /// default, so the four top-level items reflowed onto a second row and the
 /// header doubled in height.
 ///
-/// This is not a hypothetical narrow window. EnterCompact (MainWindow.xaml.cs)
-/// parks the Ready dashboard at <c>Width = 470</c> with <c>MinWidth = 400</c>,
-/// and the untouched header needs roughly 470px for its own content — so the
-/// wrap happened in the app's own compact mode, which is where it was reported
-/// from.
+/// This is not a hypothetical narrow window. MainWindow (the dashboard) opens
+/// at <c>Width = 470</c> with <c>MinWidth = 400</c>, and the untouched header
+/// needs roughly 470px for its own content — so the wrap happened at the
+/// app's own default size, which is where it was reported from.
 ///
 /// 400px, the window's own declared floor, is therefore the acceptance
 /// criterion these tests assert against, rather than a number picked to suit
@@ -71,17 +70,31 @@ public class HeaderLayoutTests : UiTest, IDisposable
         // real Edge start belongs to the integration run (docs/testing.md).
         var window = new MainWindow(cfg, cfgPath, initViewer: () => Task.FromResult(true))
         {
+            Dialogs = new FakeDialogs(),   // a warning must never block the UI thread
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
         };
         window.Show();
-        // EnterCompact runs in the ctor and parks the window at 470; the width
+        // The dashboard sets its own 470 width when it opens; the width
         // under test is applied after, the way a user's drag would.
         window.Width = width;
         window.UpdateLayout();
         PumpRender();
         window.UpdateLayout();
+        AssertTheDashboardStartedQuietly(window);
         return window;
+    }
+
+    /// <summary>A start-up failure (the shell's Initialize) raises a warning.
+    /// With the real dialog service that warning was a modal window that hung
+    /// the shared UI thread; now it fails here, with what crash.log says.</summary>
+    private static void AssertTheDashboardStartedQuietly(MainWindow window)
+    {
+        var dialogs = (FakeDialogs)window.Dialogs;
+        if (dialogs.Warnings.Count == 0) return;
+        var log = Path.Combine(App._crashDir, "crash.log");
+        Assert.Fail("the dashboard warned while starting: " + dialogs.Warnings[0].Message +
+            (File.Exists(log) ? "\n\ncrash.log:\n" + File.ReadAllText(log) : "\n\n(no crash.log)"));
     }
 
     [Fact]
@@ -99,6 +112,7 @@ public class HeaderLayoutTests : UiTest, IDisposable
         var window = new MainWindow(cfg, Path.Combine(_dir, "config.json"),
             initViewer: () => { started++; return Task.FromResult(true); })
         {
+            Dialogs = new FakeDialogs(),   // a warning must never block the UI thread
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
         };
@@ -214,7 +228,7 @@ public class HeaderLayoutTests : UiTest, IDisposable
     // dropped) the four tests above already pass, because a narrower toolbar
     // leaves the menu's column wide enough not to squeeze. So the column
     // priority and the non-wrapping ItemsPanel buy nothing at any width the app
-    // currently permits — EnterCompact's MinWidth = 400 is simply too generous
+    // currently permits — the dashboard's MinWidth = 400 is simply too generous
     // to reach them.
     //
     // They are not decoration, though: they are what holds if MinWidth is ever
@@ -233,7 +247,7 @@ public class HeaderLayoutTests : UiTest, IDisposable
         var window = OpenAtWidth(470);
         try
         {
-            window.MinWidth = 0;   // past EnterCompact's floor, on purpose
+            window.MinWidth = 0;   // past the dashboard's floor, on purpose
             window.Width = 200;
             window.UpdateLayout();
             PumpRender();

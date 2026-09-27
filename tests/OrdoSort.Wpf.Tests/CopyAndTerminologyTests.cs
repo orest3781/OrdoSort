@@ -525,6 +525,7 @@ public class CopyAndTerminologyTests : UiTest
 
         var window = new MainWindow(cfg, Path.Combine(dir, "config.json"), initViewer: () => Task.FromResult(true))
         {
+            Dialogs = new FakeDialogs(),   // a warning must never block the UI thread
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
         };

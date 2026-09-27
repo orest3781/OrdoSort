@@ -158,6 +158,7 @@ public class ShutdownDuringCommitTests : UiTest
                 window = new MainWindow(cfg, cfgPath, initViewer: () => Task.FromResult(true),
                     sessionWorkArea: () => new System.Windows.Rect(-20000, 0, 1600, 1000))
                 {
+                    Dialogs = new FakeDialogs(),   // a warning must never block the UI thread
                     Left = -20000, Top = 0, ShowActivated = false,
                     WindowStartupLocation = WindowStartupLocation.Manual,
                 };
@@ -288,6 +289,7 @@ public class ShutdownDuringCommitTests : UiTest
                 window = new MainWindow(cfg, cfgPath, initViewer: () => Task.FromResult(true),
                     sessionWorkArea: () => new System.Windows.Rect(-20000, 0, 1600, 1000))
                 {
+                    Dialogs = new FakeDialogs(),   // a warning must never block the UI thread
                     Left = -20000, Top = 0, ShowActivated = false,
                     WindowStartupLocation = WindowStartupLocation.Manual,
                 };
