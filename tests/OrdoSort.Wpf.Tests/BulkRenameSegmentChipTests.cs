@@ -20,13 +20,13 @@ namespace OrdoSort.Wpf.Tests;
 /// a checkbox label that resolved a perfectly good colour and painted
 /// nothing at all (the old Delete segments "last" box, 2026-08-03).</summary>
 [Collection(HighlightContrastTests.Name)]
-public class BulkRenameSegmentChipTests : IDisposable
+public class BulkRenameSegmentChipTests : UiTest, IDisposable
 {
     private readonly HighlightContrastFixture _fx;
     private readonly string _dir = Directory.CreateDirectory(
         Path.Combine(Path.GetTempPath(), "ordo_chips_" + Guid.NewGuid().ToString("N"))).FullName;
 
-    public BulkRenameSegmentChipTests(HighlightContrastFixture fx) => _fx = fx;
+    public BulkRenameSegmentChipTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     public void Dispose()
     {
@@ -40,7 +40,7 @@ public class BulkRenameSegmentChipTests : IDisposable
         var file = Path.Combine(_dir, "EVANS_BRIAN_1998.pdf");
         File.WriteAllText(file, "x");
         var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
-        vm.AddFilesAsync(new[] { file }).GetAwaiter().GetResult();
+        InlineWorkScheduler.Finished(vm.AddFilesAsync(new[] { file }));
         vm.SelectedSources = new[] { file };   // only ticked files change (2026-09-26)
         vm.SetSegmentKept(2, kept: false);
 
@@ -75,9 +75,6 @@ public class BulkRenameSegmentChipTests : IDisposable
             ThemeManager.Apply(_fx.App, dark: false);
         }
     });
-
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
 
     /// <summary>The most common colour in the label's bounds is its
     /// background; the colour contrasting most with it is its ink.</summary>
@@ -119,19 +116,6 @@ public class BulkRenameSegmentChipTests : IDisposable
         return (bestFg, bg);
     }
 
-    private static List<T> FindAllDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        var results = new List<T>();
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) results.Add(match);
-            results.AddRange(FindAllDescendants<T>(child));
-        }
-        return results;
-    }
-
     /// <summary>Rule 12 in Bulk rename: typing jumps to a file instead of
     /// starting an edit on its New name; the existing F2 path still edits.</summary>
     [Fact]
@@ -145,7 +129,7 @@ public class BulkRenameSegmentChipTests : IDisposable
             return path;
         }).ToList();
         var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
-        vm.AddFilesAsync(files).GetAwaiter().GetResult();
+        InlineWorkScheduler.Finished(vm.AddFilesAsync(files));
         var win = new BulkRenameWindow(vm)
         {
             WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = 0, ShowActivated = false,

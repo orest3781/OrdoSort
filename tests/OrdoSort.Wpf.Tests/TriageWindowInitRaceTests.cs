@@ -1,3 +1,4 @@
+using System.Windows;
 using System.Windows.Threading;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Windows;
@@ -29,27 +30,30 @@ namespace OrdoSort.Wpf.Tests;
 /// actual race the fix needs to survive — without ever touching a real
 /// WebView2 or Edge process.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class TriageWindowInitRaceTests
+public class TriageWindowInitRaceTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public TriageWindowInitRaceTests(HighlightContrastFixture fx) => _fx = fx;
+    public TriageWindowInitRaceTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
-    /// <summary>Pumps this thread's Dispatcher (a nested message loop, same
-    /// mechanism ShowDialog uses) until <paramref name="task"/> completes.
-    /// Needed because <c>InitAndShowAsync</c>'s <c>await</c> captures this
-    /// STA thread's DispatcherSynchronizationContext, so the continuation
-    /// that runs after <see cref="System.Threading.Tasks.TaskCompletionSource{TResult}.SetResult"/>
-    /// is POSTED to the dispatcher queue, not run inline — a plain blocking
-    /// wait (`.GetAwaiter().GetResult()`) on this same thread would never let
-    /// that posted continuation run at all.</summary>
-    private static void PumpUntilComplete(Task task)
+    [Fact]
+    public void TheReviewWindowStartsItsViewerThroughTheStartItWasGiven() => _fx.Invoke(() =>
     {
-        if (task.IsCompleted) return;
-        var frame = new DispatcherFrame();
-        task.ContinueWith(_ => frame.Continue = false,
-            TaskScheduler.FromCurrentSynchronizationContext());
-        Dispatcher.PushFrame(frame);
-    }
+        var started = 0;
+        var win = new TriageWindow(new List<MatchMerge.MatchResult>(), new[] { "A" },
+            initViewer: () => { started++; return Task.FromResult(true); })
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        win.Dialogs = new FakeDialogs();
+        try
+        {
+            win.Show();
+            PumpRender();
+            Assert.Equal(1, started);
+        }
+        finally { win.Close(); }
+    });
 
     [Fact]
     public void ClosingWhileInitIsPendingSkipsShowAndTouchesNothingDisposed() => _fx.Invoke(() =>

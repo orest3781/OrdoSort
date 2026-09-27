@@ -26,13 +26,16 @@ namespace OrdoSort.Wpf.Tests;
 // collection every other static/process-wide-state test in this project
 // already uses (see HighlightContrastFixture's class doc) is how this suite
 // isolates exactly this class of seam; this class doesn't need the
-// fixture's STA Application itself (none of these three tests touch WPF),
-// so it isn't taken as a constructor parameter — only the collection's
-// "never run two of my classes concurrently" guarantee is needed here.
+// fixture's STA Application itself (none of these three tests touch WPF);
+// only the collection's "never run two of my classes concurrently"
+// guarantee is needed here. It takes the fixture because every class in
+// the collection derives from UiTest.
 [Collection(HighlightContrastTests.Name)]
-public class CultureInvariantDatesTests : IDisposable
+public class CultureInvariantDatesTests : UiTest, IDisposable
 {
     private readonly string _dir = Directory.CreateTempSubdirectory("ordoculttest_").FullName;
+
+    public CultureInvariantDatesTests(HighlightContrastFixture fx) : base(fx) { }
 
     public void Dispose() { try { Directory.Delete(_dir, true); } catch { } }
 
@@ -57,41 +60,6 @@ public class CultureInvariantDatesTests : IDisposable
         }
     }
 
-    /// <summary>BulkRenameViewModel's preview now computes off the UI thread
-    /// through a debounced probe (Task 2, 2026-08-05 debounce pair — see
-    /// DebouncedProbe/BulkRenameViewModel.Refresh), so Preview doesn't reflect
-    /// a property set the instant the setter returns — poll for it, same
-    /// shape as SettingsViewModelTests.WaitFor.</summary>
-    private static void WaitFor(Func<bool> condition, string because, int timeoutMs = 3000)
-    {
-        var sw = Stopwatch.StartNew();
-        while (true)
-        {
-            bool result;
-            try
-            {
-                result = condition();
-            }
-            // Fix round 2, item 2(b) — same fix as the WaitFor copy in
-            // ToolViewModelTests/SettingsViewModelTests/TilePreviewProbeTests:
-            // a predicate reading a collection that a background thread is
-            // mid-mutating can throw INSIDE the read rather than just
-            // observe a stale-but-valid value. Both exceptions below are
-            // the SAME "not true yet" outcome a plain false would be, so
-            // they are retried, not surfaced. Nothing else is caught: a
-            // predicate that throws for a REAL reason must still fail the
-            // test immediately.
-            catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException)
-            {
-                result = false;
-            }
-            if (result) return;
-            if (sw.ElapsedMilliseconds > timeoutMs)
-                Assert.Fail($"condition never became true within {timeoutMs}ms: {because}");
-            Thread.Sleep(5);
-        }
-    }
-
     // ---- BulkRenameViewModel.cs:128 — the received-date stem that rebuilds
     // an actual review filename via BulkRename.Plan/Execute ----
 
@@ -110,7 +78,11 @@ public class CultureInvariantDatesTests : IDisposable
             // culture on the wrong one. Nothing the test measures moves:
             // the code under test here, CurrentOp's yyyyMMdd stem, runs on
             // THIS thread inside Refresh either way.
-            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
+            // Inline work on a manual clock: the preview is built on this
+            // thread, under the culture set above. A timer thread would
+            // build it under the machine's culture and prove nothing.
+            var time = new ManualTimeProvider();
+            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler(), time: time);
             vm.AddFilesAsync(new[] { path });
             vm.SelectedSources = new[] { path };   // only ticked files change (2026-09-26)
             vm.Join = OrdoSort.Core.BulkRename.SegmentJoin.Dash;
@@ -123,8 +95,7 @@ public class CultureInvariantDatesTests : IDisposable
             // supersede it, satisfying a count-only wait on the WRONG preview
             // and making the strict Assert.Equal below intermittently fail
             // (finding 3, final review, 2026-08-05 debounce pair).
-            WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "20260802-SMITH-JOHN.pdf",
-                "the preview should eventually compute the dated name");
+            time.Advance(TimeSpan.FromSeconds(1));
             var row = Assert.Single(vm.Preview);
             Assert.Equal("20260802-SMITH-JOHN.pdf", row.NewName);
         });
@@ -140,7 +111,11 @@ public class CultureInvariantDatesTests : IDisposable
         {
             var path = MakeFile("whatever.pdf");   // one segment: dropping it leaves nothing
             // InlineWorkScheduler for the same reason as the theory above.
-            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
+            // Inline work on a manual clock: the preview is built on this
+            // thread, under the culture set above. A timer thread would
+            // build it under the machine's culture and prove nothing.
+            var time = new ManualTimeProvider();
+            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler(), time: time);
             vm.AddFilesAsync(new[] { path });
             vm.SelectedSources = new[] { path };   // only ticked files change (2026-09-26)
             vm.AddDate = true;
@@ -151,8 +126,7 @@ public class CultureInvariantDatesTests : IDisposable
             // count-only wait can be satisfied by the AddFiles-generation
             // compute (EditSeed == the plain filename, NeedsName == false)
             // before the later recompute supersedes it.
-            WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].EditSeed == "20260802-",
-                "the preview should eventually compute the stray's date-prefixed edit seed");
+            time.Advance(TimeSpan.FromSeconds(1));
             var row = Assert.Single(vm.Preview);
             Assert.True(row.NeedsName);
             Assert.Equal("20260802-", row.EditSeed);

@@ -1006,38 +1006,3 @@ public class ZipExtractViewModelTests
         Assert.Equal("Extract", announced);
     }
 }
-
-/// <summary>A private, GUID-named temp folder for one test's files and
-/// folders. Neither ZipViewModelTests nor UnzipViewModelTests factored this
-/// out — each just kept a private `_dir` field plus TouchFile/TouchFolder
-/// helper methods on the test class itself — but the mixed-kind tests here
-/// build several rows of both kinds per test, so a small type with File()/
-/// Dir() reads better than repeating that pair of helper methods again.
-/// Deleted best-effort on Dispose, same as both ported suites' own
-/// teardown.</summary>
-public sealed class TempDir : IDisposable
-{
-    public string Path { get; } =
-        System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ordoziptoolvm_" + Guid.NewGuid());
-
-    public TempDir() => Directory.CreateDirectory(Path);
-
-    public string File(string name)
-    {
-        var p = System.IO.Path.Combine(Path, name);
-        System.IO.File.WriteAllText(p, "x");
-        return p;
-    }
-
-    public string Dir(string name)
-    {
-        var p = System.IO.Path.Combine(Path, name);
-        Directory.CreateDirectory(p);
-        return p;
-    }
-
-    public void Dispose()
-    {
-        try { Directory.Delete(Path, true); } catch { /* best effort */ }
-    }
-}

@@ -4,10 +4,21 @@
      Directory.Build.props. -->
 <RunSettings>
   <RunConfiguration>
-    <!-- A test project that runs zero tests is a failure, not a pass. On
-         2026-09-23 Windows Application Control blocked the Release
-         OrdoSort.Wpf.Tests.dll: xUnit skipped all 2,364 tests, printed
-         "No test is available", and check.bat still exited 0. -->
+    <!-- A test project that runs zero tests is a failure, not a pass: when
+         Windows Application Control blocks a test DLL, xUnit skips every
+         test and would otherwise exit 0. -->
     <TreatNoTestsAsError>true</TreatNoTestsAsError>
   </RunConfiguration>
+  <!-- A test that stops making progress for 5 minutes fails the run with a
+       small dump in TestResults/, instead of hanging it (one hung for six
+       hours on 2026-09-26). Everyday tests finish in well under a second. -->
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="blame" enabled="True">
+        <Configuration>
+          <CollectDumpOnTestSessionHang TestTimeout="5m" HangDumpType="mini" />
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
 </RunSettings>

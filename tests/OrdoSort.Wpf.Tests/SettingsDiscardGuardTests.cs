@@ -139,10 +139,10 @@ public class SettingsDiscardGuardTests
 /// route through IsCancel, and the X routes through the same Closing event),
 /// and the two ways OK must NOT prompt.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class SettingsDiscardWindowTests
+public class SettingsDiscardWindowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public SettingsDiscardWindowTests(HighlightContrastFixture fx) => _fx = fx;
+    public SettingsDiscardWindowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static (SettingsWindow Window, SettingsViewModel Vm, FakeDialogs Dialogs) Open()
     {

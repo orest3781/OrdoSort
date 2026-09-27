@@ -14,4 +14,13 @@ public sealed class InlineWorkScheduler : IWorkScheduler
         work();
         return Task.CompletedTask;
     }
+
+    /// <summary>Surfaces the outcome of work started on this scheduler,
+    /// which has already finished by the time the call returns. Fails the
+    /// test if it has not, rather than blocking on it.</summary>
+    public static void Finished(Task task)
+    {
+        Assert.True(task.IsCompleted, "work on the inline scheduler should have finished before the call returned");
+        task.GetAwaiter().GetResult();
+    }
 }

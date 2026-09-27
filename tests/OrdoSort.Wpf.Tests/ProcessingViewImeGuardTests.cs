@@ -29,10 +29,10 @@ namespace OrdoSort.Wpf.Tests;
 /// Application (Theme/Styles.xaml + BoolToVis/RgbToBrush already merged
 /// there), same as every other real-window test in HighlightContrastTests.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class ProcessingViewImeGuardTests
+public class ProcessingViewImeGuardTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public ProcessingViewImeGuardTests(HighlightContrastFixture fx) => _fx = fx;
+    public ProcessingViewImeGuardTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private (ShellFixture shellFx, ProcessingView view, Window window) Build()
     {

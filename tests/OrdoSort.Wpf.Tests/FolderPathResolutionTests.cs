@@ -120,21 +120,20 @@ public class FolderPathResolutionTests
     [Fact]
     public void SettingsWarningsCheckARelativeRouteBesideTheConfigFile()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "ordoroutewarn_" + Guid.NewGuid());
-        Directory.CreateDirectory(Path.Combine(dir, "relative-filed"));
-        try
+        using var temp = new TempDir();
+        temp.Dir("relative-filed");
+        var cfg = new Config
         {
-            var cfgPath = Path.Combine(dir, "config.json");
-            var cfg = new Config
-            {
-                Inbox = dir,
-                Deferred = dir,
-                Routes = { new Route { Label = "Filed", Path = "relative-filed" } },
-            };
-            var vm = new SettingsViewModel(cfg, new FakeDialogs(), cfgPath: cfgPath);
+            Inbox = temp.Path,
+            Deferred = temp.Path,
+            Routes = { new Route { Label = "Filed", Path = "relative-filed" } },
+        };
+        // Inline work on a manual clock: the folder checks (which write a
+        // probe file) finish on this thread, so nothing is still writing
+        // into the folder when it is deleted.
+        using var vm = new SettingsViewModel(cfg, new FakeDialogs(), cfgPath: Path.Combine(temp.Path, "config.json"),
+            scheduler: new InlineWorkScheduler(), time: new ManualTimeProvider());
 
-            Assert.DoesNotContain(vm.Warnings(), w => w.Contains("\"Filed\""));
-        }
-        finally { Directory.Delete(dir, recursive: true); }
+        Assert.DoesNotContain(vm.Warnings(), w => w.Contains("\"Filed\""));
     }
 }

@@ -40,10 +40,10 @@ namespace OrdoSort.Wpf.Tests;
 /// Theme.AccentText once selected — same resolution as Task 1's Unlock file
 /// list trap, on a different control.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class DataGridNoteColourTests
+public class DataGridNoteColourTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public DataGridNoteColourTests(HighlightContrastFixture fx) => _fx = fx;
+    public DataGridNoteColourTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     public static IEnumerable<object[]> PalettesAndSelection()
     {
@@ -67,7 +67,7 @@ public class DataGridNoteColourTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(), scheduler: new InlineWorkScheduler());
         vm.Rows.Add(new MatchRow(@"C:\inbox\a.pdf", "a.pdf", "", "some note text here", status));
         var window = new MatchMergeWindow(vm)
         {
@@ -156,7 +156,7 @@ public class DataGridNoteColourTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new BulkRenameViewModel();
+        var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
         vm.Preview.Add(row);
         var window = new BulkRenameWindow(vm)
         {
@@ -267,7 +267,7 @@ public class DataGridNoteColourTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>());
+        var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), scheduler: new InlineWorkScheduler());
         var row = new ZipItemRow(@"C:\inbox\a.zip", "zip");
         row.Apply(new Zipper.UnzipResult(row.Path, status, null, "some result text here"));
         vm.Rows.Add(row);
@@ -333,7 +333,7 @@ public class DataGridNoteColourTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>());
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), scheduler: new InlineWorkScheduler());
         var row = new ZipItemRow(@"C:\inbox\a.zip", "zip");
         row.Apply(new PdfMerge.MergeResult(row.Path, status, Message: "some result text here"));
         vm.Rows.Add(row);
@@ -411,7 +411,7 @@ public class DataGridNoteColourTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new StandardiseNamesViewModel(new FakeDialogs());
+        var vm = new StandardiseNamesViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
         vm.Results.Add(new StandardiseNameRow(
             "a-long-enough-filename-to-matter.pdf", "some result text here",
             @"C:\inbox\a-long-enough-filename-to-matter.pdf", status));
@@ -485,7 +485,7 @@ public class DataGridNoteColourTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new PageCountsViewModel(new FakeDialogs());
+        var vm = new PageCountsViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
         var row = new PageCountRow(@"C:\inbox\a.pdf");
         row.Apply(new PageCounts.CountResult(row.Path, note.Length == 0 ? 3 : null, note));
         vm.Rows.Add(row);
@@ -566,7 +566,8 @@ public class DataGridNoteColourTests
                 new(new MatchMerge.Candidate("1", new Dictionary<string, string> { ["A"] = "x" }),
                     "token match on last name"),
             });
-        var window = new TriageWindow(new List<MatchMerge.MatchResult> { item }, new[] { "A" })
+        var window = new TriageWindow(new List<MatchMerge.MatchResult> { item }, new[] { "A" },
+            initViewer: () => Task.FromResult(true))
         {
             Dialogs = new FakeDialogs(),
         };
@@ -633,31 +634,6 @@ public class DataGridNoteColourTests
             ?? throw new InvalidOperationException($"{columnHeader}: cell TextBlock never realized");
         var cellBg = cell.Background is SolidColorBrush cb ? ToRgb(cb) : (Rgb?)null;
         return (ToRgb(text.Foreground), cellBg);
-    }
-
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) return match;
-            if (FindDescendant<T>(child) is { } nested) return nested;
-        }
-        return null;
-    }
-
-    private static List<T> FindAllDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        var results = new List<T>();
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) results.Add(match);
-            results.AddRange(FindAllDescendants<T>(child));
-        }
-        return results;
     }
 
     private static Rgb ToRgb(Brush? brush) => brush switch

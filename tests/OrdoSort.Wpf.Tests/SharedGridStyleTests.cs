@@ -37,10 +37,10 @@ namespace OrdoSort.Wpf.Tests;
 /// RULE 2: DataGridCell's own horizontal Padding moved from 8 to 12, so
 /// text in neighbouring columns has 24px between it.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class SharedGridStyleTests
+public class SharedGridStyleTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public SharedGridStyleTests(HighlightContrastFixture fx) => _fx = fx;
+    public SharedGridStyleTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static (Window win, History history, string dbPath) BuildHistoryWindowWithOneRow()
     {
@@ -222,9 +222,7 @@ public class SharedGridStyleTests
         Assert.Contains(setters, s => s.Property == FrameworkElement.HorizontalAlignmentProperty
             && (HorizontalAlignment)s.Value == HorizontalAlignment.Stretch);
 
-        var root = new DirectoryInfo(AppContext.BaseDirectory);
-        while (!File.Exists(Path.Combine(root.FullName, "OrdoSort.sln"))) root = root.Parent!;
-        var windows = Path.Combine(root.FullName, "src", "OrdoSort.Wpf", "Windows");
+        var windows = Path.Combine(Repo.Root, "src", "OrdoSort.Wpf", "Windows");
         foreach (var (file, header) in new[]
         {
             ("PageCountsWindow.xaml", "Pages"), ("FilenameListWindow.xaml", "Pages"),
@@ -302,28 +300,4 @@ public class SharedGridStyleTests
         finally { CleanupHistory(win, history, dbPath); }
     });
 
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
-            if (child is T match) return match;
-            if (FindDescendant<T>(child) is { } nested) return nested;
-        }
-        return null;
-    }
-
-    private static List<T> FindAllDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        var results = new List<T>();
-        var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
-            if (child is T match) results.Add(match);
-            results.AddRange(FindAllDescendants<T>(child));
-        }
-        return results;
-    }
 }

@@ -14,10 +14,10 @@ namespace OrdoSort.Wpf.Tests;
 /// way UnlockEnterKeyTests drives a keystroke: the window handles it in
 /// PreviewKeyDown, which a tunnelling event from the root reaches.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class PasswordWindowTests
+public class PasswordWindowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public PasswordWindowTests(HighlightContrastFixture fx) => _fx = fx;
+    public PasswordWindowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static PasswordWindow Show(PasswordRequest request)
     {
@@ -26,7 +26,7 @@ public class PasswordWindowTests
         w.WindowStartupLocation = WindowStartupLocation.Manual;
         w.Show();
         w.UpdateLayout();
-        OverflowProbe.PumpRender();
+        PumpRender();
         w.UpdateLayout();
         return w;
     }

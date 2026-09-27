@@ -54,10 +54,10 @@ file sealed class NoDialogs : IDialogService
 ///   width under test is applied AFTER Show(), the way a user's drag would
 ///   (HeaderLayoutTests' pattern).</summary>
 [Collection(HighlightContrastTests.Name)]
-public class WindowOverflowTests
+public class WindowOverflowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public WindowOverflowTests(HighlightContrastFixture fx) => _fx = fx;
+    public WindowOverflowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <param name="MinExamined">How many text-bearing elements this window
     /// must put in front of OverflowProbe. Required, not defaulted, so a new
@@ -88,7 +88,7 @@ public class WindowOverflowTests
     {
         ["BulkRenameWindow"] = new(700, 820, 600, 700, () =>
         {
-            var vm = new BulkRenameViewModel();
+            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
             vm.Preview.Add(new RenameRow(@"C:\inbox\old-name-before-review.pdf", "old-name-before-review.pdf",
                 "20240101-SMITH-JOHN.pdf", "edited by hand",
                 changed: true, manual: true, needsName: false, editSeed: "20240101-SMITH-JOHN.pdf",
@@ -98,7 +98,7 @@ public class WindowOverflowTests
 
         ["FilenameListWindow"] = new(480, 640, 400, 560, () =>
         {
-            var vm = new FilenameListViewModel(new NoDialogs())
+            var vm = new FilenameListViewModel(new NoDialogs(), scheduler: new InlineWorkScheduler())
             {
                 // every column on, a filter typed, Z to A ticked: the longest
                 // the toolbar and the counts line ever get
@@ -149,14 +149,14 @@ public class WindowOverflowTests
 
         ["ManageSavedWindow"] = new(380, 420, 360, 420, () =>
         {
-            var vm = new UnlockViewModel(new Config(), () => true);
+            var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
             vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
             return (new ManageSavedWindow(vm), null);
         }, MinExamined: 10),   // 13 measured
 
         ["MatchMergeWindow"] = new(720, 840, 520, 640, () =>
         {
-            var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
+            var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(), scheduler: new InlineWorkScheduler());
             vm.Rows.Add(new MatchRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf",
                 "a-long-enough-filename-to-matter.pdf", "SMITH, JOHN — 1234567890.pdf",
                 "3 candidates — decide in Review matches", "ambiguous"));
@@ -173,7 +173,7 @@ public class WindowOverflowTests
 
         ["PageCountsWindow"] = new(580, 700, 440, 560, () =>
         {
-            var vm = new PageCountsViewModel(new FakeDialogs());
+            var vm = new PageCountsViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
             var row = new PageCountRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf");
             row.Apply(new PageCounts.CountResult(row.Path, null,
                 "password-protected or unreadable — couldn't count"));
@@ -199,7 +199,7 @@ public class WindowOverflowTests
             var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_overflow_" + Guid.NewGuid(), "config.json");
             var vm = new SettingsViewModel(cfg, new NoDialogs(),
                 () => ThemePalette.Light, cfgPath,
-                uiContext: SynchronizationContext.Current);
+                uiContext: SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
             return (new SettingsWindow(vm), null);
         }, MinExamined: 245, ProbeEveryTab: true),   // 326 measured
 
@@ -242,7 +242,8 @@ public class WindowOverflowTests
                     new(new MatchMerge.Candidate("1", new Dictionary<string, string> { ["A"] = "x" }),
                         "token match on last name"),
                 });
-            var win = new TriageWindow(new List<MatchMerge.MatchResult> { item }, new[] { "A" })
+            var win = new TriageWindow(new List<MatchMerge.MatchResult> { item }, new[] { "A" },
+                initViewer: () => Task.FromResult(true))
             {
                 Dialogs = new FakeDialogs(),
             };
@@ -254,7 +255,7 @@ public class WindowOverflowTests
 
         ["UnlockWindow"] = new(540, 620, 560, 660, () =>
         {
-            var vm = new UnlockViewModel(new Config(), () => true);
+            var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
             var row = new UnlockFileRow(@"C:\inbox\20240101--1111111111-long-descriptive-scan-name.pdf");
             row.SetProbeResult(ReadinessStatus.NeedsPassword,
                 "This PDF needs a password none of the saved ones supply.");
@@ -266,7 +267,7 @@ public class WindowOverflowTests
         // messages are the widest thing this grid ever shows.
         ["ZipToolsWindow"] = new(580, 700, 420, 520, () =>
         {
-            var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>());
+            var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), scheduler: new InlineWorkScheduler());
             var archive = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
             archive.Apply(new Zipper.UnzipResult(archive.Path, "error", null,
                 "not a valid zip archive — a long enough exception message to matter"));
@@ -282,7 +283,7 @@ public class WindowOverflowTests
         // widest thing this grid ever shows.
         ["MergePdfsWindow"] = new(580, 700, 420, 520, () =>
         {
-            var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>());
+            var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), scheduler: new InlineWorkScheduler());
             var toMerge = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
             toMerge.Apply(new PdfMerge.MergeResult(toMerge.Path, "error",
                 Message: "couldn't read 'entry.pdf' inside the zip — a long enough exception message to matter"));
@@ -307,7 +308,7 @@ public class WindowOverflowTests
             cfg.WatchFolders.Add(new WatchFolder { Label = "Failed transfers", Path = watched, Filetypes = "pdf" });
             Directory.CreateDirectory(cfg.Inbox);
             Directory.CreateDirectory(cfg.Deferred);
-            var window = new MainWindow(cfg, Path.Combine(dir, "config.json"));
+            var window = new MainWindow(cfg, Path.Combine(dir, "config.json"), initViewer: () => Task.FromResult(true));
             Action cleanup = () =>
             {
                 SqliteConnection.ClearAllPools();
@@ -390,7 +391,7 @@ public class WindowOverflowTests
                 if (height > 0) window.Height = height;
             }
             window.UpdateLayout();
-            OverflowProbe.PumpRender();
+            PumpRender();
             window.UpdateLayout();
 
             var content = (FrameworkElement)window.Content;
@@ -402,7 +403,7 @@ public class WindowOverflowTests
                 {
                     tabControl.SelectedItem = tab;
                     window.UpdateLayout();
-                    OverflowProbe.PumpRender();
+                    PumpRender();
                     window.UpdateLayout();
                     offenders.AddRange(
                         OverflowProbe.Escapees(content, checkVertical: true, out var tabExamined)
@@ -604,19 +605,9 @@ public class WindowOverflowTests
         };
         host.Show();
         host.UpdateLayout();
-        OverflowProbe.PumpRender();
+        PumpRender();
         host.UpdateLayout();
         return host;
     }
 
-    private static T? FindDescendant<T>(DependencyObject node) where T : DependencyObject
-    {
-        for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(node); i++)
-        {
-            var child = System.Windows.Media.VisualTreeHelper.GetChild(node, i);
-            if (child is T hit) return hit;
-            if (FindDescendant<T>(child) is { } deeper) return deeper;
-        }
-        return null;
-    }
 }

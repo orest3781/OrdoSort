@@ -39,21 +39,24 @@ public sealed class DebouncedProbe<T> : IDisposable where T : class
     private readonly SynchronizationContext? _uiContext;
     private readonly Action<T> _apply;
     private readonly int _intervalMs;
-    private readonly System.Threading.Timer _timer;
+    private readonly ITimer _timer;
     private readonly object _gate = new();
 
     private long _generation;
     private Func<T>? _pendingCompute;
     private bool _disposed;
 
+    /// <param name="time">The clock the debounce waits on; null is the real
+    /// clock. Tests pass a manual one so a debounce needs no sleeping.</param>
     public DebouncedProbe(IWorkScheduler scheduler, SynchronizationContext? uiContext,
-        Action<T> apply, int intervalMs = 300)
+        Action<T> apply, int intervalMs = 300, TimeProvider? time = null)
     {
         _scheduler = scheduler;
         _uiContext = uiContext;
         _apply = apply;
         _intervalMs = intervalMs;
-        _timer = new System.Threading.Timer(_ => Fire());
+        _timer = (time ?? TimeProvider.System).CreateTimer(
+            _ => Fire(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     /// <summary>Either resolve synchronously — <paramref name="fastPathResult"/>
@@ -92,7 +95,7 @@ public sealed class DebouncedProbe<T> : IDisposable where T : class
             _generation++;
             _pendingCompute = compute;
         }
-        _timer.Change(immediate ? 0 : _intervalMs, Timeout.Infinite);
+        _timer.Change(immediate ? TimeSpan.Zero : TimeSpan.FromMilliseconds(_intervalMs), Timeout.InfiniteTimeSpan);
     }
 
     /// <summary>Cancel whatever's pending: bumps the generation (so an
@@ -106,7 +109,7 @@ public sealed class DebouncedProbe<T> : IDisposable where T : class
             _generation++;
             _pendingCompute = null;
         }
-        _timer.Change(Timeout.Infinite, Timeout.Infinite);
+        _timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     private void Fire()

@@ -15,13 +15,13 @@ namespace OrdoSort.Wpf.Tests;
 /// view. A bare grid with three text columns, so each fact is about the
 /// behaviour and not about one window.</summary>
 [Collection(HighlightContrastTests.Name)]
-public sealed class ExplorerColumnsTests : IDisposable
+public sealed class ExplorerColumnsTests : UiTest, IDisposable
 {
     private readonly HighlightContrastFixture _fx;
     private readonly string _dir = Directory.CreateDirectory(
         Path.Combine(Path.GetTempPath(), "ordo_explorer_" + Guid.NewGuid().ToString("N"))).FullName;
 
-    public ExplorerColumnsTests(HighlightContrastFixture fx) => _fx = fx;
+    public ExplorerColumnsTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     public void Dispose()
     {
@@ -68,17 +68,6 @@ public sealed class ExplorerColumnsTests : IDisposable
         window.UpdateLayout();
         Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
         window.UpdateLayout();
-    }
-
-    internal static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) return match;
-            if (FindDescendant<T>(child) is { } nested) return nested;
-        }
-        return null;
     }
 
     internal static Row Long(int i) => new() { Name = new string('W', 60) + i, Kind = "pdf", Note = "" };

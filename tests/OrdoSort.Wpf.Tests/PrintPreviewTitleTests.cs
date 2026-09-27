@@ -14,10 +14,10 @@ namespace OrdoSort.Wpf.Tests;
 /// a host's title is used verbatim, and the library's own default names no
 /// application at all.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class PrintPreviewTitleTests
+public class PrintPreviewTitleTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public PrintPreviewTitleTests(HighlightContrastFixture fx) => _fx = fx;
+    public PrintPreviewTitleTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static System.Windows.Documents.FixedDocument OneSheet() =>
         LabelPrinting.BuildDocument(

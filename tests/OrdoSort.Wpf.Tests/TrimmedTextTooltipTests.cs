@@ -22,10 +22,10 @@ namespace OrdoSort.Wpf.Tests;
 /// repeats fully-visible text is noise," requirements.md). That gap is
 /// this file's whole reason to exist.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class TrimmedTextTooltipTests
+public class TrimmedTextTooltipTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public TrimmedTextTooltipTests(HighlightContrastFixture fx) => _fx = fx;
+    public TrimmedTextTooltipTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private const string LongText =
         "A-Very-Long-Value-That-Cannot-Possibly-Fit-In-Sixty-Pixels-Of-Width.pdf";
@@ -155,7 +155,7 @@ public class TrimmedTextTooltipTests
             // Unloaded is dispatched at DispatcherPriority.Loaded, the same
             // priority OverflowProbe.PumpRender already exists to drain for
             // Loaded itself — needed here for the symmetric event.
-            OverflowProbe.PumpRender();
+            PumpRender();
 
             text.Text = "short";
             Assert.Equal(LongText, text.ToolTip as string);

@@ -47,21 +47,10 @@ namespace OrdoSort.Wpf.Tests;
 /// by hand instead — the combo beside Refresh is gated on TileControlsVisible
 /// and goes at the same moment, so nothing is left to be displaced.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class TransientFooterButtonTests
+public class TransientFooterButtonTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public TransientFooterButtonTests(HighlightContrastFixture fx) => _fx = fx;
-
-    private static IEnumerable<DependencyObject> Descendants(DependencyObject root)
-    {
-        var n = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < n; i++)
-        {
-            var c = VisualTreeHelper.GetChild(root, i);
-            yield return c;
-            foreach (var d in Descendants(c)) yield return d;
-        }
-    }
+    public TransientFooterButtonTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <summary>A stable, human-readable name for a button, so a failure says
     /// which one moved rather than quoting an index.</summary>
@@ -82,14 +71,14 @@ public class TransientFooterButtonTests
         {
             case "Unlock":
             {
-                var vm = new UnlockViewModel(new Config(), () => true);
+                var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
                 vm.Files.Add(new UnlockFileRow(@"C:\inbox\a-locked-document.pdf"));
                 var w = new UnlockWindow(vm);
                 return (w, FindByContent(w, "Cancel"), null);
             }
             case "BulkRename":
             {
-                var vm = new BulkRenameViewModel();
+                var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
                 vm.Preview.Add(new RenameRow(@"C:\inbox\before.pdf", "before.pdf", "after.pdf", "",
                     changed: true, manual: false, needsName: false, editSeed: "after.pdf",
                     noteIsProblem: false));

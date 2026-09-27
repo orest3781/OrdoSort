@@ -420,16 +420,6 @@ public class UndoRaceTestCollectionMembershipTests
     // Commit.MoveNeverOverwrite is caught without anyone updating a list.
     // -----------------------------------------------------------------
 
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "OrdoSort.sln")))
-            dir = dir.Parent;
-        return dir?.FullName ?? throw new InvalidOperationException(
-            "couldn't find OrdoSort.sln walking up from " + AppContext.BaseDirectory +
-            " — this test reads its own project's .cs sources off disk and needs the repo root.");
-    }
-
     // A class declaration up to its opening brace. [^{]* covers a base/
     // interface list ("class Foo : IDisposable") without crossing into the
     // NEXT class — a base list can't itself contain a raw '{' in valid C#.
@@ -488,7 +478,7 @@ public class UndoRaceTestCollectionMembershipTests
     /// entirely — it never needs to know where a class ends.</summary>
     private static List<string> ClassesReachingMoveNeverOverwrite()
     {
-        var dir = Path.Combine(FindRepoRoot(), "tests", "OrdoSort.Core.Tests");
+        var dir = Path.Combine(Repo.Root, "tests", "OrdoSort.Core.Tests");
         var found = new List<string>();
         foreach (var file in Directory.EnumerateFiles(dir, "*.cs"))
         {

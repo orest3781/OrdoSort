@@ -28,12 +28,12 @@ namespace OrdoSort.Wpf.Tests;
 /// criterion these tests assert against, rather than a number picked to suit
 /// the fix.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class HeaderLayoutTests : IDisposable
+public class HeaderLayoutTests : UiTest, IDisposable
 {
     private readonly HighlightContrastFixture _fx;
     private readonly string _dir;
 
-    public HeaderLayoutTests(HighlightContrastFixture fx)
+    public HeaderLayoutTests(HighlightContrastFixture fx) : base(fx)
     {
         _fx = fx;
         _dir = Path.Combine(Path.GetTempPath(), "ordo_headertest_" + Guid.NewGuid().ToString("N"));
@@ -67,7 +67,9 @@ public class HeaderLayoutTests : IDisposable
         Directory.CreateDirectory(cfg.Deferred);
         var cfgPath = Path.Combine(_dir, "config.json");
 
-        var window = new MainWindow(cfg, cfgPath)
+        // A stand-in viewer start: these tests are about the header, and a
+        // real Edge start belongs to the integration run (docs/testing.md).
+        var window = new MainWindow(cfg, cfgPath, initViewer: () => Task.FromResult(true))
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
@@ -81,6 +83,34 @@ public class HeaderLayoutTests : IDisposable
         window.UpdateLayout();
         return window;
     }
+
+    [Fact]
+    public void TheDashboardStartsItsViewerThroughTheStartItWasGiven() => _fx.Invoke(() =>
+    {
+        var started = 0;
+        var cfg = new Config
+        {
+            Inbox = Path.Combine(_dir, "inbox"),
+            Deferred = Path.Combine(_dir, "deferred"),
+            HistoryDb = Path.Combine(_dir, "history.sqlite"),
+        };
+        Directory.CreateDirectory(cfg.Inbox);
+        Directory.CreateDirectory(cfg.Deferred);
+        var window = new MainWindow(cfg, Path.Combine(_dir, "config.json"),
+            initViewer: () => { started++; return Task.FromResult(true); })
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            PumpRender();
+            Assert.Equal(1, started);
+            Assert.False(window.Pdf.Ready, "the real viewer must not start when a stand-in was given");
+        }
+        finally { window.Close(); }
+    });
 
     private static Menu HeaderMenu(MainWindow window) =>
         FindDescendant<Menu>(window) ?? throw new InvalidOperationException("no Menu in MainWindow");
@@ -251,31 +281,4 @@ public class HeaderLayoutTests : IDisposable
 
     // -------------------------------------------------------------- plumbing
 
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) return match;
-            if (FindDescendant<T>(child) is { } nested) return nested;
-        }
-        return null;
-    }
-
-    private static List<T> FindAllDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        var results = new List<T>();
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) results.Add(match);
-            results.AddRange(FindAllDescendants<T>(child));
-        }
-        return results;
-    }
 }

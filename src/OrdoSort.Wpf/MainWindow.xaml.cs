@@ -40,7 +40,14 @@ public partial class MainWindow : Window
 
     private readonly Func<System.Windows.Rect?> _panZone;
 
-    public MainWindow(Config cfg, string cfgPath)
+    private readonly Func<Task<bool>> _initViewer;
+
+    public MainWindow(Config cfg, string cfgPath) : this(cfg, cfgPath, initViewer: null) { }
+
+    /// <param name="initViewer">Starts the PDF viewer when the window loads;
+    /// null starts the real WebView2. Tests pass a stand-in so a window test
+    /// never starts Edge (docs/testing.md).</param>
+    internal MainWindow(Config cfg, string cfgPath, Func<Task<bool>>? initViewer)
     {
         InitializeComponent();
         // immediate scrolls instead of animated ones — left-drag panning
@@ -50,6 +57,7 @@ public partial class MainWindow : Window
             AdditionalBrowserArguments = "--disable-smooth-scrolling",
         };
         _pdf = new WebViewPdfViewer(Viewer);
+        _initViewer = initViewer ?? _pdf.InitAsync;
         Dialogs = new DialogService(this);
         _watch = new FolderWatchService(pollMs: cfg.PollSeconds * 1000,
             context: SynchronizationContext.Current);
@@ -105,7 +113,7 @@ public partial class MainWindow : Window
         Loaded += async (_, _) =>
         {
             ViewerInputEnhancer.Register(_panZone);
-            if (!await _pdf.InitAsync())
+            if (!await _initViewer())
                 Dialogs.Warn(
                     "The PDF viewer (WebView2) failed to start:\n\n" + _pdf.InitError,
                     "OrdoSort");

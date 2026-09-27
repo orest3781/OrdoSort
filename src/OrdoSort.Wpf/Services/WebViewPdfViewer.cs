@@ -73,9 +73,14 @@ public sealed class WebViewPdfViewer : IPdfViewer
     ///
     /// The folder is named for the product rather than the assembly. It is new,
     /// so nothing depends on the old name the way config.json and the exe do.</summary>
-    public static string UserDataFolder => Path.Combine(
+    public static string DefaultUserDataFolder { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "OrdoSort", "WebView2");
+
+    /// <summary>The profile folder in use: <see cref="DefaultUserDataFolder"/>,
+    /// except in the test run, which points it at its own temp folder so a
+    /// running OrdoSort and the tests never share a browser profile.</summary>
+    public static string UserDataFolder { get; internal set; } = DefaultUserDataFolder;
 
     /// <summary>Starts the real browser engine. Degrades, never blocks: a failure here
     /// (missing runtime or anything else) only ever sets <see cref="InitError"/> and returns

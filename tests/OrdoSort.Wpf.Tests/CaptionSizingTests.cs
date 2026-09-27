@@ -17,10 +17,10 @@ namespace OrdoSort.Wpf.Tests;
 /// style, not by reading the style object's setters — a setter can be present
 /// and still lose to something with higher precedence.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class CaptionSizingTests
+public class CaptionSizingTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public CaptionSizingTests(HighlightContrastFixture fx) => _fx = fx;
+    public CaptionSizingTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private (double size, Color fore) Resolve(string styleKey)
     {
