@@ -1,3 +1,4 @@
+using System.Windows;
 using System.Windows.Threading;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Windows;
@@ -33,6 +34,26 @@ public class TriageWindowInitRaceTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
     public TriageWindowInitRaceTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
+
+    [Fact]
+    public void TheReviewWindowStartsItsViewerThroughTheStartItWasGiven() => _fx.Invoke(() =>
+    {
+        var started = 0;
+        var win = new TriageWindow(new List<MatchMerge.MatchResult>(), new[] { "A" },
+            initViewer: () => { started++; return Task.FromResult(true); })
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        win.Dialogs = new FakeDialogs();
+        try
+        {
+            win.Show();
+            PumpRender();
+            Assert.Equal(1, started);
+        }
+        finally { win.Close(); }
+    });
 
     [Fact]
     public void ClosingWhileInitIsPendingSkipsShowAndTouchesNothingDisposed() => _fx.Invoke(() =>

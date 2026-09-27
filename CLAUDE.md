@@ -7,6 +7,7 @@
 | Stack | C# / .NET 8, WPF, xUnit; `OrdoSort.sln` holds both apps and all tests |
 | Run | `run.bat dev\config.json` (small tracked dev setup), `run.bat` (demo workbench) or `run.bat <config.json>` |
 | Test | `check.bat core` (fast) / `check.bat wpf` |
+| Integration | `check.bat integration` - tests that start real Edge or Office; not in the everyday check |
 | Check | `check.bat` - restore, build Release, all tests; mirrors CI. Run before saying work is done |
 | End-to-end | `scripts\e2e.bat` |
 

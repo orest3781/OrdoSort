@@ -242,7 +242,8 @@ public class WindowOverflowTests : UiTest
                     new(new MatchMerge.Candidate("1", new Dictionary<string, string> { ["A"] = "x" }),
                         "token match on last name"),
                 });
-            var win = new TriageWindow(new List<MatchMerge.MatchResult> { item }, new[] { "A" })
+            var win = new TriageWindow(new List<MatchMerge.MatchResult> { item }, new[] { "A" },
+                initViewer: () => Task.FromResult(true))
             {
                 Dialogs = new FakeDialogs(),
             };

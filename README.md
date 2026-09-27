@@ -181,14 +181,16 @@ title there.
 ## Build & test
 
 ```
-check.bat          # restore, format check, build Release, run every test - the same steps as CI
-check.bat core     # only tests/OrdoSort.Core.Tests (about a minute)
-check.bat wpf      # only tests/OrdoSort.Wpf.Tests
+check.bat              # restore, format check, build Release, run the everyday tests - the same steps as CI
+check.bat core         # only tests/OrdoSort.Core.Tests (about a minute)
+check.bat wpf          # only tests/OrdoSort.Wpf.Tests
+check.bat integration  # only the tests that start real Edge or Office
+check.bat all          # everyday and integration tests
 ```
 
 Both applications and all tests are in `OrdoSort.sln`, so `check.bat` covers
 Box Labels too. Plain `dotnet build` / `dotnet test` still work. A test project
-that runs zero tests fails the run (`tests	est.runsettings`), so a test DLL
+that runs zero tests fails the run (`tests\test.runsettings`), so a test DLL
 that Windows blocks from loading can't pass as green.
 
 To try a change by hand, run against the small tracked dev setup — four
