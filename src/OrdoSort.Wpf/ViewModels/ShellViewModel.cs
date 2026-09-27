@@ -247,6 +247,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         string whereabouts = "either where it started or where it was going")
     {
         UnexpectedError?.Invoke(ex);
+        // the window is gone (work that outlived it, e.g. a start-up still
+        // running when the dashboard closed): crash.log has it, no dialog
+        if (_disposed) return;
         _dialogs.Warn(
             $"{action} didn't finish.\n\n" +
             "Nothing was deleted — OrdoSort only ever moves files, so the document " +
@@ -283,6 +286,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             UnexpectedError?.Invoke(ex);
+            // the window is gone (work that outlived it, e.g. a start-up still
+            // running when the dashboard closed): crash.log has it, no dialog
+            if (_disposed) return;
             _dialogs.Warn(
                 $"{action} didn't finish.\n\n{consequence}\n\n" +
                 "The technical details were written to crash.log, beside your config file.",
@@ -297,6 +303,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         _auditFailedThisSession = true;
         if (_cfg.Sounds.Enabled) _sounds.Play(SoundEvent.Error, _cfg.Sounds.Error);
         UnexpectedError?.Invoke(ex);
+        // the window is gone (work that outlived it, e.g. a start-up still
+        // running when the dashboard closed): crash.log has it, no dialog
+        if (_disposed) return;
         _dialogs.Warn(ex.Message, title);
         ShowStatusNote($"{Path.GetFileName(ex.NewPath)} moved, but the history " +
                        "database didn't record it — see the warning.");
@@ -2297,8 +2306,11 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         return !dbExisted || HistoryBackup.BackupDaily(dbPath, backupDir, DateTime.Now) is not null;
     }
 
+    private bool _disposed;
+
     public void Dispose()
     {
+        _disposed = true;
         _watch.Activity -= OnFolderActivity;
         _watch.Polled -= OnPoll;
         _flash.Dispose();

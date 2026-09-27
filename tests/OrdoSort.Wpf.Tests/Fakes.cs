@@ -42,7 +42,15 @@ public sealed class FakeViewer : IPdfViewer
         if (ThrowOnRelease is { } boom) throw boom;
     }
 
-    public void Blank() => Blanks++;
+    /// <summary>When set, Blank throws it: stands in for a viewer whose
+    /// window has already been closed and its WebView2 disposed.</summary>
+    public Exception? ThrowOnBlank { get; set; }
+
+    public void Blank()
+    {
+        Blanks++;
+        if (ThrowOnBlank is { } boom) throw boom;
+    }
 }
 
 public sealed class FakeDialogs : IDialogService
