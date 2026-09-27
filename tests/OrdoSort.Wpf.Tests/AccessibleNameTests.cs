@@ -160,6 +160,43 @@ public class AccessibleNameTests : UiTest
         finally { window.Close(); }
     });
 
+    /// <summary>The Processing screen's route buttons, read through the
+    /// automation tree: each list entry around a button was unnamed and
+    /// announced as "OrdoSort.Wpf.ViewModels.RouteButtonViewModel" (seen live
+    /// through UI Automation, 2026-09-27).</summary>
+    [Fact]
+    public void ProcessingRouteEntriesAnnounceTheRouteNotATypeName() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        using var fx = new ShellFixture();
+        fx.AddInboxFile("20240115--111111.pdf");
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+        var view = new OrdoSort.Wpf.Views.ProcessingView { DataContext = fx.Shell, Width = 430, Height = 900 };
+        var host = new Window
+        {
+            Content = view, Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual, Width = 430, Height = 900,
+        };
+        try
+        {
+            host.Show();
+            Settle(host);
+
+            var names = new List<string>();
+            void Walk(AutomationPeer peer)
+            {
+                names.Add(peer.GetName());
+                foreach (var child in peer.GetChildren() ?? new List<AutomationPeer>()) Walk(child);
+            }
+            Walk(UIElementAutomationPeer.CreatePeerForElement(view)!);
+
+            Assert.DoesNotContain(names, LooksLikeATypeName);
+            Assert.Contains(names, n => n.StartsWith("Filed", StringComparison.Ordinal));
+        }
+        finally { host.Close(); }
+    });
+
     /// <summary>The Ready dashboard's monitored-folder tiles, read the way a
     /// screen reader reads them: through the automation tree, where each
     /// ItemsControl also exposes an entry per data item. Those entries had no
