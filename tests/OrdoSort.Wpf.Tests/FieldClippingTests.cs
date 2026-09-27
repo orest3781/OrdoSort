@@ -26,10 +26,10 @@ namespace OrdoSort.Wpf.Tests;
 /// whole value must make that value recoverable without editing it — a
 /// ToolTip, the same answer every grid cell in this app already gives.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class FieldClippingTests
+public class FieldClippingTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public FieldClippingTests(HighlightContrastFixture fx) => _fx = fx;
+    public FieldClippingTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <summary>How wide the text in this box would like to be. Measured
     /// against the box's own typeface rather than guessed from a character

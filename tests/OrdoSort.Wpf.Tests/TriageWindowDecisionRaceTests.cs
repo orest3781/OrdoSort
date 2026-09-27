@@ -31,10 +31,10 @@ namespace OrdoSort.Wpf.Tests;
 /// deterministic control over exactly when "release" resolves relative to
 /// Close() — the actual race — without a real WebView2/Edge process.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class TriageWindowDecisionRaceTests
+public class TriageWindowDecisionRaceTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public TriageWindowDecisionRaceTests(HighlightContrastFixture fx) => _fx = fx;
+    public TriageWindowDecisionRaceTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <summary>Drains everything already queued at a higher priority — the
     /// deferred Close() is posted back to this dispatcher when the decision

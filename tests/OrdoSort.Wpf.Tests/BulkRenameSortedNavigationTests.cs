@@ -14,12 +14,12 @@ namespace OrdoSort.Wpf.Tests;
 /// This drives the real window with a reversed view and asserts the row that
 /// opens for editing is the one that actually needs a name.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class BulkRenameSortedNavigationTests : IDisposable
+public class BulkRenameSortedNavigationTests : UiTest, IDisposable
 {
     private readonly HighlightContrastFixture _fx;
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordo_sortednav_" + Guid.NewGuid());
 
-    public BulkRenameSortedNavigationTests(HighlightContrastFixture fx)
+    public BulkRenameSortedNavigationTests(HighlightContrastFixture fx) : base(fx)
     {
         _fx = fx;
         Directory.CreateDirectory(_dir);

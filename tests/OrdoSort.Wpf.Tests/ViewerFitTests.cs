@@ -194,11 +194,11 @@ public class ViewerFitTests
 /// STA fixture and shows its windows off-screen, the same shape the other
 /// window suites use.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class MonitorWorkAreaTests
+public class MonitorWorkAreaTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
 
-    public MonitorWorkAreaTests(HighlightContrastFixture fx) => _fx = fx;
+    public MonitorWorkAreaTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static Window OffScreenWindow(double left, double top) => new()
     {

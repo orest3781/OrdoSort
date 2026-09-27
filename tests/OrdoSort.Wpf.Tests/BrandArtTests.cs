@@ -10,10 +10,10 @@ namespace OrdoSort.Wpf.Tests;
 /// and at 16 px. Rendering needs WPF, so these join
 /// <see cref="HighlightContrastFixture"/>'s STA thread.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class BrandArtTests
+public class BrandArtTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public BrandArtTests(HighlightContrastFixture fx) => _fx = fx;
+    public BrandArtTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     public static TheoryData<string> Icons => new() { "OrdoSort", "Box Labels" };
 

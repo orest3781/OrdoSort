@@ -25,10 +25,10 @@ namespace OrdoSort.Wpf.Tests;
 /// permanent regression test lands elsewhere, or keep it, per the fix
 /// author's judgement.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class SectionDropdownReproTests
+public class SectionDropdownReproTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public SectionDropdownReproTests(HighlightContrastFixture fx) => _fx = fx;
+    public SectionDropdownReproTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private const string FolderA = "Alpha folder";
     private const string SectionA = "Alpha section";

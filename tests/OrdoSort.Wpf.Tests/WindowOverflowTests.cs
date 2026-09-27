@@ -54,10 +54,10 @@ file sealed class NoDialogs : IDialogService
 ///   width under test is applied AFTER Show(), the way a user's drag would
 ///   (HeaderLayoutTests' pattern).</summary>
 [Collection(HighlightContrastTests.Name)]
-public class WindowOverflowTests
+public class WindowOverflowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public WindowOverflowTests(HighlightContrastFixture fx) => _fx = fx;
+    public WindowOverflowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <param name="MinExamined">How many text-bearing elements this window
     /// must put in front of OverflowProbe. Required, not defaulted, so a new

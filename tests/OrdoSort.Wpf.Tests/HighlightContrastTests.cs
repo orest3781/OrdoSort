@@ -94,6 +94,7 @@ public sealed class HighlightContrastFixture : IDisposable
     {
         Application? app = null;
         Dispatcher? dispatcher = null;
+        Dictionary<object, object?>? baseline = null;
         using var ready = new ManualResetEventSlim();
         _thread = new Thread(() =>
         {
@@ -156,6 +157,7 @@ public sealed class HighlightContrastFixture : IDisposable
             AddIfMissing("FontSizeText", new OrdoSort.Wpf.Views.FontSizeTextConverter());
             AddIfMissing("AppFontFamily", OrdoSort.Wpf.Theme.AppFonts.CreateDefault());
             AddIfMissing("AppFontSize", 14.0);
+            baseline = app.Resources.Keys.Cast<object>().ToDictionary(k => k, k => app.Resources[k]);
             dispatcher = Dispatcher.CurrentDispatcher;
             // ready must be set from ON this thread, after Dispatcher.CurrentDispatcher
             // exists, but BEFORE Dispatcher.Run() blocks it.
@@ -170,7 +172,12 @@ public sealed class HighlightContrastFixture : IDisposable
         ready.Wait();
         App = app!;
         Dispatcher = dispatcher!;
+        BaselineResources = baseline!;
     }
+
+    /// <summary>The app's own resources as the fixture set them up, before
+    /// any test ran; <see cref="UiTest"/> restores them before each test.</summary>
+    public IReadOnlyDictionary<object, object?> BaselineResources { get; }
 
     /// <summary>How long one test body may run on the shared UI thread. Long
     /// on purpose; it only matters when the thread is stuck.</summary>
@@ -238,7 +245,7 @@ public sealed class HighlightContrastFixture : IDisposable
 /// either template's Foreground binding fails this suite, not just a
 /// hand-copied duplicate of it.</summary>
 [Collection(Name)]
-public class HighlightContrastTests
+public class HighlightContrastTests : UiTest
 {
     /// <summary>Shared with every other test class that needs the same
     /// <see cref="HighlightContrastFixture"/> (every window suite) via
@@ -248,7 +255,7 @@ public class HighlightContrastTests
     public const string Name = "HighlightContrastFixture collection";
 
     private readonly HighlightContrastFixture _fx;
-    public HighlightContrastTests(HighlightContrastFixture fx) => _fx = fx;
+    public HighlightContrastTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     public static IEnumerable<object[]> ComboBoxShapes()
     {

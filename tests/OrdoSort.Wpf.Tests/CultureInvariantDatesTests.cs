@@ -26,13 +26,16 @@ namespace OrdoSort.Wpf.Tests;
 // collection every other static/process-wide-state test in this project
 // already uses (see HighlightContrastFixture's class doc) is how this suite
 // isolates exactly this class of seam; this class doesn't need the
-// fixture's STA Application itself (none of these three tests touch WPF),
-// so it isn't taken as a constructor parameter — only the collection's
-// "never run two of my classes concurrently" guarantee is needed here.
+// fixture's STA Application itself (none of these three tests touch WPF);
+// only the collection's "never run two of my classes concurrently"
+// guarantee is needed here. It takes the fixture because every class in
+// the collection derives from UiTest.
 [Collection(HighlightContrastTests.Name)]
-public class CultureInvariantDatesTests : IDisposable
+public class CultureInvariantDatesTests : UiTest, IDisposable
 {
     private readonly string _dir = Directory.CreateTempSubdirectory("ordoculttest_").FullName;
+
+    public CultureInvariantDatesTests(HighlightContrastFixture fx) : base(fx) { }
 
     public void Dispose() { try { Directory.Delete(_dir, true); } catch { } }
 

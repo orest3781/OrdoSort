@@ -8,10 +8,10 @@ using OrdoSort.Wpf.Windows;
 namespace OrdoSort.Wpf.Tests;
 
 [Collection(HighlightContrastTests.Name)]
-public class FilenameListWindowTests
+public class FilenameListWindowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public FilenameListWindowTests(HighlightContrastFixture fx) => _fx = fx;
+    public FilenameListWindowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <summary>Audit FL-04. The grid shipped with WPF's own clipboard support
     /// live, so Ctrl+C emitted DataGrid's tab-separated cells with NO header

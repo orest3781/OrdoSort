@@ -48,10 +48,10 @@ namespace OrdoSort.Wpf.Tests;
 /// posted back to this STA thread's dispatcher — a plain blocking wait
 /// would deadlock the very thread that continuation needs to run on.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class UnlockEnterKeyTests
+public class UnlockEnterKeyTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public UnlockEnterKeyTests(HighlightContrastFixture fx) => _fx = fx;
+    public UnlockEnterKeyTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static void SimulateKey(PresentationSource source, Key key, RoutedEvent routedEvent) =>
         InputManager.Current.ProcessInput(

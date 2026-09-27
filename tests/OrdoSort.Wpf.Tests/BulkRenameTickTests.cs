@@ -13,13 +13,13 @@ namespace OrdoSort.Wpf.Tests;
 /// box IS the row's selection, as File Explorer's item check boxes are, and
 /// every control changes only ticked files. Driven on the real window.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class BulkRenameTickTests : IDisposable
+public class BulkRenameTickTests : UiTest, IDisposable
 {
     private readonly HighlightContrastFixture _fx;
     private readonly string _dir = Directory.CreateDirectory(
         Path.Combine(Path.GetTempPath(), "ordo_ticks_" + Guid.NewGuid().ToString("N"))).FullName;
 
-    public BulkRenameTickTests(HighlightContrastFixture fx) => _fx = fx;
+    public BulkRenameTickTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     public void Dispose()
     {

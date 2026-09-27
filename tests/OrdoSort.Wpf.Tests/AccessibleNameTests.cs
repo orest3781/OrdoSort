@@ -31,10 +31,10 @@ namespace OrdoSort.Wpf.Tests;
 /// a value. Layout elements are not named, deliberately: naming a Grid adds
 /// noise to the screen-reader tree rather than information.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class AccessibleNameTests
+public class AccessibleNameTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public AccessibleNameTests(HighlightContrastFixture fx) => _fx = fx;
+    public AccessibleNameTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     public static TheoryData<string> Windows()
     {

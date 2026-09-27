@@ -15,10 +15,10 @@ namespace OrdoSort.Wpf.Tests;
 /// publication — including that it does NOT follow the active theme, which is
 /// the whole reason the keys exist.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class AppearancePreviewTests
+public class AppearancePreviewTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public AppearancePreviewTests(HighlightContrastFixture fx) => _fx = fx;
+    public AppearancePreviewTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private Color Brush(string key) =>
         ((SolidColorBrush)_fx.App.Resources[key]).Color;

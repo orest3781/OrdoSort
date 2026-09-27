@@ -37,10 +37,10 @@ namespace OrdoSort.Wpf.Tests;
 /// <c>Keyboard.Focus()</c>, since InputManager routes to whatever holds
 /// KEYBOARD focus and <c>Focus()</c> alone only sets the logical kind.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class ManageSavedEnterKeyTests
+public class ManageSavedEnterKeyTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public ManageSavedEnterKeyTests(HighlightContrastFixture fx) => _fx = fx;
+    public ManageSavedEnterKeyTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <summary>Returns whether the app claimed the key.</summary>
     private static bool SimulateEnter(PresentationSource source)

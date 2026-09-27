@@ -18,10 +18,10 @@ namespace OrdoSort.Wpf.Tests;
 /// bubbles out of a single-line text box; a box with its own Enter
 /// behaviour — the alert-term KeyBinding here — still gets it first.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class SettingsEnterKeyTests
+public class SettingsEnterKeyTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public SettingsEnterKeyTests(HighlightContrastFixture fx) => _fx = fx;
+    public SettingsEnterKeyTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static TextBox Named(Window win, string automationName) =>
         Descendants<TextBox>(win).Single(t => AutomationProperties.GetName(t) == automationName);

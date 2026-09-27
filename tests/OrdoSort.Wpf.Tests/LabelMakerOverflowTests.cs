@@ -42,10 +42,10 @@ file sealed class NoDialogs : IDialogService
 /// scope; past 18 the prose elements degrade by trimming/wrapping instead of
 /// overflowing, which is what the fixes this suite pins actually changed.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class LabelMakerOverflowTests
+public class LabelMakerOverflowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public LabelMakerOverflowTests(HighlightContrastFixture fx) => _fx = fx;
+    public LabelMakerOverflowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     [Theory]
     [InlineData(14.0, 600.0)]

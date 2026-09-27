@@ -15,12 +15,12 @@ namespace OrdoSort.Wpf.Tests;
 /// wiring by a lint over their XAML, since each forwards to the same
 /// OnRemoveSelected its button already uses.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class DeleteKeyTests : IDisposable
+public class DeleteKeyTests : UiTest, IDisposable
 {
     private readonly HighlightContrastFixture _fx;
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordo_deletekey_" + Guid.NewGuid());
 
-    public DeleteKeyTests(HighlightContrastFixture fx)
+    public DeleteKeyTests(HighlightContrastFixture fx) : base(fx)
     {
         _fx = fx;
         Directory.CreateDirectory(_dir);

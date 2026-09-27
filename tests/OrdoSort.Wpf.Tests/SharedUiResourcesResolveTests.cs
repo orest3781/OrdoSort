@@ -12,10 +12,10 @@ namespace OrdoSort.Wpf.Tests;
 /// So this walks every StaticResource key the three shared windows actually
 /// use and proves the pair of dictionaries supplies all of them.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class SharedUiResourcesResolveTests
+public class SharedUiResourcesResolveTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public SharedUiResourcesResolveTests(HighlightContrastFixture fx) => _fx = fx;
+    public SharedUiResourcesResolveTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static string SharedWindowsDir() => Path.Combine(Repo.Root, "src", "OrdoSort.Ui", "Windows");
 

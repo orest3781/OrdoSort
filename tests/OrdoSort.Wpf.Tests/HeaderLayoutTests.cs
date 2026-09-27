@@ -28,12 +28,12 @@ namespace OrdoSort.Wpf.Tests;
 /// criterion these tests assert against, rather than a number picked to suit
 /// the fix.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class HeaderLayoutTests : IDisposable
+public class HeaderLayoutTests : UiTest, IDisposable
 {
     private readonly HighlightContrastFixture _fx;
     private readonly string _dir;
 
-    public HeaderLayoutTests(HighlightContrastFixture fx)
+    public HeaderLayoutTests(HighlightContrastFixture fx) : base(fx)
     {
         _fx = fx;
         _dir = Path.Combine(Path.GetTempPath(), "ordo_headertest_" + Guid.NewGuid().ToString("N"));

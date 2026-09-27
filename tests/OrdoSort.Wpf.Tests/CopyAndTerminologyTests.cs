@@ -36,10 +36,10 @@ file sealed class NoDialogs : IDialogService
 /// feature), M4 (the app's only Title-Case button) and M3 (informational notes
 /// wearing the needs-attention colour).</summary>
 [Collection(HighlightContrastTests.Name)]
-public class CopyAndTerminologyTests
+public class CopyAndTerminologyTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public CopyAndTerminologyTests(HighlightContrastFixture fx) => _fx = fx;
+    public CopyAndTerminologyTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static SettingsWindow BuildSettingsWindow(SettingsViewModel vm) =>
         new(vm)

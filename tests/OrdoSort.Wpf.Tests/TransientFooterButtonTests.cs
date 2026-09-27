@@ -47,10 +47,10 @@ namespace OrdoSort.Wpf.Tests;
 /// by hand instead — the combo beside Refresh is gated on TileControlsVisible
 /// and goes at the same moment, so nothing is left to be displaced.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class TransientFooterButtonTests
+public class TransientFooterButtonTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public TransientFooterButtonTests(HighlightContrastFixture fx) => _fx = fx;
+    public TransientFooterButtonTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <summary>A stable, human-readable name for a button, so a failure says
     /// which one moved rather than quoting an index.</summary>

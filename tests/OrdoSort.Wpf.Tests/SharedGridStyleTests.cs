@@ -37,10 +37,10 @@ namespace OrdoSort.Wpf.Tests;
 /// RULE 2: DataGridCell's own horizontal Padding moved from 8 to 12, so
 /// text in neighbouring columns has 24px between it.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class SharedGridStyleTests
+public class SharedGridStyleTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public SharedGridStyleTests(HighlightContrastFixture fx) => _fx = fx;
+    public SharedGridStyleTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static (Window win, History history, string dbPath) BuildHistoryWindowWithOneRow()
     {

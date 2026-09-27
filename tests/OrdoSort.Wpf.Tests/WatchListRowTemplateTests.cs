@@ -76,10 +76,10 @@ file sealed class NoDialogs : IDialogService
 /// stand-in — a copy of the templates would keep passing while the shipped
 /// ones stayed dead.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class WatchListRowTemplateTests
+public class WatchListRowTemplateTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public WatchListRowTemplateTests(HighlightContrastFixture fx) => _fx = fx;
+    public WatchListRowTemplateTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private const string SectionA = "Failed queues";
     private const string FolderA = "Failed transfers";

@@ -29,10 +29,10 @@ namespace OrdoSort.Wpf.Tests;
 /// actual race the fix needs to survive — without ever touching a real
 /// WebView2 or Edge process.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class TriageWindowInitRaceTests
+public class TriageWindowInitRaceTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public TriageWindowInitRaceTests(HighlightContrastFixture fx) => _fx = fx;
+    public TriageWindowInitRaceTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     [Fact]
     public void ClosingWhileInitIsPendingSkipsShowAndTouchesNothingDisposed() => _fx.Invoke(() =>

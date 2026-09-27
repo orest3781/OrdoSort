@@ -33,10 +33,10 @@ namespace OrdoSort.Wpf.Tests;
 /// layout, just never painted; a person visually scanning the grid is not
 /// what this proves.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class HistoryWindowXamlTests
+public class HistoryWindowXamlTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public HistoryWindowXamlTests(HighlightContrastFixture fx) => _fx = fx;
+    public HistoryWindowXamlTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static (HistoryWindow win, History history, string dbPath) BuildWindow(
         Action<HistoryViewModel>? beforeShow = null)

@@ -15,10 +15,10 @@ namespace OrdoSort.Wpf.Tests;
 /// DataGridSelectionContrastTests (every column, selected, against
 /// Theme.Accent) — rather than duplicated here.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class StandardiseNamesWindowTests
+public class StandardiseNamesWindowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public StandardiseNamesWindowTests(HighlightContrastFixture fx) => _fx = fx;
+    public StandardiseNamesWindowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     [Fact]
     public void OneGridNoTabsAndADroppedFileLandsInItAfterTheDatePromptIsAnswered()

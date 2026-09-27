@@ -7,10 +7,10 @@ namespace OrdoSort.Wpf.Tests;
 /// the current ones. A change to the art that was not followed by running
 /// the generator fails here. See docs/brand/BRAND.md for the command.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class BrandAssetsTests
+public class BrandAssetsTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public BrandAssetsTests(HighlightContrastFixture fx) => _fx = fx;
+    public BrandAssetsTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     public static TheoryData<string> AppIcons => new()
     {

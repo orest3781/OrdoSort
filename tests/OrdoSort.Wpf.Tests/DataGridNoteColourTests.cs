@@ -40,10 +40,10 @@ namespace OrdoSort.Wpf.Tests;
 /// Theme.AccentText once selected — same resolution as Task 1's Unlock file
 /// list trap, on a different control.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class DataGridNoteColourTests
+public class DataGridNoteColourTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public DataGridNoteColourTests(HighlightContrastFixture fx) => _fx = fx;
+    public DataGridNoteColourTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     public static IEnumerable<object[]> PalettesAndSelection()
     {

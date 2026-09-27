@@ -18,10 +18,10 @@ namespace OrdoSort.Wpf.Tests;
 /// plain Close() call even on a window that was never Show()n — so this
 /// stays hermetic, no pumping or visible window required.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class LabelMakerWindowClosingTests
+public class LabelMakerWindowClosingTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public LabelMakerWindowClosingTests(HighlightContrastFixture fx) => _fx = fx;
+    public LabelMakerWindowClosingTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     [Fact]
     public void ClosingOverAnUnresolvedDuplicateIdKeepsTheWindowOpenWithTheEditIntact() => _fx.Invoke(() =>

@@ -87,10 +87,10 @@ file sealed class GateWorkScheduler : IWorkScheduler
 /// history row for the document survived — a fresh <see cref="History"/>
 /// connection, since the shell's own connection is disposed by that point.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class ShutdownDuringCommitTests
+public class ShutdownDuringCommitTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public ShutdownDuringCommitTests(HighlightContrastFixture fx) => _fx = fx;
+    public ShutdownDuringCommitTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <summary>Polls by hopping onto the fixture's dispatcher thread for
     /// every check — the shell and its fields are mutated exclusively on

@@ -41,10 +41,10 @@ file sealed class NoDialogs : IDialogService
 /// rather than in a separate file because the only way to exercise it is
 /// through this same real window.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class SettingsKeyboardAccessTests
+public class SettingsKeyboardAccessTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public SettingsKeyboardAccessTests(HighlightContrastFixture fx) => _fx = fx;
+    public SettingsKeyboardAccessTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <summary>Header literal -> the access key WPF derives from it. WPF
     /// takes the character after the first single underscore, which is why one

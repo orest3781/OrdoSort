@@ -25,10 +25,10 @@ namespace OrdoSort.Wpf.Tests;
 /// asked to be proven, not assumed, given this session can't just look at
 /// the window.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class ManageSavedWindowCopyTests
+public class ManageSavedWindowCopyTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public ManageSavedWindowCopyTests(HighlightContrastFixture fx) => _fx = fx;
+    public ManageSavedWindowCopyTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     [Theory]
     [InlineData(true)]

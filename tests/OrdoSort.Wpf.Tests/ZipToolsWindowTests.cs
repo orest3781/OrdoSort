@@ -15,10 +15,10 @@ namespace OrdoSort.Wpf.Tests;
 /// the footer-swapping machinery the tab split needed, and both the
 /// machinery and its guard go together.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class ZipToolsWindowTests
+public class ZipToolsWindowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public ZipToolsWindowTests(HighlightContrastFixture fx) => _fx = fx;
+    public ZipToolsWindowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static ZipExtractViewModel QuietVm() =>
         new(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(),

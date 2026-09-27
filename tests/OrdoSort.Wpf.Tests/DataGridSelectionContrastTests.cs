@@ -44,10 +44,10 @@ namespace OrdoSort.Wpf.Tests;
 /// HighlightContrastTests' DataGridRow hover coverage) already found dead
 /// ship unnoticed.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class DataGridSelectionContrastTests
+public class DataGridSelectionContrastTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public DataGridSelectionContrastTests(HighlightContrastFixture fx) => _fx = fx;
+    public DataGridSelectionContrastTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     // ------------------------------------------------------- window builders
 

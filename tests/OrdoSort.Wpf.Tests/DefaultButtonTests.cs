@@ -16,10 +16,10 @@ namespace OrdoSort.Wpf.Tests;
 /// to Enter while their siblings did. Read off the LOGICAL tree so no
 /// window needs to be shown; a button's Style resolves at parse time.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class DefaultButtonTests
+public class DefaultButtonTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public DefaultButtonTests(HighlightContrastFixture fx) => _fx = fx;
+    public DefaultButtonTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static Button ByName(DependencyObject root, string automationName) =>
         LogicalDescendants<Button>(root).Single(b => AutomationProperties.GetName(b) == automationName);

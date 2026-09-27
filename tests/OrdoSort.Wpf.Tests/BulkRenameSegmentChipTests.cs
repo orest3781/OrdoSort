@@ -20,13 +20,13 @@ namespace OrdoSort.Wpf.Tests;
 /// a checkbox label that resolved a perfectly good colour and painted
 /// nothing at all (the old Delete segments "last" box, 2026-08-03).</summary>
 [Collection(HighlightContrastTests.Name)]
-public class BulkRenameSegmentChipTests : IDisposable
+public class BulkRenameSegmentChipTests : UiTest, IDisposable
 {
     private readonly HighlightContrastFixture _fx;
     private readonly string _dir = Directory.CreateDirectory(
         Path.Combine(Path.GetTempPath(), "ordo_chips_" + Guid.NewGuid().ToString("N"))).FullName;
 
-    public BulkRenameSegmentChipTests(HighlightContrastFixture fx) => _fx = fx;
+    public BulkRenameSegmentChipTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     public void Dispose()
     {

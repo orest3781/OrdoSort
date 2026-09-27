@@ -15,13 +15,13 @@ namespace OrdoSort.Wpf.Tests;
 /// view. A bare grid with three text columns, so each fact is about the
 /// behaviour and not about one window.</summary>
 [Collection(HighlightContrastTests.Name)]
-public sealed class ExplorerColumnsTests : IDisposable
+public sealed class ExplorerColumnsTests : UiTest, IDisposable
 {
     private readonly HighlightContrastFixture _fx;
     private readonly string _dir = Directory.CreateDirectory(
         Path.Combine(Path.GetTempPath(), "ordo_explorer_" + Guid.NewGuid().ToString("N"))).FullName;
 
-    public ExplorerColumnsTests(HighlightContrastFixture fx) => _fx = fx;
+    public ExplorerColumnsTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     public void Dispose()
     {

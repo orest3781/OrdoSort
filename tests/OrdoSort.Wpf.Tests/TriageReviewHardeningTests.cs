@@ -36,10 +36,10 @@ namespace OrdoSort.Wpf.Tests;
 /// technique DataGridSelectionContrastTests' BuildTriageWindowWithWhy uses to
 /// read realized cells without a window ever being on screen.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class TriageReviewHardeningTests
+public class TriageReviewHardeningTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public TriageReviewHardeningTests(HighlightContrastFixture fx) => _fx = fx;
+    public TriageReviewHardeningTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     // ------------------------------------------------------------ the facts
 

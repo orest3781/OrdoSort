@@ -16,10 +16,10 @@ namespace OrdoSort.Wpf.Tests;
 /// those are the same claim, and the count is the one that keeps failing if
 /// a second list is ever reintroduced.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class MergePdfsWindowTests
+public class MergePdfsWindowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public MergePdfsWindowTests(HighlightContrastFixture fx) => _fx = fx;
+    public MergePdfsWindowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     [Fact]
     public void OneListNoTabsAndADroppedZipLandsInIt() => _fx.Invoke(() =>

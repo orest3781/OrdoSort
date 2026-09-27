@@ -179,10 +179,10 @@ public class ThemeTests
 /// <see cref="AppearancePreviewTests"/> does (see that class's doc) rather
 /// than declaring its own.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class ThemeManagerSetModeTests
+public class ThemeManagerSetModeTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public ThemeManagerSetModeTests(HighlightContrastFixture fx) => _fx = fx;
+    public ThemeManagerSetModeTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private Color Brush(string key) =>
         ((SolidColorBrush)_fx.App.Resources[key]).Color;

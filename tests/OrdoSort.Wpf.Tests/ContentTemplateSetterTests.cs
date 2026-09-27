@@ -89,10 +89,10 @@ internal sealed class ComboRowProbeTemplateSelector : DataTemplateSelector
 /// <see cref="CalendarCellsCanOnlyEverCarryStringContent"/>, which pins the
 /// premise that decision rests on instead of asserting it in a comment.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class ContentTemplateSetterTests
+public class ContentTemplateSetterTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public ContentTemplateSetterTests(HighlightContrastFixture fx) => _fx = fx;
+    public ContentTemplateSetterTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private const string RowLabel = "Failed queues";
 
