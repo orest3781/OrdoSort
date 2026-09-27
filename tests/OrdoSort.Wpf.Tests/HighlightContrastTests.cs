@@ -207,10 +207,24 @@ public sealed class HighlightContrastFixture : IDisposable
         {
             _stuckBy = body.Method.DeclaringType?.FullName ?? body.Method.Name;
             throw new TimeoutException(
-                $"UI-thread work did not finish within {InvokeCeiling.TotalMinutes} minutes (a modal dialog, " +
-                "an unbounded pump or a real Edge start is the usual cause)");
+                $"UI-thread work did not finish within {InvokeCeiling.TotalMinutes} minutes. " + DescribeStuckThread());
         }
         captured?.Throw();
+    }
+
+    /// <summary>What the stuck UI thread is doing. A modal dialog runs its
+    /// own message loop, which still runs top-priority work, so the thread
+    /// can report its open windows; a thread blocked in a synchronous wait
+    /// (a deadlock) runs nothing at all.</summary>
+    private string DescribeStuckThread()
+    {
+        string? windows = null;
+        var probe = Dispatcher.BeginInvoke(DispatcherPriority.Send, new Action(() =>
+            windows = string.Join("; ", App.Windows.OfType<Window>().Select(w =>
+                $"{w.GetType().Name} \"{w.Title}\" visible={w.IsVisible} active={w.IsActive}"))));
+        return probe.Wait(TimeSpan.FromSeconds(10)) == DispatcherOperationStatus.Completed
+            ? "The thread is still pumping (a modal dialog or a nested message loop). Open windows: " + windows
+            : "The thread is not pumping at all: it is blocked in a synchronous wait, most likely a deadlock.";
     }
 
     public void Dispose()
