@@ -179,6 +179,10 @@ public static class E2ERunner
             try { w.Close(); } catch { /* best effort — it only exists to be discarded */ }
     }
 
+    /// <summary>How long one scenario may run before the watchdog ends the
+    /// run. The whole suite takes well under a minute on a normal machine.</summary>
+    private static readonly TimeSpan ScenarioLimit = TimeSpan.FromMinutes(2);
+
     private static ScenarioResult DriveOne(Scenario s, string outDir, bool keep)
     {
         var stem = Slug(s.Surface) + "-" + Slug(s.Name);
@@ -207,6 +211,17 @@ public static class E2ERunner
         // bookkeeping assertions (above and below) cannot mask a scenario that
         // asserted nothing of its own.
         var beforeRun = ctx.Assertions.Count;
+
+        // A scenario (with its screenshot and cleanup) that runs this long is
+        // stuck: end the run now, saying what the UI thread is doing, rather
+        // than let CI cancel it at the job limit with no clue (2026-09-27).
+        using var watchdog = new ScenarioWatchdog(Dispatcher.CurrentDispatcher, $"[{s.Surface}] {s.Name}",
+            ScenarioLimit, message =>
+            {
+                Console.WriteLine("E2E STUCK: " + message);
+                Console.Out.Flush();
+                Environment.Exit(3);
+            });
 
         try
         {
