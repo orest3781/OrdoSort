@@ -389,7 +389,7 @@ public class ProcessingWindowTests : UiTest
     /// the accessibility suite closed the dashboard mid-start and crashed
     /// the test host.</summary>
     [Fact]
-    public void AViewerStartThatFinishesAfterTheAppClosedIsHarmless()
+    public async Task AViewerStartThatFinishesAfterTheAppClosedIsHarmless()
     {
         var init = new TaskCompletionSource<bool>();
         Task<bool> warm = null!;
@@ -415,6 +415,6 @@ public class ProcessingWindowTests : UiTest
 
         Assert.Null(thrown);
         Assert.Null(warm.Exception);
-        Assert.True(warm.Result);
+        Assert.True(await warm);
     }
 }
