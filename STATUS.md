@@ -22,7 +22,7 @@
 | S:\ → A:\DEV path rewrite (45 files, comments and docs only) | ✅ Done | Committed `1f5b8de` and pushed 2026-09-09. `.gitignore` now points at `A:\DEV\_ARCHIVE\OrdoSort-samples` |
 
 ## Next
-- [ ] Intermittent: `HeaderLayoutTests` (MainWindow) hung the shared UI thread once in a full run, 2026-09-26; not reproduced since. Next time, record what the timeout message says (dialog or deadlock); see docs/testing.md
+- [ ] Intermittent: the dashboard's start-up (ShellViewModel.Initialize) sometimes fails in a test run and warns "that didn't finish". That warning used to hang the test run (fixed 2026-09-27: FakeDialogs; HeaderLayoutTests now fails fast quoting crash.log). Next time it fails, read the quoted crash.log to find the real cause
 - [ ] Test suite, left for later by decision (2026-09-27): one shared window registry with a reflection coverage test; split ToolViewModelTests / SettingsViewModelTests / HighlightContrastTests; trim long test comments; merge DataGridNoteColourTests into DataGridSelectionContrastTests; `TextToPdfTests` and `ExplorerColumnsTests` wall-clock guards; `BoxLabelStoreTests` and `CompleterAndExportTests` real sleeps
 - [ ] Optional, needs the owner's OK to add packages: `Xunit.StaFact` (a fresh WPF thread per test, would replace most of the shared UI fixture) and `Microsoft.Extensions.TimeProvider.Testing` (Microsoft's FakeTimeProvider, would replace the hand-written ManualTimeProvider)
 - [ ] Explorer tables (review minor): Triage's saved sort never applies (ItemsSource swaps per file clear it); Why column inserted at 0 changes the anchor; column changes restore width only, not hidden/order
