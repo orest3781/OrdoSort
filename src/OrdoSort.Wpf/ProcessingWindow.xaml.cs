@@ -163,6 +163,9 @@ public partial class ProcessingWindow : Window
             Top = r.Top;
             Width = r.Width;
             Height = r.Height;
+            // measured now, so the first page is shown at the zoom for this
+            // size rather than re-opened once layout catches up
+            UpdateLayout();
         }
     }
 

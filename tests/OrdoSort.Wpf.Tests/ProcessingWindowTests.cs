@@ -125,9 +125,14 @@ public class ProcessingWindowTests : UiTest
 
     private void Start(MainWindow window)
     {
-        _fx.Invoke(() => window.Shell.StartProcessing());
+        var loaded = false;
+        _fx.Invoke(() =>
+        {
+            window.Shell.RequestNameFocus += () => loaded = true;   // the last step of loading a document
+            window.Shell.StartProcessing();
+        });
         WaitFor(() => window.Shell.IsProcessing && window.Processing.IsVisible
-                && !window.Shell.IsBusy && window.Shell.CurrentFilename.Length > 0,
+                && !window.Shell.IsBusy && loaded,
             "the session should be running in its own window, its first document loaded");
     }
 

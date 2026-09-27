@@ -1392,8 +1392,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // first document loads
         if (PrepareSessionView is { } prepare) await prepare();
         await RefreshCompleterAsync();
-        await LoadCurrentAsync();
+        // fit first, so the first page is shown at the zoom for the fitted size
         await FitViewerToCurrentAsync();
+        await LoadCurrentAsync();
     }
 
     /// <summary>Measure the document now on screen and ask the window to fit
@@ -1439,7 +1440,11 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         RefreshSuggestions();
         UpdatePreview();
         RaiseUndoState();
-        await _viewer.ShowAsync(path);
+        // the page's size, so the viewer shows the whole page as large as it
+        // can; a PDF header read off an SMB inbox is a network round trip
+        var page = await _scheduler.Run(() => PageShape.SizeOf(path));
+        if (_session.Current != path) return;   // moved on while measuring; that load shows its own
+        await _viewer.ShowAsync(path, page);
         RequestNameFocus?.Invoke();
     }
 

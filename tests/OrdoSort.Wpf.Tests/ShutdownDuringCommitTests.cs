@@ -150,6 +150,7 @@ public class ShutdownDuringCommitTests : UiTest
         MainWindow window = null!;
         ShellViewModel shell = null!;
         var closed = false;
+        var loaded = false;
 
         try
         {
@@ -165,6 +166,7 @@ public class ShutdownDuringCommitTests : UiTest
                 shell = window.Shell;
                 SetScheduler(shell, gate);
                 window.Closed += (_, _) => closed = true;
+                shell.RequestNameFocus += () => loaded = true;   // the last step of loading a document
                 // Never Show()n: Loaded (which would call _pdf.InitAsync and
                 // start a real Edge environment) never fires — same trick
                 // TriageWindowDisposalTests uses — so StartProcessing can be
@@ -172,7 +174,9 @@ public class ShutdownDuringCommitTests : UiTest
                 shell.StartProcessing();
             });
 
-            WaitFor(() => shell.Screen == Screen.Processing, "the session should have started");
+            // loaded, not just started: the gate holds the NEXT background task,
+            // and the first document's page-size read must not be the one it catches
+            WaitFor(() => shell.Screen == Screen.Processing && loaded, "the first document should have loaded");
 
             _fx.Invoke(() =>
             {
@@ -281,6 +285,7 @@ public class ShutdownDuringCommitTests : UiTest
         MainWindow window = null!;
         ShellViewModel shell = null!;
         var closed = false;
+        var loaded = false;
 
         try
         {
@@ -296,11 +301,14 @@ public class ShutdownDuringCommitTests : UiTest
                 shell = window.Shell;
                 SetScheduler(shell, gate);
                 window.Closed += (_, _) => closed = true;
+                shell.RequestNameFocus += () => loaded = true;   // the last step of loading a document
                 window.CloseIdleTimeout = TimeSpan.FromMilliseconds(150);
                 shell.StartProcessing();
             });
 
-            WaitFor(() => shell.Screen == Screen.Processing, "the session should have started");
+            // loaded, not just started: the gate holds the NEXT background task,
+            // and the first document's page-size read must not be the one it catches
+            WaitFor(() => shell.Screen == Screen.Processing && loaded, "the first document should have loaded");
 
             _fx.Invoke(() =>
             {

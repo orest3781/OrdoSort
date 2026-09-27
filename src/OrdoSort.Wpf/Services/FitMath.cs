@@ -41,4 +41,24 @@ public static class FitMath
         return new Rect(workArea.Left + (workArea.Width - width) / 2,
             workArea.Top + (workArea.Height - height) / 2, width, height);
     }
+
+    /// <summary>Edge's gap between the page and the viewer's sides.</summary>
+    public const double PageMarginDip = 8;
+
+    /// <summary>The zoom, in percent, that shows the whole of a
+    /// <paramref name="page"/> as large as a viewer of the given size allows.
+    /// Edge's PDF viewer ignores "fit page" address settings but obeys a
+    /// numeric <c>#zoom=</c>, and at 100% draws one point as 96/72 pixels.
+    /// The toolbar, scrollbar and page margins are left out of the space.
+    /// Clamped to Edge's 10-500% range; null when there is no page size or no
+    /// viewer to fit (Edge's own zoom is then left alone).</summary>
+    public static int? PageFitZoom(OrdoSort.Core.PageSize page, double viewerWidth, double viewerHeight)
+    {
+        if (page.WidthPt <= 0 || page.HeightPt <= 0 || viewerWidth <= 0 || viewerHeight <= 0) return null;
+        const double PixelsPerPoint = 96.0 / 72.0;
+        var width = viewerWidth - PanMath.ScrollbarDip - 2 * PageMarginDip;
+        var height = viewerHeight - PanMath.ToolbarDip;
+        var scale = Math.Min(width / (page.WidthPt * PixelsPerPoint), height / (page.HeightPt * PixelsPerPoint));
+        return Math.Clamp((int)Math.Floor(scale * 100), 10, 500);
+    }
 }

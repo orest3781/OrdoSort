@@ -19,7 +19,11 @@ public static class PageShape
     /// cannot be read. Only page 1: a document whose pages disagree has no
     /// single shape, and the pane is being sized for what is on screen when
     /// the session starts.</summary>
-    public static double? AspectOf(string path)
+    public static double? AspectOf(string path) => SizeOf(path)?.Aspect;
+
+    /// <summary>The first page's size in points as it is shown (rotation
+    /// applied), or null when the file will not open or has no pages.</summary>
+    public static PageSize? SizeOf(string path)
     {
         try
         {
@@ -49,11 +53,18 @@ public static class PageShape
             var width = page.Width.Point;
             var height = page.Height.Point;
             if (width <= 0 || height <= 0) return null;
-            return width / height;
+            return new PageSize(width, height);
         }
         catch (Exception)
         {
             return null;
         }
     }
+}
+
+/// <summary>A page's size in points (1/72 inch), as it is shown.</summary>
+public readonly record struct PageSize(double WidthPt, double HeightPt)
+{
+    /// <summary>Width over height: above 1 is landscape.</summary>
+    public double Aspect => WidthPt / HeightPt;
 }

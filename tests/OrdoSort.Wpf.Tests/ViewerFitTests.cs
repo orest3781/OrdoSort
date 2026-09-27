@@ -1,4 +1,5 @@
 using System.Windows;
+using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
@@ -121,6 +122,49 @@ public class ViewerFitTests
         Assert.Single(reported);
     }
 
+    /// <summary>The window is fitted before the first page is shown, so the
+    /// viewer works out its zoom for the size it ends up at.</summary>
+    [Fact]
+    public void TheWindowIsFittedBeforeTheFirstPageIsShown()
+    {
+        using var fx = new ShellFixture();
+        WritePdf(Path.Combine(fx.Inbox, "20240115--111111.pdf"), 612, 792);
+        var order = new List<string>();
+        fx.Shell.FitViewerToPage += _ => order.Add($"fit, {fx.Viewer.Shown.Count} shown");
+
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+
+        Assert.Equal(new[] { "fit, 0 shown" }, order);
+        Assert.Single(fx.Viewer.Shown);
+    }
+
+    [Fact]
+    public async Task EveryDocumentIsShownWithItsOwnPageSize()
+    {
+        using var fx = new ShellFixture();
+        WritePdf(Path.Combine(fx.Inbox, "20240115--111111.pdf"), 612, 792);
+        WritePdf(Path.Combine(fx.Inbox, "20240116--222222.pdf"), 792, 612);
+
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+        await fx.Shell.OnRouteAsync(0);
+
+        Assert.Equal(new PageSize?[] { new PageSize(612, 792), new PageSize(792, 612) }, fx.Viewer.ShownPages);
+    }
+
+    [Fact]
+    public void AnUnreadableDocumentIsShownWithNoPageSize()
+    {
+        using var fx = new ShellFixture();
+        fx.AddInboxFile("20240115--111111.pdf");   // text, not a PDF
+
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+
+        Assert.Equal(new PageSize?[] { null }, fx.Viewer.ShownPages);
+    }
+
     [Fact]
     public void AnUnreadableDocumentReportsNothing()
     {
@@ -159,6 +203,49 @@ public class ViewerFitTests
 /// Needs a real HWND (MonitorFromWindow takes one), so it runs on the shared
 /// STA fixture and shows its windows off-screen, the same shape the other
 /// window suites use.</summary>
+/// <summary>The zoom that shows a whole page at the largest size the viewer
+/// allows. Edge's PDF viewer ignores "fit page" address settings but obeys a
+/// numeric zoom, and at 100% draws one point as 96/72 pixels.</summary>
+public class PageFitZoomTests
+{
+    private static readonly PageSize Letter = new(612, 792);
+
+    [Fact]
+    public void ALetterPageFillsAPageShapedViewer()
+    {
+        // width: 1026 less the 24 px scrollbar and two 8 px margins, over 816 px;
+        // height: 1353 less the 56 px toolbar, over 1056 px; the smaller wins
+        Assert.Equal(120, FitMath.PageFitZoom(Letter, 1026, 1353));
+    }
+
+    [Fact]
+    public void AWidePageIsLimitedByTheViewersWidth()
+    {
+        // 1026 less the scrollbar and margins, over 1056 px
+        Assert.Equal(93, FitMath.PageFitZoom(new PageSize(792, 612), 1026, 1353));
+    }
+
+    [Fact]
+    public void ATinyViewerStillGetsEdgesSmallestZoom()
+    {
+        Assert.Equal(10, FitMath.PageFitZoom(Letter, 60, 80));
+    }
+
+    [Theory]
+    [InlineData(0, 1353)]
+    [InlineData(1026, 0)]
+    public void NoViewerSizeMeansNoZoom(double width, double height)
+    {
+        Assert.Null(FitMath.PageFitZoom(Letter, width, height));
+    }
+
+    [Fact]
+    public void APageWithNoSizeMeansNoZoom()
+    {
+        Assert.Null(FitMath.PageFitZoom(new PageSize(0, 792), 1026, 1353));
+    }
+}
+
 [Collection(HighlightContrastTests.Name)]
 public class MonitorWorkAreaTests : UiTest
 {
