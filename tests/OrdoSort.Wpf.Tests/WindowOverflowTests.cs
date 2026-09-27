@@ -307,7 +307,7 @@ public class WindowOverflowTests
             cfg.WatchFolders.Add(new WatchFolder { Label = "Failed transfers", Path = watched, Filetypes = "pdf" });
             Directory.CreateDirectory(cfg.Inbox);
             Directory.CreateDirectory(cfg.Deferred);
-            var window = new MainWindow(cfg, Path.Combine(dir, "config.json"));
+            var window = new MainWindow(cfg, Path.Combine(dir, "config.json"), initViewer: () => Task.FromResult(true));
             Action cleanup = () =>
             {
                 SqliteConnection.ClearAllPools();

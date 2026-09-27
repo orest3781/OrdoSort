@@ -67,7 +67,9 @@ public class HeaderLayoutTests : IDisposable
         Directory.CreateDirectory(cfg.Deferred);
         var cfgPath = Path.Combine(_dir, "config.json");
 
-        var window = new MainWindow(cfg, cfgPath)
+        // A stand-in viewer start: these tests are about the header, and a
+        // real Edge start belongs to the integration run (docs/testing.md).
+        var window = new MainWindow(cfg, cfgPath, initViewer: () => Task.FromResult(true))
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
@@ -81,6 +83,34 @@ public class HeaderLayoutTests : IDisposable
         window.UpdateLayout();
         return window;
     }
+
+    [Fact]
+    public void TheDashboardStartsItsViewerThroughTheStartItWasGiven() => _fx.Invoke(() =>
+    {
+        var started = 0;
+        var cfg = new Config
+        {
+            Inbox = Path.Combine(_dir, "inbox"),
+            Deferred = Path.Combine(_dir, "deferred"),
+            HistoryDb = Path.Combine(_dir, "history.sqlite"),
+        };
+        Directory.CreateDirectory(cfg.Inbox);
+        Directory.CreateDirectory(cfg.Deferred);
+        var window = new MainWindow(cfg, Path.Combine(_dir, "config.json"),
+            initViewer: () => { started++; return Task.FromResult(true); })
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            PumpRender();
+            Assert.Equal(1, started);
+            Assert.False(window.Pdf.Ready, "the real viewer must not start when a stand-in was given");
+        }
+        finally { window.Close(); }
+    });
 
     private static Menu HeaderMenu(MainWindow window) =>
         FindDescendant<Menu>(window) ?? throw new InvalidOperationException("no Menu in MainWindow");

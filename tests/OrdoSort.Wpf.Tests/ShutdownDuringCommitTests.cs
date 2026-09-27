@@ -155,7 +155,7 @@ public class ShutdownDuringCommitTests
         {
             _fx.Invoke(() =>
             {
-                window = new MainWindow(cfg, cfgPath)
+                window = new MainWindow(cfg, cfgPath, initViewer: () => Task.FromResult(true))
                 {
                     Left = -20000, Top = 0, ShowActivated = false,
                     WindowStartupLocation = WindowStartupLocation.Manual,
@@ -284,7 +284,7 @@ public class ShutdownDuringCommitTests
         {
             _fx.Invoke(() =>
             {
-                window = new MainWindow(cfg, cfgPath)
+                window = new MainWindow(cfg, cfgPath, initViewer: () => Task.FromResult(true))
                 {
                     Left = -20000, Top = 0, ShowActivated = false,
                     WindowStartupLocation = WindowStartupLocation.Manual,

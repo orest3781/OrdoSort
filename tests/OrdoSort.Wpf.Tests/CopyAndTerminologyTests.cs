@@ -521,7 +521,7 @@ public class CopyAndTerminologyTests
         var previousCrashDir = App._crashDir;
         App._crashDir = dir;
 
-        var window = new MainWindow(cfg, Path.Combine(dir, "config.json"))
+        var window = new MainWindow(cfg, Path.Combine(dir, "config.json"), initViewer: () => Task.FromResult(true))
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,

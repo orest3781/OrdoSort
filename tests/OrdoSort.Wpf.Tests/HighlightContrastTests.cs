@@ -1649,7 +1649,7 @@ public class HighlightContrastTests
         var cfg = new Config { HistoryDb = Path.Combine(dir, "history.sqlite") };
         var cfgPath = Path.Combine(dir, "config.json");
 
-        var window = new MainWindow(cfg, cfgPath)
+        var window = new MainWindow(cfg, cfgPath, initViewer: () => Task.FromResult(true))
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
