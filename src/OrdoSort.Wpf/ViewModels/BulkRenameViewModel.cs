@@ -212,12 +212,12 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         Func<IEnumerable<string>, RenameOp, IReadOnlyDictionary<string, string>?,
             IReadOnlyDictionary<string, IReadOnlySet<int>>?, IReadOnlySet<string>?, List<PlannedRename>>? plan = null,
         IWorkScheduler? scheduler = null,
-        SynchronizationContext? uiContext = null, int probeDelayMs = 300)
+        SynchronizationContext? uiContext = null, int probeDelayMs = 300, TimeProvider? time = null)
     {
         _plan = plan ?? Plan;
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _plansProbe = new DebouncedProbe<List<PlannedRename>>(
-            _scheduler, uiContext, ApplyPlans, probeDelayMs);
+            _scheduler, uiContext, ApplyPlans, probeDelayMs, time);
         RenameCommand = new AsyncRelayCommand(ApplyAsync, () => _changed > 0 && !IsBusy);
         UndoCommand = new AsyncRelayCommand(UndoBatchAsync, () => _lastOutcomes.Count > 0 && !IsBusy);
         CancelCommand = new RelayCommand(() => _batchCts?.Cancel(), () => IsBusy);

@@ -76,10 +76,10 @@ file sealed class NoDialogs : IDialogService
 /// stand-in — a copy of the templates would keep passing while the shipped
 /// ones stayed dead.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class WatchListRowTemplateTests
+public class WatchListRowTemplateTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public WatchListRowTemplateTests(HighlightContrastFixture fx) => _fx = fx;
+    public WatchListRowTemplateTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private const string SectionA = "Failed queues";
     private const string FolderA = "Failed transfers";
@@ -104,7 +104,7 @@ public class WatchListRowTemplateTests
         // own note): several SettingsViewModel properties dereference cfgPath with `!`.
         var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(), () => ThemePalette.Light, cfgPath,
-            uiContext: SynchronizationContext.Current);
+            uiContext: SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
 
         var window = new SettingsWindow(vm)
         {
@@ -482,34 +482,6 @@ public class WatchListRowTemplateTests
         Assert.Same(_fx.App.Resources["PlainStringListItemTemplate"], selector.PlainStringTemplate);
         Assert.Same(selector.PlainStringTemplate,
             selector.SelectTemplate(container.Content, container));
-    }
-
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) return match;
-            if (FindDescendant<T>(child) is { } nested) return nested;
-        }
-        return null;
-    }
-
-    private static List<T> FindAllDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        var results = new List<T>();
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) results.Add(match);
-            results.AddRange(FindAllDescendants<T>(child));
-        }
-        return results;
     }
 
     /// <summary>A Popup renders into its OWN top-level visual tree, so the

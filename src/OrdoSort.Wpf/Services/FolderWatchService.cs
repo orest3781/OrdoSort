@@ -11,22 +11,32 @@ namespace OrdoSort.Wpf.Services;
 public sealed class FolderWatchService : IDisposable
 {
     private readonly List<FileSystemWatcher> _watchers = new();
-    private readonly System.Threading.Timer _debounce;
-    private readonly System.Threading.Timer _poll;
+    private readonly ITimer _debounce;
+    private readonly ITimer _poll;
     private readonly int _debounceMs;
     private readonly SynchronizationContext? _context;
     private volatile bool _disposed;
 
     public event Action? Activity;
 
+    /// <summary>Raised by the poll timer, just before its <see cref="Activity"/>:
+    /// the refresh that follows is the periodic one, not a reaction to a file
+    /// moving in the inbox (ShellViewModel sweeps watched folders mid-session
+    /// only then).</summary>
+    public event Action? Polled;
+
+    /// <param name="time">The clock both timers run on; null is the real
+    /// clock. Tests pass a manual one so no test sleeps.</param>
     public FolderWatchService(int debounceMs = 1500,
         int pollMs = OrdoSort.Core.Config.DefaultPollSeconds * 1000,
-        SynchronizationContext? context = null)
+        SynchronizationContext? context = null, TimeProvider? time = null)
     {
         _debounceMs = debounceMs;
         _context = context;
-        _debounce = new System.Threading.Timer(_ => RaiseActivity());
-        _poll = new System.Threading.Timer(_ => RaiseActivity(), null, pollMs, pollMs);
+        var clock = time ?? TimeProvider.System;
+        _debounce = clock.CreateTimer(_ => RaiseActivity(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        var interval = TimeSpan.FromMilliseconds(pollMs);
+        _poll = clock.CreateTimer(_ => { RaisePolled(); RaiseActivity(); }, null, interval, interval);
     }
 
     /// <summary>(Re)build the watcher set. Blank or missing folders are
@@ -55,14 +65,21 @@ public sealed class FolderWatchService : IDisposable
     public void Poke()
     {
         if (_disposed) return;
-        _debounce.Change(_debounceMs, Timeout.Infinite);
+        _debounce.Change(TimeSpan.FromMilliseconds(_debounceMs), Timeout.InfiniteTimeSpan);
     }
 
     /// <summary>Change the backstop poll period live (Settings adjusted it).</summary>
     public void SetPollInterval(int pollMs)
     {
         if (_disposed) return;
-        _poll.Change(pollMs, pollMs);
+        _poll.Change(TimeSpan.FromMilliseconds(pollMs), TimeSpan.FromMilliseconds(pollMs));
+    }
+
+    private void RaisePolled()
+    {
+        if (_disposed) return;
+        if (_context is null) Polled?.Invoke();
+        else _context.Post(_ => { if (!_disposed) Polled?.Invoke(); }, null);
     }
 
     private void RaiseActivity()

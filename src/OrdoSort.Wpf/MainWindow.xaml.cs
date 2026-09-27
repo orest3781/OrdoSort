@@ -32,40 +32,49 @@ public partial class MainWindow : Window
         TaskbarItemInfo ??= new TaskbarItemInfo();
         TaskbarItemInfo.Overlay = Shell.HasActiveAlert ? AlertBadge : null;
     }
-    private readonly WebViewPdfViewer _pdf;
     private readonly FolderWatchService _watch;
     internal ShellViewModel Shell { get; }
     internal IDialogService Dialogs { get; set; }
-    internal WebViewPdfViewer Pdf => _pdf;
 
-    private readonly Func<System.Windows.Rect?> _panZone;
+    /// <summary>The session's own window (spec 2026-09-26): the viewer, the
+    /// Processing screen and Done. This window is the dashboard.</summary>
+    internal ProcessingWindow Processing { get; }
 
-    public MainWindow(Config cfg, string cfgPath)
+    /// <summary>The PDF viewer, which lives in <see cref="Processing"/>.</summary>
+    internal WebViewPdfViewer Pdf => Processing.PdfViewer;
+
+    public MainWindow(Config cfg, string cfgPath) : this(cfg, cfgPath, null, null) { }
+
+    /// <param name="initViewer">Starts the session window's viewer; tests
+    /// pass their own so no real Edge starts.</param>
+    /// <param name="sessionWorkArea">Where sessions open; tests pass an
+    /// off-screen area. Defaults to this window's monitor.</param>
+    internal MainWindow(Config cfg, string cfgPath, Func<Task<bool>>? initViewer, Func<Rect>? sessionWorkArea = null)
     {
         InitializeComponent();
-        // immediate scrolls instead of animated ones — left-drag panning
-        // converts to wheel messages and must track the hand directly
-        Viewer.CreationProperties = new Microsoft.Web.WebView2.Wpf.CoreWebView2CreationProperties
-        {
-            AdditionalBrowserArguments = "--disable-smooth-scrolling",
-        };
-        _pdf = new WebViewPdfViewer(Viewer);
+        // A session opens in its own window (spec 2026-09-26), which owns the
+        // viewer; this window is the dashboard and never reshapes.
+        Processing = new ProcessingWindow(sessionWorkArea ?? (() => MonitorWorkArea.For(this)), initViewer);
         Dialogs = new DialogService(this);
         _watch = new FolderWatchService(pollMs: cfg.PollSeconds * 1000,
             context: SynchronizationContext.Current);
-        Shell = new ShellViewModel(cfg, cfgPath, _pdf,
-            new DialogRelay(() => Dialogs), _watch, SynchronizationContext.Current,
-            sounds: new SoundService());
+        // messages raised during a session appear over the session's window
+        Shell = new ShellViewModel(cfg, cfgPath, Processing.PdfViewer,
+            new DialogRelay(() => Processing.IsVisible ? Processing.Dialogs : Dialogs), _watch,
+            SynchronizationContext.Current, sounds: new SoundService());
         DataContext = Shell;
+        Processing.Attach(Shell);
+        Shell.PrepareSessionView = Processing.OpenForSessionAsync;
+        Shell.ShowSessionRequested += Processing.BringToFront;
 
-        Shell.RoutesRebuilt += RebindRouteHotkeys;
         // taskbar overlay follows the alert state; a new alert flashes the
-        // taskbar button when we're not the foreground window
+        // taskbar button only while neither window is in front
         Shell.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(ShellViewModel.HasActiveAlert)) ApplyAlertBadge();
         };
-        Shell.AlertArrived += () => { if (!IsActive) TaskbarFlash.Flash(this); };
+        ShouldFlash = () => FlashFor(IsActive, Processing.IsActive);
+        Shell.AlertArrived += () => { if (ShouldFlash()) TaskbarFlash.Flash(this); };
         // a filing-loop exception the view model didn't expect still reaches
         // crash.log — the user has already been warned by then. The lambda
         // (rather than a method-group `+= App.LogCrash`) is needed because
@@ -78,41 +87,38 @@ public partial class MainWindow : Window
             Theme.ThemeManager.SetMode(Application.Current, Shell.Cfg.Theme);
         };
 
-        // Window lifecycle: the Ready dashboard is a compact
-        // window parked in the top-right corner; the window only grows to the
-        // full viewer layout while a session runs. Both geometries remembered.
-        Shell.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(ShellViewModel.Screen)) ApplyWindowMode();
-        };
-        Shell.FitViewerToPage += FitViewerTo;
         WindowStartupLocation = WindowStartupLocation.Manual;
-        EnterCompact(initial: true);
+        ParkDashboard();
 
         // a manual user resize flips SizeToContent to Manual (WPF behavior);
         // re-assert auto-fit when the tile set changes so the dashboard keeps
         // tracking its content
         Shell.Tiles.CollectionChanged += (_, _) =>
         {
-            if (_compact && SizeToContent != SizeToContent.Height)
-                SizeToContent = SizeToContent.Height;
+            if (SizeToContent != SizeToContent.Height) SizeToContent = SizeToContent.Height;
         };
         InputBindings.Add(new System.Windows.Input.KeyBinding(
             new Mvvm.RelayCommand(() => OnSettings(this, new RoutedEventArgs())),
             System.Windows.Input.Key.OemComma, System.Windows.Input.ModifierKeys.Control));
 
-        _panZone = ViewerPanZone;
         Loaded += async (_, _) =>
         {
-            ViewerInputEnhancer.Register(_panZone);
-            if (!await _pdf.InitAsync())
+            // the session window's viewer starts now, as it always has at
+            // launch, so a first Start is instant and a broken viewer is
+            // reported here rather than mid-session
+            var started = await Processing.WarmUpAsync();
+            // closed while the viewer was starting (a quick exit at launch, or
+            // a slow first Edge start): the shell is disposed, so there is
+            // nothing to warn about or start
+            if (_closed) return;
+            if (!started)
                 Dialogs.Warn(
-                    "The PDF viewer (WebView2) failed to start:\n\n" + _pdf.InitError,
+                    "The PDF viewer (WebView2) failed to start:\n\n" + Processing.PdfViewer.InitError,
                     "OrdoSort");
             Shell.Initialize();
         };
-        // X while filing (or on the summary) returns to the dashboard instead
-        // of exiting — the queue stays in the inbox, nothing is lost. The app
+        // X mid-session (or on the summary) ends the session instead of
+        // exiting — the queue stays in the inbox, nothing is lost. The app
         // really closes from the dashboard, File > Exit, or OS shutdown.
         Closing += (_, e) =>
         {
@@ -149,17 +155,36 @@ public partial class MainWindow : Window
             }
         };
         if (Application.Current is { } app)
-            app.SessionEnding += (_, _) => _reallyExit = true;
+            app.SessionEnding += (_, _) => OnWindowsSessionEnding();
 
         Closed += (_, _) =>
         {
-            ViewerInputEnhancer.Unregister(_panZone);
+            _closed = true;
+            Processing.CloseForReal();
             _watch.Dispose();
             Shell.Dispose();
         };
     }
 
     private bool _reallyExit;
+    private bool _closed;
+
+    /// <summary>Windows is shutting down or signing out: nothing here may
+    /// cancel that, so the session window closes for real too.</summary>
+    internal void OnWindowsSessionEnding()
+    {
+        _reallyExit = true;
+        Processing.CloseForReal();
+    }
+
+    /// <summary>Whether an alert flashes the taskbar now: only while neither
+    /// window is in front. A seam for tests.</summary>
+    internal Func<bool> ShouldFlash { get; set; }
+
+    /// <summary>The rule behind <see cref="ShouldFlash"/>: flash only when the
+    /// person is in neither window.</summary>
+    internal static bool FlashFor(bool dashboardActive, bool sessionActive) =>
+        !dashboardActive && !sessionActive;
 
     /// <summary>Set immediately before FinishClosingWhenIdle's own re-entrant
     /// Close() call, so THAT re-entry into the Closing handler above cannot
@@ -195,139 +220,22 @@ public partial class MainWindow : Window
         Close();
     }
 
-    /// <summary>Where left-drag pans and Shift+scroll zooms: the viewer's
-    /// document area while a session is running, in device pixels.</summary>
-    private System.Windows.Rect? ViewerPanZone()
+    // ------------------------------------------------------------ the dashboard
+    /// <summary>Parks the dashboard in the top-right corner of the work area,
+    /// sized to its content and growing downward as monitored folders appear
+    /// (no scrollbars), capped at the work area so a huge folder list can't
+    /// push it off-screen. It never reshapes after this: a session opens in
+    /// its own window (spec 2026-09-26).</summary>
+    private void ParkDashboard()
     {
-        if (_compact || !Shell.IsProcessing || !IsActive || !Viewer.IsVisible) return null;
-        var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(Viewer);
-        var topLeft = Viewer.PointToScreen(new System.Windows.Point(0, 0));
-        var device = new System.Windows.Rect(topLeft.X, topLeft.Y,
-            Viewer.ActualWidth * dpi.DpiScaleX, Viewer.ActualHeight * dpi.DpiScaleY);
-        return PanMath.PanZone(device, dpi.DpiScaleX, dpi.DpiScaleY);
-    }
-
-    // ------------------------------------------------ compact/normal modes
-    private Rect? _normalBounds;
-    private Rect? _compactBounds;
-    private bool _compact;
-
-    private void ApplyWindowMode()
-    {
-        if (Shell.IsReady) EnterCompact(initial: false);
-        else EnterNormal();
-    }
-
-    private void EnterCompact(bool initial)
-    {
-        if (!initial)
-        {
-            if (_compact) return;
-            _normalBounds = new Rect(Left, Top, ActualWidth, ActualHeight);
-        }
-        _compact = true;
-
-        Viewer.Visibility = Visibility.Collapsed;
-        Split.Visibility = Visibility.Collapsed;
-        ViewerCol.MinWidth = 0;
-        ViewerCol.Width = new GridLength(0);
-        SplitterCol.Width = new GridLength(0);
-        PanelCol.MinWidth = 0;
-        PanelCol.Width = new GridLength(1, GridUnitType.Star);
+        var wa = SystemParameters.WorkArea;   // DIPs, primary monitor
         MinWidth = 400;
         MinHeight = 0;
-
-        // auto-fit: the dashboard sizes itself to its content and grows
-        // downward as monitored folders appear — no scrollbars. Capped at the
-        // work area so a huge folder list can't push it off-screen (the
-        // ScrollViewer only kicks in past that cap).
-        var wa = SystemParameters.WorkArea;   // DIPs, primary monitor
         MaxHeight = wa.Height - 24;
         SizeToContent = SizeToContent.Height;
-
-        if (_compactBounds is { } b)
-        {
-            Left = b.Left; Top = b.Top; Width = b.Width;
-        }
-        else
-        {
-            Width = 470;
-            Left = wa.Right - Width - 12;
-            Top = wa.Top + 12;
-        }
-    }
-
-    /// <summary>Size the window so the viewer's document area matches the
-    /// shape of the page about to appear in it, once, as a session starts.
-    /// Only the width moves: the height is whatever the user last chose, and
-    /// fitting a page means fitting it to that height.
-    ///
-    /// Runs after <see cref="EnterNormal"/> has already applied the session
-    /// geometry — the Screen change that calls one is what eventually raises
-    /// the other — so it adjusts a real, current layout rather than
-    /// predicting one.</summary>
-    private void FitViewerTo(double aspect)
-    {
-        // The compact dashboard has no viewer to fit, and a maximized window
-        // cannot be resized without unmaximizing it first, which is a bigger
-        // surprise than a pane that does not match the page.
-        if (_compact || WindowState != WindowState.Normal) return;
-
-        // EnterNormal assigned Width moments ago; ActualWidth only catches up
-        // once a layout pass has run over that assignment, and the fit is
-        // measured from the pane as it actually is.
-        UpdateLayout();
-        if (Viewer.ActualHeight <= 0) return;
-
-        // The monitor this window is actually on, NOT the primary. This code
-        // moves a window the user has already placed, so measuring it against
-        // SystemParameters.WorkArea (always the primary's) relocated a window
-        // sitting on a secondary monitor onto the primary at every session
-        // start — see MonitorWorkArea for the numbers.
-        var workArea = MonitorWorkArea.For(this);
-        var width = FitMath.WindowWidthFor(ActualWidth, Viewer.ActualWidth, Viewer.ActualHeight,
-            aspect, MinWidth, workArea.Width);
-        Width = width;
-        Left = FitMath.LeftFor(Left, width, workArea);
-    }
-
-    private void EnterNormal()
-    {
-        if (!_compact) return;
-        // capture BEFORE touching MinWidth — raising it resizes the window
-        // immediately and would corrupt the geometry math below
-        var compact = new Rect(Left, Top, ActualWidth, ActualHeight);
-        _compactBounds = compact;
-        _compact = false;
-
-        // back to explicit sizing BEFORE the bounds are set, or the Height
-        // assignments below would be ignored
-        SizeToContent = SizeToContent.Manual;
-        MaxHeight = double.PositiveInfinity;
-
-        Viewer.Visibility = Visibility.Visible;
-        Split.Visibility = Visibility.Visible;
-        ViewerCol.MinWidth = 320;
-        ViewerCol.Width = new GridLength(1, GridUnitType.Star);
-        SplitterCol.Width = new GridLength(5);
-        PanelCol.MinWidth = 370;
-        PanelCol.Width = new GridLength(430);
-        MinWidth = 900;
-        MinHeight = 600;
-
-        if (_normalBounds is { } b)
-        {
-            Left = b.Left; Top = b.Top; Width = b.Width; Height = b.Height;
-        }
-        else
-        {
-            // grow leftward from the parked corner so the big window opens on
-            // the same monitor the user parked the dashboard on
-            Width = 1280;
-            Height = 860;
-            Left = Math.Max(SystemParameters.VirtualScreenLeft, compact.Right - Width);
-            Top = compact.Top;
-        }
+        Width = 470;
+        Left = wa.Right - Width - 12;
+        Top = wa.Top + 12;
     }
 
     private void OnViewHistory(object sender, RoutedEventArgs e)
@@ -425,36 +333,6 @@ public partial class MainWindow : Window
         vm.Dispose();   // cancel any still-armed per-field/per-row probes now the dialog is closing
         if (accepted && vm.Result is { } cfg)
             Shell.ApplySettings(cfg);
-    }
-
-    private readonly List<System.Windows.Input.KeyBinding> _routeBindings = new();
-
-    /// <summary>Config-driven route hotkeys: rebuilt with the route buttons at
-    /// every session start (and after Settings changes). Digit hotkeys bind
-    /// the numpad twin too — a gesture matches exact keys, and nobody thinks
-    /// of Ctrl+NumPad1 as a different keystroke from Ctrl+1.</summary>
-    private void RebindRouteHotkeys()
-    {
-        foreach (var b in _routeBindings) InputBindings.Remove(b);
-        _routeBindings.Clear();
-
-        void Bind(System.Windows.Input.Key key, System.Windows.Input.ModifierKeys mods, int index)
-        {
-            var binding = new System.Windows.Input.KeyBinding(Shell.RouteCommand, key, mods)
-            {
-                CommandParameter = index,
-            };
-            _routeBindings.Add(binding);
-            InputBindings.Add(binding);
-        }
-
-        foreach (var route in Shell.Routes)
-        {
-            if (route.Gesture is null || !route.Enabled) continue;
-            Bind(route.Gesture.Key, route.Gesture.Modifiers, route.Index);
-            if (HotkeyParser.DigitTwin(route.Gesture.Key) is not System.Windows.Input.Key.None and var twin)
-                Bind(twin, route.Gesture.Modifiers, route.Index);
-        }
     }
 
     /// <summary>Lets the smoke harness swap in a recording dialog service

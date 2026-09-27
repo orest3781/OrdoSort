@@ -20,6 +20,14 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="System.IO" />
+    <Using Include="OrdoSort.TestSupport" />
+    <Using Include="OrdoSort.TestSupport.Wait" Static="true" />
+    <Using Include="OrdoSort.TestSupport.Ui" Static="true" />
+  </ItemGroup>
+
+  <!-- the shared test kit (docs/testing.md) -->
+  <ItemGroup>
+    <Compile Include="..\Shared\**\*.cs" Link="Shared\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

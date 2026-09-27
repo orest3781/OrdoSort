@@ -50,13 +50,13 @@ public static class RoutingScenarios
         var bed = RoutingLoop.Prepare(ctx.Fx.Root);
         var window = RoutingLoop.OpenWindow(bed, ctx.Dialogs);
 
-        // MainWindow moves itself: EnterCompact parks the dashboard in the
-        // work area's top-right corner, and EnterNormal (MainWindow.cs:283-295)
-        // re-positions it again the moment the session starts. E2EPump's
-        // one-shot Left = -20000 does not survive that the way it does for the
-        // tool windows, so re-park on every move — the run must not throw a
-        // full-size window across the user's desktop halfway through.
+        // Both windows place themselves: the dashboard in the work area's
+        // corner, and the session window on the dashboard's screen when a
+        // session opens. E2EPump's one-shot Left = -20000 does not survive
+        // that the way it does for the tool windows, so re-park on every move;
+        // the run must not throw a full-size window across the user's desktop.
         window.LocationChanged += (_, _) => Park(window);
+        window.Processing.LocationChanged += (_, _) => Park(window.Processing);
 
         // The runner's cleanup closes every window once. MainWindow.Closing
         // turns a close during a live session into StopSession and cancels the
@@ -69,13 +69,14 @@ public static class RoutingScenarios
         // It changes nothing the scenario asserts — every check below has
         // already been recorded by the time anything closes.
         window.Closing += (_, e) => e.Cancel = false;
+        window.Processing.Closing += (_, e) => e.Cancel = false;
 
         E2EPump.ShowOffscreen(window);
         Park(window);
 
         // Evidence is nominated before the loop runs, so a loop that throws
         // still leaves a screenshot behind rather than an empty report row.
-        ctx.Capture(window);
+        ctx.Capture(window.Processing);   // where the session runs
 
         RoutingLoop.Run(window, bed,
             new RoutingLoop.Reporter(ctx.Check, () => ctx.Dialogs.Warnings));

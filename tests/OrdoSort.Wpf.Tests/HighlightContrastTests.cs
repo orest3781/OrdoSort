@@ -94,6 +94,7 @@ public sealed class HighlightContrastFixture : IDisposable
     {
         Application? app = null;
         Dispatcher? dispatcher = null;
+        Dictionary<object, object?>? baseline = null;
         using var ready = new ManualResetEventSlim();
         _thread = new Thread(() =>
         {
@@ -156,6 +157,7 @@ public sealed class HighlightContrastFixture : IDisposable
             AddIfMissing("FontSizeText", new OrdoSort.Wpf.Views.FontSizeTextConverter());
             AddIfMissing("AppFontFamily", OrdoSort.Wpf.Theme.AppFonts.CreateDefault());
             AddIfMissing("AppFontSize", 14.0);
+            baseline = app.Resources.Keys.Cast<object>().ToDictionary(k => k, k => app.Resources[k]);
             dispatcher = Dispatcher.CurrentDispatcher;
             // ready must be set from ON this thread, after Dispatcher.CurrentDispatcher
             // exists, but BEFORE Dispatcher.Run() blocks it.
@@ -170,20 +172,59 @@ public sealed class HighlightContrastFixture : IDisposable
         ready.Wait();
         App = app!;
         Dispatcher = dispatcher!;
+        BaselineResources = baseline!;
     }
+
+    /// <summary>The app's own resources as the fixture set them up, before
+    /// any test ran; <see cref="UiTest"/> restores them before each test.</summary>
+    public IReadOnlyDictionary<object, object?> BaselineResources { get; }
+
+    /// <summary>How long one test body may run on the shared UI thread. Long
+    /// on purpose; it only matters when the thread is stuck.</summary>
+    public static readonly TimeSpan InvokeCeiling = TimeSpan.FromMinutes(2);
+
+    // set once a body overran InvokeCeiling: the UI thread is still busy with
+    // it, so every later body fails at once instead of waiting its own turn
+    private volatile string? _stuckBy;
 
     /// <summary>Marshal a test body onto the fixture's STA thread and rethrow
     /// there with the original type/stack intact, so a failing xunit
-    /// Assert.True surfaces as this test's own failure, not a wrapped one.</summary>
+    /// Assert.True surfaces as this test's own failure, not a wrapped one.
+    /// A body that never finishes (a modal dialog, an unbounded pump, a real
+    /// Edge start) fails after <see cref="InvokeCeiling"/> instead of hanging
+    /// the run (docs/testing.md).</summary>
     public void Invoke(Action body)
     {
+        if (_stuckBy is { } earlier)
+            throw new TimeoutException("the shared UI thread is still stuck in an earlier test: " + earlier);
         ExceptionDispatchInfo? captured = null;
-        Dispatcher.Invoke(() =>
+        var work = Dispatcher.BeginInvoke(DispatcherPriority.Send, new Action(() =>
         {
             try { body(); }
             catch (Exception ex) { captured = ExceptionDispatchInfo.Capture(ex); }
-        });
+        }));
+        if (work.Wait(InvokeCeiling) != DispatcherOperationStatus.Completed)
+        {
+            _stuckBy = body.Method.DeclaringType?.FullName ?? body.Method.Name;
+            throw new TimeoutException(
+                $"UI-thread work did not finish within {InvokeCeiling.TotalMinutes} minutes. " + DescribeStuckThread());
+        }
         captured?.Throw();
+    }
+
+    /// <summary>What the stuck UI thread is doing. A modal dialog runs its
+    /// own message loop, which still runs top-priority work, so the thread
+    /// can report its open windows; a thread blocked in a synchronous wait
+    /// (a deadlock) runs nothing at all.</summary>
+    private string DescribeStuckThread()
+    {
+        string? windows = null;
+        var probe = Dispatcher.BeginInvoke(DispatcherPriority.Send, new Action(() =>
+            windows = string.Join("; ", App.Windows.OfType<Window>().Select(w =>
+                $"{w.GetType().Name} \"{w.Title}\" visible={w.IsVisible} active={w.IsActive}"))));
+        return probe.Wait(TimeSpan.FromSeconds(10)) == DispatcherOperationStatus.Completed
+            ? "The thread is still pumping (a modal dialog or a nested message loop). Open windows: " + windows
+            : "The thread is not pumping at all: it is blocked in a synchronous wait, most likely a deadlock.";
     }
 
     public void Dispose()
@@ -218,7 +259,7 @@ public sealed class HighlightContrastFixture : IDisposable
 /// either template's Foreground binding fails this suite, not just a
 /// hand-copied duplicate of it.</summary>
 [Collection(Name)]
-public class HighlightContrastTests
+public class HighlightContrastTests : UiTest
 {
     /// <summary>Shared with every other test class that needs the same
     /// <see cref="HighlightContrastFixture"/> (every window suite) via
@@ -228,7 +269,7 @@ public class HighlightContrastTests
     public const string Name = "HighlightContrastFixture collection";
 
     private readonly HighlightContrastFixture _fx;
-    public HighlightContrastTests(HighlightContrastFixture fx) => _fx = fx;
+    public HighlightContrastTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     public static IEnumerable<object[]> ComboBoxShapes()
     {
@@ -384,9 +425,6 @@ public class HighlightContrastTests
         }
     });
 
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-
 
     // ---------------------------------------------------------------- ListBox
 
@@ -466,7 +504,7 @@ public class HighlightContrastTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
         var window = new UnlockWindow(vm)
         {
@@ -568,7 +606,7 @@ public class HighlightContrastTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         var row = new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf");
         row.SetProbeResult(status, message);
         vm.Files.Add(row);
@@ -682,7 +720,7 @@ public class HighlightContrastTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         vm.ResultLines.Add(new UnlockResultLine(text, kind));
         var window = new UnlockWindow(vm)
         {
@@ -755,7 +793,7 @@ public class HighlightContrastTests
         ThemeManager.Apply(_fx.App, scheme);
 
         var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
-        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels");
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels", scheduler: new InlineWorkScheduler());
         vm.Clients.Add(new LabelClientVm { Id = "TEST" });
         var window = new LabelMakerWindow(vm, "Box labels", "Print preview")
         {
@@ -808,7 +846,7 @@ public class HighlightContrastTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
         var window = new ManageSavedWindow(vm)
         {
@@ -881,7 +919,7 @@ public class HighlightContrastTests
         var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(),
             () => scheme.Palette, cfgPath,
-            uiContext: System.Threading.SynchronizationContext.Current);
+            uiContext: System.Threading.SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
         var window = new SettingsWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
@@ -972,7 +1010,7 @@ public class HighlightContrastTests
         ThemeManager.Apply(_fx.App, scheme);
 
         var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
-        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels");
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels", scheduler: new InlineWorkScheduler());
         vm.Clients.Add(new LabelClientVm { Id = "TEST" });
         var window = new LabelMakerWindow(vm, "Box labels", "Print preview")
         {
@@ -1027,7 +1065,7 @@ public class HighlightContrastTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
         var window = new ManageSavedWindow(vm)
         {
@@ -1080,7 +1118,7 @@ public class HighlightContrastTests
         var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(),
             () => scheme.Palette, cfgPath,
-            uiContext: System.Threading.SynchronizationContext.Current);
+            uiContext: System.Threading.SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
         var window = new SettingsWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
@@ -1632,8 +1670,9 @@ public class HighlightContrastTests
         var cfg = new Config { HistoryDb = Path.Combine(dir, "history.sqlite") };
         var cfgPath = Path.Combine(dir, "config.json");
 
-        var window = new MainWindow(cfg, cfgPath)
+        var window = new MainWindow(cfg, cfgPath, initViewer: () => Task.FromResult(true))
         {
+            Dialogs = new FakeDialogs(),   // a warning must never block the UI thread
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
         };
@@ -1933,7 +1972,7 @@ public class HighlightContrastTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new BulkRenameViewModel();
+        var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
         vm.Preview.Add(new RenameRow(@"C:\inbox\c.pdf", "c.pdf", "c.pdf",
             "every segment dropped — skipped",
             changed: false, manual: false, needsName: true, editSeed: "c.pdf", noteIsProblem: true));
@@ -2015,7 +2054,7 @@ public class HighlightContrastTests
         var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(),
             () => scheme.Palette, cfgPath,
-            uiContext: System.Threading.SynchronizationContext.Current);
+            uiContext: System.Threading.SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
         var window = new SettingsWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
@@ -2126,7 +2165,7 @@ public class HighlightContrastTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         var row = new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf");
         row.SetProbeResult(status, message);
         vm.Files.Add(row);
@@ -2193,7 +2232,7 @@ public class HighlightContrastTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(), scheduler: new InlineWorkScheduler());
         vm.Rows.Add(new MatchRow(@"C:\inbox\a.pdf", "a.pdf", "", "some note text here", "ambiguous"));
         var window = new MatchMergeWindow(vm)
         {
@@ -2261,7 +2300,8 @@ public class HighlightContrastTests
                 new(new MatchMerge.Candidate("1", new Dictionary<string, string> { ["A"] = "x" }),
                     "token match on last name"),
             });
-        var window = new TriageWindow(new List<MatchMerge.MatchResult> { item }, new[] { "A" })
+        var window = new TriageWindow(new List<MatchMerge.MatchResult> { item }, new[] { "A" },
+            initViewer: () => Task.FromResult(true))
         {
             Dialogs = new FakeDialogs(),
         };
@@ -2442,37 +2482,6 @@ public class HighlightContrastTests
                 "UIElement has no private static IsMouseOverPropertyKey field");
         var key = (DependencyPropertyKey)field.GetValue(null)!;
         el.SetValue(key, value);
-    }
-
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) return match;
-            if (FindDescendant<T>(child) is { } nested) return nested;
-        }
-        return null;
-    }
-
-    /// <summary>Like <see cref="FindDescendant{T}"/>, but collects EVERY
-    /// matching descendant in visual-tree (depth-first) order instead of
-    /// stopping at the first — needed where a single container has more
-    /// than one same-typed element to distinguish, e.g. ManageSavedWindow's
-    /// Label + password-status TextBlocks, which <see cref="FindTextElement"/>
-    /// alone can't tell apart.</summary>
-    private static List<T> FindAllDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        var results = new List<T>();
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) results.Add(match);
-            results.AddRange(FindAllDescendants<T>(child));
-        }
-        return results;
     }
 
     /// <summary>Like <see cref="FindDescendant{T}"/>, but stops at EITHER a

@@ -10,10 +10,10 @@ namespace OrdoSort.Wpf.Tests;
 /// ship the app in Segoe UI. Joins <see cref="HighlightContrastFixture"/> for
 /// a live Application, which pack URIs need.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class AppFontsTests
+public class AppFontsTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public AppFontsTests(HighlightContrastFixture fx) => _fx = fx;
+    public AppFontsTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     [Theory]
     [InlineData(400, "AtkinsonHyperlegibleNext-Regular.ttf")]

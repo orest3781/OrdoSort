@@ -18,10 +18,9 @@ namespace OrdoSort.Wpf.Views;
 /// HorizontalAlignment="Stretch", so their ActualWidth comes from the space
 /// their ANCESTOR hands down, never from their own column count.
 ///
-/// Breakpoint math: MainWindow's EnterCompact (MainWindow.xaml.cs) parks the
-/// compact dashboard at Window.Width=470, with PanelCol Star-sized and the
-/// other two grid columns collapsed to 0 — so PanelCol, and therefore
-/// ReadyView, receives the window's full content width, minus the 16px
+/// Breakpoint math: MainWindow's ParkDashboard (MainWindow.xaml.cs) parks the
+/// dashboard at Window.Width=470, and ReadyView receives the window's full
+/// content width, minus the 16px
 /// left/right Margin on the ScrollViewer's inner Grid (MainWindow.xaml)
 /// that actually hosts ReadyView, minus a ~16px vertical scrollbar when one
 /// is showing. Measured directly, pixel-for-pixel, off a real

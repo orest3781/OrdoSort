@@ -19,15 +19,7 @@ namespace OrdoSort.Wpf.Tests;
 /// invisible at runtime.</summary>
 public class SharedUiIsUnbrandedTests
 {
-    private static string SharedUiRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "OrdoSort.sln")))
-            dir = dir.Parent!;
-        var root = dir?.FullName ?? throw new InvalidOperationException(
-            "couldn't find OrdoSort.sln walking up from " + AppContext.BaseDirectory);
-        return Path.Combine(root, "src", "OrdoSort.Ui");
-    }
+    private static string SharedUiRoot() => Path.Combine(Repo.Root, "src", "OrdoSort.Ui");
 
     private static IEnumerable<string> SourceFiles(string root) =>
         Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories)

@@ -37,15 +37,6 @@ namespace OrdoSort.Wpf.Tests;
 /// current signal.</summary>
 public class TextWrapCoverageTests
 {
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "OrdoSort.sln")))
-            dir = dir.Parent!;
-        return dir?.FullName ?? throw new InvalidOperationException(
-            "couldn't find OrdoSort.sln walking up from " + AppContext.BaseDirectory +
-            " — this suite reads window XAML source directly off disk and needs the repo root.");
-    }
 
     /// <summary>Every window and view XAML in the app, across BOTH UI
     /// projects.
@@ -60,8 +51,9 @@ public class TextWrapCoverageTests
     /// for.</summary>
     private static IEnumerable<string> ProseSurfaceXamlFiles()
     {
-        var root = FindRepoRoot();
+        var root = Repo.Root;
         yield return Path.Combine(root, "src", "OrdoSort.Wpf", "MainWindow.xaml");
+        yield return Path.Combine(root, "src", "OrdoSort.Wpf", "ProcessingWindow.xaml");
         foreach (var project in new[] { "OrdoSort.Wpf", "OrdoSort.Ui" })
             foreach (var folder in new[] { "Views", "Windows" })
             {
@@ -125,7 +117,7 @@ public class TextWrapCoverageTests
         var offenders = new List<string>();
         var judged = 0;
         var shared = XDocument.Load(
-            Path.Combine(FindRepoRoot(), "src", "OrdoSort.Ui", "Theme", "Styles.xaml"));
+            Path.Combine(Repo.Root, "src", "OrdoSort.Ui", "Theme", "Styles.xaml"));
         foreach (var file in ProseSurfaceXamlFiles())
         {
             var doc = XDocument.Load(file, LoadOptions.SetLineInfo);
@@ -179,7 +171,7 @@ public class TextWrapCoverageTests
         var offenders = new List<string>();
         var judged = 0;
         var shared = XDocument.Load(
-            Path.Combine(FindRepoRoot(), "src", "OrdoSort.Ui", "Theme", "Styles.xaml"));
+            Path.Combine(Repo.Root, "src", "OrdoSort.Ui", "Theme", "Styles.xaml"));
         foreach (var file in ProseSurfaceXamlFiles())
         {
             var doc = XDocument.Load(file, LoadOptions.SetLineInfo);

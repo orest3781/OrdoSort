@@ -18,22 +18,21 @@ namespace OrdoSort.Wpf.Tests;
 /// default, so the four top-level items reflowed onto a second row and the
 /// header doubled in height.
 ///
-/// This is not a hypothetical narrow window. EnterCompact (MainWindow.xaml.cs)
-/// parks the Ready dashboard at <c>Width = 470</c> with <c>MinWidth = 400</c>,
-/// and the untouched header needs roughly 470px for its own content — so the
-/// wrap happened in the app's own compact mode, which is where it was reported
-/// from.
+/// This is not a hypothetical narrow window. MainWindow (the dashboard) opens
+/// at <c>Width = 470</c> with <c>MinWidth = 400</c>, and the untouched header
+/// needs roughly 470px for its own content — so the wrap happened at the
+/// app's own default size, which is where it was reported from.
 ///
 /// 400px, the window's own declared floor, is therefore the acceptance
 /// criterion these tests assert against, rather than a number picked to suit
 /// the fix.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class HeaderLayoutTests : IDisposable
+public class HeaderLayoutTests : UiTest, IDisposable
 {
     private readonly HighlightContrastFixture _fx;
     private readonly string _dir;
 
-    public HeaderLayoutTests(HighlightContrastFixture fx)
+    public HeaderLayoutTests(HighlightContrastFixture fx) : base(fx)
     {
         _fx = fx;
         _dir = Path.Combine(Path.GetTempPath(), "ordo_headertest_" + Guid.NewGuid().ToString("N"));
@@ -67,20 +66,65 @@ public class HeaderLayoutTests : IDisposable
         Directory.CreateDirectory(cfg.Deferred);
         var cfgPath = Path.Combine(_dir, "config.json");
 
-        var window = new MainWindow(cfg, cfgPath)
+        // A stand-in viewer start: these tests are about the header, and a
+        // real Edge start belongs to the integration run (docs/testing.md).
+        var window = new MainWindow(cfg, cfgPath, initViewer: () => Task.FromResult(true))
         {
+            Dialogs = new FakeDialogs(),   // a warning must never block the UI thread
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
         };
         window.Show();
-        // EnterCompact runs in the ctor and parks the window at 470; the width
+        // The dashboard sets its own 470 width when it opens; the width
         // under test is applied after, the way a user's drag would.
         window.Width = width;
         window.UpdateLayout();
         PumpRender();
         window.UpdateLayout();
+        AssertTheDashboardStartedQuietly(window);
         return window;
     }
+
+    /// <summary>A start-up failure (the shell's Initialize) raises a warning.
+    /// With the real dialog service that warning was a modal window that hung
+    /// the shared UI thread; now it fails here, with what crash.log says.</summary>
+    private static void AssertTheDashboardStartedQuietly(MainWindow window)
+    {
+        var dialogs = (FakeDialogs)window.Dialogs;
+        if (dialogs.Warnings.Count == 0) return;
+        var log = Path.Combine(App._crashDir, "crash.log");
+        Assert.Fail("the dashboard warned while starting: " + dialogs.Warnings[0].Message +
+            (File.Exists(log) ? "\n\ncrash.log:\n" + File.ReadAllText(log) : "\n\n(no crash.log)"));
+    }
+
+    [Fact]
+    public void TheDashboardStartsItsViewerThroughTheStartItWasGiven() => _fx.Invoke(() =>
+    {
+        var started = 0;
+        var cfg = new Config
+        {
+            Inbox = Path.Combine(_dir, "inbox"),
+            Deferred = Path.Combine(_dir, "deferred"),
+            HistoryDb = Path.Combine(_dir, "history.sqlite"),
+        };
+        Directory.CreateDirectory(cfg.Inbox);
+        Directory.CreateDirectory(cfg.Deferred);
+        var window = new MainWindow(cfg, Path.Combine(_dir, "config.json"),
+            initViewer: () => { started++; return Task.FromResult(true); })
+        {
+            Dialogs = new FakeDialogs(),   // a warning must never block the UI thread
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            PumpRender();
+            Assert.Equal(1, started);
+            Assert.False(window.Pdf.Ready, "the real viewer must not start when a stand-in was given");
+        }
+        finally { window.Close(); }
+    });
 
     private static Menu HeaderMenu(MainWindow window) =>
         FindDescendant<Menu>(window) ?? throw new InvalidOperationException("no Menu in MainWindow");
@@ -184,7 +228,7 @@ public class HeaderLayoutTests : IDisposable
     // dropped) the four tests above already pass, because a narrower toolbar
     // leaves the menu's column wide enough not to squeeze. So the column
     // priority and the non-wrapping ItemsPanel buy nothing at any width the app
-    // currently permits — EnterCompact's MinWidth = 400 is simply too generous
+    // currently permits — the dashboard's MinWidth = 400 is simply too generous
     // to reach them.
     //
     // They are not decoration, though: they are what holds if MinWidth is ever
@@ -203,7 +247,7 @@ public class HeaderLayoutTests : IDisposable
         var window = OpenAtWidth(470);
         try
         {
-            window.MinWidth = 0;   // past EnterCompact's floor, on purpose
+            window.MinWidth = 0;   // past the dashboard's floor, on purpose
             window.Width = 200;
             window.UpdateLayout();
             PumpRender();
@@ -251,31 +295,4 @@ public class HeaderLayoutTests : IDisposable
 
     // -------------------------------------------------------------- plumbing
 
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) return match;
-            if (FindDescendant<T>(child) is { } nested) return nested;
-        }
-        return null;
-    }
-
-    private static List<T> FindAllDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        var results = new List<T>();
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) results.Add(match);
-            results.AddRange(FindAllDescendants<T>(child));
-        }
-        return results;
-    }
 }

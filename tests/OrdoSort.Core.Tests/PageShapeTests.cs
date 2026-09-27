@@ -26,6 +26,28 @@ public class PageShapeTests : IDisposable
         return path;
     }
 
+    /// <summary>The size in points, which the viewer turns into a zoom that
+    /// shows the whole page at the largest size.</summary>
+    [Fact]
+    public void ALetterPageMeasures612By792Points()
+    {
+        Assert.Equal(new PageSize(612, 792), PageShape.SizeOf(MakePage("letter.pdf", 612, 792)));
+    }
+
+    [Fact]
+    public void AQuarterTurnedPageMeasuresAsItIsShown()
+    {
+        Assert.Equal(new PageSize(792, 612), PageShape.SizeOf(MakePage("turned.pdf", 612, 792, 90)));
+    }
+
+    [Fact]
+    public void AnUnreadableFileHasNoSize()
+    {
+        var path = Path.Combine(_dir, "garbage.pdf");
+        File.WriteAllText(path, "not a pdf");
+        Assert.Null(PageShape.SizeOf(path));
+    }
+
     [Fact]
     public void APortraitPageIsTallerThanItIsWide()
     {

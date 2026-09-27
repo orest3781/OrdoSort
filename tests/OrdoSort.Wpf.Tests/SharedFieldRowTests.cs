@@ -13,10 +13,10 @@ namespace OrdoSort.Wpf.Tests;
 /// call sites, so the app standardized on it (see the canon comment above
 /// FieldRow in Theme\Styles.xaml).</summary>
 [Collection(HighlightContrastTests.Name)]
-public class SharedFieldRowTests
+public class SharedFieldRowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public SharedFieldRowTests(HighlightContrastFixture fx) => _fx = fx;
+    public SharedFieldRowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     [Fact]
     public void FieldLabelIsAppLevelAndKeepsSettingsMetrics() => _fx.Invoke(() =>

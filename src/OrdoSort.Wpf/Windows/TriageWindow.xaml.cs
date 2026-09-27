@@ -181,7 +181,22 @@ public partial class TriageWindow : Window
     {
     }
 
+    /// <param name="initViewer">Starts the PDF viewer when the window loads;
+    /// null starts the real WebView2. Tests pass a stand-in so a window test
+    /// never starts Edge (docs/testing.md).</param>
+    internal TriageWindow(List<MatchMerge.MatchResult> items, IReadOnlyList<string> headers,
+        Func<Task<bool>>? initViewer)
+        : this(items, new ReviewColumns(headers, Array.Empty<string>(), headers, _ => { }), initViewer)
+    {
+    }
+
     public TriageWindow(List<MatchMerge.MatchResult> items, ReviewColumns columns)
+        : this(items, columns, initViewer: null)
+    {
+    }
+
+    internal TriageWindow(List<MatchMerge.MatchResult> items, ReviewColumns columns,
+        Func<Task<bool>>? initViewer)
     {
         InitializeComponent();
         _items = items;
@@ -267,7 +282,7 @@ public partial class TriageWindow : Window
         // sizes, remembered per roster header.
         ExplorerColumns.Attach(Candidates, "Triage", visibility: new RosterVisibility(this),
             chooseColumns: OpenColumnChooser);
-        Loaded += async (_, _) => await InitAndShowAsync(_pdf.InitAsync);
+        Loaded += async (_, _) => await InitAndShowAsync(initViewer ?? _pdf.InitAsync);
     }
 
     /// <summary>Which spreadsheet columns show: kept by this window and saved

@@ -15,7 +15,21 @@ public sealed class WebViewPdfViewer : IPdfViewer
     /// before calling Navigate.</summary>
     private string? _expected;
 
-    public WebViewPdfViewer(WebView2 view) => _view = view;
+    // What is showing, so a resize can re-fit the page (see ShowAsync).
+    private string? _shownPath;
+    private OrdoSort.Core.PageSize? _shownPage;
+    private readonly System.Windows.Threading.DispatcherTimer _refit;
+
+    public WebViewPdfViewer(WebView2 view)
+    {
+        _view = view;
+        // A resize (a drag, the session fit) re-opens the page at the zoom
+        // for the new size, once the resizing pauses: re-opening per step of
+        // a drag would reload the document continuously.
+        _refit = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _refit.Tick += (_, _) => { _refit.Stop(); Refit(); };
+        _view.SizeChanged += (_, _) => { _refit.Stop(); _refit.Start(); };
+    }
 
     public string? InitError { get; private set; }
     public bool Ready => _ready;
@@ -73,9 +87,14 @@ public sealed class WebViewPdfViewer : IPdfViewer
     ///
     /// The folder is named for the product rather than the assembly. It is new,
     /// so nothing depends on the old name the way config.json and the exe do.</summary>
-    public static string UserDataFolder => Path.Combine(
+    public static string DefaultUserDataFolder { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "OrdoSort", "WebView2");
+
+    /// <summary>The profile folder in use: <see cref="DefaultUserDataFolder"/>,
+    /// except in the test run, which points it at its own temp folder so a
+    /// running OrdoSort and the tests never share a browser profile.</summary>
+    public static string UserDataFolder { get; internal set; } = DefaultUserDataFolder;
 
     /// <summary>Starts the real browser engine. Degrades, never blocks: a failure here
     /// (missing runtime or anything else) only ever sets <see cref="InitError"/> and returns
@@ -187,14 +206,46 @@ public sealed class WebViewPdfViewer : IPdfViewer
             && string.Equals(requested, expected, StringComparison.OrdinalIgnoreCase);
     }
 
-    public Task ShowAsync(string path)
+    /// <summary>The address a document is opened at: its file URL, plus a
+    /// <c>#zoom=</c> when there is one. Edge's PDF viewer ignores "fit page"
+    /// address settings but obeys a numeric zoom.</summary>
+    internal static string DocumentUrl(string path, int? zoom) =>
+        new Uri(Path.GetFullPath(path)).AbsoluteUri + (zoom is { } z ? "#zoom=" + z : "");
+
+    public Task ShowAsync(string path, OrdoSort.Core.PageSize? page = null)
     {
         if (_ready)
         {
-            _expected = new Uri(Path.GetFullPath(path)).AbsoluteUri;
+            _shownPath = path;
+            _shownPage = page;
+            _expected = DocumentUrl(path, FitZoom());
             _view.CoreWebView2.Navigate(_expected);
         }
         return Task.CompletedTask;
+    }
+
+    private int? FitZoom() =>
+        _shownPage is { } page ? FitMath.PageFitZoom(page, _view.ActualWidth, _view.ActualHeight) : null;
+
+    /// <summary>Re-opens the showing page at the zoom for the pane's new
+    /// size. Nothing when no document is showing (blanked or released: the
+    /// file may already have moved) or the zoom would not change.</summary>
+    private void Refit()
+    {
+        if (!_ready || _expected is null || _shownPath is null || _shownPage is null) return;
+        var url = DocumentUrl(_shownPath, FitZoom());
+        if (string.Equals(url, _expected, StringComparison.OrdinalIgnoreCase)) return;
+        _expected = url;
+        // Edge keeps an open document's zoom when only the #zoom changes, so
+        // go through a blank page and open the document afresh.
+        var core = _view.CoreWebView2;
+        void Reopen(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            core.NavigationCompleted -= Reopen;
+            if (_expected == url) core.Navigate(url);
+        }
+        core.NavigationCompleted += Reopen;
+        core.Navigate("about:blank");
     }
 
     public void Blank()

@@ -48,22 +48,10 @@ namespace OrdoSort.Wpf.Tests;
 /// posted back to this STA thread's dispatcher — a plain blocking wait
 /// would deadlock the very thread that continuation needs to run on.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class UnlockEnterKeyTests
+public class UnlockEnterKeyTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public UnlockEnterKeyTests(HighlightContrastFixture fx) => _fx = fx;
-
-    private static void PumpUntilComplete(Task task)
-    {
-        if (task.IsCompleted) return;
-        var frame = new DispatcherFrame();
-        task.ContinueWith(_ => frame.Continue = false,
-            TaskScheduler.FromCurrentSynchronizationContext());
-        Dispatcher.PushFrame(frame);
-    }
-
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
+    public UnlockEnterKeyTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static void SimulateKey(PresentationSource source, Key key, RoutedEvent routedEvent) =>
         InputManager.Current.ProcessInput(
@@ -83,16 +71,6 @@ public class UnlockEnterKeyTests
             $"{fe.GetType().Name} \"{AutomationProperties.GetName(fe)}\"",
         var other => other.GetType().Name,
     };
-
-    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
-            if (child is T hit) yield return hit;
-            foreach (var deeper in Descendants<T>(child)) yield return deeper;
-        }
-    }
 
     private static UnlockWindow OffScreen(UnlockViewModel vm) => new(vm)
     {
@@ -145,7 +123,7 @@ public class UnlockEnterKeyTests
                 invoked.Add((path, password));
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = new UnlockWindow(vm)
@@ -200,7 +178,7 @@ public class UnlockEnterKeyTests
                 invoked++;
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         // deliberately no Files.Add(...)
 
         var window = new UnlockWindow(vm)
@@ -262,7 +240,7 @@ public class UnlockEnterKeyTests
                 invoked.Add((path, password));
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
@@ -320,7 +298,7 @@ public class UnlockEnterKeyTests
                 invoked.Add((path, password));
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
@@ -381,7 +359,7 @@ public class UnlockEnterKeyTests
                 invoked.Add((path, password));
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
@@ -444,7 +422,7 @@ public class UnlockEnterKeyTests
                 invoked.Add((path, password));
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
@@ -497,7 +475,7 @@ public class UnlockEnterKeyTests
                 invoked.Add((path, password));
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
@@ -551,7 +529,7 @@ public class UnlockEnterKeyTests
                 invoked.Add((path, password));
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);

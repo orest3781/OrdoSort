@@ -15,20 +15,10 @@ namespace OrdoSort.Wpf.Tests;
 /// the footer-swapping machinery the tab split needed, and both the
 /// machinery and its guard go together.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class ZipToolsWindowTests
+public class ZipToolsWindowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public ZipToolsWindowTests(HighlightContrastFixture fx) => _fx = fx;
-
-    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T hit) yield return hit;
-            foreach (var deeper in Descendants<T>(child)) yield return deeper;
-        }
-    }
+    public ZipToolsWindowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static ZipExtractViewModel QuietVm() =>
         new(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(),
@@ -50,7 +40,7 @@ public class ZipToolsWindowTests
         {
             window.Show();
             window.UpdateLayout();
-            OverflowProbe.PumpRender();
+            PumpRender();
             window.UpdateLayout();
 
             var content = (DependencyObject)window.Content;
@@ -81,7 +71,7 @@ public class ZipToolsWindowTests
         {
             window.Show();
             window.UpdateLayout();
-            OverflowProbe.PumpRender();
+            PumpRender();
             window.UpdateLayout();
 
             var buttons = Descendants<Button>((DependencyObject)window.Content).ToList();

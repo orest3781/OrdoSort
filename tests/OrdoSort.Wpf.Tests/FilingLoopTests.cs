@@ -121,7 +121,7 @@ public class FilingLoopTests
         Assert.True(File.Exists(Path.Combine(fx.Deferred, "20240115--111111.pdf")));
         Assert.True(fx.Shell.HasDeferred);
         Assert.Equal(Screen.Done, fx.Shell.Screen);
-        Assert.Equal("1 set aside", fx.Shell.DetailLine.Split(", ")[1]);
+        Assert.Equal("1 set aside", fx.Shell.DoneDetail.Split(", ")[1]);
     }
 
     [Fact]

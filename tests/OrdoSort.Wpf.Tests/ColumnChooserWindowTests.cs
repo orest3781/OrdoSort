@@ -10,10 +10,10 @@ namespace OrdoSort.Wpf.Tests;
 /// <summary>The "More columns…" window rendered for real, off-screen, with a
 /// roster as long as the owner's (15-40 columns).</summary>
 [Collection(HighlightContrastTests.Name)]
-public class ColumnChooserWindowTests
+public class ColumnChooserWindowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public ColumnChooserWindowTests(HighlightContrastFixture fx) => _fx = fx;
+    public ColumnChooserWindowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     [Theory]
     [InlineData(false)]

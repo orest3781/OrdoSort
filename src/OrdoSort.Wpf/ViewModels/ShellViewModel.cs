@@ -175,7 +175,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         _history = new History(dbPath);
         _session = new Session(cfg, _history, _cfgPath);
 
-        StartCommand = new RelayCommand(StartProcessing, () => StartEnabled);
+        StartCommand = new RelayCommand(OnStart, () => IsSessionOpen || StartEnabled);
         RescanCommand = new RelayCommand(Rescan);
         // Inbox/Deferred may be a relative, config-relative value (Settings
         // says so, and now it's true) — resolve at the moment the folder is
@@ -209,6 +209,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             "either back in the inbox or still in the folder it was filed to");
 
         _watch.Activity += OnFolderActivity;
+        _watch.Polled += OnPoll;
     }
 
     /// <summary>Raised for an exception no handler anticipated, so the window can
@@ -246,6 +247,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         string whereabouts = "either where it started or where it was going")
     {
         UnexpectedError?.Invoke(ex);
+        // the window is gone (work that outlived it, e.g. a start-up still
+        // running when the dashboard closed): crash.log has it, no dialog
+        if (_disposed) return;
         _dialogs.Warn(
             $"{action} didn't finish.\n\n" +
             "Nothing was deleted — OrdoSort only ever moves files, so the document " +
@@ -282,6 +286,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             UnexpectedError?.Invoke(ex);
+            // the window is gone (work that outlived it, e.g. a start-up still
+            // running when the dashboard closed): crash.log has it, no dialog
+            if (_disposed) return;
             _dialogs.Warn(
                 $"{action} didn't finish.\n\n{consequence}\n\n" +
                 "The technical details were written to crash.log, beside your config file.",
@@ -296,6 +303,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         _auditFailedThisSession = true;
         if (_cfg.Sounds.Enabled) _sounds.Play(SoundEvent.Error, _cfg.Sounds.Error);
         UnexpectedError?.Invoke(ex);
+        // the window is gone (work that outlived it, e.g. a start-up still
+        // running when the dashboard closed): crash.log has it, no dialog
+        if (_disposed) return;
         _dialogs.Warn(ex.Message, title);
         ShowStatusNote($"{Path.GetFileName(ex.NewPath)} moved, but the history " +
                        "database didn't record it — see the warning.");
@@ -395,6 +405,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 Raise(nameof(IsReady));
                 Raise(nameof(IsProcessing));
                 Raise(nameof(IsDone));
+                Raise(nameof(IsSessionOpen));
+                Raise(nameof(StartButtonText));
+                StartCommand.RaiseCanExecuteChanged();
                 Raise(nameof(TileControlsVisible));
                 RaiseUndoState();   // undo is only offered inside a session
             }
@@ -404,6 +417,35 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     public bool IsReady => Screen == Screen.Ready;
     public bool IsProcessing => Screen == Screen.Processing;
     public bool IsDone => Screen == Screen.Done;
+
+    /// <summary>A session is on screen (Processing or Done), in its own
+    /// window (spec 2026-09-26). The dashboard stays up beside it.</summary>
+    public bool IsSessionOpen => Screen != Screen.Ready;
+
+    /// <summary>The dashboard's Start button: while a session is open it
+    /// brings the session's window forward rather than starting another.</summary>
+    public string StartButtonText => IsSessionOpen ? "Processing… (show)" : "Start processing";
+
+    /// <summary>Raised by the Start button while a session is open.</summary>
+    public event Action? ShowSessionRequested;
+
+    /// <summary>Awaited as a session starts, before the first document
+    /// loads: the session's window opens and its viewer is ready here.</summary>
+    public Func<Task>? PrepareSessionView { get; set; }
+
+    private void OnStart()
+    {
+        if (IsSessionOpen) ShowSessionRequested?.Invoke();
+        else StartProcessing();
+    }
+
+    private string _doneTitle = "";
+    /// <summary>The Done summary's heading. Its own property, not CountLine:
+    /// the dashboard shows CountLine beside the Done window (2026-09-26).</summary>
+    public string DoneTitle { get => _doneTitle; private set => Set(ref _doneTitle, value); }
+
+    private string _doneDetail = "";
+    public string DoneDetail { get => _doneDetail; private set => Set(ref _doneDetail, value); }
 
     // -------------------------------------------------------- ready state
     private string _countLine = "";
@@ -554,12 +596,14 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             do
             {
                 _refreshPending = false;
-                // while filing the dashboard is hidden, and in Hidden mode the
-                // user asked for silence — either way skip the watch-folder
-                // sweep (one network enumeration per watched folder, per
-                // debounce, is pure churn on SMB)
+                // In Hidden mode the user asked for silence. During a session
+                // the dashboard stays up (2026-09-26), but filing a document is
+                // itself inbox activity: sweeping every watched folder on each
+                // one would be a network enumeration per document on SMB. So
+                // mid-session the sweep waits for the poll timer (OnPoll).
                 var mode = TileMode;
-                var wantStatuses = Screen != Screen.Processing && mode != "hidden";
+                var wantStatuses = mode != "hidden" && (Screen == Screen.Ready || _tilesDue);
+                _tilesDue = false;
                 var cfg = _cfg;
                 var cfgPath = _cfgPath;
                 var snap = await _scheduler.Run(() => new FolderSnapshot(
@@ -591,6 +635,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 RaiseProgress();
                 ShowStatusNote($"{added} new file{(added == 1 ? "" : "s")} arrived — added to this session.");
             }
+            ShowDashboard(snap);
         }
         else if (Screen == Screen.Ready)
         {
@@ -601,13 +646,28 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             // Done: notify, don't yank — the session summary stays put
             if (snap.Scan.Error.Length == 0 && snap.Scan.Count > 0)
                 SetStatus($"{snap.Scan.Count} file{(snap.Scan.Count == 1 ? "" : "s")} waiting in the inbox.");
+            if (snap.Scan.Error.Length == 0) ShowDashboard(snap);
         }
     }
 
     private void ShowReady(FolderSnapshot snap)
     {
-        var scan = snap.Scan;
         _viewer.Blank();
+        StartEnabled = snap.Scan.Count > 0;
+        ShowDashboard(snap);
+    }
+
+    // the last sweep, kept for refreshes that skip it mid-session
+    private List<FolderMonitor.FolderStatus>? _lastStatuses;
+
+    /// <summary>The dashboard's counts and tiles, kept current in every
+    /// screen: the dashboard stays up beside a session (2026-09-26). A
+    /// refresh that skipped the sweep keeps the tiles of the last one.</summary>
+    private void ShowDashboard(FolderSnapshot snap)
+    {
+        var scan = snap.Scan;
+        if (snap.Statuses is not null) _lastStatuses = snap.Statuses;
+        var statuses = snap.Statuses ?? (TileMode == "hidden" ? null : _lastStatuses);
         CountLine = scan.Error.Length > 0
             ? "Inbox problem"
             : $"{scan.Count} file{(scan.Count == 1 ? "" : "s")} ready";
@@ -620,8 +680,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             : (scan.IgnoredCount > 0
                 ? $"{scan.IgnoredCount} other file{(scan.IgnoredCount == 1 ? "" : "s")} ignored"
                 : "");
-        StartEnabled = scan.Count > 0;
-        RefreshDashboard(scan, snap.Statuses);
+        RefreshDashboard(scan, statuses);
     }
 
     /// <summary>True until the user dismisses the set-aside rail notice; the
@@ -753,7 +812,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     /// <summary>The dropdown only appears on Ready, and only when there are
     /// monitored folders to control.</summary>
-    public bool TileControlsVisible => IsReady && _cfg.WatchFolders.Count > 0;
+    public bool TileControlsVisible => _cfg.WatchFolders.Count > 0;
 
     private bool _inboxAlerting;
     public bool InboxAlerting { get => _inboxAlerting; private set => Set(ref _inboxAlerting, value); }
@@ -808,8 +867,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         }
 
         MonitorTitle = _cfg.MonitorTitle;
-        DashboardVisible = Screen == Screen.Ready && statuses.Count > 0;
-        AllQuiet = Screen == Screen.Ready && statuses.Count == 0
+        DashboardVisible = statuses.Count > 0;
+        AllQuiet = statuses.Count == 0
             && _cfg.WatchFolders.Count > 0 && TileMode == "active";
 
         InboxAlerting = inboxScan.Matching
@@ -1089,6 +1148,12 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// All disk reads happen off-thread inside RefreshFoldersAsync.</summary>
     internal void OnFolderActivity() => _ = RefreshFoldersAsync();
 
+    // set by the poll timer: the next refresh sweeps the watched folders
+    // even mid-session (see RefreshFoldersAsync)
+    private bool _tilesDue;
+
+    internal void OnPoll() => _tilesDue = true;
+
     // ------------------------------------------------------ processing state
     private string _progressLine = "";
     public string ProgressLine { get => _progressLine; private set => Set(ref _progressLine, value); }
@@ -1331,14 +1396,14 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         Screen = Screen.Processing;
         ClearStatus();
         HideLastAction();
-        // hide the dashboard while filing
-        DashboardVisible = false;
-        AllQuiet = false;
-        StopFlash();
-        ApplyFlashAll();
+        // the dashboard stays up, live, beside the session (2026-09-26); the
+        // session's own window opens (and its viewer is ready) before the
+        // first document loads
+        if (PrepareSessionView is { } prepare) await prepare();
         await RefreshCompleterAsync();
-        await LoadCurrentAsync();
+        // fit first, so the first page is shown at the zoom for the fitted size
         await FitViewerToCurrentAsync();
+        await LoadCurrentAsync();
     }
 
     /// <summary>Measure the document now on screen and ask the window to fit
@@ -1384,7 +1449,11 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         RefreshSuggestions();
         UpdatePreview();
         RaiseUndoState();
-        await _viewer.ShowAsync(path);
+        // the page's size, so the viewer shows the whole page as large as it
+        // can; a PDF header read off an SMB inbox is a network round trip
+        var page = await _scheduler.Run(() => PageShape.SizeOf(path));
+        if (_session.Current != path) return;   // moved on while measuring; that load shows its own
+        await _viewer.ShowAsync(path, page);
         RequestNameFocus?.Invoke();
     }
 
@@ -1393,8 +1462,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         _loadedPath = null;
         Screen = Screen.Done;
         _viewer.Blank();
-        CountLine = "Session complete";
-        DetailLine = $"{_session.Filed} filed, {_session.Skipped} set aside"
+        DoneTitle = "Session complete";
+        DoneDetail = $"{_session.Filed} filed, {_session.Skipped} set aside"
             + (_session.Vanished > 0 ? $", {_session.Vanished} vanished" : "");
         LogLine = !_auditFailedThisSession && _session.Filed + _session.Skipped > 0
             ? "Every move is in the log."
@@ -2237,9 +2306,13 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         return !dbExisted || HistoryBackup.BackupDaily(dbPath, backupDir, DateTime.Now) is not null;
     }
 
+    private bool _disposed;
+
     public void Dispose()
     {
+        _disposed = true;
         _watch.Activity -= OnFolderActivity;
+        _watch.Polled -= OnPoll;
         _flash.Dispose();
         _lastActionTimer.Dispose();
         _toastTimer.Dispose();

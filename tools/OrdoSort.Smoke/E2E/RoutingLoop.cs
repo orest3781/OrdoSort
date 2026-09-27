@@ -148,6 +148,7 @@ public static class RoutingLoop
         E2ERunner.InstallUiSynchronizationContext();
         var window = new MainWindow(Config.Load(bed.CfgPath), bed.CfgPath);
         window.Dialogs = dialogs;
+        window.Processing.Dialogs = dialogs;   // the session's own window warns too
         return window;
     }
 

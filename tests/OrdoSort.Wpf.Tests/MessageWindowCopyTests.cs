@@ -13,10 +13,10 @@ namespace OrdoSort.Wpf.Tests;
 /// is injected so both branches are driven without touching the real
 /// clipboard, which is shared, slow and flaky under a test runner.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class MessageWindowCopyTests
+public class MessageWindowCopyTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public MessageWindowCopyTests(HighlightContrastFixture fx) => _fx = fx;
+    public MessageWindowCopyTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     [Fact]
     public void ASuccessfulCopySaysCopied() => _fx.Invoke(() =>

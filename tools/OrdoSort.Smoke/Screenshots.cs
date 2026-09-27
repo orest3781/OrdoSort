@@ -362,6 +362,7 @@ public static class Screenshots
         {
             window = new MainWindow(Config.Load(cfgPath), cfgPath);
             window.Dialogs = new RecordingDialogs();
+            window.Processing.Dialogs = window.Dialogs;
             E2EPump.ShowOffscreen(window);
 
             if (!E2EPump.Until(() => window.Pdf.Ready || window.Pdf.InitError != null, 20_000))
@@ -374,7 +375,7 @@ public static class Screenshots
                 notes.Add($"SKIP MainWindow-ready-{theme}, MainWindow-processing-{theme}: the initial demo-full inbox scan never completed");
                 return;
             }
-            window.Left = -20000; window.Top = 0;   // re-assert: EnterCompact/EnterNormal reposition the window
+            window.Left = -20000; window.Top = 0;   // re-assert: the dashboard places itself when shown
             window.UpdateLayout();
             Save(window, outdir, "MainWindow-ready", theme);
 
@@ -384,11 +385,13 @@ public static class Screenshots
                 notes.Add($"SKIP MainWindow-processing-{theme}: the session never loaded its first document");
                 return;
             }
-            // give the just-grown layout (compact -> normal) a beat to settle
+            // the session runs in its own window, which fits itself to the
+            // first page: give that a beat to settle, then park it off-screen
             E2EPump.Until(() => false, 500);
-            window.Left = -20000; window.Top = 0;
-            window.UpdateLayout();
-            Save(window, outdir, "MainWindow-processing", theme);
+            var session = window.Processing;
+            session.Left = -20000; session.Top = 0;
+            session.UpdateLayout();
+            Save(session, outdir, "MainWindow-processing", theme);
             notes.Add($"NOTE MainWindow-processing-{theme}: the PDF pane itself renders blank — " +
                       "WebView2 draws into its own child HWND, which RenderTargetBitmap can't capture " +
                       "(a WPF/airspace limitation, not a bug in this capture).");
@@ -436,6 +439,7 @@ public static class Screenshots
 
             window = new MainWindow(Config.Load(cfgPath), cfgPath);
             window.Dialogs = new RecordingDialogs();
+            window.Processing.Dialogs = window.Dialogs;
             E2EPump.ShowOffscreen(window);
 
             if (!E2EPump.Until(() => window.Pdf.Ready || window.Pdf.InitError != null, 20_000))
@@ -458,9 +462,9 @@ public static class Screenshots
             // the Done summary fades its text/buttons in; give the animation
             // a beat so the capture isn't a half-opacity mid-transition frame
             E2EPump.Until(() => false, 800);
-            window.Left = -20000; window.Top = 0;
-            window.UpdateLayout();
-            Save(window, outdir, "MainWindow-done", theme);
+            window.Processing.Left = -20000; window.Processing.Top = 0;
+            window.Processing.UpdateLayout();
+            Save(window.Processing, outdir, "MainWindow-done", theme);
         }
         catch (Exception ex)
         {

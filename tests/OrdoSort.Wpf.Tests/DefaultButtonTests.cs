@@ -16,20 +16,10 @@ namespace OrdoSort.Wpf.Tests;
 /// to Enter while their siblings did. Read off the LOGICAL tree so no
 /// window needs to be shown; a button's Style resolves at parse time.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class DefaultButtonTests
+public class DefaultButtonTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public DefaultButtonTests(HighlightContrastFixture fx) => _fx = fx;
-
-    internal static IEnumerable<T> LogicalDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        foreach (var child in LogicalTreeHelper.GetChildren(root))
-        {
-            if (child is not DependencyObject dependencyObject) continue;
-            if (dependencyObject is T match) yield return match;
-            foreach (var descendant in LogicalDescendants<T>(dependencyObject)) yield return descendant;
-        }
-    }
+    public DefaultButtonTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static Button ByName(DependencyObject root, string automationName) =>
         LogicalDescendants<Button>(root).Single(b => AutomationProperties.GetName(b) == automationName);
@@ -44,7 +34,11 @@ public class DefaultButtonTests
     public void StartProcessingAnswersEnter() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var view = new ReadyView();
+        // the name is bound to StartButtonText (2026-09-26); a stub carries the Ready value
+        var view = new ReadyView { DataContext = new { StartButtonText = "Start processing" } };
+        // the bound name resolves once the dispatcher has run its binding work
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { },
+            System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         Assert.True(ByName(view, "Start processing").IsDefault, "Enter on Ready must start the session");
     });
 
@@ -79,7 +73,7 @@ public class DefaultButtonTests
     public void MatchAndMergeAnswersEnter() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var win = new MatchMergeWindow(new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs()));
+        var win = new MatchMergeWindow(new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(), scheduler: new InlineWorkScheduler()));
         Assert.True(ThePrimary(win).IsDefault);
     });
 }

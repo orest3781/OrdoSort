@@ -110,7 +110,7 @@ public class BulkRenameBatchTests : IDisposable
         /// gate before dispatching here. Holding this one across the call
         /// deadlocks the pair the first time a released continuation re-arms
         /// the probe — measured, not theoretical.</summary>
-        public void ReleaseNext(string because, int timeoutMs = 3000)
+        public void ReleaseNext(string because, int timeoutMs = Wait.DefaultCeilingMs)
         {
             var sw = Stopwatch.StartNew();
             while (true)
@@ -147,7 +147,7 @@ public class BulkRenameBatchTests : IDisposable
         /// <summary>Release items as they are dispatched until the condition
         /// holds — how a test gets past the intake and preview work that
         /// share this scheduler with the batch under test.</summary>
-        public void Settle(Func<bool> until, string because, int timeoutMs = 3000)
+        public void Settle(Func<bool> until, string because, int timeoutMs = Wait.DefaultCeilingMs)
         {
             var sw = Stopwatch.StartNew();
             while (!until())
@@ -308,6 +308,10 @@ public class BulkRenameBatchTests : IDisposable
         vm.RemoveSelected();                 // the click that slips through anyway
 
         scheduler.Settle(() => !vm.IsBusy, "the batch should run to the end");
+        // The preview's last rebuild comes from a real timer; wait for it
+        // rather than trust a quiet spell, which a busy machine outlasts.
+        scheduler.Settle(() => vm.Preview.Any(r => r.Current.StartsWith("NEW-")),
+            "the preview should rebuild on the renamed files");
         scheduler.Quiesce();
 
         // Both files were renamed and both are still listed under their new

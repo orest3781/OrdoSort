@@ -26,13 +26,13 @@ file sealed class SilentDialogs : ILabelDialogs
 /// page — a second way to change one setting is the thing being avoided, and
 /// "OrdoSort is unchanged" is a promise this test keeps.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class LabelStoreBarTests : IDisposable
+public class LabelStoreBarTests : UiTest, IDisposable
 {
     private readonly HighlightContrastFixture _fx;
     private readonly string _dir = Directory.CreateDirectory(
         Path.Combine(Path.GetTempPath(), "boxlabels_bar_" + Guid.NewGuid().ToString("N"))).FullName;
 
-    public LabelStoreBarTests(HighlightContrastFixture fx) => _fx = fx;
+    public LabelStoreBarTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     public void Dispose()
     {

@@ -138,13 +138,10 @@ file sealed class NoDialogs : IDialogService
 /// which is why the cases below pass a <c>Func&lt;FrameworkElement&gt;</c>
 /// factory rather than an instance.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class FocusRingCoverageTests
+public class FocusRingCoverageTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public FocusRingCoverageTests(HighlightContrastFixture fx) => _fx = fx;
-
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
+    public FocusRingCoverageTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <summary>The flag WPF's own KeyboardNavigation consults before it will
     /// build a FocusVisualAdorner at all (see the class doc, point 2). It is
@@ -427,7 +424,7 @@ public class FocusRingCoverageTests
             var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_a11y_" + Guid.NewGuid(), "config.json");
             var vm = new SettingsViewModel(new Config(), new NoDialogs(),
                 () => dark ? ThemePalette.Dark : ThemePalette.Light, cfgPath,
-                uiContext: SynchronizationContext.Current);
+                uiContext: SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
             var settings = new SettingsWindow(vm);
             themeCard = (Style)settings.Resources["ThemeCard"];
         });

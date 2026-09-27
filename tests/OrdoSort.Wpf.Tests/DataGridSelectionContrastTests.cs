@@ -44,16 +44,16 @@ namespace OrdoSort.Wpf.Tests;
 /// HighlightContrastTests' DataGridRow hover coverage) already found dead
 /// ship unnoticed.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class DataGridSelectionContrastTests
+public class DataGridSelectionContrastTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public DataGridSelectionContrastTests(HighlightContrastFixture fx) => _fx = fx;
+    public DataGridSelectionContrastTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     // ------------------------------------------------------- window builders
 
     private static (MatchMergeWindow win, DataGrid grid) BuildMatchMergeWindow()
     {
-        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(), scheduler: new InlineWorkScheduler());
         vm.Rows.Add(new MatchRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf",
             "a-long-enough-filename-to-matter.pdf", "SMITH, JOHN — 1234567890.pdf",
             "3 candidates — decide in Review matches", "ambiguous"));
@@ -71,7 +71,7 @@ public class DataGridSelectionContrastTests
 
     private static (BulkRenameWindow win, DataGrid grid) BuildBulkRenameWindow()
     {
-        var vm = new BulkRenameViewModel();
+        var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
         vm.Preview.Add(new RenameRow(@"C:\inbox\old-name-before-review.pdf", "old-name-before-review.pdf",
             "20240101-SMITH-JOHN.pdf", "edited by hand",
             changed: true, manual: true, needsName: false, editSeed: "20240101-SMITH-JOHN.pdf",
@@ -139,7 +139,7 @@ public class DataGridSelectionContrastTests
 
     private static (ZipToolsWindow win, DataGrid grid) BuildZipToolsWindow()
     {
-        var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>());
+        var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), scheduler: new InlineWorkScheduler());
         var row = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
         row.Apply(new Zipper.UnzipResult(row.Path, "error", null,
             "not a valid zip archive — a long enough exception message to matter"));
@@ -159,7 +159,7 @@ public class DataGridSelectionContrastTests
 
     private static (MergePdfsWindow win, DataGrid grid) BuildMergePdfsWindow()
     {
-        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>());
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), scheduler: new InlineWorkScheduler());
         var row = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
         row.Apply(new PdfMerge.MergeResult(row.Path, "error",
             Message: "couldn't read 'entry.pdf' inside the zip — a long enough exception message to matter"));
@@ -179,7 +179,7 @@ public class DataGridSelectionContrastTests
 
     private static (PageCountsWindow win, DataGrid grid) BuildPageCountsWindow()
     {
-        var vm = new PageCountsViewModel(new FakeDialogs());
+        var vm = new PageCountsViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
         var row = new PageCountRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf");
         row.Apply(new PageCounts.CountResult(row.Path, null,
             "password-protected or unreadable — couldn't count"));
@@ -198,7 +198,7 @@ public class DataGridSelectionContrastTests
 
     private static (StandardiseNamesWindow win, DataGrid grid) BuildStandardiseNamesWindow()
     {
-        var vm = new StandardiseNamesViewModel(new FakeDialogs());
+        var vm = new StandardiseNamesViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
         vm.Results.Add(new StandardiseNameRow(
             "a-long-enough-filename-to-matter.pdf",
             "in use by another program — a long enough message to matter",
@@ -219,7 +219,7 @@ public class DataGridSelectionContrastTests
 
     private static (FilenameListWindow win, DataGrid grid) BuildFilenameListWindow()
     {
-        var vm = new FilenameListViewModel(new FakeDialogs())
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler())
         {
             // Every optional column on. This suite's whole contract (see the
             // class doc above) is to enumerate whatever DataGridTextColumns
@@ -360,7 +360,8 @@ public class DataGridSelectionContrastTests
                 new(new MatchMerge.Candidate("1", new Dictionary<string, string> { ["A"] = "x" }),
                     "token match on last name"),
             });
-        var win = new TriageWindow(new List<MatchMerge.MatchResult> { item }, new[] { "A" })
+        var win = new TriageWindow(new List<MatchMerge.MatchResult> { item }, new[] { "A" },
+            initViewer: () => Task.FromResult(true))
         {
             Dialogs = new FakeDialogs(),
         };
@@ -637,7 +638,7 @@ public class DataGridSelectionContrastTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new BulkRenameViewModel();
+        var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
         vm.Preview.Add(new RenameRow(@"C:\inbox\b.pdf", "b.pdf", "b.pdf", "(no change)",
             changed: false, manual: false, needsName: false, editSeed: "b.pdf", noteIsProblem: false));
         var win = new BulkRenameWindow(vm)
@@ -675,7 +676,7 @@ public class DataGridSelectionContrastTests
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new BulkRenameViewModel();
+        var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
         vm.Preview.Add(new RenameRow(@"C:\inbox\d.pdf", "d.pdf", "TYPED-BY-HAND.pdf", "edited by hand",
             changed: true, manual: true, needsName: false, editSeed: "TYPED-BY-HAND.pdf", noteIsProblem: false));
         var win = new BulkRenameWindow(vm)
@@ -754,31 +755,6 @@ public class DataGridSelectionContrastTests
                 "UIElement has no private static IsMouseOverPropertyKey field");
         var key = (DependencyPropertyKey)field.GetValue(null)!;
         el.SetValue(key, value);
-    }
-
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) return match;
-            if (FindDescendant<T>(child) is { } nested) return nested;
-        }
-        return null;
-    }
-
-    private static List<T> FindAllDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        var results = new List<T>();
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) results.Add(match);
-            results.AddRange(FindAllDescendants<T>(child));
-        }
-        return results;
     }
 
     private static Rgb ToRgb(Brush? brush) => brush switch

@@ -29,53 +29,80 @@ internal sealed class ManualWorkScheduler : IWorkScheduler
         return tcs.Task;
     }
 
-    /// <summary>Actually run the Nth queued probe now, regardless of what
-    /// else is pending — this is how the test simulates out-of-order
-    /// completion. Note this only *starts* the completion: per
-    /// TaskCompletionSource semantics the awaiter's continuation is not
-    /// guaranteed to run synchronously within this call (the runtime is free
-    /// to hop it to another thread, e.g. under stack-depth guards when other
-    /// async chains are active) — callers must poll for the effect, not
-    /// assert immediately after calling this.</summary>
+    /// <summary>Runs the Nth queued piece of work now, regardless of what
+    /// else is pending: this is how a test simulates out-of-order completion.
+    /// What awaits the work runs inside this call, so the test can assert
+    /// right after it. That needs the synchronization context cleared while
+    /// the work completes: xUnit gives each test thread its own, and .NET
+    /// will not run an await continuation inline under a non-default one;
+    /// it posts it to the thread pool, where it lands after the assert.</summary>
     public void Release(int index)
     {
         Action a;
         lock (_gate) a = _pending[index];
-        a();
+        var context = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(null);
+        try { a(); }
+        finally { SynchronizationContext.SetSynchronizationContext(context); }
+    }
+
+    /// <summary>Runs every queued piece of work in order, including work
+    /// that running it queues.</summary>
+    public void ReleaseAll()
+    {
+        for (var i = 0; i < PendingCount; i++) Release(i);
     }
 }
 
 public class DebouncedProbeTests
 {
-    private static void WaitFor(Func<bool> condition, string because, int timeoutMs = 3000)
+    [Fact]
+    public void ATypedChangeIsComputedOnlyOnceTheDelayHasPassed()
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        while (true)
-        {
-            bool result;
-            try
-            {
-                result = condition();
-            }
-            // Fix round 2, item 2(b) — same fix as the WaitFor copy in
-            // ToolViewModelTests/SettingsViewModelTests/TilePreviewProbeTests:
-            // a predicate reading a collection that a background thread is
-            // mid-mutating can throw INSIDE the read rather than just
-            // observe a stale-but-valid value. Both exceptions below are
-            // the SAME "not true yet" outcome a plain false would be, so
-            // they are retried, not surfaced. Nothing else is caught: a
-            // predicate that throws for a REAL reason must still fail the
-            // test immediately.
-            catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException)
-            {
-                result = false;
-            }
-            if (result) return;
-            if (sw.ElapsedMilliseconds > timeoutMs)
-                Assert.Fail($"condition never became true within {timeoutMs}ms: {because}");
-            Thread.Sleep(5);
-        }
+        var time = new ManualTimeProvider();
+        var applied = new List<string>();
+        using var probe = new DebouncedProbe<string>(new InlineWorkScheduler(), uiContext: null,
+            applied.Add, intervalMs: 300, time: time);
+
+        probe.Trigger(() => "a");
+        time.Advance(TimeSpan.FromMilliseconds(299));
+        Assert.Empty(applied);
+
+        time.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.Equal(new[] { "a" }, applied);
     }
+
+    [Fact]
+    public void AnotherChangeInsideTheDelayRestartsItAndOnlyTheLastIsComputed()
+    {
+        var time = new ManualTimeProvider();
+        var applied = new List<string>();
+        using var probe = new DebouncedProbe<string>(new InlineWorkScheduler(), uiContext: null,
+            applied.Add, intervalMs: 300, time: time);
+
+        probe.Trigger(() => "a");
+        time.Advance(TimeSpan.FromMilliseconds(200));
+        probe.Trigger(() => "ab");
+        time.Advance(TimeSpan.FromMilliseconds(200));
+        Assert.Empty(applied);
+
+        time.Advance(TimeSpan.FromMilliseconds(100));
+        Assert.Equal(new[] { "ab" }, applied);
+    }
+
+    [Fact]
+    public void AnImmediateChangeDoesNotWaitForTheDelay()
+    {
+        var time = new ManualTimeProvider();
+        var applied = new List<string>();
+        using var probe = new DebouncedProbe<string>(new InlineWorkScheduler(), uiContext: null,
+            applied.Add, intervalMs: 300, time: time);
+
+        probe.Trigger(() => "a", immediate: true);
+
+        Assert.Equal(new[] { "a" }, applied);
+    }
+
 
     /// <summary>The core non-negotiable guarantee: if an OLDER probe is still
     /// in flight when a NEWER one is triggered (the user kept typing while a
@@ -86,24 +113,21 @@ public class DebouncedProbeTests
     {
         var scheduler = new ManualWorkScheduler();
         var applied = new List<string>();
-        var probe = new DebouncedProbe<string>(scheduler, uiContext: null, v => { lock (applied) applied.Add(v); }, intervalMs: 0);
+        var probe = new DebouncedProbe<string>(scheduler, uiContext: null, v => { lock (applied) applied.Add(v); }, intervalMs: 0, time: new ManualTimeProvider());
 
         probe.Trigger(() => "A (stale)", immediate: true);
-        WaitFor(() => scheduler.PendingCount == 1, "probe A's work should reach the scheduler");
+        Assert.Equal(1, scheduler.PendingCount);
 
         probe.Trigger(() => "B (fresh)", immediate: true);
-        WaitFor(() => scheduler.PendingCount == 2, "probe B's work should reach the scheduler");
+        Assert.Equal(2, scheduler.PendingCount);
 
         // Out-of-order completion: B (the newer probe) finishes FIRST...
         scheduler.Release(1);
-        WaitFor(() => { lock (applied) return applied.Count >= 1; }, "B's result should eventually apply");
         lock (applied) Assert.Equal(new[] { "B (fresh)" }, applied);
 
         // ...then the stale A finally finishes. It must be dropped, not
-        // applied — give it a generous moment to (wrongly) show up, then
-        // confirm it never did.
+        // applied.
         scheduler.Release(0);
-        Thread.Sleep(200);
         lock (applied) Assert.Equal(new[] { "B (fresh)" }, applied);   // unchanged — A never landed
     }
 
@@ -115,13 +139,12 @@ public class DebouncedProbeTests
     {
         var scheduler = new ManualWorkScheduler();
         var applied = new List<string>();
-        var probe = new DebouncedProbe<string>(scheduler, uiContext: null, v => { lock (applied) applied.Add(v); }, intervalMs: 0);
+        var probe = new DebouncedProbe<string>(scheduler, uiContext: null, v => { lock (applied) applied.Add(v); }, intervalMs: 0, time: new ManualTimeProvider());
 
         probe.Trigger(() => "only", immediate: true);
-        WaitFor(() => scheduler.PendingCount == 1, "the probe's work should reach the scheduler");
+        Assert.Equal(1, scheduler.PendingCount);
         scheduler.Release(0);
 
-        WaitFor(() => { lock (applied) return applied.Count == 1; }, "the result should eventually apply");
         lock (applied) Assert.Equal(new[] { "only" }, applied);
     }
 
@@ -138,15 +161,14 @@ public class DebouncedProbeTests
     {
         var scheduler = new ManualWorkScheduler();
         var applied = new List<string>();
-        var probe = new DebouncedProbe<string>(scheduler, uiContext: null, v => { lock (applied) applied.Add(v); }, intervalMs: 0);
+        var probe = new DebouncedProbe<string>(scheduler, uiContext: null, v => { lock (applied) applied.Add(v); }, intervalMs: 0, time: new ManualTimeProvider());
 
         probe.Trigger(() => "late", immediate: true);
-        WaitFor(() => scheduler.PendingCount == 1, "the probe's work should reach the scheduler");
+        Assert.Equal(1, scheduler.PendingCount);
 
         probe.Dispose();   // the view model that owns this probe is gone
 
         scheduler.Release(0);
-        Thread.Sleep(200);   // give the (wrongly) applied result a generous moment to show up
         lock (applied) Assert.Empty(applied);
     }
 
@@ -161,7 +183,8 @@ public class DebouncedProbeTests
         var applied = new List<string>();
         // a real (non-zero) interval: each Trigger() call must cancel the
         // previous still-pending timer before it ever fires
-        var probe = new DebouncedProbe<string>(scheduler, uiContext: null, v => { lock (applied) applied.Add(v); }, intervalMs: 300);
+        var time = new ManualTimeProvider();
+        var probe = new DebouncedProbe<string>(scheduler, uiContext: null, v => { lock (applied) applied.Add(v); }, intervalMs: 300, time: time);
 
         for (var i = 0; i < 20; i++)
         {
@@ -169,10 +192,10 @@ public class DebouncedProbeTests
             probe.Trigger(() => $"value {captured}");
         }
 
-        WaitFor(() => scheduler.PendingCount == 1, "only the last Trigger() should ever reach the scheduler", 2000);
+        time.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(1, scheduler.PendingCount);
         scheduler.Release(0);
 
-        WaitFor(() => { lock (applied) return applied.Count == 1; }, "the result should eventually apply");
         lock (applied) Assert.Equal(new[] { "value 19" }, applied);
     }
 
@@ -187,12 +210,12 @@ public class DebouncedProbeTests
         var scheduler = new ManualWorkScheduler();
         var ui = new QueuedSynchronizationContext();
         var applied = new List<string>();
-        var probe = new DebouncedProbe<string>(scheduler, ui, v => { lock (applied) applied.Add(v); }, intervalMs: 0);
+        var probe = new DebouncedProbe<string>(scheduler, ui, v => { lock (applied) applied.Add(v); }, intervalMs: 0, time: new ManualTimeProvider());
 
         probe.Trigger(() => "probe (stale)", immediate: true);
-        WaitFor(() => scheduler.PendingCount == 1, "the probe's work should reach the scheduler");
+        Assert.Equal(1, scheduler.PendingCount);
         scheduler.Release(0);
-        WaitFor(() => ui.QueuedCount == 1, "the probe's result should be posted to the UI thread");
+        Assert.Equal(1, ui.QueuedCount);
 
         // On the "UI thread", before the posted callback runs: a fast-path answer.
         probe.Resolve("cleared", "", () => "never probed");

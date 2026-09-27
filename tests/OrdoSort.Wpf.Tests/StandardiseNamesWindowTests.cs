@@ -15,20 +15,10 @@ namespace OrdoSort.Wpf.Tests;
 /// DataGridSelectionContrastTests (every column, selected, against
 /// Theme.Accent) — rather than duplicated here.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class StandardiseNamesWindowTests
+public class StandardiseNamesWindowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public StandardiseNamesWindowTests(HighlightContrastFixture fx) => _fx = fx;
-
-    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T hit) yield return hit;
-            foreach (var deeper in Descendants<T>(child)) yield return deeper;
-        }
-    }
+    public StandardiseNamesWindowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     [Fact]
     public void OneGridNoTabsAndADroppedFileLandsInItAfterTheDatePromptIsAnswered()
@@ -53,7 +43,7 @@ public class StandardiseNamesWindowTests
             {
                 window.Show();
                 window.UpdateLayout();
-                OverflowProbe.PumpRender();
+                PumpRender();
                 window.UpdateLayout();
 
                 var content = (DependencyObject)window.Content;
@@ -241,7 +231,7 @@ public class StandardiseNamesWindowTests
     [Fact]
     public void UndoLastBatchLivesInTheToolbarImmediatelyAfterRemoveLastSegment()
     {
-        var vm = new StandardiseNamesViewModel(new FakeDialogs());
+        var vm = new StandardiseNamesViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
         _fx.Invoke(() =>
         {
             ThemeManager.Apply(_fx.App, dark: false);

@@ -43,8 +43,10 @@ jobs:
         run: dotnet format style OrdoSort.sln --verify-no-changes --no-restore -v q
       - name: Build
         run: dotnet build --no-restore -c Release
+      # Everyday tests only; the real Edge/Office ones run in the
+      # integration job below (docs/testing.md).
       - name: Test
-        run: dotnet test --no-build -c Release --verbosity normal
+        run: dotnet test --no-build -c Release --verbosity normal --filter "Category!=Integration"
       # NonDeterministicDebugBuildTests asserts opposite things per
       # configuration, and #if DEBUG picks which. A Release-only CI would
       # therefore never compile the Debug assertion, so deleting
@@ -70,6 +72,20 @@ jobs:
         with:
           name: ordosort-portable-win-x64
           path: out/portable/OrdoSort.exe
+
+  integration:
+    # Tests that start real Edge (WebView2) or Office. The runner has Edge
+    # but no Office, so the Office tests return early there; run
+    # `check.bat integration` on a PC with Office to exercise them.
+    runs-on: windows-latest
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+      - name: Integration tests
+        run: dotnet test tests/OrdoSort.Wpf.Tests -c Release --verbosity normal --filter "Category=Integration"
 
   smoke:
     # the UI proofs: real WebView2 releases the PDF handle before the move,

@@ -36,23 +36,10 @@ file sealed class NoDialogs : IDialogService
 /// feature), M4 (the app's only Title-Case button) and M3 (informational notes
 /// wearing the needs-attention colour).</summary>
 [Collection(HighlightContrastTests.Name)]
-public class CopyAndTerminologyTests
+public class CopyAndTerminologyTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public CopyAndTerminologyTests(HighlightContrastFixture fx) => _fx = fx;
-
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-
-    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T hit) yield return hit;
-            foreach (var deeper in Descendants<T>(child)) yield return deeper;
-        }
-    }
+    public CopyAndTerminologyTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static SettingsWindow BuildSettingsWindow(SettingsViewModel vm) =>
         new(vm)
@@ -74,7 +61,7 @@ public class CopyAndTerminologyTests
         cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_copy_" + Guid.NewGuid(), "config.json");
         return new SettingsViewModel(cfg, new NoDialogs(),
             () => palette, cfgPath,
-            uiContext: SynchronizationContext.Current, probeDelayMs: probeDelayMs);
+            uiContext: SynchronizationContext.Current, probeDelayMs: probeDelayMs, scheduler: new InlineWorkScheduler());
     }
 
     /// <summary>Pump this thread's dispatcher until <paramref name="settled"/>
@@ -167,7 +154,9 @@ public class CopyAndTerminologyTests
     public void TheReadyScreensPrimaryButtonIsSentenceCase() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var view = new ReadyView();
+        // the label is bound (it reads "Processing… (show)" mid-session,
+        // 2026-09-26); a stub carries the Ready value
+        var view = new ReadyView { DataContext = new { StartButtonText = "Start processing" } };
         view.Measure(new Size(600, 800));
         view.Arrange(new Rect(0, 0, 600, 800));
         view.UpdateLayout();
@@ -534,8 +523,9 @@ public class CopyAndTerminologyTests
         var previousCrashDir = App._crashDir;
         App._crashDir = dir;
 
-        var window = new MainWindow(cfg, Path.Combine(dir, "config.json"))
+        var window = new MainWindow(cfg, Path.Combine(dir, "config.json"), initViewer: () => Task.FromResult(true))
         {
+            Dialogs = new FakeDialogs(),   // a warning must never block the UI thread
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
         };

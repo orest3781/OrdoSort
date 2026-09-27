@@ -36,6 +36,16 @@ public static class E2EPump
             if (done) { success = true; frame.Continue = false; }
             else if (Environment.TickCount64 >= deadline) { frame.Continue = false; }
         };
+        // The deadline also has a timer of its own at Send priority. The poll
+        // above runs at Background, which never gets a turn while
+        // higher-priority work (a layout that never settles) keeps coming; on
+        // GitHub that turned a stuck scenario into a 20-minute cancelled job
+        // (2026-09-27). This one still fires, so the wait ends and is recorded.
+        var ceiling = new DispatcherTimer(DispatcherPriority.Send)
+        {
+            Interval = TimeSpan.FromMilliseconds(timeoutMs),
+        };
+        ceiling.Tick += (_, _) => frame.Continue = false;
         // kickoff, when given, is queued via BeginInvoke instead of called
         // inline before the pump starts. PushFrame installs a
         // DispatcherSynchronizationContext only for the frame it's running —
@@ -50,8 +60,13 @@ public static class E2EPump
         // correctly captures this pump's context.
         if (kickoff is not null) Dispatcher.CurrentDispatcher.BeginInvoke(kickoff);
         timer.Start();
+        ceiling.Start();
         try { Dispatcher.PushFrame(frame); }
-        finally { timer.Stop(); }
+        finally
+        {
+            timer.Stop();
+            ceiling.Stop();
+        }
         return success;
     }
 
