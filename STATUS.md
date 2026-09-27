@@ -25,7 +25,7 @@
 **Plan to finish (owner approved 2026-09-27; re-swept the same day against STATUS, GitHub, plan ledgers, the refinement checklist, code TODOs and build warnings), in order:**
 - [x] 1. Housekeeping: PR #5 closed and its branch deleted; `feature/reports-hub-phase2` archived as tag `archive/reports-hub-phase2`, branch deleted; merged local `feature/why-reasons` deleted
 - [x] 2. Tidy-ups: rows a plan step covers are tagged "(plan step N)"; PR #5 row ticked; the processing-window ledger's Task 4 recorded; the two test build warnings fixed (Release build: 0 warnings)
-- [ ] 3. Column picker (owner: skip the rest of the live check) (`feature/review-column-picker`): automated checks green; finish the live check (the chooser itself, a choice remembered) or skip it by owner's call; merge. Also: Match and merge rows announce `MatchRow { … }` to screen readers
+- [x] 3. Column picker merged (`0e8fe9b`; owner skipped the rest of the live check). Screen-reader names: a whole-tree sweep of every registry window found table rows announcing a type or record name in 8 windows (Merge PDFs, Zip, Filename list, Bulk rename, Match and merge, Page counts, Standardise names, History); each row is now named by its file
 - [ ] 4. The refinement checklist's 4 High items (Q2-01 to Q2-04: filing spine, undo, Bulk rename, Merge): check each still reproduces; fix the real ones with tests
 - [ ] 5. User-facing fixes: 5a box labels Copies > 1 (needs the owner's rule); 5b TableLayoutStore read-failure/atomic write/damaged-file log; 5c PR #6 network share (owner tries the real share; retry test; permissions note)
 - [ ] 6. Explorer tables polish: keyboard header menu, Triage saved sort, empty-table scrollbar, timing and store-path tests, confirm File list remembering its columns
