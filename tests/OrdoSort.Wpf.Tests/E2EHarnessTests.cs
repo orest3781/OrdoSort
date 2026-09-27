@@ -76,7 +76,12 @@ public class E2EHarnessTests
     {
         var ready = new ManualResetEventSlim();
         Dispatcher? ui = null;
-        var thread = new Thread(() => { ui = Dispatcher.CurrentDispatcher; ready.Set(); Dispatcher.Run(); })
+        var thread = new Thread(() =>
+        {
+            ui = Dispatcher.CurrentDispatcher;
+            ui.BeginInvoke(DispatcherPriority.Send, new Action(ready.Set));   // set once it is pumping
+            Dispatcher.Run();
+        })
         { IsBackground = true };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
@@ -98,7 +103,8 @@ public class E2EHarnessTests
         {
             ui = Dispatcher.CurrentDispatcher;
             Flood(() => stop);
-            ready.Set();
+            // Send, or the flood would starve the signal itself; set once pumping
+            ui.BeginInvoke(DispatcherPriority.Send, new Action(ready.Set));
             Dispatcher.Run();
         })
         { IsBackground = true };
@@ -107,7 +113,7 @@ public class E2EHarnessTests
         ready.Wait();
         try
         {
-            Assert.Contains("never lets up", ScenarioWatchdog.Describe(ui!, TimeSpan.FromMilliseconds(500)));
+            Assert.Contains("never lets up", ScenarioWatchdog.Describe(ui!, TimeSpan.FromSeconds(3)));
         }
         finally { stop = true; ui!.InvokeShutdown(); }
     }
