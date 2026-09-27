@@ -338,6 +338,35 @@ public sealed class OfficeConverterTests : IClassFixture<OfficeConverterTests.Of
     }
 
     [Fact]
+    public void ALockedPptxIsRefusedSafelyWithoutEverCallingOffice()
+    {
+        // This class's own fourth-hazard mitigation, found beyond the brief:
+        // PowerPoint's Presentations.Open has no password parameter at all,
+        // so a protected pptx is refused by a byte-level pre-check BEFORE any
+        // COM call -- never by trying and catching, because there is nothing
+        // to catch a hang with. A synthetic OLE2/CFBF header proves the check
+        // engages without needing a real encrypted deck, and runs near-
+        // instantly since it never touches COM at all. Still gated on
+        // PowerPoint being installed: Handles() itself requires that before
+        // a .pptx ever reaches this path.
+        //
+        // Status is "error", not "needs_password": no password this class
+        // could ever be given would let PowerPoint open it, so a status
+        // that invites a retry would be dishonest -- the message has to
+        // name the real limitation instead.
+        if (!PowerPointInstalled) return; // Office not installed on this machine
+        WithTimeout(TimeSpan.FromSeconds(10), () =>
+        {
+            using var converter = new OfficeConverter();
+            byte[] fakeEncryptedPptx = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0, 0, 0, 0];
+            var result = converter.ToPdf(fakeEncryptedPptx, "fake.pptx", Array.Empty<string>(), null);
+            Assert.Equal("error", result.Status);
+            Assert.Contains("password", result.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("PowerPoint", result.Message, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    [Fact]
     public void NoOfficeProcessSurvivesAfterDisposal()
     {
         if (!(WordInstalled || ExcelInstalled || PowerPointInstalled)) return; // Office not installed on this machine
