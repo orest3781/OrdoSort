@@ -39,7 +39,7 @@ public static class Commit
                                   $"{Path.GetDirectoryName(target)}:\n{ex.Message}");
         }
 
-        SurvivingSourceHookForTests?.Invoke();
+        SurvivingSourceHookForTests?.Invoke(src);
 
         // File.Move is MoveFileExW with MOVEFILE_COPY_ALLOWED, documented: "If
         // the file is successfully copied to a different volume and the
@@ -60,7 +60,7 @@ public static class Commit
         // good copy. Refusing loudly and leaving both copies in place for a
         // human to sort out is the correct behaviour here.
         if (File.Exists(src))
-            throw new CommitError(
+            throw new CommitError(leftBothCopies: true, message:
                 // "moved", not "filed": this same message fires from
                 // SkipFile too (the user clicked Skip, not File) AND from
                 // UndoAction (:202) — where src is the FILED copy and
@@ -206,8 +206,9 @@ public static class Commit
     /// races. Not split per caller the way those two are: this check has no
     /// caller-specific behaviour to protect, so it fires uniformly for every
     /// MoveNeverOverwrite call (CommitFile, SkipFile, UndoAction alike).
-    /// Production code never sets this.</summary>
-    internal static Action? SurvivingSourceHookForTests;
+    /// It is handed the path being moved, so a test running beside others
+    /// can act on its own file only. Production code never sets this.</summary>
+    internal static Action<string>? SurvivingSourceHookForTests;
 
     /// <summary>Reverse one commit/skip: move the file back to its original
     /// name. Raises CommitError if the undo can't be done — the filed copy
@@ -246,6 +247,14 @@ public static class Commit
 public sealed class CommitError : Exception
 {
     public CommitError(string message) : base(message) { }
+
+    internal CommitError(bool leftBothCopies, string message) : base(message) =>
+        LeftBothCopies = leftBothCopies;
+
+    /// <summary>The move reached its target but the source could not be
+    /// removed (a cross-volume move that could not delete its source), so the
+    /// file now exists in both places.</summary>
+    public bool LeftBothCopies { get; }
 }
 
 /// <summary>The document moved, but the audit row could not be written. Carries

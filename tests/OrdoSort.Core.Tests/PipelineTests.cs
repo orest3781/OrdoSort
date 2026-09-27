@@ -291,7 +291,7 @@ public class PipelineTests : IDisposable
         // recreates it right after the real (same-volume) move actually
         // deletes it, so MoveNeverOverwrite's post-move check sees exactly
         // what the cross-volume case would leave behind.
-        Commit.SurvivingSourceHookForTests = () => File.WriteAllBytes(src, originalBytes);
+        Commit.SurvivingSourceHookForTests = _ => File.WriteAllBytes(src, originalBytes);
 
         var ex = Assert.Throws<CommitError>(() => Commit.CommitFile(src, "SMITH", Dest, "insert"));
 
@@ -309,7 +309,7 @@ public class PipelineTests : IDisposable
     {
         var src = MakePdf(_inbox, "20240115--222222.pdf");
         var originalBytes = File.ReadAllBytes(src);
-        Commit.SurvivingSourceHookForTests = () => File.WriteAllBytes(src, originalBytes);
+        Commit.SurvivingSourceHookForTests = _ => File.WriteAllBytes(src, originalBytes);
 
         var ex = Assert.Throws<CommitError>(() => Commit.SkipFile(src, _deferred));
 
@@ -320,6 +320,39 @@ public class PipelineTests : IDisposable
     }
 
     // ---- Session (with real history) ----
+    /// <summary>Q2-04 (refinement checklist, High): Undo's move back can
+    /// copy the document into the inbox and then fail to delete the filed
+    /// copy (MoveFileEx across volumes; two shares is the normal set-up). The
+    /// document IS back, so the session must say so: before this, the guard's
+    /// error skipped all of UndoLast's bookkeeping, leaving it counted as
+    /// filed with its undo entry in place, and a second Undo was refused for
+    /// good because the inbox copy "already exists again". The leftover copy
+    /// at the destination is still reported.</summary>
+    [Fact]
+    public void AnUndoThatLeavesTheFiledCopyBehindStillPutsTheDocumentBack()
+    {
+        using var h = new History(Path.Combine(_root, "h.sqlite"));
+        var cfg = new Config { Inbox = _inbox, Deferred = _deferred, NamingMode = "insert" };
+        var s = new Session(cfg, h, _cfgPath);
+        var a = MakePdf(_inbox, "20240101--1.pdf");
+        s.Start(new[] { a });
+        s.CommitCurrent("SMITH JOHN", Dest);
+        var filed = Path.Combine(_dest, "20240101-SMITH JOHN-1.pdf");
+        var filedBytes = File.ReadAllBytes(filed);
+        Commit.SurvivingSourceHookForTests = _ => File.WriteAllBytes(filed, filedBytes);
+
+        var ex = Assert.Throws<CommitError>(() => s.UndoLast());
+
+        Assert.Contains("could not be removed", ex.Message);
+        Assert.True(File.Exists(a));                // the document is back in the inbox
+        Assert.True(File.Exists(filed));            // and the leftover copy is left for a person
+        Assert.Equal(0, s.Filed);
+        Assert.Equal(0, s.Pos);
+        Assert.Equal(a, s.Current);
+        Assert.False(s.CanUndo);
+        Assert.Equal(1L, System.Convert.ToInt64(h.Rows(1)[0]["reverted"]));
+    }
+
     [Fact]
     public void SessionCommitLogsAndAdvances()
     {
@@ -452,7 +485,7 @@ public class PipelineTests : IDisposable
         var a = MakePdf(_inbox, "20240101--1.pdf");
         var originalBytes = File.ReadAllBytes(a);
         s.Start(new[] { a });
-        Commit.SurvivingSourceHookForTests = () => File.WriteAllBytes(a, originalBytes);
+        Commit.SurvivingSourceHookForTests = _ => File.WriteAllBytes(a, originalBytes);
 
         var ex = Assert.Throws<CommitError>(() => s.CommitCurrent("SMITH JOHN", Dest));
 
@@ -473,7 +506,7 @@ public class PipelineTests : IDisposable
         var a = MakePdf(_inbox, "20240101--1.pdf");
         var originalBytes = File.ReadAllBytes(a);
         s.Start(new[] { a });
-        Commit.SurvivingSourceHookForTests = () => File.WriteAllBytes(a, originalBytes);
+        Commit.SurvivingSourceHookForTests = _ => File.WriteAllBytes(a, originalBytes);
 
         var ex = Assert.Throws<CommitError>(() => s.SkipCurrent());
 

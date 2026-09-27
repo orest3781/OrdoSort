@@ -169,7 +169,7 @@ public class UndoFailureTests : IDisposable
         // (same-volume) move actually deletes it, so MoveNeverOverwrite's
         // post-move check sees exactly what the cross-volume case would
         // leave behind.
-        Commit.SurvivingSourceHookForTests = () => File.WriteAllBytes(filedPath, filedBytes);
+        Commit.SurvivingSourceHookForTests = _ => File.WriteAllBytes(filedPath, filedBytes);
 
         var ex = Assert.Throws<CommitError>(() => Commit.UndoAction(filedPath, src));
 
