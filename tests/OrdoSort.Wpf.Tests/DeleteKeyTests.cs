@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Threading;
 using OrdoSort.Wpf.Theme;
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Windows;
@@ -31,40 +30,6 @@ public class DeleteKeyTests : UiTest, IDisposable
         try { Directory.Delete(_dir, true); } catch { /* best effort */ }
     }
 
-    /// <summary>Polls for a debounced-probe result to land, pumping THIS
-    /// thread's own dispatcher on every iteration.
-    ///
-    /// BulkRenameViewModel's Refresh (armed by both AddFilesAsync and
-    /// RemoveSelected) arms DebouncedProbe.Trigger, which schedules the
-    /// actual re-plan via a real System.Threading.Timer — due time 0 for
-    /// "immediate", but still a threadpool callback, never an inline call.
-    /// InlineWorkScheduler makes the PLAN computation itself synchronous
-    /// once that callback fires; it does not make the firing synchronous.
-    /// Constructing the view model with uiContext: SynchronizationContext.
-    /// Current (matching MainWindow.xaml.cs's own construction) makes that
-    /// callback apply the result via Dispatcher.BeginInvoke instead of
-    /// straight off the threadpool thread — required once PreviewGrid is
-    /// actually bound and showing, where an off-thread Preview.Clear/Add
-    /// throws (WPF's CollectionView thread-affinity check) and, being
-    /// inside a fire-and-forget async Task, is silently swallowed: measured
-    /// as Preview left EMPTY (Clear ran, the Add that followed did not)
-    /// rather than the removal simply not having happened yet. But nothing
-    /// pumps a captured DispatcherSynchronizationContext's queue except the
-    /// dispatcher itself, and the whole test body already runs inside one
-    /// Dispatcher.Invoke (HighlightContrastFixture.Invoke) — so waiting here
-    /// needs a nested pump, the same shape as
-    /// TriageWindowDecisionRaceTests.PumpQueued.</summary>
-    private static void WaitForProbeToSettle(Func<bool> condition, string because, int timeoutMs = 5000)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition())
-        {
-            if (DateTime.UtcNow > deadline) throw new TimeoutException(because);
-            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Background);
-            Thread.Sleep(10);
-        }
-    }
-
     [Fact]
     public void DeleteRemovesTheSelectedRowInBulkRename()
     {
@@ -74,10 +39,10 @@ public class DeleteKeyTests : UiTest, IDisposable
         _fx.Invoke(() =>
         {
             ThemeManager.Apply(_fx.App, dark: false);
-            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler(),
-                uiContext: SynchronizationContext.Current);
-            vm.AddFilesAsync(new[] { a, b }).GetAwaiter().GetResult();
-            WaitForProbeToSettle(() => vm.Preview.Count == 2, "the preview should settle after adding two files");
+            var time = new ManualTimeProvider();
+            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler(), time: time);
+            InlineWorkScheduler.Finished(vm.AddFilesAsync(new[] { a, b }));
+            time.Advance(TimeSpan.FromSeconds(1));
             Assert.Equal(2, vm.Preview.Count);
 
             var win = new BulkRenameWindow(vm)
@@ -97,7 +62,7 @@ public class DeleteKeyTests : UiTest, IDisposable
                 win.PreviewGrid.RaiseEvent(args);
 
                 Assert.True(args.Handled);
-                WaitForProbeToSettle(() => vm.Preview.Count == 1, "the preview should settle after removing the selected row");
+                time.Advance(TimeSpan.FromSeconds(1));
                 Assert.Single(vm.Preview);
                 Assert.EndsWith("b.pdf", vm.Preview[0].Source);
             }
@@ -118,10 +83,10 @@ public class DeleteKeyTests : UiTest, IDisposable
         _fx.Invoke(() =>
         {
             ThemeManager.Apply(_fx.App, dark: false);
-            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler(),
-                uiContext: SynchronizationContext.Current);
-            vm.AddFilesAsync(new[] { a, b }).GetAwaiter().GetResult();
-            WaitForProbeToSettle(() => vm.Preview.Count == 2, "the preview should settle after adding two files");
+            var time = new ManualTimeProvider();
+            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler(), time: time);
+            InlineWorkScheduler.Finished(vm.AddFilesAsync(new[] { a, b }));
+            time.Advance(TimeSpan.FromSeconds(1));
             Assert.Equal(2, vm.Preview.Count);
 
             var win = new BulkRenameWindow(vm)
@@ -145,6 +110,7 @@ public class DeleteKeyTests : UiTest, IDisposable
                 win.PreviewGrid.RaiseEvent(args);
 
                 Assert.False(args.Handled);
+                time.Advance(TimeSpan.FromSeconds(1));
                 Assert.Equal(2, vm.Preview.Count);
             }
             finally { try { win.Close(); } catch { /* best effort */ } }

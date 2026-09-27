@@ -51,7 +51,7 @@ public class BulkRenameSortedNavigationTests : UiTest, IDisposable
             Touch("GARCIA_MARIA_8_5_2024_ACME_RECORDS_2-1__08_02_24_1020_X.pdf"),
             Touch("loner.pdf"),
         };
-        vm.AddFilesAsync(files).GetAwaiter().GetResult();
+        InlineWorkScheduler.Finished(vm.AddFilesAsync(files));
         vm.SelectedSources = files;   // only ticked files change (2026-09-26)
         // One-segment names are left with nothing once segment 1 is dropped
         // from every file: those two are the strays.

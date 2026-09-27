@@ -40,7 +40,7 @@ public class BulkRenameSegmentChipTests : UiTest, IDisposable
         var file = Path.Combine(_dir, "EVANS_BRIAN_1998.pdf");
         File.WriteAllText(file, "x");
         var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
-        vm.AddFilesAsync(new[] { file }).GetAwaiter().GetResult();
+        InlineWorkScheduler.Finished(vm.AddFilesAsync(new[] { file }));
         vm.SelectedSources = new[] { file };   // only ticked files change (2026-09-26)
         vm.SetSegmentKept(2, kept: false);
 
@@ -129,7 +129,7 @@ public class BulkRenameSegmentChipTests : UiTest, IDisposable
             return path;
         }).ToList();
         var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
-        vm.AddFilesAsync(files).GetAwaiter().GetResult();
+        InlineWorkScheduler.Finished(vm.AddFilesAsync(files));
         var win = new BulkRenameWindow(vm)
         {
             WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = 0, ShowActivated = false,
