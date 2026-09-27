@@ -348,6 +348,41 @@ public class ProcessingWindowTests : UiTest
         finally { Close(window); }
     }
 
+    /// <summary>The dashboard closed while the viewer was still starting
+    /// (a quick exit at launch, or a slow first Edge start) must not carry on
+    /// when that start finishes: it used to start the already-disposed shell,
+    /// which failed and showed a modal "that didn't finish" warning. On
+    /// GitHub's cold runner that hung the E2E run (2026-09-27).</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ADashboardClosedDuringTheViewerStartStaysQuietWhenTheStartFinishes(bool viewerStarts)
+    {
+        using var bed = new Bed(files: 1);
+        var init = new TaskCompletionSource<bool>();
+        var dialogs = new FakeDialogs();
+        MainWindow window = null!;
+        _fx.Invoke(() =>
+        {
+            window = new MainWindow(bed.Cfg, bed.CfgPath, () => init.Task, () => OffScreen)
+            {
+                ShowActivated = false, Left = -20000, Top = 0,
+            };
+            window.Dialogs = dialogs;
+            window.Show();
+            Settle(window);   // Loaded ran; it is waiting on the viewer start
+        });
+        Close(window);
+
+        _fx.Invoke(() =>
+        {
+            init.SetResult(viewerStarts);
+            Settle(window);
+        });
+
+        Assert.Empty(dialogs.Warnings);
+    }
+
     /// <summary>Closing the app while the viewer is still starting (the
     /// dashboard closed within a second of launch) must not throw when that
     /// start finishes: the window it would hide is already gone. Found when
