@@ -112,7 +112,10 @@ public partial class LabelMakerWindow : Window
     {
         var vm = (LabelMakerViewModel)DataContext;
         var preview = new PrintPreviewWindow(LabelPrinting.BuildDocument(items, vm.DateStyle), jobName,
-            msg => vm.Dialogs.Warn(msg, vm.AppTitle), _previewTitle);
+            msg => vm.Dialogs.Warn(msg, vm.AppTitle), _previewTitle,
+            extraCopies: async extra => await vm.ClaimCopiesAsync(extra) is { } more
+                ? LabelPrinting.BuildDocument(items.Concat(more).ToList(), vm.DateStyle)
+                : null);
         preview.Owner = this;
         preview.ShowDialog();
         return preview.Printed;

@@ -74,7 +74,7 @@
 - [ ] (plan step 5c) PR #6 test gap: "a transient denial fails the rename too and is retried" has no test
 - [ ] (plan step 9) PR #7 unproven path: that a release created on github.com (no tag push) triggers the Release workflow at all. Only a real phone release will show it
 - [x] Draft PR #5 (phone session's E2E fix) is superseded by `e16bf95` on main — close it — already closed; its branch deleted 2026-09-27
-- [ ] (plan step 5a) QC-15, second half: Copies > 1 prints the same barcode on several boxes (docs/superpowers/refinement-master-checklist.md). The false "counter untouched" wording half is fixed
+- [x] (plan step 5a) QC-15, second half: Copies > 1 printed the same barcode on several boxes. Fixed 2026-09-27: in the label print preview each extra copy claims its own box numbers when you print (the preview says so), and the job spools once; a cancel names every number it skipped
 - [x] Intermittent: hundreds of WPF tests fail with "Unexpected record in Baml stream" / "Found unknown BAML record". Fixed 2026-09-24. Not a stale build: `E2EHarnessTests.RoutingLoopInstallsTheUiContextBeforeItBuildsTheWindow` built a MainWindow on its own thread while the shared test Application ran in parallel, and two threads read the lazily loaded shared styles at once. Reproduced 3 in 6 runs; after moving it to a non-parallel collection (`RoutingLoopContextTests`), 8 in 8 clean
 - [ ] CI build-and-test took ~15 min on 2026-09-23 (was ~8). Everything passed; watch whether it stays slow
 
@@ -100,6 +100,7 @@
 | 2026-09-27 | `feature/reports-hub-phase2` archived as a tag, branch deleted | 13 commits untouched since 2026-08-16; the tag keeps the work recoverable |
 | 2026-09-27 | `claude/pro-tier-scope` (draft PR #3) left as it is | A product decision, not a code one |
 | 2026-09-27 | No new test packages (Xunit.StaFact, TimeProvider.Testing) for now | The suite is stable; each package is a dependency to maintain |
+| 2026-09-27 | Box labels: Copies > 1 in the print preview gives every copy its own box numbers | Two boxes must never share a barcode; keeping the Copies box costs less for people than removing it |
 
 ## Verification
 | Check | Result | Not tested |
