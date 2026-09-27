@@ -307,7 +307,12 @@ public class WindowOverflowTests
             cfg.WatchFolders.Add(new WatchFolder { Label = "Failed transfers", Path = watched, Filetypes = "pdf" });
             Directory.CreateDirectory(cfg.Inbox);
             Directory.CreateDirectory(cfg.Deferred);
-            var window = new MainWindow(cfg, Path.Combine(dir, "config.json"));
+            // A stand-in viewer start: the dashboard now starts the session
+            // window's viewer at launch (spec 2026-09-26), and a real Edge
+            // starting inside this layout probe keeps the UI thread from ever
+            // going idle. Layout is what this measures; E2E covers the viewer.
+            var window = new MainWindow(cfg, Path.Combine(dir, "config.json"),
+                () => Task.FromResult(true), () => new Rect(-20000, 0, 1600, 1000));
             Action cleanup = () =>
             {
                 SqliteConnection.ClearAllPools();

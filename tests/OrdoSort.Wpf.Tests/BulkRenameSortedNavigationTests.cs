@@ -81,6 +81,11 @@ public class BulkRenameSortedNavigationTests : IDisposable
             {
                 win.Show();
                 win.UpdateLayout();
+                // Let Loaded run (it re-applies the ticks) before driving the
+                // window, as a person's first click always comes after it; a
+                // fast run otherwise let it land mid-"Next stray".
+                System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { },
+                    System.Windows.Threading.DispatcherPriority.Background);
 
                 // Reverse the view: insertion order [0,1,2,3] shows as [3,2,1,0].
                 var view = (ListCollectionView)CollectionViewSource.GetDefaultView(vm.Preview);
