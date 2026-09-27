@@ -353,6 +353,37 @@ public class PipelineTests : IDisposable
         Assert.Equal(1L, System.Convert.ToInt64(h.Rows(1)[0]["reverted"]));
     }
 
+    /// <summary>Q2-03 (refinement checklist, High): a set-aside folder that
+    /// IS the inbox (here spelled with a trailing separator and different
+    /// case) made Skip rename the document in place to "… (2).pdf" and report
+    /// it set aside. Moving a document into the folder it is already in is
+    /// refused instead, and the document is left exactly as it was.</summary>
+    [Fact]
+    public void SettingADocumentAsideIntoTheInboxItselfIsRefused()
+    {
+        var src = MakePdf(_inbox, "20240115--111111.pdf");
+        var inboxSpelledDifferently = _inbox.ToUpperInvariant() + Path.DirectorySeparatorChar;
+
+        var ex = Assert.Throws<CommitError>(() => Commit.SkipFile(src, inboxSpelledDifferently));
+
+        Assert.Contains("already in", ex.Message);
+        Assert.True(File.Exists(src));
+        Assert.Single(Directory.GetFiles(_inbox));   // nothing renamed beside it
+    }
+
+    [Fact]
+    public void FilingADocumentIntoTheInboxItselfIsRefused()
+    {
+        var src = MakePdf(_inbox, "20240115--222222.pdf");
+        var route = new Route { Label = "Oops", Path = _inbox + Path.DirectorySeparatorChar };
+
+        var ex = Assert.Throws<CommitError>(() => Commit.CommitFile(src, "SMITH", route, "insert"));
+
+        Assert.Contains("already in", ex.Message);
+        Assert.True(File.Exists(src));
+        Assert.Single(Directory.GetFiles(_inbox));
+    }
+
     [Fact]
     public void SessionCommitLogsAndAdvances()
     {

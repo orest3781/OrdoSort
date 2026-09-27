@@ -100,6 +100,19 @@ public static class Commit
         return true;
     }
 
+    /// <summary>A destination or set-aside folder that IS the document's own
+    /// folder (the inbox, however it is spelled) would "move" it in place: the
+    /// collision rule renamed it to "… (2).pdf", it was reported filed or set
+    /// aside, and the rescan queued it again (Q2-03). Refused before any
+    /// naming or moving.</summary>
+    private static void RefuseItsOwnFolder(string src, string folder)
+    {
+        if (PathIdentity.Same(Path.GetDirectoryName(src), folder))
+            throw new CommitError(
+                $"{Path.GetFileName(src)} is already in {folder}, so it can't be moved there. " +
+                "That folder is set as a destination or the set-aside folder; check it in Settings.");
+    }
+
     public static CommitOutcome CommitFile(
         string src, string typedName, Route route, string globalMode)
     {
@@ -110,6 +123,7 @@ public static class Commit
         if (!Directory.Exists(destDir))
             throw new CommitError($"Destination folder is not available: " +
                                   $"{(destDir.Length > 0 ? destDir : "(not set)")}");
+        RefuseItsOwnFolder(src, destDir);
 
         Naming.NameResult Build() => Naming.BuildTarget(
             Path.GetFileName(src), typedName, route.NamingMode, globalMode,
@@ -144,6 +158,7 @@ public static class Commit
         if (string.IsNullOrWhiteSpace(deferredDir) || !Directory.Exists(deferredDir))
             throw new CommitError($"Set-aside folder is not available: " +
                                   $"{(string.IsNullOrWhiteSpace(deferredDir) ? "(not set)" : deferredDir)}");
+        RefuseItsOwnFolder(src, deferredDir);
 
         // blank name + empty route == keep the original filename, collision-counted
         var result = Naming.BuildTarget(
