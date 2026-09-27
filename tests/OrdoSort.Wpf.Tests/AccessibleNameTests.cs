@@ -43,17 +43,6 @@ public class AccessibleNameTests
         return data;
     }
 
-    private static IEnumerable<DependencyObject> Descendants(DependencyObject root)
-    {
-        var n = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < n; i++)
-        {
-            var c = VisualTreeHelper.GetChild(root, i);
-            yield return c;
-            foreach (var d in Descendants(c)) yield return d;
-        }
-    }
-
     /// <summary>Controls that must be able to say what they are. Value-carrying
     /// or value-collecting, and reachable.
     ///
@@ -160,7 +149,7 @@ public class AccessibleNameTests
         {
             window.Show();
             window.UpdateLayout();
-            OverflowProbe.PumpRender();
+            PumpRender();
             window.UpdateLayout();
 
             var row = Descendants((DependencyObject)window.Content).OfType<ListBoxItem>().Single();
@@ -204,7 +193,7 @@ public class AccessibleNameTests
         {
             host.Show();
             host.UpdateLayout();
-            OverflowProbe.PumpRender();
+            PumpRender();
             host.UpdateLayout();
 
             var names = new List<string>();
@@ -273,7 +262,7 @@ public class AccessibleNameTests
         window.WindowStartupLocation = WindowStartupLocation.Manual;
         window.Show();
         window.UpdateLayout();
-        OverflowProbe.PumpRender();
+        PumpRender();
         window.UpdateLayout();
 
         var content = (FrameworkElement)window.Content;
@@ -291,7 +280,7 @@ public class AccessibleNameTests
             {
                 tabs.SelectedItem = tab;
                 window.UpdateLayout();
-                OverflowProbe.PumpRender();
+                PumpRender();
                 window.UpdateLayout();
             }
 

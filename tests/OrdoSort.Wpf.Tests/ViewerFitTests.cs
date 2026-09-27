@@ -221,7 +221,7 @@ public class MonitorWorkAreaTests
             try
             {
                 window.Show();
-                OverflowProbe.PumpRender();
+                PumpRender();
 
                 var work = MonitorWorkArea.For(window);
 
@@ -247,7 +247,7 @@ public class MonitorWorkAreaTests
             try
             {
                 window.Show();
-                OverflowProbe.PumpRender();
+                PumpRender();
 
                 Assert.Equal(primary, MonitorWorkArea.For(window));
             }

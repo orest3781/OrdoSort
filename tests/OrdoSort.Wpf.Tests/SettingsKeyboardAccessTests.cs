@@ -46,9 +46,6 @@ public class SettingsKeyboardAccessTests
     private readonly HighlightContrastFixture _fx;
     public SettingsKeyboardAccessTests(HighlightContrastFixture fx) => _fx = fx;
 
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-
     /// <summary>Header literal -> the access key WPF derives from it. WPF
     /// takes the character after the first single underscore, which is why one
     /// of these is NOT the initial letter: General/Filing/Destinations/
@@ -94,16 +91,6 @@ public class SettingsKeyboardAccessTests
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
         };
-    }
-
-    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T hit) yield return hit;
-            foreach (var deeper in Descendants<T>(child)) yield return deeper;
-        }
     }
 
     // ------------------------------------------------------- Step 4: mnemonics

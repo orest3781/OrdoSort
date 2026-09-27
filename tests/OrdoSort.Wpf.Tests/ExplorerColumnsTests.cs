@@ -70,17 +70,6 @@ public sealed class ExplorerColumnsTests : IDisposable
         window.UpdateLayout();
     }
 
-    internal static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) return match;
-            if (FindDescendant<T>(child) is { } nested) return nested;
-        }
-        return null;
-    }
-
     internal static Row Long(int i) => new() { Name = new string('W', 60) + i, Kind = "pdf", Note = "" };
 
     // ---- rule 1: fixed widths --------------------------------------------

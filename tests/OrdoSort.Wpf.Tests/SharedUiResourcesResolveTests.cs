@@ -17,14 +17,7 @@ public class SharedUiResourcesResolveTests
     private readonly HighlightContrastFixture _fx;
     public SharedUiResourcesResolveTests(HighlightContrastFixture fx) => _fx = fx;
 
-    private static string SharedWindowsDir()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "OrdoSort.sln")))
-            dir = dir.Parent!;
-        var root = dir?.FullName ?? throw new InvalidOperationException("OrdoSort.sln not found");
-        return Path.Combine(root, "src", "OrdoSort.Ui", "Windows");
-    }
+    private static string SharedWindowsDir() => Path.Combine(Repo.Root, "src", "OrdoSort.Ui", "Windows");
 
     /// <summary>Keys named in {StaticResource X} across the shared windows.
     /// Anything containing a brace is a nested/implicit reference such as

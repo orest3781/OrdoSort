@@ -281,15 +281,4 @@ public class HistoryWindowXamlTests
         finally { Cleanup(win, history, dbPath); }
     });
 
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
-            if (child is T match) return match;
-            if (FindDescendant<T>(child) is { } nested) return nested;
-        }
-        return null;
-    }
 }

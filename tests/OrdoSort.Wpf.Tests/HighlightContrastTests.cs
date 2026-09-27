@@ -384,9 +384,6 @@ public class HighlightContrastTests
         }
     });
 
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-
 
     // ---------------------------------------------------------------- ListBox
 
@@ -2442,37 +2439,6 @@ public class HighlightContrastTests
                 "UIElement has no private static IsMouseOverPropertyKey field");
         var key = (DependencyPropertyKey)field.GetValue(null)!;
         el.SetValue(key, value);
-    }
-
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) return match;
-            if (FindDescendant<T>(child) is { } nested) return nested;
-        }
-        return null;
-    }
-
-    /// <summary>Like <see cref="FindDescendant{T}"/>, but collects EVERY
-    /// matching descendant in visual-tree (depth-first) order instead of
-    /// stopping at the first — needed where a single container has more
-    /// than one same-typed element to distinguish, e.g. ManageSavedWindow's
-    /// Label + password-status TextBlocks, which <see cref="FindTextElement"/>
-    /// alone can't tell apart.</summary>
-    private static List<T> FindAllDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        var results = new List<T>();
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) results.Add(match);
-            results.AddRange(FindAllDescendants<T>(child));
-        }
-        return results;
     }
 
     /// <summary>Like <see cref="FindDescendant{T}"/>, but stops at EITHER a

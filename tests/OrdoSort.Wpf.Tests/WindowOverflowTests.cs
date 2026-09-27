@@ -390,7 +390,7 @@ public class WindowOverflowTests
                 if (height > 0) window.Height = height;
             }
             window.UpdateLayout();
-            OverflowProbe.PumpRender();
+            PumpRender();
             window.UpdateLayout();
 
             var content = (FrameworkElement)window.Content;
@@ -402,7 +402,7 @@ public class WindowOverflowTests
                 {
                     tabControl.SelectedItem = tab;
                     window.UpdateLayout();
-                    OverflowProbe.PumpRender();
+                    PumpRender();
                     window.UpdateLayout();
                     offenders.AddRange(
                         OverflowProbe.Escapees(content, checkVertical: true, out var tabExamined)
@@ -604,19 +604,9 @@ public class WindowOverflowTests
         };
         host.Show();
         host.UpdateLayout();
-        OverflowProbe.PumpRender();
+        PumpRender();
         host.UpdateLayout();
         return host;
     }
 
-    private static T? FindDescendant<T>(DependencyObject node) where T : DependencyObject
-    {
-        for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(node); i++)
-        {
-            var child = System.Windows.Media.VisualTreeHelper.GetChild(node, i);
-            if (child is T hit) return hit;
-            if (FindDescendant<T>(child) is { } deeper) return deeper;
-        }
-        return null;
-    }
 }

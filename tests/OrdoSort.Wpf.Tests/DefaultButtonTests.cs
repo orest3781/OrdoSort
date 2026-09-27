@@ -21,16 +21,6 @@ public class DefaultButtonTests
     private readonly HighlightContrastFixture _fx;
     public DefaultButtonTests(HighlightContrastFixture fx) => _fx = fx;
 
-    internal static IEnumerable<T> LogicalDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        foreach (var child in LogicalTreeHelper.GetChildren(root))
-        {
-            if (child is not DependencyObject dependencyObject) continue;
-            if (dependencyObject is T match) yield return match;
-            foreach (var descendant in LogicalDescendants<T>(dependencyObject)) yield return descendant;
-        }
-    }
-
     private static Button ByName(DependencyObject root, string automationName) =>
         LogicalDescendants<Button>(root).Single(b => AutomationProperties.GetName(b) == automationName);
 

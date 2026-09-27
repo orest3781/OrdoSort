@@ -34,23 +34,6 @@ public class TriageWindowInitRaceTests
     private readonly HighlightContrastFixture _fx;
     public TriageWindowInitRaceTests(HighlightContrastFixture fx) => _fx = fx;
 
-    /// <summary>Pumps this thread's Dispatcher (a nested message loop, same
-    /// mechanism ShowDialog uses) until <paramref name="task"/> completes.
-    /// Needed because <c>InitAndShowAsync</c>'s <c>await</c> captures this
-    /// STA thread's DispatcherSynchronizationContext, so the continuation
-    /// that runs after <see cref="System.Threading.Tasks.TaskCompletionSource{TResult}.SetResult"/>
-    /// is POSTED to the dispatcher queue, not run inline — a plain blocking
-    /// wait (`.GetAwaiter().GetResult()`) on this same thread would never let
-    /// that posted continuation run at all.</summary>
-    private static void PumpUntilComplete(Task task)
-    {
-        if (task.IsCompleted) return;
-        var frame = new DispatcherFrame();
-        task.ContinueWith(_ => frame.Continue = false,
-            TaskScheduler.FromCurrentSynchronizationContext());
-        Dispatcher.PushFrame(frame);
-    }
-
     [Fact]
     public void ClosingWhileInitIsPendingSkipsShowAndTouchesNothingDisposed() => _fx.Invoke(() =>
     {

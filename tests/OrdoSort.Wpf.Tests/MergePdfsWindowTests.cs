@@ -21,16 +21,6 @@ public class MergePdfsWindowTests
     private readonly HighlightContrastFixture _fx;
     public MergePdfsWindowTests(HighlightContrastFixture fx) => _fx = fx;
 
-    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T hit) yield return hit;
-            foreach (var deeper in Descendants<T>(child)) yield return deeper;
-        }
-    }
-
     [Fact]
     public void OneListNoTabsAndADroppedZipLandsInIt() => _fx.Invoke(() =>
     {
@@ -49,7 +39,7 @@ public class MergePdfsWindowTests
         {
             window.Show();
             window.UpdateLayout();
-            OverflowProbe.PumpRender();
+            PumpRender();
             window.UpdateLayout();
 
             var content = (DependencyObject)window.Content;
@@ -111,7 +101,7 @@ public class MergePdfsWindowTests
             {
                 window.Show();
                 window.UpdateLayout();
-                OverflowProbe.PumpRender();
+                PumpRender();
                 window.UpdateLayout();
 
                 var grid = Assert.Single(Descendants<DataGrid>((DependencyObject)window.Content));

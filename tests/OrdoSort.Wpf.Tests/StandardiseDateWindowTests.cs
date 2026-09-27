@@ -23,7 +23,7 @@ public class StandardiseDateWindowTests
         w.WindowStartupLocation = WindowStartupLocation.Manual;
         w.Show();
         w.UpdateLayout();
-        OverflowProbe.PumpRender();
+        PumpRender();
         w.UpdateLayout();
         return w;
     }

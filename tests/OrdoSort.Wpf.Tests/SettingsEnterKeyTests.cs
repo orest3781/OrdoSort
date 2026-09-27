@@ -23,16 +23,6 @@ public class SettingsEnterKeyTests
     private readonly HighlightContrastFixture _fx;
     public SettingsEnterKeyTests(HighlightContrastFixture fx) => _fx = fx;
 
-    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var dependencyObject = VisualTreeHelper.GetChild(root, i);
-            if (dependencyObject is T match) yield return match;
-            foreach (var descendant in Descendants<T>(dependencyObject)) yield return descendant;
-        }
-    }
-
     private static TextBox Named(Window win, string automationName) =>
         Descendants<TextBox>(win).Single(t => AutomationProperties.GetName(t) == automationName);
 

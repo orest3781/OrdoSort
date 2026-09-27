@@ -76,9 +76,6 @@ public class BulkRenameSegmentChipTests : IDisposable
         }
     });
 
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-
     /// <summary>The most common colour in the label's bounds is its
     /// background; the colour contrasting most with it is its ink.</summary>
     private static (Rgb fg, Rgb bg) SampleRenderedMaxContrast(FrameworkElement root, FrameworkElement target)
@@ -117,19 +114,6 @@ public class BulkRenameSegmentChipTests : IDisposable
             if (ratio > bestRatio) { bestRatio = ratio; bestFg = rgb; }
         }
         return (bestFg, bg);
-    }
-
-    private static List<T> FindAllDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        var results = new List<T>();
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) results.Add(match);
-            results.AddRange(FindAllDescendants<T>(child));
-        }
-        return results;
     }
 
     /// <summary>Rule 12 in Bulk rename: typing jumps to a file instead of

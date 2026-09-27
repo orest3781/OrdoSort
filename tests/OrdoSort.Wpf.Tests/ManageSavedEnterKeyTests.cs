@@ -51,9 +51,6 @@ public class ManageSavedEnterKeyTests
         return args.Handled;
     }
 
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-
     private static void FocusFor(UIElement target, string what)
     {
         target.Focus();

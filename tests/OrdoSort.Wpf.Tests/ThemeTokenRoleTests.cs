@@ -50,22 +50,12 @@ public class ThemeTokenRoleTests
             "Danger's shipped job is a BACKGROUND paired with DangerText; as text it measures 2.69:1 on Dark.Surface"),
     };
 
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "OrdoSort.sln")))
-            dir = dir.Parent!;
-        return dir?.FullName ?? throw new InvalidOperationException(
-            "couldn't find OrdoSort.sln walking up from " + AppContext.BaseDirectory +
-            " — this suite reads XAML source directly off disk and needs the repo root.");
-    }
-
     /// <summary>Every XAML the app ships, Theme\ included — unlike
     /// TextWrapCoverageTests, control templates are IN scope here: a Foreground
     /// Setter inside a template paints real text just as a call site does.</summary>
     private static IEnumerable<string> AllShippedXaml()
     {
-        var wpf = Path.Combine(FindRepoRoot(), "src", "OrdoSort.Wpf");
+        var wpf = Path.Combine(Repo.Root, "src", "OrdoSort.Wpf");
         return Directory.EnumerateFiles(wpf, "*.xaml", SearchOption.AllDirectories)
             .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
                      && !f.Contains($"{Path.DirectorySeparatorChar}bin"));

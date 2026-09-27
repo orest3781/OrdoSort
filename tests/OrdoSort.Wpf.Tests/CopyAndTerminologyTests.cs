@@ -41,19 +41,6 @@ public class CopyAndTerminologyTests
     private readonly HighlightContrastFixture _fx;
     public CopyAndTerminologyTests(HighlightContrastFixture fx) => _fx = fx;
 
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-
-    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T hit) yield return hit;
-            foreach (var deeper in Descendants<T>(child)) yield return deeper;
-        }
-    }
-
     private static SettingsWindow BuildSettingsWindow(SettingsViewModel vm) =>
         new(vm)
         {

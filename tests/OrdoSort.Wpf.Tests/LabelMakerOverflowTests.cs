@@ -71,7 +71,7 @@ public class LabelMakerOverflowTests
         {
             window.Show();
             window.UpdateLayout();
-            OverflowProbe.PumpRender();
+            PumpRender();
 
             var offenders = OverflowProbe.HorizontalEscapees((FrameworkElement)window.Content, out var examined);
             // 36 elements are judged here, so 10 is a floor with room to
@@ -130,7 +130,7 @@ public class LabelMakerOverflowTests
         {
             window.Show();
             window.UpdateLayout();
-            OverflowProbe.PumpRender();
+            PumpRender();
 
             // The form outgrows its * Grid row as the font grows. A Grid
             // neither clips nor scrolls, so without a viewport the form's last

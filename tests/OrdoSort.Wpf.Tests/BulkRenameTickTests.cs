@@ -164,15 +164,4 @@ public class BulkRenameTickTests : IDisposable
     private static string AutomationPropertiesName(DependencyObject element) =>
         System.Windows.Automation.AutomationProperties.GetName(element);
 
-    private static List<T> Descendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        var results = new List<T>();
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) results.Add(match);
-            results.AddRange(Descendants<T>(child));
-        }
-        return results;
-    }
 }

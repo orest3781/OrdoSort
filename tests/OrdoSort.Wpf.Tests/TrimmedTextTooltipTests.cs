@@ -155,7 +155,7 @@ public class TrimmedTextTooltipTests
             // Unloaded is dispatched at DispatcherPriority.Loaded, the same
             // priority OverflowProbe.PumpRender already exists to drain for
             // Loaded itself — needed here for the symmetric event.
-            OverflowProbe.PumpRender();
+            PumpRender();
 
             text.Text = "short";
             Assert.Equal(LongText, text.ToolTip as string);

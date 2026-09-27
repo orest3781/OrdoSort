@@ -52,17 +52,6 @@ public class TransientFooterButtonTests
     private readonly HighlightContrastFixture _fx;
     public TransientFooterButtonTests(HighlightContrastFixture fx) => _fx = fx;
 
-    private static IEnumerable<DependencyObject> Descendants(DependencyObject root)
-    {
-        var n = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < n; i++)
-        {
-            var c = VisualTreeHelper.GetChild(root, i);
-            yield return c;
-            foreach (var d in Descendants(c)) yield return d;
-        }
-    }
-
     /// <summary>A stable, human-readable name for a button, so a failure says
     /// which one moved rather than quoting an index.</summary>
     private static string Label(Button b)

@@ -20,16 +20,6 @@ public class StandardiseNamesWindowTests
     private readonly HighlightContrastFixture _fx;
     public StandardiseNamesWindowTests(HighlightContrastFixture fx) => _fx = fx;
 
-    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T hit) yield return hit;
-            foreach (var deeper in Descendants<T>(child)) yield return deeper;
-        }
-    }
-
     [Fact]
     public void OneGridNoTabsAndADroppedFileLandsInItAfterTheDatePromptIsAnswered()
     {
@@ -53,7 +43,7 @@ public class StandardiseNamesWindowTests
             {
                 window.Show();
                 window.UpdateLayout();
-                OverflowProbe.PumpRender();
+                PumpRender();
                 window.UpdateLayout();
 
                 var content = (DependencyObject)window.Content;

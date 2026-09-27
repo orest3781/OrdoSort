@@ -163,7 +163,7 @@ public class DeleteKeyTests : IDisposable
     [Theory, MemberData(nameof(GridsThatMustHandleDelete))]
     public void TheListElementRoutesKeysToTheDeleteHandler(string xamlFile, string elementName)
     {
-        var path = Path.Combine(FindRepoRoot(), "src", "OrdoSort.Wpf", "Windows", xamlFile);
+        var path = Path.Combine(Repo.Root, "src", "OrdoSort.Wpf", "Windows", xamlFile);
         var xaml = File.ReadAllText(path);
         var start = xaml.IndexOf($"x:Name=\"{elementName}\"", StringComparison.Ordinal);
         Assert.True(start >= 0, $"{xamlFile} has no element named {elementName}");
@@ -172,10 +172,4 @@ public class DeleteKeyTests : IDisposable
         Assert.Contains("PreviewKeyDown=\"OnGridKeyDown\"", openingTag);
     }
 
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "OrdoSort.sln"))) dir = dir.Parent;
-        return dir?.FullName ?? throw new InvalidOperationException("OrdoSort.sln not found above the test output");
-    }
 }

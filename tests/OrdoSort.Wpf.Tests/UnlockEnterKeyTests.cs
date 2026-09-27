@@ -53,18 +53,6 @@ public class UnlockEnterKeyTests
     private readonly HighlightContrastFixture _fx;
     public UnlockEnterKeyTests(HighlightContrastFixture fx) => _fx = fx;
 
-    private static void PumpUntilComplete(Task task)
-    {
-        if (task.IsCompleted) return;
-        var frame = new DispatcherFrame();
-        task.ContinueWith(_ => frame.Continue = false,
-            TaskScheduler.FromCurrentSynchronizationContext());
-        Dispatcher.PushFrame(frame);
-    }
-
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-
     private static void SimulateKey(PresentationSource source, Key key, RoutedEvent routedEvent) =>
         InputManager.Current.ProcessInput(
             new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, key) { RoutedEvent = routedEvent });
@@ -83,16 +71,6 @@ public class UnlockEnterKeyTests
             $"{fe.GetType().Name} \"{AutomationProperties.GetName(fe)}\"",
         var other => other.GetType().Name,
     };
-
-    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
-            if (child is T hit) yield return hit;
-            foreach (var deeper in Descendants<T>(child)) yield return deeper;
-        }
-    }
 
     private static UnlockWindow OffScreen(UnlockViewModel vm) => new(vm)
     {

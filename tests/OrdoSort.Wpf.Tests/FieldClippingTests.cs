@@ -31,17 +31,6 @@ public class FieldClippingTests
     private readonly HighlightContrastFixture _fx;
     public FieldClippingTests(HighlightContrastFixture fx) => _fx = fx;
 
-    private static IEnumerable<DependencyObject> Descendants(DependencyObject root)
-    {
-        var n = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < n; i++)
-        {
-            var c = VisualTreeHelper.GetChild(root, i);
-            yield return c;
-            foreach (var d in Descendants(c)) yield return d;
-        }
-    }
-
     /// <summary>How wide the text in this box would like to be. Measured
     /// against the box's own typeface rather than guessed from a character
     /// count, which is the whole point — the defect only appears at a font
@@ -97,7 +86,7 @@ public class FieldClippingTests
             tabs.SelectedItem = tabs.Items.Cast<TabItem>()
                 .First(t => (t.Header as string)?.Contains("Destinations") == true);
             w.UpdateLayout();
-            OverflowProbe.PumpRender();
+            PumpRender();
             w.UpdateLayout();
 
             var box = Descendants(w).OfType<TextBox>()

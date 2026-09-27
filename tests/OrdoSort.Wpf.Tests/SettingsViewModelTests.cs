@@ -25,43 +25,6 @@ public class SettingsViewModelTests : IDisposable
         return Config.Load(path);
     }
 
-    /// <summary>Live path notes now run their real Directory.Exists/
-    /// File.Exists/Config.ReadDoc check debounced and off the UI thread (Task
-    /// 2 — see DebouncedProbe), so a fresh construction or edit doesn't
-    /// reflect the real answer the instant it returns. Poll for it instead of
-    /// asserting immediately — this is what "eventually correct" means for an
-    /// async check; the timeout is generous, but a local-disk probe should
-    /// land in well under a second.</summary>
-    private static void WaitFor(Func<bool> condition, string because, int timeoutMs = 3000)
-    {
-        var sw = Stopwatch.StartNew();
-        while (true)
-        {
-            bool result;
-            try
-            {
-                result = condition();
-            }
-            // Fix round 2, item 2(b) — same fix as ToolViewModelTests.WaitFor/
-            // TilePreviewProbeTests.WaitFor's own copy: a predicate reading a
-            // collection that a background thread is mid-mutating can throw
-            // INSIDE the read (Count and an indexer read are not atomic with
-            // each other) rather than just observe a stale-but-valid value.
-            // Both exceptions below are the SAME "not true yet" outcome a
-            // plain false would be, so they are retried, not surfaced.
-            // Nothing else is caught: a predicate that throws for a REAL
-            // reason must still fail the test immediately.
-            catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException)
-            {
-                result = false;
-            }
-            if (result) return;
-            if (sw.ElapsedMilliseconds > timeoutMs)
-                Assert.Fail($"condition never became true within {timeoutMs}ms: {because}");
-            Thread.Sleep(5);
-        }
-    }
-
     [Fact]
     public void UnknownKeysAndToolStateSurviveOkByConstruction()
     {

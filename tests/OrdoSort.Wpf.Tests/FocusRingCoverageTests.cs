@@ -143,9 +143,6 @@ public class FocusRingCoverageTests
     private readonly HighlightContrastFixture _fx;
     public FocusRingCoverageTests(HighlightContrastFixture fx) => _fx = fx;
 
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-
     /// <summary>The flag WPF's own KeyboardNavigation consults before it will
     /// build a FocusVisualAdorner at all (see the class doc, point 2). It is
     /// <c>internal static</c>, so reflection is the only way in; a missing

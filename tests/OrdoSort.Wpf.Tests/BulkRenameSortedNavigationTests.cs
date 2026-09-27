@@ -37,16 +37,6 @@ public class BulkRenameSortedNavigationTests : IDisposable
         return path;
     }
 
-    private static void WaitFor(Func<bool> condition, string because, int timeoutMs = 5000)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition())
-        {
-            if (DateTime.UtcNow > deadline) throw new TimeoutException(because);
-            Thread.Sleep(10);
-        }
-    }
-
     [Fact]
     public void NextStrayIgnoresTheGridsSortOrder()
     {

@@ -21,7 +21,7 @@ public class BrandAssetsTests
     [Theory, MemberData(nameof(AppIcons))]
     public void EachAppIconCarriesEveryWindowsSize(string relative) => _fx.Invoke(() =>
     {
-        using var stream = File.OpenRead(Path.Combine(FindRepoRoot(), relative));
+        using var stream = File.OpenRead(Path.Combine(Repo.Root, relative));
         var decoder = new IconBitmapDecoder(stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
 
         Assert.Equal(BrandArt.IconSizes, decoder.Frames.Select(f => f.PixelWidth));
@@ -32,7 +32,7 @@ public class BrandAssetsTests
     [Fact]
     public void GeneratedTextFilesMatchTheArt()
     {
-        var root = FindRepoRoot();
+        var root = Repo.Root;
         foreach (var (relative, content) in BrandCommand.TextOutputs())
         {
             var path = Path.Combine(root, relative);
@@ -45,7 +45,7 @@ public class BrandAssetsTests
     [Fact]
     public void TheWebsiteHeaderMarkMatchesTheArt()
     {
-        var index = File.ReadAllText(Path.Combine(FindRepoRoot(), BrandCommand.IndexHtml));
+        var index = File.ReadAllText(Path.Combine(Repo.Root, BrandCommand.IndexHtml));
 
         Assert.True(BrandCommand.SameText(BrandCommand.WithInlineMark(index), index),
             "the header mark in ordosort.com/index.html is out of date; run the brand generator");
@@ -59,12 +59,4 @@ public class BrandAssetsTests
         Assert.True(icon.PixelWidth > 0);
     });
 
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "OrdoSort.sln")))
-            dir = dir.Parent;
-        return dir?.FullName
-            ?? throw new InvalidOperationException("couldn't find OrdoSort.sln walking up from " + AppContext.BaseDirectory);
-    }
 }
