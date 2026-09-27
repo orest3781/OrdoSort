@@ -12,9 +12,9 @@
              and StatusGreen measures 8.49:1 here. Same token/role confusion the
              Danger -> StatusRed sites below and in ProcessingView already fixed;
              ThemeTokenRoleTests now lints it. -->
-        <TextBlock Text="{Binding CountLine}" Style="{StaticResource HeadlineText}"
+        <TextBlock Text="{Binding DoneTitle}" Style="{StaticResource HeadlineText}"
                    Foreground="{DynamicResource Theme.StatusGreen}" />
-        <TextBlock Text="{Binding DetailLine}" TextWrapping="Wrap" Margin="0,6,0,0" />
+        <TextBlock Text="{Binding DoneDetail}" TextWrapping="Wrap" Margin="0,6,0,0" />
         <TextBlock Text="{Binding LogLine}" Style="{StaticResource SubtleText}"
                    TextWrapping="Wrap" Margin="0,4,0,0"
                    Visibility="{Binding HasLogLine, Converter={StaticResource BoolToVis}}" />

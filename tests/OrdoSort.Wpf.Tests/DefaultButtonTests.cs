@@ -44,7 +44,11 @@ public class DefaultButtonTests
     public void StartProcessingAnswersEnter() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var view = new ReadyView();
+        // the name is bound to StartButtonText (2026-09-26); a stub carries the Ready value
+        var view = new ReadyView { DataContext = new { StartButtonText = "Start processing" } };
+        // the bound name resolves once the dispatcher has run its binding work
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { },
+            System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         Assert.True(ByName(view, "Start processing").IsDefault, "Enter on Ready must start the session");
     });
 
