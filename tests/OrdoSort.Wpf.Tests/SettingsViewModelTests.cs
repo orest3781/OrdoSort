@@ -1216,7 +1216,8 @@ public class SettingsViewModelTests : IDisposable
         var vm = new SettingsViewModel(Config.Load(cfgPath), _dialogs, cfgPath: cfgPath);
         vm.AddRouteCommand.Execute(null);
         vm.SelectedRoute!.Label = "Invoices";
-        vm.SelectedRoute!.Path = _dir;
+        // its own folder: a destination that is the inbox is refused (Q2-03)
+        vm.SelectedRoute!.Path = Directory.CreateDirectory(Path.Combine(_dir, "invoices")).FullName;
         vm.AlertTerms.Add("URGENT");
 
         Assert.True(vm.TryBuildResult());

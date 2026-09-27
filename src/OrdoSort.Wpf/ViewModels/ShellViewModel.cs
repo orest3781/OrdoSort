@@ -1594,6 +1594,14 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 HideLastAction();
                 ReportAuditFailure(ex, "OrdoSort — undone, but still logged as filed");
             }
+            catch (CommitError ex) when (ex.LeftBothCopies)
+            {
+                // The document is back and the session says so; only the
+                // filed copy would not delete. An undo, with a warning: the
+                // screen follows the session back to it below (Q2-04).
+                HideLastAction();
+                _dialogs.Warn(ex.Message, "OrdoSort — undone, but a copy remains");
+            }
             catch (CommitError ex)
             {
                 _dialogs.Warn(ex.Message, "OrdoSort — undo failed");

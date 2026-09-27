@@ -187,7 +187,25 @@ public sealed class Session
     {
         if (_undo.Count == 0) throw new CommitError("Nothing to undo.");
         var entry = _undo.Last!.Value;
-        Commit.UndoAction(entry.FiledPath, entry.OriginalPath);
+        CommitError? leftover = null;
+        try
+        {
+            Commit.UndoAction(entry.FiledPath, entry.OriginalPath);
+        }
+        catch (CommitError e) when (e.LeftBothCopies)
+        {
+            // The document IS back in the inbox; only the filed copy would
+            // not delete. Record the undo (below) and still report the extra
+            // copy: skipping the bookkeeping left it counted as filed with
+            // its undo entry in place, and a second Undo was then refused for
+            // good because the inbox copy "already exists again" (Q2-04).
+            leftover = new CommitError(leftBothCopies: true, message:
+                $"{Path.GetFileName(entry.OriginalPath)} is back at {entry.OriginalPath}, but the " +
+                $"filed copy at {entry.FiledPath} could not be removed — Windows allows a " +
+                "cross-volume move to report success even when it can't delete the source. " +
+                "The undo is recorded. Confirm the copy in the inbox is correct, then remove " +
+                $"the copy at {entry.FiledPath} by hand.");
+        }
         // the file is BACK — the counts must say so even if the audit write
         // fails, and an unrecorded commit (RowId -1) has no row to mark
         _undo.RemoveLast();
@@ -199,6 +217,7 @@ public sealed class Session
             try { _history.MarkReverted(entry.RowId); }
             catch (Exception ex) { failure = $"{ex.GetType().Name}: {ex.Message}"; }
         }
+        if (leftover is not null) throw leftover;   // the extra copy is the more urgent news
         if (failure is not null)
             throw new AuditError(entry.OriginalPath,
                 $"{Path.GetFileName(entry.FiledPath)} was moved back to:\n\n" +

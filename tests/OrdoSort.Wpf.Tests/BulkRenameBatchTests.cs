@@ -378,6 +378,54 @@ public class BulkRenameBatchTests : IDisposable
     /// <summary>Cancel stops the files that haven't started and says what
     /// actually happened. Checked between files, so the one already in flight
     /// finishes — that is the guarantee, not a rounding error.</summary>
+    /// <summary>Q2-01 (refinement checklist, High): when a batch ends, the
+    /// preview of the renamed files is rebuilt off the UI thread. Until it
+    /// lands, Rename must stay off: re-armed over the plan it just executed,
+    /// a second click re-ran it against files that no longer exist.</summary>
+    [Fact]
+    public void AFinishedBatchCannotBeRunAgainBeforeItsNewPreviewArrives()
+    {
+        var (vm, scheduler) = Batch("a.pdf");
+
+        vm.RenameCommand.Execute(null);
+        scheduler.ReleaseNext("the rename should be dispatched");
+        // Not Settle: that would release the queued re-plan too, and the
+        // re-plan landing is exactly what must not be needed here.
+        WaitFor(() => !vm.IsBusy, "the batch should finish");
+
+        Assert.False(vm.RenameCommand.CanExecute(null),
+            "Rename re-armed over the plan it just executed, before the new preview arrived");
+    }
+
+    /// <summary>Q2-01's other half: a batch that renames nothing (every file
+    /// failed, or it was cancelled before its first file) must not wipe the
+    /// undo record of the batch before it, which is still on disk.</summary>
+    [Fact]
+    public void ABatchThatRenamesNothingKeepsTheLastBatchUndoable()
+    {
+        var (vm, scheduler) = Batch("a.pdf");
+        var renamed = Path.Combine(_dir, "NEW-a.pdf");
+        vm.RenameCommand.Execute(null);
+        scheduler.ReleaseNext("the first batch's rename should be dispatched");
+        scheduler.Settle(() => !vm.IsBusy && File.Exists(renamed), "the first batch should finish");
+        scheduler.Settle(() => vm.Preview.Any(r => r.Current == "NEW-a.pdf"), "the preview should list the renamed file");
+        scheduler.Quiesce();
+        Assert.True(vm.UndoCommand.CanExecute(null));
+
+        // A second batch whose only file has gone from disk: it renames nothing.
+        vm.SelectedSources = new[] { renamed };
+        vm.Prefix = "X-";
+        scheduler.Settle(() => vm.RenameCommand.CanExecute(null), "the second rule should be planned");
+        scheduler.Quiesce();
+        File.Delete(renamed);
+        vm.RenameCommand.Execute(null);
+        scheduler.Settle(() => !vm.IsBusy, "the second batch should finish");
+        scheduler.Quiesce();
+
+        Assert.True(vm.UndoCommand.CanExecute(null),
+            "a batch that renamed nothing wiped the undo record of the batch before it");
+    }
+
     [Fact]
     public void CancellingABatchLeavesTheRemainingFilesAloneAndSaysSo()
     {

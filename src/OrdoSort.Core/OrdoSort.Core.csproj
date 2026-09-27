@@ -29,6 +29,8 @@
     <!-- the large-file threshold is settable only by tests, matching the
          pattern the Wpf project already uses -->
     <InternalsVisibleTo Include="OrdoSort.Core.Tests" />
+    <!-- the Wpf tests drive the same test hooks (Commit.SurvivingSourceHookForTests) through the shell -->
+    <InternalsVisibleTo Include="OrdoSort.Wpf.Tests" />
   </ItemGroup>
 
 </Project>

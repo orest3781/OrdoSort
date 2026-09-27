@@ -12,6 +12,7 @@ internal sealed class ManualWorkScheduler : IWorkScheduler
 {
     private readonly object _gate = new();
     private readonly List<Action> _pending = new();
+    private readonly HashSet<int> _released = new();
 
     public int PendingCount { get { lock (_gate) return _pending.Count; } }
 
@@ -39,18 +40,23 @@ internal sealed class ManualWorkScheduler : IWorkScheduler
     public void Release(int index)
     {
         Action a;
-        lock (_gate) a = _pending[index];
+        lock (_gate) { a = _pending[index]; _released.Add(index); }
         var context = SynchronizationContext.Current;
         SynchronizationContext.SetSynchronizationContext(null);
         try { a(); }
         finally { SynchronizationContext.SetSynchronizationContext(context); }
     }
 
-    /// <summary>Runs every queued piece of work in order, including work
-    /// that running it queues.</summary>
+    /// <summary>Runs every queued piece of work not yet run, in order,
+    /// including work that running it queues. Safe to call again later.</summary>
     public void ReleaseAll()
     {
-        for (var i = 0; i < PendingCount; i++) Release(i);
+        for (var i = 0; i < PendingCount; i++)
+        {
+            bool done;
+            lock (_gate) done = _released.Contains(i);
+            if (!done) Release(i);
+        }
     }
 }
 

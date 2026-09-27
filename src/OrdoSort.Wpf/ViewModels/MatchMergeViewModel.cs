@@ -60,10 +60,33 @@ public sealed class MatchMergeViewModel : ObservableObject
         _dialogs = dialogs;
         _saveCfg = saveCfg;
         _scheduler = scheduler ?? new TaskWorkScheduler();
-        LoadRosterCommand = new RelayCommand(BrowseRoster);
-        MergeCommand = new RelayCommand(DoMerge, () => MergeCount > 0);
-        UndoCommand = new RelayCommand(UndoBatch, () => _outcomes.Count > 0);
-        ClearCommand = new RelayCommand(() => { _files.Clear(); _mergeRejectNotes.Clear(); Refresh(); });
+        LoadRosterCommand = new RelayCommand(BrowseRoster, () => !IsBusy);
+        MergeCommand = new AsyncRelayCommand(DoMergeAsync, () => MergeCount > 0 && !IsBusy);
+        UndoCommand = new AsyncRelayCommand(UndoBatchAsync, () => _outcomes.Count > 0 && !IsBusy);
+        ClearCommand = new RelayCommand(() => { _files.Clear(); _mergeRejectNotes.Clear(); Refresh(); }, () => !IsBusy);
+        // A run that stops on something unexpected must not leave its last
+        // "Merging 3 of 12…" line up as if it were still working.
+        MergeCommand.OnError += ex => Status = $"The merge stopped unexpectedly: {ex.Message}";
+        UndoCommand.OnError += ex => Status = $"Undo stopped unexpectedly: {ex.Message}";
+    }
+
+    private bool _isBusy;
+
+    /// <summary>True while a merge or an undo is renaming files. Every action
+    /// that touches the list waits for it: the renames run off the UI thread
+    /// now, so the window stays usable (Q2-02).</summary>
+    public bool IsBusy
+    {
+        get => _isBusy;
+        private set
+        {
+            if (!Set(ref _isBusy, value)) return;
+            Raise(nameof(CanReview));
+            LoadRosterCommand.RaiseCanExecuteChanged();
+            MergeCommand.RaiseCanExecuteChanged();
+            UndoCommand.RaiseCanExecuteChanged();
+            ClearCommand.RaiseCanExecuteChanged();
+        }
     }
 
     private string _rosterPath = "";
@@ -114,11 +137,11 @@ public sealed class MatchMergeViewModel : ObservableObject
     public string ReviewButtonText => ReviewCount > 0
         ? $"Review {ReviewCount} match{(ReviewCount == 1 ? "" : "es")}…"
         : "Review matches…";
-    public bool CanReview => ReviewCount > 0;
+    public bool CanReview => ReviewCount > 0 && !IsBusy;
 
     public RelayCommand LoadRosterCommand { get; }
-    public RelayCommand MergeCommand { get; }
-    public RelayCommand UndoCommand { get; }
+    public AsyncRelayCommand MergeCommand { get; }
+    public AsyncRelayCommand UndoCommand { get; }
     public RelayCommand ClearCommand { get; }
 
     /// <summary>For the Review matches window: ambiguous and suggested files,
@@ -361,14 +384,20 @@ public sealed class MatchMergeViewModel : ObservableObject
     /// same stakes: this tool moves files too.</summary>
     public void AddFiles(IEnumerable<string> paths)
     {
+        if (IsBusy) { AddNote = BusyNote; return; }
         var taken = Intake.Add(_files, paths, Pdfs, File.Exists);
         _files.AddRange(taken.Files);
         AddNote = taken.Note("PDF");
         Refresh();
     }
 
+    // A drop or a Delete mid-run would change the list the run is still
+    // renaming from, so it is refused out loud rather than ignored.
+    private const string BusyNote = "Wait for the merge or undo to finish before changing the list.";
+
     public void RemoveFiles(IEnumerable<string> sources)
     {
+        if (IsBusy) { AddNote = BusyNote; return; }
         foreach (var s in sources.ToList())
         {
             _files.Remove(s);
@@ -444,7 +473,7 @@ public sealed class MatchMergeViewModel : ObservableObject
         MergeCommand.RaiseCanExecuteChanged();
     }
 
-    private void DoMerge()
+    private async Task DoMergeAsync()
     {
         // MatchMerge.ExecuteMerges plans then Executes, and Execute silently
         // skips every Changed=false plan. For a "merge" row that's the ONLY
@@ -459,10 +488,26 @@ public sealed class MatchMergeViewModel : ObservableObject
         var plans = BulkRename.Plan(toDo.Select(r => r.Source), new BulkRename.RenameOp(), overrides);
         var rejected = plans.Where(p => p.Manual && !p.Changed).ToList();
         foreach (var p in rejected) _mergeRejectNotes[p.Source] = (overrides[p.Source], p.Note);
-        var outcomes = BulkRename.Execute(plans)
-            .Concat(rejected.Select(p => new BulkRename.RenameOutcome(p.Source, null, p.Note)))
-            .ToList();
-        Absorb(outcomes);
+        var batch = plans.Where(p => p.Changed).ToList();
+        var outcomes = new List<BulkRename.RenameOutcome>();
+        IsBusy = true;
+        try
+        {
+            // One file per hop, so the status line counts and whatever has
+            // landed is recorded for Undo even if a later file throws.
+            for (var i = 0; i < batch.Count; i++)
+            {
+                Status = $"Merging {i + 1} of {batch.Count}…";
+                var one = new[] { batch[i] };
+                outcomes.AddRange(await _scheduler.Run(() => BulkRename.Execute(one)));
+            }
+        }
+        finally
+        {
+            outcomes.AddRange(rejected.Select(p => new BulkRename.RenameOutcome(p.Source, null, p.Note)));
+            IsBusy = false;
+            Absorb(outcomes);
+        }
     }
 
     /// <summary>Adopt a batch of rename outcomes (one-click merges or review
@@ -497,9 +542,20 @@ public sealed class MatchMergeViewModel : ObservableObject
             Status = $"Merged {renamed.Count} file{(renamed.Count == 1 ? "" : "s")}.";
     }
 
-    private void UndoBatch()
+    private async Task UndoBatchAsync()
     {
-        var problems = BulkRename.Revert(_outcomes);
+        var batch = _outcomes;
+        List<string> problems;
+        IsBusy = true;
+        Status = "Restoring the original names…";
+        try
+        {
+            problems = await _scheduler.Run(() => BulkRename.Revert(batch));
+        }
+        finally
+        {
+            IsBusy = false;
+        }
         // Revert is per-file fail-soft and doesn't say WHICH outcome
         // failed — but a successful restore always makes the merged file's
         // name vanish (moved back to Source), while every failure path in

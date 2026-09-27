@@ -2251,6 +2251,20 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 errors.Add($"\"{w.Label}\": \"{w.Color}\" is not a color (try #c0392b).");
         }
 
+        // A set-aside folder or destination that IS the inbox, however it is
+        // spelled, would "move" documents in place: renamed to "… (2)",
+        // reported done, and queued again (Q2-03). Resolved the way filing
+        // resolves them, so a relative path beside config.json counts.
+        if (Inbox.Trim() is { Length: > 0 } inbox)
+        {
+            var inboxFolder = ResolveFolderPath(inbox);
+            if (Deferred.Trim() is { Length: > 0 } deferred && PathIdentity.Same(inboxFolder, ResolveFolderPath(deferred)))
+                errors.Add("The set-aside folder is the inbox itself, so set-aside documents would never leave it. Choose a different folder.");
+            foreach (var r in Routes)
+                if (r.Path.Trim() is { Length: > 0 } path && PathIdentity.Same(inboxFolder, ResolveFolderPath(path)))
+                    errors.Add($"\"{r.Label.Trim()}\": its folder is the inbox itself, so filed documents would never leave it.");
+        }
+
         return errors;
     }
 
