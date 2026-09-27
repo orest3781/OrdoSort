@@ -22,6 +22,15 @@
 | S:\ → A:\DEV path rewrite (45 files, comments and docs only) | ✅ Done | Committed `1f5b8de` and pushed 2026-09-09. `.gitignore` now points at `A:\DEV\_ARCHIVE\OrdoSort-samples` |
 
 ## Next
+**Plan to finish (owner approved 2026-09-27), in order:**
+- [x] 1. Housekeeping: PR #5 already closed, its branch deleted; `feature/reports-hub-phase2` archived as tag `archive/reports-hub-phase2` and the branch deleted; merged local `feature/why-reasons` deleted
+- [ ] 2. Merge the Review matches column picker (`feature/review-column-picker`): update from main, check.bat, e2e, live check
+- [ ] 3a. Box labels: Copies > 1 prints the same barcode on several boxes (needs the owner's rule: a number per copy, or identical copies)
+- [ ] 3b. TableLayoutStore: a failed read must not make Save overwrite every window's layout; atomic write; log a damaged file
+- [ ] 3c. PR #6 network-share save: owner tries it on the real share; add the missing retry test; document the permissions side effect
+- [ ] 4. Explorer tables polish: keyboard header menu, Triage saved sort, empty-table scrollbar, the review's timing and store-path tests, confirm File list remembering its columns
+- [ ] 5. Release 1.8.0, published from github.com (proves PR #7's path); fix the smoke screenshots' collapsed columns first or ship the current shots
+
 - [x] GitHub E2E hung on `main` after the 2026-09-27 push (runs 36315995075 and its re-run, both cancelled at the 20-min limit): it stops inside the Zip scenario "unicode and spaces in names" (a CJK filename in the table). Passes locally in ~20 s; CI build-test, integration and smoke are green. Last green E2E was 1.7.0 (2026-09-25); since then the Explorer-style columns changed the Zip table. Also: E2EPump.Until's deadline runs on a Background-priority timer, so a layout storm can starve it and turn a failure into a 20-min hang. Diagnostics added 2026-09-27 on `fix/e2e-watchdog`: a per-scenario watchdog (2 min) that prints what the UI thread is doing and ends the run, and a Send-priority deadline in E2EPump (a test proved the old one hung under a layout storm). Cause found 2026-09-27 (run 36321101039): the watchdog reported the UI thread idle behind a modal "OrdoSort — that didn't finish" MessageWindow. The dashboard kept starting up after it had been closed during the viewer's (slow, cold) first start, and the disposed shell's start-up failed. Fixed on `fix/closed-during-warmup`: the dashboard stops if it closed during the viewer's start (d6aab87), and a disposed shell never shows a dialog, since the start-up can also still be scanning when the windows close (crash.log still records it). E2E passes locally twice and on GitHub (run 36322085607, 46/46); merged to `main` 2026-09-27
 - [x] Processing screen: route list items announced as "OrdoSort.Wpf.ViewModels.RouteButtonViewModel" to screen readers (seen 2026-09-27 through UI Automation) — fixed 2026-09-27: each entry is named like its button ("Invoices · _INV · Ctrl+1"), checked live through UI Automation; AccessibleNameTests walks the Processing screen now
 - [ ] Intermittent: the dashboard's start-up (ShellViewModel.Initialize) sometimes fails in a test run and warns "that didn't finish". That warning used to hang the test run (fixed 2026-09-27: FakeDialogs; HeaderLayoutTests now fails fast quoting crash.log). Next time it fails, read the quoted crash.log to find the real cause
@@ -85,6 +94,10 @@
 | 2026-09-22 | Box Labels ships as its own zips in the release, not inside OrdoSort's | People who only need labels download just that |
 | 2026-09-25 | Table rules 3 and 5 (September: content-sized columns, a star filler, no horizontal scrollbar) retired in favour of File Explorer's model | Owner's call: fixed, user-set widths remembered per PC, with a horizontal scrollbar when needed |
 | 2026-09-10 | Merged the long-lived branch with `--no-ff` rather than a PR | Matches the repo's existing merge-commit history; solo repo, and the work was already reviewed commit by commit |
+| 2026-09-27 | Finish plan approved: housekeeping, column picker, user-facing fixes, table polish, then release 1.8.0 | Owner went with the recommendations |
+| 2026-09-27 | `feature/reports-hub-phase2` archived as a tag, branch deleted | 13 commits untouched since 2026-08-16; the tag keeps the work recoverable |
+| 2026-09-27 | `claude/pro-tier-scope` (draft PR #3) left as it is | A product decision, not a code one |
+| 2026-09-27 | No new test packages (Xunit.StaFact, TimeProvider.Testing) for now | The suite is stable; each package is a dependency to maintain |
 
 ## Verification
 | Check | Result | Not tested |
