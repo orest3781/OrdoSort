@@ -49,7 +49,7 @@ public partial class MainWindow : Window
     /// pass their own so no real Edge starts.</param>
     /// <param name="sessionWorkArea">Where sessions open; tests pass an
     /// off-screen area. Defaults to this window's monitor.</param>
-    internal MainWindow(Config cfg, string cfgPath, Func<Task<bool>>? initViewer, Func<Rect>? sessionWorkArea)
+    internal MainWindow(Config cfg, string cfgPath, Func<Task<bool>>? initViewer, Func<Rect>? sessionWorkArea = null)
     {
         InitializeComponent();
         // A session opens in its own window (spec 2026-09-26), which owns the

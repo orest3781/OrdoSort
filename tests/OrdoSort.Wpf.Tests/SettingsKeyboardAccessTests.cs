@@ -41,13 +41,10 @@ file sealed class NoDialogs : IDialogService
 /// rather than in a separate file because the only way to exercise it is
 /// through this same real window.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class SettingsKeyboardAccessTests
+public class SettingsKeyboardAccessTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public SettingsKeyboardAccessTests(HighlightContrastFixture fx) => _fx = fx;
-
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
+    public SettingsKeyboardAccessTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <summary>Header literal -> the access key WPF derives from it. WPF
     /// takes the character after the first single underscore, which is why one
@@ -88,22 +85,12 @@ public class SettingsKeyboardAccessTests
         var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_a11y_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(),
             () => ThemePalette.Light, cfgPath,
-            uiContext: SynchronizationContext.Current);
+            uiContext: SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
         return new SettingsWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
         };
-    }
-
-    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T hit) yield return hit;
-            foreach (var deeper in Descendants<T>(child)) yield return deeper;
-        }
     }
 
     // ------------------------------------------------------- Step 4: mnemonics

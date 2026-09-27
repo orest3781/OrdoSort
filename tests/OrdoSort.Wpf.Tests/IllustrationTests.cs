@@ -9,10 +9,10 @@ namespace OrdoSort.Wpf.Tests;
 /// <summary>The empty-state pictures in Theme/Illustrations.xaml, rendered
 /// for real.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class IllustrationTests
+public class IllustrationTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public IllustrationTests(HighlightContrastFixture fx) => _fx = fx;
+    public IllustrationTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <summary>The old padlock drew its shackle on top of the body, so the
     /// left leg showed through the lock. The body now covers it. At 100 px

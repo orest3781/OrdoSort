@@ -1002,47 +1002,6 @@ public class BulkRenameViewModelTests : IDisposable
         return p;
     }
 
-    /// <summary>The preview now computes off the UI thread through a debounced
-    /// probe (Task 2 — see DebouncedProbe/BulkRenameViewModel.Refresh), so a
-    /// property set (even an "immediate" one — the timer callback still fires
-    /// on a threadpool thread) doesn't reflect in Preview/CountsLine/
-    /// NeedsNameCount the instant the setter returns. Poll for it, same shape
-    /// as SettingsViewModelTests.WaitFor/TilePreviewProbeTests.WaitFor.</summary>
-    private static void WaitFor(Func<bool> condition, string because, int timeoutMs = 3000)
-    {
-        var sw = Stopwatch.StartNew();
-        while (true)
-        {
-            bool result;
-            try
-            {
-                result = condition();
-            }
-            // Fix round 2, item 2(b): a predicate reading a live
-            // ObservableCollection (e.g. vm.Preview) while a background
-            // thread is mid-mutation (Clear then re-Add) can throw INSIDE
-            // the read rather than just observe a stale-but-valid value —
-            // Count and an indexer read are not atomic with each other, so
-            // a collection that shrinks or clears between the two throws
-            // ArgumentOutOfRangeException, and enumerating one that is
-            // structurally modified mid-enumeration throws
-            // InvalidOperationException. Both are the SAME "not true yet"
-            // outcome a plain false would be — the state being observed
-            // simply isn't settled — so they are retried, not surfaced.
-            // Nothing else is caught: a predicate that throws for a REAL
-            // reason (a bug, a bad cast, an assertion inside the lambda)
-            // must still fail the test immediately.
-            catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException)
-            {
-                result = false;
-            }
-            if (result) return;
-            if (sw.ElapsedMilliseconds > timeoutMs)
-                Assert.Fail($"condition never became true within {timeoutMs}ms: {because}");
-            Thread.Sleep(5);
-        }
-    }
-
     /// <summary>Fix round 2, item 2(b)'s own guarding fact for WaitFor's new
     /// exception policy — this is test infrastructure, not production code,
     /// but it is exactly the kind of behaviour worth its own test: a plain

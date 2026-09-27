@@ -42,10 +42,10 @@ file sealed class NoDialogs : IDialogService
 /// scope; past 18 the prose elements degrade by trimming/wrapping instead of
 /// overflowing, which is what the fixes this suite pins actually changed.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class LabelMakerOverflowTests
+public class LabelMakerOverflowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public LabelMakerOverflowTests(HighlightContrastFixture fx) => _fx = fx;
+    public LabelMakerOverflowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     [Theory]
     [InlineData(14.0, 600.0)]
@@ -58,7 +58,7 @@ public class LabelMakerOverflowTests
         _fx.App.Resources["AppFontSize"] = fontSize;
 
         var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
-        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels");
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels", scheduler: new InlineWorkScheduler());
         vm.Clients.Add(new LabelClientVm { Id = "TESTCLNT", DestroyDaysText = "45", NextNumberText = "00000001" });
         vm.Selected = vm.Clients[0];
         var window = new LabelMakerWindow(vm, "Box labels", "Print preview")
@@ -71,7 +71,7 @@ public class LabelMakerOverflowTests
         {
             window.Show();
             window.UpdateLayout();
-            OverflowProbe.PumpRender();
+            PumpRender();
 
             var offenders = OverflowProbe.HorizontalEscapees((FrameworkElement)window.Content, out var examined);
             // 36 elements are judged here, so 10 is a floor with room to
@@ -115,7 +115,7 @@ public class LabelMakerOverflowTests
         _fx.App.Resources["AppFontSize"] = fontSize;
 
         var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
-        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box Labels");
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box Labels", scheduler: new InlineWorkScheduler());
         vm.Clients.Add(new LabelClientVm { Id = "TESTCLNT", DestroyDaysText = "45", NextNumberText = "00000001" });
         vm.Selected = vm.Clients[0];
         var window = new LabelMakerWindow(vm, "Box Labels", "Box Labels — Print preview",
@@ -130,7 +130,7 @@ public class LabelMakerOverflowTests
         {
             window.Show();
             window.UpdateLayout();
-            OverflowProbe.PumpRender();
+            PumpRender();
 
             // The form outgrows its * Grid row as the font grows. A Grid
             // neither clips nor scrolls, so without a viewport the form's last

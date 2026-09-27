@@ -55,13 +55,13 @@ public sealed class RouteEditVm : ObservableObject, IDisposable
 
     public RouteEditVm(Func<Route, string>? validateRoute = null,
         IWorkScheduler? scheduler = null, SynchronizationContext? uiContext = null,
-        int probeDelayMs = 300)
+        int probeDelayMs = 300, TimeProvider? time = null)
     {
         // SettingsViewModel always passes its config-aware validator; this
         // default (no config file known) only serves a standalone row.
         _validateRoute = validateRoute ?? (r => Config.ValidateRoute(r, configPath: null));
         _problemProbe = new DebouncedProbe<string>(scheduler ?? new TaskWorkScheduler(),
-            uiContext, v => Set(ref _problem, v, nameof(Problem)), probeDelayMs);
+            uiContext, v => Set(ref _problem, v, nameof(Problem)), probeDelayMs, time);
         TriggerProblemCheck();   // blank Path answers "no destination path configured" synchronously
     }
 
@@ -159,9 +159,10 @@ public sealed class RouteEditVm : ObservableObject, IDisposable
     public Dictionary<string, JsonElement> Extras { get; init; } = new();
 
     public static RouteEditVm From(Route r, Func<Route, string>? validateRoute = null,
-        IWorkScheduler? scheduler = null, SynchronizationContext? uiContext = null, int probeDelayMs = 300)
+        IWorkScheduler? scheduler = null, SynchronizationContext? uiContext = null, int probeDelayMs = 300,
+        TimeProvider? time = null)
     {
-        var vm = new RouteEditVm(validateRoute, scheduler, uiContext, probeDelayMs)
+        var vm = new RouteEditVm(validateRoute, scheduler, uiContext, probeDelayMs, time)
         {
             Label = r.Label,
             Path = r.Path,
@@ -209,11 +210,11 @@ public sealed class WatchEditVm : ObservableObject, IDisposable
 
     public WatchEditVm(Func<string, bool>? directoryExists = null,
         IWorkScheduler? scheduler = null, SynchronizationContext? uiContext = null,
-        int probeDelayMs = 300)
+        int probeDelayMs = 300, TimeProvider? time = null)
     {
         _directoryExists = directoryExists ?? Directory.Exists;
         _problemProbe = new DebouncedProbe<string>(scheduler ?? new TaskWorkScheduler(),
-            uiContext, v => Set(ref _problem, v, nameof(Problem)), probeDelayMs);
+            uiContext, v => Set(ref _problem, v, nameof(Problem)), probeDelayMs, time);
         TriggerProblemCheck();   // blank Path answers "no folder chosen yet" synchronously
     }
 
@@ -351,9 +352,10 @@ public sealed class WatchEditVm : ObservableObject, IDisposable
     public Dictionary<string, JsonElement> Extras { get; init; } = new();
 
     public static WatchEditVm From(WatchFolder w, Func<string, bool>? directoryExists = null,
-        IWorkScheduler? scheduler = null, SynchronizationContext? uiContext = null, int probeDelayMs = 300)
+        IWorkScheduler? scheduler = null, SynchronizationContext? uiContext = null, int probeDelayMs = 300,
+        TimeProvider? time = null)
     {
-        var vm = new WatchEditVm(directoryExists, scheduler, uiContext, probeDelayMs)
+        var vm = new WatchEditVm(directoryExists, scheduler, uiContext, probeDelayMs, time)
         {
             Label = w.Label,
             Path = w.Path,
@@ -609,6 +611,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private readonly IWorkScheduler _scheduler;
     private readonly SynchronizationContext? _uiContext;
     private readonly int _probeDelayMs;
+    private readonly TimeProvider? _time;
 
     public Config? Result { get; private set; }
 
@@ -621,7 +624,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         Func<WatchFolder, IEnumerable<string>, FolderMonitor.FolderStatus>? folderStatus = null,
         IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null,
-        int probeDelayMs = 300)
+        int probeDelayMs = 300,
+        TimeProvider? time = null)
     {
         _original = current;
         _dialogs = dialogs;
@@ -635,24 +639,25 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _uiContext = uiContext;
         _probeDelayMs = probeDelayMs;
+        _time = time;
 
         _inboxProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
             v => ApplyNote(v, ref _inboxNote, ref _inboxNoteNeedsAttention,
-                nameof(InboxNote), nameof(InboxNoteNeedsAttention)), _probeDelayMs);
+                nameof(InboxNote), nameof(InboxNoteNeedsAttention)), _probeDelayMs, _time);
         _deferredProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
             v => ApplyNote(v, ref _deferredNote, ref _deferredNoteNeedsAttention,
-                nameof(DeferredNote), nameof(DeferredNoteNeedsAttention)), _probeDelayMs);
+                nameof(DeferredNote), nameof(DeferredNoteNeedsAttention)), _probeDelayMs, _time);
         _namesFileProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
             v => ApplyNote(v, ref _namesFileNote, ref _namesFileNoteNeedsAttention,
-                nameof(NamesFileNote), nameof(NamesFileNoteNeedsAttention)), _probeDelayMs);
+                nameof(NamesFileNote), nameof(NamesFileNoteNeedsAttention)), _probeDelayMs, _time);
         _historyDbProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
             v => ApplyNote(v, ref _historyDbNote, ref _historyDbNoteNeedsAttention,
-                nameof(HistoryDbNote), nameof(HistoryDbNoteNeedsAttention)), _probeDelayMs);
+                nameof(HistoryDbNote), nameof(HistoryDbNoteNeedsAttention)), _probeDelayMs, _time);
         _boxLabelsFileProbe = new DebouncedProbe<FieldNote>(_scheduler, _uiContext,
             v => ApplyNote(v, ref _boxLabelsFileNote, ref _boxLabelsFileNoteNeedsAttention,
-                nameof(BoxLabelsFileNote), nameof(BoxLabelsFileNoteNeedsAttention)), _probeDelayMs);
+                nameof(BoxLabelsFileNote), nameof(BoxLabelsFileNoteNeedsAttention)), _probeDelayMs, _time);
         _tilePreviewProbe = new DebouncedProbe<FolderMonitor.FolderStatus>(
-            _scheduler, _uiContext, ApplyTilePreviewStatus, _probeDelayMs);
+            _scheduler, _uiContext, ApplyTilePreviewStatus, _probeDelayMs, _time);
 
         SoundsEnabled = current.Sounds.Enabled;
         NewAlertSound = new SoundChoiceVm("New alert", SoundEvent.NewAlert,
@@ -695,9 +700,9 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         SyncSchemeSelection();
 
         Routes = new ObservableCollection<RouteEditVm>(
-            current.Routes.Select(r => RouteEditVm.From(r, _validateRoute, _scheduler, _uiContext, _probeDelayMs)));
+            current.Routes.Select(r => RouteEditVm.From(r, _validateRoute, _scheduler, _uiContext, _probeDelayMs, _time)));
         WatchFolders = new ObservableCollection<WatchEditVm>(
-            current.WatchFolders.Select(w => WatchEditVm.From(w, FolderExists, _scheduler, _uiContext, _probeDelayMs)));
+            current.WatchFolders.Select(w => WatchEditVm.From(w, FolderExists, _scheduler, _uiContext, _probeDelayMs, _time)));
 
         // Session-sticky seed: every section PRESENT WHEN SETTINGS OPENED
         // (see the _stickySections field for the full rule). AddSection()
@@ -707,7 +712,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
         AddRouteCommand = new RelayCommand(() =>
         {
-            var vm = new RouteEditVm(_validateRoute, _scheduler, _uiContext, _probeDelayMs) { Label = "New destination" };
+            var vm = new RouteEditVm(_validateRoute, _scheduler, _uiContext, _probeDelayMs, _time) { Label = "New destination" };
             Routes.Add(vm);
             SelectedRoute = vm;
         });
@@ -719,7 +724,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             if (SelectedRoute is not { } src) return;
             // a sibling to tweak: everything copied except the hotkey (a
             // duplicate hotkey would collide the moment it lands)
-            var copy = RouteEditVm.From(src.ToRoute(), _validateRoute, _scheduler, _uiContext, _probeDelayMs);
+            var copy = RouteEditVm.From(src.ToRoute(), _validateRoute, _scheduler, _uiContext, _probeDelayMs, _time);
             copy.Label = src.Label.Trim() + " copy";
             copy.Hotkey = "";
             Routes.Insert(Routes.IndexOf(src) + 1, copy);
@@ -732,7 +737,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         {
             // "Add folder": born into the SELECTED folder's section, right
             // after it — not teleported to the default group at the far end
-            var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs)
+            var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs, _time)
             {
                 Label = "New folder",
                 Section = SelectedWatch?.Section ?? "",
@@ -1813,7 +1818,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// (an empty group's folder lands at the end of the flat list).</summary>
     public void AddFolderToSection(WatchSectionVm h)
     {
-        var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs)
+        var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs, _time)
         {
             Label = "New folder",
             Section = h.IsDefault ? "" : h.Header,
@@ -1877,7 +1882,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         for (var n = 2; SectionKeyExists(name); n++)
             name = $"New section {n}";
         TrackSticky(name);   // EXPLICITLY created — the other of the two things that makes a section sticky
-        var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs) { Label = "New folder", Section = name };
+        var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs, _time) { Label = "New folder", Section = name };
         WatchFolders.Add(vm);
         SelectedWatch = vm;
         var header = WatchRows.OfType<WatchSectionVm>().FirstOrDefault(h =>

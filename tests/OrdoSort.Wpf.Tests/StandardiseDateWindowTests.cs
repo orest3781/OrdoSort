@@ -11,10 +11,10 @@ namespace OrdoSort.Wpf.Tests;
 /// real window is constructed and shown off-screen without entering the
 /// modal loop Ask would then have to escape.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class StandardiseDateWindowTests
+public class StandardiseDateWindowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public StandardiseDateWindowTests(HighlightContrastFixture fx) => _fx = fx;
+    public StandardiseDateWindowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static StandardiseDateWindow Show(string defaultDate, int fileCount)
     {
@@ -23,7 +23,7 @@ public class StandardiseDateWindowTests
         w.WindowStartupLocation = WindowStartupLocation.Manual;
         w.Show();
         w.UpdateLayout();
-        OverflowProbe.PumpRender();
+        PumpRender();
         w.UpdateLayout();
         return w;
     }

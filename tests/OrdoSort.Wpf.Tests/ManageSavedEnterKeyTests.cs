@@ -37,10 +37,10 @@ namespace OrdoSort.Wpf.Tests;
 /// <c>Keyboard.Focus()</c>, since InputManager routes to whatever holds
 /// KEYBOARD focus and <c>Focus()</c> alone only sets the logical kind.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class ManageSavedEnterKeyTests
+public class ManageSavedEnterKeyTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public ManageSavedEnterKeyTests(HighlightContrastFixture fx) => _fx = fx;
+    public ManageSavedEnterKeyTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <summary>Returns whether the app claimed the key.</summary>
     private static bool SimulateEnter(PresentationSource source)
@@ -50,9 +50,6 @@ public class ManageSavedEnterKeyTests
         InputManager.Current.ProcessInput(args);
         return args.Handled;
     }
-
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
 
     private static void FocusFor(UIElement target, string what)
     {
@@ -69,7 +66,7 @@ public class ManageSavedEnterKeyTests
     {
         ThemeManager.Apply(_fx.App, dark: false);
         var cfg = new Config();
-        var vm = new UnlockViewModel(cfg, () => true);
+        var vm = new UnlockViewModel(cfg, () => true, scheduler: new InlineWorkScheduler());
         var window = new ManageSavedWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
@@ -121,7 +118,7 @@ public class ManageSavedEnterKeyTests
     public void EnterOutsideTheEntryFieldsIsLeftForTheDefaultButton() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         var window = new ManageSavedWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,

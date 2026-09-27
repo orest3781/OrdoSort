@@ -162,6 +162,13 @@ public partial class TriageWindow : Window
     public List<BulkRename.RenameOutcome> Outcomes { get; } = new();
 
     public TriageWindow(List<MatchMerge.MatchResult> items, IReadOnlyList<string> headers)
+        : this(items, headers, initViewer: null) { }
+
+    /// <param name="initViewer">Starts the PDF viewer when the window loads;
+    /// null starts the real WebView2. Tests pass a stand-in so a window test
+    /// never starts Edge (docs/testing.md).</param>
+    internal TriageWindow(List<MatchMerge.MatchResult> items, IReadOnlyList<string> headers,
+        Func<Task<bool>>? initViewer)
     {
         InitializeComponent();
         _items = items;
@@ -238,7 +245,7 @@ public partial class TriageWindow : Window
         // Explorer-style columns (table rules v2): fixed widths the user
         // sizes, remembered per roster header.
         ExplorerColumns.Attach(Candidates, "Triage");
-        Loaded += async (_, _) => await InitAndShowAsync(_pdf.InitAsync);
+        Loaded += async (_, _) => await InitAndShowAsync(initViewer ?? _pdf.InitAsync);
     }
 
     /// <summary>One roster cell's binding: bound to the ROW, with the header

@@ -8,23 +8,17 @@ namespace OrdoSort.Wpf.Tests;
 /// a new window can't slip past it.</summary>
 public class ExplorerColumnsCoverageTests
 {
-    private static string RepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "OrdoSort.sln"))) dir = dir.Parent;
-        return dir?.FullName ?? throw new InvalidOperationException("couldn't find OrdoSort.sln");
-    }
 
     public static TheoryData<string> GridWindows()
     {
         var data = new TheoryData<string>();
-        foreach (var xaml in Directory.EnumerateFiles(Path.Combine(RepoRoot(), "src"), "*.xaml", SearchOption.AllDirectories))
+        foreach (var xaml in Directory.EnumerateFiles(Path.Combine(Repo.Root, "src"), "*.xaml", SearchOption.AllDirectories))
             if (File.ReadAllText(xaml).Contains("<DataGrid ")) data.Add(Path.GetFileName(xaml));
         return data;
     }
 
     private static string PathOf(string xamlName) =>
-        Directory.EnumerateFiles(Path.Combine(RepoRoot(), "src"), xamlName, SearchOption.AllDirectories).Single();
+        Directory.EnumerateFiles(Path.Combine(Repo.Root, "src"), xamlName, SearchOption.AllDirectories).Single();
 
     [Theory, MemberData(nameof(GridWindows))]
     public void EveryGridIsAttached(string xamlName)
@@ -46,7 +40,7 @@ public class ExplorerColumnsCoverageTests
     [Fact]
     public void TheOldAutoFitIsNotUsedAnywhere()
     {
-        foreach (var cs in Directory.EnumerateFiles(Path.Combine(RepoRoot(), "src"), "*.cs", SearchOption.AllDirectories))
+        foreach (var cs in Directory.EnumerateFiles(Path.Combine(Repo.Root, "src"), "*.cs", SearchOption.AllDirectories))
             Assert.DoesNotContain("DataGridColumnCap.Track", File.ReadAllText(cs));
     }
 }

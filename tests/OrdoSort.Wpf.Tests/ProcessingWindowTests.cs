@@ -39,10 +39,10 @@ file sealed class HoldingScheduler : IWorkScheduler
 /// off-screen, and a stand-in for the viewer's start so no real Edge
 /// starts.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class ProcessingWindowTests
+public class ProcessingWindowTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public ProcessingWindowTests(HighlightContrastFixture fx) => _fx = fx;
+    public ProcessingWindowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static readonly Rect OffScreen = new(-20000, 0, 1600, 1000);
 

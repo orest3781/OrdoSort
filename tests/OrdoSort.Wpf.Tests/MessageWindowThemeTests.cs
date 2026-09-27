@@ -24,10 +24,10 @@ namespace OrdoSort.Wpf.Tests;
 /// window's background really IS Theme.WindowBg, so those enforced pairings are
 /// the ones actually on screen here.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class MessageWindowThemeTests
+public class MessageWindowThemeTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public MessageWindowThemeTests(HighlightContrastFixture fx) => _fx = fx;
+    public MessageWindowThemeTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static Rgb ToRgb(Brush b)
     {

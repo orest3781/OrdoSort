@@ -36,23 +36,10 @@ file sealed class NoDialogs : IDialogService
 /// feature), M4 (the app's only Title-Case button) and M3 (informational notes
 /// wearing the needs-attention colour).</summary>
 [Collection(HighlightContrastTests.Name)]
-public class CopyAndTerminologyTests
+public class CopyAndTerminologyTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public CopyAndTerminologyTests(HighlightContrastFixture fx) => _fx = fx;
-
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-
-    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T hit) yield return hit;
-            foreach (var deeper in Descendants<T>(child)) yield return deeper;
-        }
-    }
+    public CopyAndTerminologyTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static SettingsWindow BuildSettingsWindow(SettingsViewModel vm) =>
         new(vm)
@@ -74,7 +61,7 @@ public class CopyAndTerminologyTests
         cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_copy_" + Guid.NewGuid(), "config.json");
         return new SettingsViewModel(cfg, new NoDialogs(),
             () => palette, cfgPath,
-            uiContext: SynchronizationContext.Current, probeDelayMs: probeDelayMs);
+            uiContext: SynchronizationContext.Current, probeDelayMs: probeDelayMs, scheduler: new InlineWorkScheduler());
     }
 
     /// <summary>Pump this thread's dispatcher until <paramref name="settled"/>
@@ -536,7 +523,7 @@ public class CopyAndTerminologyTests
         var previousCrashDir = App._crashDir;
         App._crashDir = dir;
 
-        var window = new MainWindow(cfg, Path.Combine(dir, "config.json"))
+        var window = new MainWindow(cfg, Path.Combine(dir, "config.json"), initViewer: () => Task.FromResult(true))
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,

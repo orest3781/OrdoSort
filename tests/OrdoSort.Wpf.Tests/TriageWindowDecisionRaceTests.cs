@@ -31,22 +31,10 @@ namespace OrdoSort.Wpf.Tests;
 /// deterministic control over exactly when "release" resolves relative to
 /// Close() — the actual race — without a real WebView2/Edge process.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class TriageWindowDecisionRaceTests
+public class TriageWindowDecisionRaceTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public TriageWindowDecisionRaceTests(HighlightContrastFixture fx) => _fx = fx;
-
-    /// <summary>Same pumping technique as TriageWindowInitRaceTests — see its
-    /// own doc for why a plain blocking wait can't observe a continuation
-    /// whose resumption was posted to this thread's own Dispatcher queue.</summary>
-    private static void PumpUntilComplete(Task task)
-    {
-        if (task.IsCompleted) return;
-        var frame = new DispatcherFrame();
-        task.ContinueWith(_ => frame.Continue = false,
-            TaskScheduler.FromCurrentSynchronizationContext());
-        Dispatcher.PushFrame(frame);
-    }
+    public TriageWindowDecisionRaceTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <summary>Drains everything already queued at a higher priority — the
     /// deferred Close() is posted back to this dispatcher when the decision

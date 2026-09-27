@@ -36,10 +36,10 @@ namespace OrdoSort.Wpf.Tests;
 /// Theme/Styles.xaml that fixture merges in), same as every other
 /// real-window test in HighlightContrastTests.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class TriageWindowDisposalTests
+public class TriageWindowDisposalTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public TriageWindowDisposalTests(HighlightContrastFixture fx) => _fx = fx;
+    public TriageWindowDisposalTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     [Fact]
     public void ClosingTheWindowDisposesItsWebView2() => _fx.Invoke(() =>

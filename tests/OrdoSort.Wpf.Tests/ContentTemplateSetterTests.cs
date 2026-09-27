@@ -89,10 +89,10 @@ internal sealed class ComboRowProbeTemplateSelector : DataTemplateSelector
 /// <see cref="CalendarCellsCanOnlyEverCarryStringContent"/>, which pins the
 /// premise that decision rests on instead of asserting it in a comment.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class ContentTemplateSetterTests
+public class ContentTemplateSetterTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public ContentTemplateSetterTests(HighlightContrastFixture fx) => _fx = fx;
+    public ContentTemplateSetterTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private const string RowLabel = "Failed queues";
 
@@ -652,31 +652,4 @@ public class ContentTemplateSetterTests
         item.SetValue((DependencyPropertyKey)field.GetValue(null)!, true);
     }
 
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) return match;
-            if (FindDescendant<T>(child) is { } nested) return nested;
-        }
-        return null;
-    }
-
-    private static List<T> FindAllDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        var results = new List<T>();
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) results.Add(match);
-            results.AddRange(FindAllDescendants<T>(child));
-        }
-        return results;
-    }
 }

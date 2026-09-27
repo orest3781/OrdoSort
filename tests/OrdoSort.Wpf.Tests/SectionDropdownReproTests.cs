@@ -25,10 +25,10 @@ namespace OrdoSort.Wpf.Tests;
 /// permanent regression test lands elsewhere, or keep it, per the fix
 /// author's judgement.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class SectionDropdownReproTests
+public class SectionDropdownReproTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public SectionDropdownReproTests(HighlightContrastFixture fx) => _fx = fx;
+    public SectionDropdownReproTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private const string FolderA = "Alpha folder";
     private const string SectionA = "Alpha section";
@@ -106,7 +106,7 @@ public class SectionDropdownReproTests
         var cfgPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
             "ordo_test_section_repro_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(), () => ThemePalette.Light, cfgPath,
-            uiContext: SynchronizationContext.Current);
+            uiContext: SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
         vm.SelectedWatch = vm.WatchFolders.First(w => w.Label == selectLabel);
 
         var window = new SettingsWindow(vm)
@@ -634,31 +634,4 @@ public class SectionDropdownReproTests
         finally { window.Close(); vm.Dispose(); }
     });
 
-    private static void PumpRender() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Render);
-
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) return match;
-            if (FindDescendant<T>(child) is { } nested) return nested;
-        }
-        return null;
-    }
-
-    private static List<T> FindAllDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        var results = new List<T>();
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) results.Add(match);
-            results.AddRange(FindAllDescendants<T>(child));
-        }
-        return results;
-    }
 }

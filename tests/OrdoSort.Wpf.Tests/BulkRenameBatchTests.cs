@@ -110,7 +110,7 @@ public class BulkRenameBatchTests : IDisposable
         /// gate before dispatching here. Holding this one across the call
         /// deadlocks the pair the first time a released continuation re-arms
         /// the probe — measured, not theoretical.</summary>
-        public void ReleaseNext(string because, int timeoutMs = 3000)
+        public void ReleaseNext(string because, int timeoutMs = Wait.DefaultCeilingMs)
         {
             var sw = Stopwatch.StartNew();
             while (true)
@@ -147,7 +147,7 @@ public class BulkRenameBatchTests : IDisposable
         /// <summary>Release items as they are dispatched until the condition
         /// holds — how a test gets past the intake and preview work that
         /// share this scheduler with the batch under test.</summary>
-        public void Settle(Func<bool> until, string because, int timeoutMs = 3000)
+        public void Settle(Func<bool> until, string because, int timeoutMs = Wait.DefaultCeilingMs)
         {
             var sw = Stopwatch.StartNew();
             while (!until())

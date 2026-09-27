@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using System.Threading;
 using OrdoSort.Core;
@@ -23,43 +22,6 @@ public class SettingsViewModelTests : IDisposable
         var path = Path.Combine(_dir, Guid.NewGuid() + ".json");
         File.WriteAllText(path, json);
         return Config.Load(path);
-    }
-
-    /// <summary>Live path notes now run their real Directory.Exists/
-    /// File.Exists/Config.ReadDoc check debounced and off the UI thread (Task
-    /// 2 — see DebouncedProbe), so a fresh construction or edit doesn't
-    /// reflect the real answer the instant it returns. Poll for it instead of
-    /// asserting immediately — this is what "eventually correct" means for an
-    /// async check; the timeout is generous, but a local-disk probe should
-    /// land in well under a second.</summary>
-    private static void WaitFor(Func<bool> condition, string because, int timeoutMs = 3000)
-    {
-        var sw = Stopwatch.StartNew();
-        while (true)
-        {
-            bool result;
-            try
-            {
-                result = condition();
-            }
-            // Fix round 2, item 2(b) — same fix as ToolViewModelTests.WaitFor/
-            // TilePreviewProbeTests.WaitFor's own copy: a predicate reading a
-            // collection that a background thread is mid-mutating can throw
-            // INSIDE the read (Count and an indexer read are not atomic with
-            // each other) rather than just observe a stale-but-valid value.
-            // Both exceptions below are the SAME "not true yet" outcome a
-            // plain false would be, so they are retried, not surfaced.
-            // Nothing else is caught: a predicate that throws for a REAL
-            // reason must still fail the test immediately.
-            catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException)
-            {
-                result = false;
-            }
-            if (result) return;
-            if (sw.ElapsedMilliseconds > timeoutMs)
-                Assert.Fail($"condition never became true within {timeoutMs}ms: {because}");
-            Thread.Sleep(5);
-        }
     }
 
     [Fact]
@@ -1753,213 +1715,191 @@ public class SettingsViewModelTests : IDisposable
         Assert.True(raised > 0, "renaming the default group must notify the ✕ tooltip's binding");
     }
 
-    // ---- Task 2: path checks must never block the UI thread -------------
+    // ---- Path checks never run on the UI thread, and a stale one never lands.
+    // Each test owns both clocks: a manual clock for the debounce and a
+    // scheduler that holds background work until the test releases it.
+
+    private static readonly TimeSpan PastTheDebounce = TimeSpan.FromSeconds(1);
 
     [Fact]
-    public void TypingAPathDoesNotBlockOnTheProbe()
+    public void TypingAPathLeavesTheFolderCheckToTheBackgroundScheduler()
     {
-        // A deliberately slow stand-in for Directory.Exists — exactly the
-        // shape of a stalled SMB round trip. Wired straight into the seam
-        // (SettingsViewModel's directoryExists ctor param) so the check
-        // below hits it on every keystroke, same as the real UI does.
+        // The check stands in for a stalled SMB round trip: it must never
+        // run on the thread that set the path.
+        var checks = 0;
+        var time = new ManualTimeProvider();
+        var scheduler = new ManualWorkScheduler();
         var vm = new SettingsViewModel(new Config(), _dialogs,
-            directoryExists: p => { Thread.Sleep(300); return Directory.Exists(p); });
+            directoryExists: p => { checks++; return Directory.Exists(p); },
+            scheduler: scheduler, time: time);
 
-        // A bound TextBlock reacts to InboxNote's PropertyChanged
-        // SYNCHRONOUSLY, on whatever thread raised it — WPF bindings don't
-        // defer unless IsAsync is set, which SettingsWindow.xaml doesn't.
-        // Subscribing and re-reading the note here reproduces exactly what
-        // the real window's binding does, without needing a live window.
-        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.InboxNote)) _ = vm.InboxNote; };
-
-        var sw = Stopwatch.StartNew();
         vm.Inbox = @"\\unreachable\share\inbox";
-        sw.Stop();
+        time.Advance(PastTheDebounce);
+        Assert.Equal(0, checks);
 
-        Assert.True(sw.ElapsedMilliseconds < 50,
-            $"setting Inbox blocked for {sw.ElapsedMilliseconds}ms on the UI thread");
+        scheduler.ReleaseAll();
+        Assert.True(checks > 0, "the check should have been waiting on the scheduler");
     }
 
     [Fact]
-    public void TheNoteEventuallyReflectsTheRealPathState()
+    public void TheNoteReflectsTheRealPathStateOnceTheTypingPauses()
     {
-        // Proves the other half of the fix: it isn't "never check" — the
-        // note settles on the real answer once the debounced, off-thread
-        // probe completes.
-        var vm = new SettingsViewModel(new Config(), _dialogs);
+        var time = new ManualTimeProvider();
+        var vm = new SettingsViewModel(new Config(), _dialogs,
+            scheduler: new InlineWorkScheduler(), time: time);
 
         vm.Inbox = _dir;   // real, existing folder
-        WaitFor(() => vm.InboxNote == "", "InboxNote should eventually clear for a real, existing folder");
+        time.Advance(PastTheDebounce);
+        Assert.Equal("", vm.InboxNote);
 
         vm.Inbox = Path.Combine(_dir, "does-not-exist");
-        WaitFor(() => vm.InboxNote.Contains("doesn't exist"),
-            "InboxNote should eventually report a folder that doesn't exist");
+        time.Advance(PastTheDebounce);
+        Assert.Contains("doesn't exist", vm.InboxNote);
     }
 
     [Fact]
-    public void RoutePathDoesNotBlockOnTheValidateRouteProbe()
+    public void ARoutePathLeavesTheValidateRouteCheckToTheBackgroundScheduler()
     {
-        // RouteEditVm.Problem -> Config.ValidateRoute creates+deletes a real
-        // probe file in the destination folder — the other named offender.
+        // Config.ValidateRoute creates and deletes a real probe file in the
+        // destination folder: the other slow check.
+        var checks = 0;
+        var time = new ManualTimeProvider();
+        var scheduler = new ManualWorkScheduler();
         var vm = new SettingsViewModel(new Config(), _dialogs,
-            validateRoute: r => { Thread.Sleep(300); return Config.ValidateRoute(r, configPath: null); });
+            validateRoute: r => { checks++; return Config.ValidateRoute(r, configPath: null); },
+            scheduler: scheduler, time: time);
         vm.AddRouteCommand.Execute(null);
         var route = vm.Routes[0];
-        route.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(route.Problem)) _ = route.Problem; };
 
-        var sw = Stopwatch.StartNew();
         route.Path = _dir;
-        sw.Stop();
+        time.Advance(PastTheDebounce);
+        Assert.Equal(0, checks);
 
-        Assert.True(sw.ElapsedMilliseconds < 50,
-            $"setting a route's Path blocked for {sw.ElapsedMilliseconds}ms on the UI thread");
+        scheduler.ReleaseAll();
+        Assert.True(checks > 0, "the check should have been waiting on the scheduler");
     }
 
-    /// <summary>The probe file is created/deleted once per PAUSE, not once per
-    /// character typed into the destination box.
-    ///
-    /// Rewritten 2026-08-15, after this test flaked (it was on the known-flakes
-    /// list). It used to type the burst at the PRODUCTION 300ms debounce and
-    /// then assert an exact call count after a `Thread.Sleep(350)` — two
-    /// independent clocks. `DebouncedProbe.Trigger` re-arms one shared Timer
-    /// per keystroke, so `calls == 1` held only if every one of the ~70
-    /// assignments below landed within 300ms of the previous one. One gap over
-    /// 300ms on a loaded parallel run fired the timer mid-burst and the count
-    /// became 2 — a scheduling artifact, never a product defect.
-    ///
-    /// Now the test owns both clocks instead of racing them. The debounce
-    /// window is set far wider than any burst (`probeDelayMs`, already a ctor
-    /// param threaded into every RouteEditVm), so the burst can assert **zero**
-    /// probes — strictly TIGHTER than the old total-only check, which tolerated
-    /// a mid-burst fire. Then the pause is made explicit via the existing
-    /// `RefreshProblem(immediate: true)` rather than waited out, so the single
-    /// probe is caused, not hoped for. Nothing sleeps.
-    ///
-    /// Teeth, verified by hand and reverted: with DebouncedProbe.Trigger
-    /// changed to run `compute` inline on every call (i.e. no debounce at all),
-    /// this fails on the burst assertion with 70-odd calls instead of 0.</summary>
+    /// <summary>The probe file is written once per pause in typing, not once
+    /// per character typed into the destination box.</summary>
     [Fact]
     public void ValidateRouteProbeRunsOncePerPauseNotPerKeystroke()
     {
         var calls = 0;
-        // A debounce window no burst can outrun: breaking the assertion below
-        // now needs a 60-SECOND stall between two consecutive statements, which
-        // would fail this suite for louder reasons long first.
+        var time = new ManualTimeProvider();
         var vm = new SettingsViewModel(new Config(), _dialogs,
-            validateRoute: r => { Interlocked.Increment(ref calls); return Config.ValidateRoute(r, configPath: null); },
-            probeDelayMs: 60_000);
-        vm.AddRouteCommand.Execute(null);   // blank Path: the ctor's own priming check is synchronous, no I/O
+            validateRoute: r => { calls++; return Config.ValidateRoute(r, configPath: null); },
+            scheduler: new InlineWorkScheduler(), time: time);
+        vm.AddRouteCommand.Execute(null);   // blank Path: checked at once, no I/O
         var route = vm.Routes[0];
         Assert.Equal(0, calls);
 
-        // simulate typing a destination character by character — exactly the
-        // keystroke burst the audit flagged
+        // typing, 100 ms between keystrokes: well inside the 300 ms debounce
         var target = _dir;
         for (var i = 1; i <= target.Length; i++)
+        {
             route.Path = target.Substring(0, i);
-
-        // The real claim, and the one the old version could not make: while
-        // typing continues, the probe has not run AT ALL.
+            time.Advance(TimeSpan.FromMilliseconds(100));
+        }
         Assert.Equal(0, calls);
 
-        // The pause, caused rather than waited for. A second probe is
-        // impossible from here by construction: Fire() consumes _pendingCompute
-        // and nulls it under the lock, and nothing re-triggers.
-        route.RefreshProblem(immediate: true);
-
-        WaitFor(() => calls == 1, "the whole burst should resolve to exactly one probe");
-        WaitFor(() => route.Problem == "", "the route's Problem should resolve for the real folder");
+        time.Advance(PastTheDebounce);   // the pause
+        Assert.Equal(1, calls);
+        Assert.Equal("", route.Problem);
     }
 
     [Fact]
-    public void RouteProblemEventuallyReflectsTheRealValidateRouteResult()
+    public void RouteProblemReflectsTheRealValidateRouteResultOnceTheTypingPauses()
     {
-        var vm = new SettingsViewModel(new Config(), _dialogs);
+        var time = new ManualTimeProvider();
+        var vm = new SettingsViewModel(new Config(), _dialogs,
+            scheduler: new InlineWorkScheduler(), time: time);
         vm.AddRouteCommand.Execute(null);
         var route = vm.Routes[0];
 
         route.Path = _dir;   // exists and is writable
-        WaitFor(() => route.Problem == "", "an existing, writable destination should eventually clear the problem");
+        time.Advance(PastTheDebounce);
+        Assert.Equal("", route.Problem);
 
         route.Path = Path.Combine(_dir, "missing");
-        WaitFor(() => route.Problem.Contains("does not exist"),
-            "a missing destination should eventually report it");
+        time.Advance(PastTheDebounce);
+        Assert.Contains("does not exist", route.Problem);
     }
 
     [Fact]
-    public void WatchFolderPathDoesNotBlockOnTheProbe()
+    public void AWatchFolderPathLeavesTheFolderCheckToTheBackgroundScheduler()
     {
+        var checks = 0;
+        var time = new ManualTimeProvider();
+        var scheduler = new ManualWorkScheduler();
         var vm = new SettingsViewModel(new Config(), _dialogs,
-            directoryExists: p => { Thread.Sleep(300); return Directory.Exists(p); });
+            directoryExists: p => { checks++; return Directory.Exists(p); },
+            scheduler: scheduler, time: time);
         vm.AddWatchCommand.Execute(null);
         var w = vm.WatchFolders[0];
-        w.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(w.Problem)) _ = w.Problem; };
+        scheduler.ReleaseAll();   // the new row's own first check
+        checks = 0;
 
-        var sw = Stopwatch.StartNew();
         w.Path = _dir;
-        sw.Stop();
+        time.Advance(PastTheDebounce);
+        Assert.Equal(0, checks);
 
-        Assert.True(sw.ElapsedMilliseconds < 50,
-            $"setting a watch folder's Path blocked for {sw.ElapsedMilliseconds}ms on the UI thread");
+        scheduler.ReleaseAll();
+        Assert.True(checks > 0, "the check should have been waiting on the scheduler");
     }
 
-    // ---- Task 2 follow-up: clearing a path must cancel its in-flight probe,
-    // not just skip past it — otherwise the stale probe resolves later and
-    // silently overwrites the note/Problem for a path the user no longer has.
+    // ---- Clearing a path cancels its in-flight check: otherwise the stale
+    // check lands later and overwrites the note for a path the user no
+    // longer has.
 
     [Fact]
     public void ClearingInboxCancelsTheInFlightProbeInsteadOfLettingItOverwriteTheNote()
     {
-        // A slow directoryExists (the shape of a stalled SMB round trip)
-        // that, if not cancelled, resolves LONG after the box is cleared.
-        var vm = new SettingsViewModel(new Config(), _dialogs,
-            directoryExists: p => { Thread.Sleep(500); return Directory.Exists(p); });
+        var time = new ManualTimeProvider();
+        var scheduler = new ManualWorkScheduler();
+        var vm = new SettingsViewModel(new Config(), _dialogs, scheduler: scheduler, time: time);
 
-        vm.Inbox = _dir;   // arms a slow probe for a real, existing folder
-        vm.Inbox = "";     // cleared inside the debounce+I/O window — no I/O needed for blank
-
-        // blank needs no I/O: this must be correct immediately
+        vm.Inbox = _dir;                  // a real folder: its check would clear the note
+        time.Advance(PastTheDebounce);    // the check is now in flight
+        vm.Inbox = "";                    // blank needs no I/O: answered at once
         Assert.Contains("no inbox folder set", vm.InboxNote);
 
-        // Wait past BOTH the debounce (300ms) and the slow probe (500ms).
-        // If the stale probe for _dir wasn't cancelled, it resolves here
-        // and silently overwrites the note with "" (the real answer for a
-        // folder the user no longer has configured).
-        Thread.Sleep(1200);
+        scheduler.ReleaseAll();           // the stale check finishes
         Assert.Contains("no inbox folder set", vm.InboxNote);
     }
 
     [Fact]
     public void ClearingARoutePathCancelsTheInFlightValidateRouteProbe()
     {
-        var vm = new SettingsViewModel(new Config(), _dialogs,
-            validateRoute: r => { Thread.Sleep(500); return Config.ValidateRoute(r, configPath: null); });
+        var time = new ManualTimeProvider();
+        var scheduler = new ManualWorkScheduler();
+        var vm = new SettingsViewModel(new Config(), _dialogs, scheduler: scheduler, time: time);
         vm.AddRouteCommand.Execute(null);
         var route = vm.Routes[0];
 
-        route.Path = _dir;   // arms a slow probe for a real, writable folder
-        route.Path = "";     // cleared inside the debounce+I/O window
-
+        route.Path = _dir;
+        time.Advance(PastTheDebounce);
+        route.Path = "";
         Assert.Equal("no destination path configured", route.Problem);
 
-        Thread.Sleep(1200);
+        scheduler.ReleaseAll();
         Assert.Equal("no destination path configured", route.Problem);
     }
 
     [Fact]
     public void ClearingAWatchFolderPathCancelsTheInFlightProbe()
     {
-        var vm = new SettingsViewModel(new Config(), _dialogs,
-            directoryExists: p => { Thread.Sleep(500); return Directory.Exists(p); });
+        var time = new ManualTimeProvider();
+        var scheduler = new ManualWorkScheduler();
+        var vm = new SettingsViewModel(new Config(), _dialogs, scheduler: scheduler, time: time);
         vm.AddWatchCommand.Execute(null);
         var w = vm.WatchFolders[0];
 
-        w.Path = _dir;   // arms a slow probe for a real folder
-        w.Path = "";     // cleared inside the debounce+I/O window
-
+        w.Path = _dir;
+        time.Advance(PastTheDebounce);
+        w.Path = "";
         Assert.Equal("no folder chosen yet", w.Problem);
 
-        Thread.Sleep(1200);
+        scheduler.ReleaseAll();
         Assert.Equal("no folder chosen yet", w.Problem);
     }
 }

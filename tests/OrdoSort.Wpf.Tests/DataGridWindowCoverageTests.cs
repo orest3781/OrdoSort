@@ -80,23 +80,6 @@ public class DataGridWindowCoverageTests
         "StandardiseNamesWindow",
     };
 
-    /// <summary>Walks up from the running test assembly's own directory to
-    /// find the repo checkout — see this class's own doc comment for why a
-    /// missing checkout must fail loudly rather than let the caller
-    /// misinterpret "couldn't check" as "nothing to check."</summary>
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "OrdoSort.sln")))
-            dir = dir.Parent;
-        if (dir is null)
-            throw new InvalidOperationException(
-                "couldn't find OrdoSort.sln walking up from " + AppContext.BaseDirectory +
-                " — this suite reads each window's XAML source directly off disk and needs " +
-                "the repo checkout present alongside the built test assembly");
-        return dir.FullName;
-    }
-
     /// <summary>True if <paramref name="windowTypeName"/>'s own XAML source
     /// declares at least one real &lt;DataGrid&gt; element. A missing XAML
     /// file is itself a failure (thrown, not swallowed to false) — a Window
@@ -105,7 +88,7 @@ public class DataGridWindowCoverageTests
     /// that the window has no DataGrid.</summary>
     private static bool XamlHasDataGrid(string windowTypeName)
     {
-        var path = Path.Combine(FindRepoRoot(), "src", "OrdoSort.Wpf", "Windows", windowTypeName + ".xaml");
+        var path = Path.Combine(Repo.Root, "src", "OrdoSort.Wpf", "Windows", windowTypeName + ".xaml");
         if (!File.Exists(path))
             throw new InvalidOperationException(
                 $"{windowTypeName}: no XAML source found at {path} — a Window type was found via " +

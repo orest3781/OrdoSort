@@ -14,12 +14,12 @@ namespace OrdoSort.Wpf.Tests;
 /// This drives the real window with a reversed view and asserts the row that
 /// opens for editing is the one that actually needs a name.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class BulkRenameSortedNavigationTests : IDisposable
+public class BulkRenameSortedNavigationTests : UiTest, IDisposable
 {
     private readonly HighlightContrastFixture _fx;
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordo_sortednav_" + Guid.NewGuid());
 
-    public BulkRenameSortedNavigationTests(HighlightContrastFixture fx)
+    public BulkRenameSortedNavigationTests(HighlightContrastFixture fx) : base(fx)
     {
         _fx = fx;
         Directory.CreateDirectory(_dir);
@@ -37,22 +37,13 @@ public class BulkRenameSortedNavigationTests : IDisposable
         return path;
     }
 
-    private static void WaitFor(Func<bool> condition, string because, int timeoutMs = 5000)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition())
-        {
-            if (DateTime.UtcNow > deadline) throw new TimeoutException(because);
-            Thread.Sleep(10);
-        }
-    }
-
     [Fact]
     public void NextStrayIgnoresTheGridsSortOrder()
     {
-        // Built OUTSIDE the STA call so WaitFor can poll without starving a
-        // dispatcher; the window is built inside it.
-        var vm = new BulkRenameViewModel();
+        // Inline work on a manual clock: the preview is rebuilt on the
+        // calling thread when the test says so, never behind the window.
+        var time = new ManualTimeProvider();
+        var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler(), time: time);
         var files = new[]
         {
             Touch("SMITH_JOHN_5_5_2024_ACME_RECORDS_1-1__08_02_24_1019_X.pdf"),
@@ -60,14 +51,15 @@ public class BulkRenameSortedNavigationTests : IDisposable
             Touch("GARCIA_MARIA_8_5_2024_ACME_RECORDS_2-1__08_02_24_1020_X.pdf"),
             Touch("loner.pdf"),
         };
-        vm.AddFilesAsync(files).GetAwaiter().GetResult();
+        InlineWorkScheduler.Finished(vm.AddFilesAsync(files));
         vm.SelectedSources = files;   // only ticked files change (2026-09-26)
         // One-segment names are left with nothing once segment 1 is dropped
         // from every file: those two are the strays.
         vm.Date = new DateTime(2024, 8, 2);
         vm.AddDate = true;
         vm.SetSegmentKept(1, kept: false);
-        WaitFor(() => vm.NeedsNameCount == 2, "the batch's preview should settle first");
+        time.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(2, vm.NeedsNameCount);
 
         _fx.Invoke(() =>
         {
@@ -80,12 +72,7 @@ public class BulkRenameSortedNavigationTests : IDisposable
             try
             {
                 win.Show();
-                win.UpdateLayout();
-                // Let Loaded run (it re-applies the ticks) before driving the
-                // window, as a person's first click always comes after it; a
-                // fast run otherwise let it land mid-"Next stray".
-                System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { },
-                    System.Windows.Threading.DispatcherPriority.Background);
+                Settle(win);
 
                 // Reverse the view: insertion order [0,1,2,3] shows as [3,2,1,0].
                 var view = (ListCollectionView)CollectionViewSource.GetDefaultView(vm.Preview);

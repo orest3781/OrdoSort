@@ -31,27 +31,16 @@ namespace OrdoSort.Wpf.Tests;
 /// a value. Layout elements are not named, deliberately: naming a Grid adds
 /// noise to the screen-reader tree rather than information.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class AccessibleNameTests
+public class AccessibleNameTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public AccessibleNameTests(HighlightContrastFixture fx) => _fx = fx;
+    public AccessibleNameTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     public static TheoryData<string> Windows()
     {
         var data = new TheoryData<string>();
         foreach (var name in WindowOverflowTests.Registry().Keys) data.Add(name);
         return data;
-    }
-
-    private static IEnumerable<DependencyObject> Descendants(DependencyObject root)
-    {
-        var n = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < n; i++)
-        {
-            var c = VisualTreeHelper.GetChild(root, i);
-            yield return c;
-            foreach (var d in Descendants(c)) yield return d;
-        }
     }
 
     /// <summary>Controls that must be able to say what they are. Value-carrying
@@ -149,7 +138,7 @@ public class AccessibleNameTests
     public void ASavedPasswordRowIsAnnouncedByItsLabelNeverItsPassword() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
         var window = new ManageSavedWindow(vm)
         {
@@ -160,7 +149,7 @@ public class AccessibleNameTests
         {
             window.Show();
             window.UpdateLayout();
-            OverflowProbe.PumpRender();
+            PumpRender();
             window.UpdateLayout();
 
             var row = Descendants((DependencyObject)window.Content).OfType<ListBoxItem>().Single();
@@ -204,7 +193,7 @@ public class AccessibleNameTests
         {
             host.Show();
             host.UpdateLayout();
-            OverflowProbe.PumpRender();
+            PumpRender();
             host.UpdateLayout();
 
             var names = new List<string>();
@@ -273,7 +262,7 @@ public class AccessibleNameTests
         window.WindowStartupLocation = WindowStartupLocation.Manual;
         window.Show();
         window.UpdateLayout();
-        OverflowProbe.PumpRender();
+        PumpRender();
         window.UpdateLayout();
 
         var content = (FrameworkElement)window.Content;
@@ -291,7 +280,7 @@ public class AccessibleNameTests
             {
                 tabs.SelectedItem = tab;
                 window.UpdateLayout();
-                OverflowProbe.PumpRender();
+                PumpRender();
                 window.UpdateLayout();
             }
 

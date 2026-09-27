@@ -27,10 +27,10 @@ namespace OrdoSort.Wpf.Tests;
 /// <see cref="HighlightContrastFixture"/>'s class doc for the two distinct
 /// crashes a second, independent instance reproduces.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class ThemeHighContrastTests
+public class ThemeHighContrastTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public ThemeHighContrastTests(HighlightContrastFixture fx) => _fx = fx;
+    public ThemeHighContrastTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     /// <summary>Restores the seam to its real production default
     /// (<c>SystemParameters.HighContrast</c>) and re-applies a known-good

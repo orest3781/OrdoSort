@@ -93,3 +93,6 @@ skills-lock.json
 
 # The prompter skill writes its interview output here — scratch, not source
 /prompts/
+
+# test run output: results and hang dumps (tests/test.runsettings)
+TestResults/

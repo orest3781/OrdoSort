@@ -103,13 +103,16 @@ public class ViewerNavigationPolicyTests
 /// end-to-end path is tools/OrdoSort.Smoke's job, not a unit test's. What
 /// this DOES cover is the actual decision the guard makes when fed a real,
 /// unrequested local navigation, through the real API, not a proxy for it.</summary>
+// Starts real Office/Edge: runs in `check.bat integration`, not the
+// everyday check (docs/testing.md).
+[Trait("Category", "Integration")]
 [Collection(HighlightContrastTests.Name)]
-public class WebViewPdfViewerGuardBehaviourTests : IDisposable
+public class WebViewPdfViewerGuardBehaviourTests : UiTest, IDisposable
 {
     private readonly HighlightContrastFixture _fx;
     private readonly string _dir;
 
-    public WebViewPdfViewerGuardBehaviourTests(HighlightContrastFixture fx)
+    public WebViewPdfViewerGuardBehaviourTests(HighlightContrastFixture fx) : base(fx)
     {
         _fx = fx;
         _dir = Path.Combine(Path.GetTempPath(), "ordo_guardtest_" + Guid.NewGuid().ToString("N"));

@@ -9,10 +9,10 @@ namespace OrdoSort.Wpf.Tests;
 /// <summary>Images need no Office, so unlike the Office adapter these are
 /// ordinary hermetic tests. Fixtures are encoded in-process by WPF itself.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class ImageToPdfTests
+public class ImageToPdfTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public ImageToPdfTests(HighlightContrastFixture fx) => _fx = fx;
+    public ImageToPdfTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     private static byte[] Png(int width, int height, double dpi = 96)
     {

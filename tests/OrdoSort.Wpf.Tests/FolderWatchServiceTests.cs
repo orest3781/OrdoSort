@@ -4,90 +4,82 @@ namespace OrdoSort.Wpf.Tests;
 
 public class FolderWatchServiceTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordowatch_" + Guid.NewGuid());
+    private readonly TempDir _dir = new();
+    private readonly ManualTimeProvider _time = new();
+    private int _activity;
 
-    public FolderWatchServiceTests() => Directory.CreateDirectory(_dir);
+    public void Dispose() => _dir.Dispose();
 
-    public void Dispose()
+    private FolderWatchService Build(int debounceMs, int pollMs)
     {
-        try { Directory.Delete(_dir, true); } catch { /* best effort */ }
-    }
-
-    private static async Task<bool> WaitFor(Func<bool> condition, int timeoutMs = 5000)
-    {
-        var start = Environment.TickCount64;
-        while (Environment.TickCount64 - start < timeoutMs)
-        {
-            if (condition()) return true;
-            await Task.Delay(25);
-        }
-        return condition();
+        var svc = new FolderWatchService(debounceMs, pollMs, time: _time);
+        svc.Activity += () => _activity++;
+        return svc;
     }
 
     [Fact]
-    public async Task AFileLandingReachesTheDebounce()
+    public void AFileLandingReachesTheDebounce()
     {
-        // the wiring: a real watcher event gets through to Activity. How many
-        // events the OS chooses to deliver for one write is its business — this
-        // asserts arrival, not a count.
+        // The wiring, end to end: a real watcher event from the OS gets
+        // through to Activity, so this one runs on the real clock. How many
+        // events the OS delivers for one write is its business; this asserts
+        // arrival, not a count.
         using var svc = new FolderWatchService(debounceMs: 100, pollMs: 600_000);
         var count = 0;
         svc.Activity += () => Interlocked.Increment(ref count);
-        svc.SetFolders(_dir);
+        svc.SetFolders(_dir.Path);
 
-        File.WriteAllText(Path.Combine(_dir, "arrived.pdf"), "x");
+        _dir.File("arrived.pdf");
 
-        Assert.True(await WaitFor(() => Volatile.Read(ref count) >= 1),
-            "a file landing never reached the debounce");
+        WaitFor(() => Volatile.Read(ref count) >= 1, "a file landing should reach the debounce");
     }
 
     [Fact]
-    public async Task ABurstCoalescesToOneActivity()
+    public void ABurstCoalescesToOneActivity()
     {
-        // the debounce contract, driven directly. Writing five files and
-        // asserting exactly one Activity used to flake on loaded CI:
-        // FileSystemWatcher delivery can straddle the window, so the debounce
-        // legitimately fires twice. Poking in a tight loop tests the coalescing
-        // itself without depending on how fast the OS reports file writes.
-        using var svc = new FolderWatchService(debounceMs: 150, pollMs: 600_000);
-        var count = 0;
-        svc.Activity += () => Interlocked.Increment(ref count);
+        using var svc = Build(debounceMs: 150, pollMs: 600_000);
 
         for (var i = 0; i < 5; i++) svc.Poke();
+        _time.Advance(TimeSpan.FromMilliseconds(149));
+        Assert.Equal(0, _activity);
 
-        Assert.True(await WaitFor(() => Volatile.Read(ref count) >= 1), "debounce never fired");
-        await Task.Delay(400);   // well past a second debounce window
-        Assert.Equal(1, Volatile.Read(ref count));
+        _time.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.Equal(1, _activity);
+
+        _time.Advance(TimeSpan.FromSeconds(10));
+        Assert.Equal(1, _activity);
     }
 
     [Fact]
-    public async Task PollFiresWithoutAnyFileEvents()
+    public void PollFiresOnItsIntervalWithoutAnyFileEvents()
     {
-        using var svc = new FolderWatchService(debounceMs: 600_000, pollMs: 150);
-        var count = 0;
-        svc.Activity += () => Interlocked.Increment(ref count);
-        svc.SetFolders(_dir);
-        Assert.True(await WaitFor(() => Volatile.Read(ref count) >= 1),
-            "poll backstop never fired");
+        using var svc = Build(debounceMs: 600_000, pollMs: 150);
+        svc.SetFolders(_dir.Path);
+
+        _time.Advance(TimeSpan.FromMilliseconds(150));
+        Assert.Equal(1, _activity);
+
+        _time.Advance(TimeSpan.FromMilliseconds(150));
+        Assert.Equal(2, _activity);
     }
 
     [Fact]
     public void MissingAndBlankFoldersAreSkippedWithoutThrowing()
     {
-        using var svc = new FolderWatchService(debounceMs: 100, pollMs: 600_000);
-        svc.SetFolders("", null, Path.Combine(_dir, "does-not-exist"), _dir, _dir);
+        using var svc = Build(debounceMs: 100, pollMs: 600_000);
+        svc.SetFolders("", null, Path.Combine(_dir.Path, "does-not-exist"), _dir.Path, _dir.Path);
     }
 
     [Fact]
-    public async Task DisposeStopsActivity()
+    public void DisposeStopsActivity()
     {
-        var svc = new FolderWatchService(debounceMs: 50, pollMs: 600_000);
-        var count = 0;
-        svc.Activity += () => Interlocked.Increment(ref count);
-        svc.SetFolders(_dir);
+        var svc = Build(debounceMs: 50, pollMs: 150);
+        svc.SetFolders(_dir.Path);
+        svc.Poke();   // a debounce already armed
+
         svc.Dispose();
-        File.WriteAllText(Path.Combine(_dir, "late.pdf"), "x");
-        await Task.Delay(300);
-        Assert.Equal(0, Volatile.Read(ref count));
+        _time.Advance(TimeSpan.FromMinutes(1));
+
+        Assert.Equal(0, _activity);
     }
 }

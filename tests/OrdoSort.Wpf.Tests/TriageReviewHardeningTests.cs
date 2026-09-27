@@ -36,10 +36,10 @@ namespace OrdoSort.Wpf.Tests;
 /// technique DataGridSelectionContrastTests' BuildTriageWindowWithWhy uses to
 /// read realized cells without a window ever being on screen.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class TriageReviewHardeningTests
+public class TriageReviewHardeningTests : UiTest
 {
     private readonly HighlightContrastFixture _fx;
-    public TriageReviewHardeningTests(HighlightContrastFixture fx) => _fx = fx;
+    public TriageReviewHardeningTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     // ------------------------------------------------------------ the facts
 
@@ -375,19 +375,6 @@ public class TriageReviewHardeningTests
 
     // ------------------------------------------------------------- plumbing
 
-    /// <summary>Same pumping technique, and for the same reason, as
-    /// TriageWindowInitRaceTests' own helper: a continuation resumed on this
-    /// STA thread's dispatcher can't be observed by a plain blocking wait on
-    /// that same thread.</summary>
-    private static void PumpUntilComplete(Task task)
-    {
-        if (task.IsCompleted) return;
-        var frame = new DispatcherFrame();
-        task.ContinueWith(_ => frame.Continue = false,
-            TaskScheduler.FromCurrentSynchronizationContext());
-        Dispatcher.PushFrame(frame);
-    }
-
     private static readonly IComparer ControlIdDescending = Comparer<object>.Create(
         (a, b) => string.CompareOrdinal(ValueOf(b, "Control ID"), ValueOf(a, "Control ID")));
 
@@ -511,13 +498,4 @@ public class TriageReviewHardeningTests
                 $"column \"{column.Header}\" realized no TextBlock");
     }
 
-    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T hit) yield return hit;
-            foreach (var deeper in Descendants<T>(child)) yield return deeper;
-        }
-    }
 }

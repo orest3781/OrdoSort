@@ -12,7 +12,7 @@ public class ViewerEnvironmentTests
     [Fact]
     public void TheBrowserProfileLivesOnTheLocalMachine()
     {
-        var folder = WebViewPdfViewer.UserDataFolder;
+        var folder = WebViewPdfViewer.DefaultUserDataFolder;
         var localAppData =
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
@@ -24,7 +24,7 @@ public class ViewerEnvironmentTests
     {
         // the default, and the whole bug: an app folder that is read-only or on
         // a share cannot host a browser profile
-        var folder = Path.GetFullPath(WebViewPdfViewer.UserDataFolder);
+        var folder = Path.GetFullPath(WebViewPdfViewer.DefaultUserDataFolder);
         var beside = Path.GetDirectoryName(
             Path.GetFullPath(typeof(WebViewPdfViewer).Assembly.Location))!;
 
@@ -37,7 +37,7 @@ public class ViewerEnvironmentTests
     {
         // even a writable share does not work: WebView2's profile has to be on
         // local storage, so a UNC path here would fail in a different way
-        Assert.False(WebViewPdfViewer.UserDataFolder.StartsWith(@"\\"),
+        Assert.False(WebViewPdfViewer.DefaultUserDataFolder.StartsWith(@"\\"),
             "a UNC profile path fails even when the share is writable");
     }
 }
