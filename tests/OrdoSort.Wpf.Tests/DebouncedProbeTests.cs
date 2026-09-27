@@ -47,6 +47,53 @@ internal sealed class ManualWorkScheduler : IWorkScheduler
 
 public class DebouncedProbeTests
 {
+    [Fact]
+    public void ATypedChangeIsComputedOnlyOnceTheDelayHasPassed()
+    {
+        var time = new ManualTimeProvider();
+        var applied = new List<string>();
+        using var probe = new DebouncedProbe<string>(new InlineWorkScheduler(), uiContext: null,
+            applied.Add, intervalMs: 300, time: time);
+
+        probe.Trigger(() => "a");
+        time.Advance(TimeSpan.FromMilliseconds(299));
+        Assert.Empty(applied);
+
+        time.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.Equal(new[] { "a" }, applied);
+    }
+
+    [Fact]
+    public void AnotherChangeInsideTheDelayRestartsItAndOnlyTheLastIsComputed()
+    {
+        var time = new ManualTimeProvider();
+        var applied = new List<string>();
+        using var probe = new DebouncedProbe<string>(new InlineWorkScheduler(), uiContext: null,
+            applied.Add, intervalMs: 300, time: time);
+
+        probe.Trigger(() => "a");
+        time.Advance(TimeSpan.FromMilliseconds(200));
+        probe.Trigger(() => "ab");
+        time.Advance(TimeSpan.FromMilliseconds(200));
+        Assert.Empty(applied);
+
+        time.Advance(TimeSpan.FromMilliseconds(100));
+        Assert.Equal(new[] { "ab" }, applied);
+    }
+
+    [Fact]
+    public void AnImmediateChangeDoesNotWaitForTheDelay()
+    {
+        var time = new ManualTimeProvider();
+        var applied = new List<string>();
+        using var probe = new DebouncedProbe<string>(new InlineWorkScheduler(), uiContext: null,
+            applied.Add, intervalMs: 300, time: time);
+
+        probe.Trigger(() => "a", immediate: true);
+
+        Assert.Equal(new[] { "a" }, applied);
+    }
+
 
     /// <summary>The core non-negotiable guarantee: if an OLDER probe is still
     /// in flight when a NEWER one is triggered (the user kept typing while a

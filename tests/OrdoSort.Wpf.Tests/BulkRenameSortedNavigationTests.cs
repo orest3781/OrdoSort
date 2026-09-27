@@ -40,9 +40,10 @@ public class BulkRenameSortedNavigationTests : UiTest, IDisposable
     [Fact]
     public void NextStrayIgnoresTheGridsSortOrder()
     {
-        // Built OUTSIDE the STA call so WaitFor can poll without starving a
-        // dispatcher; the window is built inside it.
-        var vm = new BulkRenameViewModel();
+        // Inline work on a manual clock: the preview is rebuilt on the
+        // calling thread when the test says so, never behind the window.
+        var time = new ManualTimeProvider();
+        var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler(), time: time);
         var files = new[]
         {
             Touch("SMITH_JOHN_5_5_2024_ACME_RECORDS_1-1__08_02_24_1019_X.pdf"),
@@ -57,7 +58,8 @@ public class BulkRenameSortedNavigationTests : UiTest, IDisposable
         vm.Date = new DateTime(2024, 8, 2);
         vm.AddDate = true;
         vm.SetSegmentKept(1, kept: false);
-        WaitFor(() => vm.NeedsNameCount == 2, "the batch's preview should settle first");
+        time.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(2, vm.NeedsNameCount);
 
         _fx.Invoke(() =>
         {
@@ -70,7 +72,7 @@ public class BulkRenameSortedNavigationTests : UiTest, IDisposable
             try
             {
                 win.Show();
-                win.UpdateLayout();
+                Settle(win);
 
                 // Reverse the view: insertion order [0,1,2,3] shows as [3,2,1,0].
                 var view = (ListCollectionView)CollectionViewSource.GetDefaultView(vm.Preview);
