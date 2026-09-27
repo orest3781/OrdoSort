@@ -72,6 +72,15 @@
              from the name box landed on the whole button block before the
              first button -->
         <ItemsControl ItemsSource="{Binding Routes}" Margin="0,2,0,0" Focusable="False">
+            <!-- Each route is also an entry in the screen-reader tree around
+                 its button; unnamed, it was announced as its CLR type
+                 ("OrdoSort.Wpf.ViewModels.RouteButtonViewModel"). Named like
+                 the button, the same fix as the dashboard tiles. -->
+            <ItemsControl.ItemContainerStyle>
+                <Style TargetType="ContentPresenter">
+                    <Setter Property="AutomationProperties.Name" Value="{Binding Label}" />
+                </Style>
+            </ItemsControl.ItemContainerStyle>
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
                     <Button Height="44" Margin="0,4"

@@ -22,7 +22,7 @@
 | S:\ → A:\DEV path rewrite (45 files, comments and docs only) | ✅ Done | Committed `1f5b8de` and pushed 2026-09-09. `.gitignore` now points at `A:\DEV\_ARCHIVE\OrdoSort-samples` |
 
 ## Next
-- [ ] Processing screen: route list items announce as "OrdoSort.Wpf.ViewModels.RouteButtonViewModel" to screen readers (seen 2026-09-27 through UI Automation), the same bug fixed for the Settings/Unlock/dashboard lists on 2026-09-23
+- [x] Processing screen: route list items announced as "OrdoSort.Wpf.ViewModels.RouteButtonViewModel" to screen readers (seen 2026-09-27 through UI Automation) — fixed 2026-09-27: each entry is named like its button ("Invoices · _INV · Ctrl+1"), checked live through UI Automation; AccessibleNameTests walks the Processing screen now
 - [ ] Intermittent: the dashboard's start-up (ShellViewModel.Initialize) sometimes fails in a test run and warns "that didn't finish". That warning used to hang the test run (fixed 2026-09-27: FakeDialogs; HeaderLayoutTests now fails fast quoting crash.log). Next time it fails, read the quoted crash.log to find the real cause
 - [ ] Test suite, left for later by decision (2026-09-27): one shared window registry with a reflection coverage test; split ToolViewModelTests / SettingsViewModelTests / HighlightContrastTests; trim long test comments; merge DataGridNoteColourTests into DataGridSelectionContrastTests; `TextToPdfTests` and `ExplorerColumnsTests` wall-clock guards; `BoxLabelStoreTests` and `CompleterAndExportTests` real sleeps
 - [ ] Optional, needs the owner's OK to add packages: `Xunit.StaFact` (a fresh WPF thread per test, would replace most of the shared UI fixture) and `Microsoft.Extensions.TimeProvider.Testing` (Microsoft's FakeTimeProvider, would replace the hand-written ManualTimeProvider)
