@@ -27,6 +27,114 @@ public class E2EHarnessTests
         Assert.False(E2EPump.Until(() => false, timeoutMs: 150));
     }
 
+    /// <summary>Runs <paramref name="body"/> on its own STA thread with a
+    /// dispatcher, failing after 10 s instead of hanging the test run: the
+    /// behaviours below are about not hanging.</summary>
+    private static void OnOwnUiThread(Action body)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try { body(); }
+            catch (Exception ex) { failure = ex; }
+        })
+        { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(10)), "the UI thread was still stuck after 10 s");
+        if (failure is not null) throw new Xunit.Sdk.XunitException("the UI thread failed: " + failure);
+    }
+
+    /// <summary>Work that keeps re-posting itself above Background priority
+    /// (a layout that never settles). Stops when <paramref name="stop"/> says so.</summary>
+    private static void Flood(Func<bool> stop)
+    {
+        void Again()
+        {
+            if (stop()) return;
+            Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Render, new Action(Again));
+        }
+        Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Render, new Action(Again));
+    }
+
+    /// <summary>A layout storm must not stop the pump's own time limit: on
+    /// GitHub a stuck scenario ran into the 20-minute job limit instead of
+    /// failing (2026-09-27), because the deadline lived on a Background timer
+    /// that higher-priority work starved.</summary>
+    [Fact]
+    public void UntilGivesUpOnTimeEvenWhenHigherPriorityWorkNeverStops() => OnOwnUiThread(() =>
+    {
+        var done = false;
+        Flood(() => done);
+        var result = E2EPump.Until(() => false, timeoutMs: 300);
+        done = true;
+        Assert.False(result);
+    });
+
+    [Fact]
+    public void AStuckScenarioOnAnIdleThreadIsDescribedAsIdle()
+    {
+        var ready = new ManualResetEventSlim();
+        Dispatcher? ui = null;
+        var thread = new Thread(() => { ui = Dispatcher.CurrentDispatcher; ready.Set(); Dispatcher.Run(); })
+        { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        ready.Wait();
+        try
+        {
+            Assert.Contains("idle", ScenarioWatchdog.Describe(ui!, TimeSpan.FromSeconds(2)));
+        }
+        finally { ui!.InvokeShutdown(); }
+    }
+
+    [Fact]
+    public void AThreadDrownedInLayoutWorkIsDescribedAsStarved()
+    {
+        var ready = new ManualResetEventSlim();
+        var stop = false;
+        Dispatcher? ui = null;
+        var thread = new Thread(() =>
+        {
+            ui = Dispatcher.CurrentDispatcher;
+            Flood(() => stop);
+            ready.Set();
+            Dispatcher.Run();
+        })
+        { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        ready.Wait();
+        try
+        {
+            Assert.Contains("never lets up", ScenarioWatchdog.Describe(ui!, TimeSpan.FromMilliseconds(500)));
+        }
+        finally { stop = true; ui!.InvokeShutdown(); }
+    }
+
+    [Fact]
+    public void AThreadBlockedInAWaitIsDescribedAsNotPumping()
+    {
+        var ready = new ManualResetEventSlim();
+        var release = new ManualResetEventSlim();
+        Dispatcher? ui = null;
+        var thread = new Thread(() =>
+        {
+            ui = Dispatcher.CurrentDispatcher;
+            ready.Set();
+            release.Wait();   // a synchronous wait on the UI thread: nothing pumps
+        })
+        { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        ready.Wait();
+        try
+        {
+            Assert.Contains("not pumping", ScenarioWatchdog.Describe(ui!, TimeSpan.FromMilliseconds(500)));
+        }
+        finally { release.Set(); }
+    }
+
     /// <summary>The condition flips from a dispatcher callback, which is the
     /// real shape: DebouncedProbe marshals its result back through uiContext,
     /// so Until only observes it if it is genuinely pumping the queue.</summary>
