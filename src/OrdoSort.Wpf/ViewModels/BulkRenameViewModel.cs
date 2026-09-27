@@ -809,9 +809,10 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     ///
     /// What is different here, and is the reason QC-04 is High, is WHERE the
     /// outcome is recorded. <see cref="_lastOutcomes"/> — the only thing Undo
-    /// reads — is published BEFORE the first move and appended to as each one
-    /// lands, so it names the work already done at every instant of the
-    /// batch. It used to be assigned only after the loop, which meant a batch
+    /// reads — is published with the batch's first rename and appended to as
+    /// each one lands, so it names the work already done at every instant of
+    /// the batch (and a batch that renames nothing leaves the previous
+    /// batch's record alone, Q2-01). It used to be assigned only after the loop, which meant a batch
     /// that didn't reach its last file left files renamed on disk with no
     /// undo path at all: not a theoretical window, since the loop ran on the
     /// UI thread and the frozen window is precisely what made people kill the
@@ -837,7 +838,6 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
 
         var renamed = new List<RenameOutcome>();
         var failed = new List<RenameOutcome>();
-        _lastOutcomes = renamed;   // published before the first move — see above
 
         using var cts = new CancellationTokenSource();
         _batchCts = cts;
@@ -853,6 +853,12 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
                 Status = $"Renaming {i + 1} of {batch.Count}…";
                 var outcome = await _scheduler.Run(() => RenameOne(batch[i]));
                 (outcome.Final is null ? failed : renamed).Add(outcome);
+                // Published with this batch's first rename, then appended to as
+                // each lands, so it names the work done at every instant. Not
+                // before: a batch that renames nothing (all failed, or
+                // cancelled first) must not wipe the undo record of the batch
+                // before it, whose renames are still on disk (Q2-01).
+                if (outcome.Final is not null) _lastOutcomes = renamed;
             }
         }
         // In the finally, not after it: a batch that stops on something
@@ -880,6 +886,14 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
             AddDate = false;
             Join = SegmentJoin.Original;
             _dropped.Clear();
+            // Nothing is renameable until the preview is rebuilt over the new
+            // names: the last rendered plans are the ones just executed, and
+            // re-arming Rename over them let a second click re-run them against
+            // files that no longer exist (Q2-01). RebuildPreview re-counts.
+            _lastRenderedPlans = new List<PlannedRename>();
+            _changed = 0;
+            Raise(nameof(RenameButtonText));
+            RenameCommand.RaiseCanExecuteChanged();
             Refresh(immediate: true);
             RebuildChips();
             UndoCommand.RaiseCanExecuteChanged();
