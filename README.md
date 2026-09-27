@@ -60,7 +60,9 @@ workflow tests, builds, zips, and publishes.
 
 ## Features
 
-- **The routing loop** — Ready → Processing → Done. Live inbox monitoring
+- **The routing loop** — Ready → Processing → Done. Start processing opens
+  the session in its own window, fitted so the whole first page shows,
+  while the dashboard stays up beside it. Live inbox monitoring
   (new arrivals join a running session), a live "will be filed as" preview
   that flags illegal names before you commit, name autocomplete ranked by
   recency then frequency (Tab completes a word at a time), uppercase and

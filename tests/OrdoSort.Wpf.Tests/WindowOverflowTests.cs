@@ -50,9 +50,11 @@ file sealed class NoDialogs : IDialogService
 ///   cases passed over an empty list (QC-09). It is Show()n like the rest now,
 ///   off-screen, with the real init left running in the background. Its builder still drives ShowCurrentAsync
 ///   itself, before Show(), rather than waiting on that init to resolve.
-/// - MainWindow's ctor parks the window at 470 wide (EnterCompact), so the
-///   width under test is applied AFTER Show(), the way a user's drag would
-///   (HeaderLayoutTests' pattern).</summary>
+/// - MainWindow (the dashboard) sizes itself when shown, so the width under
+///   test is applied AFTER Show(), the way a user's drag would
+///   (HeaderLayoutTests' pattern).
+/// - ProcessingWindow is built over a running session (ShellFixture: inline
+///   scheduler, stand-in viewer), so its panel shows what a person sees.</summary>
 [Collection(HighlightContrastTests.Name)]
 public class WindowOverflowTests : UiTest
 {
@@ -309,7 +311,8 @@ public class WindowOverflowTests : UiTest
             Directory.CreateDirectory(cfg.Inbox);
             Directory.CreateDirectory(cfg.Deferred);
             var window = new MainWindow(cfg, Path.Combine(dir, "config.json"),
-                initViewer: () => Task.FromResult(true), sessionWorkArea: () => new Rect(-20000, 0, 1600, 1000));
+                initViewer: () => Task.FromResult(true), sessionWorkArea: () => new Rect(-20000, 0, 1600, 1000))
+            { Dialogs = new FakeDialogs() };
             Action cleanup = () =>
             {
                 SqliteConnection.ClearAllPools();
@@ -322,6 +325,17 @@ public class WindowOverflowTests : UiTest
             };
             return (window, cleanup);
         }, MinExamined: 9, SetWidthAfterShow: true),   // 11 measured
+
+        ["ProcessingWindow"] = new(900, 1280, 600, 860, () =>
+        {
+            var shell = new ShellFixture();
+            shell.AddInboxFile("20240115--SMITH_JOHN_a-long-scanned-name-for-review.pdf");
+            shell.Shell.Initialize();
+            shell.Shell.StartProcessing();
+            var window = new ProcessingWindow(() => new Rect(-20000, 0, 1600, 1000), () => Task.FromResult(true));
+            window.Attach(shell.Shell);
+            return (window, shell.Dispose);
+        }, MinExamined: 14),   // 17 measured
     };
 
     /// <summary>The default face. Named rather than inlined so the family axis

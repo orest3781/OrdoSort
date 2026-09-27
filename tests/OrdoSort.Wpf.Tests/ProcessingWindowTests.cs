@@ -93,7 +93,7 @@ public class ProcessingWindowTests : UiTest
             {
                 ShowActivated = false,
             };
-            if (dialogs is not null) window.Dialogs = dialogs;
+            window.Dialogs = dialogs ?? new FakeDialogs();   // a warning must never block the UI thread
             window.Left = -20000;
             window.Top = 0;
             window.Show();
@@ -109,7 +109,7 @@ public class ProcessingWindowTests : UiTest
         window.Close();
     });
 
-    private void WaitFor(Func<bool> condition, string because, int timeoutMs = 8000)
+    private void WaitFor(Func<bool> condition, string because, int timeoutMs = Wait.DefaultCeilingMs)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         while (true)
@@ -129,16 +129,6 @@ public class ProcessingWindowTests : UiTest
         WaitFor(() => window.Shell.IsProcessing && window.Processing.IsVisible
                 && !window.Shell.IsBusy && window.Shell.CurrentFilename.Length > 0,
             "the session should be running in its own window, its first document loaded");
-    }
-
-    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T hit) yield return hit;
-            foreach (var deeper in Descendants<T>(child)) yield return deeper;
-        }
     }
 
     [Fact]
