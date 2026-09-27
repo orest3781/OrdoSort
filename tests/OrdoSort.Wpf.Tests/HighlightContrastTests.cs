@@ -172,17 +172,37 @@ public sealed class HighlightContrastFixture : IDisposable
         Dispatcher = dispatcher!;
     }
 
+    /// <summary>How long one test body may run on the shared UI thread. Long
+    /// on purpose; it only matters when the thread is stuck.</summary>
+    public static readonly TimeSpan InvokeCeiling = TimeSpan.FromMinutes(2);
+
+    // set once a body overran InvokeCeiling: the UI thread is still busy with
+    // it, so every later body fails at once instead of waiting its own turn
+    private volatile string? _stuckBy;
+
     /// <summary>Marshal a test body onto the fixture's STA thread and rethrow
     /// there with the original type/stack intact, so a failing xunit
-    /// Assert.True surfaces as this test's own failure, not a wrapped one.</summary>
+    /// Assert.True surfaces as this test's own failure, not a wrapped one.
+    /// A body that never finishes (a modal dialog, an unbounded pump, a real
+    /// Edge start) fails after <see cref="InvokeCeiling"/> instead of hanging
+    /// the run (docs/testing.md).</summary>
     public void Invoke(Action body)
     {
+        if (_stuckBy is { } earlier)
+            throw new TimeoutException("the shared UI thread is still stuck in an earlier test: " + earlier);
         ExceptionDispatchInfo? captured = null;
-        Dispatcher.Invoke(() =>
+        var work = Dispatcher.BeginInvoke(DispatcherPriority.Send, new Action(() =>
         {
             try { body(); }
             catch (Exception ex) { captured = ExceptionDispatchInfo.Capture(ex); }
-        });
+        }));
+        if (work.Wait(InvokeCeiling) != DispatcherOperationStatus.Completed)
+        {
+            _stuckBy = body.Method.DeclaringType?.FullName ?? body.Method.Name;
+            throw new TimeoutException(
+                $"UI-thread work did not finish within {InvokeCeiling.TotalMinutes} minutes (a modal dialog, " +
+                "an unbounded pump or a real Edge start is the usual cause)");
+        }
         captured?.Throw();
     }
 
