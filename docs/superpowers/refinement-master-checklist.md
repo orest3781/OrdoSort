@@ -41,10 +41,10 @@ The first audit's nine Highs (QC-01…QC-09) were closed by batch A on
 `fix/app-qc-2026-08-21` (audit status block, 2026-08-22). The fresh QC then found four
 new ones — every chain hand-verified against source.
 
-- [ ] **Q2-01** [V] · Bulk Rename — after (or during) a batch, the Rename button re-arms over the just-executed plans before the off-thread re-plan lands; a second click — or a cancel before the first file — replaces `_lastOutcomes` with an empty list and destroys the undo record of renames already on disk. Introduced by batch A's own responsiveness fix. *(fresh-qc §High; found independently by two sweeps)*
-- [ ] **Q2-02** [V] · MatchMerge / Review — Merge and Undo run `BulkRename.Execute`/`Revert` synchronously on the UI thread and assign `_outcomes` only after the loop: a kill of the frozen window leaves files renamed with no undo path. QC-04, never propagated to the sibling. *(fresh-qc §High)*
-- [ ] **Q2-03** [V] · Core / filing spine + Settings — a set-aside folder (or route destination) that IS the inbox — or the same folder spelled two ways — makes Skip rename the document in place with " (2)", report "✓ Set aside", count the whole inbox as set-aside files, and re-queue the renamed file. No hop anywhere compares two configured folders; QC-08's cross-field check covers the four side-file keys only. *(fresh-qc §High)*
-- [ ] **Q2-04** [V]/[U] · Core / filing spine — the QC-03 post-move guard, thrown from `UndoAction`, skips all of `Session.UndoLast`'s state restoration: document back in the inbox AND at the destination while counters and history say "filed", and a second Undo is permanently refused. Introduced by batch A; same Win32/SMB trigger as QC-03. *(fresh-qc §High)*
+- [x] **Q2-01** [V] · Bulk Rename — after (or during) a batch, the Rename button re-arms over the just-executed plans before the off-thread re-plan lands; a second click — or a cancel before the first file — replaces `_lastOutcomes` with an empty list and destroys the undo record of renames already on disk. Introduced by batch A's own responsiveness fix. *(fresh-qc §High; found independently by two sweeps)*
+- [x] **Q2-02** [V] · MatchMerge / Review — Merge and Undo run `BulkRename.Execute`/`Revert` synchronously on the UI thread and assign `_outcomes` only after the loop: a kill of the frozen window leaves files renamed with no undo path. QC-04, never propagated to the sibling. *(fresh-qc §High)*
+- [x] **Q2-03** [V] · Core / filing spine + Settings — a set-aside folder (or route destination) that IS the inbox — or the same folder spelled two ways — makes Skip rename the document in place with " (2)", report "✓ Set aside", count the whole inbox as set-aside files, and re-queue the renamed file. No hop anywhere compares two configured folders; QC-08's cross-field check covers the four side-file keys only. *(fresh-qc §High)*
+- [x] **Q2-04** [V]/[U] · Core / filing spine — the QC-03 post-move guard, thrown from `UndoAction`, skips all of `Session.UndoLast`'s state restoration: document back in the inbox AND at the destination while counters and history say "filed", and a second Undo is permanently refused. Introduced by batch A; same Win32/SMB trigger as QC-03. *(fresh-qc §High)*
 
 ---
 
@@ -322,10 +322,10 @@ Per-source arithmetic, checked against each source's own status record. **Total 
 | `2026-08-09-v1-release-audit-security.md` | 4 | 1 | 3 | 0 | Counts line "Critical 0 / Important 2 / Minor 2" |
 | `2026-08-09-v1-release-audit-tests-build.md` | 8 | 2 | 6 | 0 | Counts line "Critical 0 · Important 3 · Minor 5" (two Minors live unlabeled in Part A prose — noted) |
 | `2026-08-09-v1-release-audit-ui.md` | 4 | 3 | 1 | 0 | 3 Important closed by `2115826` (+ reports removal); Minor 4 confirmed open in current `ThemeTests.cs` |
-| `2026-08-22-fresh-qc.md` | 46 | 0 | 46 | 0 | New audit, all open; 4 High (Q2-01…04), 31 Important, 11 Minor; also settles marks on QC-23, DW-01, DW-19 empirically |
-| **Doc totals** | **242** | **89** | **150** | **3** | |
+| `2026-08-22-fresh-qc.md` | 46 | 4 | 42 | 0 | 4 High (Q2-01…04) fixed 2026-09-27 (`c4ecb44`, `80600c3`, `907e662`, `204c8e6`); 31 Important, 11 Minor; also settles marks on QC-23, DW-01, DW-19 empirically |
+| **Doc totals** | **242** | **93** | **146** | **3** | |
 | Memory (no self-count) | — | — | 28 unique | — | further memory rows resolved on verification (below); 6 obsolete |
-| **Unique open rows** | | | **173** | | 150 doc rows − 5 cross-source dedupes + 28 memory-only |
+| **Unique open rows** | | | **169** | | 146 doc rows − 5 cross-source dedupes + 28 memory-only |
 
 **Cross-source dedupes (each is one row above, both sources cited):** DW-01
 (08-04 §1.4 = 08-09 core Imp 3), DW-04 (08-04 §3.2 = 08-09 tb Imp 2), DW-05
