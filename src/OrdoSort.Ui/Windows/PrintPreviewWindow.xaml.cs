@@ -70,6 +70,9 @@ public partial class PrintPreviewWindow : Window
     private readonly FixedDocument _doc;
     private readonly string _jobName;
     private readonly Action<string> _warn;
+    private readonly Func<int, Task<FixedDocument?>>? _extraCopies;
+    private readonly Dictionary<int, FixedDocument> _withCopies = new();
+    private bool _claiming;
 
     public bool Printed { get; private set; }
 
@@ -77,15 +80,23 @@ public partial class PrintPreviewWindow : Window
     /// window is shared by two applications and a library has no business
     /// naming either of them. The default is what an unbranded host gets;
     /// OrdoSort and BoxLabels each pass their own, so the title bar never
-    /// says the name of a product the user does not have.</summary>
+    /// says the name of a product the user does not have.
+    ///
+    /// <paramref name="extraCopies"/>, when given, numbers every copy past the
+    /// first on its own (QC-15: box labels must never repeat a barcode). It
+    /// is handed how many extra copies are wanted and returns the whole job,
+    /// first copy included, or null when they could not be numbered; the
+    /// job then spools once. Without it, Copies asks the printer to repeat
+    /// the document.</summary>
     public PrintPreviewWindow(FixedDocument doc, string jobName, Action<string> warn,
-        string windowTitle = "Print preview")
+        string windowTitle = "Print preview", Func<int, Task<FixedDocument?>>? extraCopies = null)
     {
         InitializeComponent();
         Title = windowTitle;
         _doc = doc;
         _jobName = jobName;
         _warn = warn;
+        _extraCopies = extraCopies;
         Viewer.Document = doc;
         Viewer.PrintRequested = PrintNow;
         // the sheet itself carries no instructions — the paper's margins are
@@ -95,6 +106,17 @@ public partial class PrintPreviewWindow : Window
             + "   ·   " + OrdoSort.Core.BoxLabels.SheetNote;
         LoadPrinters();
         Loaded += (_, _) => Viewer.FitToMaxPagesAcross(1);
+        if (extraCopies is not null)
+            Copies.TextChanged += (_, _) =>
+            {
+                if (Printers.Items.Count == 0) return;   // keep "No printers found."
+                PrintNote.Text = int.TryParse(Copies.Text.Trim(), out var n) && n > 1
+                    ? "Each extra copy gets its own box numbers when you print."
+                    : "";
+            };
+        // A claim that lands after the window has gone would count numbers
+        // for a print that never happens, so the window waits for it.
+        Closing += (_, e) => e.Cancel = _claiming;
     }
 
     private void LoadPrinters()
@@ -125,22 +147,56 @@ public partial class PrintPreviewWindow : Window
 
     private void OnPrint(object sender, RoutedEventArgs e) => PrintNow();
 
-    private void PrintNow()
+    private async void PrintNow()
     {
+        if (_claiming) return;
         if (Printers.SelectedItem is not string printerName) return;
         if (!int.TryParse(Copies.Text.Trim(), out var copies) || copies is < 1 or > 99)
         {
             PrintNote.Text = "Copies must be 1 to 99.";
             return;
         }
+        var job = _doc;
+        var ticketCopies = copies;
+        if (_extraCopies is not null && copies > 1)
+        {
+            // Kept per copy count: a retry after a failed spool reuses the
+            // numbers already claimed instead of claiming more.
+            if (!_withCopies.TryGetValue(copies, out var numbered))
+            {
+                _claiming = true;
+                PrintButton.IsEnabled = false;
+                PrintNote.Text = "Claiming box numbers for the extra copies…";
+                try { numbered = await _extraCopies(copies - 1); }
+                catch (Exception ex)
+                {
+                    _warn("Numbering the extra copies failed: " + ex.Message);
+                    numbered = null;
+                }
+                finally
+                {
+                    _claiming = false;
+                    PrintButton.IsEnabled = true;
+                }
+                if (numbered is null)
+                {
+                    PrintNote.Text = "The extra copies couldn't be numbered, so nothing was printed.";
+                    return;
+                }
+                _withCopies[copies] = numbered;
+                PrintNote.Text = "";
+            }
+            job = numbered;
+            ticketCopies = 1;
+        }
         try
         {
             using var server = new LocalPrintServer();
             var queue = new PrintQueue(server, printerName);
             var dlg = new PrintDialog { PrintQueue = queue };
-            dlg.PrintTicket.CopyCount = copies;
+            dlg.PrintTicket.CopyCount = ticketCopies;
             // no ShowDialog: this window already chose everything — spool it
-            dlg.PrintDocument(_doc.DocumentPaginator, _jobName);
+            dlg.PrintDocument(job.DocumentPaginator, _jobName);
         }
         catch (Exception ex)
         {

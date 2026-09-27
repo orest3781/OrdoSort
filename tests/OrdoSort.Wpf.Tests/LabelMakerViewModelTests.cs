@@ -163,6 +163,73 @@ public class LabelMakerViewModelTests : IDisposable
         Assert.Empty(_dialogs.Warnings);
     }
 
+    /// <summary>QC-15: Copies &gt; 1 in the print preview used to spool the
+    /// same sheets again, so two boxes carried one barcode. Each extra copy
+    /// now claims its own run of numbers from the fresh file.</summary>
+    [Fact]
+    public async Task EachExtraCopyGetsItsOwnBoxNumbers()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 5 });
+        var vm = Vm(path);
+        IReadOnlyList<BoxLabels.Item>? first = null;
+        Task<IReadOnlyList<BoxLabels.Item>?>? extraClaim = null;
+        vm.PrintSheets = (items, _) => { first = items; extraClaim = vm.ClaimCopiesAsync(2); return true; };
+
+        vm.Print();
+        var extra = await extraClaim!;
+
+        Assert.Equal("ABCD00000005", first![0].Code);
+        Assert.Equal(20, extra!.Count);
+        Assert.Equal("ABCD00000015", extra[0].Code);
+        Assert.Equal("ABCD00000034", extra[^1].Code);
+        Assert.Equal(30, first.Concat(extra).Select(i => i.Code).Distinct().Count());
+        Assert.Equal(Today, extra[0].Created);
+        Assert.Equal(Today.AddDays(30), extra[0].Destroy);
+        Assert.Equal(35, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+        Assert.Equal("35", vm.Selected!.NextNumberText);
+        Assert.StartsWith("Sent 30 labels (3 copies", vm.Status);
+        Assert.Empty(_dialogs.Warnings);
+    }
+
+    [Fact]
+    public async Task ExtraCopiesThatWouldPassTheLastNumberAreRefusedAndNothingExtraPrints()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = BoxLabels.MaxNumber - 14 });
+        var vm = Vm(path);
+        Task<IReadOnlyList<BoxLabels.Item>?>? extraClaim = null;
+        vm.PrintSheets = (_, _) => { extraClaim = vm.ClaimCopiesAsync(1); return false; };
+
+        vm.Print();
+
+        Assert.Null(await extraClaim!);
+        Assert.Contains("99 999 999", Assert.Single(_dialogs.Warnings).Message);
+        Assert.Equal(BoxLabels.MaxNumber - 4, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+    }
+
+    [Fact]
+    public async Task ACancelledPrintAlsoNamesTheNumbersClaimedForExtraCopies()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", NextNumber = 5 });
+        var vm = Vm(path);
+        Task<IReadOnlyList<BoxLabels.Item>?>? extraClaim = null;
+        vm.PrintSheets = (_, _) => { extraClaim = vm.ClaimCopiesAsync(1); return false; };
+
+        vm.Print();
+        await extraClaim!;
+
+        Assert.Equal("Cancelled — ABCD00000005 – ABCD00000014, and ABCD00000015 – ABCD00000024 "
+            + "for extra copies, were not printed and will not be issued again.", vm.Status);
+        Assert.Equal(25, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+    }
+
+    [Fact]
+    public async Task ExtraCopiesCanOnlyBeClaimedWhileAPrintPreviewIsOpen()
+    {
+        var vm = Vm(PathWith(new LabelClient { Id = "ABCD", NextNumber = 5 }));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.ClaimCopiesAsync(1));
+    }
+
     /// <summary>UX-05: Print claimed its numbers ON the UI thread, and the
     /// store retries a contended file for up to five seconds, so the window
     /// froze on its one primary button. The claim now runs through the

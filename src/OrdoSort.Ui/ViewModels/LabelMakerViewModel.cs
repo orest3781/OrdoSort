@@ -597,18 +597,66 @@ public sealed class LabelMakerViewModel : ObservableObject
         }
         SetClaimedNumber(b.Client, start + b.Count);
         var items = RebuildFromClaim(b, start);
-        if (!PrintSheets(items, $"Box labels {items[0].Code}"))
+        _openPrint = new OpenPrint(b.Client, b.Count, items[0].Created, int.Parse(b.Client.DestroyDaysText.Trim()));
+        bool printed;
+        try { printed = PrintSheets(items, $"Box labels {items[0].Code}"); }
+        finally { _openPrint = null; }
+        var extraClaims = _extraClaims.ToList();
+        _extraClaims.Clear();
+        if (!printed)
         {
             // Cancelled in the preview. The claim already landed and is not
             // taken back (another station may have claimed after it), so
             // say plainly which numbers were skipped.
-            Status = $"Cancelled — {items[0].Code} – {items[^1].Code} were not printed "
+            var extraNote = extraClaims.Count == 0 ? ""
+                : $", and {string.Join(", ", extraClaims.Select(e => $"{e[0].Code} – {e[^1].Code}"))} for extra copies,";
+            Status = $"Cancelled — {items[0].Code} – {items[^1].Code}{extraNote} were not printed "
                 + "and will not be issued again.";
             return;
         }
-        var sheets = (b.Count + BoxLabels.PerSheet - 1) / BoxLabels.PerSheet;
-        Status = $"Sent {b.Count} label{(b.Count == 1 ? "" : "s")} "
-            + $"({sheets} sheet{(sheets == 1 ? "" : "s")}) to the printer.";
+        // The preview prints the copies it last claimed for.
+        var copies = 1 + (extraClaims.Count == 0 ? 0 : extraClaims[^1].Count / b.Count);
+        var total = b.Count * copies;
+        var sheets = (total + BoxLabels.PerSheet - 1) / BoxLabels.PerSheet;
+        var copiesNote = copies == 1 ? "" : $"{copies} copies, each with its own box numbers; ";
+        Status = $"Sent {total} label{(total == 1 ? "" : "s")} "
+            + $"({copiesNote}{sheets} sheet{(sheets == 1 ? "" : "s")}) to the printer.";
+    }
+
+    /// <summary>The batch whose print preview is open: what an extra copy
+    /// needs to be numbered like the first.</summary>
+    private sealed record OpenPrint(LabelClientVm Client, int Count, DateTime Created, int DestroyDays);
+
+    private OpenPrint? _openPrint;
+    private readonly List<IReadOnlyList<BoxLabels.Item>> _extraClaims = new();
+
+    /// <summary>Claims fresh numbers for <paramref name="extraCopies"/> more
+    /// copies of the batch whose print preview is open, so no two boxes
+    /// share a barcode (QC-15). The preview calls this when Copies is more
+    /// than 1 and prints the first copy plus these as one job. Returns null,
+    /// after warning, when the claim is refused (a busy or damaged file, or
+    /// the numbers would pass <see cref="BoxLabels.MaxNumber"/>); then nothing
+    /// extra should print. Like every claim, the numbers stay used even if
+    /// the print is then cancelled.</summary>
+    /// <exception cref="InvalidOperationException">No print preview is open.</exception>
+    internal async Task<IReadOnlyList<BoxLabels.Item>?> ClaimCopiesAsync(int extraCopies)
+    {
+        var open = _openPrint ?? throw new InvalidOperationException("No print preview is open.");
+        var count = open.Count * extraCopies;
+        long start;
+        try
+        {
+            start = await _scheduler.Run(() => ClaimNumbersCore(open.Client, count, typedStart: null));
+        }
+        catch (ConfigException ex)
+        {
+            _dialogs.Warn(ex.Message, _appTitle);
+            return null;
+        }
+        SetClaimedNumber(open.Client, start + count);
+        var extra = BoxLabels.Batch(open.Client.Id, start, count, open.Created, open.DestroyDays);
+        _extraClaims.Add(extra);
+        return extra;
     }
 
     internal void SavePdf() => _ = SavePdfAsync();

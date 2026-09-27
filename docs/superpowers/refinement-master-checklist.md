@@ -53,7 +53,7 @@ new ones — every chain hand-verified against source.
 ### App-wide QC, 2026-08-21 (`audits/2026-08-21-app-qc.md`) — 16
 
 - [ ] **QC-10** [V] · Bulk Rename — Uppercase/Lowercase is a silent no-op: `SameFile` is case-insensitive `PathIdentity.Same`, so case-only renames are classified `Changed: false` and skipped with "(no change)". Caveat: NTFS re-case via `File.Move` not yet confirmed. *(app-qc §Important; settled open — omitted from the batch-A closed list and covered by "everything else is untouched and still open")*
-- [ ] **QC-15** [V]/[U] · Label Maker — Printing with Copies > 1 puts the same barcode on multiple boxes; the claim reserved only `b.Count` numbers, and Cancel/Esc's "counter untouched" claim is false because `Print()` claims before the preview opens. *(app-qc §Important)*
+- [x] **QC-15** [V]/[U] · Label Maker — Printing with Copies > 1 puts the same barcode on multiple boxes; the claim reserved only `b.Count` numbers, and Cancel/Esc's "counter untouched" claim is false because `Print()` claims before the preview opens. *(app-qc §Important)*
 - [ ] **QC-17** [V] · Settings — OK never validates a route's filename suffix; a `:` in a suffix passes OK then fails every commit to that route, and Settings is unreachable from Processing. *(app-qc §Important)*
 - [ ] **QC-18** [V]/[U] · Settings — OK runs every folder check and write-probe (`ValidateRoute` creates and deletes a real file) inline on the UI thread; dead shares mark the window Not Responding. *(app-qc §Important)*
 - [ ] **QC-19** [V]/[U] · Shell / main window — the 10-second force-close can dispose History under a still-running commit and discard the resulting `AuditError` in silence: document filed, no history row, no warning. *(app-qc §Important)*
@@ -310,7 +310,7 @@ Per-source arithmetic, checked against each source's own status record. **Total 
 
 | Source | Total | Closed | Open | Declined | Source's own record |
 |---|---|---|---|---|---|
-| `2026-08-21-app-qc.md` — numbered | 31 | 15 | 16 | 0 | Status block: closed QC-01–09, 11–14, 16, 26; "everything else … still open" |
+| `2026-08-21-app-qc.md` — numbered | 31 | 16 | 15 | 0 | Status block: closed QC-01–09, 11–14, 16, 26; QC-15 fixed 2026-09-27; "everything else … still open" |
 | `2026-08-21-app-qc.md` — Minor bullets | 15 | 1 | 14 | 0 | Status block says "every Minor" open — overridden for one bullet by code evidence (discrepancy 2) |
 | `2026-08-21-app-qc.md` — ancillary (status-block 3, test-validity 2, working-tree 2, method-notes 2) | 9 | 0 | 9 | 0 | Recorded as deliberately left / needing answers / recommended follow-ups |
 | `2026-08-20-filename-list-ui-audit.md` | 30 | 6 | 24 | 0 | Status block: "Closed: FL-01…FL-06"; "Partially addressed, still open: FL-10, FL-18, FL-23" |
@@ -323,9 +323,9 @@ Per-source arithmetic, checked against each source's own status record. **Total 
 | `2026-08-09-v1-release-audit-tests-build.md` | 8 | 2 | 6 | 0 | Counts line "Critical 0 · Important 3 · Minor 5" (two Minors live unlabeled in Part A prose — noted) |
 | `2026-08-09-v1-release-audit-ui.md` | 4 | 3 | 1 | 0 | 3 Important closed by `2115826` (+ reports removal); Minor 4 confirmed open in current `ThemeTests.cs` |
 | `2026-08-22-fresh-qc.md` | 46 | 4 | 42 | 0 | 4 High (Q2-01…04) fixed 2026-09-27 (`c4ecb44`, `80600c3`, `907e662`, `204c8e6`); 31 Important, 11 Minor; also settles marks on QC-23, DW-01, DW-19 empirically |
-| **Doc totals** | **242** | **93** | **146** | **3** | |
+| **Doc totals** | **242** | **94** | **145** | **3** | |
 | Memory (no self-count) | — | — | 28 unique | — | further memory rows resolved on verification (below); 6 obsolete |
-| **Unique open rows** | | | **169** | | 146 doc rows − 5 cross-source dedupes + 28 memory-only |
+| **Unique open rows** | | | **168** | | 145 doc rows − 5 cross-source dedupes + 28 memory-only |
 
 **Cross-source dedupes (each is one row above, both sources cited):** DW-01
 (08-04 §1.4 = 08-09 core Imp 3), DW-04 (08-04 §3.2 = 08-09 tb Imp 2), DW-05
