@@ -75,6 +75,9 @@
                          which no column shows. -->
                     <DataGrid.RowStyle>
                         <Style TargetType="DataGridRow">
+                            <!-- a screen reader names the row by its file; unnamed, it read the
+                                 row's CLR type or record text (AccessibleNameTests) -->
+                            <Setter Property="AutomationProperties.Name" Value="{Binding Display}" />
                             <Setter Property="Background" Value="Transparent" />
                             <Setter Property="ToolTip" Value="{Binding Path}" />
                             <Style.Triggers>

@@ -126,9 +126,12 @@ public class AccessibleNameTests : UiTest
     /// list row whose item has no ToString and no AutomationProperties.Name,
     /// and a screen reader reads it out verbatim. A dotted run of three or
     /// more PascalCase identifiers is a namespace-qualified type, not
-    /// anything this app shows a person.</summary>
+    /// anything this app shows a person. A C# record falls back to its
+    /// generated ToString instead ("MatchRow { Source = …, File = … }", seen
+    /// live in Match and merge, 2026-09-27), which is caught too.</summary>
     private static bool LooksLikeATypeName(string name) =>
-        System.Text.RegularExpressions.Regex.IsMatch(name, @"^[A-Z]\w*(\.[A-Z]\w*){2,}$");
+        System.Text.RegularExpressions.Regex.IsMatch(name, @"^[A-Z]\w*(\.[A-Z]\w*){2,}$")
+        || System.Text.RegularExpressions.Regex.IsMatch(name, @"^[A-Z]\w* \{ \w+ = ", System.Text.RegularExpressions.RegexOptions.Singleline);
 
     /// <summary>A saved-password row is announced by its label and nothing
     /// else. A screen reader speaks the name aloud, so a binding that ever
@@ -164,6 +167,46 @@ public class AccessibleNameTests : UiTest
     /// automation tree: each list entry around a button was unnamed and
     /// announced as "OrdoSort.Wpf.ViewModels.RouteButtonViewModel" (seen live
     /// through UI Automation, 2026-09-27).</summary>
+    /// <summary>Every window, read the way a screen reader reads it: the whole
+    /// automation tree, table rows and list entries included. The per-control
+    /// rule above never looked at rows, so Match and merge's rows announced
+    /// "MatchRow { Source = … }" unnoticed (2026-09-27).</summary>
+    [Theory]
+    [MemberData(nameof(WindowNames))]
+    public void NoEntryInAWindowIsAnnouncedAsATypeName(string windowName) => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var (window, cleanup) = WindowOverflowTests.Registry()[windowName].Build();
+        try
+        {
+            window.Left = -20000;
+            window.Top = 0;
+            window.ShowActivated = false;
+            window.Show();
+            Settle(window);
+
+            var names = new List<string>();
+            void Walk(AutomationPeer peer)
+            {
+                names.Add(peer.GetName());
+                foreach (var child in peer.GetChildren() ?? new List<AutomationPeer>()) Walk(child);
+            }
+            Walk(UIElementAutomationPeer.CreatePeerForElement(window)!);
+
+            var typeNames = names.Where(LooksLikeATypeName).Distinct().ToList();
+            Assert.True(typeNames.Count == 0,
+                $"{windowName} announces: " + string.Join(" | ", typeNames.Select(n => n.Length > 80 ? n[..80] + "…" : n)));
+        }
+        finally
+        {
+            window.Close();
+            cleanup?.Invoke();
+        }
+    });
+
+    public static IEnumerable<object[]> WindowNames() =>
+        WindowOverflowTests.Registry().Keys.Select(k => new object[] { k });
+
     [Fact]
     public void ProcessingRouteEntriesAnnounceTheRouteNotATypeName() => _fx.Invoke(() =>
     {

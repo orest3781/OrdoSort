@@ -67,6 +67,9 @@
                      review round 2). -->
                 <DataGrid.RowStyle>
                     <Style TargetType="DataGridRow" BasedOn="{StaticResource GridRow}">
+                        <!-- a screen reader names the row by its file; unnamed, it read the
+                             row's CLR type or record text (AccessibleNameTests) -->
+                        <Setter Property="AutomationProperties.Name" Value="{Binding Original}" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding Reverted}" Value="True">
                                 <Setter Property="FontStyle" Value="Italic" />

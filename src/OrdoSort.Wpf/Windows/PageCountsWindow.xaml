@@ -57,6 +57,9 @@
                          the Note column can show StatusAmber below. -->
                     <DataGrid.RowStyle>
                         <Style TargetType="DataGridRow">
+                            <!-- a screen reader names the row by its file; unnamed, it read the
+                                 row's CLR type or record text (AccessibleNameTests) -->
+                            <Setter Property="AutomationProperties.Name" Value="{Binding FileName}" />
                             <Setter Property="Background" Value="Transparent" />
                             <Setter Property="ToolTip" Value="{Binding Path}" />
                             <Style.Triggers>

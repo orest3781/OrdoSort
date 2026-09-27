@@ -287,6 +287,9 @@
                              inherited hover trigger exactly as it did when
                              both lived in one Style. -->
                         <Style TargetType="DataGridRow" BasedOn="{StaticResource GridRow}">
+                            <!-- a screen reader names the row by its file; unnamed, it read the
+                                 row's CLR type or record text (AccessibleNameTests) -->
+                            <Setter Property="AutomationProperties.Name" Value="{Binding Current}" />
                             <Setter Property="ToolTip" Value="{Binding Source}" />
                             <Style.Triggers>
                                 <!-- the few files waiting on a person: findable

@@ -164,6 +164,9 @@
                          Theme.RowHover so the hover tint stays consistent app-wide. -->
                     <DataGrid.RowStyle>
                         <Style TargetType="DataGridRow">
+                            <!-- a screen reader names the row by its file; unnamed, it read the
+                                 row's CLR type or record text (AccessibleNameTests) -->
+                            <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
                             <Setter Property="Background" Value="Transparent" />
                             <Style.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
