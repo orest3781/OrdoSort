@@ -1756,7 +1756,7 @@ public class MatchMergeViewModelTests : IDisposable
         try { Directory.Delete(_dir, true); } catch { /* best effort */ }
     }
 
-    private MatchMergeViewModel Vm() => new(_cfg, h => _savedHeaders = h, _dialogs);
+    private MatchMergeViewModel Vm() => new(_cfg, h => _savedHeaders = h, _dialogs, scheduler: new InlineWorkScheduler());
 
     private string WriteRoster()
     {
@@ -1927,7 +1927,7 @@ public class MatchMergeViewModelTests : IDisposable
         var roster = Path.Combine(_dir, "roster.csv");
         File.WriteAllLines(roster, new[] { "Last,First,Control", "EVANS,FRANK,111" });
         var cfg = new Config { MergeRoster = roster };
-        var vm = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs());
+        var vm = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs(), scheduler: new InlineWorkScheduler());
 
         await vm.AutoLoadRosterAsync();
 
@@ -1939,7 +1939,7 @@ public class MatchMergeViewModelTests : IDisposable
     public async Task AVanishedRosterSaysSoInsteadOfLoading()
     {
         var cfg = new Config { MergeRoster = Path.Combine(_dir, "gone.csv") };
-        var vm = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs());
+        var vm = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs(), scheduler: new InlineWorkScheduler());
 
         await vm.AutoLoadRosterAsync();
 
@@ -1952,7 +1952,7 @@ public class MatchMergeViewModelTests : IDisposable
     {
         var roster = Path.Combine(_dir, "good.csv");
         File.WriteAllLines(roster, new[] { "Last,First,Control", "EVANS,FRANK,111" });
-        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(), scheduler: new InlineWorkScheduler());
         vm.LoadRosterFrom(roster);
         Assert.True(vm.HasRoster);
 
@@ -1969,7 +1969,7 @@ public class MatchMergeViewModelTests : IDisposable
         File.WriteAllLines(roster, new[] { "Last,First,Control", "EVANS,FRANK,111" });
         var cfg = new Config();
         var saves = 0;
-        var vm = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs(), () => saves++);
+        var vm = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs(), () => saves++, scheduler: new InlineWorkScheduler());
 
         vm.LoadRosterFrom(roster);
 
@@ -1984,7 +1984,7 @@ public class MatchMergeViewModelTests : IDisposable
         File.WriteAllLines(roster, new[] { "Last,First,DOB,Dept,Control", "EVANS,FRANK,1970,ER,111" });
         var cfg = new Config();
         var saves = 0;
-        var vm = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs(), () => saves++);
+        var vm = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs(), () => saves++, scheduler: new InlineWorkScheduler());
         vm.LoadRosterFrom(roster);
 
         // nothing picked yet -> the mapped name and id columns
@@ -1997,7 +1997,7 @@ public class MatchMergeViewModelTests : IDisposable
         Assert.True(saves > 0);
 
         // a fresh VM against the same config restores the choice
-        var vm2 = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs());
+        var vm2 = new MatchMergeViewModel(cfg, _ => { }, new FakeDialogs(), scheduler: new InlineWorkScheduler());
         vm2.LoadRosterFrom(roster);
         Assert.Contains("DOB", vm2.ChosenColumns);
         Assert.Equal(new[] { "Last", "First", "DOB", "Dept", "Control" }, vm2.ReviewColumnHeaders);
@@ -2032,7 +2032,7 @@ public class MatchMergeViewModelTests : IDisposable
     {
         var roster = Path.Combine(_dir, "illegal_id_roster.csv");
         File.WriteAllLines(roster, new[] { "Last,First,Control", "EVANS,FRANK,12/34" });
-        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(), scheduler: new InlineWorkScheduler());
         vm.LoadRosterFrom(roster);
         var f = Touch("20240126-EVANS-FRANK.pdf");
         vm.AddFiles(new[] { f });

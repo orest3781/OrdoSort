@@ -15,37 +15,11 @@ namespace OrdoSort.Smoke.E2E.Scenarios;
 /// (MatchMergeViewModel(cfg, saveHeaders, dialogs) has no work seam to
 /// substitute for this; it is the real MatchMerge.LoadRoster call).
 ///
-/// MatchMergeViewModel has NO uiContext/IWorkScheduler seam at all — its
-/// constructor takes neither. Unlike UnlockViewModel (which still hits a
-/// real Task.Run/await on every call and so always needs a genuine
-/// SynchronizationContext.Post to resume), every method these scenarios
-/// exercise — LoadRosterFrom, AddFiles, MergeCommand.Execute (DoMerge -&gt;
-/// Absorb), UndoCommand.Execute — runs to completion SYNCHRONOUSLY on the
-/// calling thread: ReadHeaders/LoadRoster parse the CSV inline, MatchFiles
-/// is a plain foreach with no I/O, and DoMerge's rename goes through
-/// MatchMerge.ExecuteMerges -&gt; BulkRename.Plan/BulkRename.Execute, the
-/// same non-async foreach/File.Move pair — called straight from the command
-/// here, which is what BulkRenameViewModel did before audit QC-04 moved its
-/// own copy onto a scheduler (see BulkRenameScenarios' class doc comment). The one async
-/// method on this view model, AutoLoadRosterAsync, is never reached by any
-/// scenario here (it needs Config.MergeRoster already set from a previous
-/// run; ConfigFixture.Write always starts it blank, so MatchMergeWindow's
-/// own `Loaded += async (_, _) => await _vm.AutoLoadRosterAsync()` no-ops
-/// immediately on the empty-string fast path).
-///
-/// Concretely: there is no hop to trip on here, and no property split
-/// between "assigned directly" and "assigned from inside a Post" the way
-/// BulkRenameViewModel.Preview/Status or Unzip/ZipMerge's Summary/rows are —
-/// Rows, Headers, MergeCount and Status are all just plain fields set before
-/// each method returns. That is exactly why ScenarioKit.Settle does not
-/// belong on the two MergeCommand.Execute(null) call sites below: DoMerge
-/// sets Status synchronously, so `vm.Status.Length > 0` was already true
-/// before Settle's own E2EPump.Until wait could ever run, and Settle's
-/// recorded "the window reported a result" assertion could not fail no
-/// matter what DoMerge actually did — see ScenarioKit.Settle's doc comment.
-/// Both sites assert `vm.Status` directly instead, for what it actually
-/// says (`vm.Status.StartsWith("Merged", …)`), which is a check that
-/// genuinely fails if the merge didn't do what it claims.</summary>
+/// Merge and Undo run their renames on the real background scheduler, the
+/// same one the app uses (Q2-02), so each merge below is waited on: the
+/// run is over when IsBusy drops, and only then are Status and the files
+/// on disk the verdict. Loading the roster and adding files are still
+/// synchronous.</summary>
 public static class MatchMergeScenarios
 {
     private const string Surface = "Match and merge";
@@ -102,6 +76,7 @@ public static class MatchMergeScenarios
         ctx.Check("merge is offered", vm.MergeCommand.CanExecute(null), "command disabled");
 
         vm.MergeCommand.Execute(null);
+        ctx.Check("the merge finishes", E2EPump.Until(() => !vm.IsBusy, 8000), vm.Status);
         ctx.Check("the merge is reported", vm.Status.StartsWith("Merged", StringComparison.Ordinal), vm.Status);
 
         var expectedA = Path.Combine(ctx.Fx.Root, "in", "20240101-SMITH-JOHN-1111.pdf");
@@ -148,6 +123,7 @@ public static class MatchMergeScenarios
         ctx.Check("merge count only includes the real match", vm.MergeCount == 1, $"got {vm.MergeCount}");
 
         vm.MergeCommand.Execute(null);
+        ctx.Check("the merge finishes", E2EPump.Until(() => !vm.IsBusy, 8000), vm.Status);
         ctx.Check("the merge is reported", vm.Status.StartsWith("Merged", StringComparison.Ordinal), vm.Status);
 
         ctx.BytesUnchanged(stranger, strangerBefore, "the unmatched document is left where it was");
