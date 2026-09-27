@@ -78,7 +78,11 @@ public class CultureInvariantDatesTests : UiTest, IDisposable
             // culture on the wrong one. Nothing the test measures moves:
             // the code under test here, CurrentOp's yyyyMMdd stem, runs on
             // THIS thread inside Refresh either way.
-            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
+            // Inline work on a manual clock: the preview is built on this
+            // thread, under the culture set above. A timer thread would
+            // build it under the machine's culture and prove nothing.
+            var time = new ManualTimeProvider();
+            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler(), time: time);
             vm.AddFilesAsync(new[] { path });
             vm.SelectedSources = new[] { path };   // only ticked files change (2026-09-26)
             vm.Join = OrdoSort.Core.BulkRename.SegmentJoin.Dash;
@@ -91,8 +95,7 @@ public class CultureInvariantDatesTests : UiTest, IDisposable
             // supersede it, satisfying a count-only wait on the WRONG preview
             // and making the strict Assert.Equal below intermittently fail
             // (finding 3, final review, 2026-08-05 debounce pair).
-            WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "20260802-SMITH-JOHN.pdf",
-                "the preview should eventually compute the dated name");
+            time.Advance(TimeSpan.FromSeconds(1));
             var row = Assert.Single(vm.Preview);
             Assert.Equal("20260802-SMITH-JOHN.pdf", row.NewName);
         });
@@ -108,7 +111,11 @@ public class CultureInvariantDatesTests : UiTest, IDisposable
         {
             var path = MakeFile("whatever.pdf");   // one segment: dropping it leaves nothing
             // InlineWorkScheduler for the same reason as the theory above.
-            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
+            // Inline work on a manual clock: the preview is built on this
+            // thread, under the culture set above. A timer thread would
+            // build it under the machine's culture and prove nothing.
+            var time = new ManualTimeProvider();
+            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler(), time: time);
             vm.AddFilesAsync(new[] { path });
             vm.SelectedSources = new[] { path };   // only ticked files change (2026-09-26)
             vm.AddDate = true;
@@ -119,8 +126,7 @@ public class CultureInvariantDatesTests : UiTest, IDisposable
             // count-only wait can be satisfied by the AddFiles-generation
             // compute (EditSeed == the plain filename, NeedsName == false)
             // before the later recompute supersedes it.
-            WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].EditSeed == "20260802-",
-                "the preview should eventually compute the stray's date-prefixed edit seed");
+            time.Advance(TimeSpan.FromSeconds(1));
             var row = Assert.Single(vm.Preview);
             Assert.True(row.NeedsName);
             Assert.Equal("20260802-", row.EditSeed);
