@@ -222,6 +222,43 @@ public class WebViewPdfViewerGuardBehaviourTests : UiTest, IDisposable
         return path;
     }
 
+    /// <summary>The Processing window fits the page on open; a resize must
+    /// re-open the page at the zoom for the new size, or it is left too big
+    /// or too small (live check 2026-09-27: Edge keeps an open document's
+    /// zoom when only the #zoom changes).</summary>
+    [Fact]
+    public void AResizeReopensThePageAtTheZoomForTheNewSize() => _fx.Invoke(() =>
+    {
+        var (view, window) = NewView();
+        try
+        {
+            window.Width = 800;
+            window.Height = 1000;
+            window.UpdateLayout();
+            var viewer = new WebViewPdfViewer(view);
+            Assert.True(InitReady(viewer), "real WebView2 init failed: " + viewer.InitError);
+            var doc = WritePdf("fit.pdf", "FIT THIS PAGE");
+            var letter = new OrdoSort.Core.PageSize(612, 792);
+            string FittedUrl() =>
+                WebViewPdfViewer.DocumentUrl(doc, FitMath.PageFitZoom(letter, view.ActualWidth, view.ActualHeight));
+
+#pragma warning disable xUnit1031
+            NavigateAndWait(view, () => viewer.ShowAsync(doc, letter).GetAwaiter().GetResult());
+#pragma warning restore xUnit1031
+            Assert.Equal(FittedUrl(), viewer.CurrentUrl, ignoreCase: true);
+
+            var before = viewer.CurrentUrl;
+            window.Width = 500;
+            window.Height = 600;
+            window.UpdateLayout();
+            var expected = FittedUrl();
+            Assert.NotEqual(before, expected, StringComparer.OrdinalIgnoreCase);
+            PumpUntil(() => string.Equals(viewer.CurrentUrl, expected, StringComparison.OrdinalIgnoreCase),
+                "the page should be re-opened at the zoom for the smaller viewer");
+        }
+        finally { window.Close(); }
+    });
+
     [Fact]
     public void GuardAdmitsTheExpectedDocumentAndRefusesEverythingElse() => _fx.Invoke(() =>
     {

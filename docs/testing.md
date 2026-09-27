@@ -39,7 +39,7 @@ How OrdoSort is tested, how to run each kind, and the rules that keep the everyd
 
 | Test | Status | Notes |
 |---|---|---|
-| `HeaderLayoutTests` (MainWindow) | 🔄 In progress | Hung the UI thread once in a full run on 2026-09-26, with the stand-in viewer; not reproduced alone or in three more full runs. The timeout message now says dialog vs deadlock: record it next time. Suspects: a start-up warning dialog, or the history database disposed while a background query uses it (MainWindow builds its shell with the real scheduler) |
+| `HeaderLayoutTests` (MainWindow) | ✅ Done | The hang was a modal start-up warning ("that didn't finish") shown by the real dialog service. Every test-built MainWindow now uses `FakeDialogs`, and HeaderLayoutTests fails at once, quoting the warning and crash.log, if the dashboard warns while starting. The start-up failure itself is not yet identified |
 | `FocusRingCoverageTests.TabItemShowsTheBronzeFocusRing` | ⬜ Not started | Never reproduced since 2026-08-15. If it fails, the message says why: `never accepted keyboard focus` = focus stolen; `pixels already in the band BEFORE it was focused` = the tab became selected; `NO AccentBronze pixel appears` = a real style regression; `no focus-visual adorner` = `AlwaysShowFocusVisual` broke |
 | `BulkRenameBatchTests` | ✅ Done | 3 s waits raised to the shared 30 s ceiling (2026-09-27). Still uses real timers internally |
 | `FolderPathResolutionTests.SettingsWarningsCheck…` | ✅ Done | Its own background write probe held the folder, not antivirus. Inline scheduler, manual clock, dispose first |

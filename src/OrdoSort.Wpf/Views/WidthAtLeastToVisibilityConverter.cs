@@ -7,7 +7,7 @@ namespace OrdoSort.Wpf.Views;
 /// <summary>Shows an element only once the window is at least
 /// <c>ConverterParameter</c> DIPs wide — the header's degradation ladder.
 ///
-/// The header must survive down to EnterCompact's own <c>MinWidth = 400</c>
+/// The header must survive down to ParkDashboard's own <c>MinWidth = 400</c>
 /// (MainWindow.xaml.cs), and its menu is the one thing in there that cannot
 /// usefully shrink: a WPF <see cref="System.Windows.Controls.Menu"/> hosts its
 /// items in a WrapPanel, so squeezing it reflows the header onto a second row
@@ -20,7 +20,7 @@ namespace OrdoSort.Wpf.Views;
 /// 620 is where <see cref="WidthToColumnsConverter"/>'s 3rd tile column arrives
 /// (its own comment derives it), and 470 is the compact dashboard's parked
 /// width. Bound to the WINDOW's ActualWidth rather than the header's, so the
-/// ladder is expressed in the same units EnterCompact sets.
+/// ladder is expressed in the same units ParkDashboard sets.
 ///
 /// One-way by design: layout reads width, never writes it.</summary>
 public sealed class WidthAtLeastToVisibilityConverter : IValueConverter

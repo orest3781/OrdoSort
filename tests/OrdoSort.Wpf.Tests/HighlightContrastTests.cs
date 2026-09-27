@@ -1672,6 +1672,7 @@ public class HighlightContrastTests : UiTest
 
         var window = new MainWindow(cfg, cfgPath, initViewer: () => Task.FromResult(true))
         {
+            Dialogs = new FakeDialogs(),   // a warning must never block the UI thread
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
         };

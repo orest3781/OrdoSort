@@ -154,7 +154,9 @@ public class CopyAndTerminologyTests : UiTest
     public void TheReadyScreensPrimaryButtonIsSentenceCase() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var view = new ReadyView();
+        // the label is bound (it reads "Processing… (show)" mid-session,
+        // 2026-09-26); a stub carries the Ready value
+        var view = new ReadyView { DataContext = new { StartButtonText = "Start processing" } };
         view.Measure(new Size(600, 800));
         view.Arrange(new Rect(0, 0, 600, 800));
         view.UpdateLayout();
@@ -523,6 +525,7 @@ public class CopyAndTerminologyTests : UiTest
 
         var window = new MainWindow(cfg, Path.Combine(dir, "config.json"), initViewer: () => Task.FromResult(true))
         {
+            Dialogs = new FakeDialogs(),   // a warning must never block the UI thread
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
         };

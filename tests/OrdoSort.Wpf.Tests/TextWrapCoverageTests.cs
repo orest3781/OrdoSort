@@ -53,6 +53,7 @@ public class TextWrapCoverageTests
     {
         var root = Repo.Root;
         yield return Path.Combine(root, "src", "OrdoSort.Wpf", "MainWindow.xaml");
+        yield return Path.Combine(root, "src", "OrdoSort.Wpf", "ProcessingWindow.xaml");
         foreach (var project in new[] { "OrdoSort.Wpf", "OrdoSort.Ui" })
             foreach (var folder in new[] { "Views", "Windows" })
             {

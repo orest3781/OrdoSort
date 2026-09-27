@@ -8,6 +8,8 @@ namespace OrdoSort.Wpf.Tests;
 public sealed class FakeViewer : IPdfViewer
 {
     public List<string> Shown { get; } = new();
+    /// <summary>The page size each document was shown with, in order.</summary>
+    public List<OrdoSort.Core.PageSize?> ShownPages { get; } = new();
     public int Releases { get; private set; }
     public int Blanks { get; private set; }
 
@@ -25,9 +27,10 @@ public sealed class FakeViewer : IPdfViewer
     /// the last thing OnUndoAsync awaits.</summary>
     public Exception? ThrowOnShow { get; set; }
 
-    public Task ShowAsync(string path)
+    public Task ShowAsync(string path, OrdoSort.Core.PageSize? page = null)
     {
         Shown.Add(path);
+        ShownPages.Add(page);
         if (ThrowOnShow is { } boom) throw boom;
         return Task.CompletedTask;
     }

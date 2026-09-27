@@ -18,8 +18,8 @@ public class DoneAndExportTests
         await fx.Shell.OnSkipAsync();
 
         Assert.Equal(Screen.Done, fx.Shell.Screen);
-        Assert.Equal("Session complete", fx.Shell.CountLine);
-        Assert.Equal("1 filed, 1 set aside", fx.Shell.DetailLine);
+        Assert.Equal("Session complete", fx.Shell.DoneTitle);
+        Assert.Equal("1 filed, 1 set aside", fx.Shell.DoneDetail);
         Assert.Equal("Every move is in the log.", fx.Shell.LogLine);
     }
 
@@ -37,8 +37,8 @@ public class DoneAndExportTests
         // the last commit's own file event fires the watcher moments after
         // the summary appears — it must not replace the summary text
         fx.Shell.OnFolderActivity();
-        Assert.Equal("Session complete", fx.Shell.CountLine);
-        Assert.Equal("1 filed, 0 set aside", fx.Shell.DetailLine);
+        Assert.Equal("Session complete", fx.Shell.DoneTitle);
+        Assert.Equal("1 filed, 0 set aside", fx.Shell.DoneDetail);
         Assert.Equal("Every move is in the log.", fx.Shell.LogLine);
         Assert.Equal("", fx.Shell.StatusLine);   // empty inbox -> no note
 
@@ -46,8 +46,8 @@ public class DoneAndExportTests
         fx.AddInboxFile("20240116--222222.pdf");
         fx.Shell.OnFolderActivity();
         Assert.Equal(Screen.Done, fx.Shell.Screen);
-        Assert.Equal("Session complete", fx.Shell.CountLine);
-        Assert.Equal("1 filed, 0 set aside", fx.Shell.DetailLine);
+        Assert.Equal("Session complete", fx.Shell.DoneTitle);
+        Assert.Equal("1 filed, 0 set aside", fx.Shell.DoneDetail);
         Assert.Equal("Every move is in the log.", fx.Shell.LogLine);
         Assert.Equal("1 file waiting in the inbox.", fx.Shell.StatusLine);
 
@@ -69,7 +69,7 @@ public class DoneAndExportTests
         await fx.Shell.OnRouteAsync(0);
 
         Assert.Equal(Screen.Done, fx.Shell.Screen);
-        Assert.Equal("0 filed, 0 set aside, 1 vanished", fx.Shell.DetailLine);
+        Assert.Equal("0 filed, 0 set aside, 1 vanished", fx.Shell.DoneDetail);
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public class DoneAndExportTests
         fx.Shell.TypedName = "SMITH JOHN";
         await fx.Shell.OnRouteAsync(0);
 
-        Assert.Equal("1 filed, 0 set aside", fx.Shell.DetailLine);
+        Assert.Equal("1 filed, 0 set aside", fx.Shell.DoneDetail);
         Assert.Equal("Every move is in the log.", fx.Shell.LogLine);
         Assert.True(fx.Shell.HasLogLine);
     }
@@ -137,7 +137,7 @@ public class DoneAndExportTests
         File.Delete(path);          // vanished is not a move
         await fx.Shell.OnRouteAsync(0);
 
-        Assert.Equal("0 filed, 0 set aside, 1 vanished", fx.Shell.DetailLine);
+        Assert.Equal("0 filed, 0 set aside, 1 vanished", fx.Shell.DoneDetail);
         Assert.Equal("", fx.Shell.LogLine);
         Assert.False(fx.Shell.HasLogLine);
     }
@@ -156,7 +156,7 @@ public class DoneAndExportTests
 
         Assert.Equal(Screen.Done, fx.Shell.Screen);
         // the document really did move — the tally must still say so
-        Assert.Equal("1 filed, 0 set aside", fx.Shell.DetailLine);
+        Assert.Equal("1 filed, 0 set aside", fx.Shell.DoneDetail);
         // …but the session must not vouch for a log it just failed to write
         Assert.Equal("", fx.Shell.LogLine);
         Assert.False(fx.Shell.HasLogLine);

@@ -22,6 +22,9 @@ set "TARGET=OrdoSort.sln"
 if /i "%~1"=="core" set "TARGET=tests\OrdoSort.Core.Tests"
 if /i "%~1"=="wpf"  set "TARGET=tests\OrdoSort.Wpf.Tests"
 set "FILTER=Category!=Integration"
+rem All integration tests live in the Wpf project; a filter that matches no
+rem test in Core would fail the run (TreatNoTestsAsError, tests\test.runsettings).
+if /i "%~1"=="integration" set "TARGET=tests\OrdoSort.Wpf.Tests"
 if /i "%~1"=="integration" set "FILTER=Category=Integration"
 if /i "%~1"=="all" set "FILTER="
 

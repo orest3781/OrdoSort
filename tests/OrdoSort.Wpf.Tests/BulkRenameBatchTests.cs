@@ -308,6 +308,10 @@ public class BulkRenameBatchTests : IDisposable
         vm.RemoveSelected();                 // the click that slips through anyway
 
         scheduler.Settle(() => !vm.IsBusy, "the batch should run to the end");
+        // The preview's last rebuild comes from a real timer; wait for it
+        // rather than trust a quiet spell, which a busy machine outlasts.
+        scheduler.Settle(() => vm.Preview.Any(r => r.Current.StartsWith("NEW-")),
+            "the preview should rebuild on the renamed files");
         scheduler.Quiesce();
 
         // Both files were renamed and both are still listed under their new

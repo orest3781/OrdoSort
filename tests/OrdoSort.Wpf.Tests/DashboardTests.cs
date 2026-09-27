@@ -263,7 +263,7 @@ public class DashboardTests
         filing.AddInboxFile();
         filing.Shell.Initialize();
         filing.Shell.StartProcessing();
-        Assert.False(filing.Shell.AllQuiet);         // never while filing
+        Assert.True(filing.Shell.AllQuiet);          // the dashboard stays live while filing (2026-09-26)
     }
 
     [Fact]
@@ -329,8 +329,9 @@ public class DashboardTests
         Assert.Single(fx.Shell.Tiles);           // not "hidden" — files show
     }
 
+
     [Fact]
-    public void TileControlsHideWithoutWatchFoldersAndWhileFiling()
+    public void TileControlsHideWithoutWatchFoldersButStayWhileFiling()
     {
         using var bare = new ShellFixture();
         bare.Shell.Initialize();
@@ -340,11 +341,11 @@ public class DashboardTests
         fx.AddInboxFile();
         fx.Shell.Initialize();
         fx.Shell.StartProcessing();
-        Assert.False(fx.Shell.TileControlsVisible);     // hidden while filing
+        Assert.True(fx.Shell.TileControlsVisible);      // the dashboard stays live (2026-09-26)
     }
 
     [Fact]
-    public void StartingASessionHidesTheDashboardAndStopsTheFlash()
+    public void TheDashboardStaysLiveDuringASession()
     {
         using var fx = WithWatchFolder(out var watched);
         File.WriteAllText(Path.Combine(watched, "URGENT.pdf"), "x");
@@ -353,8 +354,13 @@ public class DashboardTests
         Assert.True(fx.Shell.FlashRunning);
 
         fx.Shell.StartProcessing();
-        Assert.False(fx.Shell.DashboardVisible);
-        Assert.False(fx.Shell.FlashRunning);
+        Assert.True(fx.Shell.DashboardVisible);
+        Assert.True(fx.Shell.FlashRunning);
+
+        File.WriteAllText(Path.Combine(watched, "second.pdf"), "x");
+        fx.Shell.OnPoll();                  // mid-session the sweep rides the poll timer
+        fx.Shell.OnFolderActivity();
+        Assert.StartsWith("2", Assert.Single(fx.Shell.Tiles).CountText);
     }
 
     // ------------------------------------------------------------- groups

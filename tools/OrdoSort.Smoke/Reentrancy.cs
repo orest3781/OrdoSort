@@ -51,6 +51,7 @@ public static class Reentrancy
         var window = new MainWindow(Config.Load(cfgPath), cfgPath);
         var dialogs = new RecordingDialogs();
         window.Dialogs = dialogs;
+        window.Processing.Dialogs = dialogs;
         var shell = window.Shell;
 
         window.Loaded += async (_, _) =>

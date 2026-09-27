@@ -1,4 +1,5 @@
 using System.Windows;
+using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
@@ -8,7 +9,7 @@ namespace OrdoSort.Wpf.Tests;
 /// <summary>Sizing the viewer pane to the document when a session starts.
 ///
 /// The arithmetic lives in <see cref="FitMath"/> and is tested here directly;
-/// MainWindow only measures its own pane, calls it, and assigns the result,
+/// the Processing window only measures itself, calls it, and assigns the result,
 /// which is the part no unit test can reach. The view model's half — that the
 /// measurement happens once, at Start, and stays quiet when there is nothing
 /// to measure — is tested through the real shell.</summary>
@@ -16,98 +17,64 @@ public class ViewerFitTests
 {
     // ------------------------------------------------------------- the math
 
-    /// <summary>The pane's document area is its rectangle minus Edge's own
-    /// furniture, so a 900x800 pane showing a page of aspect a is fitted when
-    /// 900 - ScrollbarDip == (800 - ToolbarDip) * a.</summary>
-    private static double PaneWidthFitting(double paneHeight, double aspect) =>
-        (paneHeight - PanMath.ToolbarDip) * aspect + PanMath.ScrollbarDip;
+    // ---- SessionBounds: the whole first page fits (2026-09-26) -----------
+    // Work area 1920x1040 at the origin; chrome 470 wide (panel + splitter +
+    // borders) and 40 tall. Edge's toolbar (56) and scrollbar (24) are part
+    // of the pane but not of the page.
+
+    private static readonly Rect Primary = new(0, 0, 1920, 1040);
 
     [Fact]
-    public void APaneThatAlreadyFitsIsLeftExactlyWhereItIs()
+    public void APortraitPageTakesTheFullHeightAndItsOwnShape()
     {
-        const double paneHeight = 800, aspect = 612d / 792d;
-        var paneWidth = PaneWidthFitting(paneHeight, aspect);
+        var r = FitMath.SessionBounds(Primary, 470, 40, 612d / 792d, 900, 600)!.Value;
 
-        var width = FitMath.WindowWidthFor(1280, paneWidth, paneHeight, aspect, 900, 2560);
-
-        Assert.Equal(1280, width, 6);
+        Assert.Equal(1040, r.Height, 1);
+        Assert.Equal(470 + (1040 - 40 - 56) * (612d / 792d) + 24, r.Width, 1);
+        Assert.Equal((1920 - r.Width) / 2, r.Left, 1);
+        Assert.Equal(0, r.Top, 1);
     }
 
     [Fact]
-    public void ALandscapePageWidensTheWindowByWhatThePaneIsShort()
+    public void APageTooWideForTheScreenCapsTheWidthAndShrinksTheHeight()
     {
-        const double paneHeight = 800, aspect = 792d / 612d;
-        var wanted = PaneWidthFitting(paneHeight, aspect);
+        var r = FitMath.SessionBounds(Primary, 470, 40, 2.0, 900, 600)!.Value;
 
-        var width = FitMath.WindowWidthFor(1280, 700, paneHeight, aspect, 900, 2560);
-
-        Assert.Equal(1280 + (wanted - 700), width, 6);
-        Assert.True(width > 1280, "a landscape page in a too-narrow pane has to grow the window");
+        Assert.Equal(1920, r.Width, 1);
+        Assert.Equal(40 + 56 + (1920 - 470 - 24) / 2.0, r.Height, 1);
+        Assert.Equal((1040 - r.Height) / 2, r.Top, 1);
     }
 
     [Fact]
-    public void APortraitPageNarrowsAPaneThatWasTooWide()
+    public void ItFitsAndCentresOnTheDashboardsOwnMonitor()
     {
-        var width = FitMath.WindowWidthFor(1900, 1400, 800, 612d / 792d, 900, 2560);
+        var second = new Rect(1920, 0, 2560, 1400);
 
-        Assert.True(width < 1900, "a portrait page in a very wide pane has to shrink the window");
-        Assert.True(width >= 900, "and never below the window's own minimum");
+        var r = FitMath.SessionBounds(second, 470, 40, 612d / 792d, 900, 600)!.Value;
+
+        Assert.Equal(1400, r.Height, 1);
+        Assert.Equal(1920 + (2560 - r.Width) / 2, r.Left, 1);
     }
 
     [Fact]
-    public void TheWindowNeverShrinksBelowItsMinimum() =>
-        Assert.Equal(900, FitMath.WindowWidthFor(1000, 600, 800, 0.05, 900, 2560), 6);
+    public void ANarrowPageStillGetsTheWindowsMinimumWidth()
+    {
+        var r = FitMath.SessionBounds(Primary, 470, 40, 0.2, 900, 600)!.Value;
 
-    [Fact]
-    public void TheWindowNeverGrowsPastTheWorkArea() =>
-        Assert.Equal(1600, FitMath.WindowWidthFor(1280, 700, 800, 20, 900, 1600), 6);
-
-    /// <summary>A screen narrower than the window's own minimum: the bounds
-    /// cross, which is what Math.Clamp throws on. The minimum wins.</summary>
-    [Fact]
-    public void AScreenNarrowerThanTheMinimumDoesNotThrow() =>
-        Assert.Equal(900, FitMath.WindowWidthFor(900, 500, 800, 1.3, 900, 800), 6);
+        Assert.Equal(900, r.Width, 1);
+    }
 
     [Theory]
-    [InlineData(0)]              // no aspect
-    [InlineData(-1.5)]           // nonsense aspect
+    [InlineData(0)]
+    [InlineData(-1)]
     [InlineData(double.NaN)]
     [InlineData(double.PositiveInfinity)]
-    public void AnUnusableAspectLeavesTheWindowAlone(double aspect) =>
-        Assert.Equal(1280, FitMath.WindowWidthFor(1280, 700, 800, aspect, 900, 2560), 6);
+    public void ANonsensePageShapeLeavesTheWindowAlone(double aspect) =>
+        Assert.Null(FitMath.SessionBounds(Primary, 470, 40, aspect, 900, 600));
 
     [Fact]
-    public void AnUnmeasuredPaneLeavesTheWindowAlone()
-    {
-        Assert.Equal(1280, FitMath.WindowWidthFor(1280, 0, 800, 1.3, 900, 2560), 6);
-        Assert.Equal(1280, FitMath.WindowWidthFor(1280, 700, 0, 1.3, 900, 2560), 6);
-    }
-
-    /// <summary>A pane no taller than Edge's toolbar has no document area at
-    /// all; dividing that up would produce a negative width.</summary>
-    [Fact]
-    public void APaneShorterThanTheToolbarLeavesTheWindowAlone() =>
-        Assert.Equal(1280, FitMath.WindowWidthFor(1280, 700, PanMath.ToolbarDip, 1.3, 900, 2560), 6);
-
-    // ------------------------------------------------------ staying on screen
-
-    [Fact]
-    public void AWindowThatStillFitsIsNotMoved() =>
-        Assert.Equal(100, FitMath.LeftFor(100, 1200, new Rect(0, 0, 1920, 1080)), 6);
-
-    [Fact]
-    public void AWindowThatWouldHangOffTheRightEdgeIsPulledBack() =>
-        Assert.Equal(720, FitMath.LeftFor(1000, 1200, new Rect(0, 0, 1920, 1080)), 6);
-
-    [Fact]
-    public void AWindowWiderThanTheScreenIsPinnedToTheLeftEdge() =>
-        Assert.Equal(0, FitMath.LeftFor(400, 2400, new Rect(0, 0, 1920, 1080)), 6);
-
-    /// <summary>A second monitor: the work area starts at 1920 and ends at
-    /// 3840, so "back inside" means 2640, not 0.</summary>
-    [Fact]
-    public void TheWorkAreaMayNotStartAtZero() =>
-        Assert.Equal(2640, FitMath.LeftFor(3000, 1200, new Rect(1920, 0, 1920, 1080)), 6);
+    public void AWorkAreaTooSmallForTheChromeLeavesTheWindowAlone() =>
+        Assert.Null(FitMath.SessionBounds(new Rect(0, 0, 400, 80), 470, 40, 0.77, 900, 600));
 
     // ------------------------------------------------------- the view model
 
@@ -155,6 +122,49 @@ public class ViewerFitTests
         Assert.Single(reported);
     }
 
+    /// <summary>The window is fitted before the first page is shown, so the
+    /// viewer works out its zoom for the size it ends up at.</summary>
+    [Fact]
+    public void TheWindowIsFittedBeforeTheFirstPageIsShown()
+    {
+        using var fx = new ShellFixture();
+        WritePdf(Path.Combine(fx.Inbox, "20240115--111111.pdf"), 612, 792);
+        var order = new List<string>();
+        fx.Shell.FitViewerToPage += _ => order.Add($"fit, {fx.Viewer.Shown.Count} shown");
+
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+
+        Assert.Equal(new[] { "fit, 0 shown" }, order);
+        Assert.Single(fx.Viewer.Shown);
+    }
+
+    [Fact]
+    public async Task EveryDocumentIsShownWithItsOwnPageSize()
+    {
+        using var fx = new ShellFixture();
+        WritePdf(Path.Combine(fx.Inbox, "20240115--111111.pdf"), 612, 792);
+        WritePdf(Path.Combine(fx.Inbox, "20240116--222222.pdf"), 792, 612);
+
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+        await fx.Shell.OnRouteAsync(0);
+
+        Assert.Equal(new PageSize?[] { new PageSize(612, 792), new PageSize(792, 612) }, fx.Viewer.ShownPages);
+    }
+
+    [Fact]
+    public void AnUnreadableDocumentIsShownWithNoPageSize()
+    {
+        using var fx = new ShellFixture();
+        fx.AddInboxFile("20240115--111111.pdf");   // text, not a PDF
+
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+
+        Assert.Equal(new PageSize?[] { null }, fx.Viewer.ShownPages);
+    }
+
     [Fact]
     public void AnUnreadableDocumentReportsNothing()
     {
@@ -193,6 +203,49 @@ public class ViewerFitTests
 /// Needs a real HWND (MonitorFromWindow takes one), so it runs on the shared
 /// STA fixture and shows its windows off-screen, the same shape the other
 /// window suites use.</summary>
+/// <summary>The zoom that shows a whole page at the largest size the viewer
+/// allows. Edge's PDF viewer ignores "fit page" address settings but obeys a
+/// numeric zoom, and at 100% draws one point as 96/72 pixels.</summary>
+public class PageFitZoomTests
+{
+    private static readonly PageSize Letter = new(612, 792);
+
+    [Fact]
+    public void ALetterPageFillsAPageShapedViewer()
+    {
+        // width: 1026 less the 24 px scrollbar and two 8 px margins, over 816 px;
+        // height: 1353 less the 56 px toolbar, over 1056 px; the smaller wins
+        Assert.Equal(120, FitMath.PageFitZoom(Letter, 1026, 1353));
+    }
+
+    [Fact]
+    public void AWidePageIsLimitedByTheViewersWidth()
+    {
+        // 1026 less the scrollbar and margins, over 1056 px
+        Assert.Equal(93, FitMath.PageFitZoom(new PageSize(792, 612), 1026, 1353));
+    }
+
+    [Fact]
+    public void ATinyViewerStillGetsEdgesSmallestZoom()
+    {
+        Assert.Equal(10, FitMath.PageFitZoom(Letter, 60, 80));
+    }
+
+    [Theory]
+    [InlineData(0, 1353)]
+    [InlineData(1026, 0)]
+    public void NoViewerSizeMeansNoZoom(double width, double height)
+    {
+        Assert.Null(FitMath.PageFitZoom(Letter, width, height));
+    }
+
+    [Fact]
+    public void APageWithNoSizeMeansNoZoom()
+    {
+        Assert.Null(FitMath.PageFitZoom(new PageSize(0, 792), 1026, 1353));
+    }
+}
+
 [Collection(HighlightContrastTests.Name)]
 public class MonitorWorkAreaTests : UiTest
 {
