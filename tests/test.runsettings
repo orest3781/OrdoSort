@@ -9,14 +9,16 @@
          test and would otherwise exit 0. -->
     <TreatNoTestsAsError>true</TreatNoTestsAsError>
   </RunConfiguration>
-  <!-- A test that stops making progress for 5 minutes fails the run with a
+  <!-- A test that stops making progress for 15 minutes fails the run with a
        small dump in TestResults/, instead of hanging it (one hung for six
-       hours on 2026-09-26). Everyday tests finish in well under a second. -->
+       hours on 2026-09-26). Everyday tests finish in well under a second,
+       but GitHub's runner is slow on disk: the History stress tests take 2-5
+       minutes there, and a 5-minute limit cut one off (2026-09-27). -->
   <DataCollectionRunSettings>
     <DataCollectors>
       <DataCollector friendlyName="blame" enabled="True">
         <Configuration>
-          <CollectDumpOnTestSessionHang TestTimeout="5m" HangDumpType="mini" />
+          <CollectDumpOnTestSessionHang TestTimeout="15m" HangDumpType="mini" />
         </Configuration>
       </DataCollector>
     </DataCollectors>
