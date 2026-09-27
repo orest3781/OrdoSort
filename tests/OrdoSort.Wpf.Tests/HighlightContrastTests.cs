@@ -157,7 +157,7 @@ public sealed class HighlightContrastFixture : IDisposable
             AddIfMissing("FontSizeText", new OrdoSort.Wpf.Views.FontSizeTextConverter());
             AddIfMissing("AppFontFamily", OrdoSort.Wpf.Theme.AppFonts.CreateDefault());
             AddIfMissing("AppFontSize", 14.0);
-            baseline = app.Resources.Keys.Cast<object>().ToDictionary(k => k, k => app.Resources[k]);
+            baseline = app.Resources.Keys.Cast<object>().ToDictionary(k => k, k => (object?)app.Resources[k]);
             dispatcher = Dispatcher.CurrentDispatcher;
             // ready must be set from ON this thread, after Dispatcher.CurrentDispatcher
             // exists, but BEFORE Dispatcher.Run() blocks it.
