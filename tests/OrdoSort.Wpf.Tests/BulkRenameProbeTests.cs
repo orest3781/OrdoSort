@@ -1,163 +1,94 @@
-using System.Diagnostics;
-using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.ViewModels;
 using static OrdoSort.Core.BulkRename;
 
 namespace OrdoSort.Wpf.Tests;
 
-/// <summary>Task 2 (2026-08-05 debounce pair, audit finding 5.2[A]):
-/// BulkRenameViewModel.Refresh used to call BulkRename.Plan — a File.Exists
-/// per file, more per collision (BulkRename.cs:159-161) — synchronously on
-/// the UI thread from every op setter (Find/Replace/Prefix/Suffix and the
-/// discrete toggles), so a typed keystroke on an SMB destination paid a
-/// network round trip per file in the tool built for batches. This file pins
-/// both halves of the fix: the plan now computes off the UI thread through
-/// DebouncedProbe (mirroring the probes already proven in
-/// RouteEditVm/WatchEditVm/SettingsViewModel/TilePreviewProbeTests), and a
-/// burst of keystrokes coalesces into one Plan() call rather than one per
-/// character. See ToolViewModelTests.BulkRenameViewModelTests for the
-/// pre-existing behavioral tests, now polling for the same reason
-/// SettingsViewModelTests' probes do.</summary>
+/// <summary>Bulk rename's preview plan (a File.Exists per file, more per
+/// collision) must not run inside a typed keystroke: a batch on an SMB
+/// destination would pay a network round trip per file per character. The
+/// plan runs once the typing pauses, once per burst. Every test owns the
+/// clock, so none of this depends on how busy the machine is.</summary>
 public class BulkRenameProbeTests : IDisposable
 {
-    /// <summary>Adds the files and ticks them all: every control changes only
-    /// ticked files (2026-09-26), and these tests are about the rename rule,
-    /// not which files are picked.</summary>
-    private static async Task AddAndTickAsync(BulkRenameViewModel vm, IEnumerable<string> paths)
+    private static readonly TimeSpan PastTheDebounce = TimeSpan.FromSeconds(1);
+
+    private readonly TempDir _dir = new();
+
+    public void Dispose() => _dir.Dispose();
+
+    /// <summary>A view model whose plan runs on this thread, counted, on a
+    /// clock the test moves; the file is added and ticked (every control
+    /// changes only ticked files) and its first preview is built.</summary>
+    private (BulkRenameViewModel Vm, ManualTimeProvider Time, Func<int> PlanCalls) Build(string fileName,
+        int probeDelayMs = 300)
     {
-        var list = paths.ToList();
-        await vm.AddFilesAsync(list);
-        vm.SelectedSources = list;
+        var calls = 0;
+        var time = new ManualTimeProvider();
+        var vm = new BulkRenameViewModel(
+            plan: (paths, op, overrides, dropped, ticked) => { calls++; return Plan(paths, op, overrides, dropped, ticked); },
+            scheduler: new InlineWorkScheduler(), probeDelayMs: probeDelayMs, time: time);
+        var file = _dir.File(fileName);
+        InlineWorkScheduler.Finished(vm.AddFilesAsync(new[] { file }));
+        vm.SelectedSources = new[] { file };
+        time.Advance(TimeSpan.FromMilliseconds(probeDelayMs) + PastTheDebounce);
+        Assert.Single(vm.Preview);
+        return (vm, time, () => calls);
     }
-
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordobulkprobe_" + Guid.NewGuid());
-
-    public BulkRenameProbeTests() => Directory.CreateDirectory(_dir);
-
-    public void Dispose()
-    {
-        try { Directory.Delete(_dir, true); } catch { /* best effort */ }
-    }
-
-    private string Touch(string name)
-    {
-        var p = Path.Combine(_dir, name);
-        File.WriteAllText(p, "x");
-        return p;
-    }
-
-    /// <summary>A deliberately slow stand-in for BulkRenameViewModel's `plan`
-    /// seam — same Thread.Sleep-wrapped-dependency technique as
-    /// SettingsViewModelTests' directoryExists/validateRoute stand-ins and
-    /// TilePreviewProbeTests' slow folderStatus stand-in, but pointed at the
-    /// COMPUTE itself (BulkRename.Plan) rather than the scheduler that
-    /// dispatches it. This matters: injecting latency at the scheduler only
-    /// proves the scheduler is exercised asynchronously — it does NOT prove a
-    /// regression to a synchronous Plan() call in the setter would be caught,
-    /// because a synchronous call bypasses the scheduler (and any latency
-    /// hung on it) entirely. Sleeping inside the compute itself stands in for
-    /// the real File.Exists cost finding 5.2 is about, so a setter that
-    /// regresses to calling this synchronously WILL block for real.</summary>
-    private static List<PlannedRename> SlowPlan(int delayMs,
-        IEnumerable<string> paths, RenameOp op, IReadOnlyDictionary<string, string>? overrides,
-        IReadOnlyDictionary<string, IReadOnlySet<int>>? dropped, IReadOnlySet<string>? ticked)
-    {
-        Thread.Sleep(delayMs);
-        return Plan(paths, op, overrides, dropped, ticked);
-    }
-
-    /// <summary>Counts how many times the scheduler is actually asked to run
-    /// work — i.e. how many times the debounce timer fired and a real Plan()
-    /// call happened — while still doing the work for real via
-    /// TaskWorkScheduler underneath.</summary>
-    private sealed class CountingWorkScheduler : IWorkScheduler
-    {
-        private readonly Action _onRun;
-        private readonly IWorkScheduler _inner = new TaskWorkScheduler();
-        public CountingWorkScheduler(Action onRun) => _onRun = onRun;
-        public Task<T> Run<T>(Func<T> work) { _onRun(); return _inner.Run(work); }
-        public Task Run(Action work) { _onRun(); return _inner.Run(work); }
-    }
-
-    // ---- 1. the UI thread does not block on the plan itself ---------------
 
     [Fact]
-    public async Task SettingFindReturnsPromptlyEvenWhilePlanItselfIsSlow()
+    public void SettingFindLeavesThePlanUntilTheTypingPauses()
     {
-        var a = Touch("scan_001.pdf");
-        var vm = new BulkRenameViewModel(plan: (paths, op, overrides, dropped, ticked) => SlowPlan(300, paths, op, overrides, dropped, ticked));
-        await vm.AddFilesAsync(new[] { a });
-        WaitFor(() => vm.Preview.Count == 1, "the initial add should settle before the timing measurement");
+        var (vm, time, planCalls) = Build("scan_001.pdf");
+        var before = planCalls();
 
-        var sw = Stopwatch.StartNew();
         vm.Find = "scan";
-        sw.Stop();
+        Assert.Equal(before, planCalls());
 
-        Assert.True(sw.ElapsedMilliseconds < 50,
-            $"setting Find blocked for {sw.ElapsedMilliseconds}ms on the UI thread");
+        time.Advance(PastTheDebounce);
+        Assert.Equal(before + 1, planCalls());
     }
 
-    // ---- 2. the preview still becomes correct — this is not "never compute"
-
     [Fact]
-    public async Task ThePreviewEventuallyReflectsTheSlowPlansResult()
+    public void ThePreviewReflectsFindAndReplaceOnceTheTypingPauses()
     {
-        var a = Touch("scan_001.pdf");
-        var vm = new BulkRenameViewModel(plan: (paths, op, overrides, dropped, ticked) => SlowPlan(300, paths, op, overrides, dropped, ticked));
-        await AddAndTickAsync(vm, new[] { a });
-        WaitFor(() => vm.Preview.Count == 1, "the initial add should settle first");
+        var (vm, time, _) = Build("scan_001.pdf");
 
         vm.Find = "scan";
         vm.Replace = "fax";
+        time.Advance(PastTheDebounce);
 
-        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "fax_001.pdf",
-            "the preview should eventually reflect Find/Replace once the slow plan completes");
+        Assert.Equal("fax_001.pdf", Assert.Single(vm.Preview).NewName);
     }
 
-    // ---- 3. a burst of keystrokes runs Plan once, not once per character --
-
     [Fact]
-    public async Task TypingABurstRunsThePlanOnceNotPerKeystroke()
+    public void TypingABurstRunsThePlanOnceNotPerKeystroke()
     {
-        var calls = 0;
-        var a = Touch("scan_001.pdf");
-        var vm = new BulkRenameViewModel(
-            scheduler: new CountingWorkScheduler(() => Interlocked.Increment(ref calls)));
-        await AddAndTickAsync(vm, new[] { a });
-        WaitFor(() => vm.Preview.Count == 1, "the initial add should settle before the keystroke burst starts");
-        var callsBeforeTyping = calls;
+        var (vm, time, planCalls) = Build("scan_001.pdf");
+        var before = planCalls();
 
-        // simulate typing "scan" character by character, faster than the
-        // debounce window — exactly the keystroke burst finding 5.2 named
+        // typing "scan", 100 ms between keystrokes: inside the 300 ms debounce
         var target = "scan";
         for (var i = 1; i <= target.Length; i++)
+        {
             vm.Find = target.Substring(0, i);
+            time.Advance(TimeSpan.FromMilliseconds(100));
+        }
+        Assert.Equal(before, planCalls());
 
-        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].Changed,
-            "the preview should eventually reflect the finished Find text");
-        Thread.Sleep(350);   // no more keystrokes coming; let the debounce fully settle
-
-        Assert.Equal(callsBeforeTyping + 1, calls);   // one Plan() call for the whole burst, not one per character
+        time.Advance(PastTheDebounce);   // the pause
+        Assert.Equal(before + 1, planCalls());
+        Assert.True(Assert.Single(vm.Preview).Changed);
     }
 
-    // ---- 4. a discrete toggle resolves immediately, pinning the Step 4
-    // classification rather than assuming it -------------------------------
-
     [Fact]
-    public async Task ADiscreteToggleResolvesWithoutWaitingTheFullDebounceWindow()
+    public void ADiscreteToggleResolvesWithoutWaitingForTheDebounce()
     {
-        var a = Touch("A-B-C.pdf");
-        // an artificially huge debounce window — if the discrete toggle
-        // waited it out like a typed field, the WaitFor below (timeout well
-        // under this) would fail
-        var vm = new BulkRenameViewModel(probeDelayMs: 5000);
-        await AddAndTickAsync(vm, new[] { a });
-        WaitFor(() => vm.Preview.Count == 1, "the initial add should settle before the timing measurement");
+        // A huge debounce window: a chip click that waited it out like typed
+        // text would leave the preview unchanged below.
+        var (vm, _, _) = Build("A-B-C.pdf", probeDelayMs: 60_000);
 
         vm.SetSegmentKept(2, kept: false);   // a segment chip click, not typed text
 
-        WaitFor(() => vm.Preview.Count == 1 && vm.Preview[0].NewName == "A-C.pdf",
-            "a discrete toggle should resolve promptly, not after the full debounce window",
-            timeoutMs: 1000);
+        Assert.Equal("A-C.pdf", Assert.Single(vm.Preview).NewName);
     }
 }
