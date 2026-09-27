@@ -8,8 +8,9 @@
 | Run | `run.bat dev\config.json` (small tracked dev setup), `run.bat` (demo workbench) or `run.bat <config.json>` |
 | Test | `check.bat core` (fast) / `check.bat wpf` |
 | Integration | `check.bat integration` - tests that start real Edge or Office; not in the everyday check |
-| Check | `check.bat` - restore, build Release, all tests; mirrors CI. Run before saying work is done |
+| Check | `check.bat` - restore, format check, build Release, everyday tests (run from a Debug build); mirrors CI. Run before saying work is done |
 | End-to-end | `scripts\e2e.bat` |
+| Testing rules | `docs/testing.md` - kinds of tests, the rules (test clock, inline scheduler, `UiTest`, `TempDir`), how to read a run, known flakes |
 
 # C# guidelines
 

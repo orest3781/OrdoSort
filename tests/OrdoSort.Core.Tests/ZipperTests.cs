@@ -782,7 +782,7 @@ public class ZipperTests : IDisposable
     /// UnlockProbeWritesNothingTests holds Unlock.ProbeReadiness to, proven
     /// the same way: names, sizes and mtimes of the fixture directory before
     /// and after. No %TEMP% assertion here (2026-08-28 review finding):
-    /// docs/known-flakes.md records that exact check flaking on
+    /// that exact check flaked (fixed in cd331ef) on
     /// UnlockProbeWritesNothingTests because a concurrently-running unlock
     /// test writes its own working copy into %TEMP% mid-window, fixed there
     /// by sharing UnlockNeverOverwritesTests' collection — but ZipperTests
