@@ -106,7 +106,7 @@ public class SectionDropdownReproTests : UiTest
         var cfgPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
             "ordo_test_section_repro_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(), () => ThemePalette.Light, cfgPath,
-            uiContext: SynchronizationContext.Current);
+            uiContext: SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
         vm.SelectedWatch = vm.WatchFolders.First(w => w.Label == selectLabel);
 
         var window = new SettingsWindow(vm)

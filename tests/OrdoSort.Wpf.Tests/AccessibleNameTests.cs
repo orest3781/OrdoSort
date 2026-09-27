@@ -138,7 +138,7 @@ public class AccessibleNameTests : UiTest
     public void ASavedPasswordRowIsAnnouncedByItsLabelNeverItsPassword() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
         var window = new ManageSavedWindow(vm)
         {

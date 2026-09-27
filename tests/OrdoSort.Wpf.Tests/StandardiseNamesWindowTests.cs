@@ -231,7 +231,7 @@ public class StandardiseNamesWindowTests : UiTest
     [Fact]
     public void UndoLastBatchLivesInTheToolbarImmediatelyAfterRemoveLastSegment()
     {
-        var vm = new StandardiseNamesViewModel(new FakeDialogs());
+        var vm = new StandardiseNamesViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
         _fx.Invoke(() =>
         {
             ThemeManager.Apply(_fx.App, dark: false);

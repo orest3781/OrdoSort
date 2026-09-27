@@ -104,7 +104,7 @@ public class WatchListRowTemplateTests : UiTest
         // own note): several SettingsViewModel properties dereference cfgPath with `!`.
         var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(), () => ThemePalette.Light, cfgPath,
-            uiContext: SynchronizationContext.Current);
+            uiContext: SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
 
         var window = new SettingsWindow(vm)
         {

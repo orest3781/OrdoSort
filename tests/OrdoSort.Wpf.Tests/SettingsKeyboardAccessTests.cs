@@ -85,7 +85,7 @@ public class SettingsKeyboardAccessTests : UiTest
         var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_a11y_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(),
             () => ThemePalette.Light, cfgPath,
-            uiContext: SynchronizationContext.Current);
+            uiContext: SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
         return new SettingsWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,

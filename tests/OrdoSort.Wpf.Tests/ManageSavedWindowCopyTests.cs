@@ -36,7 +36,7 @@ public class ManageSavedWindowCopyTests : UiTest
     public void StorageNoteWrapsInsteadOfClippingInBothPalettes(bool dark) => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark);
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         var window = new ManageSavedWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,

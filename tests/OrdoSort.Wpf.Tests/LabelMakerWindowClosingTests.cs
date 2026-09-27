@@ -34,7 +34,7 @@ public class LabelMakerWindowClosingTests : UiTest
             return 0;
         });
         var dialogs = new FakeDialogs();
-        var vm = new LabelMakerViewModel(null, boxLabelsPath, dialogs, "Box labels");
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, dialogs, "Box labels", scheduler: new InlineWorkScheduler());
         var window = new LabelMakerWindow(vm, "Box labels", "Print preview")
         {
             Left = -20000, Top = 0, ShowActivated = false,

@@ -28,7 +28,7 @@ public class FilenameListWindowTests : UiTest
     public void TheGridDoesNotRunItsOwnClipboardCopy() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var vm = new FilenameListViewModel(new FakeDialogs());
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
         var window = new FilenameListWindow(vm);
         window.Left = -20000; window.Top = 0; window.ShowActivated = false;
         window.WindowStartupLocation = WindowStartupLocation.Manual;
@@ -69,7 +69,7 @@ public class FilenameListWindowTests : UiTest
     public void TogglingEachColumnFlagShowsAndHidesThatColumnOnly() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var vm = new FilenameListViewModel(new FakeDialogs());
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
         var window = new FilenameListWindow(vm);
         window.Left = -20000; window.Top = 0; window.ShowActivated = false;
         window.WindowStartupLocation = WindowStartupLocation.Manual;
@@ -130,7 +130,7 @@ public class FilenameListWindowTests : UiTest
     public void TheHeaderMenuFlipsTheSameFlagTheExportReads() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var vm = new FilenameListViewModel(new FakeDialogs());
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
         var window = new FilenameListWindow(vm);
         window.Left = -20000; window.Top = 0; window.ShowActivated = false;
         window.WindowStartupLocation = WindowStartupLocation.Manual;
@@ -159,7 +159,7 @@ public class FilenameListWindowTests : UiTest
     public void TypingJumpsByFileNameEvenWithTheRowNumberColumnFirst() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var vm = new FilenameListViewModel(new FakeDialogs()) { ShowNumber = true };
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler()) { ShowNumber = true };
         foreach (var name in new[] { "alpha.pdf", "bravo.pdf" })
             vm.Rows.Add(new OrdoSort.Core.FilenameList.FileRow(name, 1024, DateTime.Today, @"C:\inbox", @"C:\inbox\" + name));
         var window = new FilenameListWindow(vm)
@@ -187,7 +187,7 @@ public class FilenameListWindowTests : UiTest
     public void FittingTheRowNumberColumnMakesRoomForTheLargestNumber() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var vm = new FilenameListViewModel(new FakeDialogs()) { ShowNumber = true };
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler()) { ShowNumber = true };
         for (var i = 0; i < 120; i++)
             vm.Rows.Add(new OrdoSort.Core.FilenameList.FileRow($"f{i}.pdf", 1, DateTime.Today, @"C:\inbox", $@"C:\inbox{i}.pdf"));
         var window = new FilenameListWindow(vm)

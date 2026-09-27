@@ -71,14 +71,14 @@ public class TransientFooterButtonTests : UiTest
         {
             case "Unlock":
             {
-                var vm = new UnlockViewModel(new Config(), () => true);
+                var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
                 vm.Files.Add(new UnlockFileRow(@"C:\inbox\a-locked-document.pdf"));
                 var w = new UnlockWindow(vm);
                 return (w, FindByContent(w, "Cancel"), null);
             }
             case "BulkRename":
             {
-                var vm = new BulkRenameViewModel();
+                var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
                 vm.Preview.Add(new RenameRow(@"C:\inbox\before.pdf", "before.pdf", "after.pdf", "",
                     changed: true, manual: false, needsName: false, editSeed: "after.pdf",
                     noteIsProblem: false));

@@ -424,7 +424,7 @@ public class FocusRingCoverageTests : UiTest
             var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_a11y_" + Guid.NewGuid(), "config.json");
             var vm = new SettingsViewModel(new Config(), new NoDialogs(),
                 () => dark ? ThemePalette.Dark : ThemePalette.Light, cfgPath,
-                uiContext: SynchronizationContext.Current);
+                uiContext: SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
             var settings = new SettingsWindow(vm);
             themeCard = (Style)settings.Resources["ThemeCard"];
         });

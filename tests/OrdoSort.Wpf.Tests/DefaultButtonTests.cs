@@ -69,7 +69,7 @@ public class DefaultButtonTests : UiTest
     public void MatchAndMergeAnswersEnter() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var win = new MatchMergeWindow(new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs()));
+        var win = new MatchMergeWindow(new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(), scheduler: new InlineWorkScheduler()));
         Assert.True(ThePrimary(win).IsDefault);
     });
 }

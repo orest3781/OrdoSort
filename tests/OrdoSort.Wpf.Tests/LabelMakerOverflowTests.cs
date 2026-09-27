@@ -58,7 +58,7 @@ public class LabelMakerOverflowTests : UiTest
         _fx.App.Resources["AppFontSize"] = fontSize;
 
         var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
-        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels");
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels", scheduler: new InlineWorkScheduler());
         vm.Clients.Add(new LabelClientVm { Id = "TESTCLNT", DestroyDaysText = "45", NextNumberText = "00000001" });
         vm.Selected = vm.Clients[0];
         var window = new LabelMakerWindow(vm, "Box labels", "Print preview")
@@ -115,7 +115,7 @@ public class LabelMakerOverflowTests : UiTest
         _fx.App.Resources["AppFontSize"] = fontSize;
 
         var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
-        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box Labels");
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box Labels", scheduler: new InlineWorkScheduler());
         vm.Clients.Add(new LabelClientVm { Id = "TESTCLNT", DestroyDaysText = "45", NextNumberText = "00000001" });
         vm.Selected = vm.Clients[0];
         var window = new LabelMakerWindow(vm, "Box Labels", "Box Labels — Print preview",

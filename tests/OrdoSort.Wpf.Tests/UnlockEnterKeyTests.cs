@@ -123,7 +123,7 @@ public class UnlockEnterKeyTests : UiTest
                 invoked.Add((path, password));
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = new UnlockWindow(vm)
@@ -178,7 +178,7 @@ public class UnlockEnterKeyTests : UiTest
                 invoked++;
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         // deliberately no Files.Add(...)
 
         var window = new UnlockWindow(vm)
@@ -240,7 +240,7 @@ public class UnlockEnterKeyTests : UiTest
                 invoked.Add((path, password));
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
@@ -298,7 +298,7 @@ public class UnlockEnterKeyTests : UiTest
                 invoked.Add((path, password));
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
@@ -359,7 +359,7 @@ public class UnlockEnterKeyTests : UiTest
                 invoked.Add((path, password));
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
@@ -422,7 +422,7 @@ public class UnlockEnterKeyTests : UiTest
                 invoked.Add((path, password));
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
@@ -475,7 +475,7 @@ public class UnlockEnterKeyTests : UiTest
                 invoked.Add((path, password));
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);
@@ -529,7 +529,7 @@ public class UnlockEnterKeyTests : UiTest
                 invoked.Add((path, password));
                 return new Unlock.UnlockResult("ok", path, path, InPlace: true);
             },
-            fileSize: _ => 0);
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
 
         var window = OffScreen(vm);

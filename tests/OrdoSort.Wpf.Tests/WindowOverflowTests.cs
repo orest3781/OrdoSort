@@ -88,7 +88,7 @@ public class WindowOverflowTests : UiTest
     {
         ["BulkRenameWindow"] = new(700, 820, 600, 700, () =>
         {
-            var vm = new BulkRenameViewModel();
+            var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
             vm.Preview.Add(new RenameRow(@"C:\inbox\old-name-before-review.pdf", "old-name-before-review.pdf",
                 "20240101-SMITH-JOHN.pdf", "edited by hand",
                 changed: true, manual: true, needsName: false, editSeed: "20240101-SMITH-JOHN.pdf",
@@ -98,7 +98,7 @@ public class WindowOverflowTests : UiTest
 
         ["FilenameListWindow"] = new(480, 640, 400, 560, () =>
         {
-            var vm = new FilenameListViewModel(new NoDialogs())
+            var vm = new FilenameListViewModel(new NoDialogs(), scheduler: new InlineWorkScheduler())
             {
                 // every column on, a filter typed, Z to A ticked: the longest
                 // the toolbar and the counts line ever get
@@ -149,14 +149,14 @@ public class WindowOverflowTests : UiTest
 
         ["ManageSavedWindow"] = new(380, 420, 360, 420, () =>
         {
-            var vm = new UnlockViewModel(new Config(), () => true);
+            var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
             vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
             return (new ManageSavedWindow(vm), null);
         }, MinExamined: 10),   // 13 measured
 
         ["MatchMergeWindow"] = new(720, 840, 520, 640, () =>
         {
-            var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
+            var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(), scheduler: new InlineWorkScheduler());
             vm.Rows.Add(new MatchRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf",
                 "a-long-enough-filename-to-matter.pdf", "SMITH, JOHN — 1234567890.pdf",
                 "3 candidates — decide in Review matches", "ambiguous"));
@@ -173,7 +173,7 @@ public class WindowOverflowTests : UiTest
 
         ["PageCountsWindow"] = new(580, 700, 440, 560, () =>
         {
-            var vm = new PageCountsViewModel(new FakeDialogs());
+            var vm = new PageCountsViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
             var row = new PageCountRow(@"C:\inbox\a-long-enough-filename-to-matter.pdf");
             row.Apply(new PageCounts.CountResult(row.Path, null,
                 "password-protected or unreadable — couldn't count"));
@@ -199,7 +199,7 @@ public class WindowOverflowTests : UiTest
             var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_overflow_" + Guid.NewGuid(), "config.json");
             var vm = new SettingsViewModel(cfg, new NoDialogs(),
                 () => ThemePalette.Light, cfgPath,
-                uiContext: SynchronizationContext.Current);
+                uiContext: SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
             return (new SettingsWindow(vm), null);
         }, MinExamined: 245, ProbeEveryTab: true),   // 326 measured
 
@@ -254,7 +254,7 @@ public class WindowOverflowTests : UiTest
 
         ["UnlockWindow"] = new(540, 620, 560, 660, () =>
         {
-            var vm = new UnlockViewModel(new Config(), () => true);
+            var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
             var row = new UnlockFileRow(@"C:\inbox\20240101--1111111111-long-descriptive-scan-name.pdf");
             row.SetProbeResult(ReadinessStatus.NeedsPassword,
                 "This PDF needs a password none of the saved ones supply.");
@@ -266,7 +266,7 @@ public class WindowOverflowTests : UiTest
         // messages are the widest thing this grid ever shows.
         ["ZipToolsWindow"] = new(580, 700, 420, 520, () =>
         {
-            var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>());
+            var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), scheduler: new InlineWorkScheduler());
             var archive = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
             archive.Apply(new Zipper.UnzipResult(archive.Path, "error", null,
                 "not a valid zip archive — a long enough exception message to matter"));
@@ -282,7 +282,7 @@ public class WindowOverflowTests : UiTest
         // widest thing this grid ever shows.
         ["MergePdfsWindow"] = new(580, 700, 420, 520, () =>
         {
-            var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>());
+            var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), scheduler: new InlineWorkScheduler());
             var toMerge = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");
             toMerge.Apply(new PdfMerge.MergeResult(toMerge.Path, "error",
                 Message: "couldn't read 'entry.pdf' inside the zip — a long enough exception message to matter"));

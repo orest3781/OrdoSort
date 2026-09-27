@@ -490,7 +490,7 @@ public class HighlightContrastTests : UiTest
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
         var window = new UnlockWindow(vm)
         {
@@ -592,7 +592,7 @@ public class HighlightContrastTests : UiTest
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         var row = new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf");
         row.SetProbeResult(status, message);
         vm.Files.Add(row);
@@ -706,7 +706,7 @@ public class HighlightContrastTests : UiTest
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         vm.ResultLines.Add(new UnlockResultLine(text, kind));
         var window = new UnlockWindow(vm)
         {
@@ -779,7 +779,7 @@ public class HighlightContrastTests : UiTest
         ThemeManager.Apply(_fx.App, scheme);
 
         var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
-        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels");
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels", scheduler: new InlineWorkScheduler());
         vm.Clients.Add(new LabelClientVm { Id = "TEST" });
         var window = new LabelMakerWindow(vm, "Box labels", "Print preview")
         {
@@ -832,7 +832,7 @@ public class HighlightContrastTests : UiTest
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
         var window = new ManageSavedWindow(vm)
         {
@@ -905,7 +905,7 @@ public class HighlightContrastTests : UiTest
         var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(),
             () => scheme.Palette, cfgPath,
-            uiContext: System.Threading.SynchronizationContext.Current);
+            uiContext: System.Threading.SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
         var window = new SettingsWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
@@ -996,7 +996,7 @@ public class HighlightContrastTests : UiTest
         ThemeManager.Apply(_fx.App, scheme);
 
         var boxLabelsPath = Path.Combine(Path.GetTempPath(), "ordo_test_boxlabels_" + Guid.NewGuid() + ".json");
-        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels");
+        var vm = new LabelMakerViewModel(null, boxLabelsPath, new NoDialogs(), "Box labels", scheduler: new InlineWorkScheduler());
         vm.Clients.Add(new LabelClientVm { Id = "TEST" });
         var window = new LabelMakerWindow(vm, "Box labels", "Print preview")
         {
@@ -1051,7 +1051,7 @@ public class HighlightContrastTests : UiTest
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         vm.Saved.Add(new SavedPassword { Label = "Test client", Password = "hunter2" });
         var window = new ManageSavedWindow(vm)
         {
@@ -1104,7 +1104,7 @@ public class HighlightContrastTests : UiTest
         var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(),
             () => scheme.Palette, cfgPath,
-            uiContext: System.Threading.SynchronizationContext.Current);
+            uiContext: System.Threading.SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
         var window = new SettingsWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
@@ -1957,7 +1957,7 @@ public class HighlightContrastTests : UiTest
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new BulkRenameViewModel();
+        var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
         vm.Preview.Add(new RenameRow(@"C:\inbox\c.pdf", "c.pdf", "c.pdf",
             "every segment dropped — skipped",
             changed: false, manual: false, needsName: true, editSeed: "c.pdf", noteIsProblem: true));
@@ -2039,7 +2039,7 @@ public class HighlightContrastTests : UiTest
         var cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_settings_" + Guid.NewGuid(), "config.json");
         var vm = new SettingsViewModel(cfg, new NoDialogs(),
             () => scheme.Palette, cfgPath,
-            uiContext: System.Threading.SynchronizationContext.Current);
+            uiContext: System.Threading.SynchronizationContext.Current, scheduler: new InlineWorkScheduler());
         var window = new SettingsWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
@@ -2150,7 +2150,7 @@ public class HighlightContrastTests : UiTest
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         var row = new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf");
         row.SetProbeResult(status, message);
         vm.Files.Add(row);
@@ -2217,7 +2217,7 @@ public class HighlightContrastTests : UiTest
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(), scheduler: new InlineWorkScheduler());
         vm.Rows.Add(new MatchRow(@"C:\inbox\a.pdf", "a.pdf", "", "some note text here", "ambiguous"));
         var window = new MatchMergeWindow(vm)
         {

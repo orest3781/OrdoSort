@@ -67,7 +67,7 @@ public class DataGridNoteColourTests : UiTest
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs());
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(), scheduler: new InlineWorkScheduler());
         vm.Rows.Add(new MatchRow(@"C:\inbox\a.pdf", "a.pdf", "", "some note text here", status));
         var window = new MatchMergeWindow(vm)
         {
@@ -156,7 +156,7 @@ public class DataGridNoteColourTests : UiTest
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new BulkRenameViewModel();
+        var vm = new BulkRenameViewModel(scheduler: new InlineWorkScheduler());
         vm.Preview.Add(row);
         var window = new BulkRenameWindow(vm)
         {
@@ -267,7 +267,7 @@ public class DataGridNoteColourTests : UiTest
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>());
+        var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), scheduler: new InlineWorkScheduler());
         var row = new ZipItemRow(@"C:\inbox\a.zip", "zip");
         row.Apply(new Zipper.UnzipResult(row.Path, status, null, "some result text here"));
         vm.Rows.Add(row);
@@ -333,7 +333,7 @@ public class DataGridNoteColourTests : UiTest
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>());
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), scheduler: new InlineWorkScheduler());
         var row = new ZipItemRow(@"C:\inbox\a.zip", "zip");
         row.Apply(new PdfMerge.MergeResult(row.Path, status, Message: "some result text here"));
         vm.Rows.Add(row);
@@ -411,7 +411,7 @@ public class DataGridNoteColourTests : UiTest
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new StandardiseNamesViewModel(new FakeDialogs());
+        var vm = new StandardiseNamesViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
         vm.Results.Add(new StandardiseNameRow(
             "a-long-enough-filename-to-matter.pdf", "some result text here",
             @"C:\inbox\a-long-enough-filename-to-matter.pdf", status));
@@ -485,7 +485,7 @@ public class DataGridNoteColourTests : UiTest
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new PageCountsViewModel(new FakeDialogs());
+        var vm = new PageCountsViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
         var row = new PageCountRow(@"C:\inbox\a.pdf");
         row.Apply(new PageCounts.CountResult(row.Path, note.Length == 0 ? 3 : null, note));
         vm.Rows.Add(row);

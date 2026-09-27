@@ -66,7 +66,7 @@ public class ManageSavedEnterKeyTests : UiTest
     {
         ThemeManager.Apply(_fx.App, dark: false);
         var cfg = new Config();
-        var vm = new UnlockViewModel(cfg, () => true);
+        var vm = new UnlockViewModel(cfg, () => true, scheduler: new InlineWorkScheduler());
         var window = new ManageSavedWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,
@@ -118,7 +118,7 @@ public class ManageSavedEnterKeyTests : UiTest
     public void EnterOutsideTheEntryFieldsIsLeftForTheDefaultButton() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
-        var vm = new UnlockViewModel(new Config(), () => true);
+        var vm = new UnlockViewModel(new Config(), () => true, scheduler: new InlineWorkScheduler());
         var window = new ManageSavedWindow(vm)
         {
             Left = -20000, Top = 0, ShowActivated = false,

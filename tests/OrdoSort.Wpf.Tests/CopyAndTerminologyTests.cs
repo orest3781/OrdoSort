@@ -61,7 +61,7 @@ public class CopyAndTerminologyTests : UiTest
         cfgPath = Path.Combine(Path.GetTempPath(), "ordo_test_copy_" + Guid.NewGuid(), "config.json");
         return new SettingsViewModel(cfg, new NoDialogs(),
             () => palette, cfgPath,
-            uiContext: SynchronizationContext.Current, probeDelayMs: probeDelayMs);
+            uiContext: SynchronizationContext.Current, probeDelayMs: probeDelayMs, scheduler: new InlineWorkScheduler());
     }
 
     /// <summary>Pump this thread's dispatcher until <paramref name="settled"/>
