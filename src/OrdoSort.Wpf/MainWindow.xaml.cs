@@ -106,7 +106,12 @@ public partial class MainWindow : Window
             // the session window's viewer starts now, as it always has at
             // launch, so a first Start is instant and a broken viewer is
             // reported here rather than mid-session
-            if (!await Processing.WarmUpAsync())
+            var started = await Processing.WarmUpAsync();
+            // closed while the viewer was starting (a quick exit at launch, or
+            // a slow first Edge start): the shell is disposed, so there is
+            // nothing to warn about or start
+            if (_closed) return;
+            if (!started)
                 Dialogs.Warn(
                     "The PDF viewer (WebView2) failed to start:\n\n" + Processing.PdfViewer.InitError,
                     "OrdoSort");
@@ -154,6 +159,7 @@ public partial class MainWindow : Window
 
         Closed += (_, _) =>
         {
+            _closed = true;
             Processing.CloseForReal();
             _watch.Dispose();
             Shell.Dispose();
@@ -161,6 +167,7 @@ public partial class MainWindow : Window
     }
 
     private bool _reallyExit;
+    private bool _closed;
 
     /// <summary>Windows is shutting down or signing out: nothing here may
     /// cancel that, so the session window closes for real too.</summary>
