@@ -534,6 +534,19 @@ public sealed class SchemeOptionVm : ObservableObject
 /// key survives by construction.</summary>
 public sealed class SettingsViewModel : ObservableObject, IDisposable
 {
+    /// <summary>The Box labels tab's editor; null when box-labels.json
+    /// couldn't be read (the tab then shows <see cref="LabelStyleProblem"/>).
+    /// The style lives in that shared file, not config.json.</summary>
+    public LabelStyleEditorViewModel? LabelStyle { get; }
+
+    /// <summary>Why the Box labels tab can't edit the style, or "".</summary>
+    public string LabelStyleProblem { get; }
+
+    public bool HasLabelStyle => LabelStyle is not null;
+
+    /// <summary>The style to write to the shared file on OK, or null to leave it.</summary>
+    public BoxLabels.LabelStyle? LabelStyleResult => LabelStyle is { IsChanged: true } e ? e.Style : null;
+
     // KeyValuePair: WPF binds properties, not tuple fields
     public static readonly KeyValuePair<string, string>[] SortChoices =
     {
@@ -637,8 +650,12 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         int probeDelayMs = 300,
         TimeProvider? time = null,
         Func<string, string>? writeProblem = null,
-        Func<string, bool>? isNetworkPath = null)
+        Func<string, bool>? isNetworkPath = null,
+        BoxLabels.LabelStyle? labelStyle = null,
+        string labelStyleProblem = "")
     {
+        LabelStyle = labelStyle is { } style ? new LabelStyleEditorViewModel(style) : null;
+        LabelStyleProblem = labelStyleProblem;
         _original = current;
         _dialogs = dialogs;
         _palette = palette ?? (() => ThemePalette.Light);

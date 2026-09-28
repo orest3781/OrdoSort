@@ -348,16 +348,22 @@ public partial class MainWindow : Window
         if (_openingSettings) return;
         _openingSettings = true;
         Config fresh;
-        try { fresh = await Shell.FreshConfigForSettingsAsync(); }
+        (Core.BoxLabels.LabelStyle? Style, string Problem) labelStyle;
+        try
+        {
+            fresh = await Shell.FreshConfigForSettingsAsync();
+            labelStyle = await Shell.LabelStyleForSettingsAsync();
+        }
         finally { _openingSettings = false; }
         if (!IsLoaded || !Shell.IsReady) return;   // closed, or a session started, while it loaded
         var vm = new SettingsViewModel(fresh, Dialogs, () => Theme.ThemeManager.Current,
-            Shell.CfgPath, new SoundService(), uiContext: SynchronizationContext.Current);
+            Shell.CfgPath, new SoundService(), uiContext: SynchronizationContext.Current,
+            labelStyle: labelStyle.Style, labelStyleProblem: labelStyle.Problem);
         var win = new Windows.SettingsWindow(vm) { Owner = this };
         var accepted = win.ShowDialog() == true;
         vm.Dispose();   // cancel any still-armed per-field/per-row probes now the dialog is closing
         if (accepted && vm.Result is { } cfg)
-            Shell.ApplySettings(cfg);
+            Shell.ApplySettings(cfg, vm.LabelStyleResult);
     }
 
     /// <summary>Lets the smoke harness swap in a recording dialog service

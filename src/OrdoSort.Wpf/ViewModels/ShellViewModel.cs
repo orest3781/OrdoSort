@@ -344,6 +344,19 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// hash of each shared section) run off the UI thread: with the config on
     /// a slow or dead share they froze the dashboard on the Settings click,
     /// before any window showed and even if the user then cancelled (Q2-20).</summary>
+    /// <summary>The label style for the Settings window's Box labels tab, read
+    /// off the UI thread (the file may be on a share). A store that can't be
+    /// read gives no style and the reason, and the tab says so.</summary>
+    internal Task<(BoxLabels.LabelStyle? Style, string Problem)> LabelStyleForSettingsAsync()
+    {
+        var path = BoxLabelsPath;
+        return _scheduler.Run(() =>
+        {
+            try { return ((BoxLabels.LabelStyle?)BoxLabelStore.Read(path).Style, ""); }
+            catch (ConfigException ex) { return ((BoxLabels.LabelStyle?)null, ex.Message); }
+        });
+    }
+
     internal async Task<Config> FreshConfigForSettingsAsync()
     {
         var cfgPath = _cfgPath;
@@ -1979,11 +1992,12 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// fresh daily backup for the NEW db), save (warning, not crashing, on a
     /// read-only file), rebuild watchers, refresh Ready. Settings is only
     /// reachable from Ready, so no live session.</summary>
-    internal void ApplySettings(Config cfg) => _ = RunGuarded(ApplySettingsAsync(cfg),
+    internal void ApplySettings(Config cfg, BoxLabels.LabelStyle? labelStyle = null) =>
+        _ = RunGuarded(ApplySettingsAsync(cfg, labelStyle),
         "Saving your settings",
         "Some of what you changed may not have been applied. Reopen Settings to check.");
 
-    internal async Task ApplySettingsAsync(Config cfg)
+    internal async Task ApplySettingsAsync(Config cfg, BoxLabels.LabelStyle? labelStyle = null)
     {
         // Audit 2.1: two stations editing Settings concurrently — the second
         // to press OK would otherwise silently overwrite the first. If a
@@ -2025,7 +2039,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         StartEnabled = false;
         try
         {
-            await ApplySettingsCoreAsync(cfg);
+            await ApplySettingsCoreAsync(cfg, labelStyle);
         }
         finally
         {
@@ -2034,7 +2048,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task ApplySettingsCoreAsync(Config cfg)
+    private async Task ApplySettingsCoreAsync(Config cfg, BoxLabels.LabelStyle? labelStyle)
     {
 
         // history_db stays deliberately unconfined here too — see the
@@ -2181,6 +2195,23 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         Raise(nameof(UppercaseNames));
         Raise(nameof(TileVisibilityIndex));
         Raise(nameof(TileControlsVisible));
+
+        // The label style lives in the shared box-labels.json, not config.json,
+        // so it is written on its own once config.json has saved, to the file
+        // now in use; a failure here leaves the other settings in use and says so.
+        if (labelStyle is { } style)
+        {
+            var labelsPath = BoxLabelsPath;
+            try
+            {
+                await _scheduler.Run(() => BoxLabelStore.Mutate(labelsPath, d => { d.Style = style; return 0; }));
+            }
+            catch (Exception ex) when (ex is ConfigException or IOException or UnauthorizedAccessException)
+            {
+                _dialogs.Warn($"Label style not saved: {ex.Message}\n\nYour other settings were saved.",
+                    "OrdoSort — label style not saved");
+            }
+        }
         SettingsApplied?.Invoke();
     }
 

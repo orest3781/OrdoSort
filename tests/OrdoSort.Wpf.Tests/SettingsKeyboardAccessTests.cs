@@ -265,7 +265,7 @@ public class SettingsKeyboardAccessTests : UiTest
         }
     });
 
-    /// <summary>All seven are distinct — the whole reason Data files and
+    /// <summary>All of them are distinct — the whole reason Data files and
     /// (since Phase 3 task 3.2) Alerts & polling use a non-initial letter.
     /// Asserted against the LIVE registrations rather than the literals, so
     /// a future header edit that quietly reintroduces a collision (D between
@@ -273,7 +273,7 @@ public class SettingsKeyboardAccessTests : UiTest
     /// between Appearance/Alerts) fails here rather than in a user's
     /// hands.</summary>
     [Fact]
-    public void TheSevenSettingsTabAccessKeysAreAllDistinct() => _fx.Invoke(() =>
+    public void EverySettingsTabAccessKeyIsDistinct() => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
         var window = BuildSettingsWindow();
@@ -292,9 +292,10 @@ public class SettingsKeyboardAccessTests : UiTest
                     .FirstOrDefault(k => k != '\0'))
                 .ToList();
 
-            Assert.Equal(7, keys.Count);
+            // eight since the Box labels tab (2026-09-28)
+            Assert.Equal(8, keys.Count);
             Assert.All(keys, k => Assert.NotEqual('\0', k));
-            Assert.Equal(7, keys.Select(char.ToUpperInvariant).Distinct().Count());
+            Assert.Equal(keys.Count, keys.Select(char.ToUpperInvariant).Distinct().Count());
         }
         finally
         {

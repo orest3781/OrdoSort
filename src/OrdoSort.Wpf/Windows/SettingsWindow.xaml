@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:OrdoSort.Wpf.ViewModels"
         xmlns:theme="clr-namespace:OrdoSort.Wpf.Theme;assembly=OrdoSort.Ui"
+        xmlns:views="clr-namespace:OrdoSort.Wpf.Views;assembly=OrdoSort.Ui"
         Title="OrdoSort — Settings" Width="880" Height="820" MinWidth="810" MinHeight="560"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         KeyDown="OnWindowKeyDown"
@@ -1633,6 +1634,22 @@
                     <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,4,0,0"
                                Text="OrdoSort = the built-in sounds. Custom plays any .wav you point to. A new-alert sound plays once per newly-arrived file — never on a repeat scan." />
                 </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============================================== Box labels -->
+            <!-- The label style is kept in the shared box-labels.json (every
+                 station prints alike); OK writes it there after config.json. -->
+            <TabItem Header="_Box labels" AutomationProperties.Name="Box labels">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16,8">
+                        <views:LabelStyleEditor DataContext="{Binding LabelStyle}"
+                                                Visibility="{Binding DataContext.HasLabelStyle,
+                                                    RelativeSource={RelativeSource AncestorType=TabItem},
+                                                    Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="{Binding LabelStyleProblem}" Style="{StaticResource NoteText}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
                 </ScrollViewer>
             </TabItem>
 
