@@ -42,6 +42,7 @@ public class CommitSkipFileTests : IDisposable
     public void Dispose()
     {
         Commit.SkipRaceHookForTests = null;
+        Commit.SameVolume = Commit.OnSameVolume;
         try { Directory.Delete(_root, recursive: true); } catch { /* best effort */ }
     }
 
@@ -191,5 +192,37 @@ public class CommitSkipFileTests : IDisposable
 
         Assert.Contains("already exists again", ex.Message);
         Assert.True(File.Exists(filed));
+    }
+
+    /// <summary>DW-46: a document deleted in the instant between the
+    /// "is it still there?" check and the move gave a raw "could not find
+    /// file" error. It now gets the same answer the check gives: vanished,
+    /// logged and passed over.</summary>
+    [Fact]
+    public void ADocumentGoneJustBeforeTheFilingMoveIsVanished()
+    {
+        var src = MakePdf(_inbox, "20240115--777777.pdf");
+        // SameVolume runs right before the move; deleting there is the race
+        Commit.SameVolume = (from, to) =>
+        {
+            if (from == src) File.Delete(src);
+            return Commit.OnSameVolume(from, to);
+        };
+
+        var outcome = Commit.CommitFile(src, "", new Route { Path = _deferred }, Naming.ModeInsert);
+
+        Assert.True(outcome.Vanished);
+    }
+
+    /// <summary>DW-46, for Skip.</summary>
+    [Fact]
+    public void ADocumentGoneJustBeforeTheSetAsideMoveIsVanished()
+    {
+        var src = MakePdf(_inbox, "20240115--888888.pdf");
+        Commit.SkipRaceHookForTests = () => File.Delete(src);
+
+        var outcome = Commit.SkipFile(src, _deferred);
+
+        Assert.True(outcome.Vanished);
     }
 }
