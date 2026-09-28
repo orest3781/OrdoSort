@@ -45,10 +45,6 @@ public partial class MessageWindow : Window
     /// copy-to-clipboard confirmation.</summary>
     private readonly DispatcherTimer _copyLabelReset = new() { Interval = TimeSpan.FromSeconds(2) };
 
-    /// <summary>Whether the Copy label is still waiting to be put back.
-    /// For tests.</summary>
-    internal bool CopyLabelResetPending => _copyLabelReset.IsEnabled;
-
     private MessageWindow()
     {
         InitializeComponent();
@@ -62,9 +58,6 @@ public partial class MessageWindow : Window
             // a sighted user reads, at every point in its lifecycle.
             AutomationProperties.SetName(CopyButton, "Copy this message");
         };
-        // A running DispatcherTimer holds this window: left going, a closed
-        // box stayed in memory until the tick (DW-88).
-        Closed += (_, _) => _copyLabelReset.Stop();
         PreviewKeyDown += (_, e) =>
         {
             if (e.Key != Key.Escape) return;
