@@ -15,7 +15,9 @@ namespace OrdoSort.Smoke.E2E;
 /// fixtures on disk for inspection.</summary>
 public static class E2ERunner
 {
-    private static IReadOnlyList<Scenario> AllScenarios() =>
+    /// <summary>Every scenario, in run order. Public so E2EHarnessTests can
+    /// check the suite's shape without running it.</summary>
+    public static IReadOnlyList<Scenario> AllScenarios() =>
         ZipScenarios.All()
             .Concat(UnzipScenarios.All())
             .Concat(ZipMergeScenarios.All())

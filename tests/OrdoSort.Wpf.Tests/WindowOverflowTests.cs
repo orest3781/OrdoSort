@@ -27,17 +27,19 @@ file sealed class NoDialogs : IDialogService
 /// the Box labels report proved the failure mode is invisible to property
 /// assertions (WPF paints text past its layout slot; Grids don't clip; the
 /// text simply leaves the screen). Every registered window is rendered for
-/// real, off-screen, twice per run: at its MinWidth with the default 14px app
-/// font, and at its default Width with 18px — the largest size the Settings
-/// Text tab offers as a preset. OverflowProbe then walks the visual tree and
-/// fails, by element text and coordinates, if anything escapes horizontally.
+/// real, off-screen, at its MinWidth and its default Width, with the default
+/// 14px app font and with 18px — the largest size the Settings Text tab
+/// offers as a preset — plus Consolas at MinWidth (see Cases). OverflowProbe
+/// then walks the visual tree and fails, by element text and coordinates, if
+/// anything escapes.
 ///
 /// Each builder deliberately seeds the state that turns conditional UI on
 /// (rows added, a row selected, a Problem string forced) because an empty
-/// window trivially fits. The registry is hand-maintained; the coverage gap
-/// that leaves is the same one DataGridWindowCoverageTests documents for its
-/// own suite. LabelMakerWindow is covered by LabelMakerOverflowTests and not
-/// repeated here.
+/// window trivially fits. The registry is hand-maintained, but
+/// EveryWindowIsProbedForOverflow finds every shipped window by reflection
+/// and fails on one that is neither registered nor named in ProbedElsewhere.
+/// LabelMakerWindow is covered by LabelMakerOverflowTests and not repeated
+/// here.
 ///
 /// Special cases:
 /// - SettingsWindow probes all seven tabs in one pass (only the selected
@@ -298,6 +300,29 @@ public class WindowOverflowTests : UiTest
             return (new MergePdfsWindow(vm), null);
         }, MinExamined: 19),   // 25 measured
 
+        // Q2-36: the three windows the discovery guard below found with no
+        // overflow coverage at all. The chooser with a roster as long as the
+        // owner's (15-40 columns), long names included.
+        ["ColumnChooserWindow"] = new(320, 380, 380, 540, () =>
+        {
+            var all = new[] { "Last", "First", "Control" }
+                .Concat(Enumerable.Range(1, 27).Select(i => $"A long enough spreadsheet column name {i}"))
+                .ToList();
+            var locked = new[] { "Last", "First", "Control" };
+            return (new ColumnChooserWindow(new ColumnChooserViewModel(all, locked, locked)), null);
+        }, MinExamined: 12),   // 16 measured (18px at MinWidth; 19-25 elsewhere)
+
+        // SizeToContent, like PasswordWindow: heights 0, width driven between
+        // MinWidth and MaxWidth. A question (two answers plus Copy) with a
+        // long path in it is the widest this dialog gets.
+        ["MessageWindow"] = new(360, 520, 0, 0, () => (MessageWindow.Build(null,
+            @"Couldn't save C:\inbox\a-long-enough-folder-name-to-matter\a-long-enough-file-name.csv. " +
+            "Another program may have it open. Try again?",
+            "OrdoSort", MessageKind.Question), null), MinExamined: 5),   // 6 measured
+
+        ["StandardiseDateWindow"] = new(380, 520, 0, 0, () =>
+            (StandardiseDateWindow.Build(null, "20260115", 128), null), MinExamined: 6),   // 7 measured
+
         ["MainWindow"] = new(400, 470, 0, 0, () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "ordo_test_overflow_" + Guid.NewGuid());
@@ -368,11 +393,69 @@ public class WindowOverflowTests : UiTest
         {
             data.Add(name, 14.0, DefaultFamily, true);    // default font, MinWidth
             data.Add(name, 18.0, DefaultFamily, false);   // large preset font, default Width
+            // Q2-18: the corner the suite exists for. Content that fits at 14px
+            // and at the default width can still escape at 18px on a window
+            // dragged to its minimum, and neither case above renders that.
+            data.Add(name, 18.0, DefaultFamily, true);
             // The harshest combination anyone can actually configure: the wider
             // face at the window's own minimum width.
             data.Add(name, 14.0, WideFamily, true);
         }
         return data;
+    }
+
+    /// <summary>Q2-18: the windows whose text escapes at 18px on the window's
+    /// minimum width, found the day that case was added (2026-09-28). Each is
+    /// a real layout defect waiting on a decision about its fix (wrap, scroll,
+    /// or a larger minimum size), which is a visual call for the owner. They
+    /// are listed rather than left failing so the new case guards every other
+    /// window meanwhile, and the list can only shrink: a listed window that
+    /// starts fitting fails until it is removed.</summary>
+    private static readonly Dictionary<string, string> EscapesAtLargeFontMinWidth = new()
+    {
+        ["BulkRenameWindow"] =
+            "the help line under the grid is pushed below the bottom edge at 700x600",
+        ["PageCountsWindow"] =
+            "the counts line and the Clear button run past the right edge at 580 wide",
+        ["SettingsWindow"] =
+            "Open and Create it on the Destinations and Monitored folders tabs run past the right edge at 760 wide",
+    };
+
+    /// <summary>Q2-36: every window the app ships, found by reflection, must be
+    /// in <see cref="Registry"/> or named here with the suite that probes it.
+    /// The registry is a hand list, and a window missing from it had no
+    /// overflow coverage with nothing to say so: this guard found three
+    /// (ColumnChooserWindow, MessageWindow, StandardiseDateWindow).</summary>
+    private static readonly Dictionary<string, string> ProbedElsewhere = new()
+    {
+        ["LabelMakerWindow"] = nameof(LabelMakerOverflowTests),
+    };
+
+    [Fact]
+    public void EveryWindowIsProbedForOverflow()
+    {
+        var windows = new[] { typeof(MainWindow).Assembly, typeof(LabelMakerWindow).Assembly }
+            .Distinct()
+            .SelectMany(assembly => assembly.GetTypes())
+            .Where(t => t.IsClass && !t.IsAbstract && typeof(Window).IsAssignableFrom(t))
+            .Select(t => t.Name)
+            .Distinct()
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
+
+        // 21 today. Fewer means the reflection step broke (an assembly moved,
+        // a namespace changed), and the check below would pass on nothing.
+        Assert.True(windows.Count >= 21,
+            $"only found {windows.Count} Window types by reflection; the enumeration looks broken: " +
+            string.Join(", ", windows));
+
+        var registered = Registry().Keys.ToHashSet(StringComparer.Ordinal);
+        var unprobed = windows
+            .Where(name => !registered.Contains(name) && !ProbedElsewhere.ContainsKey(name))
+            .ToList();
+        Assert.True(unprobed.Count == 0,
+            "these windows have no overflow coverage: add a builder to WindowOverflowTests.Registry() " +
+            "(or name the suite that probes them in ProbedElsewhere): " + string.Join(", ", unprobed));
     }
 
     [Theory, MemberData(nameof(Cases))]
@@ -446,6 +529,14 @@ public class WindowOverflowTests : UiTest
                 $"elements, below this window's floor of {probe.MinExamined} — it is measuring " +
                 "less of the window than it used to, so the assertion below proves less than it " +
                 "appears to");
+            if (fontSize == 18.0 && atMinWidth && fontFamily == DefaultFamily
+                && EscapesAtLargeFontMinWidth.TryGetValue(windowName, out var knownEscape))
+            {
+                Assert.True(offenders.Count > 0,
+                    $"{windowName} now fits at 18px on its minimum width. Remove it from " +
+                    $"EscapesAtLargeFontMinWidth (it was listed for: {knownEscape}).");
+                return;
+            }
             Assert.True(offenders.Count == 0,
                 $"{windowName} at font {fontSize}, width {width}: elements escape the window:\n  " +
                 string.Join("\n  ", offenders));
@@ -488,8 +579,10 @@ public class WindowOverflowTests : UiTest
             var offenders = OverflowProbe.HorizontalEscapees(view, out var examined);
             // 16 judged with this stub — the eight unconditional TextBlocks,
             // three buttons and their generated labels; the route list and the
-            // last-action card are the parts the stub deliberately leaves empty
-            Assert.True(examined >= 8,
+            // last-action card are the parts the stub deliberately leaves empty.
+            // Floor: three quarters of that, rounded up, the registry's rule
+            // (Probe.MinExamined), so losing a quarter of the view fails (Q2-17)
+            Assert.True(examined >= 12,
                 $"the probe examined only {examined} elements — it is not measuring anything");
             Assert.True(offenders.Count == 0,
                 $"ProcessingView at font {fontSize}, panel width 370: elements escape:\n  " +
@@ -510,10 +603,15 @@ public class WindowOverflowTests : UiTest
 
     /// <summary>ReadyView with a REAL ShellViewModel and four seeded watch
     /// folders (HighlightContrastTests' ShellFixture pattern), so the tile
-    /// dashboard actually renders. 422 is the compact-parked panel width; 620
-    /// is past the WidthToColumnsConverter breakpoint (560), exercising the
-    /// multi-column tile layout.</summary>
+    /// dashboard actually renders. 422 is the view's width in the parked
+    /// dashboard at its default 470; 352 is the same at the window's MinWidth
+    /// of 400 (less the window border and ReadyView's 16px side margins in
+    /// MainWindow.xaml), the narrow end of the band a user can drag it to
+    /// (Q2-16). 620 is past the WidthToColumnsConverter breakpoint (560),
+    /// exercising the multi-column tile layout.</summary>
     [Theory]
+    [InlineData(14.0, 352.0)]
+    [InlineData(18.0, 352.0)]
     [InlineData(14.0, 422.0)]
     [InlineData(18.0, 422.0)]
     [InlineData(14.0, 620.0)]
@@ -543,8 +641,9 @@ public class WindowOverflowTests : UiTest
             var offenders = OverflowProbe.HorizontalEscapees(view, out var examined);
             // 23 judged: four seeded watch-folder tiles (icon, label and count
             // apiece) above the big count, its caption, the detail line and the
-            // two bottom buttons — at every width in the theory data
-            Assert.True(examined >= 10,
+            // two bottom buttons — at every width in the theory data. Floor:
+            // three quarters, rounded up, as in the registry (Q2-17)
+            Assert.True(examined >= 18,
                 $"the probe examined only {examined} elements — it is not measuring anything");
             Assert.True(offenders.Count == 0,
                 $"ReadyView at font {fontSize}, panel width {width}: elements escape:\n  " +
@@ -579,7 +678,7 @@ public class WindowOverflowTests : UiTest
             var offenders = OverflowProbe.HorizontalEscapees(view, out var examined);
             // 8 judged: with no DataContext the log line and its trail stay
             // collapsed, leaving the count/detail/status lines, both buttons
-            // and their labels
+            // and their labels. Floor: three quarters, as in the registry (Q2-17)
             Assert.True(examined >= 6,
                 $"the probe examined only {examined} elements — it is not measuring anything");
             Assert.True(offenders.Count == 0,

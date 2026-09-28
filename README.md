@@ -25,8 +25,9 @@ Portable builds are attached to every [release](../../releases) (and every CI
 run uploads one under the run's Artifacts):
 
 - **`ordosort-vX-win-x64.zip`** (~3 MB) — a single exe; needs the .NET 8
-  Desktop Runtime, which modern Windows 10/11 machines already have (Windows
-  offers the download link if it's missing).
+  Desktop Runtime installed. Windows ships .NET Framework, not .NET 8, so
+  many machines won't have it; Windows offers the download link if it's
+  missing.
 - **`…-selfcontained.zip`** (~70 MB) — carries the runtime; nothing to
   install.
 - **`boxlabels-vX-win-x64.zip`** and **`boxlabels-vX-win-x64-selfcontained.zip`**

@@ -24,6 +24,9 @@ public class RouteTrailTests
         fx.Shell.Initialize();
         fx.Shell.StartProcessing();
 
+        // DW-27: Assert.All passes on an empty list, so a shell that lost its
+        // routes would pass "nothing is marked" — pin that both are there.
+        Assert.Equal(2, fx.Shell.Routes.Count);
         Assert.All(fx.Shell.Routes, r => Assert.False(r.IsLastUsed));
     }
 

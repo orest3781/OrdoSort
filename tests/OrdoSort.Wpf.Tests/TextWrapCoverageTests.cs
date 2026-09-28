@@ -116,6 +116,7 @@ public class TextWrapCoverageTests
     {
         var offenders = new List<string>();
         var judged = 0;
+        var walkedOut = 0;
         var shared = XDocument.Load(
             Path.Combine(Repo.Root, "src", "OrdoSort.Ui", "Theme", "Styles.xaml"));
         foreach (var file in ProseSurfaceXamlFiles())
@@ -137,6 +138,7 @@ public class TextWrapCoverageTests
 
                 // walk outward until something pins width; an infinite-width
                 // measurer seen before any pin defeats the declared wrap
+                var pinned = false;
                 foreach (var anc in tb.Ancestors())
                 {
                     if (MeasuresChildrenAtInfiniteWidth(anc))
@@ -144,20 +146,36 @@ public class TextWrapCoverageTests
                         offenders.Add(Where(file, tb) + " (inside " + anc.Name.LocalName + ")");
                         break;
                     }
-                    if (HasWidthPin(anc)) break;
+                    if (HasWidthPin(anc))
+                    {
+                        // the window's own Width is the end of the walk, not a
+                        // waiver: everything between it and the text was checked
+                        pinned = anc.Parent is not null;
+                        break;
+                    }
                 }
+                if (!pinned) walkedOut++;
             }
         }
-        // A sanity floor: "no offenders" over an
-        // empty candidate list is a pass that means nothing, and every
-        // candidate here can be waved through at once — by ExtractKey
-        // over-matching so StyleHandsItWrapOrTrim acquits everything, or by
-        // the XAML walk quietly resolving to no files. 88 TextBlocks reach the
-        // walk today, so 20 is a floor with room for ordinary copy edits.
-        Assert.True(judged >= 20,
+        // Sanity floors: "no offenders" over an empty candidate list is a
+        // pass that means nothing, and every candidate here can be waved
+        // through at once — by ExtractKey over-matching so
+        // StyleHandsItWrapOrTrim acquits everything, or by the XAML walk
+        // quietly resolving to no files. Both floors are three quarters of
+        // today's count, rounded up (WindowOverflowTests' rule): the old
+        // floor of 20 of 88 still passed with most of the app gone (Q2-19).
+        Assert.True(judged >= 70,   // 93 today
             $"only {judged} TextBlocks reached the ancestor walk — the candidate set looks " +
             "broken (no XAML files found? every style suddenly reads as wrap-carrying?), not " +
             "that the app genuinely shrank to that few prose TextBlocks");
+        // `judged` counts before the walk, so a pin can still waive a
+        // candidate after it was counted: a shared wrapper gaining a MaxWidth
+        // would stop every walk at that wrapper with `judged` unchanged. This
+        // counts the walks that reached an infinite-width measurer or the top
+        // of the file, i.e. the ones that actually tested something (Q2-19).
+        Assert.True(walkedOut >= 69,   // 91 today
+            $"only {walkedOut} of {judged} walks got past a Width/MaxWidth pin — a shared " +
+            "ancestor pinning width would waive the rest without testing them");
 
         Assert.True(offenders.Count == 0,
             "TextBlock declares wrapping/trimming (inline or via style) but an ancestor " +
@@ -191,9 +209,9 @@ public class TextWrapCoverageTests
         }
         // The floor counts CANDIDATES, not verdicts: every check after the
         // 60-char one is an acquittal, so counting below them would just be
-        // asserting "offenders >= 0". 18 sentence-length literals exist across
-        // the prose surfaces today; 10 says the walk still found the source.
-        Assert.True(judged >= 10,
+        // asserting "offenders >= 0". Floor: three quarters of today's count,
+        // rounded up (Q2-19; the old floor of 10 of 18 let half go missing).
+        Assert.True(judged >= 14,   // 18 today
             $"only {judged} sentence-length literal TextBlocks were found across " +
             "MainWindow/Views/Windows — the XAML walk looks broken, not that the app genuinely " +
             "shrank to that little prose");

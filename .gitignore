@@ -96,3 +96,11 @@ skills-lock.json
 
 # test run output: results and hang dumps (tests/test.runsettings)
 TestResults/
+
+# Logs the legacy scripts write beside themselves when run from the tree
+# (FileMover.py rotates file_mover.log.1-5; paper_mover_logger.py and
+# RemoveReadOnly.ps1 write one file each). The Python two log full document
+# paths, so a run from docs/ must never reach a commit (DW-14).
+/docs/legacy-scripts/file_mover.log*
+/docs/legacy-scripts/error_log.txt
+/docs/legacy-scripts/ReadOnlyRemoval_Log.txt

@@ -58,6 +58,10 @@ public class QcTests : IDisposable
         var outcomes = MatchMerge.MergeOne(src, "12:34");
         Assert.True(File.Exists(src));
         Assert.Equal("DOC", File.ReadAllText(src));
-        if (outcomes.Count > 0) Assert.Null(outcomes[0].Final);
+        // DW-32: this used to read `if (outcomes.Count > 0) ...`, a branch
+        // that never ran. The colon is refused at plan time, so no rename is
+        // attempted at all, and no ADS host file ("…-12") appears beside it.
+        Assert.Empty(outcomes);
+        Assert.Equal(new[] { src }, Directory.GetFiles(_dir));
     }
 }

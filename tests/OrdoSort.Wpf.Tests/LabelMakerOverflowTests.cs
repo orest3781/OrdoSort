@@ -36,9 +36,9 @@ file sealed class NoDialogs : IDialogService
 /// philosophy: prove pixels/geometry, not properties) and asserts every
 /// visible TextBlock, RadioButton and Button lands inside the window's
 /// content bounds. Guaranteed range, deliberately bounded: the default font
-/// at both the minimum (600) and default (680) widths, and 18px at the
-/// default width — the sizes the Settings Text tab's own preset buttons
-/// offer. 72px cannot be honoured by ANY fixed-width dialog and is out of
+/// and 18px, the Settings Text tab's largest preset, at both the minimum
+/// (600) and default (680) widths (18px at 600 is a known escape today; see
+/// the first test's remarks). 72px cannot be honoured by ANY fixed-width dialog and is out of
 /// scope; past 18 the prose elements degrade by trimming/wrapping instead of
 /// overflowing, which is what the fixes this suite pins actually changed.</summary>
 [Collection(HighlightContrastTests.Name)]
@@ -47,11 +47,24 @@ public class LabelMakerOverflowTests : UiTest
     private readonly HighlightContrastFixture _fx;
     public LabelMakerOverflowTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
+    /// <remarks>Both axes, at the window's declared size for each width: its
+    /// MinHeight (512) with its MinWidth, its Height (572) with its Width.
+    /// This used to check horizontally only, at whatever height the window
+    /// opened, so a form row pushed off the bottom at the minimum size passed
+    /// (Q2-15). 18px at the minimum width is the corner a large font on a
+    /// window dragged small produces, which no case rendered (Q2-18). It
+    /// escapes today: "Reset to 1" runs about 14px past the right edge. The
+    /// fix (wrap, trim, or a wider minimum) is a visual call for the owner, so
+    /// that case is marked <paramref name="knownToEscape"/> and asserts the
+    /// escape is still there; it fails once the window fits, so the mark gets
+    /// removed rather than forgotten.</remarks>
     [Theory]
-    [InlineData(14.0, 600.0)]
-    [InlineData(14.0, 680.0)]
-    [InlineData(18.0, 680.0)]
-    public void EveryTextElementStaysInsideTheWindow(double fontSize, double width) => _fx.Invoke(() =>
+    [InlineData(14.0, 600.0, 512.0, false)]
+    [InlineData(14.0, 680.0, 572.0, false)]
+    [InlineData(18.0, 680.0, 572.0, false)]
+    [InlineData(18.0, 600.0, 512.0, true)]
+    public void EveryTextElementStaysInsideTheWindow(double fontSize, double width, double height,
+        bool knownToEscape) => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
         var defaultFont = _fx.App.Resources["AppFontSize"];
@@ -66,6 +79,7 @@ public class LabelMakerOverflowTests : UiTest
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
             Width = width,
+            Height = height,
         };
         try
         {
@@ -73,12 +87,20 @@ public class LabelMakerOverflowTests : UiTest
             window.UpdateLayout();
             PumpRender();
 
-            var offenders = OverflowProbe.HorizontalEscapees((FrameworkElement)window.Content, out var examined);
-            // 36 elements are judged here, so 10 is a floor with room to
-            // spare — it is here to catch the probe going blind (QC-09), not
-            // to pin the element count
-            Assert.True(examined >= 10,
+            var offenders = OverflowProbe.Escapees((FrameworkElement)window.Content, checkVertical: true, out var examined);
+            // 36 judged at 600x512 and 38 at 680x572. The floor is three
+            // quarters of the smaller, rounded up, WindowOverflowTests' rule
+            // (Probe.MinExamined): the old floor of 10 still passed with
+            // nearly three quarters of the window unmeasured (Q2-17)
+            Assert.True(examined >= 27,
                 $"the probe examined only {examined} elements — it is not measuring anything");
+            if (knownToEscape)
+            {
+                Assert.True(offenders.Count > 0,
+                    $"font {fontSize}, width {width}: the window fits now. Set knownToEscape to " +
+                    "false for this case and drop the note about it in the remarks.");
+                return;
+            }
             Assert.True(offenders.Count == 0,
                 $"font {fontSize}, width {width}: elements escape the window:\n  " +
                 string.Join("\n  ", offenders));

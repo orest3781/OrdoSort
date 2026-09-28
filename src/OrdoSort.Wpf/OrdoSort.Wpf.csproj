@@ -12,6 +12,11 @@
     <!-- Per-monitor-v2 DPI awareness (with a graceful fallback for older
          Windows) — see app.manifest's own comment for why this is needed. -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- A published exe is meant to travel alone. Without this, publish
+         copied the WebView2 package's three XML doc-comment files (~815 KB,
+         IntelliSense data no user needs) beside the single-file exe
+         (DW-81). -->
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
   </PropertyGroup>
 
   <ItemGroup>
