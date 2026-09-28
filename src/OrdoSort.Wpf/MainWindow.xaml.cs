@@ -298,7 +298,8 @@ public partial class MainWindow : Window
 
     private void OnFilenameList(object sender, RoutedEventArgs e)
     {
-        var vm = new FilenameListViewModel(Dialogs, uiContext: SynchronizationContext.Current);
+        var vm = new FilenameListViewModel(Dialogs, uiContext: SynchronizationContext.Current,
+            options: new FilenameListOptionsStore(FilenameListOptionsStore.DefaultPath, ex => App.LogCrash(ex)));
         new Windows.FilenameListWindow(vm) { Owner = this }.ShowDialog();
         vm.Dispose();   // cancel any still-armed rebuild probe now the dialog is closing
     }

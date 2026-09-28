@@ -199,9 +199,19 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
 
     public FilenameListViewModel(IDialogService dialogs, IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null, int probeDelayMs = 300,
-        Func<string, PageCounts.CountResult>? counter = null)
+        Func<string, PageCounts.CountResult>? counter = null, FilenameListOptionsStore? options = null)
     {
         _dialogs = dialogs;
+        _options = options;
+        // Fields, not properties: nothing is listed yet, so there is nothing
+        // to walk or re-render.
+        if (options?.Load() is { } remembered)
+        {
+            _includeSubfolders = remembered.IncludeSubfolders;
+            _includeExtension = remembered.IncludeExtension;
+            _descending = remembered.Descending;
+            _extensionFilter = remembered.ExtensionFilter ?? "";
+        }
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _uiContext = uiContext;
         _counter = counter ?? PageCounts.Count;
@@ -285,8 +295,14 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         RestoreRemovedCommand.RaiseCanExecuteChanged();
     }
 
+    /// <summary>Where the view options are remembered between sessions
+    /// (FL-07); null remembers nothing. Loaded when the list opens, saved when
+    /// it is disposed on close.</summary>
+    private readonly FilenameListOptionsStore? _options;
+
     public void Dispose()
     {
+        _options?.Save(new FilenameListOptions(IncludeSubfolders, IncludeExtension, Descending, ExtensionFilter));
         CancelCounting();
         _countCts.Dispose();
         // _countGate is deliberately not disposed (QC-25): counts already

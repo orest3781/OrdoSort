@@ -1067,6 +1067,48 @@ public class FilenameListViewModelTests : IDisposable
         await vm.Counting;   // must not fault
     }
 
+    /// <summary>FL-07: every open started at subfolders off, extensions on,
+    /// A to Z and no type filter, so someone who always lists a client folder
+    /// with its subfolders re-ticked the same boxes every time. The columns
+    /// were already remembered; now these are too.</summary>
+    [Fact]
+    public void TheViewOptionsComeBackTheNextTimeTheListOpens()
+    {
+        var store = new FilenameListOptionsStore(Path.Combine(_dir, "options.json"),
+            e => throw new Xunit.Sdk.XunitException("unexpected store error: " + e.Message));
+        using (var first = new FilenameListViewModel(new FakeDialogs(), new InlineWorkScheduler(), options: store))
+        {
+            first.IncludeSubfolders = true;
+            first.IncludeExtension = false;
+            first.Descending = true;
+            first.ExtensionFilter = "pdf, docx";
+        }
+
+        using var second = new FilenameListViewModel(new FakeDialogs(), new InlineWorkScheduler(), options: store);
+
+        Assert.True(second.IncludeSubfolders);
+        Assert.False(second.IncludeExtension);
+        Assert.True(second.Descending);
+        Assert.Equal("pdf, docx", second.ExtensionFilter);
+    }
+
+    /// <summary>A damaged options file must not stop the window opening: it
+    /// opens at the defaults and the damage is reported, not hidden.</summary>
+    [Fact]
+    public void ADamagedOptionsFileOpensAtTheDefaultsAndIsReported()
+    {
+        var path = Path.Combine(_dir, "options.json");
+        File.WriteAllText(path, "{ not json");
+        var reported = new List<Exception>();
+
+        using var vm = new FilenameListViewModel(new FakeDialogs(), new InlineWorkScheduler(),
+            options: new FilenameListOptionsStore(path, reported.Add));
+
+        Assert.False(vm.IncludeSubfolders);
+        Assert.True(vm.IncludeExtension);
+        Assert.Single(reported);
+    }
+
     [Fact]
     public void ClearingAListWithNoRemovalsDoesNotAsk()
     {
