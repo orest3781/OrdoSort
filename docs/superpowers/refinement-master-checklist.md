@@ -5,7 +5,7 @@ this repo. This file is the single tracker of everything still open app-wide. It
 **tracker, not an authority** — every item cites its source, and if this file and a source
 ever disagree, **the source wins**. Nothing was fixed in the pass that produced this file.
 
-**Snapshot (2026-09-27): 163 open items — 0 High · 65 Important · 98 Minor.** All Important rows were re-verified against the code on 2026-09-27 and carry a priority (P1–P3); see STATUS.md for the order they are worked in.
+**Snapshot (2026-09-28): 16 open items — 0 High · 4 Important · 12 Minor.** Every other row was fixed (with its commit and test), found already fixed, or found obsolete on 2026-09-27/28; each ticked row says which. What is left needs the owner (a decision, a visual check, a certificate) or was declined with a stated reason, noted on the row.
 Batch A (2026-08-22, branch `fix/app-qc-2026-08-21`) closed all nine of the first audit's
 High findings; the fresh QC of 2026-08-22 (`audits/2026-08-22-fresh-qc.md`, IDs `Q2-nn`)
 then added 46 findings including 4 new Highs — three of them in or beside batch A's own
@@ -48,7 +48,7 @@ new ones — every chain hand-verified against source.
 
 ---
 
-## Important — 65 open
+## Important — 4 open
 
 ### App-wide QC, 2026-08-21 (`audits/2026-08-21-app-qc.md`) — 16
 
@@ -151,7 +151,7 @@ new ones — every chain hand-verified against source.
 
 ---
 
-## Minor — 98 open
+## Minor — 12 open
 
 ### App-wide QC, 2026-08-21 — 17
 
@@ -336,6 +336,8 @@ Per-source arithmetic, checked against each source's own status record. **Total 
 | **Doc totals** | **242** | **108** | **131** | **3** | |
 | Memory and plan ledgers (no self-count) | — | — | 38 unique | — | further memory rows resolved on verification (below); 6 obsolete |
 | **Unique open rows** | | | **163** | | 131 doc rows − 5 cross-source dedupes + 38 memory/ledger-only = 164; the rows themselves count 163 — DW-13 was closed on 2026-09-02 without its tally changing |
+
+**Fix pass 2026-09-27/28.** Almost every open row was fixed, closed as already fixed, or closed as obsolete; each ticked row carries its evidence. The per-source tallies above were not recomputed row by row after this pass: the rows themselves, and the snapshot at the top, are the record.
 
 **Re-verification 2026-09-27.** Every open Important row was checked against the code on `main`. 10 were already fixed (QC-10, R2, DW-02, DW-06, DW-11, Q2-07, Q2-23, Q2-28, Q2-29, Q2-33) and 4 obsolete (QC-30, FL-10, Q2-11, Q2-14), each ticked with its evidence; the other 65 carry "RE-VERIFIED 2026-09-27: still real, P1/P2/P3", with what was narrowed where part was fixed. The plan ledgers' deferred minors were checked the same way: the reports-hub ones are obsolete (that branch was never merged), 10 still-real ones were added as DW-82 to DW-91, and the rest were fixed or already tracked (DW-10, DW-29).
 

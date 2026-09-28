@@ -3,6 +3,7 @@
 ## Now
 | Item | Status | Notes |
 |---|---|---|
+| Refinement checklist fix pass (2026-09-27/28) | ✅ Done | 173 open rows at triage down to 16: the four P1s, all P2s, the P3s and nearly all Minors fixed with tests (four parallel batches plus direct fixes), or closed as already fixed/obsolete with evidence. The 16 left need the owner or were declined with a reason (see the work order below). check.bat 1,026 Core + 1,965 Wpf green, E2E 48/48 |
 | Box Labels standalone (`feature/box-labels-standalone`) | ✅ Done | Merged to `main` 2026-09-10 (`9dbe567`, 16 commits) and pushed. 3,236 tests green on the merged tree. The branch itself is kept, local and on GitHub |
 | One config file: destinations, monitored folders, alerts moved into `config.json`; `box-labels.json` stays separate | ✅ Done | 2026-09-22. Old `destinations.json`/`monitored-folders.json`/`alerts.json` are no longer read (no migration, by decision). Settings "Data files" tab keeps only the box-labels path. Committed and pushed 2026-09-22 |
 | Box Labels in the GitHub release (`boxlabels-vX-win-x64[-selfcontained].zip`) | ✅ Done | Shipped in **v1.6.0** (2026-09-24, tag on `9d4531f`): release run green, four zips attached; BoxLabels.exe in both zips reports 1.6.0 and carries THIRD-PARTY-NOTICES |
@@ -48,8 +49,10 @@
 | P2 | Q2-13, Q2-30, Q2-32 | Zip fails whole on one access-denied subfolder; an unexpected unlock failure says nothing; sign-out mid-zip/unlock can leave half-written files | ✅ Done |
 | P2 | FL-08, FL-16, FL-18, FL-19 | File list: no busy sign on a big walk; Clear throws away all removals with no confirm; a cut-off error with no tooltip; drops on the text boxes do nothing | ✅ Done |
 | P2 | DW-04 | Releases are unsigned, so the first run shows the SmartScreen warning (needs a code-signing certificate) | 🚫 Blocked |
-| P3 | the other 34 Important rows marked P3 | Small or rare: UI-thread stalls on dead shares, test-guard gaps, polish | ⬜ Not started |
-| Owner | DW-14 | Are the scripts in `docs/legacy-scripts/` still run? If so their logs land in the repo folder, unignored | 🚫 Blocked |
+| P3 | the other 34 Important rows marked P3 | Small or rare: UI-thread stalls on dead shares, test-guard gaps, polish | ✅ Done (2026-09-28; the four left are in the checklist, owner rows below) |
+| Owner | DW-14 | Legacy scripts' logs: their log names are now in `.gitignore`, harmless either way | ✅ Done |
+| Owner | DW-12, DW-20, DW-35, DW-36, DW-47, DW-67, DW-71, DW-76, FL-20, FL-27 | Decisions and checks only the owner can make; each row in the checklist says what would settle it (DW-35: move to .NET 10 before .NET 8 ends on 2026-11-10) | 🚫 Blocked |
+| Declined | DW-23, DW-39, DW-53, Q2-21, Q2-39 | Left with a stated reason on each row (no user-visible gain, or a large refactor) | 🚫 Blocked |
 - [ ] 8. Before release: one fresh-reviewer pass over everything since v1.7.0 (the test overhaul, the processing window and today's fixes were never reviewed by a second pair of eyes); run BoxLabels.exe by hand (never done since its merge)
 - [ ] 9. Release 1.8.0, published from github.com (proves PR #7's path); fix the smoke screenshots' collapsed columns first or ship the current shots
 
