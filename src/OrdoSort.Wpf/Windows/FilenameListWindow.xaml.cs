@@ -138,16 +138,22 @@ public partial class FilenameListWindow : Window
         }
     }
 
+    // Hooked as PreviewDragOver/PreviewDrop: the Find and "Only these types"
+    // boxes handle drag events themselves, so files dropped on them never
+    // bubbled up to the window and nothing happened (FL-19). Only file drops
+    // are claimed here; text dragged into those boxes still works.
     private void OnDragOver(object sender, DragEventArgs e)
     {
-        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop)
-            ? DragDropEffects.Copy : DragDropEffects.None;
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+        e.Effects = DragDropEffects.Copy;
         e.Handled = true;
     }
 
     private void OnDrop(object sender, DragEventArgs e)
     {
-        if (e.Data.GetData(DataFormats.FileDrop) is string[] paths) _vm.AddPaths(paths);
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths) return;
+        _vm.AddPaths(paths);
+        e.Handled = true;
     }
 
     /// <summary>Maps a column to the view-model flag that shows it; columns

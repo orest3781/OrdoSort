@@ -216,6 +216,14 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         SaveCommand = new RelayCommand(Save, () => Rows.Count > 0);
         ClearCommand = new RelayCommand(() =>
         {
+            // Re-adding the folder brings the files back, but not the rows
+            // taken out of it one by one, and Undo can't reach past a Clear
+            // (FL-16). So losing removals is asked about first.
+            if (_excluded.Count > 0 && !_dialogs.Confirm(
+                    $"Clear the list? The {_excluded.Count} row{(_excluded.Count == 1 ? "" : "s")} you removed "
+                    + "will be forgotten too; adding the folders again brings them back.",
+                    "OrdoSort — clear the list"))
+                return;
             _sources.Clear();
             _excluded.Clear();
             _removalBatches.Clear();
@@ -398,7 +406,25 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
             return;
         }
 
+        IsListing = true;
         _listingProbe.Trigger(() => FilenameList.Build(sourcesSnapshot, opt), immediate);
+    }
+
+    private const string ReadingLine = "Reading the folders… (Clear stops it)";
+
+    private bool _isListing;
+
+    /// <summary>True while a folder walk runs. A big folder or a share can
+    /// take a while, and the window used to look idle and unchanged the whole
+    /// time (FL-08); the counts line says it is reading instead.</summary>
+    public bool IsListing
+    {
+        get => _isListing;
+        private set
+        {
+            if (!Set(ref _isListing, value)) return;
+            CountsLine = _sources.Count == 0 ? "" : value ? ReadingLine : FormatCounts();
+        }
     }
 
     /// <summary>Only ever runs on the UI thread (DebouncedProbe's
@@ -412,6 +438,8 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         _allRows = listing.Rows;
         _lastIgnored = listing.Ignored;
         _lastError = listing.Error;
+        _isListing = false;   // Reproject below writes the counts line
+        Raise(nameof(IsListing));
         Reproject();
     }
 
@@ -466,7 +494,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
 
         RestoreSelection(wasSelected);
 
-        CountsLine = _sources.Count == 0 ? "" : FormatCounts();
+        CountsLine = _sources.Count == 0 ? "" : IsListing ? ReadingLine : FormatCounts();
         Raise(nameof(IsEmpty));
         Raise(nameof(NoMatches));
         Raise(nameof(OutputText));
