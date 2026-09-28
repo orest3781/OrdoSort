@@ -283,8 +283,10 @@
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
 
-                        <DataGridTextColumn x:Name="SizeColumn" Header="Size" Binding="{Binding Size}"
-                                            Width="80">
+                        <!-- SizeCell ("4.1 MB"), not the raw bytes Size holds (FL-30);
+                             the export keeps bytes, under "Size (bytes)". -->
+                        <DataGridTextColumn x:Name="SizeColumn" Header="Size" Binding="{Binding SizeCell}"
+                                            Width="90">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellNumber}" />
                             </DataGridTextColumn.ElementStyle>

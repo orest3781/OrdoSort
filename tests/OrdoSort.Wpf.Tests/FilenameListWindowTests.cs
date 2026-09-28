@@ -229,6 +229,22 @@ public class FilenameListWindowTests : UiTest
         finally { window.Close(); }
     });
 
+    /// <summary>FL-30: the Size column showed 4293904 where a person expects
+    /// 4.1 MB.</summary>
+    [Fact]
+    public void TheSizeColumnShowsAReadableSize() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler()) { ShowSize = true };
+        vm.Rows.Add(new OrdoSort.Core.FilenameList.FileRow("a.pdf", 4293904, DateTime.Today, "", @"C:\in\a.pdf"));
+        var window = OpenOffScreen(vm);
+        try
+        {
+            Assert.Contains(Ui.Descendants<TextBlock>(window.NamesGrid), t => t.Text == "4.1 MB");
+        }
+        finally { window.Close(); }
+    });
+
     /// <summary>FL-23: the empty view shows the view model's cause and its
     /// way-out button. A mistyped binding here fails silently, so this checks
     /// both are wired.</summary>

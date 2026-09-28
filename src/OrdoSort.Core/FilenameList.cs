@@ -38,6 +38,25 @@ public static class FilenameList
         /// not an error and needs no explanation.</summary>
         public string PageCell =>
             Pages?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? PageNote;
+
+        /// <summary>What the Size column shows: "4.1 MB" rather than 4293904
+        /// (FL-30). The exports keep raw bytes under "Size (bytes)", which a
+        /// spreadsheet can add up. Blank when the size couldn't be read.</summary>
+        public string SizeCell => FormatSize(Size);
+    }
+
+    /// <summary>The manifest spec's "Auto" size (§2.1): the largest unit whose
+    /// value is at least 1, dividing by 1024, with that unit's decimals —
+    /// KB 0, MB 1, GB 3. Under 1 KB it is plain bytes. Null is blank, never 0.</summary>
+    public static string FormatSize(long? bytes)
+    {
+        if (bytes is not { } value) return "";
+        const double Kb = 1024, Mb = Kb * 1024, Gb = Mb * 1024;
+        var inv = CultureInfo.InvariantCulture;
+        if (value >= Gb) return (value / Gb).ToString("0.000", inv) + " GB";
+        if (value >= Mb) return (value / Mb).ToString("0.0", inv) + " MB";
+        if (value >= Kb) return (value / Kb).ToString("0", inv) + " KB";
+        return value.ToString(inv) + " bytes";
     }
 
     /// <summary>One Build's result.</summary>
@@ -145,7 +164,7 @@ public static class FilenameList
         (Columns.Number, "#"),
         (Columns.None, "Name"),
         (Columns.Pages, "Pages"),
-        (Columns.Size, "Size"),
+        (Columns.Size, "Size (bytes)"),   // raw bytes, though the grid shows "4.1 MB" (FL-30)
         (Columns.Modified, "Modified"),
         (Columns.Folder, "Folder"),
         (Columns.FullPath, "Full path"),
