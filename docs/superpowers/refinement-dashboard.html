@@ -154,7 +154,7 @@
   <div class="tiles">
     <div class="tile hero">
       <div class="lbl">Open items</div>
-      <div class="val" id="heroOpen">16</div>
+      <div class="val" id="heroOpen">17</div>
       <div class="note">across 18 surfaces</div>
     </div>
     <div class="tile">
@@ -164,7 +164,7 @@
     </div>
     <div class="tile">
       <div class="lbl"><span class="dot" style="background:var(--imp)"></span>Important</div>
-      <div class="val">4</div>
+      <div class="val">5</div>
       <div class="note">wrong &amp; confusing, nothing destroyed</div>
     </div>
     <div class="tile">
@@ -186,7 +186,7 @@
       <div class="sevbar" id="sevbar"></div>
       <div class="legend">
         <span><span class="dot" style="background:var(--crit)"></span>High · 0</span>
-        <span><span class="dot" style="background:var(--imp)"></span>Important · 4</span>
+        <span><span class="dot" style="background:var(--imp)"></span>Important · 5</span>
         <span><span class="dot" style="background:var(--minor)"></span>Minor · 12</span>
       </div>
       <h2 style="margin-top:18px">Closure progress by source</h2>
@@ -234,6 +234,7 @@
 // [id, sev(I|M), surface, title, source, marks, tags[]]
 // Mirrors refinement-master-checklist.md 1:1 — regenerate from it, never edit independently.
 const ITEMS = [
+["DW-01","I","Core / filing spine","a kill mid-copy across drives can leave a file holding the filed name. Reopened 2026-09-28: the 1.8.0 fix made share-to-share filing 19x slower","checklist","",[]],
 ["FL-20","I","Filename List","nothing indicates the window is a drop target while you drag (whole-family finding). (FL audit §Medium) — RE-VERIFIED 2026-09-27: still real","checklist","",[]],
 ["DW-04","I","Repo / process","releases ship unsigned; first run trips SmartScreen. Azure Trusted Signing is wired in release.yml but gated on secrets that don't exist; ne","checklist","",[]],
 ["DW-12","I","MatchMerge / Review matches","plain digit/S keys over the WebView2 viewer pane are characters, not accelerators, and are unrecoverable without a WH_KEYBOARD_LL hook besid","checklist","",[]],
@@ -271,7 +272,7 @@ const $ = s => document.querySelector(s);
 // Severity mix bar (2px surface gaps via flex gap)
 {
   $("#sevbar").innerHTML =
-        `<div style="flex:4;background:var(--imp)">4</div>` +
+        `<div style="flex:5;background:var(--imp)">5</div>` +
     `<div style="flex:12;background:var(--minor)">12</div>`;
 }
 

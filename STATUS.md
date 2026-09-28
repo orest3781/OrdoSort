@@ -3,6 +3,7 @@
 ## Now
 | Item | Status | Notes |
 |---|---|---|
+| Filing slow after 1.8.0 (owner report 2026-09-28): the next PDF waited for a slow copy | 🔄 In progress | Cause measured on a throttled Samba link (Docker + Toxiproxy, ~100 Mbit/s): 13 MB share to share took 2.9 s in 1.8.0 vs 0.16 s in 1.7.0, all in DW-01's own copy. Owner chose 1.7's plain move; branch `fix/filing-speed` puts it back (0.17 s). Other 1.8 load-path changes measured and ruled out: page-size read 30 ms, InPrivate and #zoom no slower |
 | Release v1.8.0 | ✅ Done | Published 2026-09-28 from `main` (`f04a5e3`) after the fresh-reviewer pass and its 3 fixes; check.bat 1,028 Core + 1,966 Wpf green, E2E 48/48; four zips attached |
 | Refinement checklist fix pass (2026-09-27/28) | ✅ Done | 173 open rows at triage down to 16: the four P1s, all P2s, the P3s and nearly all Minors fixed with tests (four parallel batches plus direct fixes), or closed as already fixed/obsolete with evidence. The 16 left need the owner or were declined with a reason (see the work order below). check.bat 1,026 Core + 1,965 Wpf green, E2E 48/48 |
 | Box Labels standalone (`feature/box-labels-standalone`) | ✅ Done | Merged to `main` 2026-09-10 (`9dbe567`, 16 commits) and pushed. 3,236 tests green on the merged tree. The branch itself is kept, local and on GitHub |
@@ -36,7 +37,7 @@
 
 | Priority | IDs | What goes wrong for the user | Status |
 |---|---|---|---|
-| P1 | DW-01 | Power loss or a kill mid-filing across drives can leave a corrupt PDF under the proper filed name; the real one, filed again, becomes "… (2)" | ✅ Done |
+| P1 | DW-01 | Power loss or a kill mid-filing across drives can leave a corrupt PDF under the proper filed name; the real one, filed again, becomes "… (2)" | ⬜ Not started (fix taken out 2026-09-28: it made filing slow, see Dead ends) |
 | P1 | QC-19 | Quitting during a slow network move: the document is filed but no history row is written and no warning appears | ✅ Done |
 | P1 | Q2-10 | Page counts: Save or Copy while counts are still running writes blank counts and a low Total, then says "Saved" | ✅ Done |
 | P1 | Q2-35 | Two destinations on the same key in config.json: both buttons show it, the key silently files to one of them | ✅ Done |
@@ -135,6 +136,7 @@
 ## Dead ends
 | Tried | Why it failed |
 |---|---|
+| DW-01 crash-safe cross-drive filing by our own stream copy (WriteThrough, 80 KB writes) to a ".partial" name, then rename (1.8.0) | Share to share it was 19x slower (13 MB: 2.9 s vs 0.16 s): Windows' File.Move/File.Copy lets the server copy between its own shares, ours pulls every byte through the PC and waits on each write. File.Copy to a temp name then rename measured ~0.1 s, if the protection is wanted again |
 | Dark (ink) icon plate for the rebrand | Only 26-44% of the icon reached 3:1 on the dark taskbar (#202020). A plate needs luminance 0.14-0.26 to clear 3:1 on both taskbars; slate `#647080` and brass `#8A6A34` do |
 - Loopback share as a second user (2026-09-27): a credential saved with cmdkey is NOT used for `\\127.0.0.1` when your own account may open the share (Windows just connects as you), and cmdkey run from an elevated shell saves into a store normal programs don't see. What works: `net use \\127.0.0.1\OrdoSortTest$ /user:…` from a normal shell, before anything else opens 127.0.0.1 (`scripts\share-test-connect.ps1`)
 

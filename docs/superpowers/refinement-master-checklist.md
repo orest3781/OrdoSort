@@ -5,7 +5,7 @@ this repo. This file is the single tracker of everything still open app-wide. It
 **tracker, not an authority** — every item cites its source, and if this file and a source
 ever disagree, **the source wins**. Nothing was fixed in the pass that produced this file.
 
-**Snapshot (2026-09-28): 16 open items — 0 High · 4 Important · 12 Minor.** Every other row was fixed (with its commit and test), found already fixed, or found obsolete on 2026-09-27/28; each ticked row says which. What is left needs the owner (a decision, a visual check, a certificate) or was declined with a stated reason, noted on the row.
+**Snapshot (2026-09-28): 17 open items — 0 High · 5 Important · 12 Minor.** DW-01 was reopened after 1.8.0 (its fix made filing slow). Every other row was fixed (with its commit and test), found already fixed, or found obsolete on 2026-09-27/28; each ticked row says which. What is left needs the owner (a decision, a visual check, a certificate) or was declined with a stated reason, noted on the row.
 Batch A (2026-08-22, branch `fix/app-qc-2026-08-21`) closed all nine of the first audit's
 High findings; the fresh QC of 2026-08-22 (`audits/2026-08-22-fresh-qc.md`, IDs `Q2-nn`)
 then added 46 findings including 4 new Highs — three of them in or beside batch A's own
@@ -48,7 +48,7 @@ new ones — every chain hand-verified against source.
 
 ---
 
-## Important — 4 open
+## Important — 5 open
 
 ### App-wide QC, 2026-08-21 (`audits/2026-08-21-app-qc.md`) — 16
 
@@ -101,7 +101,7 @@ new ones — every chain hand-verified against source.
 
 ### Carried from the v1-era audits — 5
 
-- [x] **DW-01** [V] · Core / filing spine — the cross-volume move's crash branch: a kill mid-copy leaves a file holding the canonical name (08-04 §1.4). QC-03's batch-A fix covers only the copy-succeeded-delete-failed branch. *(08-04 §1.4 + 08-09 core §Important 3 + app-qc §What this method would miss)* `(2 sources)` — **PROVEN 2026-08-22** on local volumes, and worse than recorded: killed at 150ms the destination is FULL-LENGTH with incomplete data (CopyFile preallocates — undetectable by size); killed post-copy both complete copies remain (fresh-qc §Experiments). SMB untested. No longer merely deferred — the hazard is demonstrated. — CLOSED 2026-09-27, 39f131c; CrossVolumeMoveTests, NetworkShareTests.ADocumentFiledOntoTheShareLandsWholeWithNoPartialLeft — RE-VERIFIED 2026-09-27: still real, P1
+- [ ] **DW-01** [V] · Core / filing spine — the cross-volume move's crash branch: a kill mid-copy leaves a file holding the canonical name (08-04 §1.4). QC-03's batch-A fix covers only the copy-succeeded-delete-failed branch. *(08-04 §1.4 + 08-09 core §Important 3 + app-qc §What this method would miss)* `(2 sources)` — **PROVEN 2026-08-22** on local volumes, and worse than recorded: killed at 150ms the destination is FULL-LENGTH with incomplete data (CopyFile preallocates — undetectable by size); killed post-copy both complete copies remain (fresh-qc §Experiments). SMB untested. No longer merely deferred — the hazard is demonstrated. — RE-VERIFIED 2026-09-27: still real, P1 — REOPENED 2026-09-28: the 39f131c fix (own stream copy through a ".partial" name) was taken out at the owner's request after 1.8.0: filing share to share went from 0.16 s to 2.9 s for a 13 MB document, because Windows' copy lets the server copy between its own shares and a copy of our own pulls every byte through the PC. Owner chose 1.7's plain move over keeping the protection. Any future fix must keep Windows' copy (e.g. File.Copy to a temp name, then rename)
 - [x] **DW-02** · Core / filing spine — `Commit.SkipFile` calls `MoveNeverOverwrite` with no `catch (FileExistsRace)`, unlike `CommitFile`/`UndoAction`; the private exception sails past `OnSkipAsync`'s catches to an unhandled UI-thread exception. No document is lost (guard fires pre-move). *(08-09 core §Important 1)* — CLOSED 2026-09-27, 9dab2d2; CommitSkipFileTests
 - [x] **DW-03** · Config — `ResolveConfined` checks containment via lexical `Path.GetFullPath` only, which does not resolve reparse points; a junction inside the config directory can redirect a confined side-file read/write outside it. *(08-09 security §Important 2)* — CLOSED 2026-09-28, f366307; SideFilePathConfinementTests (junction/symlink refused) — RE-VERIFIED 2026-09-27: still real, P3
 - [ ] **DW-04** · Repo / process — releases ship unsigned; first run trips SmartScreen. Azure Trusted Signing is wired in `release.yml` but gated on secrets that don't exist; needs a code-signing certificate the owner does not yet have. *(08-04 §3.2 + 08-09 tests-build §Important 2)* `(user, 2 sources)` — RE-VERIFIED 2026-09-27: still real, P2
