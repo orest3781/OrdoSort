@@ -79,4 +79,32 @@ public class SettingsValueChecksTests : IDisposable
 
         Assert.Contains(vm.HardErrors(), e => e.Contains("Comic Papyrus"));
     }
+
+    /// <summary>Q2-40: a blank history database passed OK and was saved
+    /// blank, which then stopped the app starting ("unable to open database
+    /// file"), while the box-labels file, blanked, falls back to its default.
+    /// The history database now does the same, and its note says so instead
+    /// of going quiet.</summary>
+    [Fact]
+    public async Task ABlankHistoryDatabaseSavesAsTheDefault()
+    {
+        using var vm = Build(cfg => { });
+        vm.HistoryDb = "   ";
+
+        Assert.Contains(Config.DefaultHistoryDb, vm.HistoryDbNote);
+        Assert.True(await vm.TryBuildResultAsync());
+        Assert.Equal(Config.DefaultHistoryDb, vm.Result!.HistoryDb);
+    }
+
+    /// <summary>Q2-40: a history database pointing at a folder said nothing
+    /// in Settings.</summary>
+    [Fact]
+    public void AHistoryDatabaseThatIsAFolderIsFlagged()
+    {
+        var folder = _dir.Dir("history-folder");
+        using var vm = Build(cfg => cfg.HistoryDb = folder);
+
+        Assert.True(vm.HistoryDbNoteNeedsAttention);
+        Assert.Contains("folder", vm.HistoryDbNote);
+    }
 }

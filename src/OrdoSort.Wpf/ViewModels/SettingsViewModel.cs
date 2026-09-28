@@ -1110,12 +1110,16 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private void RecomputeHistoryDbNote(bool immediate = false)
     {
         var p = HistoryDb.Trim();
-        FieldNote? fastPath = p.Length == 0 ? FieldNote.Clear
+        // Blank saves as the default, as a blank box-labels file does (Q2-40).
+        FieldNote? fastPath = p.Length == 0 ? FieldNote.Info($"blank = {Config.DefaultHistoryDb} beside the config file")
             : !Path.IsPathRooted(p) ? FieldNote.Info("relative — kept beside the config file")
             : null;
         _historyDbProbe.Resolve(fastPath, FieldNote.Clear, () =>
         {
             if (_fileExists(p)) return FieldNote.Clear;
+            // a folder here stopped the app starting, naming nothing (Q2-40)
+            if (_directoryExists(p))
+                return FieldNote.Problem($"that's a folder — add a file name, such as {Path.Combine(p, Config.DefaultHistoryDb)}");
             var dir = Path.GetDirectoryName(p);
             return dir is not null && !_directoryExists(dir)
                 ? FieldNote.Problem($"folder doesn't exist: {dir}")
@@ -2401,7 +2405,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         cfg.Inbox = Inbox.Trim();
         cfg.Deferred = Deferred.Trim();
         cfg.NamesFile = NamesFile.Trim();
-        cfg.HistoryDb = HistoryDb.Trim();
+        cfg.HistoryDb = HistoryDb.Trim().Length == 0
+            ? Config.DefaultHistoryDb : HistoryDb.Trim();
         cfg.BoxLabelsFile = BoxLabelsFile.Trim().Length == 0
             ? Config.DefaultBoxLabelsFile : BoxLabelsFile.Trim();
         cfg.MonitorTitle = MonitorTitle.Trim();

@@ -131,7 +131,10 @@ public sealed class Config
     [JsonPropertyName("inbox")] public string Inbox { get; set; } = "";
     [JsonPropertyName("deferred")] public string Deferred { get; set; } = "";
     [JsonPropertyName("names_file")] public string NamesFile { get; set; } = "names.txt";
-    [JsonPropertyName("history_db")] public string HistoryDb { get; set; } = "history.sqlite";
+    /// <summary>history_db's default: a file beside config.json.</summary>
+    public const string DefaultHistoryDb = "history.sqlite";
+
+    [JsonPropertyName("history_db")] public string HistoryDb { get; set; } = DefaultHistoryDb;
     [JsonPropertyName("naming_mode")] public string NamingMode { get; set; } = "insert";
     [JsonPropertyName("sort")] public string Sort { get; set; } = "size_desc";
     [JsonPropertyName("enter_commits")] public bool EnterCommits { get; set; } = true;
@@ -310,6 +313,16 @@ public sealed class Config
             throw new ConfigException(
                 $"poll_seconds must be {MinPollSeconds}-{MaxPollSeconds}, " +
                 $"got {cfg.PollSeconds}");
+        // Unchecked, both of these failed later inside SQLite as "unable to
+        // open database file", naming no setting and no path (Q2-40).
+        if (string.IsNullOrWhiteSpace(cfg.HistoryDb))
+            throw new ConfigException(
+                $"history_db is blank. Set it to a file name, such as \"{DefaultHistoryDb}\" " +
+                "(kept beside config.json), or a full path to the history database.");
+        if (ResolveBeside(path, cfg.HistoryDb.Trim()) is var historyDb && Directory.Exists(historyDb))
+            throw new ConfigException(
+                $"history_db points at a folder ({historyDb}), not a file. Add a file name, " +
+                $"such as \"{Path.Combine(cfg.HistoryDb.Trim(), DefaultHistoryDb)}\".");
         // ---- box labels: the side file wins; inline (legacy) is the fallback
         if (ReadDoc<BoxLabelsDoc>(path, cfg.BoxLabelsFile, "box_labels_file") is { } bd)
         {
@@ -535,7 +548,7 @@ public sealed class Config
         Inbox ??= "";
         Deferred ??= "";
         NamesFile ??= "names.txt";
-        HistoryDb ??= "history.sqlite";
+        HistoryDb ??= DefaultHistoryDb;
         // Value-typed keys need nothing here: a JSON null on an int or bool
         // can't be deserialized at all, so it already surfaces as a readable
         // ConfigException. Normalizing them would only mask an explicit

@@ -109,4 +109,36 @@ public class ConfigHardeningTests : IDisposable
 
         Assert.Equal("X", cfg.Inbox);
     }
+
+    /// <summary>Q2-40: history_db was checked nowhere. Blank, or pointing at
+    /// a folder, the app refused to start with "SQLite Error 14: unable to
+    /// open database file": no key named, no path, no remedy. Config.Load
+    /// now refuses both with a message that says which setting and what to
+    /// put there.</summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ABlankHistoryDbIsRefusedByName(string value)
+    {
+        var path = Path.Combine(_dir, "config.json");
+        File.WriteAllText(path, $$"""{ "history_db": "{{value}}" }""");
+
+        var ex = Assert.Throws<ConfigException>(() => Config.Load(path));
+
+        Assert.Contains("history_db", ex.Message);
+        Assert.Contains(Config.DefaultHistoryDb, ex.Message);
+    }
+
+    [Fact]
+    public void AHistoryDbThatIsAFolderIsRefusedByName()
+    {
+        var path = Path.Combine(_dir, "config.json");
+        Directory.CreateDirectory(Path.Combine(_dir, "history"));
+        File.WriteAllText(path, """{ "history_db": "history" }""");
+
+        var ex = Assert.Throws<ConfigException>(() => Config.Load(path));
+
+        Assert.Contains("history_db", ex.Message);
+        Assert.Contains(Path.Combine(_dir, "history"), ex.Message);
+    }
 }
