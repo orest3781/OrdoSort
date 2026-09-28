@@ -31,6 +31,17 @@
                    Text="The name and ID columns are always shown." />
         <ListBox x:Name="ColumnList" ItemsSource="{Binding Visible}"
                  AutomationProperties.Name="Spreadsheet columns">
+            <!-- Without a name, a screen reader announced each row as its CLR
+                 type, "OrdoSort.Wpf.ViewModels.ColumnChoice" (found when this
+                 window joined WindowOverflowTests' registry, which
+                 AccessibleNameTests shares). BasedOn keeps the shared
+                 ListBoxItem style: an explicit ItemContainerStyle replaces it
+                 otherwise. LabelMakerWindow's client list is the same fix. -->
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                    <Setter Property="AutomationProperties.Name" Value="{Binding Header}" />
+                </Style>
+            </ListBox.ItemContainerStyle>
             <ListBox.ItemTemplate>
                 <DataTemplate>
                     <CheckBox Content="{Binding Header}" IsChecked="{Binding IsChosen}"
