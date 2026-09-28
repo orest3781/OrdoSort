@@ -27,8 +27,8 @@
 - [x] 2. Tidy-ups: rows a plan step covers are tagged "(plan step N)"; PR #5 row ticked; the processing-window ledger's Task 4 recorded; the two test build warnings fixed (Release build: 0 warnings)
 - [x] 3. Column picker merged (`0e8fe9b`; owner skipped the rest of the live check). Screen-reader names: a whole-tree sweep of every registry window found table rows announcing a type or record name in 8 windows (Merge PDFs, Zip, Filename list, Bulk rename, Match and merge, Page counts, Standardise names, History); each row is now named by its file
 - [x] 4. The refinement checklist's 4 High items: all four still reproduced and are fixed with tests, merged to `main` 2026-09-27 (`8176fa6`). Q2-01 a Bulk rename batch can't wipe the last batch's undo or re-run itself; Q2-02 Match and merge's Merge and Undo run in the background one file at a time, with the window's other actions held off; Q2-03 a set-aside or route folder that is the inbox is refused in Settings and in the filing code; Q2-04 an undo that leaves the filed copy behind still counts as an undo and warns. check.bat and E2E 46/46 green
-- [ ] 5. User-facing fixes: 5a box labels Copies > 1 (needs the owner's rule); 5b TableLayoutStore read-failure/atomic write/damaged-file log; 5c PR #6 network share (owner tries the real share; retry test; permissions note)
-- [ ] 6. Explorer tables polish: keyboard header menu, Triage saved sort, empty-table scrollbar, timing and store-path tests, confirm File list remembering its columns
+- [ ] 5. User-facing fixes: 5a box labels Copies > 1 ✅ done; 5b TableLayoutStore ✅ done; 5c PR #6 network share (owner tries the real share; retry test; permissions note) — skipped for now by the owner, 2026-09-27
+- [x] 6. Explorer tables polish: done 2026-09-27 (keyboard header menu, Review matches sort and columns, empty-table scrollbar, timing and default-path tests; File list remembering its columns confirmed)
 - [ ] 7. Triage the rest of `docs/superpowers/refinement-master-checklist.md` (81 Important, 88 Minor; last updated 2026-08-22, 1 of 173 ticked): close what later work fixed, with evidence; move what is still real into STATUS by priority; fold in the ~25 "minor (deferred)" findings from the plan ledgers
 - [ ] 8. Before release: one fresh-reviewer pass over everything since v1.7.0 (the test overhaul, the processing window and today's fixes were never reviewed by a second pair of eyes); run BoxLabels.exe by hand (never done since its merge)
 - [ ] 9. Release 1.8.0, published from github.com (proves PR #7's path); fix the smoke screenshots' collapsed columns first or ship the current shots
@@ -42,7 +42,7 @@
 - [x] (plan step 5b) Explorer tables (review minor): TableLayoutStore — fixed 2026-09-27: a save while the file can't be read throws (reported) and leaves every other window's layout alone; saves write a temp file and move it over; a damaged file is reported to crash.log and kept as `table-columns.json.damaged` on the next save; any save failure on window close is reported, never thrown
 - [ ] (plan step 5b) Explorer tables (review minor): a damaged table-columns.json is discarded without a log line
 - [x] (plan step 6) Explorer tables (review minor): the header menu is mouse-only. Fixed 2026-09-27: the Menu key and Shift+F10 open it for the focused cell's column; a table with its own menu (File list) keeps the key for that. Not yet tried by hand with a real keyboard (plan step 8)
-- [ ] (plan step 6) Explorer tables (review minor): File list now remembers its column toggles between sessions, which also sets the export's columns and auto page-counting — owner to confirm that's wanted
+- [x] (plan step 6) Explorer tables (review minor): File list remembers its column toggles between sessions, which also sets the export's columns and auto page-counting — confirmed wanted by the owner 2026-09-27
 - [x] (plan step 6) Explorer tables (review minor): timing test for Ctrl+Plus on 7 columns × 5,000 rows (Integration, limit 10 s) and a test of the real default store path, both added 2026-09-27
 - [x] Flaky under full-suite load (2 of 3 runs, 2026-09-25; 5/5 alone): `FolderPathResolutionTests.SettingsWarningsCheckARelativeRouteBesideTheConfigFile` fails in its `Directory.Delete` cleanup because `Config.ProbeWritable`'s `.ordosort_probe_*` file is still held open by another process (likely antivirus) — fixed 2026-09-26 (`56f2bb4`): not antivirus; the test's own SettingsViewModel was still writing its probe file on a timer thread. It now uses the inline scheduler and a manual clock and disposes first
 - [x] (plan step 6) An EMPTY table whose columns run past the right edge showed no horizontal scrollbar (it did once rows existed). Fixed 2026-09-27: an empty table scrolls by pixels over a rows area as wide as its columns, and goes back to the panel's own scrolling when rows arrive. Explorer's empty folder was not compared
@@ -102,6 +102,7 @@
 | 2026-09-27 | `claude/pro-tier-scope` (draft PR #3) left as it is | A product decision, not a code one |
 | 2026-09-27 | No new test packages (Xunit.StaFact, TimeProvider.Testing) for now | The suite is stable; each package is a dependency to maintain |
 | 2026-09-27 | Box labels: Copies > 1 in the print preview gives every copy its own box numbers | Two boxes must never share a barcode; keeping the Copies box costs less for people than removing it |
+| 2026-09-27 | File list keeps remembering its column toggles (and so the export's columns and auto page-counting) between sessions | Owner's call |
 
 ## Verification
 | Check | Result | Not tested |
