@@ -684,6 +684,52 @@ public class LabelMakerViewModelTests : IDisposable
         Assert.Equal(30, only.DestroyDays);
     }
 
+    /// <summary>QC-29: an id written in lowercase (a hand edit, or a legacy
+    /// migration) shows uppercased here, and every save compared them
+    /// exactly: the first save added a second, uppercase copy beside the
+    /// lowercase one, and from then on Save and Print were refused over
+    /// "two clients called ...". Ids now match whatever their case, and the
+    /// saved row takes the uppercase form.</summary>
+    [Fact]
+    public void AClientStoredInLowercaseIsSavedAsTheSameClient()
+    {
+        var path = PathWith(new LabelClient { Id = "acme", DestroyDays = 30, NextNumber = 40 });
+        var vm = Vm(path);
+        Assert.Equal("ACME", vm.Clients.Single().Id);
+
+        vm.Clients.Single().DestroyDaysText = "60";
+        Assert.True(vm.TryPersist());
+
+        var only = Assert.Single(BoxLabelStore.Read(path).LabelClients);
+        Assert.Equal("ACME", only.Id);
+        Assert.Equal(60, only.DestroyDays);
+        Assert.Equal(40, only.NextNumber);
+    }
+
+    /// <summary>QC-28: renaming ALPHA to BETA while another station had just
+    /// added its own BETA merged into their row: their retention was
+    /// overwritten and ALPHA's running number was lost with its old row.
+    /// Now nothing is saved and the window stays open to pick another id.</summary>
+    [Fact]
+    public void RenamingOntoAnIdAnotherStationJustAddedIsRefused()
+    {
+        var path = PathWith(new LabelClient { Id = "ALPHA", DestroyDays = 30, NextNumber = 7 });
+        var vm = Vm(path);
+        BoxLabelStore.Mutate(path, d =>
+        {
+            d.LabelClients.Add(new LabelClient { Id = "BETA", DestroyDays = 90, NextNumber = 3 });
+            return 0;
+        });
+
+        vm.Clients.Single().Id = "BETA";
+
+        Assert.False(vm.TryPersist());
+        Assert.Contains("BETA", Assert.Single(_dialogs.Warnings).Message);
+        var stored = BoxLabelStore.Read(path).LabelClients;
+        Assert.Equal(7, stored.Single(c => c.Id == "ALPHA").NextNumber);
+        Assert.Equal(90, stored.Single(c => c.Id == "BETA").DestroyDays);
+    }
+
     [Fact]
     public void RenamingAClientCarriesAPeersConcurrentCounterAdvanceForwardToTheNewId()
     {
