@@ -18,10 +18,10 @@ internal interface IColumnVisibility
     /// name and id columns); its header-menu entry is disabled.</summary>
     bool CanChange(DataGridColumn column) => true;
 
-    /// <summary>False when the owner keeps which columns show itself (Review
-    /// matches, in the shared config): the per-PC layout then restores
-    /// widths and order only.</summary>
-    bool RestoreFromLayout => true;
+    /// <summary>False for a column whose showing the owner keeps itself
+    /// (Review matches' spreadsheet columns, in the shared config): the
+    /// per-PC layout then restores its width and order only.</summary>
+    bool RestoresFromLayout(DataGridColumn column) => true;
 }
 
 /// <summary>Makes one DataGrid behave like File Explorer's Details view
@@ -93,13 +93,41 @@ internal sealed partial class ExplorerColumns
         grid.SetValue(InstanceProperty, explorer);
         grid.MinColumnWidth = MinColumnWidth;
         grid.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
-        grid.Loaded += (_, _) => explorer.ApplySaved();
-        grid.Unloaded += (_, _) => explorer.Save();
+        grid.Loaded += (_, _) =>
+        {
+            explorer.ApplySaved();
+            explorer.KeepEmptyTableScrollable(grid, EventArgs.Empty);
+            grid.LayoutUpdated += explorer.KeepEmptyTableScrollable;
+        };
+        grid.Unloaded += (_, _) =>
+        {
+            grid.LayoutUpdated -= explorer.KeepEmptyTableScrollable;
+            explorer.Save();
+        };
         grid.Columns.CollectionChanged += explorer.OnColumnsChanged;
         grid.ColumnReordering += explorer.OnColumnReordering;
         grid.ColumnReordered += (_, _) => explorer.KeepAnchorFirst();
         explorer.WireInput();
         return explorer;
+    }
+
+    /// <summary>An empty table showed no scrollbar for columns past the right
+    /// edge, so they could not be reached: the rows panel does the scrolling
+    /// and, with no rows, reports nothing to scroll. While the table is
+    /// empty the scroller scrolls by pixels instead, over a rows area kept as
+    /// wide as the columns; with rows, the panel scrolls (and virtualizes)
+    /// as before.</summary>
+    private void KeepEmptyTableScrollable(object? sender, EventArgs e)
+    {
+        if (_grid.Template?.FindName("DG_ScrollViewer", _grid) is not ScrollViewer { Content: ItemsPresenter rows } scroller)
+            return;
+        var empty = _grid.Items.Count == 0;
+        var width = empty
+            ? _grid.RowHeaderActualWidth
+              + _grid.Columns.Where(c => c.Visibility == Visibility.Visible).Sum(c => c.ActualWidth)
+            : 0;
+        if (rows.MinWidth != width) rows.MinWidth = width;
+        if (scroller.CanContentScroll == empty) scroller.CanContentScroll = !empty;
     }
 
     /// <summary>Whether a grid attached without its own store remembers its
@@ -149,7 +177,7 @@ internal sealed partial class ExplorerColumns
             if (HeaderOf(column) is { } header && byHeader.TryGetValue(header, out var layout))
             {
                 column.Width = new DataGridLength(Math.Max(MinColumnWidth, layout.Width));
-                if (column != Anchor && _visibility.RestoreFromLayout) _visibility.SetShown(column, layout.Visible);
+                if (column != Anchor && _visibility.RestoresFromLayout(column)) _visibility.SetShown(column, layout.Visible);
             }
 
         // Order: saved positions first (stable for ties), unknown columns after.
@@ -174,16 +202,40 @@ internal sealed partial class ExplorerColumns
         }
     }
 
-    /// <summary>A column added after the grid opened (Triage builds its
-    /// columns per roster) takes its saved width, if it has one.</summary>
+    /// <summary>A column added after the grid opened (Review matches' Why
+    /// column, per file) takes its saved width, visibility and place, as if
+    /// it had been there when the layout was applied. Wherever it lands, the
+    /// pinned first column stays first.</summary>
     private void OnColumnsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (!_applied || e.NewItems is null) return;
         var saved = _store?.Load(_key);
-        if (saved is null) return;
         foreach (DataGridColumn column in e.NewItems)
-            if (HeaderOf(column) is { } header && saved.Columns.LastOrDefault(c => c.Header == header) is { } layout)
+        {
+            if (IsControlColumn(column)) continue;
+            if (HeaderOf(column) is { } header && saved?.Columns.LastOrDefault(c => c.Header == header) is { } layout)
+            {
                 column.Width = new DataGridLength(Math.Max(MinColumnWidth, layout.Width));
+                if (_visibility.RestoresFromLayout(column)) _visibility.SetShown(column, layout.Visible);
+                column.DisplayIndex = Math.Clamp(layout.DisplayIndex, 0, _grid.Columns.Count - 1);
+            }
+        }
+        KeepAnchorFirst();
+    }
+
+    /// <summary>Shows <paramref name="items"/> in place of the current rows,
+    /// keeping the current sort. A new ItemsSource clears WPF's sort, so a
+    /// window that swaps its rows (Review matches, per file) would otherwise
+    /// lose the saved or clicked sort every time.</summary>
+    public void ReplaceItems(System.Collections.IEnumerable items)
+    {
+        var sorts = _grid.Items.SortDescriptions.ToList();
+        var directions = _grid.Columns.Where(c => c.SortDirection is not null)
+            .Select(c => (Column: c, Direction: c.SortDirection))
+            .ToList();
+        _grid.ItemsSource = items;
+        foreach (var sort in sorts) _grid.Items.SortDescriptions.Add(sort);
+        foreach (var (column, direction) in directions) column.SortDirection = direction;
     }
 
     private void OnColumnReordering(object? sender, DataGridColumnReorderingEventArgs e)

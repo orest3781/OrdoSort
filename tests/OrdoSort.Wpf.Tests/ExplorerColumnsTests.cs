@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using OrdoSort.Wpf.Services;
@@ -416,6 +417,100 @@ public sealed class ExplorerColumnsTests : UiTest, IDisposable
         finally { bed.Window.Close(); }
     });
 
+    /// <summary>Ctrl+Plus on the widest real table (History: 7 columns) with
+    /// a big log. A time limit, so it runs in the Integration pass, not the
+    /// everyday check (docs/testing.md); the limit is generous so only a
+    /// real slowdown (measuring by realizing rows, say) trips it.</summary>
+    [Fact]
+    [Trait("Category", "Integration")]
+    public void FittingAllSevenColumnsOfFiveThousandRowsIsQuick() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: Enumerable.Range(0, 5000)
+            .Select(i => new Row { Name = "file " + i, Kind = "pdf", Note = "note " + i }).ToArray());
+        try
+        {
+            foreach (var header in new[] { "Extra 1", "Extra 2", "Extra 3", "Extra 4" })
+                bed.Grid.Columns.Add(new DataGridTextColumn
+                {
+                    Header = header, Binding = new Binding(nameof(Row.Name)), Width = new DataGridLength(80),
+                });
+            Settle(bed.Window);
+            Assert.Equal(7, bed.Grid.Columns.Count);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+
+            bed.Explorer.FitAll();   // what Ctrl+Plus runs; a test can't hold Ctrl
+
+            Assert.True(clock.ElapsedMilliseconds < 10_000, $"Ctrl+Plus took {clock.ElapsedMilliseconds}ms");
+            Console.WriteLine($"Ctrl+Plus, 7 columns x 5,000 rows: {clock.ElapsedMilliseconds}ms");
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    /// <summary>Every other test hands the table its own store (the run turns
+    /// RememberByDefault off). This one takes the app's own path: a table
+    /// given no store remembers its layout in TableLayoutStore.DefaultPath,
+    /// which the test run points at a temp folder.</summary>
+    [Fact]
+    public void ATableGivenNoStoreRemembersItsLayoutInTheDefaultFile() => _fx.Invoke(() =>
+    {
+        var key = "DefaultPathTest-" + Guid.NewGuid().ToString("N");
+        var before = ExplorerColumns.RememberByDefault;
+        ExplorerColumns.RememberByDefault = true;
+        try
+        {
+            var grid = new DataGrid();
+            grid.Columns.Add(new DataGridTextColumn { Header = "Name", Width = new DataGridLength(123) });
+            var explorer = ExplorerColumns.Attach(grid, key);
+
+            explorer.Save();
+
+            var saved = new TableLayoutStore(TableLayoutStore.DefaultPath).Load(key);
+            Assert.Equal(123, Assert.Single(saved!.Columns).Width);
+        }
+        finally { ExplorerColumns.RememberByDefault = before; }
+    });
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void ColumnsPastTheRightEdgeGetAScrollbarEvenWithNoRows(int rowCount) => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(windowWidth: 300, rows: Enumerable.Range(0, rowCount).Select(i => new Row { Name = "a" }).ToArray());
+        try
+        {
+            Settle(bed.Window);
+            var scroller = Ui.Descendants<ScrollViewer>(bed.Grid).First();
+
+            Assert.Equal(Visibility.Visible, scroller.ComputedHorizontalScrollBarVisibility);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    /// <summary>The empty-table scrolling must not outlive the emptiness: a
+    /// table with rows keeps the panel's own scrolling, which is what lets a
+    /// big History build only the rows on screen.</summary>
+    [Fact]
+    public void RowsArrivingPutTheTableBackOnItsOwnScrolling() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(windowWidth: 300);
+        try
+        {
+            Settle(bed.Window);
+            var scroller = Ui.Descendants<ScrollViewer>(bed.Grid).First();
+            Assert.False(scroller.CanContentScroll);
+
+            for (var i = 0; i < 50; i++) bed.Rows.Add(new Row { Name = "row " + i });
+            Settle(bed.Window);
+
+            Assert.True(scroller.CanContentScroll);
+            Assert.Equal(Visibility.Visible, scroller.ComputedHorizontalScrollBarVisibility);
+        }
+        finally { bed.Window.Close(); }
+    });
+
     [Fact]
     public void TheCellPaddingFitUsesIsTheOneTheStyleDraws() => _fx.Invoke(() =>
     {
@@ -450,6 +545,142 @@ public sealed class ExplorerColumnsTests : UiTest, IDisposable
             items[0].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));   // Size column to fit (Name)
             Settle(bed.Window);
             Assert.True(bed.Column("Name").ActualWidth > 200);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    /// <summary>The ContextMenu open anywhere in the app right now, found the
+    /// way it is shown: as the root of an open popup.</summary>
+    private static ContextMenu? OpenContextMenu() =>
+        PresentationSource.CurrentSources.OfType<System.Windows.Interop.HwndSource>()
+            .Select(s => s.RootVisual).Where(v => v is not null)
+            .SelectMany(v => Ui.Descendants<ContextMenu>(v!))
+            .FirstOrDefault(m => m.IsOpen);
+
+    private static bool PressKey(UIElement target, Key key)
+    {
+        var args = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(target)!, 0, key)
+        {
+            RoutedEvent = Keyboard.PreviewKeyDownEvent,
+        };
+        target.RaiseEvent(args);
+        return args.Handled;
+    }
+
+    /// <summary>The header menu was mouse-only. The Menu key (and Shift+F10,
+    /// which the test can't hold Shift for) opens it for the focused cell's
+    /// column, as a right-click on that header would.</summary>
+    [Fact]
+    public void TheMenuKeyOpensTheHeaderMenuForTheFocusedCellsColumn() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = "a", Kind = new string('W', 80) });
+        try
+        {
+            Settle(bed.Window);
+            bed.Grid.CurrentCell = new DataGridCellInfo(bed.Rows[0], bed.Column("Kind"));
+
+            Assert.True(PressKey(bed.Grid, Key.Apps));
+
+            var menu = OpenContextMenu();
+            Assert.NotNull(menu);
+            Assert.Equal("Size column to fit", ((MenuItem)menu!.Items[0]).Header);
+            ((MenuItem)menu.Items[0]).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            menu.IsOpen = false;
+            Settle(bed.Window);
+            Assert.True(bed.Column("Kind").ActualWidth > 90, "the menu fitted another column than the focused one");
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    /// <summary>A table with its own menu (the File list's Remove / Undo)
+    /// keeps the Menu key for it.</summary>
+    [Fact]
+    public void ATableWithItsOwnMenuKeepsTheMenuKey() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = "a" });
+        try
+        {
+            bed.Grid.ContextMenu = new ContextMenu();
+            Settle(bed.Window);
+            bed.Grid.CurrentCell = new DataGridCellInfo(bed.Rows[0], bed.Column("Kind"));
+
+            Assert.False(PressKey(bed.Grid, Key.Apps));
+            Assert.Null(OpenContextMenu());
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    /// <summary>Review matches swaps in each file's rows; a new ItemsSource
+    /// clears WPF's sort, so the saved (or clicked) sort was lost on every
+    /// file.</summary>
+    [Fact]
+    public void ReplacingTheRowsKeepsTheSort() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = "a", Kind = "x" });
+        try
+        {
+            Settle(bed.Window);
+            bed.Grid.Items.SortDescriptions.Add(new SortDescription("Kind", ListSortDirection.Descending));
+            bed.Column("Kind").SortDirection = ListSortDirection.Descending;
+
+            bed.Explorer.ReplaceItems(new List<Row>
+            {
+                new() { Name = "b", Kind = "1" }, new() { Name = "c", Kind = "3" }, new() { Name = "d", Kind = "2" },
+            });
+
+            Assert.Equal(new[] { "3", "2", "1" }, bed.Grid.Items.Cast<Row>().Select(r => r.Kind));
+            Assert.Equal(ListSortDirection.Descending, bed.Column("Kind").SortDirection);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    private static DataGridTextColumn TextColumn(string header) =>
+        new() { Header = header, Binding = new Binding(nameof(Row.Note)), Width = new DataGridLength(80) };
+
+    /// <summary>Review matches inserts its Why column at the front for some
+    /// files. It used to become the first column (the one that can't be
+    /// hidden or dragged) and come back at its saved width only.</summary>
+    [Fact]
+    public void AColumnAddedLaterTakesItsSavedPlaceAndVisibilityAndTheFirstColumnStaysFirst() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var store = new TableLayoutStore(Path.Combine(_dir, "table-columns.json"));
+        store.Save("Test", new TableLayout(new[] { new ColumnLayout("Why", 130, false, 2) }, null, null));
+        var bed = Build(store: store, rows: new Row { Name = "a" });
+        try
+        {
+            Settle(bed.Window);
+            var why = TextColumn("Why");
+
+            bed.Grid.Columns.Insert(0, why);
+
+            Assert.Equal(130, why.Width.Value);
+            Assert.Equal(Visibility.Collapsed, why.Visibility);
+            Assert.Equal(2, why.DisplayIndex);
+            Assert.Equal(0, bed.Column("Name").DisplayIndex);
+            Assert.Same(bed.Column("Name"), bed.Explorer.Anchor);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    [Fact]
+    public void AColumnAddedLaterWithNothingSavedGoesAfterTheFirstColumn() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = "a" });
+        try
+        {
+            Settle(bed.Window);
+            var why = TextColumn("Why");
+
+            bed.Grid.Columns.Insert(0, why);
+
+            Assert.Equal(0, bed.Column("Name").DisplayIndex);
+            Assert.Equal(1, why.DisplayIndex);
+            Assert.Same(bed.Column("Name"), bed.Explorer.Anchor);
         }
         finally { bed.Window.Close(); }
     });
@@ -759,7 +990,7 @@ public sealed class ExplorerColumnsTests : UiTest, IDisposable
         public bool IsShown(DataGridColumn column) => column.Visibility == Visibility.Visible;
         public void SetShown(DataGridColumn column, bool shown) =>
             column.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
-        public bool RestoreFromLayout => false;
+        public bool RestoresFromLayout(DataGridColumn column) => false;
     }
 
     /// <summary>Review matches keeps which spreadsheet columns show in the

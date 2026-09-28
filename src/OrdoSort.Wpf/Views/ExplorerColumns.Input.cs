@@ -169,14 +169,54 @@ internal sealed partial class ExplorerColumns
         return menu;
     }
 
-    // Ctrl + Plus, on the main keyboard or the keypad.
+    // Ctrl + Plus, on the main keyboard or the keypad; the Menu key or
+    // Shift + F10 for the header menu.
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (Keyboard.Modifiers == ModifierKeys.Control && e.Key is Key.OemPlus or Key.Add)
         {
             FitAll();
             e.Handled = true;
+            return;
         }
+        // F10 arrives as a system key.
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key == Key.Apps || (key == Key.F10 && Keyboard.Modifiers == ModifierKeys.Shift))
+            e.Handled = OpenHeaderMenuFromKeyboard();
+    }
+
+    /// <summary>Opens the header menu for the focused cell's column (or the
+    /// first column when no cell has focus), under that column's header.
+    /// Returns false, leaving the key alone, when the table has a menu of its
+    /// own: that is what the key opens there (the File list's Remove and
+    /// Undo), and its columns have their own toggles.</summary>
+    private bool OpenHeaderMenuFromKeyboard()
+    {
+        if (_grid.ContextMenu is not null) return false;
+        var column = _grid.CurrentCell.Column is { } current && !IsControlColumn(current)
+                     && current.Visibility == Visibility.Visible
+            ? current
+            : FirstDataColumn();
+        if (column is null) return false;
+        var menu = BuildHeaderMenu(column);
+        menu.PlacementTarget = HeaderFor(column) ?? (UIElement)_grid;
+        menu.Placement = PlacementMode.Bottom;
+        menu.IsOpen = true;
+        return true;
+    }
+
+    private DataGridColumnHeader? HeaderFor(DataGridColumn column)
+    {
+        var pending = new Queue<DependencyObject>();
+        pending.Enqueue(_grid);
+        while (pending.Count > 0)
+        {
+            var node = pending.Dequeue();
+            if (node is DataGridColumnHeader header && header.Column == column) return header;
+            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(node); i++)
+                pending.Enqueue(VisualTreeHelper.GetChild(node, i));
+        }
+        return null;
     }
 
     private static T? FindAncestor<T>(DependencyObject? node) where T : DependencyObject
