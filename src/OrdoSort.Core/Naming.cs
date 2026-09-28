@@ -43,6 +43,12 @@ public static partial class Naming
         "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     };
 
+    /// <summary>Longest stem a name may have. Windows allows 255 characters
+    /// in one file name; this leaves room for an extension and a " (nn)"
+    /// collision counter, so a long roster-built name fails here, readably,
+    /// not at the move with a raw "path too long" (DW-49).</summary>
+    public const int MaxStemLength = 240;
+
     public sealed record NameResult(
         string Filename,          // final name, including .pdf
         string CollisionSuffix,   // "" or " (2)", " (3)", ...  (Explorer style)
@@ -106,6 +112,10 @@ public static partial class Naming
             throw new ArgumentException(
                 $"The name can't contain '{bad.Value}' — Windows forbids the " +
                 "characters  < > : \" / \\ | ? *  in filenames.");
+        if (stem.Length > MaxStemLength)
+            throw new ArgumentException(
+                $"The name is too long ({stem.Length} characters) — Windows allows " +
+                $"at most {MaxStemLength} here. Shorten it.");
         // Windows ignores spaces before the extension when it matches a
         // device name, so "CON .pdf" is CON on older versions (DW-19).
         var deviceName = stem.Split('.')[0].TrimEnd(' ');

@@ -192,6 +192,18 @@ public class NamingTests
     public void DeviceNamesWithATrailingSpaceAreRejectedToo(string typed) =>
         Assert.Throws<ArgumentException>(() => Build(typed));
 
+    /// <summary>DW-49: a name built from a long roster row had no length
+    /// limit here; it failed later, at the move, with a raw "path too long"
+    /// error. Windows allows 255 characters per name; the cap leaves room for
+    /// ".pdf" (or another extension) and a " (nn)" counter.</summary>
+    [Fact]
+    public void ANameTooLongForWindowsIsRejectedReadably()
+    {
+        var ex = Assert.Throws<ArgumentException>(() => Build(new string('A', Naming.MaxStemLength + 1)));
+        Assert.Contains("too long", ex.Message);
+        Assert.EndsWith(".pdf", Build(new string('A', Naming.MaxStemLength)).Filename);
+    }
+
     [Fact]
     public void ReservedCharInInsertModeToo() =>
         Assert.Throws<ArgumentException>(() => Build("SMITH:JOHN", "insert"));
