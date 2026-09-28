@@ -758,14 +758,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         {
             // "Add folder": born into the SELECTED folder's section, right
             // after it — not teleported to the default group at the far end
-            var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs, _time)
-            {
-                Label = "New folder",
-                Section = SelectedWatch?.Section ?? "",
-            };
             var at = SelectedWatch is { } sel ? WatchFolders.IndexOf(sel) + 1 : WatchFolders.Count;
-            WatchFolders.Insert(at, vm);
-            SelectedWatch = vm;
+            InsertNewWatch(SelectedWatch?.Section ?? "", at);
         });
         RemoveWatchCommand = new RelayCommand(
             () => { if (SelectedWatch is { } w) { WatchFolders.Remove(w); w.Dispose(); } SelectedWatch = WatchFolders.FirstOrDefault(); },
@@ -1882,17 +1876,26 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// (an empty group's folder lands at the end of the flat list).</summary>
     public void AddFolderToSection(WatchSectionVm h)
     {
-        var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs, _time)
-        {
-            Label = "New folder",
-            Section = h.IsDefault ? "" : h.Header,
-        };
         var last = WatchFolders.LastOrDefault(w => h.IsDefault
             ? w.Section.Trim().Length == 0
             : string.Equals(w.Section.Trim(), h.Header, StringComparison.CurrentCultureIgnoreCase));
         var at = last is null ? WatchFolders.Count : WatchFolders.IndexOf(last) + 1;
+        InsertNewWatch(h.IsDefault ? "" : h.Header, at);
+    }
+
+    /// <summary>The one way a new, blank monitored folder is made: Add
+    /// folder, a header's ＋ and Add section differ only in its section and
+    /// where it lands (DW-69). It is selected, ready to fill in.</summary>
+    private WatchEditVm InsertNewWatch(string section, int at)
+    {
+        var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs, _time)
+        {
+            Label = "New folder",
+            Section = section,
+        };
         WatchFolders.Insert(at, vm);
         SelectedWatch = vm;
+        return vm;
     }
 
     /// <summary>Per-header ✕: drop the GROUP, keep its folders. Every member's
@@ -1946,9 +1949,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         for (var n = 2; SectionKeyExists(name); n++)
             name = $"New section {n}";
         TrackSticky(name);   // EXPLICITLY created — the other of the two things that makes a section sticky
-        var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs, _time) { Label = "New folder", Section = name };
-        WatchFolders.Add(vm);
-        SelectedWatch = vm;
+        InsertNewWatch(name, WatchFolders.Count);
         var header = WatchRows.OfType<WatchSectionVm>().FirstOrDefault(h =>
             !h.IsDefault && string.Equals(h.Header, name, StringComparison.CurrentCultureIgnoreCase));
         if (header is not null) BeginSectionRename(header);
