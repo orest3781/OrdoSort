@@ -313,6 +313,24 @@ public sealed class ExplorerColumnsTests : UiTest, IDisposable
         Assert.Single(reported);
     });
 
+    /// <summary>Anything a save throws, not just file errors, is reported:
+    /// the save runs as the window closes.</summary>
+    [Fact]
+    public void AnUnexpectedSaveFailureIsReportedNotThrown() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var reported = new List<Exception>();
+        var grid = new DataGrid();
+        grid.Columns.Add(new DataGridTextColumn { Header = "Name", Width = new DataGridLength(100) });
+        var explorer = ExplorerColumns.Attach(grid, "Test",
+            store: new TableLayoutStore(Path.Combine(_dir, "bad\0name.json")),
+            reportSaveError: reported.Add);
+
+        explorer.Save();
+
+        Assert.IsType<ArgumentException>(Assert.Single(reported));
+    });
+
     // ---- rule 3: fit to content ------------------------------------------
 
     private static double TextWidth(DataGrid grid, string text, FontWeight weight)
