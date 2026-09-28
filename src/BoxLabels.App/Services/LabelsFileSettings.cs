@@ -14,6 +14,11 @@ public sealed class LabelsFileDoc
     /// config.json "theme" takes.</summary>
     [JsonPropertyName("theme")] public string Theme { get; set; } = "auto";
 
+    /// <summary>The same keys OrdoSort's config.json uses: "" = the default
+    /// font, 0 = the default size.</summary>
+    [JsonPropertyName("ui_font_family")] public string UiFontFamily { get; set; } = "";
+    [JsonPropertyName("ui_font_size")] public int UiFontSize { get; set; }
+
     /// <summary>Keys this version doesn't know, kept so a hand-written or
     /// newer file survives being saved by this one.</summary>
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extras { get; set; }
@@ -96,6 +101,31 @@ public static class LabelsFileSettings
             throw new ArgumentException($"theme must be auto, light or dark, got \"{theme}\"", nameof(theme));
         var doc = ReadDoc(settingsPath);
         doc.Theme = theme;
+        WriteDoc(settingsPath, doc);
+    }
+
+    /// <summary>The remembered font and text size, or the defaults ("" and 0)
+    /// when missing, damaged or out of range — a convenience setting, like
+    /// the theme.</summary>
+    public static (string Family, int Size) ReadFont(string settingsPath)
+    {
+        var doc = ReadDoc(settingsPath);
+        var size = doc.UiFontSize is >= 6 and <= 72 ? doc.UiFontSize : 0;
+        return (doc.UiFontFamily?.Trim() ?? "", size);
+    }
+
+    /// <summary>Remember the General tab's theme, font and size together.
+    /// Throws on an unwritable location, like <see cref="Write"/>; the
+    /// remembered labels file is kept.</summary>
+    /// <exception cref="ArgumentException">A theme other than auto, light or dark.</exception>
+    public static void WriteAppearance(string settingsPath, string theme, string fontFamily, int fontSize)
+    {
+        if (theme is not ("auto" or "light" or "dark"))
+            throw new ArgumentException($"theme must be auto, light or dark, got \"{theme}\"", nameof(theme));
+        var doc = ReadDoc(settingsPath);
+        doc.Theme = theme;
+        doc.UiFontFamily = fontFamily;
+        doc.UiFontSize = fontSize;
         WriteDoc(settingsPath, doc);
     }
 

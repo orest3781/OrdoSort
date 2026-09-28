@@ -24,8 +24,13 @@ public static class AppFonts
     public const string DefaultChain = "./Fonts/#" + BrandFamily + ", Segoe UI Variable Text, Segoe UI";
 
     /// <summary>Where the bundled font files live: this assembly's resources,
-    /// reachable from either executable.</summary>
-    public static readonly Uri FontBaseUri = new("pack://application:,,,/OrdoSort.Ui;component/");
+    /// reachable from either executable. A pack URI only parses once WPF has
+    /// registered the pack scheme, so it is built on first use rather than
+    /// when the class loads: the font list and size rule below must work
+    /// before any window exists (Box Labels' settings model reads them).</summary>
+    public static Uri FontBaseUri => _fontBaseUri ??= new("pack://application:,,,/OrdoSort.Ui;component/");
+
+    private static Uri? _fontBaseUri;
 
     /// <summary>The default UI font family.</summary>
     public static FontFamily CreateDefault() => new(FontBaseUri, DefaultChain);

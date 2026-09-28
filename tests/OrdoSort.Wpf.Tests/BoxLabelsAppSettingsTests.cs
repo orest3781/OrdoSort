@@ -270,4 +270,23 @@ public sealed class BoxLabelsAppSettingsTests : IDisposable
         Assert.False(LabelsFileSettings.FolderReachable(
             Path.Combine(_dir, "no-such-folder", "box-labels.json")));
     }
+
+    [Fact]
+    public void TextSizeAndFontAreRememberedWithoutLosingTheFileOrTheme()
+    {
+        LabelsFileSettings.Write(SettingsPath, "box-labels.json");
+        LabelsFileSettings.WriteAppearance(SettingsPath, "dark", "Tahoma", 18);
+
+        Assert.Equal(("Tahoma", 18), LabelsFileSettings.ReadFont(SettingsPath));
+        Assert.Equal("dark", LabelsFileSettings.ReadTheme(SettingsPath));
+        Assert.Equal(Path.Combine(_dir, "box-labels.json"), LabelsFileSettings.Read(SettingsPath));
+    }
+
+    [Fact]
+    public void AnOutOfRangeRememberedTextSizeIsTheDefault()
+    {
+        File.WriteAllText(SettingsPath, "{ \"ui_font_size\": 400 }");
+
+        Assert.Equal(("", 0), LabelsFileSettings.ReadFont(SettingsPath));
+    }
 }
