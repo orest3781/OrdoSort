@@ -202,6 +202,11 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
         // over the same rows at once (see the base class's IsBusy).
         MergeCommand = new AsyncRelayCommand(() => MergeAsync(null), () => RunnableRows > 0 && !IsBusy);
         MergeToCommand = new AsyncRelayCommand(MergeToAsync, () => RunnableLooseDocuments > 0 && !IsBusy);
+        // AsyncRelayCommand hands a faulted run to OnError and swallows it;
+        // unwired, the status line kept "Merging 1 of 3…" and said nothing
+        // more (Q2-44).
+        MergeCommand.OnError += ex => Status = $"The merge stopped unexpectedly: {ex.Message}";
+        MergeToCommand.OnError += ex => Status = $"The merge stopped unexpectedly: {ex.Message}";
     }
 
     /// <summary>Every document, image, text file and zip this window can
