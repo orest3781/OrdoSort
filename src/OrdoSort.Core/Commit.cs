@@ -39,7 +39,7 @@ public static class Commit
 
     private static void MoveNeverOverwrite(string src, string target)
     {
-        if (File.Exists(target))
+        if (Path.Exists(target))
             throw new FileExistsRace($"{Path.GetFileName(target)} appeared at the destination mid-commit");
         try
         {
@@ -214,7 +214,7 @@ public static class Commit
         Naming.NameResult Build() => Naming.BuildTarget(
             Path.GetFileName(src), typedName, route.NamingMode, globalMode,
             route.Suffix, route.AppendSuffix,
-            name => File.Exists(Path.Combine(destDir, name)));
+            Collision.TakenIn(destDir));
 
         Naming.NameResult result;
         try { result = Build(); }
@@ -254,7 +254,7 @@ public static class Commit
         {
             result = Naming.BuildTarget(
                 Path.GetFileName(src), "", null, Naming.ModeInsert, "", false,
-                name => File.Exists(Path.Combine(deferredDir, name)));
+                Collision.TakenIn(deferredDir));
         }
         catch (ArgumentException ex) { throw new CommitError(ex.Message); }
         SkipRaceHookForTests?.Invoke();
@@ -325,7 +325,7 @@ public static class Commit
     {
         if (!File.Exists(filedPath))
             throw new CommitError($"Can't undo: {Path.GetFileName(filedPath)} is no longer there");
-        if (File.Exists(originalPath))
+        if (Path.Exists(originalPath))   // a folder on the name blocks the move too (DW-18)
             throw new CommitError($"Can't undo: {Path.GetFileName(originalPath)} already exists again");
         var parent = Path.GetDirectoryName(originalPath);
         if (parent is null || !Directory.Exists(parent))

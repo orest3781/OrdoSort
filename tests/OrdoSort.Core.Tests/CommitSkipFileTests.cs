@@ -147,4 +147,49 @@ public class CommitSkipFileTests : IDisposable
         Assert.Contains("reserved Windows device name", ex.Message);
         Assert.True(File.Exists(src));
     }
+
+    /// <summary>DW-18: a FOLDER already carrying the document's name was
+    /// invisible to the collision check (File.Exists is false for folders),
+    /// so the move ran into it and the user got a raw "cannot create a file"
+    /// error instead of the usual " (2)".</summary>
+    [Fact]
+    public void AFolderCarryingTheNameCountsAsTakenWhenSettingAside()
+    {
+        var src = MakePdf(_inbox, "20240115--444444.pdf");
+        Directory.CreateDirectory(Path.Combine(_deferred, "20240115--444444.pdf"));
+
+        var outcome = Commit.SkipFile(src, _deferred);
+
+        Assert.Equal(Path.Combine(_deferred, "20240115--444444 (2).pdf"), outcome.NewPath);
+        Assert.True(File.Exists(outcome.NewPath!));
+    }
+
+    /// <summary>DW-18, for filing: same folder-in-the-way case.</summary>
+    [Fact]
+    public void AFolderCarryingTheNameCountsAsTakenWhenFiling()
+    {
+        var src = MakePdf(_inbox, "20240115--555555.pdf");
+        Directory.CreateDirectory(Path.Combine(_deferred, "SMITH JOHN.pdf"));
+
+        var outcome = Commit.CommitFile(src, "SMITH JOHN",
+            new Route { Path = _deferred, NamingMode = Naming.ModeReplace }, Naming.ModeInsert);
+
+        Assert.Equal(Path.Combine(_deferred, "SMITH JOHN (2).pdf"), outcome.NewPath);
+        Assert.True(File.Exists(outcome.NewPath!));
+    }
+
+    /// <summary>DW-18, for undo: a folder now sitting on the original name
+    /// is "already exists again", not a raw move error.</summary>
+    [Fact]
+    public void AFolderOnTheOriginalNameRefusesTheUndoReadably()
+    {
+        var filed = MakePdf(_deferred, "SMITH JOHN.pdf");
+        var original = Path.Combine(_inbox, "20240115--666666.pdf");
+        Directory.CreateDirectory(original);
+
+        var ex = Assert.Throws<CommitError>(() => Commit.UndoAction(filed, original));
+
+        Assert.Contains("already exists again", ex.Message);
+        Assert.True(File.Exists(filed));
+    }
 }
