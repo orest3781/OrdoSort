@@ -383,7 +383,10 @@ public class UnlockEnterKeyTests : UiTest
                 $"{FocusedNow()} — focus stranded on the collapsed save box means the next Enter is " +
                 "swallowed by that box's own PreviewKeyDown handler and does nothing");
 
-            // the part a user feels: Enter works again, with no Tab first
+            // the part a user feels: Enter works again, with no Tab first.
+            // The first file unlocked and left the list, so the next batch
+            // is a file added now.
+            vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--2222222222.pdf"));
             SimulateEnterKey(window.PwBox, source);
             PumpUntilComplete(vm.UnlockCommand.Completion);
             Assert.Equal(2, invoked.Count);
@@ -544,6 +547,8 @@ public class UnlockEnterKeyTests : UiTest
             Assert.True(window.PwBox.IsKeyboardFocused, "the password box never took keyboard focus back");
             Assert.True(vm.SaveBannerVisible, "the offer went away before the second Enter");
 
+            // the first file unlocked and left the list; the next batch
+            vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--2222222222.pdf"));
             var source = PresentationSource.FromVisual(window)!;
             SimulateEnterKey(window.PwBox, source);
             PumpUntilComplete(vm.UnlockCommand.Completion);

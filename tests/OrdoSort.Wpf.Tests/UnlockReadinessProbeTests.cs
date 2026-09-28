@@ -159,17 +159,20 @@ public class UnlockReadinessProbeTests : IDisposable
     public async Task TheSaveBannerAlsoReprobesEveryRow()
     {
         var vm = new UnlockViewModel(new Config(), () => true,
-            unlocker: (p, pw) => new Unlock.UnlockResult("ok", p, p, InPlace: true),
+            // f unlocks with the typed password (the save offer); g doesn't,
+            // so it stays listed after the run for the re-probe to act on
+            unlocker: (p, pw) => Path.GetFileName(p) == "f.pdf"
+                ? new Unlock.UnlockResult("ok", p, p, InPlace: true)
+                : new Unlock.UnlockResult("wrong_password", p, Message: "That password didn't work."),
             probe: (path, candidates) => candidates.Count > 0
                 ? new Unlock.ProbeResult("ready", path, MatchedIndex: 0, Message: "ok")
                 : new Unlock.ProbeResult("needs_password", path, Message: "none saved"));
-        var file = Touch("f.pdf");
-        await vm.AddFilesAsync(new[] { file });
-        var row = Assert.Single(vm.Files);
-        Assert.Equal(ReadinessStatus.NeedsPassword, row.Status);
+        await vm.AddFilesAsync(new[] { Touch("f.pdf"), Touch("g.pdf") });
 
         vm.Password = "typed-secret";
         await vm.UnlockAsync();
+        var row = Assert.Single(vm.Files);
+        Assert.Equal(ReadinessStatus.Failed, row.Status);
         Assert.True(vm.SaveBannerVisible, "the save offer never appeared — arrangement broken, not the fix");
 
         vm.SaveBannerName = "Label";

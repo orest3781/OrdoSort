@@ -204,6 +204,10 @@ public class UnlockClearAndRemoveTests : IDisposable
         Assert.Equal(2, scheduler.Queued);
 
         vm.RemoveFiles(new[] { b });   // the click that slips through anyway
+        // What the guard actually changes: the row is not removed while its
+        // file is being worked on, so nothing is a surprise to the person
+        // looking at the list.
+        Assert.Contains(rowB, vm.Files);
 
         scheduler.ReleaseAll();   // b's dispatch already happened — its real unlock still runs
         await unlockTask;
@@ -212,10 +216,9 @@ public class UnlockClearAndRemoveTests : IDisposable
         Assert.True(File.Exists(archived), "b's locked original should be archived either way — it was already in flight");
         Assert.False(StillNeedsPassword(b), "b's unlocked copy should be readable with no password either way");
 
-        // What the guard actually changes: the row was never removed from
-        // Files in the first place, so nothing here is a surprise to the
-        // person looking at the list.
-        Assert.Contains(rowB, vm.Files);
+        // Both unlocked, so both leave the list once the run has reported
+        // them (only what is still locked stays, 2026-09-28).
+        Assert.Empty(vm.Files);
         Assert.True(vm.IsIdle);   // normal service resumes
     }
 
