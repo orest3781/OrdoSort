@@ -246,10 +246,17 @@ public static class Commit
                                   $"{(string.IsNullOrWhiteSpace(deferredDir) ? "(not set)" : deferredDir)}");
         RefuseItsOwnFolder(src, deferredDir);
 
-        // blank name + empty route == keep the original filename, collision-counted
-        var result = Naming.BuildTarget(
-            Path.GetFileName(src), "", null, Naming.ModeInsert, "", false,
-            name => File.Exists(Path.Combine(deferredDir, name)));
+        // blank name + empty route == keep the original filename, collision-counted.
+        // The original name itself can be refused (a device name): same
+        // readable CommitError CommitFile gives (DW-15).
+        Naming.NameResult result;
+        try
+        {
+            result = Naming.BuildTarget(
+                Path.GetFileName(src), "", null, Naming.ModeInsert, "", false,
+                name => File.Exists(Path.Combine(deferredDir, name)));
+        }
+        catch (ArgumentException ex) { throw new CommitError(ex.Message); }
         SkipRaceHookForTests?.Invoke();
         try
         {

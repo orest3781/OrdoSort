@@ -130,4 +130,21 @@ public class CommitSkipFileTests : IDisposable
         Assert.True(File.Exists(outcome.NewPath!));
         Assert.Equal(Path.Combine(_deferred, "20240115--333333.pdf"), outcome.NewPath);
     }
+
+    /// <summary>DW-15: a name the naming rules refuse made SkipFile throw a
+    /// bare ArgumentException, which the dashboard doesn't catch as a filing
+    /// problem, while File wrapped the same refusal in a readable CommitError.
+    /// Win11 NTFS stores "CON .pdf" as an ordinary file (fresh-qc, DW-19), so
+    /// such a document can really sit in an inbox.</summary>
+    [Fact]
+    public void SettingAsideADocumentWhoseNameIsRefusedIsACommitErrorAndTheDocumentStays()
+    {
+        var src = MakePdf(_inbox, "CON .pdf");
+        Assert.True(File.Exists(src), "this Windows treats \"CON .pdf\" as a device, not a file");
+
+        var ex = Assert.Throws<CommitError>(() => Commit.SkipFile(src, _deferred));
+
+        Assert.Contains("reserved Windows device name", ex.Message);
+        Assert.True(File.Exists(src));
+    }
 }

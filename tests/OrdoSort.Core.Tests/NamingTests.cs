@@ -182,6 +182,16 @@ public class NamingTests
     public void ReservedDeviceNamesRejected(string typed) =>
         Assert.Throws<ArgumentException>(() => Build(typed));
 
+    /// <summary>DW-19: "CON " (a trailing space) slipped past the device-name
+    /// check, so a document could be filed as "CON .pdf". Older Windows reads
+    /// that as the CON device, and another station could not open it.</summary>
+    [Theory]
+    [InlineData("CON ")]
+    [InlineData("PRN  ")]
+    [InlineData("nul .x")]
+    public void DeviceNamesWithATrailingSpaceAreRejectedToo(string typed) =>
+        Assert.Throws<ArgumentException>(() => Build(typed));
+
     [Fact]
     public void ReservedCharInInsertModeToo() =>
         Assert.Throws<ArgumentException>(() => Build("SMITH:JOHN", "insert"));

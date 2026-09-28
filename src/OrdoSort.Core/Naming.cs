@@ -106,7 +106,9 @@ public static partial class Naming
             throw new ArgumentException(
                 $"The name can't contain '{bad.Value}' — Windows forbids the " +
                 "characters  < > : \" / \\ | ? *  in filenames.");
-        var deviceName = stem.Split('.')[0];
+        // Windows ignores spaces before the extension when it matches a
+        // device name, so "CON .pdf" is CON on older versions (DW-19).
+        var deviceName = stem.Split('.')[0].TrimEnd(' ');
         if (ReservedNames.Contains(deviceName))
             throw new ArgumentException(
                 $"\"{stem}\" is a reserved Windows device name — pick another.");
