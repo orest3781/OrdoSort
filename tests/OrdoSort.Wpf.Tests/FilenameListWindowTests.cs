@@ -245,6 +245,34 @@ public class FilenameListWindowTests : UiTest
         finally { window.Close(); }
     });
 
+    /// <summary>FL-24: the controls that re-read the disk (Include subfolders,
+    /// Only these types) were split by a row of controls that only re-render
+    /// what is already read, with Include extension (now a display choice,
+    /// FL-09) among the disk ones. What gets read now sits above what gets
+    /// shown.</summary>
+    [Fact]
+    public void WhatGetsReadSitsAboveWhatGetsShown() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var window = OpenOffScreen(new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler()));
+        try
+        {
+            double Top(FrameworkElement e) => e.TranslatePoint(new Point(0, 0), window).Y;
+            double Bottom(FrameworkElement e) => Top(e) + e.ActualHeight;
+            var boxes = Ui.Descendants<TextBox>(window);
+            var types = boxes.Single(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Only these file types");
+            var find = boxes.Single(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Find in this list");
+            var checks = Ui.Descendants<CheckBox>(window);
+            var subfolders = checks.Single(c => (string)c.Content == "Include subfolders");
+            var extension = checks.Single(c => (string)c.Content == "Include extension");
+
+            var readEnds = Math.Max(Bottom(subfolders), Bottom(types));
+            Assert.True(readEnds <= Top(find), "the Find row should sit below every control that re-reads the disk");
+            Assert.True(readEnds <= Top(extension), "Include extension is a display choice and belongs with Find");
+        }
+        finally { window.Close(); }
+    });
+
     /// <summary>FL-23: the empty view shows the view model's cause and its
     /// way-out button. A mistyped binding here fails silently, so this checks
     /// both are wired.</summary>
