@@ -499,7 +499,14 @@ public class SectionDropdownReproTests : UiTest
             window.UpdateLayout();
             Assert.Contains(SectionOne, vm.SectionChoices);   // setup check: it really is sticky right now
 
-            Assert.True(vm.TryBuildResult());
+            // the inline scheduler runs OK's folder checks at once, so the task
+            // has finished here (asserted) and reading it cannot block this
+            // UI-thread body, which can't await
+            var built = vm.TryBuildResultAsync();
+            Assert.True(built.IsCompletedSuccessfully);
+#pragma warning disable xUnit1031
+            Assert.True(built.Result);
+#pragma warning restore xUnit1031
             var result = vm.Result!;
 
             // exactly the 3 REAL folders — no 4th, phantom row for the

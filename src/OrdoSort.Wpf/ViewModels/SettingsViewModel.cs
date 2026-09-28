@@ -1589,7 +1589,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     // RebuildWatchRows already applies to its own section keys) —
     // append-only once seeded, NEVER pruned as folders move away or get
     // removed (that permanence is the whole point). Never written anywhere:
-    // TryBuildResult's WatchFolders still comes only from real WatchEditVm
+    // TryBuildResultAsync's WatchFolders still comes only from real WatchEditVm
     // rows, so a sticky name that's still empty when OK is clicked simply
     // isn't in that list.
     private readonly List<string> _stickySections = new();
@@ -2223,7 +2223,27 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 errors.Add($"\"{label}\": the hotkey \"{r.Hotkey}\" needs a modifier — try \"Ctrl+{rawHotkey}\".");
             if (!r.ColorValid)
                 errors.Add($"\"{label}\": \"{r.Color}\" is not a color (try #2e7d32).");
+
+            // Checked here because filing would otherwise refuse every
+            // document sent to this destination, with Settings giving no
+            // hint why (QC-17, D4). A hand-edited config.json is the usual
+            // source: the Settings controls themselves can't produce these.
+            if (r.Suffix.Length > 0)
+            {
+                try { Naming.RejectIllegal("x" + r.Suffix); }
+                catch (ArgumentException e)
+                {
+                    errors.Add($"\"{label}\": the suffix \"{r.Suffix}\" would stop every filing here. {e.Message}");
+                }
+            }
+            if (r.NamingMode.Length > 0 && Array.IndexOf(Naming.Modes, r.NamingMode) < 0)
+                errors.Add($"\"{label}\": \"{r.NamingMode}\" is not a naming mode — pick one from the list.");
         }
+
+        if (Array.IndexOf(Naming.Modes, FilingMode) < 0)
+            errors.Add($"Filing: \"{FilingMode}\" is not a naming mode — pick one from the list.");
+        if (UiFontFamily.Length > 0 && !FontChoices.Any(f => f.Key == UiFontFamily))
+            errors.Add($"\"{UiFontFamily}\" is not one of the app fonts — pick one from the list.");
 
         // duplicate EFFECTIVE hotkeys — the same keystroke can't file two ways
         var seen = new Dictionary<string, string>();
@@ -2270,36 +2290,64 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     /// <summary>Problems worth a "Save anyway?" — unreachable folders mostly
     /// (they may simply be offline right now).</summary>
-    public List<string> Warnings()
+    public List<string> Warnings() => WarningsFor(FolderChecksNow());
+
+    /// <summary>What the folder checks need, read from the editor on the UI
+    /// thread so the checks themselves can run anywhere.</summary>
+    private sealed record FolderChecks(
+        string InboxPath, string DeferredPath,
+        IReadOnlyList<(string Label, Route Route)> Routes,
+        IReadOnlyList<(string Label, string Path)> WatchFolders);
+
+    private FolderChecks FolderChecksNow() => new(
+        Inbox.Trim().Length == 0 ? "" : ResolveFolderPath(Inbox.Trim()),
+        Deferred.Trim().Length == 0 ? "" : ResolveFolderPath(Deferred.Trim()),
+        Routes.Select(r => (r.Label.Trim(), r.ToRoute())).ToList(),
+        WatchFolders.Where(w => w.Path.Trim().Length > 0)
+            .Select(w => (w.Label.Trim(), ResolveFolderPath(w.Path.Trim()))).ToList());
+
+    /// <summary>Every check here can be a network round trip (a destination's
+    /// check writes and deletes a probe file), so OK runs this off the UI
+    /// thread (QC-18).</summary>
+    private List<string> WarningsFor(FolderChecks checks)
     {
         var warnings = new List<string>();
-        var inbox = Inbox.Trim();
-        if (inbox.Length == 0)
+        if (checks.InboxPath.Length == 0)
             warnings.Add("No inbox folder is set — there will be nothing to process.");
-        else if (!_directoryExists(ResolveFolderPath(inbox)))
-            warnings.Add($"The inbox folder doesn't exist: {ResolveFolderPath(inbox)}");
-        var deferred = Deferred.Trim();
-        if (deferred.Length == 0)
+        else if (!_directoryExists(checks.InboxPath))
+            warnings.Add($"The inbox folder doesn't exist: {checks.InboxPath}");
+        if (checks.DeferredPath.Length == 0)
             warnings.Add("No set-aside folder is set — Skip will refuse until one is configured.");
-        else if (!_directoryExists(ResolveFolderPath(deferred)))
-            warnings.Add($"The set-aside folder doesn't exist: {ResolveFolderPath(deferred)}");
-        foreach (var r in Routes)
+        else if (!_directoryExists(checks.DeferredPath))
+            warnings.Add($"The set-aside folder doesn't exist: {checks.DeferredPath}");
+        foreach (var (label, route) in checks.Routes)
         {
-            var problem = _validateRoute(r.ToRoute());
-            if (problem.Length > 0) warnings.Add($"\"{r.Label.Trim()}\": {problem}");
+            var problem = _validateRoute(route);
+            if (problem.Length > 0) warnings.Add($"\"{label}\": {problem}");
         }
-        foreach (var w in WatchFolders)
+        foreach (var (label, path) in checks.WatchFolders)
         {
-            if (w.Path.Trim().Length > 0 && !FolderExists(w.Path.Trim()))
-                warnings.Add($"\"{w.Label.Trim()}\": folder doesn't exist: {ResolveFolderPath(w.Path.Trim())}");
+            if (!_directoryExists(path))
+                warnings.Add($"\"{label}\": folder doesn't exist: {path}");
         }
         return warnings;
     }
 
+    private bool _isCheckingFolders;
+
+    /// <summary>True while OK is checking the folders; the window keeps OK
+    /// off and says so.</summary>
+    public bool IsCheckingFolders
+    {
+        get => _isCheckingFolders;
+        private set => Set(ref _isCheckingFolders, value);
+    }
+
     // ---------------------------------------------------------------- build
     /// <summary>Validate, then produce <see cref="Result"/>. Hard errors show
-    /// a dialog and return false; warnings ask "Save anyway?".</summary>
-    public bool TryBuildResult()
+    /// a dialog and return false; warnings ask "Save anyway?". The folder
+    /// checks behind the warnings run off the UI thread (QC-18).</summary>
+    public async Task<bool> TryBuildResultAsync()
     {
         var errors = HardErrors();
         if (errors.Count > 0)
@@ -2309,7 +2357,17 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        var warnings = Warnings();
+        var checks = FolderChecksNow();
+        List<string> warnings;
+        IsCheckingFolders = true;
+        try
+        {
+            warnings = await _scheduler.Run(() => WarningsFor(checks));
+        }
+        finally
+        {
+            IsCheckingFolders = false;
+        }
         if (warnings.Count > 0 && !_dialogs.Confirm(
                 " • " + string.Join("\n • ", warnings) + "\n\nSave anyway?",
                 "OrdoSort — possible problems", "Save anyway", "Go back"))
@@ -2323,7 +2381,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     /// <summary>The field mapping alone: the editor's current state as a
     /// <see cref="Config"/>, with no validation, no dialogs, and no disk I/O.
-    /// Split out of <see cref="TryBuildResult"/> so the unsaved-changes check
+    /// Split out of <see cref="TryBuildResultAsync"/> so the unsaved-changes check
     /// (<see cref="IsDirty"/>) can reuse the very same mapping instead of
     /// keeping a second, hand-maintained list of "things the user can edit" —
     /// the same reasoning the JSON clone below already applies to unedited

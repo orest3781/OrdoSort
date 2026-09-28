@@ -1398,9 +1398,19 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         var routes = cfg.Routes;
         // the scan AND the destination probes (ProbeWritable touches every
         // route folder — a network round trip each) run off the UI thread
-        var (scan, problems) = await _scheduler.Run(() =>
-            (Scanner.Scan(ResolvePath(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode),
-             routes.Select(r => Config.ValidateRoute(r, cfgPath)).ToList()));
+        // Busy for the scan, as for a filing: Settings OK meanwhile would
+        // switch the config under it, and the session would open on the old
+        // inbox's files with the old destinations (Q2-08).
+        _busy = true;
+        Scanner.ScanResult scan;
+        List<string> problems;
+        try
+        {
+            (scan, problems) = await _scheduler.Run(() =>
+                (Scanner.Scan(ResolvePath(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode),
+                 routes.Select(r => Config.ValidateRoute(r, cfgPath)).ToList()));
+        }
+        finally { _busy = false; }
         if (Screen == Screen.Processing) return;   // a double Start raced us
         if (scan.Count == 0) { Rescan(); return; }
         var clashes = RouteButtonViewModel.KeyClashes(routes);
@@ -1941,8 +1951,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // for the whole apply; clearing StartEnabled shows it.
         if (_busy)
         {
-            _dialogs.Warn("Your settings weren't applied because OrdoSort was still busy " +
-                          "filing. Reopen Settings and press OK again.",
+            _dialogs.Warn("Your settings weren't applied because OrdoSort was busy starting " +
+                          "a session or filing. Reopen Settings and press OK again.",
                           "OrdoSort — settings not applied");
             return;
         }
@@ -1968,6 +1978,11 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         var oldDbSetting = _cfg.HistoryDb;
         var oldDb = ResolvePath(oldDbSetting, _cfgPath);
         var newDb = ResolvePath(cfg.HistoryDb, _cfgPath);
+        // The new database is opened here but adopted only once the settings
+        // have saved (below): a save that fails changes nothing (DW-07).
+        History? freshHistory = null;
+        var freshBackupOk = true;
+        var freshBackupDir = _historyBackupDir;
         if (!string.Equals(oldDb, newDb, StringComparison.OrdinalIgnoreCase))
         {
             // the backup copies the whole DB file — off the UI thread, it can
@@ -1991,15 +2006,13 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             var backupDir = _historyBackupDir;
             try
             {
-                var fresh = await _scheduler.Run(() =>
+                freshHistory = await _scheduler.Run(() =>
                 {
                     backupOk = RunHistoryBackup(newDb, out backupDir);
                     return new History(newDb);
                 });
-                _history.Dispose();
-                _history = fresh;
-                _historyBackupDir = backupDir;
-                SetHistoryBackupWarning(backupOk);
+                freshBackupOk = backupOk;
+                freshBackupDir = backupDir;
             }
             catch (Exception ex)
             {
@@ -2064,7 +2077,13 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         try { cfg.SavedPasswords = Config.Load(_cfgPath, createIfMissing: false).SavedPasswords; }
         catch (ConfigException) { /* keep what Settings opened with */ }
 
-        _cfg = cfg;
+        // Saved first, adopted only if config.json itself saved (DW-07). The
+        // app used to run on settings that had failed to save, which then
+        // quietly reverted at the next restart (or reached disk later through
+        // some unrelated background save). A box-labels-only refusal still
+        // counts as saved: config.json landed, and TrySave reports such a
+        // refusal alone through refusedKeys.
+        //
         // alwaysWarn: true — final review, Important 1. This save IS the
         // Settings window's persist step; a suppression meant for
         // background saves of unrelated fields must never eat the one
@@ -2072,7 +2091,24 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // WatchFolders/AlertTexts edits didn't reach disk. See
         // WarnSaveFailure's doc comment.
         if (!Config.TrySave(cfg, _cfgPath, out var error, out var refusedKeys))
+        {
+            if (refusedKeys.Count == 0)
+            {
+                freshHistory?.Dispose();
+                _dialogs.Warn(error + "\n\nNothing was changed: OrdoSort is still using your previous settings.",
+                    "OrdoSort — settings not saved");
+                return;
+            }
             WarnSaveFailure(error, refusedKeys, alwaysWarn: true);
+        }
+        if (freshHistory is not null)
+        {
+            _history.Dispose();
+            _history = freshHistory;
+            _historyBackupDir = freshBackupDir;
+            SetHistoryBackupWarning(freshBackupOk);
+        }
+        _cfg = cfg;
         _session = new Session(cfg, _history, _cfgPath);
         await _scheduler.Run(() => _watch.SetFolders(
             ResolvePath(cfg.Inbox, _cfgPath), ResolvePath(cfg.Deferred, _cfgPath)));
