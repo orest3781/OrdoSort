@@ -111,6 +111,24 @@ public class WatchListRowTemplateTests : UiTest
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
         };
+        // DW-33: the callers' try/finally only starts once this returns, so a
+        // throw while finding the tab or list would leave the shown window
+        // and its view model behind. Clean up here and let the failure through.
+        try
+        {
+            return ShowOnMonitoredFolders(vm, window);
+        }
+        catch
+        {
+            window.Close();
+            vm.Dispose();
+            throw;
+        }
+    }
+
+    private static (SettingsViewModel Vm, SettingsWindow Window, ListBox List) ShowOnMonitoredFolders(
+        SettingsViewModel vm, SettingsWindow window)
+    {
         window.Show();
         window.UpdateLayout();
         PumpRender();
