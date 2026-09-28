@@ -963,4 +963,61 @@ public class FilenameListViewModelTests : IDisposable
 
         Assert.Equal("Copied 1 name", vm.Status);
     }
+
+    /// <summary>FL-08: after dropping a big folder or a share the window
+    /// looked idle and unchanged until the walk ended. It now says it is
+    /// reading while the walk runs.</summary>
+    [Fact]
+    public void WhileAFolderIsBeingReadTheListSaysSo()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+        Touch("a.pdf");
+        var scheduler = new ManualWorkScheduler();
+        using var vm = new FilenameListViewModel(new FakeDialogs(), scheduler, uiContext: null, probeDelayMs: 0);
+
+        vm.AddPaths(new[] { _dir });
+
+        Assert.True(vm.IsListing);
+        Assert.Contains("Reading", vm.CountsLine);
+
+        // the walk is handed over from the probe's timer
+        WaitFor(() => scheduler.PendingCount > 0, "the folder walk should be queued");
+        scheduler.ReleaseAll();
+
+        Assert.False(vm.IsListing);
+        Assert.DoesNotContain("Reading", vm.CountsLine);
+        Assert.Single(vm.Rows);
+    }
+
+    /// <summary>FL-16: Clear threw away the whole list and every removal in
+    /// one click, with nothing to undo. With removals to lose it asks first.</summary>
+    [Fact]
+    public void ClearingAListWithRemovalsAsksFirst()
+    {
+        var dialogs = new FakeDialogs { ConfirmAnswer = false };
+        var vm = MakeVm(dialogs);
+        vm.AddPaths(new[] { Touch("a.pdf"), Touch("b.pdf") });
+        WaitFor(() => vm.Rows.Count == 2, "both files should be listed");
+        vm.SelectedPaths = new[] { vm.Rows[0].FullPath };
+        vm.RemoveSelectedCommand.Execute(null);
+
+        vm.ClearCommand.Execute(null);
+
+        Assert.Single(dialogs.Confirms);
+        Assert.Single(vm.Rows);   // kept: the answer was no
+    }
+
+    [Fact]
+    public void ClearingAListWithNoRemovalsDoesNotAsk()
+    {
+        var dialogs = new FakeDialogs();
+        var vm = MakeVm(dialogs);
+        vm.AddPaths(new[] { Touch("a.pdf") });
+        WaitFor(() => vm.Rows.Count == 1, "the file should be listed");
+
+        vm.ClearCommand.Execute(null);
+
+        Assert.Empty(dialogs.Confirms);
+        Assert.Empty(vm.Rows);
+    }
 }

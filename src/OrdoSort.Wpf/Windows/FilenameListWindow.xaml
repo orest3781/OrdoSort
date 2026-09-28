@@ -4,7 +4,7 @@
         xmlns:views="clr-namespace:OrdoSort.Wpf.Views;assembly=OrdoSort.Ui"
         Title="OrdoSort — Filename list" Width="760" Height="560" MinWidth="480" MinHeight="400"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False" AllowDrop="True"
-        DragOver="OnDragOver" Drop="OnDrop"
+        PreviewDragOver="OnDragOver" PreviewDrop="OnDrop"
         Style="{StaticResource {x:Type Window}}">
     <!-- Window-level so Ctrl+Z works with focus anywhere in here, not only on
          the grid — same shape as MainWindow's own Ctrl+Shift+Z. -->
@@ -34,7 +34,8 @@
                      stops a long "Couldn't save: <full path>" from growing the
                      footer and squeezing the grid above it. -->
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
-                           MaxWidth="240" TextTrimming="CharacterEllipsis">
+                           MaxWidth="240" TextTrimming="CharacterEllipsis"
+                           views:TrimmedTextTooltip.Enabled="True">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
                             <Style.Triggers>

@@ -24,6 +24,29 @@ public class FilenameListWindowTests : UiTest
     /// WPF's copy out of the picture entirely, leaving the window's own Ctrl+C
     /// handler to call the same method the button calls. One payload, by
     /// construction rather than by two implementations agreeing.</summary>
+    /// <summary>FL-18: a failed save showed "Couldn't save: Access to the
+    /// path 'C:\…" cut off, with no way to read the rest. The status line
+    /// shows the whole text as a tooltip once it is cut off.</summary>
+    [Fact]
+    public void ACutOffStatusCanBeReadInFull() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
+        var window = new FilenameListWindow(vm);
+        window.Left = -20000; window.Top = 0; window.ShowActivated = false;
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+
+            var status = Ui.Descendants<TextBlock>(window).Single(t =>
+                System.Windows.Data.BindingOperations.GetBinding(t, TextBlock.TextProperty)?.Path.Path == "Status");
+            Assert.True(OrdoSort.Wpf.Views.TrimmedTextTooltip.GetEnabled(status));
+        }
+        finally { window.Close(); }
+    });
+
     [Fact]
     public void TheGridDoesNotRunItsOwnClipboardCopy() => _fx.Invoke(() =>
     {
