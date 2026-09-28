@@ -163,7 +163,7 @@ public sealed class LabelMakerViewModel : ObservableObject
                 SeedFromLegacyClients(boxLabelsPath, migrationSeed);
 
             var doc = BoxLabelStore.Read(boxLabelsPath);
-            _dateStyle = BoxLabels.NormalizeDateStyle(doc.DateStyle);
+            _style = doc.Style;
             foreach (var c in doc.LabelClients)
                 Hook(Clients.AddReturn(LabelClientVm.From(c)));
         }
@@ -345,42 +345,19 @@ public sealed class LabelMakerViewModel : ObservableObject
         }
     }
 
-    // "bars" (default) or "plain" — seeded from the store at ctor, persisted
-    // through it immediately on change (config-ish, not counter-ish: unlike
-    // the client rows, there is no "disk wins for untouched" story to protect
-    // here, so an immediate write is both correct and cheap).
-    private string _dateStyle = BoxLabels.DateStyleBars;
-    public string DateStyle
-    {
-        get => _dateStyle;
-        set
-        {
-            if (!Set(ref _dateStyle, value)) return;
-            Raise(nameof(DateStyleBars));
-            Raise(nameof(DateStylePlain));
-            try
-            {
-                BoxLabelStore.Mutate(_boxLabelsPath, d => { d.DateStyle = value; return 0; });
-            }
-            catch (ConfigException ex)
-            {
-                _dialogs.Warn(ex.Message, _appTitle);
-            }
-        }
-    }
+    // Label style is set in Settings (BoxLabels.exe's, or OrdoSort's Box
+    // labels tab), never here: it belongs to the shared store, so every
+    // station prints alike. Read at open, re-read with every claim, and on
+    // ReloadStyle after Settings changed it.
+    private BoxLabels.LabelStyle _style = BoxLabels.LabelStyle.Default;
+    public BoxLabels.LabelStyle Style { get => _style; private set => Set(ref _style, value); }
 
-    /// <summary>Two-radio pattern (Filing tab's ModeInsert/ModeReplace, etc):
-    /// bound with GroupName="DateStyle" in XAML.</summary>
-    public bool DateStyleBars
+    /// <summary>Re-read the style after Settings changed it. A store that
+    /// can't be read keeps the style shown and says why.</summary>
+    public void ReloadStyle()
     {
-        get => DateStyle == BoxLabels.DateStyleBars;
-        set { if (value) DateStyle = BoxLabels.DateStyleBars; }
-    }
-
-    public bool DateStylePlain
-    {
-        get => DateStyle == BoxLabels.DateStylePlain;
-        set { if (value) DateStyle = BoxLabels.DateStylePlain; }
+        try { Style = BoxLabelStore.Read(_boxLabelsPath).Style; }
+        catch (ConfigException ex) { _dialogs.Warn(ex.Message, _appTitle); }
     }
 
     private string _labelCountText = "10";
@@ -478,7 +455,8 @@ public sealed class LabelMakerViewModel : ObservableObject
     /// of at the on-disk number (owner's decision, 2026-09-23: the preview
     /// promises the typed number, so the sheets must carry it). Read from
     /// the VM by <see cref="TypedStartFor"/> on the UI thread, never in here.</summary>
-    private long ClaimNumbersCore(LabelClientVm client, int count, long? typedStart) =>
+    private (long Start, BoxLabels.LabelStyle Style) ClaimNumbersCore(LabelClientVm client, int count,
+        long? typedStart) =>
         BoxLabelStore.Mutate(_boxLabelsPath, doc =>
         {
             var c = doc.LabelClients.FirstOrDefault(x => SameId(x.Id, client.Id));
@@ -499,7 +477,7 @@ public sealed class LabelMakerViewModel : ObservableObject
                 throw new ConfigException(
                     "this batch would pass label 99 999 999 — reset or renumber the client");
             c.NextNumber = s + count;
-            return s;
+            return (s, doc.Style);
         });
 
     /// <summary>The number the user typed on this client and has not used
@@ -625,12 +603,13 @@ public sealed class LabelMakerViewModel : ObservableObject
         // already does — the store can wait seconds on a contended file
         // (UX-05).
         long start;
+        BoxLabels.LabelStyle claimedStyle;
         var typedStart = TypedStartFor(b.Client);   // read on the UI thread before offloading
         if (!AgreedToTypedStart(b.Client, typedStart)) return;
         IsPrinting = true;
         try
         {
-            start = await _scheduler.Run(() => ClaimNumbersCore(b.Client, b.Count, typedStart));
+            (start, claimedStyle) = await _scheduler.Run(() => ClaimNumbersCore(b.Client, b.Count, typedStart));
         }
         catch (ConfigException ex)
         {
@@ -641,6 +620,7 @@ public sealed class LabelMakerViewModel : ObservableObject
         {
             IsPrinting = false;
         }
+        Style = claimedStyle;   // the sheets print in the style stored at the claim
         SetClaimedNumber(b.Client, start + b.Count);
         var items = RebuildFromClaim(b, start);
         _openPrint = new OpenPrint(b.Client, b.Count, items[0].Created, int.Parse(b.Client.DestroyDaysText.Trim()));
@@ -692,7 +672,7 @@ public sealed class LabelMakerViewModel : ObservableObject
         long start;
         try
         {
-            start = await _scheduler.Run(() => ClaimNumbersCore(open.Client, count, typedStart: null));
+            start = (await _scheduler.Run(() => ClaimNumbersCore(open.Client, count, typedStart: null))).Start;
         }
         catch (ConfigException ex)
         {
@@ -725,7 +705,6 @@ public sealed class LabelMakerViewModel : ObservableObject
         var dest = _dialogs.AskSaveFile("PDF files (*.pdf)|*.pdf",
             $"labels_{b.Client.Id}_{b.Start:D8}.pdf");
         if (dest is null) return;
-        var dateStyle = _dateStyle;   // read on the UI thread before offloading
         var typedStart = TypedStartFor(b.Client);
 
         long claimedStart;
@@ -736,7 +715,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             // Print(): the PDF that lands on disk must carry the claimed
             // numbers. The claim is now alongside the render (both are file
             // work, neither belongs on the UI thread).
-            claimedStart = await _scheduler.Run(() => WritePdfForClaim(dest, b, typedStart, dateStyle,
+            claimedStart = await _scheduler.Run(() => WritePdfForClaim(dest, b, typedStart,
                 start => claimedBeforeFailure = start));
         }
         catch (ConfigException ex)
@@ -793,14 +772,15 @@ public sealed class LabelMakerViewModel : ObservableObject
     /// were used up.</summary>
     private long WritePdfForClaim(string dest,
         (List<BoxLabels.Item> Items, LabelClientVm Client, long Start, int Count) b,
-        long? typedStart, string dateStyle, Action<long> onClaimed)
+        long? typedStart, Action<long> onClaimed)
     {
         var existedBefore = File.Exists(dest);
         using var output = new FileStream(dest, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
         long start;
+        BoxLabels.LabelStyle style;
         try
         {
-            start = ClaimNumbersCore(b.Client, b.Count, typedStart);
+            (start, style) = ClaimNumbersCore(b.Client, b.Count, typedStart);
         }
         catch
         {
@@ -809,7 +789,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             throw;
         }
         onClaimed(start);
-        RenderPdfTo(output, RebuildFromClaim(b, start), new BoxLabels.LabelStyle(DateStyle: dateStyle));
+        RenderPdfTo(output, RebuildFromClaim(b, start), style);
         output.SetLength(output.Position);   // drop the tail of a longer old file
         return start;
     }

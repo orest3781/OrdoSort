@@ -111,10 +111,10 @@ public partial class LabelMakerWindow : Window
     private bool PrintSheets(IReadOnlyList<BoxLabels.Item> items, string jobName)
     {
         var vm = (LabelMakerViewModel)DataContext;
-        var preview = new PrintPreviewWindow(LabelPrinting.BuildDocument(items, vm.DateStyle), jobName,
+        var preview = new PrintPreviewWindow(LabelPrinting.BuildDocument(items, vm.Style), jobName,
             msg => vm.Dialogs.Warn(msg, vm.AppTitle), _previewTitle,
             extraCopies: async extra => await vm.ClaimCopiesAsync(extra) is { } more
-                ? LabelPrinting.BuildDocument(items.Concat(more).ToList(), vm.DateStyle)
+                ? LabelPrinting.BuildDocument(items.Concat(more).ToList(), vm.Style)
                 : null);
         preview.Owner = this;
         preview.ShowDialog();

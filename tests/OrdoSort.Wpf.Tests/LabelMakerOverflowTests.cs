@@ -126,7 +126,10 @@ public class LabelMakerOverflowTests : UiTest
     /// silently collapsed to nothing.</remarks>
     [Theory]
     [InlineData(14.0, false)]
-    [InlineData(18.0, true)]
+    // the form fits at 18px since the date-bars row moved to Settings
+    // (2026-09-28); 24px still outgrows it, so scrolling stays exercised
+    [InlineData(18.0, false)]
+    [InlineData(24.0, true)]
     public void TheFormIsNeverPaintedOverByThePreview(double fontSize, bool expectsScrolling) => _fx.Invoke(() =>
     {
         ThemeManager.Apply(_fx.App, dark: false);
@@ -154,16 +157,16 @@ public class LabelMakerOverflowTests : UiTest
             // The form outgrows its * Grid row as the font grows. A Grid
             // neither clips nor scrolls, so without a viewport the form's last
             // rows are arranged past the row and the preview section below is
-            // painted over the top of them — the date-style choice simply is
-            // not on screen. The fix is the same one SettingsWindow and
+            // painted over the top of them — the last row simply is not on
+            // screen. The fix is the same one SettingsWindow and
             // UnlockWindow already use for forms that can outgrow their space.
             var content = (FrameworkElement)window.Content;
-            var dateStyle = FindDateStyleChoice(content);
+            var lastRow = FindLastFormRow(content);
             var summary = FindPrintsSummary(content);
-            Assert.NotNull(dateStyle);
+            Assert.NotNull(lastRow);
             Assert.NotNull(summary);
 
-            var scroller = FindAncestorScrollViewer(dateStyle!);
+            var scroller = FindAncestorScrollViewer(lastRow!);
             Assert.True(scroller is not null,
                 "the form has no scrolling viewport, so anything it outgrows is "
                 + "painted over the preview instead of being reachable");
@@ -212,13 +215,15 @@ public class LabelMakerOverflowTests : UiTest
     });
 
 
-    /// <summary>The "Date bars" radio group — the last row of the form, and so
-    /// the first thing to disappear when the window runs short.</summary>
-    private static FrameworkElement? FindDateStyleChoice(DependencyObject root)
+    /// <summary>The "30" count preset in the "Labels to print" row — the last
+    /// row of the form since the date-bars choice moved to Settings
+    /// (2026-09-28), and so the first thing to disappear when the window runs
+    /// short.</summary>
+    private static FrameworkElement? FindLastFormRow(DependencyObject root)
     {
-        if (root is RadioButton { GroupName: "DateStyle" } rb) return rb;
+        if (root is Button { Tag: "30" } b) return b;
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-            if (FindDateStyleChoice(VisualTreeHelper.GetChild(root, i)) is { } found)
+            if (FindLastFormRow(VisualTreeHelper.GetChild(root, i)) is { } found)
                 return found;
         return null;
     }

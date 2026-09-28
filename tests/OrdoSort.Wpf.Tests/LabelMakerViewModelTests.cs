@@ -1462,36 +1462,65 @@ public class LabelMakerViewModelTests : IDisposable
         Assert.Contains("Saving the PDF", Assert.Single(_dialogs.Warnings).Message);
     }
 
-    // ----------------------------------------------------------- date style
+    // ---------------------------------------------------------- label style
+    // Set in Settings (both apps), never in this window: the style belongs to
+    // the shared store, so every station prints alike (2026-09-28).
 
     [Fact]
-    public void DateStyleIsSeededFromTheStoreAtOpen()
+    public void TheStyleIsReadFromTheStoreWhenTheWindowOpens()
     {
-        var path = PathWith();
-        BoxLabelStore.Mutate(path, d => { d.DateStyle = BoxLabels.DateStylePlain; return 0; });
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 1 });
+        var style = new BoxLabels.LabelStyle(BoxLabels.LayoutHuge, false, BoxLabels.DateStylePlain);
+        BoxLabelStore.Mutate(path, d => { d.Style = style; return 0; });
 
+        Assert.Equal(style, Vm(path).Style);
+    }
+
+    /// <summary>Review focus 2: another station changes the style between
+    /// this window opening and the print. The sheets carry the style stored
+    /// when the numbers were claimed.</summary>
+    [Fact]
+    public void PrintingUsesTheStyleStoredWhenTheNumbersAreClaimed()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 1 });
         var vm = Vm(path);
+        var changed = new BoxLabels.LabelStyle(BoxLabels.LayoutBig, false);
+        BoxLabelStore.Mutate(path, d => { d.Style = changed; return 0; });
+        BoxLabels.LabelStyle? printedWith = null;
+        vm.LabelCountText = "1";
+        vm.PrintSheets = (_, _) => { printedWith = vm.Style; return true; };
 
-        Assert.True(vm.DateStylePlain);
-        Assert.False(vm.DateStyleBars);
+        vm.Print();
+
+        Assert.Equal(changed, printedWith);
     }
 
     [Fact]
-    public void FlippingTheDateStyleRadioPersistsImmediately()
+    public void SavingAPdfUsesTheStyleStoredWhenTheNumbersAreClaimed()
     {
-        var path = PathWith();   // defaults to "bars"
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 1 });
         var vm = Vm(path);
-        Assert.True(vm.DateStyleBars);
+        var changed = new BoxLabels.LabelStyle(BoxLabels.LayoutHuge);
+        BoxLabelStore.Mutate(path, d => { d.Style = changed; return 0; });
+        BoxLabels.LabelStyle? renderedWith = null;
+        vm.RenderPdfTo = (_, _, style) => renderedWith = style;
+        vm.LabelCountText = "1";
+        _dialogs.NextSaveFile = Path.Combine(_dir, "styled.pdf");
 
-        vm.DateStylePlain = true;
+        vm.SavePdf();
 
-        Assert.True(vm.DateStylePlain);
-        Assert.False(vm.DateStyleBars);
-        Assert.Equal(BoxLabels.DateStylePlain, BoxLabelStore.Read(path).DateStyle);
+        Assert.Equal(changed, renderedWith);
+    }
 
-        vm.DateStyleBars = true;
+    [Fact]
+    public void ReloadStylePicksUpAChangeMadeInSettings()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 1 });
+        var vm = Vm(path);
+        BoxLabelStore.Mutate(path, d => { d.Style = new(BoxLabels.LayoutBig); return 0; });
 
-        Assert.True(vm.DateStyleBars);
-        Assert.Equal(BoxLabels.DateStyleBars, BoxLabelStore.Read(path).DateStyle);
+        vm.ReloadStyle();
+
+        Assert.Equal(BoxLabels.LayoutBig, vm.Style.Layout);
     }
 }

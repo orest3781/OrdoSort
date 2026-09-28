@@ -295,29 +295,6 @@
                                    VerticalAlignment="Center" Margin="8,0,0,0"
                                    TextTrimming="CharacterEllipsis" />
                     </Grid>
-
-                    <Grid Style="{StaticResource FieldRow}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="Date bars:" Style="{StaticResource FieldLabel}" />
-                        <!-- WrapPanel, not a horizontal StackPanel: at the window's
-                             MinWidth (or a larger configured app font) the second
-                             option used to march off the window edge — wrapping to
-                             a second line keeps both choices on screen
-                             (LabelMakerOverflowTests) -->
-                        <WrapPanel Grid.Column="1">
-                            <RadioButton GroupName="DateStyle" Content="Black bars (white text)"
-                                         IsChecked="{Binding DataContext.DateStyleBars,
-                                                     RelativeSource={RelativeSource AncestorType=Window}}"
-                                         VerticalAlignment="Center" Margin="0,4,14,4" />
-                            <RadioButton GroupName="DateStyle" Content="Plain (black text)"
-                                         IsChecked="{Binding DataContext.DateStylePlain,
-                                                     RelativeSource={RelativeSource AncestorType=Window}}"
-                                         VerticalAlignment="Center" Margin="0,4" />
-                        </WrapPanel>
-                    </Grid>
                 </StackPanel>
             </ScrollViewer>
 
@@ -330,7 +307,7 @@
                         Background="{DynamicResource Theme.Surface}">
                     <Grid Height="160">
                         <views:LabelPreviewControl Item="{Binding PreviewItem}"
-                                                   DateStyle="{Binding DateStyle}"
+                                                   LabelStyle="{Binding Style}"
                                                    AutomationProperties.Name="Label preview" />
                         <TextBlock Text="Fix the inputs above to see the label."
                                    HorizontalAlignment="Center" VerticalAlignment="Center">

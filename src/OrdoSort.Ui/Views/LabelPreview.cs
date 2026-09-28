@@ -63,16 +63,17 @@ public sealed class LabelPreviewControl : FrameworkElement
         set => SetValue(ItemProperty, value);
     }
 
-    public static readonly DependencyProperty DateStyleProperty = DependencyProperty.Register(
-        nameof(DateStyle), typeof(string), typeof(LabelPreviewControl),
-        new FrameworkPropertyMetadata(BoxLabels.DateStyleBars, FrameworkPropertyMetadataOptions.AffectsRender));
+    public static readonly DependencyProperty LabelStyleProperty = DependencyProperty.Register(
+        nameof(LabelStyle), typeof(BoxLabels.LabelStyle), typeof(LabelPreviewControl),
+        new FrameworkPropertyMetadata(BoxLabels.LabelStyle.Default, FrameworkPropertyMetadataOptions.AffectsRender));
 
-    /// <summary>"bars"/"plain" — bound to the window's date-style radios so
-    /// the live card always matches what will actually print.</summary>
-    public string DateStyle
+    /// <summary>The label style the card is drawn in: the stored one in the
+    /// labels window, the one being edited in Settings. Not called Style,
+    /// which every WPF element already has.</summary>
+    public BoxLabels.LabelStyle LabelStyle
     {
-        get => (string)GetValue(DateStyleProperty);
-        set => SetValue(DateStyleProperty, value);
+        get => (BoxLabels.LabelStyle)GetValue(LabelStyleProperty);
+        set => SetValue(LabelStyleProperty, value);
     }
 
     protected override void OnRender(DrawingContext dc)
@@ -84,7 +85,7 @@ public sealed class LabelPreviewControl : FrameworkElement
         var dy = (ActualHeight - BoxLabels.LabelHeightPt * scale) / 2;
         dc.PushTransform(new TranslateTransform(dx, dy));
         dc.PushTransform(new ScaleTransform(scale, scale));
-        LabelWpfRender.DrawLabel(dc, BoxLabels.ComposeDrawing(item, new BoxLabels.LabelStyle(DateStyle: DateStyle)),
+        LabelWpfRender.DrawLabel(dc, BoxLabels.ComposeDrawing(item, LabelStyle),
             VisualTreeHelper.GetDpi(this).PixelsPerDip);
         dc.Pop();
         dc.Pop();
@@ -97,7 +98,7 @@ public sealed class LabelPreviewControl : FrameworkElement
 internal static class LabelPrinting
 {
     public static System.Windows.Documents.FixedDocument BuildDocument(
-        IReadOnlyList<BoxLabels.Item> items, string dateStyle = BoxLabels.DateStyleBars)
+        IReadOnlyList<BoxLabels.Item> items, BoxLabels.LabelStyle? style = null)
     {
         const double pageW = BoxLabels.PageWidthPt * 96 / 72;    // 816 DIPs
         const double pageH = BoxLabels.PageHeightPt * 96 / 72;   // 1056 DIPs
@@ -108,7 +109,7 @@ internal static class LabelPrinting
             var sheet = items.Skip(i).Take(BoxLabels.PerSheet).ToList();
             var page = new System.Windows.Documents.FixedPage
             { Width = pageW, Height = pageH, Background = Brushes.White };
-            page.Children.Add(new LabelSheetElement(sheet, dateStyle) { Width = pageW, Height = pageH });
+            page.Children.Add(new LabelSheetElement(sheet, style) { Width = pageW, Height = pageH });
             var content = new System.Windows.Documents.PageContent();
             ((System.Windows.Markup.IAddChild)content).AddChild(page);
             doc.Pages.Add(content);
@@ -123,13 +124,13 @@ internal static class LabelPrinting
 internal sealed class LabelSheetElement : FrameworkElement
 {
     private readonly IReadOnlyList<BoxLabels.Item> _items;
-    private readonly string _dateStyle;
+    private readonly BoxLabels.LabelStyle? _style;
 
     public LabelSheetElement(IReadOnlyList<BoxLabels.Item> items,
-        string dateStyle = BoxLabels.DateStyleBars)
+        BoxLabels.LabelStyle? style = null)
     {
         _items = items;
-        _dateStyle = dateStyle;
+        _style = style;
     }
 
     protected override void OnRender(DrawingContext dc)
@@ -143,7 +144,7 @@ internal sealed class LabelSheetElement : FrameworkElement
         {
             var (x, y) = BoxLabels.SlotOrigin(i);
             dc.PushTransform(new TranslateTransform(x, y));
-            LabelWpfRender.DrawLabel(dc, BoxLabels.ComposeDrawing(_items[i], new BoxLabels.LabelStyle(DateStyle: _dateStyle)), ppd);
+            LabelWpfRender.DrawLabel(dc, BoxLabels.ComposeDrawing(_items[i], _style), ppd);
             dc.Pop();
         }
         dc.Pop();
