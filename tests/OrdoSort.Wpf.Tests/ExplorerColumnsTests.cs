@@ -417,6 +417,60 @@ public sealed class ExplorerColumnsTests : UiTest, IDisposable
         finally { bed.Window.Close(); }
     });
 
+    /// <summary>Ctrl+Plus on the widest real table (History: 7 columns) with
+    /// a big log. A time limit, so it runs in the Integration pass, not the
+    /// everyday check (docs/testing.md); the limit is generous so only a
+    /// real slowdown (measuring by realizing rows, say) trips it.</summary>
+    [Fact]
+    [Trait("Category", "Integration")]
+    public void FittingAllSevenColumnsOfFiveThousandRowsIsQuick() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: Enumerable.Range(0, 5000)
+            .Select(i => new Row { Name = "file " + i, Kind = "pdf", Note = "note " + i }).ToArray());
+        try
+        {
+            foreach (var header in new[] { "Extra 1", "Extra 2", "Extra 3", "Extra 4" })
+                bed.Grid.Columns.Add(new DataGridTextColumn
+                {
+                    Header = header, Binding = new Binding(nameof(Row.Name)), Width = new DataGridLength(80),
+                });
+            Settle(bed.Window);
+            Assert.Equal(7, bed.Grid.Columns.Count);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+
+            bed.Explorer.FitAll();   // what Ctrl+Plus runs; a test can't hold Ctrl
+
+            Assert.True(clock.ElapsedMilliseconds < 10_000, $"Ctrl+Plus took {clock.ElapsedMilliseconds}ms");
+            Console.WriteLine($"Ctrl+Plus, 7 columns x 5,000 rows: {clock.ElapsedMilliseconds}ms");
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    /// <summary>Every other test hands the table its own store (the run turns
+    /// RememberByDefault off). This one takes the app's own path: a table
+    /// given no store remembers its layout in TableLayoutStore.DefaultPath,
+    /// which the test run points at a temp folder.</summary>
+    [Fact]
+    public void ATableGivenNoStoreRemembersItsLayoutInTheDefaultFile() => _fx.Invoke(() =>
+    {
+        var key = "DefaultPathTest-" + Guid.NewGuid().ToString("N");
+        var before = ExplorerColumns.RememberByDefault;
+        ExplorerColumns.RememberByDefault = true;
+        try
+        {
+            var grid = new DataGrid();
+            grid.Columns.Add(new DataGridTextColumn { Header = "Name", Width = new DataGridLength(123) });
+            var explorer = ExplorerColumns.Attach(grid, key);
+
+            explorer.Save();
+
+            var saved = new TableLayoutStore(TableLayoutStore.DefaultPath).Load(key);
+            Assert.Equal(123, Assert.Single(saved!.Columns).Width);
+        }
+        finally { ExplorerColumns.RememberByDefault = before; }
+    });
+
     [Fact]
     public void TheCellPaddingFitUsesIsTheOneTheStyleDraws() => _fx.Invoke(() =>
     {
