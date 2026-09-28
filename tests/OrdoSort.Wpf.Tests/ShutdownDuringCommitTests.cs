@@ -303,6 +303,8 @@ public class ShutdownDuringCommitTests : UiTest
                 window.Closed += (_, _) => closed = true;
                 shell.RequestNameFocus += () => loaded = true;   // the last step of loading a document
                 window.CloseIdleTimeout = TimeSpan.FromMilliseconds(150);
+                // and the wait after the close, for the filing still in flight (QC-19)
+                window.FilingExitWait = TimeSpan.FromMilliseconds(150);
                 shell.StartProcessing();
             });
 

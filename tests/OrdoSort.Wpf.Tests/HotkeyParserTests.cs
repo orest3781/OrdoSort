@@ -24,8 +24,13 @@ public class HotkeyParserTests
     [InlineData("Ctrl+")]
     [InlineData("Bogus+1")]
     [InlineData("Ctrl+NotAKey")]
-    public void RejectsGarbage(string? text) =>
+    [InlineData("Ctrl+300")]   // a number that is no Key (QC-23)
+    [InlineData("Ctrl+-5")]
+    public void RejectsGarbage(string? text)
+    {
         Assert.False(HotkeyParser.TryParse(text, out _, out _));
+        Assert.Null(HotkeyParser.ToGesture(text));
+    }
 
     [Fact]
     public void BareLettersParseButCannotGesture()

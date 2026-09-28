@@ -330,6 +330,68 @@ public class FilingLoopTests
         Assert.True(File.Exists(Path.Combine(fx.Inbox, "20240115--111111.pdf")));   // untouched
     }
 
+    /// <summary>Q2-35: two destinations hand-edited onto one key both showed
+    /// it, and the key silently filed to one of them. Both are now
+    /// unavailable, each naming the other, so the key does nothing until
+    /// one is changed in Settings.</summary>
+    [Fact]
+    public async Task TwoDestinationsOnOneKeyAreBothUnavailableAndNameEachOther()
+    {
+        var fx = new ShellFixture(cfg =>
+        {
+            cfg.Routes[0].Hotkey = "Ctrl+2";
+            cfg.Routes.Add(new Route { Label = "Second", Path = cfg.Routes[0].Path, Hotkey = "Ctrl+2" });
+        });
+        using var _ = fx;
+        fx.AddInboxFile("20240115--111111.pdf");
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+
+        Assert.False(fx.Shell.Routes[0].Enabled);
+        Assert.False(fx.Shell.Routes[1].Enabled);
+        Assert.Contains("Second", fx.Shell.Routes[0].DisabledReason);
+        Assert.Contains(fx.Shell.Routes[0].Route.Label, fx.Shell.Routes[1].DisabledReason);
+        Assert.Contains("Ctrl+2", fx.Shell.Routes[1].DisabledReason);
+        await fx.Shell.OnRouteAsync(0);
+        Assert.True(File.Exists(Path.Combine(fx.Inbox, "20240115--111111.pdf")));   // untouched
+    }
+
+    /// <summary>A key given explicitly can clash with another destination's
+    /// automatic Ctrl+1-9, which the button shows just the same.</summary>
+    [Fact]
+    public void AnExplicitKeyThatMatchesAnotherDestinationsAutomaticKeyIsAClashToo()
+    {
+        var fx = new ShellFixture(cfg =>
+        {
+            cfg.Routes[0].Hotkey = "";   // gets Ctrl+1 automatically
+            cfg.Routes.Add(new Route { Label = "Second", Path = cfg.Routes[0].Path, Hotkey = "Ctrl+NumPad1" });
+        });
+        using var _ = fx;
+        fx.AddInboxFile("20240115--111111.pdf");
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+
+        Assert.False(fx.Shell.Routes[0].Enabled);
+        Assert.False(fx.Shell.Routes[1].Enabled);
+    }
+
+    /// <summary>QC-23: a hand-edited key like "Ctrl+300" made starting a
+    /// session fail with a vague "didn't finish". It now reads as no key, so
+    /// the destination gets its automatic one.</summary>
+    [Fact]
+    public void AKeyThatIsNotARealKeyDoesNotStopTheSession()
+    {
+        var fx = new ShellFixture(cfg => cfg.Routes[0].Hotkey = "Ctrl+300");
+        using var _ = fx;
+        fx.AddInboxFile("20240115--111111.pdf");
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+
+        Assert.Equal(Screen.Processing, fx.Shell.Screen);
+        Assert.True(fx.Shell.Routes[0].Enabled);
+        Assert.Equal("Ctrl+1", HotkeyParser.Display(fx.Shell.Routes[0].Gesture!));
+    }
+
     [Fact]
     public void SuggestionsComeFromSeedsRankedAndPrefixFiltered()
     {

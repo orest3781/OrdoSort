@@ -16,22 +16,35 @@ public static class Commit
     /// <summary>File.Move with a last-instant collision guard. Windows won't
     /// overwrite on move, but check explicitly and treat 'exists' as a race.
     ///
-    /// Unproven window (2026-08 audit finding 1.4, [U]): across volumes
-    /// File.Move is copy-then-delete. Interrupted mid-copy — kill, power
-    /// loss, disk full — it can leave a partial file sitting at `target`.
-    /// On retry, Build()'s collision counter sees that name as taken and
-    /// gives the real document the " (2)" suffix instead, leaving the
-    /// partial holding the canonical name with nothing downstream aware
-    /// it's incomplete. Whether Win32 MoveFileEx cleans up its own partial
-    /// on a non-crash failure (e.g. disk full) is unverified here — proving
-    /// it needs a disk-full or kill test across two volumes. Not fixed.</summary>
+    /// Across drives or shares it copies through a ".partial" name instead
+    /// (<see cref="MoveAcrossVolumes"/>), so a cut-off copy never leaves an
+    /// incomplete file under the filed name (DW-01).</summary>
+    /// <summary>Whether a move from the first path to the second is a plain
+    /// rename. Across drives or shares it is a copy, which goes through
+    /// <see cref="MoveAcrossVolumes"/>. Settable only by tests, which have
+    /// one drive and force the copy path; reset to <see cref="OnSameVolume"/>.</summary>
+    internal static Func<string, string, bool> SameVolume = OnSameVolume;
+
+    /// <summary>Test seam: runs with the ".partial" path once the copy is
+    /// whole and on disk, before it is renamed into place. Throwing here is
+    /// a copy cut off at its last moment.</summary>
+    internal static Action<string>? PartialCopiedHookForTests;
+
+    /// <summary>Same drive letter or share root. Two spellings of one share
+    /// (a mapped drive and its UNC path) read as different, which only costs
+    /// a copy where a rename would have done.</summary>
+    internal static bool OnSameVolume(string a, string b) =>
+        string.Equals(Path.GetPathRoot(Path.GetFullPath(a)), Path.GetPathRoot(Path.GetFullPath(b)),
+            StringComparison.OrdinalIgnoreCase);
+
     private static void MoveNeverOverwrite(string src, string target)
     {
         if (File.Exists(target))
             throw new FileExistsRace($"{Path.GetFileName(target)} appeared at the destination mid-commit");
         try
         {
-            File.Move(src, target);   // .NET Move does not overwrite by default
+            if (SameVolume(src, target)) File.Move(src, target);   // .NET Move does not overwrite by default
+            else MoveAcrossVolumes(src, target);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -80,6 +93,79 @@ public static class Commit
                 $"still at {src}. This document has NOT been recorded as " +
                 $"moved. Confirm the copy at {target} is correct, then " +
                 $"remove the copy at {src} by hand.");
+    }
+
+    /// <summary>A move across drives or shares, done so that nothing
+    /// incomplete ever carries the filed name (DW-01). A plain File.Move
+    /// there is copy-then-delete: cut off mid-copy, it left a partial PDF
+    /// under the proper name, and filing the real one again made it
+    /// "… (2)" beside it. The copy goes to "&lt;name&gt;.&lt;guid&gt;.partial"
+    /// in the destination folder, is forced to disk, and only then renamed
+    /// into place: a rename within one folder is all or nothing, and never
+    /// overwrites. A cut-off copy leaves only a .partial (cleared later by
+    /// <see cref="SweepStalePartials"/>) and the original where it was. If
+    /// the original then can't be deleted, it stays, and the caller's
+    /// both-copies check reports it, as for File.Move.</summary>
+    private static void MoveAcrossVolumes(string src, string target)
+    {
+        var folder = Path.GetDirectoryName(target)!;
+        SweepStalePartials(folder);
+        var partial = $"{target}.{Guid.NewGuid():N}.partial";
+        var modified = File.GetLastWriteTimeUtc(src);
+        try
+        {
+            // A stream copy, not File.Copy: File.Copy stamps the partial with
+            // the original's modified time, which would make another
+            // station's copy in progress look old enough to sweep.
+            using (var from = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var to = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                       bufferSize: 81920, FileOptions.WriteThrough))
+            {
+                from.CopyTo(to);
+                to.Flush(flushToDisk: true);
+            }
+            PartialCopiedHookForTests?.Invoke(partial);
+            File.Move(partial, target);
+        }
+        catch
+        {
+            try { File.Delete(partial); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* swept later */ }
+            throw;
+        }
+        // as File.Move would have kept it
+        try { File.SetLastWriteTimeUtc(target, modified); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* cosmetic */ }
+        try { File.Delete(src); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* reported by the caller's both-copies check */ }
+    }
+
+    /// <summary>How old a ".partial" must be before it counts as left behind
+    /// by a crash, not a copy another station is still writing (the copy
+    /// rewrites its modified time as it goes). Same age AtomicPlace uses for
+    /// its temp files.</summary>
+    internal static readonly TimeSpan StalePartialAge = TimeSpan.FromHours(1);
+
+    private static readonly System.Text.RegularExpressions.Regex PartialName =
+        new(@"^.+\.[0-9a-f]{32}\.partial$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>Best effort, never throws: clears ".partial" files a cut-off
+    /// copy left in <paramref name="folder"/>. Only names this code makes
+    /// (a 32-hex GUID before ".partial"), only once old.</summary>
+    private static void SweepStalePartials(string folder)
+    {
+        try
+        {
+            var cutoff = DateTime.UtcNow - StalePartialAge;
+            foreach (var path in Directory.EnumerateFiles(folder, "*.partial"))
+            {
+                if (!PartialName.IsMatch(Path.GetFileName(path))) continue;
+                if (File.GetLastWriteTimeUtc(path) >= cutoff) continue;
+                try { File.Delete(path); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* next time */ }
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* the move reports a real problem */ }
     }
 
     /// <summary>True when <paramref name="src"/> is really gone from a

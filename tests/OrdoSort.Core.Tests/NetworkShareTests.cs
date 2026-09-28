@@ -12,6 +12,7 @@ namespace OrdoSort.Core.Tests;
 /// no share. A test here fails, rather than passes quietly, when the share
 /// isn't set up.</summary>
 [Trait("Category", "NetworkShare")]
+[Collection(UndoFailureTests.Name)]   // files a document, so shares Commit's test seams
 public sealed class NetworkShareTests : IDisposable
 {
     private const string AsYou = @"\\localhost\OrdoSortTest$";
@@ -90,6 +91,23 @@ public sealed class NetworkShareTests : IDisposable
 
         Assert.True(saved, error);
         Assert.Equal("second", Config.Load(Mine("config.json"), createIfMissing: false).Inbox);
+    }
+
+    /// <summary>DW-01 for real: a document filed from this PC's disk onto the
+    /// share is a move across volumes, which goes through a ".partial" copy
+    /// renamed into place. It lands whole, with nothing left behind.</summary>
+    [Fact]
+    public void ADocumentFiledOntoTheShareLandsWholeWithNoPartialLeft()
+    {
+        using var local = new TempDir();
+        var src = local.File("20240115--111111.pdf");
+        File.WriteAllText(src, "the whole document");
+
+        var outcome = Commit.SkipFile(src, Path.Combine(AsTestUser, _folder));
+
+        Assert.False(File.Exists(src));
+        Assert.Equal("the whole document", File.ReadAllText(Mine(Path.GetFileName(outcome.NewPath!))));
+        Assert.Empty(Directory.GetFiles(Path.Combine(AsYou, _folder), "*.partial"));
     }
 
     [Fact]

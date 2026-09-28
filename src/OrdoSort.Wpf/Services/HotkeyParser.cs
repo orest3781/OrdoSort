@@ -34,7 +34,11 @@ public static class HotkeyParser
             key = Key.D0 + (token[0] - '0');
             return true;
         }
-        return Enum.TryParse(token, ignoreCase: true, out key) && key != Key.None;
+        // Enum.TryParse also takes any number ("300", "-5") as a Key, and
+        // KeyGesture then throws on it, which stopped a session starting
+        // (QC-23). Only names Windows defines count.
+        if (token.All(c => char.IsDigit(c) || c == '-')) return false;
+        return Enum.TryParse(token, ignoreCase: true, out key) && key != Key.None && Enum.IsDefined(key);
     }
 
     /// <summary>A bindable gesture, or null when the text is blank/invalid or

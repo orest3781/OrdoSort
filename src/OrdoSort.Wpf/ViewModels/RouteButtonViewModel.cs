@@ -50,9 +50,7 @@ public sealed class RouteButtonViewModel : ObservableObject
         Index = index;
         Route = route;
 
-        // configured hotkey binds when parseable; else the classic Ctrl+1-9
-        Gesture = HotkeyParser.ToGesture(route.Hotkey)
-            ?? (index < 9 ? new KeyGesture(Key.D1 + index, ModifierKeys.Control) : null);
+        Gesture = GestureFor(index, route);
         var gestureText = Gesture is null ? "" : HotkeyParser.Display(Gesture);
 
         Enabled = problem.Length == 0;
@@ -66,5 +64,40 @@ public sealed class RouteButtonViewModel : ObservableObject
         var back = ThemePalette.ParseColor(route.Color);
         Back = back ?? palette.Surface;
         Fore = back is { } b ? ThemePalette.IdealForeground(b) : palette.Text;
+    }
+
+    /// <summary>The key a destination's button answers to: its configured
+    /// hotkey when that parses, else the classic Ctrl+1-9 by position.</summary>
+    public static KeyGesture? GestureFor(int index, Route route) =>
+        HotkeyParser.ToGesture(route.Hotkey)
+        ?? (index < 9 ? new KeyGesture(Key.D1 + index, ModifierKeys.Control) : null);
+
+    /// <summary>For each destination, "" or why it can't have its key:
+    /// another destination answers to the same one (Q2-35). Settings refuses
+    /// this, but a hand-edited config.json can still hold it, and a key bound
+    /// twice files to whichever binding wins, silently. Both are refused so
+    /// the key does nothing until one is changed.</summary>
+    public static IReadOnlyList<string> KeyClashes(IReadOnlyList<Route> routes)
+    {
+        var problems = new string[routes.Count];
+        var byKey = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < routes.Count; i++)
+        {
+            problems[i] = "";
+            if (GestureFor(i, routes[i]) is not { } gesture) continue;
+            var key = HotkeyParser.Display(gesture);
+            if (!byKey.TryGetValue(key, out var indexes)) byKey[key] = indexes = new List<int>();
+            indexes.Add(i);
+        }
+        foreach (var (key, indexes) in byKey)
+        {
+            if (indexes.Count < 2) continue;
+            foreach (var i in indexes)
+            {
+                var others = string.Join(", ", indexes.Where(j => j != i).Select(j => $"\"{routes[j].Label}\""));
+                problems[i] = $"{key} is also the key for {others}. Change one in Settings.";
+            }
+        }
+        return problems;
     }
 }
