@@ -63,7 +63,7 @@ public sealed class MatchMergeViewModel : ObservableObject
         LoadRosterCommand = new RelayCommand(BrowseRoster, () => !IsBusy);
         MergeCommand = new AsyncRelayCommand(DoMergeAsync, () => MergeCount > 0 && !IsBusy);
         UndoCommand = new AsyncRelayCommand(UndoBatchAsync, () => _outcomes.Count > 0 && !IsBusy);
-        ClearCommand = new RelayCommand(() => { _files.Clear(); _mergeRejectNotes.Clear(); Refresh(); }, () => !IsBusy);
+        ClearCommand = new RelayCommand(() => { _clears++; _files.Clear(); _mergeRejectNotes.Clear(); Refresh(); }, () => !IsBusy);
         // A run that stops on something unexpected must not leave its last
         // "Merging 3 of 12…" line up as if it were still working.
         MergeCommand.OnError += ex => Status = $"The merge stopped unexpectedly: {ex.Message}";
@@ -388,6 +388,33 @@ public sealed class MatchMergeViewModel : ObservableObject
         var taken = Intake.Add(_files, paths, Pdfs, File.Exists);
         _files.AddRange(taken.Files);
         AddNote = taken.Note("PDF");
+        Refresh();
+    }
+
+    // Bumped by Clear; see AddPathsAsync.
+    private int _clears;
+
+    /// <summary>For drops and Add folder: files and folders alike. The walk
+    /// runs on the scheduler, not the UI thread (DW-52): a big folder on a
+    /// share used to freeze the window while it was read. Clear pressed
+    /// while the walk is still going drops this add too (Q2-05's rule).</summary>
+    public async Task AddPathsAsync(IEnumerable<string> paths)
+    {
+        var candidates = paths.ToList();
+        var clears = _clears;
+        var expanded = await _scheduler.Run(() => Intake.Expand(candidates, recursive: true, Pdfs));
+        if (clears != _clears) return;
+        if (IsBusy) { AddNote = BusyNote; return; }
+
+        // Expand has already seen every one of these on disk.
+        var taken = Intake.Add(_files, expanded.Files);
+        _files.AddRange(taken.Files);
+        var note = (taken with { WrongType = expanded.Ignored }).Note("PDF");
+        // A walk that stopped partway (a share dropping) still hands back what
+        // it found; say it stopped, as Page counts does (Q2-09).
+        AddNote = expanded.Error.Length == 0 ? note
+            : note.Length == 0 ? expanded.Error
+            : $"{expanded.Error} · {note}";
         Refresh();
     }
 
