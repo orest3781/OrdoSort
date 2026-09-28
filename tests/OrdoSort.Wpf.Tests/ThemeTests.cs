@@ -47,6 +47,14 @@ public class ThemeTests
             yield return new object[] { p.StatusRedRaised, p.SurfaceRaised };
             yield return new object[] { p.Text, p.SurfaceRaised };
             yield return new object[] { p.SubtleText, p.SurfaceRaised };
+            // DW-40: three pairings that render for real but were never
+            // checked. StatusAmber sits on Surface like its Green/Red
+            // siblings; SubtleText sits on Surface in every card; and the
+            // Enter badge's glyph (Theme.AccentBronzeText, which ThemeManager
+            // derives as IdealForeground of the bronze) sits on its bronze plate.
+            yield return new object[] { p.StatusAmber, p.Surface };
+            yield return new object[] { p.SubtleText, p.Surface };
+            yield return new object[] { ThemePalette.IdealForeground(p.AccentBronze), p.AccentBronze };
         }
     }
 
