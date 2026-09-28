@@ -281,6 +281,11 @@ public abstract class ZipListViewModel : ObservableObject
     // exactly that swap; see ClearCommand below.
     private CancellationTokenSource _cts = new();
 
+    /// <summary>The token a run started now must honour: cancelled by
+    /// <see cref="Cancel"/> (window closed) and by Clear. For an operation
+    /// that does not go through RunBatchAsync — ZipAsync (QC-31).</summary>
+    protected CancellationToken RunToken => _cts.Token;
+
     public ObservableCollection<ZipItemRow> Rows { get; } = new();
 
     protected ZipListViewModel(IDialogService dialogs, IReadOnlyList<string> savedPasswords,

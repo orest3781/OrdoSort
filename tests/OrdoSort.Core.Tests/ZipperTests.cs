@@ -218,6 +218,42 @@ public class ZipperTests : IDisposable
         Assert.Equal(new[] { "docs/inner/nested.txt", "docs/top.txt" }, names);
     }
 
+    /// <summary>QC-31: closing the Zip Tools window mid-zip left the zip
+    /// running with nothing to stop it. A cancelled build must stop and leave
+    /// no archive, whole or partial, beside the sources.</summary>
+    [Fact]
+    public void ACancelledDefaultNameZipStopsAndLeavesNothingBehind()
+    {
+        var folder = MakeFolder("photos");
+        MakeFile(Path.Combine("photos", "a.jpg"), "x");
+        using var cancel = new CancellationTokenSource();
+        cancel.Cancel();
+
+        var r = Zipper.CreateZip(new[] { folder }, outputPath: null, cancel.Token);
+
+        Assert.Equal("cancelled", r.Status);
+        Assert.Null(r.Output);
+        Assert.Empty(Directory.GetFiles(_dir));
+    }
+
+    /// <summary>QC-31, the Save-As branch: a cancelled build leaves the file
+    /// the user chose to replace exactly as it was, and no temp beside it.</summary>
+    [Fact]
+    public void ACancelledSaveAsZipLeavesTheOldFileAlone()
+    {
+        var a = MakeFile("a.txt", "aaa");
+        var target = Path.Combine(_dir, "existing.zip");
+        File.WriteAllText(target, "old");
+        using var cancel = new CancellationTokenSource();
+        cancel.Cancel();
+
+        var r = Zipper.CreateZip(new[] { a }, target, cancel.Token);
+
+        Assert.Equal("cancelled", r.Status);
+        Assert.Equal("old", File.ReadAllText(target));
+        Assert.Equal(new[] { a, target }.Order(), Directory.GetFiles(_dir).Order());
+    }
+
     [Fact]
     public void SingleFolderInputDefaultsToTheFoldersNameBesideIt()
     {

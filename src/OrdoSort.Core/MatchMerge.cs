@@ -56,9 +56,15 @@ public static partial class MatchMerge
     /// problem. Rows missing a name or id are ignored; duplicate rows with the
     /// same name AND id collapse to one candidate.</summary>
     public static Roster LoadRoster(string path, string firstHeader,
+        string lastHeader, string controlHeader) =>
+        LoadRoster(ReadRosterTable(path), firstHeader, lastHeader, controlHeader);
+
+    /// <summary>The same load from a table already read with
+    /// <see cref="ReadRosterTable"/>, so a caller that has just read the
+    /// headers does not read the file a second time (DW-55).</summary>
+    public static Roster LoadRoster(IReadOnlyList<List<string>> rows, string firstHeader,
         string lastHeader, string controlHeader)
     {
-        var rows = ReadTable(path);
         if (rows.Count == 0)
             throw new RosterException("The spreadsheet is empty.");
         var headers = rows[0].Select(h => h.Trim()).ToList();
@@ -459,14 +465,18 @@ public static partial class MatchMerge
     /// format, with the same dialog-ready errors as a full load. This is also
     /// the ONLY header preview: the view model used to read the first line
     /// with a naive comma split, which misparsed quoted headers.</summary>
-    public static List<string> ReadHeaders(string path)
+    public static List<string> ReadHeaders(string path) => HeadersOf(ReadRosterTable(path));
+
+    /// <summary><see cref="ReadHeaders"/> for a table already read.</summary>
+    public static List<string> HeadersOf(IReadOnlyList<List<string>> rows)
     {
-        var rows = ReadTable(path);
         if (rows.Count == 0) throw new RosterException("The spreadsheet is empty.");
         return rows[0].Select(h => h.Trim()).ToList();
     }
 
-    private static List<List<string>> ReadTable(string path)
+    /// <summary>Every row of a roster spreadsheet, either format, with
+    /// dialog-ready <see cref="RosterException"/>s.</summary>
+    public static List<List<string>> ReadRosterTable(string path)
     {
         // old binary/zip-hybrid Excel formats aren't xlsx — reading them as
         // either CSV text or a zip of XML produces mojibake, not a readable

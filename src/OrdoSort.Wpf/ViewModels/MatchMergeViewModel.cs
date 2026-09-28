@@ -29,6 +29,8 @@ public sealed class MatchMergeViewModel : ObservableObject
     private readonly IDialogService _dialogs;
     private readonly Action? _saveCfg;
     private readonly IWorkScheduler _scheduler;
+    private readonly Func<string, List<List<string>>> _readRoster;
+    private readonly Func<IEnumerable<string>, MatchMerge.Roster, List<MatchMerge.MatchResult>> _matchFiles;
 
     /// <summary>Extension set in Intake's shape (dot-less, lowercase) rather
     /// than the EndsWith(".pdf") this used to inline — same rule, one place.</summary>
@@ -53,8 +55,12 @@ public sealed class MatchMergeViewModel : ObservableObject
     public ObservableCollection<MatchRow> Rows { get; } = new();
 
     public MatchMergeViewModel(Config cfg, Action<Dictionary<string, string>> saveHeaders,
-        IDialogService dialogs, Action? saveCfg = null, IWorkScheduler? scheduler = null)
+        IDialogService dialogs, Action? saveCfg = null, IWorkScheduler? scheduler = null,
+        Func<string, List<List<string>>>? readRoster = null,
+        Func<IEnumerable<string>, MatchMerge.Roster, List<MatchMerge.MatchResult>>? matchFiles = null)
     {
+        _readRoster = readRoster ?? MatchMerge.ReadRosterTable;
+        _matchFiles = matchFiles ?? MatchMerge.MatchFiles;
         _cfg = cfg;
         _saveHeaders = saveHeaders;
         _dialogs = dialogs;
@@ -63,7 +69,7 @@ public sealed class MatchMergeViewModel : ObservableObject
         LoadRosterCommand = new RelayCommand(BrowseRoster, () => !IsBusy);
         MergeCommand = new AsyncRelayCommand(DoMergeAsync, () => MergeCount > 0 && !IsBusy);
         UndoCommand = new AsyncRelayCommand(UndoBatchAsync, () => _outcomes.Count > 0 && !IsBusy);
-        ClearCommand = new RelayCommand(() => { _files.Clear(); _mergeRejectNotes.Clear(); Refresh(); }, () => !IsBusy);
+        ClearCommand = new RelayCommand(() => { _clears++; _files.Clear(); _mergeRejectNotes.Clear(); Refresh(); }, () => !IsBusy);
         // A run that stops on something unexpected must not leave its last
         // "Merging 3 of 12…" line up as if it were still working.
         MergeCommand.OnError += ex => Status = $"The merge stopped unexpectedly: {ex.Message}";
@@ -200,10 +206,12 @@ public sealed class MatchMergeViewModel : ObservableObject
 
     public void LoadRosterFrom(string path)
     {
+        List<List<string>> table;
         List<string> headers;
         try
         {
-            headers = MatchMerge.ReadHeaders(path);
+            table = _readRoster(path);
+            headers = MatchMerge.HeadersOf(table);
         }
         catch (RosterException ex)
         {
@@ -288,7 +296,8 @@ public sealed class MatchMergeViewModel : ObservableObject
         Raise(nameof(LastHeader));
         Raise(nameof(ControlHeader));
         _fillingHeaders = false;
-        ReloadRoster();
+        // The table just read, not a second read of the file (DW-55).
+        ReloadRoster(table);
     }
 
     /// <summary>Joins role names the way a sentence would: "Control",
@@ -300,7 +309,11 @@ public sealed class MatchMergeViewModel : ObservableObject
         _ => string.Join(", ", roles.Take(roles.Count - 1)) + " and " + roles[^1],
     };
 
-    private void ReloadRoster()
+    /// <summary>Re-matches against the roster file under the current column
+    /// picks. <paramref name="table"/> is a read just made by the caller;
+    /// without one (a column pick changed) the file is read afresh, so the
+    /// pick sees the spreadsheet as it is now.</summary>
+    private void ReloadRoster(List<List<string>>? table = null)
     {
         if (_fillingHeaders || RosterPath.Length == 0) return;
 
@@ -334,7 +347,7 @@ public sealed class MatchMergeViewModel : ObservableObject
 
         try
         {
-            _roster = MatchMerge.LoadRoster(RosterPath, FirstHeader!, LastHeader!, ControlHeader!);
+            _roster = MatchMerge.LoadRoster(table ?? _readRoster(RosterPath), FirstHeader!, LastHeader!, ControlHeader!);
         }
         catch (RosterException ex)
         {
@@ -391,6 +404,33 @@ public sealed class MatchMergeViewModel : ObservableObject
         Refresh();
     }
 
+    // Bumped by Clear; see AddPathsAsync.
+    private int _clears;
+
+    /// <summary>For drops and Add folder: files and folders alike. The walk
+    /// runs on the scheduler, not the UI thread (DW-52): a big folder on a
+    /// share used to freeze the window while it was read. Clear pressed
+    /// while the walk is still going drops this add too (Q2-05's rule).</summary>
+    public async Task AddPathsAsync(IEnumerable<string> paths)
+    {
+        var candidates = paths.ToList();
+        var clears = _clears;
+        var expanded = await _scheduler.Run(() => Intake.Expand(candidates, recursive: true, Pdfs));
+        if (clears != _clears) return;
+        if (IsBusy) { AddNote = BusyNote; return; }
+
+        // Expand has already seen every one of these on disk.
+        var taken = Intake.Add(_files, expanded.Files);
+        _files.AddRange(taken.Files);
+        var note = (taken with { WrongType = expanded.Ignored }).Note("PDF");
+        // A walk that stopped partway (a share dropping) still hands back what
+        // it found; say it stopped, as Page counts does (Q2-09).
+        AddNote = expanded.Error.Length == 0 ? note
+            : note.Length == 0 ? expanded.Error
+            : $"{expanded.Error} · {note}";
+        Refresh();
+    }
+
     // A drop or a Delete mid-run would change the list the run is still
     // renaming from, so it is refused out loud rather than ignored.
     private const string BusyNote = "Wait for the merge or undo to finish before changing the list.";
@@ -407,9 +447,30 @@ public sealed class MatchMergeViewModel : ObservableObject
         Refresh();
     }
 
+    // Each file's match against _matchedRoster, by source path. A match
+    // depends only on the file's name and the roster, so a file already
+    // matched is not matched again when some other file is added, removed or
+    // renamed; the token pass behind a "suggested" row walks the whole roster,
+    // and redoing it for every listed file on every change made a long list
+    // slow to touch (DW-54). A different roster starts a fresh cache.
+    private readonly Dictionary<string, MatchMerge.MatchResult> _matchCache = new(StringComparer.Ordinal);
+    private MatchMerge.Roster? _matchedRoster;
+
+    private List<MatchMerge.MatchResult> MatchAll(MatchMerge.Roster roster)
+    {
+        if (!ReferenceEquals(roster, _matchedRoster))
+        {
+            _matchCache.Clear();
+            _matchedRoster = roster;
+        }
+        var unmatched = _files.Where(f => !_matchCache.ContainsKey(f)).ToList();
+        foreach (var result in _matchFiles(unmatched, roster)) _matchCache[result.Source] = result;
+        return _files.Select(f => _matchCache[f]).ToList();
+    }
+
     private void Refresh()
     {
-        _results = _roster is null ? new() : MatchMerge.MatchFiles(_files, _roster);
+        _results = _roster is null ? new() : MatchAll(_roster);
         Rows.Clear();
         int merges = 0, review = 0, suggested = 0;
         var display = _roster is null

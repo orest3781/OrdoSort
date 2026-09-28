@@ -238,6 +238,10 @@ public sealed class PageCountsViewModel : ObservableObject
             // runs to completion once started — there is nothing to abort
             // partway through. This only stops a row that hasn't started yet.
             if (token.IsCancellationRequested) return;
+            // A row cleared or removed while it waited its turn is nobody's
+            // to count: reading it anyway cost a PDF read over the share for
+            // a row nobody can see (DW-78 sweep).
+            if (!Rows.Contains(row)) return;
             var result = await _scheduler.Run(() => _counter(row.Path));
             ApplyResult(row, result);
         }

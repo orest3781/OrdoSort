@@ -58,6 +58,10 @@ public sealed class PreviewDocumentViewer : DocumentViewer
     protected override void OnPrintCommand() => PrintRequested?.Invoke();
 }
 
+/// <summary>What the print preview found to print to. <see cref="SpoolerError"/>
+/// is "" unless the print service itself could not be asked.</summary>
+public sealed record PrinterList(IReadOnlyList<string> Names, string? Default, string SpoolerError = "");
+
 /// <summary>Print preview for label sheets: shows the exact FixedDocument
 /// that will spool, with the viewer's zoom and page navigation, plus a
 /// printer picker and copies — Print spools straight to the chosen queue
@@ -87,9 +91,13 @@ public partial class PrintPreviewWindow : Window
     /// is handed how many extra copies are wanted and returns the whole job,
     /// first copy included, or null when they could not be numbered; the
     /// job then spools once. Without it, Copies asks the printer to repeat
-    /// the document.</summary>
+    /// the document.
+    ///
+    /// <paramref name="findPrinters"/> asks Windows for the printers; the
+    /// default does it on a pool thread. Tests pass their own answer.</summary>
     public PrintPreviewWindow(FixedDocument doc, string jobName, Action<string> warn,
-        string windowTitle = "Print preview", Func<int, Task<FixedDocument?>>? extraCopies = null)
+        string windowTitle = "Print preview", Func<int, Task<FixedDocument?>>? extraCopies = null,
+        Func<Task<PrinterList>>? findPrinters = null)
     {
         InitializeComponent();
         Title = windowTitle;
@@ -104,45 +112,81 @@ public partial class PrintPreviewWindow : Window
         // the note that used to print up there lives here instead
         PageInfo.Text = $"{doc.Pages.Count} sheet{(doc.Pages.Count == 1 ? "" : "s")}"
             + "   ·   " + OrdoSort.Core.BoxLabels.SheetNote;
-        LoadPrinters();
+        // Asked off the UI thread (Q2-22): an offline network printer can
+        // take a long time to answer, and asked here the whole app stood
+        // still before this window even appeared.
+        PrintButton.IsEnabled = false;
+        PrintNote.Text = "Finding printers…";
+        _ = LoadPrintersAsync(findPrinters ?? (() => Task.Run(FindPrinters)));
         Loaded += (_, _) => Viewer.FitToMaxPagesAcross(1);
-        if (extraCopies is not null)
-            Copies.TextChanged += (_, _) =>
-            {
-                if (Printers.Items.Count == 0) return;   // keep "No printers found."
-                PrintNote.Text = int.TryParse(Copies.Text.Trim(), out var n) && n > 1
-                    ? "Each extra copy gets its own box numbers when you print."
-                    : "";
-            };
+        Copies.TextChanged += (_, _) => ShowCopiesNote();
         // A claim that lands after the window has gone would count numbers
         // for a print that never happens, so the window waits for it.
         Closing += (_, e) => e.Cancel = _claiming;
     }
 
-    private void LoadPrinters()
+    /// <summary>The printers Windows knows of, and its default. When the
+    /// print service itself could not be asked (a stopped spooler), the
+    /// list is empty and <see cref="PrinterList.SpoolerError"/> says why.
+    /// Runs on a pool thread; touches nothing on the window.</summary>
+    internal static PrinterList FindPrinters()
     {
         try
         {
             using var server = new LocalPrintServer();
-            foreach (var q in server.GetPrintQueues(new[]
+            var names = server.GetPrintQueues(new[]
             {
                 EnumeratedPrintQueueTypes.Local, EnumeratedPrintQueueTypes.Connections,
-            }))
-                Printers.Items.Add(q.FullName);
+            }).Select(q => q.FullName).ToList();
+            string? fallback = null;
             try
             {
-                Printers.SelectedItem = server.DefaultPrintQueue.FullName;
+                fallback = server.DefaultPrintQueue.FullName;
             }
             catch { /* no default set */ }
+            return new PrinterList(names, fallback);
         }
-        catch { /* spooler unavailable — handled below */ }
+        catch (Exception ex)
+        {
+            return new PrinterList(Array.Empty<string>(), null, ex.Message);
+        }
+    }
 
+    private async Task LoadPrintersAsync(Func<Task<PrinterList>> findPrinters)
+    {
+        PrinterList found;
+        try { found = await findPrinters(); }
+        catch (Exception ex) { found = new PrinterList(Array.Empty<string>(), null, ex.Message); }
+
+        foreach (var name in found.Names) Printers.Items.Add(name);
+        if (found.Default is { } preferred && Printers.Items.Contains(preferred))
+            Printers.SelectedItem = preferred;
         if (Printers.SelectedIndex < 0 && Printers.Items.Count > 0) Printers.SelectedIndex = 0;
         if (Printers.Items.Count == 0)
         {
-            PrintButton.IsEnabled = false;
-            PrintNote.Text = "No printers found.";
+            // Two causes, two answers (DW-42): a stopped print service lists
+            // nothing either, and "no printers" sent people looking for a
+            // printer that was there all along.
+            PrintNote.Text = found.SpoolerError.Length > 0
+                ? $"Windows' print service isn't answering ({found.SpoolerError}). "
+                  + "Start the Print Spooler service, then open this preview again."
+                : "No printers found.";
+            return;
         }
+        PrintButton.IsEnabled = !_claiming;
+        PrintNote.Text = "";
+        ShowCopiesNote();
+    }
+
+    /// <summary>With box labels, says before printing that each extra copy
+    /// gets its own numbers (QC-15). Silent until there is a printer, so a
+    /// "finding" or "no printers" note is never overwritten.</summary>
+    private void ShowCopiesNote()
+    {
+        if (_extraCopies is null || Printers.Items.Count == 0) return;
+        PrintNote.Text = int.TryParse(Copies.Text.Trim(), out var n) && n > 1
+            ? "Each extra copy gets its own box numbers when you print."
+            : "";
     }
 
     private void OnPrint(object sender, RoutedEventArgs e) => PrintNow();

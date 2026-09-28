@@ -336,6 +336,27 @@ public class AccessibleNameTests : UiTest
         }
     });
 
+    /// <summary>D3: Match and merge's First/Last/Control ID pickers only show
+    /// once a roster is loaded, so the registry walk (no roster) never saw
+    /// them, and a screen reader announced each as a bare "combo box".
+    /// Walked here with a roster in.</summary>
+    [Fact]
+    public void EveryControlInMatchAndMergeCanSayWhatItIsOnceARosterIsLoaded() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        using var dir = new TempDir();
+        var roster = dir.File("roster.csv", "First,Last,Control\nJohn,Smith,1\n");
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(), scheduler: new InlineWorkScheduler());
+        vm.LoadRosterFrom(roster);
+        Assert.True(vm.HasRoster);
+        var window = new MatchMergeWindow(vm);
+        try
+        {
+            AssertEveryControlCanSayWhatItIs("MatchMergeWindow (roster loaded)", window);
+        }
+        finally { window.Close(); }
+    });
+
     private static void AssertEveryControlCanSayWhatItIs(string windowName, Window window)
     {
         window.Left = -20000; window.Top = 0; window.ShowActivated = false;

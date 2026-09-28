@@ -923,10 +923,14 @@ public sealed class UnlockViewModel : ObservableObject
             // flight, and a streamed giant saturates the share — either way,
             // four at once is how "large" becomes "out of memory" or "the
             // share crawls". Ordinary files still overlap their waiting.
+            // The sizes are read on the scheduler: a size is a round trip
+            // per file on a share, and read here on the UI thread they froze
+            // the window before the run had said a word (Q2-26).
+            var sizes = await _scheduler.Run(() => rows.Select(r => _fileSize(r.Path)).ToArray());
             var small = new List<int>();
             var large = new List<int>();
             for (var i = 0; i < rows.Count; i++)
-                (_fileSize(rows[i].Path) >= Unlock.LargeFileThresholdBytes ? large : small).Add(i);
+                (sizes[i] >= Unlock.LargeFileThresholdBytes ? large : small).Add(i);
 
             using var gate = new SemaphoreSlim(MaxConcurrentUnlocks);
             await Task.WhenAll(small.Select(async i =>

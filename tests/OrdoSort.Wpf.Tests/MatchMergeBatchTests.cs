@@ -69,6 +69,47 @@ public class MatchMergeBatchTests : IDisposable
         Assert.False(vm.CanReview);
     }
 
+    /// <summary>DW-52: a dropped or picked folder was walked on the UI thread,
+    /// so a big folder on a share froze the window while it was read. The
+    /// walk now runs on the scheduler, and its files land once it finishes.</summary>
+    [Fact]
+    public async Task AFolderIsReadOffTheUiThread()
+    {
+        NoSynchronizationContext();
+        var scheduler = new ManualWorkScheduler();
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(), scheduler: scheduler);
+        var folder = _dir.Dir("scans");
+        File.WriteAllText(Path.Combine(folder, "20240101-SMITH-JOHN.pdf"), "pdf");
+        File.WriteAllText(Path.Combine(folder, "notes.txt"), "x");
+
+        var adding = vm.AddPathsAsync(new[] { folder });
+
+        Assert.Empty(vm.Rows);   // nothing read on the call itself
+        scheduler.ReleaseAll();
+        await adding;
+        Assert.Equal("20240101-SMITH-JOHN.pdf", Assert.Single(vm.Rows).File);
+    }
+
+    /// <summary>DW-52, with Q2-05's rule: Clear pressed while a folder is
+    /// still being read clears that add too, rather than the walk finishing
+    /// and refilling the list the user just emptied.</summary>
+    [Fact]
+    public async Task ClearWhileAFolderIsBeingReadDropsThatAdd()
+    {
+        NoSynchronizationContext();
+        var scheduler = new ManualWorkScheduler();
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(), scheduler: scheduler);
+        var folder = _dir.Dir("scans");
+        File.WriteAllText(Path.Combine(folder, "20240101-SMITH-JOHN.pdf"), "pdf");
+
+        var adding = vm.AddPathsAsync(new[] { folder });
+        vm.ClearCommand.Execute(null);
+        scheduler.ReleaseAll();
+        await adding;
+
+        Assert.Empty(vm.Rows);
+    }
+
     [Fact]
     public void UndoPutsTheNamesBackOffTheUiThread()
     {

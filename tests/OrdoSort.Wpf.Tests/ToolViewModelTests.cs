@@ -357,6 +357,33 @@ public class UnlockViewModelTests : IDisposable
         Assert.Contains("3 unlocked", vm.Summary);
     }
 
+    /// <summary>Q2-26: Unlock read every listed file's size on the UI thread
+    /// before its first await, so pressing Unlock on a long list from a share
+    /// froze the window for a round trip per file before anything showed.
+    /// The sizes are now read on the scheduler, after the run says it has
+    /// started.</summary>
+    [Fact]
+    public async Task UnlockReadsFileSizesOffTheUiThread()
+    {
+        var sized = 0;
+        var scheduler = new ControlledWorkScheduler();
+        var vm = new UnlockViewModel(_cfg, () => true,
+            unlocker: (p, _) => new OrdoSort.Core.Unlock.UnlockResult("ok", p, p, InPlace: true),
+            fileSize: _ => { sized++; return 0L; },
+            scheduler: scheduler);
+        vm.Files.Add(new UnlockFileRow(Path.Combine(_dir, "a.pdf")));
+        vm.Files.Add(new UnlockFileRow(Path.Combine(_dir, "b.pdf")));
+
+        var run = vm.UnlockAsync();
+
+        Assert.Equal(0, sized);          // nothing read on the click itself
+        Assert.True(vm.IsUnlocking);     // and the window already says it's working
+        scheduler.ReleaseAll();
+        await run;
+        Assert.Equal(2, sized);
+        Assert.Contains("2 unlocked", vm.Summary);
+    }
+
     [Fact]
     public async Task AMixedBatchStillReportsInTheOrderFilesWereAdded()
     {

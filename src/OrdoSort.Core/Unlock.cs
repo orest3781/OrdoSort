@@ -362,7 +362,7 @@ public static class Unlock
         }
 
         var localTemp = Path.Combine(Path.GetTempPath(),
-            "ordosort_unlock_" + Guid.NewGuid().ToString("N") + ".pdf");
+            TempPrefix + Guid.NewGuid().ToString("N") + ".pdf");
         try
         {
             try
@@ -587,6 +587,41 @@ public static class Unlock
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* next time */ }
         return finished;
+    }
+
+    /// <summary>The name every streamed unlock's local temp starts with.</summary>
+    private const string TempPrefix = "ordosort_unlock_";
+
+    /// <summary>How old a leftover temp must be before
+    /// <see cref="SweepStaleTemps"/> removes it. A streamed unlock of the
+    /// largest document takes minutes, so a day can only be a leftover from
+    /// a run that was killed, never one still writing.</summary>
+    internal static readonly TimeSpan StaleTempAge = TimeSpan.FromDays(1);
+
+    /// <summary>Deletes the decrypted temps a streamed unlock left in
+    /// <paramref name="tempFolder"/> when the app was killed mid-run (DW-22):
+    /// every graceful path removes its own, but nothing looked for one a hard
+    /// kill stranded, and it is an unencrypted copy of a locked document.
+    /// Only this class's own names, and only ones older than
+    /// <see cref="StaleTempAge"/>. Returns how many went; never throws.</summary>
+    public static int SweepStaleTemps(string tempFolder, DateTime utcNow)
+    {
+        var removed = 0;
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(tempFolder, TempPrefix + "*.pdf"))
+            {
+                try
+                {
+                    if (utcNow - File.GetLastWriteTimeUtc(path) < StaleTempAge) continue;
+                    File.Delete(path);
+                    removed++;
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* next start */ }
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* next start */ }
+        return removed;
     }
 
     private static void RemoveQuietly(string path)

@@ -113,12 +113,18 @@ public static class Zipper
     /// also means a zip build that fails after this call already created
     /// the temp file leaves whatever was previously at
     /// <paramref name="outputPath"/> untouched, not deleted. Same shape as
-    /// <see cref="Config.WriteAtomic"/>.</summary>
-    public static ZipResult CreateZip(IReadOnlyList<string> paths, string? outputPath = null)
+    /// <see cref="Config.WriteAtomic"/>.
+    ///
+    /// <paramref name="cancel"/> is checked before each file goes in (QC-31:
+    /// a zip the user walked away from, by closing the window or pressing
+    /// Clear, used to run on to the end). A cancelled build removes what it
+    /// wrote, exactly as a failed one does, and returns Status "cancelled".</summary>
+    public static ZipResult CreateZip(IReadOnlyList<string> paths, string? outputPath = null,
+        CancellationToken cancel = default)
     {
         try
         {
-            return CreateZipCore(paths, outputPath);
+            return CreateZipCore(paths, outputPath, cancel);
         }
         catch (Exception ex)
         {
@@ -126,7 +132,9 @@ public static class Zipper
         }
     }
 
-    private static ZipResult CreateZipCore(IReadOnlyList<string> paths, string? outputPath)
+    private static readonly ZipResult Cancelled = new("cancelled", null, "zip cancelled");
+
+    private static ZipResult CreateZipCore(IReadOnlyList<string> paths, string? outputPath, CancellationToken cancel)
     {
         var existing = paths.Where(p => File.Exists(p) || Directory.Exists(p)).ToList();
         if (existing.Count == 0)
@@ -153,8 +161,10 @@ public static class Zipper
             // placement fails, outputPath is left exactly as the user last
             // saw it, because nothing above ever touched it.
             var leftOutSaveAs = new List<string>();
-            if (!AtomicPlace.TryReplace(outputPath, tmp => BuildArchiveOnce(tmp, existing, leftOutSaveAs), out var placeError))
-                return new ZipResult("error", null, $"couldn't create the zip: {placeError}");
+            if (!AtomicPlace.TryReplace(outputPath, tmp => BuildArchiveOnce(tmp, existing, leftOutSaveAs, cancel), out var placeError))
+                return cancel.IsCancellationRequested
+                    ? Cancelled
+                    : new ZipResult("error", null, $"couldn't create the zip: {placeError}");
             return new ZipResult("ok", outputPath, LeftOutNote(leftOutSaveAs));
         }
 
@@ -173,7 +183,7 @@ public static class Zipper
         try
         {
             var leftOut = new List<string>();
-            BuildArchive(partial, existing, leftOut, onCreated: () => created = true);
+            BuildArchive(partial, existing, leftOut, cancel, onCreated: () => created = true);
             PartialBuiltHookForTests?.Invoke(partial);
             for (var attempt = 0; ; attempt++)
             {
@@ -189,6 +199,7 @@ public static class Zipper
         catch (Exception ex)
         {
             if (created) RemoveFileQuietly(partial);
+            if (ex is OperationCanceledException) return Cancelled;
             return new ZipResult("error", null, $"couldn't create the zip: {ex.Message}");
         }
     }
@@ -206,7 +217,8 @@ public static class Zipper
     /// file that can't be read still fails the zip, as before: leaving out a
     /// document the user picked is not a call to make silently. Links and
     /// junctions are not followed, so a loop can't make the walk endless.</summary>
-    private static void AddFolder(ZipArchive archive, string folder, string folderName, List<string> leftOut)
+    private static void AddFolder(ZipArchive archive, string folder, string folderName, List<string> leftOut,
+        CancellationToken cancel)
     {
         var pending = new Stack<string>();
         pending.Push(folder);
@@ -227,6 +239,7 @@ public static class Zipper
             Array.Sort(files, StringComparer.OrdinalIgnoreCase);
             foreach (var file in files)
             {
+                cancel.ThrowIfCancellationRequested();
                 var rel = Path.GetRelativePath(folder, file).Replace('\\', '/');
                 archive.CreateEntryFromFile(file, $"{folderName}/{rel}", CompressionLevel.Optimal);
             }
@@ -249,7 +262,8 @@ public static class Zipper
               + string.Join(", ", leftOut);
 
     private static void BuildArchive(
-        string path, IReadOnlyList<string> existing, List<string> leftOut, Action? onCreated = null)
+        string path, IReadOnlyList<string> existing, List<string> leftOut, CancellationToken cancel,
+        Action? onCreated = null)
     {
         using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
         onCreated?.Invoke();
@@ -277,6 +291,7 @@ public static class Zipper
         {
             if (File.Exists(p))
             {
+                cancel.ThrowIfCancellationRequested();
                 var name = UniqueRootName(usedRootNames, Path.GetFileName(p));
                 archive.CreateEntryFromFile(p, name, CompressionLevel.Optimal);
             }
@@ -289,7 +304,7 @@ public static class Zipper
                 // (Path.GetRelativePath gives back whatever this OS uses,
                 // hence the explicit replace).
                 var folderName = UniqueRootName(usedRootNames, new DirectoryInfo(p).Name);
-                AddFolder(archive, p, folderName, leftOut);
+                AddFolder(archive, p, folderName, leftOut, cancel);
             }
         }
     }
@@ -308,12 +323,13 @@ public static class Zipper
     /// retry, which is the part a briefly-held destination needs. Done here
     /// rather than in AtomicPlace so its semantics stay the same for every
     /// other caller.</summary>
-    private static void BuildArchiveOnce(string path, IReadOnlyList<string> existing, List<string> leftOut)
+    private static void BuildArchiveOnce(string path, IReadOnlyList<string> existing, List<string> leftOut,
+        CancellationToken cancel)
     {
         try
         {
             leftOut.Clear();   // a retried placement builds again from scratch
-            BuildArchive(path, existing, leftOut);
+            BuildArchive(path, existing, leftOut, cancel);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

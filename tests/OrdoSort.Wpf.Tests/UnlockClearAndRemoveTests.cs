@@ -72,7 +72,8 @@ public class UnlockClearAndRemoveTests : IDisposable
         Assert.Equal(2, vm.Files.Count);
 
         vm.Password = "secret";
-        var unlockTask = vm.UnlockAsync();   // both TryCandidates calls dispatched, neither run yet
+        var unlockTask = vm.UnlockAsync();
+        scheduler.ReleaseNext();   // the size check (Q2-26); both TryCandidates calls now dispatched, neither run yet
         Assert.Equal(2, scheduler.Queued);
 
         vm.ClearCommand.Execute(null);
@@ -127,7 +128,8 @@ public class UnlockClearAndRemoveTests : IDisposable
         await addTask;
 
         vm.Password = "secret";
-        var unlockTask = vm.UnlockAsync();   // dispatched, not yet run
+        var unlockTask = vm.UnlockAsync();
+        scheduler.ReleaseNext();   // the size check (Q2-26); the unlock is now dispatched, not yet run
         Assert.Equal(1, scheduler.Queued);
 
         vm.ClearCommand.Execute(null);   // sets the flag, cancels the run token
@@ -197,7 +199,8 @@ public class UnlockClearAndRemoveTests : IDisposable
         var rowB = vm.Files.Single(r => r.Path == b);
 
         vm.Password = "secret";
-        var unlockTask = vm.UnlockAsync();   // both real unlocks dispatched, neither run yet
+        var unlockTask = vm.UnlockAsync();
+        scheduler.ReleaseNext();   // the size check (Q2-26); both real unlocks now dispatched, neither run yet
         Assert.Equal(2, scheduler.Queued);
 
         vm.RemoveFiles(new[] { b });   // the click that slips through anyway

@@ -73,14 +73,9 @@ public partial class MatchMergeWindow : Window
         if (e.Data.GetData(DataFormats.FileDrop) is string[] paths) AddExpanded(paths);
     }
 
-    /// <summary>Shared by OnAddFolder and OnDrop: a bare Directory.GetFiles
-    /// throws UnauthorizedAccessException into the global crash dialog the
-    /// moment one subfolder denies access, and neither call site expanded
-    /// dropped folders at all. Intake.Expand (IgnoreInaccessible — the same
-    /// unreadable-subfolder precedent PageCountsViewModel.AddFilesAsync
-    /// relies on) walks files and folders alike without throwing; AddFiles
-    /// then runs its own Intake.Add dedupe over the flat result exactly as
-    /// it already does for files picked one at a time.</summary>
-    private void AddExpanded(IEnumerable<string> paths) =>
-        _vm.AddFiles(Intake.Expand(paths, recursive: true, new HashSet<string> { "pdf" }).Files);
+    /// <summary>Shared by OnAddFolder and OnDrop: files and folders alike go
+    /// through the view model's off-thread walk (Intake.Expand, which skips
+    /// an unreadable subfolder rather than throwing), so a big folder never
+    /// freezes this window (DW-52).</summary>
+    private void AddExpanded(IEnumerable<string> paths) => _ = _vm.AddPathsAsync(paths);
 }
