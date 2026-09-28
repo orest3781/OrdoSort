@@ -29,7 +29,27 @@
 - [x] 4. The refinement checklist's 4 High items: all four still reproduced and are fixed with tests, merged to `main` 2026-09-27 (`8176fa6`). Q2-01 a Bulk rename batch can't wipe the last batch's undo or re-run itself; Q2-02 Match and merge's Merge and Undo run in the background one file at a time, with the window's other actions held off; Q2-03 a set-aside or route folder that is the inbox is refused in Settings and in the filing code; Q2-04 an undo that leaves the filed copy behind still counts as an undo and warns. check.bat and E2E 46/46 green
 - [ ] 5. User-facing fixes: 5a box labels Copies > 1 ✅ done; 5b TableLayoutStore ✅ done; 5c PR #6 network share (owner tries the real share; retry test; permissions note) — skipped for now by the owner, 2026-09-27
 - [x] 6. Explorer tables polish: done 2026-09-27 (keyboard header menu, Review matches sort and columns, empty-table scrollbar, timing and default-path tests; File list remembering its columns confirmed)
-- [ ] 7. Triage the rest of `docs/superpowers/refinement-master-checklist.md` (81 Important, 88 Minor; last updated 2026-08-22, 1 of 173 ticked): close what later work fixed, with evidence; move what is still real into STATUS by priority; fold in the ~25 "minor (deferred)" findings from the plan ledgers
+- [x] 7. Checklist triage done 2026-09-27: every open Important item re-checked against the code. 10 already fixed and 4 obsolete (ticked with evidence); 65 still real, ordered below; the plan ledgers' deferred minors folded in (10 new rows, DW-82 to DW-91). The 98 Minor rows stay in the checklist for later, by decision
+**Checklist work order (from the 2026-09-27 triage).** IDs are rows in `docs/superpowers/refinement-master-checklist.md`, which has the detail and evidence.
+
+| Priority | IDs | What goes wrong for the user | Status |
+|---|---|---|---|
+| P1 | DW-01 | Power loss or a kill mid-filing across drives can leave a corrupt PDF under the proper filed name; the real one, filed again, becomes "… (2)" | ⬜ Not started |
+| P1 | QC-19 | Quitting during a slow network move: the document is filed but no history row is written and no warning appears | ⬜ Not started |
+| P1 | Q2-10 | Page counts: Save or Copy while counts are still running writes blank counts and a low Total, then says "Saved" | ⬜ Not started |
+| P1 | Q2-35 | Two destinations on the same key in config.json: both buttons show it, the key silently files to one of them | ⬜ Not started |
+| P2 | QC-17, D4, QC-23 | Settings accepts values that make every filing (or session start) fail later: a `:` in a suffix, a bad naming mode, a numeric hotkey | ⬜ Not started |
+| P2 | QC-18, Q2-08, DW-07 | Settings OK: freezes on a dead share; can switch config under a Start scan; a failed save leaves the app on unsaved settings | ⬜ Not started |
+| P2 | QC-24, Q2-31 | If the Edge preview process dies, every filing key (and Review matches' Use/Skip) fails until restart | ⬜ Not started |
+| P2 | QC-20, Q2-34 | Live folder watch dies silently after an overflow or share drop; a blank inbox shows a calm "0 files" and opens the config folder | ⬜ Not started |
+| P2 | QC-21, QC-22 | Privacy: document names and paths in the shared crash.log; preview history kept in the WebView2 profile | ⬜ Not started |
+| P2 | QC-28, QC-29 | Box labels: renaming a client onto a peer's new id loses the counter; a lowercase id on disk blocks Save and Print | ⬜ Not started |
+| P2 | Q2-05, Q2-06, Q2-12, Q2-09 | Tool windows: Clear during an add brings rows back; saved passwords changed mid-unlock re-probe live rows; re-adding during a rename lists a file twice; Page counts drops a walk error | ⬜ Not started |
+| P2 | Q2-13, Q2-30, Q2-32 | Zip fails whole on one access-denied subfolder; an unexpected unlock failure says nothing; sign-out mid-zip/unlock can leave half-written files | ⬜ Not started |
+| P2 | FL-08, FL-16, FL-18, FL-19 | File list: no busy sign on a big walk; Clear throws away all removals with no confirm; a cut-off error with no tooltip; drops on the text boxes do nothing | ⬜ Not started |
+| P2 | DW-04 | Releases are unsigned, so the first run shows the SmartScreen warning (needs a code-signing certificate) | 🚫 Blocked |
+| P3 | the other 34 Important rows marked P3 | Small or rare: UI-thread stalls on dead shares, test-guard gaps, polish | ⬜ Not started |
+| Owner | DW-14 | Are the scripts in `docs/legacy-scripts/` still run? If so their logs land in the repo folder, unignored | 🚫 Blocked |
 - [ ] 8. Before release: one fresh-reviewer pass over everything since v1.7.0 (the test overhaul, the processing window and today's fixes were never reviewed by a second pair of eyes); run BoxLabels.exe by hand (never done since its merge)
 - [ ] 9. Release 1.8.0, published from github.com (proves PR #7's path); fix the smoke screenshots' collapsed columns first or ship the current shots
 
