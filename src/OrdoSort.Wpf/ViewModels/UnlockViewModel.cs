@@ -662,7 +662,18 @@ public sealed class UnlockViewModel : ObservableObject
         // Intake.Add builds its own set rather than scanning the
         // ObservableCollection per candidate — the quadratic cost this method
         // was already avoiding by hand, now avoided in one place.
-        var offThread = await _scheduler.Run(() => Intake.Add(already, candidates, Pdfs, File.Exists));
+        // An in-place unlock cut off between its two moves (a sign-out, a
+        // kill) left its document under a ".unlocking.tmp" name (Q2-32);
+        // files coming in from that folder again finish it first.
+        var (offThread, finished) = await _scheduler.Run(() =>
+        {
+            var folders = candidates
+                .Select(p => Directory.Exists(p) ? p : Path.GetDirectoryName(p))
+                .Where(d => !string.IsNullOrEmpty(d))
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+            var putBack = folders.SelectMany(d => Unlock.FinishInterruptedSwaps(d!)).ToList();
+            return (Intake.Add(already, candidates, Pdfs, File.Exists), putBack);
+        });
         if (probeToken.IsCancellationRequested) return;
 
         // Re-checked against the LIVE list, not the snapshot taken before the
@@ -691,6 +702,12 @@ public sealed class UnlockViewModel : ObservableObject
             Files = settled.Files,
             AlreadyListed = offThread.AlreadyListed + settled.AlreadyListed,
         }).Note("PDF");
+        if (finished.Count > 0)
+        {
+            var putBack = $"Finished {finished.Count} unlock{(finished.Count == 1 ? "" : "s")} cut off last time: "
+                          + string.Join(", ", finished.Select(Path.GetFileName));
+            AddNote = AddNote.Length == 0 ? putBack : $"{AddNote} · {putBack}";
+        }
 
         // Probe just the new arrivals — never the whole list on every drop
         // (risk 1: see ProbeRowsAsync's own doc comment). Awaited here (not

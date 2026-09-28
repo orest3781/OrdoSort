@@ -159,23 +159,36 @@ public static class Zipper
         }
 
         var besideDir = BesideDirectory(existing[0]);
-        var target = Collision.FreeFile(Path.Combine(besideDir, DefaultName(existing)));
+        var name = DefaultName(existing);
 
-        // See class doc comment for the created-gate discipline this
-        // implements: `created` flips to true only once ZipFile.Open has
-        // actually made the file (FileMode.CreateNew inside it — throws
-        // immediately if the name is taken, in which case `created` is
-        // never set and the catch below must not delete anything).
+        // Built under a name only this call can own, then renamed onto a
+        // free name once whole (Q2-32). Built straight under the final name,
+        // a zip cut off mid-build (a sign-out, a kill) was left there half
+        // written, looking finished. The rename happens in one folder, so it
+        // is all or nothing; if a peer takes the free name first, the next
+        // free one is used. `created` gates the cleanup as before (see the
+        // class doc): only a partial this call made is removed.
+        var partial = Path.Combine(besideDir, $"{name}.{Guid.NewGuid():N}.partial");
         var created = false;
         try
         {
             var leftOut = new List<string>();
-            BuildArchive(target, existing, leftOut, onCreated: () => created = true);
-            return new ZipResult("ok", target, LeftOutNote(leftOut));
+            BuildArchive(partial, existing, leftOut, onCreated: () => created = true);
+            PartialBuiltHookForTests?.Invoke(partial);
+            for (var attempt = 0; ; attempt++)
+            {
+                var target = Collision.FreeFile(Path.Combine(besideDir, name));
+                try
+                {
+                    File.Move(partial, target);
+                    return new ZipResult("ok", target, LeftOutNote(leftOut));
+                }
+                catch (IOException) when (attempt < 10 && File.Exists(target)) { /* taken meanwhile */ }
+            }
         }
         catch (Exception ex)
         {
-            if (created) RemoveFileQuietly(target);
+            if (created) RemoveFileQuietly(partial);
             return new ZipResult("error", null, $"couldn't create the zip: {ex.Message}");
         }
     }
@@ -223,6 +236,11 @@ public static class Zipper
                     pending.Push(subfolders[i]);
         }
     }
+
+    /// <summary>Test seam: runs with the ".partial" path once a default-name
+    /// zip is built, before it is renamed into place. Throwing here is a
+    /// build cut off at its last moment.</summary>
+    internal static Action<string>? PartialBuiltHookForTests;
 
     /// <summary>"" when nothing was left out; otherwise what to tell the user.</summary>
     private static string LeftOutNote(IReadOnlyList<string> leftOut) =>

@@ -19,7 +19,11 @@ public class ZipperTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "ordozipper_" + Guid.NewGuid());
     public ZipperTests() => Directory.CreateDirectory(_dir);
-    public void Dispose() { try { Directory.Delete(_dir, recursive: true); } catch { /* best effort */ } }
+    public void Dispose()
+    {
+        Zipper.PartialBuiltHookForTests = null;
+        try { Directory.Delete(_dir, recursive: true); } catch { /* best effort */ }
+    }
 
     private string MakeFile(string relativePath, string content)
     {
@@ -833,5 +837,36 @@ public class ZipperTests : IDisposable
         Assert.Contains("scans/top.pdf", names);
         Assert.Contains("scans/zzz_ok/kept.pdf", names);
         Assert.DoesNotContain(names, n => n.Contains("hidden"));
+    }
+
+    /// <summary>Q2-32, the zip half: a default-name zip was built straight
+    /// under its final name, so one cut off mid-build (a sign-out, a kill)
+    /// was left there half written, looking finished. It is built under a
+    /// ".partial" name and renamed into place only once whole.</summary>
+    [Fact]
+    public void AZipCutOffBeforeItIsWholeLeavesNothingUnderAZipName()
+    {
+        var doc = MakeFile("report.pdf", "content");
+        Zipper.PartialBuiltHookForTests = _ => throw new IOException("signed out");
+
+        var result = Zipper.CreateZip(new[] { doc });
+
+        Assert.Equal("error", result.Status);
+        Assert.Empty(Directory.GetFiles(_dir, "*.zip"));
+        Assert.Empty(Directory.GetFiles(_dir, "*.partial"));
+    }
+
+    [Fact]
+    public void AWholeZipLandsUnderItsNameWithNoPartialLeft()
+    {
+        var doc = MakeFile("report.pdf", "content");
+
+        var result = Zipper.CreateZip(new[] { doc });
+
+        Assert.Equal("ok", result.Status);
+        Assert.EndsWith(".zip", result.Output);
+        using (var zip = ZipFile.OpenRead(result.Output!))
+            Assert.Equal("report.pdf", Assert.Single(zip.Entries).FullName);
+        Assert.Empty(Directory.GetFiles(_dir, "*.partial"));
     }
 }

@@ -216,6 +216,25 @@ public class UnlockClearAndRemoveTests : IDisposable
         Assert.True(vm.IsIdle);   // normal service resumes
     }
 
+    /// <summary>Q2-32: an unlock cut off between its two moves (a sign-out)
+    /// is finished when files from that folder come into Unlock again, and
+    /// the note says which document was put back.</summary>
+    [Fact]
+    public async Task AddingFilesFinishesAnUnlockThatWasCutOffInTheirFolder()
+    {
+        var archive = Directory.CreateDirectory(Path.Combine(_dir, "locked_archive_20260901")).FullName;
+        File.WriteAllText(Path.Combine(archive, "invoice.pdf"), "locked original");
+        File.WriteAllText(Path.Combine(_dir, "invoice.unlocking.tmp"), "unlocked copy");
+        var vm = new UnlockViewModel(new Config(), () => true,
+            probe: (path, candidates) => new Unlock.ProbeResult("needs_password", path, Message: "x"),
+            scheduler: new InlineWorkScheduler());
+
+        await vm.AddFilesAsync(new[] { Touch("other.pdf") });
+
+        Assert.Equal("unlocked copy", File.ReadAllText(Path.Combine(_dir, "invoice.pdf")));
+        Assert.Contains("invoice.pdf", vm.AddNote);
+    }
+
     /// <summary>Q2-30: nothing listened to the Unlock command's failures, so
     /// a run that hit something unexpected just ended: the buttons came back
     /// and no summary or message said anything had gone wrong.</summary>
