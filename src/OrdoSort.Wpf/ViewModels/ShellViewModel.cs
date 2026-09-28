@@ -1388,6 +1388,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
              routes.Select(r => Config.ValidateRoute(r, cfgPath)).ToList()));
         if (Screen == Screen.Processing) return;   // a double Start raced us
         if (scan.Count == 0) { Rescan(); return; }
+        var clashes = RouteButtonViewModel.KeyClashes(routes);
+        for (var i = 0; i < problems.Count; i++)
+            if (problems[i].Length == 0) problems[i] = clashes[i];
         BuildRoutes(routes, problems);
         _session.Start(scan.Matching);
         _lastRoute = null;
