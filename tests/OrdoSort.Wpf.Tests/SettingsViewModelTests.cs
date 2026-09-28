@@ -25,7 +25,7 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public void UnknownKeysAndToolStateSurviveOkByConstruction()
+    public async Task UnknownKeysAndToolStateSurviveOkByConstruction()
     {
         // the clone-then-patch build makes it impossible for the settings
         // dialog to wipe keys it doesn't know about
@@ -42,7 +42,7 @@ public class SettingsViewModelTests : IDisposable
         vm.Inbox = "c:/faxes-new";
         _dialogs.ConfirmAnswer = true;   // path warnings -> save anyway
 
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         var result = vm.Result!;
         Assert.Equal("c:/faxes-new", result.Inbox);
         Assert.True(result.Extras.ContainsKey("custom_top_level_key"));
@@ -55,7 +55,7 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public void DuplicateEffectiveHotkeysBlockOk()
+    public async Task DuplicateEffectiveHotkeysBlockOk()
     {
         var cfg = new Config
         {
@@ -66,12 +66,12 @@ public class SettingsViewModelTests : IDisposable
             },
         };
         var vm = new SettingsViewModel(cfg, _dialogs);
-        Assert.False(vm.TryBuildResult());
+        Assert.False(await vm.TryBuildResultAsync());
         Assert.Contains("Ctrl+3", Assert.Single(_dialogs.Warnings).Message);
     }
 
     [Fact]
-    public void FallbackHotkeyCollisionsAreCaughtToo()
+    public async Task FallbackHotkeyCollisionsAreCaughtToo()
     {
         // route 0's fallback is Ctrl+1; route 1 explicitly claims Ctrl+1
         var cfg = new Config
@@ -83,7 +83,7 @@ public class SettingsViewModelTests : IDisposable
             },
         };
         var vm = new SettingsViewModel(cfg, _dialogs);
-        Assert.False(vm.TryBuildResult());
+        Assert.False(await vm.TryBuildResultAsync());
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public void ReservedHotkeyBlocksOkAndGetsALiveNote()
+    public async Task ReservedHotkeyBlocksOkAndGetsALiveNote()
     {
         var cfg = new Config
         {
@@ -114,12 +114,12 @@ public class SettingsViewModelTests : IDisposable
         };
         var vm = new SettingsViewModel(cfg, _dialogs);
         Assert.Contains("Set aside", vm.Routes[0].HotkeyNote);   // live, before OK
-        Assert.False(vm.TryBuildResult());
+        Assert.False(await vm.TryBuildResultAsync());
         Assert.Contains("Set aside", Assert.Single(_dialogs.Warnings).Message);
     }
 
     [Fact]
-    public void BareKeyHotkeyBlocksOkWithAModifierHint()
+    public async Task BareKeyHotkeyBlocksOkWithAModifierHint()
     {
         // "K" parses but WPF can't gesture it — before this check it silently
         // fell back to the slot default and the typed key did nothing
@@ -129,12 +129,12 @@ public class SettingsViewModelTests : IDisposable
         };
         var vm = new SettingsViewModel(cfg, _dialogs);
         Assert.Contains("modifier", vm.Routes[0].HotkeyNote);
-        Assert.False(vm.TryBuildResult());
+        Assert.False(await vm.TryBuildResultAsync());
         Assert.Contains("Ctrl+K", Assert.Single(_dialogs.Warnings).Message);
     }
 
     [Fact]
-    public void NumpadAndTopRowDigitsCountAsTheSameHotkey()
+    public async Task NumpadAndTopRowDigitsCountAsTheSameHotkey()
     {
         var cfg = new Config
         {
@@ -145,12 +145,12 @@ public class SettingsViewModelTests : IDisposable
             },
         };
         var vm = new SettingsViewModel(cfg, _dialogs);
-        Assert.False(vm.TryBuildResult());
+        Assert.False(await vm.TryBuildResultAsync());
         Assert.Contains("both answer to Ctrl+1", Assert.Single(_dialogs.Warnings).Message);
     }
 
     [Fact]
-    public void DuplicateLabelsUnparseableHotkeyAndBadColorBlockOk()
+    public async Task DuplicateLabelsUnparseableHotkeyAndBadColorBlockOk()
     {
         var cfg = new Config
         {
@@ -161,7 +161,7 @@ public class SettingsViewModelTests : IDisposable
             },
         };
         var vm = new SettingsViewModel(cfg, _dialogs);
-        Assert.False(vm.TryBuildResult());
+        Assert.False(await vm.TryBuildResultAsync());
         var msg = Assert.Single(_dialogs.Warnings).Message;
         Assert.Contains("both called", msg);
         Assert.Contains("hotkey", msg);
@@ -169,37 +169,37 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public void BadFontSizeBlocksOk()
+    public async Task BadFontSizeBlocksOk()
     {
         var vm = new SettingsViewModel(new Config(), _dialogs) { UiFontSizeText = "5" };
-        Assert.False(vm.TryBuildResult());
+        Assert.False(await vm.TryBuildResultAsync());
         Assert.Contains("6 to 72", Assert.Single(_dialogs.Warnings).Message);
     }
 
     [Fact]
-    public void SeparatorWithSpaceBlocksOk()
+    public async Task SeparatorWithSpaceBlocksOk()
     {
         var vm = new SettingsViewModel(new Config(), _dialogs) { WordSeparator = " - " };
-        Assert.False(vm.TryBuildResult());
+        Assert.False(await vm.TryBuildResultAsync());
     }
 
     [Fact]
-    public void PollIntervalLoadsSavesAndValidates()
+    public async Task PollIntervalLoadsSavesAndValidates()
     {
         var vm = new SettingsViewModel(new Config { Inbox = _dir, PollSeconds = 30 }, _dialogs);
         Assert.Equal("30", vm.PollSecondsText);
 
         vm.PollSecondsText = "5";
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         Assert.Equal(5, vm.Result!.PollSeconds);
 
         vm.PollSecondsText = "2";                       // below the floor
-        Assert.False(vm.TryBuildResult());
+        Assert.False(await vm.TryBuildResultAsync());
         Assert.Contains("5 to 600", Assert.Single(_dialogs.Warnings).Message);
     }
 
     [Fact]
-    public void UnreachableRouteIsAWarningNotAnError()
+    public async Task UnreachableRouteIsAWarningNotAnError()
     {
         var cfg = new Config
         {
@@ -209,15 +209,15 @@ public class SettingsViewModelTests : IDisposable
         var vm = new SettingsViewModel(cfg, _dialogs);
 
         _dialogs.ConfirmAnswer = false;   // decline "Save anyway?"
-        Assert.False(vm.TryBuildResult());
+        Assert.False(await vm.TryBuildResultAsync());
 
         _dialogs.ConfirmAnswer = true;
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         Assert.NotNull(vm.Result);
     }
 
     [Fact]
-    public void SavedPasswordsPassThroughUntouchedSettingsNoLongerOwnsThem()
+    public async Task SavedPasswordsPassThroughUntouchedSettingsNoLongerOwnsThem()
     {
         // the saved-passwords editor moved to the Unlock window's Manage
         // saved… dialog — Settings must leave config.json's saved_passwords
@@ -228,7 +228,7 @@ public class SettingsViewModelTests : IDisposable
             SavedPasswords = { new SavedPassword { Label = "Old", Password = "plain" } },
         };
         var vm = new SettingsViewModel(cfg, _dialogs);
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         var saved = Assert.Single(vm.Result!.SavedPasswords);
         Assert.Equal("Old", saved.Label);
         Assert.Equal("plain", saved.Password);   // untouched — not upgraded to protected
@@ -272,7 +272,7 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public void FourFilingModesRoundTrip()
+    public async Task FourFilingModesRoundTrip()
     {
         var cfg = LoadFromJson("""{"inbox":"C:/in","naming_mode":"append","enter_commits":true}""");
         var vm = new SettingsViewModel(cfg, _dialogs);
@@ -282,7 +282,7 @@ public class SettingsViewModelTests : IDisposable
         vm.ModePrefix = true;
         vm.EnterCommits = false;   // toggled live — must land in the built config too
 
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         var built = vm.Result!;
         Assert.Equal("prefix", built.NamingMode);
         Assert.False(built.EnterCommits);
@@ -697,7 +697,7 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public void ARelativeInboxAndDeferredSurviveSaveWithTheirRawSpellingUnchanged()
+    public async Task ARelativeInboxAndDeferredSurviveSaveWithTheirRawSpellingUnchanged()
     {
         // Config.TrySaveMain's own doc comment: never silently rewrite a
         // relative value to absolute on save — resolution happens only at
@@ -709,14 +709,14 @@ public class SettingsViewModelTests : IDisposable
         vm.Deferred = "relative-deferred";
         _dialogs.ConfirmAnswer = true;   // both are "missing" warnings — save anyway
 
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
 
         Assert.Equal("relative-inbox", vm.Result!.Inbox);
         Assert.Equal("relative-deferred", vm.Result.Deferred);
     }
 
     [Fact]
-    public void WatchFoldersReorderWithTheCommands()
+    public async Task WatchFoldersReorderWithTheCommands()
     {
         var cfg = new Config
         {
@@ -734,12 +734,12 @@ public class SettingsViewModelTests : IDisposable
 
         vm.WatchUpCommand.Execute(null);
         Assert.Equal("B", vm.WatchFolders[0].Label);
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         Assert.Equal(new[] { "B", "A" }, vm.Result!.WatchFolders.Select(w => w.Label));
     }
 
     [Fact]
-    public void WatchFolderSectionRoundTripsThroughSettings()
+    public async Task WatchFolderSectionRoundTripsThroughSettings()
     {
         var cfg = new Config
         {
@@ -756,7 +756,7 @@ public class SettingsViewModelTests : IDisposable
 
         vm.WatchFolders[1].Section = "Incoming";
 
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         Assert.Equal(new[] { "Failed queues", "Incoming" },
             vm.Result!.WatchFolders.Select(w => w.Section));
     }
@@ -1049,7 +1049,7 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public void ThemeModeRoundTripsThroughTheRadiosIntoTheResult()
+    public async Task ThemeModeRoundTripsThroughTheRadiosIntoTheResult()
     {
         var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs);
         Assert.True(vm.ThemeAuto);
@@ -1057,7 +1057,7 @@ public class SettingsViewModelTests : IDisposable
         vm.ThemeDark = true;
         Assert.True(vm.ThemeDark);
         Assert.False(vm.ThemeAuto);
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         Assert.Equal("dark", vm.Result!.Theme);
 
         var vm2 = new SettingsViewModel(vm.Result, _dialogs);
@@ -1109,7 +1109,7 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public void SelectingASchemeOptionDeselectsAutoAndEverySibling()
+    public async Task SelectingASchemeOptionDeselectsAutoAndEverySibling()
     {
         var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs);
         Assert.True(vm.AutoSelected);
@@ -1120,7 +1120,7 @@ public class SettingsViewModelTests : IDisposable
         Assert.True(light.IsSelected);
         Assert.False(vm.AutoSelected);
         Assert.All(vm.SchemeOptions.Where(o => !ReferenceEquals(o, light)), o => Assert.False(o.IsSelected));
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         Assert.Equal("light", vm.Result!.Theme);
 
         var dark = vm.SchemeOptions.Single(o => o.Key == "dark");
@@ -1132,12 +1132,12 @@ public class SettingsViewModelTests : IDisposable
         vm.AutoSelected = true;
         Assert.True(vm.AutoSelected);
         Assert.All(vm.SchemeOptions, o => Assert.False(o.IsSelected));
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         Assert.Equal("auto", vm.Result!.Theme);
     }
 
     [Fact]
-    public void AlertChipsSeedAddDedupeRemoveAndRoundTrip()
+    public async Task AlertChipsSeedAddDedupeRemoveAndRoundTrip()
     {
         var vm = new SettingsViewModel(new Config
         {
@@ -1157,7 +1157,7 @@ public class SettingsViewModelTests : IDisposable
         Assert.Equal("", vm.NewAlertText);
 
         vm.RemoveAlertCommand.Execute("FAX");
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         var built = vm.Result!;
         Assert.Equal(new[] { "URGENT", "legal" }, built.AlertTexts);
     }
@@ -1179,7 +1179,7 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public void ResultSurvivesAConfigRoundTripOnDisk()
+    public async Task ResultSurvivesAConfigRoundTripOnDisk()
     {
         var vm = new SettingsViewModel(new Config { Inbox = _dir }, _dialogs)
         {
@@ -1187,7 +1187,7 @@ public class SettingsViewModelTests : IDisposable
             UiFontSizeText = "16",
             WordSeparator = "-",
         };
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         var path = Path.Combine(_dir, "saved.json");
         Config.Save(vm.Result!, path);
         var back = Config.Load(path);
@@ -1197,19 +1197,19 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public void BoxLabelsFilePathRoundTripsThroughSettings()
+    public async Task BoxLabelsFilePathRoundTripsThroughSettings()
     {
         var cfg = LoadFromJson("""{"inbox":"C:/in","box_labels_file":"shared/labels.json"}""");
         var vm = new SettingsViewModel(cfg, _dialogs);
         Assert.Equal("shared/labels.json", vm.BoxLabelsFile);
         vm.BoxLabelsFile = "team-labels.json";
 
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         Assert.Equal("team-labels.json", vm.Result!.BoxLabelsFile);
     }
 
     [Fact]
-    public void SettingsSaveWritesDestinationsMonitoredFoldersAndAlertsIntoConfigJson()
+    public async Task SettingsSaveWritesDestinationsMonitoredFoldersAndAlertsIntoConfigJson()
     {
         var cfgPath = Path.Combine(_dir, "config.json");
         Config.Save(new Config { Inbox = _dir }, cfgPath);
@@ -1220,7 +1220,7 @@ public class SettingsViewModelTests : IDisposable
         vm.SelectedRoute!.Path = Directory.CreateDirectory(Path.Combine(_dir, "invoices")).FullName;
         vm.AlertTerms.Add("URGENT");
 
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         Config.Save(vm.Result!, cfgPath);
 
         var onDisk = File.ReadAllText(cfgPath);
@@ -1374,7 +1374,7 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public void RenamingTheDefaultHeaderEditsMonitorTitle()
+    public async Task RenamingTheDefaultHeaderEditsMonitorTitle()
     {
         var cfg = WatchCfg(("A", ""));
         cfg.MonitorTitle = "Monitored folders";
@@ -1388,7 +1388,7 @@ public class SettingsViewModelTests : IDisposable
 
         Assert.Equal("Work queues", vm.MonitorTitle);
         Assert.Equal("", vm.WatchFolders[0].Section);   // members untouched
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         Assert.Equal("Work queues", vm.Result!.MonitorTitle);
     }
 
@@ -1649,14 +1649,14 @@ public class SettingsViewModelTests : IDisposable
     /// <summary>The removal is real, not just visual: nothing in the saved
     /// config still carries the section name.</summary>
     [Fact]
-    public void ARemovedSectionIsGoneFromTheSavedConfig()
+    public async Task ARemovedSectionIsGoneFromTheSavedConfig()
     {
         var vm = new SettingsViewModel(WatchCfg(("A", "Night"), ("B", "Night")), _dialogs);
 
         var night = vm.WatchRows.OfType<WatchSectionVm>().Single(x => !x.IsDefault);
         vm.RemoveSection(night);
 
-        Assert.True(vm.TryBuildResult());
+        Assert.True(await vm.TryBuildResultAsync());
         Assert.Equal(new[] { "A", "B" }, vm.Result!.WatchFolders.Select(w => w.Label).ToArray());
         Assert.All(vm.Result.WatchFolders, w => Assert.Equal("", w.Section));
     }

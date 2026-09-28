@@ -19,9 +19,21 @@ public partial class SettingsWindow : Window
         Closing += OnClosing;
     }
 
-    private void OnOk(object sender, RoutedEventArgs e)
+    private async void OnOk(object sender, RoutedEventArgs e)
     {
-        if (_vm.TryBuildResult()) DialogResult = true;
+        if (_vm.IsCheckingFolders) return;
+        bool ok;
+        try
+        {
+            ok = await _vm.TryBuildResultAsync();
+        }
+        catch (Exception ex)
+        {
+            // async void: an escape here would take the app down
+            _vm.Dialogs.Warn($"Couldn't check the settings:\n\n{ex.Message}", "OrdoSort — check the settings");
+            return;
+        }
+        if (ok) DialogResult = true;
     }
 
     /// <summary>Enter in a single-line text box means "done with this
@@ -52,6 +64,9 @@ public partial class SettingsWindow : Window
     /// result, so there is nothing to discard and nothing to ask about.</summary>
     private void OnClosing(object? sender, CancelEventArgs e)
     {
+        // OK is still checking the folders; its answer has nowhere to go
+        // once the window is gone.
+        if (_vm.IsCheckingFolders) { e.Cancel = true; return; }
         if (DialogResult == true) return;
         if (!_vm.IsDirty) return;
         if (_vm.Dialogs.Confirm(
