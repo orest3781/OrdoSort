@@ -1712,7 +1712,10 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         {
             var key = w.Section.Trim();
             WatchSectionVm h;
-            if (key.Length == 0)
+            // A section spelled like the default heading is the default group:
+            // the dashboard groups tiles by heading text and shows them as one,
+            // so a second header here with the same text was a phantom (DW-68).
+            if (key.Length == 0 || IsDefaultHeading(key))
             {
                 if (def is null)
                 {
@@ -1783,7 +1786,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         Dictionary<string, WatchSectionVm> byKey)
     {
         var orphaned = _stickySections
-            .Where(s => !byKey.ContainsKey(s))
+            .Where(s => !byKey.ContainsKey(s) && !IsDefaultHeading(s))
             .OrderBy(s =>
             {
                 var i = _lastHeaderOrder.FindIndex(k => string.Equals(k, s, StringComparison.CurrentCultureIgnoreCase));
@@ -1813,6 +1816,10 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     private string DefaultSectionHeader =>
         MonitorTitle.Trim().Length == 0 ? "(untitled)" : MonitorTitle;
+
+    private bool IsDefaultHeading(string sectionName) =>
+        MonitorTitle.Trim().Length > 0
+        && string.Equals(sectionName.Trim(), MonitorTitle.Trim(), StringComparison.CurrentCultureIgnoreCase);
 
     /// <summary>Tooltip for a section header's ✕ — it names the group the
     /// folders will land in rather than saying "the default group", so the
@@ -1953,9 +1960,12 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// currently empty. The sticky half matters now that an emptied section
     /// can exist with zero members: without it, "Add section" could
     /// silently reuse — and so REVIVE — an already-emptied section's exact
-    /// name instead of generating a genuinely new, disjoint one.</summary>
+    /// name instead of generating a genuinely new, disjoint one. The default
+    /// heading counts too: renamed to "New section", it would otherwise be
+    /// given a twin (DW-70).</summary>
     private bool SectionKeyExists(string name) =>
-        WatchFolders.Any(w => string.Equals(w.Section.Trim(), name, StringComparison.CurrentCultureIgnoreCase))
+        IsDefaultHeading(name)
+        || WatchFolders.Any(w => string.Equals(w.Section.Trim(), name, StringComparison.CurrentCultureIgnoreCase))
         || _stickySections.Any(s => string.Equals(s, name, StringComparison.CurrentCultureIgnoreCase));
 
     /// <summary>Drag-and-drop reorder of the routes list: drop

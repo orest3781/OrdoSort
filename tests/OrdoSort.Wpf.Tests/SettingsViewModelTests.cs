@@ -1905,6 +1905,69 @@ public class SettingsViewModelTests : IDisposable
         scheduler.ReleaseAll();
         Assert.Equal("no folder chosen yet", w.Problem);
     }
+
+    /// <summary>DW-66: dropping a folder on empty space below the list had
+    /// no test. It goes to the end, into the last folder's section, which is
+    /// where it then shows.</summary>
+    [Fact]
+    public void DropOnEmptySpaceMovesTheFolderToTheEndOfTheLastSection()
+    {
+        var vm = new SettingsViewModel(
+            WatchCfg(("A", "Night"), ("B", "Day"), ("C", "Day")), _dialogs);
+        var a = vm.WatchFolders[0];
+
+        vm.DropWatch(a, over: null);
+
+        Assert.Equal(new[] { "B", "C", "A" }, vm.WatchFolders.Select(w => w.Label).ToArray());
+        Assert.Equal("Day", a.Section);
+        Assert.Same(a, vm.SelectedWatch);
+    }
+
+    /// <summary>DW-66: the only folder dropped on empty space stays put.</summary>
+    [Fact]
+    public void DropOnEmptySpaceWithNothingElseInTheListLeavesTheFolderAlone()
+    {
+        var vm = new SettingsViewModel(WatchCfg(("A", "Night")), _dialogs);
+        var a = vm.WatchFolders[0];
+
+        vm.DropWatch(a, over: null);
+
+        Assert.Same(a, Assert.Single(vm.WatchFolders));
+        Assert.Equal("Night", a.Section);
+    }
+
+    /// <summary>DW-68: a section typed with the same name as the default
+    /// heading showed as a second header with that same text, though the
+    /// dashboard shows the two as one group. Settings now shows them as one
+    /// group too.</summary>
+    [Fact]
+    public void ASectionNamedLikeTheDefaultHeadingIsShownAsTheDefaultGroup()
+    {
+        var cfg = WatchCfg(("A", ""), ("B", "monitored folders"));
+        cfg.MonitorTitle = "Monitored folders";
+        var vm = new SettingsViewModel(cfg, _dialogs);
+
+        var header = Assert.Single(vm.WatchRows.OfType<WatchSectionVm>());
+        Assert.True(header.IsDefault);
+        Assert.Equal(new object[] { header, vm.WatchFolders[0], vm.WatchFolders[1] }, vm.WatchRows.ToArray());
+    }
+
+    /// <summary>DW-70: with the default heading renamed to "New section",
+    /// Add section named its new section "New section" too: two headings
+    /// with one name.</summary>
+    [Fact]
+    public void AddSectionNeverReusesTheDefaultHeadingsName()
+    {
+        var cfg = WatchCfg(("A", ""));
+        cfg.MonitorTitle = "New section";
+        var vm = new SettingsViewModel(cfg, _dialogs);
+
+        var added = vm.AddSection();
+
+        Assert.NotNull(added);
+        Assert.NotEqual("New section", added.Header, StringComparer.CurrentCultureIgnoreCase);
+        Assert.Equal(2, vm.WatchRows.OfType<WatchSectionVm>().Count());
+    }
 }
 
 public class ApplySettingsTests
