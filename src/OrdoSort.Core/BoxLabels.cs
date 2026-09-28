@@ -106,6 +106,44 @@ public static class BoxLabels
     public static string NormalizeDateStyle(string? style) =>
         style == DateStylePlain ? DateStylePlain : DateStyleBars;
 
+    // label_layout (owner request 2026-09-28: box numbers readable on a
+    // shelf). "standard" is the only layout labels had before; "big" gives
+    // the number line the height the barcode gave up; "huge" prints only the
+    // running number, the client id moving into the CREATED line.
+    public const string LayoutStandard = "standard";
+    public const string LayoutBig = "big";
+    public const string LayoutHuge = "huge";
+
+    /// <summary>Unknown or missing layout → "standard", so a store written
+    /// before this setting prints exactly as it always did.</summary>
+    public static string NormalizeLayout(string? layout) =>
+        layout is LayoutBig or LayoutHuge ? layout : LayoutStandard;
+
+    /// <summary>How every label in a store prints. Kept in box-labels.json, so
+    /// every station and both apps print alike.</summary>
+    public sealed record LabelStyle(string Layout = LayoutStandard, bool LeadingZeros = true,
+        string DateStyle = DateStyleBars)
+    {
+        public static LabelStyle Default { get; } = new();
+
+        /// <summary>This style with unknown values replaced by the defaults.</summary>
+        public LabelStyle Normalized() =>
+            this with { Layout = NormalizeLayout(Layout), DateStyle = NormalizeDateStyle(DateStyle) };
+    }
+
+    /// <summary>The printed number: "ABCD 0000 0042" (zeros on) or "ABCD 42"
+    /// (off); Huge prints the running number alone ("0000 0042" / "42"). A
+    /// code without an 8-digit tail is printed as it is. The barcode always
+    /// carries the whole code; this is only what a person reads.</summary>
+    public static string NumberText(string code, string layout, bool leadingZeros)
+    {
+        if (code.Length <= 8 || code[^8..].Any(c => c is < '0' or > '9')) return code;
+        var digits = code[^8..];
+        var trimmed = digits.TrimStart('0');
+        var running = leadingZeros ? $"{digits[..4]} {digits[4..]}" : (trimmed.Length > 0 ? trimmed : "0");
+        return NormalizeLayout(layout) == LayoutHuge ? running : $"{code[..^8]} {running}";
+    }
+
     /// <summary>"ABCD" + 42 → "ABCD00000042".</summary>
     public static string Compose(string clientId, long number) =>
         clientId + number.ToString("D8");
@@ -193,41 +231,64 @@ public static class BoxLabels
     /// <summary>26pt when it fits, scaled down for long client ids so the
     /// code line never crowds the label edges. Pure math — Consolas is
     /// monospaced (advance ≈ 0.6 em), so every renderer agrees.</summary>
-    public static double CodeFontSize(string display) =>
-        Math.Min(26.0, (LabelWidthPt - 20) / (display.Length * 0.6));
+    public static double CodeFontSize(string display) => NumberFontSize(display, 26.0);
+
+    /// <summary>The largest size up to <paramref name="maxFont"/> at which
+    /// <paramref name="text"/> fits the label width. Consolas is monospaced
+    /// (advance ≈ 0.6 em), so every renderer agrees.</summary>
+    public static double NumberFontSize(string text, double maxFont) =>
+        Math.Min(maxFont, (LabelWidthPt - 20) / (Math.Max(1, text.Length) * 0.6));
+
+    /// <summary>0.5 in: the shortest barcode a hand scanner reads reliably.</summary>
+    public const double MinBarcodeHeight = 36;
+
+    // Big and Huge: the number takes 24–78 pt, the barcode 84–120 pt (the
+    // 36 pt floor), leaving 6 pt of clear air between them (an angled scan
+    // sweep must not catch digit strokes) and 2 pt above the DESTROY line.
+    private const double LargeTextTop = BarH + 2, LargeTextHeight = 54;
+    private const double LargeBarcodeTop = 84;
+    private const double LargeNumberMaxFont = 72;
 
     /// <summary>Lay out one label: matching black date bars top and bottom
     /// (readable across a storage room), the grouped code line, and the
     /// Code 39 barcode with clear air above it so an angled scan sweep can't
-    /// catch the digit strokes. <paramref name="dateStyle"/> governs ONLY the
-    /// two date bars/texts (<see cref="DateStyleBars"/>/<see cref="DateStylePlain"/>)
-    /// — the barcode bars and code line are unaffected either way.</summary>
-    public static LabelDrawing ComposeDrawing(Item item, string dateStyle = DateStyleBars)
+    /// catch the digit strokes. <paramref name="style"/> sets the layout, the
+    /// leading zeros and the date bars; null is today's label.</summary>
+    public static LabelDrawing ComposeDrawing(Item item, LabelStyle? style = null)
     {
+        var s = (style ?? LabelStyle.Default).Normalized();
         const double w = LabelWidthPt, h = LabelHeightPt;
-        var plainDates = NormalizeDateStyle(dateStyle) == DateStylePlain;
+        var plainDates = s.DateStyle == DateStylePlain;
+        var standard = s.Layout == LayoutStandard;
         var bars = new List<BarRect>();
         if (!plainDates)
         {
             bars.Add(new(0, 0, w, BarH));            // CREATED bar
             bars.Add(new(0, h - BarH, w, BarH));      // DESTROY bar
         }
-        var display = DisplayCode(item.Code);
+        var number = NumberText(item.Code, s.Layout, s.LeadingZeros);
         // Invariant: these strings are printed on a physical label (and the
         // in-app preview shows exactly what prints) — the date shape can't
         // depend on the printing station's Windows locale.
+        var created = $"CREATED {item.Created.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}";
+        if (s.Layout == LayoutHuge && item.Code.Length > 8)
+            created = $"{item.Code[..^8]}  ·  {created}";   // Huge's number line has no room for it
         var texts = new List<TextRun>
         {
-            new($"CREATED {item.Created.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}",
-                0, 0, w, BarH, 12, Mono: false, White: !plainDates),
-            new(display, 0, BarH + 2, w, 34, CodeFontSize(display), Mono: true, White: false),
+            new(created, 0, 0, w, BarH, 12, Mono: false, White: !plainDates),
+            standard
+                ? new(number, 0, BarH + 2, w, 34, CodeFontSize(number), Mono: true, White: false)
+                : new(number, 0, LargeTextTop, w, LargeTextHeight,
+                    NumberFontSize(number, LargeNumberMaxFont), Mono: true, White: false),
             new($"DESTROY AFTER {item.Destroy.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}",
                 0, h - BarH, w, BarH, 12, Mono: false, White: !plainDates),
         };
 
         // 3:1 wide:narrow ratio; the bar field spans the label minus quiet
         // zones (≥10 narrow units each side keeps hand scanners happy). The
-        // 0.18" side insets keep long client ids above ~12 mil bars.
+        // 0.18" side insets keep long client ids above ~12 mil bars. Only the
+        // height changes with the layout, never below MinBarcodeHeight.
+        var (barTop, barHeight) = standard ? (66.0, 42.0) : (LargeBarcodeTop, MinBarcodeHeight);
         var elements = Code39.Encode(item.Code);
         var units = elements.Sum(e => e.Wide ? 3 : 1) + 20;
         var printable = 72 * (4.0 - 0.36);
@@ -236,7 +297,7 @@ public static class BoxLabels
         foreach (var e in elements)
         {
             var barW = narrow * (e.Wide ? 3 : 1);
-            if (e.Bar) bars.Add(new BarRect(cursor, 66, barW, 42));
+            if (e.Bar) bars.Add(new BarRect(cursor, barTop, barW, barHeight));
             cursor += barW;
         }
 
@@ -245,13 +306,13 @@ public static class BoxLabels
 
     // ------------------------------------------------------------ PDF export
     /// <summary>Write the print-ready PDF (US letter, print at 100% scale).
-    /// <paramref name="dateStyle"/> is forwarded to <see cref="ComposeDrawing"/>
-    /// unchanged — same "bars"/"plain" choice as the preview and in-app
-    /// print paths, so the PDF always matches what the window showed.</summary>
+    /// <paramref name="style"/> is forwarded to <see cref="ComposeDrawing"/>
+    /// unchanged — the same style as the preview and in-app print paths, so
+    /// the PDF always matches what the window showed.</summary>
     public static void RenderPdf(string path, IReadOnlyList<Item> items,
-        string dateStyle = DateStyleBars)
+        LabelStyle? style = null)
     {
-        using var doc = ComposePdf(items, dateStyle);
+        using var doc = ComposePdf(items, style);
         // Saved beside path and swapped in whole, so a save cut off partway
         // never replaces the previous PDF with a stub (R3).
         if (!AtomicPlace.TryReplace(path, tmp => doc.Save(tmp), out var error))
@@ -263,13 +324,13 @@ public static class BoxLabels
     /// numbers, so a file it cannot write (open in a PDF viewer, say) fails
     /// while no number has been used yet.</summary>
     public static void RenderPdf(Stream destination, IReadOnlyList<Item> items,
-        string dateStyle = DateStyleBars)
+        LabelStyle? style = null)
     {
-        using var doc = ComposePdf(items, dateStyle);
+        using var doc = ComposePdf(items, style);
         doc.Save(destination, closeStream: false);
     }
 
-    private static PdfDocument ComposePdf(IReadOnlyList<Item> items, string dateStyle)
+    private static PdfDocument ComposePdf(IReadOnlyList<Item> items, LabelStyle? style)
     {
         if (items.Count == 0) throw new ArgumentException("Nothing to print.");
         var doc = new PdfDocument();
@@ -283,7 +344,7 @@ public static class BoxLabels
                 var page = doc.Pages[doc.PageCount - 1];
                 using var gfx = XGraphics.FromPdfPage(page);
                 var (x, y) = SlotOrigin(i % PerSheet);
-                var d = ComposeDrawing(items[i], dateStyle);
+                var d = ComposeDrawing(items[i], style);
                 foreach (var b in d.Bars)
                     gfx.DrawRectangle(XBrushes.Black, x + b.X, y + b.Y, b.W, b.H);
                 foreach (var t in d.Texts)

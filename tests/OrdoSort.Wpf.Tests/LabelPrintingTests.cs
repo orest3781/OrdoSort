@@ -51,7 +51,7 @@ public class LabelPrintingTests : UiTest
     {
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())
-            LabelWpfRender.DrawLabel(dc, BoxLabels.ComposeDrawing(item, dateStyle), pixelsPerDip: 1.0);
+            LabelWpfRender.DrawLabel(dc, BoxLabels.ComposeDrawing(item, new BoxLabels.LabelStyle(DateStyle: dateStyle)), pixelsPerDip: 1.0);
         return visual.Drawing;
     }
 
@@ -92,7 +92,7 @@ public class LabelPrintingTests : UiTest
     public void EveryBarInThePlanIsDrawnBlack() => _fx.Invoke(() =>
     {
         var item = Items(1)[0];
-        var plan = BoxLabels.ComposeDrawing(item, BoxLabels.DateStyleBars);
+        var plan = BoxLabels.ComposeDrawing(item, new BoxLabels.LabelStyle(DateStyle: BoxLabels.DateStyleBars));
 
         var blackRectangles = Leaves(DrawOneLabel(item, BoxLabels.DateStyleBars))
             .OfType<GeometryDrawing>()

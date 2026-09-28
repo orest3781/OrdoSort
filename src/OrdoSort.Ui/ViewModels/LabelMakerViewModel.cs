@@ -778,7 +778,7 @@ public sealed class LabelMakerViewModel : ObservableObject
 
     /// <summary>Writes the PDF. Real code renders with PdfSharp; tests
     /// inject a failure to reach the render-failed-after-the-claim path.</summary>
-    internal Action<Stream, IReadOnlyList<BoxLabels.Item>, string> RenderPdfTo { get; set; } =
+    internal Action<Stream, IReadOnlyList<BoxLabels.Item>, BoxLabels.LabelStyle?> RenderPdfTo { get; set; } =
         BoxLabels.RenderPdf;
 
     /// <summary>Open the target, claim, render — in that order, off the UI
@@ -809,7 +809,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             throw;
         }
         onClaimed(start);
-        RenderPdfTo(output, RebuildFromClaim(b, start), dateStyle);
+        RenderPdfTo(output, RebuildFromClaim(b, start), new BoxLabels.LabelStyle(DateStyle: dateStyle));
         output.SetLength(output.Position);   // drop the tail of a longer old file
         return start;
     }

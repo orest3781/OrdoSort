@@ -84,7 +84,7 @@ public sealed class LabelPreviewControl : FrameworkElement
         var dy = (ActualHeight - BoxLabels.LabelHeightPt * scale) / 2;
         dc.PushTransform(new TranslateTransform(dx, dy));
         dc.PushTransform(new ScaleTransform(scale, scale));
-        LabelWpfRender.DrawLabel(dc, BoxLabels.ComposeDrawing(item, DateStyle),
+        LabelWpfRender.DrawLabel(dc, BoxLabels.ComposeDrawing(item, new BoxLabels.LabelStyle(DateStyle: DateStyle)),
             VisualTreeHelper.GetDpi(this).PixelsPerDip);
         dc.Pop();
         dc.Pop();
@@ -143,7 +143,7 @@ internal sealed class LabelSheetElement : FrameworkElement
         {
             var (x, y) = BoxLabels.SlotOrigin(i);
             dc.PushTransform(new TranslateTransform(x, y));
-            LabelWpfRender.DrawLabel(dc, BoxLabels.ComposeDrawing(_items[i], _dateStyle), ppd);
+            LabelWpfRender.DrawLabel(dc, BoxLabels.ComposeDrawing(_items[i], new BoxLabels.LabelStyle(DateStyle: _dateStyle)), ppd);
             dc.Pop();
         }
         dc.Pop();

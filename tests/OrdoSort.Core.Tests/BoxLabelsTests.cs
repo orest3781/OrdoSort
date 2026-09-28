@@ -178,7 +178,7 @@ public class BoxLabelsTests
         var item = new BoxLabels.Item("ABCD00000042",
             new DateTime(2026, 1, 1), new DateTime(2026, 1, 31));
         var defaulted = BoxLabels.ComposeDrawing(item);
-        var explicitBars = BoxLabels.ComposeDrawing(item, BoxLabels.DateStyleBars);
+        var explicitBars = BoxLabels.ComposeDrawing(item, new BoxLabels.LabelStyle(DateStyle: BoxLabels.DateStyleBars));
 
         // default parameter behaves exactly like an explicit "bars" request
         Assert.Equal(explicitBars.Bars.Count, defaulted.Bars.Count);
@@ -198,8 +198,8 @@ public class BoxLabelsTests
     {
         var item = new BoxLabels.Item("ABCD00000042",
             new DateTime(2026, 1, 1), new DateTime(2026, 1, 31));
-        var bars = BoxLabels.ComposeDrawing(item, BoxLabels.DateStyleBars);
-        var plain = BoxLabels.ComposeDrawing(item, BoxLabels.DateStylePlain);
+        var bars = BoxLabels.ComposeDrawing(item, new BoxLabels.LabelStyle(DateStyle: BoxLabels.DateStyleBars));
+        var plain = BoxLabels.ComposeDrawing(item, new BoxLabels.LabelStyle(DateStyle: BoxLabels.DateStylePlain));
 
         // exactly the two full-width date bars vanish — the barcode bars
         // (never full label width) are the same rects, same count, in bars
@@ -239,4 +239,94 @@ public class BoxLabelsTests
     [InlineData("neon")]
     public void UnknownOrMissingDateStyleNormalizesToBars(string? style) =>
         Assert.Equal(BoxLabels.DateStyleBars, BoxLabels.NormalizeDateStyle(style));
+
+    // ---- label styles (spec 2026-09-28-box-label-style-design) ----------
+
+    private static readonly BoxLabels.Item Plain42 =
+        new("ABCD00000042", new DateTime(2026, 1, 1), new DateTime(2026, 1, 31));
+
+    /// <summary>The regression pin: the default style draws exactly the
+    /// label every existing install prints today.</summary>
+    [Fact]
+    public void TheDefaultStyleDrawsTodaysLabel()
+    {
+        var d = BoxLabels.ComposeDrawing(Plain42);
+
+        var code = d.Texts.Single(t => t.Mono);
+        Assert.Equal("ABCD 0000 0042", code.Text);
+        Assert.Equal((0.0, 24.0, 288.0, 34.0), (code.X, code.Y, code.W, code.H));
+        Assert.Equal(BoxLabels.CodeFontSize("ABCD 0000 0042"), code.Size);
+        var barcode = d.Bars.Where(b => b.W < BoxLabels.LabelWidthPt).ToList();
+        Assert.All(barcode, b => Assert.Equal((66.0, 42.0), (b.Y, b.H)));
+        Assert.Equal("CREATED 2026-01-01", d.Texts[0].Text);
+    }
+
+    [Theory]
+    [InlineData("ABCD00000042", "standard", true, "ABCD 0000 0042")]
+    [InlineData("ABCD00000042", "standard", false, "ABCD 42")]
+    [InlineData("ABCD00000042", "big", false, "ABCD 42")]
+    [InlineData("ABCD00004200", "huge", false, "4200")]
+    [InlineData("ABCD00004200", "huge", true, "0000 4200")]
+    [InlineData("NOTACODE", "huge", false, "NOTACODE")]   // no 8-digit tail: shown as-is
+    public void NumberTextFollowsLayoutAndZeros(string code, string layout, bool zeros, string expected) =>
+        Assert.Equal(expected, BoxLabels.NumberText(code, layout, zeros));
+
+    public static TheoryData<string, string, bool, string> EveryStyle()
+    {
+        var data = new TheoryData<string, string, bool, string>();
+        foreach (var code in new[] { "ABCD00000042", "ABCDEFGH99999999", "NGC00004200" })
+            foreach (var layout in new[] { BoxLabels.LayoutStandard, BoxLabels.LayoutBig, BoxLabels.LayoutHuge })
+                foreach (var zeros in new[] { true, false })
+                    foreach (var dates in new[] { BoxLabels.DateStyleBars, BoxLabels.DateStylePlain })
+                        data.Add(code, layout, zeros, dates);
+        return data;
+    }
+
+    [Theory, MemberData(nameof(EveryStyle))]
+    public void EveryStyleKeepsTheLabelSafeToPrintAndScan(string code, string layout, bool zeros, string dates)
+    {
+        var item = new BoxLabels.Item(code, new DateTime(2026, 1, 1), new DateTime(2026, 1, 31));
+        var d = BoxLabels.ComposeDrawing(item, new BoxLabels.LabelStyle(layout, zeros, dates));
+        var standard = BoxLabels.ComposeDrawing(item);
+        var barcode = d.Bars.Where(b => b.W < BoxLabels.LabelWidthPt).ToList();
+        var number = d.Texts.Single(t => t.Mono);
+
+        // the barcode: same bars across the label as today, never under 0.5 in
+        Assert.Equal(standard.Bars.Where(b => b.W < BoxLabels.LabelWidthPt).Select(b => (b.X, b.W)),
+            barcode.Select(b => (b.X, b.W)));
+        Assert.All(barcode, b => Assert.True(b.H >= BoxLabels.MinBarcodeHeight));
+        // inside the label
+        Assert.All(d.Bars, b => Assert.True(b.X >= 0 && b.Y >= 0 && b.X + b.W <= 288 && b.Y + b.H <= 144));
+        Assert.All(d.Texts, t => Assert.True(t.Y >= 0 && t.Y + t.H <= 144));
+        // the number fits the width and clears the barcode and the date lines
+        Assert.True(number.Size * 0.6 * number.Text.Length <= BoxLabels.LabelWidthPt - 20 + 0.001);
+        Assert.All(barcode, b => Assert.True(number.Y + number.H <= b.Y));
+        Assert.True(number.Y >= 22 && number.Y + number.H <= 144 - 22);
+    }
+
+    [Fact]
+    public void HugeMovesTheClientIdIntoTheCreatedLine()
+    {
+        var item = new BoxLabels.Item("NGC00004200", new DateTime(2026, 9, 28), new DateTime(2033, 9, 26));
+        var d = BoxLabels.ComposeDrawing(item, new BoxLabels.LabelStyle(BoxLabels.LayoutHuge, LeadingZeros: false));
+
+        Assert.Equal("NGC  ·  CREATED 2026-09-28", d.Texts[0].Text);
+        Assert.Equal("4200", d.Texts.Single(t => t.Mono).Text);
+        Assert.Equal(72, d.Texts.Single(t => t.Mono).Size);   // capped by height, not width
+    }
+
+    [Fact]
+    public void BigWithoutZerosPrintsANumberTwiceTodaysSize()
+    {
+        var d = BoxLabels.ComposeDrawing(Plain42, new BoxLabels.LabelStyle(BoxLabels.LayoutBig, LeadingZeros: false));
+
+        Assert.True(d.Texts.Single(t => t.Mono).Size >= 2 * BoxLabels.CodeFontSize("ABCD 0000 0042") - 0.001);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("neon")]
+    public void UnknownOrMissingLayoutIsStandard(string? layout) =>
+        Assert.Equal(BoxLabels.LayoutStandard, BoxLabels.NormalizeLayout(layout));
 }
