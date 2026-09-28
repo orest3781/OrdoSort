@@ -222,6 +222,41 @@ public class WebViewPdfViewerGuardBehaviourTests : UiTest, IDisposable
         return path;
     }
 
+    /// <summary>QC-24, Q2-31: when the preview's Edge process died, every
+    /// filing keystroke (and Review matches' Use/Skip) failed with "didn't
+    /// finish" until the app was restarted, because each one navigates the
+    /// pane first. The viewer now notices, says so once, and does nothing
+    /// on those calls: a dead browser holds no file open.</summary>
+    [Fact]
+    public void WhenEdgeDiesTheViewerSaysSoAndFilingCallsStillWork() => _fx.Invoke(() =>
+    {
+        var (view, window) = NewView();
+        try
+        {
+            var viewer = new WebViewPdfViewer(view);
+            Assert.True(InitReady(viewer), "real WebView2 init failed: " + viewer.InitError);
+            string? stopped = null;
+            viewer.Stopped += message => stopped = message;
+            var doc = WritePdf("a.pdf", "A");
+#pragma warning disable xUnit1031
+            NavigateAndWait(view, () => viewer.ShowAsync(doc).GetAwaiter().GetResult());
+#pragma warning restore xUnit1031
+
+            System.Diagnostics.Process.GetProcessById((int)view.CoreWebView2.BrowserProcessId)
+                .Kill(entireProcessTree: true);
+            PumpUntil(() => stopped is not null, "the viewer should notice its Edge process is gone");
+
+            Assert.False(viewer.Ready);
+            Assert.Contains("restart OrdoSort", stopped);
+            var release = viewer.ReleaseAsync();   // what every filing does first
+            PumpUntilComplete(release);
+            Assert.True(release.IsCompletedSuccessfully);
+            Assert.True(viewer.ShowAsync(doc).IsCompletedSuccessfully);
+            viewer.Blank();
+        }
+        finally { window.Close(); }
+    });
+
     /// <summary>The Processing window fits the page on open; a resize must
     /// re-open the page at the zoom for the new size, or it is left too big
     /// or too small (live check 2026-09-27: Edge keeps an open document's

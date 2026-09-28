@@ -10,7 +10,15 @@ namespace OrdoSort.Wpf.Services;
 /// (the UI thread in the app) or inline when none is given (tests).</summary>
 public sealed class FolderWatchService : IDisposable
 {
-    private readonly List<FileSystemWatcher> _watchers = new();
+    // Keyed by folder. SetFolders runs on a pool thread while Dispose and
+    // the watchers' own error callbacks run elsewhere, so every access holds
+    // _gate (QC-27: a plain List raced them).
+    private readonly Dictionary<string, FileSystemWatcher> _watchers = new(StringComparer.OrdinalIgnoreCase);
+    // Folders whose watch Windows ended with an error, waiting for _retry.
+    private readonly HashSet<string> _broken = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _gate = new();
+    private readonly ITimer _retry;
+    private readonly int _retryMs;
     private readonly ITimer _debounce;
     private readonly ITimer _poll;
     private readonly int _debounceMs;
@@ -25,39 +33,105 @@ public sealed class FolderWatchService : IDisposable
     /// only then).</summary>
     public event Action? Polled;
 
-    /// <param name="time">The clock both timers run on; null is the real
+    /// <param name="time">The clock the timers run on; null is the real
     /// clock. Tests pass a manual one so no test sleeps.</param>
+    /// <param name="retryMs">How often a watch Windows ended is tried again
+    /// until its folder is back.</param>
     public FolderWatchService(int debounceMs = 1500,
         int pollMs = OrdoSort.Core.Config.DefaultPollSeconds * 1000,
-        SynchronizationContext? context = null, TimeProvider? time = null)
+        SynchronizationContext? context = null, TimeProvider? time = null, int retryMs = 5000)
     {
         _debounceMs = debounceMs;
+        _retryMs = retryMs;
         _context = context;
         var clock = time ?? TimeProvider.System;
         _debounce = clock.CreateTimer(_ => RaiseActivity(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         var interval = TimeSpan.FromMilliseconds(pollMs);
         _poll = clock.CreateTimer(_ => { RaisePolled(); RaiseActivity(); }, null, interval, interval);
+        _retry = clock.CreateTimer(_ => RetryBroken(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     /// <summary>(Re)build the watcher set. Blank or missing folders are
     /// skipped — a not-yet-created deferred folder must not throw.</summary>
     public void SetFolders(params string?[] folders)
     {
-        foreach (var w in _watchers) w.Dispose();
-        _watchers.Clear();
-        foreach (var folder in folders.Distinct(StringComparer.OrdinalIgnoreCase))
+        lock (_gate)
         {
-            if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder)) continue;
-            var w = new FileSystemWatcher(folder)
+            if (_disposed) return;
+            foreach (var w in _watchers.Values) w.Dispose();
+            _watchers.Clear();
+            _broken.Clear();
+            foreach (var folder in folders.Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
-                EnableRaisingEvents = true,
-            };
-            w.Created += (_, _) => Poke();
-            w.Deleted += (_, _) => Poke();
-            w.Renamed += (_, _) => Poke();
-            _watchers.Add(w);
+                if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder)) continue;
+                Watch(folder);
+            }
         }
+    }
+
+    /// <summary>True while a live watch covers <paramref name="folder"/>.</summary>
+    internal bool WatchingNow(string folder)
+    {
+        lock (_gate) return _watchers.ContainsKey(folder);
+    }
+
+    // Callers hold _gate.
+    private void Watch(string folder)
+    {
+        var w = new FileSystemWatcher(folder)
+        {
+            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
+            // The most Windows allows, so a burst of files overflows it later.
+            InternalBufferSize = 64 * 1024,
+            EnableRaisingEvents = true,
+        };
+        w.Created += (_, _) => Poke();
+        w.Deleted += (_, _) => Poke();
+        w.Renamed += (_, _) => Poke();
+        w.Error += (_, _) => OnWatchEnded(folder, w);
+        _watchers[folder] = w;
+    }
+
+    /// <summary>Windows ended this watch: its buffer overflowed, or the folder
+    /// (often a share) went away (QC-20). Events may have been missed, so
+    /// rescan now; and set the watch up again once the folder is back,
+    /// rather than leaving only the poll.</summary>
+    private void OnWatchEnded(string folder, FileSystemWatcher watcher)
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            if (_watchers.TryGetValue(folder, out var current) && ReferenceEquals(current, watcher))
+                _watchers.Remove(folder);
+            watcher.Dispose();
+            _broken.Add(folder);
+            _retry.Change(TimeSpan.FromMilliseconds(_retryMs), Timeout.InfiniteTimeSpan);
+        }
+        Poke();
+    }
+
+    private void RetryBroken()
+    {
+        var rearmed = false;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            foreach (var folder in _broken.ToList())
+            {
+                if (!Directory.Exists(folder)) continue;
+                try { Watch(folder); }
+                catch (Exception e) when (e is IOException or ArgumentException or UnauthorizedAccessException)
+                {
+                    continue;   // not back yet; try again next time
+                }
+                _broken.Remove(folder);
+                rearmed = true;
+            }
+            if (_broken.Count > 0)
+                _retry.Change(TimeSpan.FromMilliseconds(_retryMs), Timeout.InfiniteTimeSpan);
+        }
+        // anything that landed while the watch was down
+        if (rearmed) Poke();
     }
 
     /// <summary>Restart the debounce window; fires <see cref="Activity"/> once
@@ -91,10 +165,15 @@ public sealed class FolderWatchService : IDisposable
 
     public void Dispose()
     {
-        _disposed = true;
-        foreach (var w in _watchers) w.Dispose();
-        _watchers.Clear();
+        lock (_gate)
+        {
+            _disposed = true;
+            foreach (var w in _watchers.Values) w.Dispose();
+            _watchers.Clear();
+            _broken.Clear();
+        }
         _debounce.Dispose();
         _poll.Dispose();
+        _retry.Dispose();
     }
 }

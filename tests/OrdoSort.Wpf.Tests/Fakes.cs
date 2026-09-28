@@ -8,6 +8,11 @@ namespace OrdoSort.Wpf.Tests;
 public sealed class FakeViewer : IPdfViewer
 {
     public List<string> Shown { get; } = new();
+
+    public event Action<string>? Stopped;
+
+    /// <summary>Stands in for the preview's Edge process dying.</summary>
+    public void Stop(string message = "The document preview stopped.") => Stopped?.Invoke(message);
     /// <summary>The page size each document was shown with, in order.</summary>
     public List<OrdoSort.Core.PageSize?> ShownPages { get; } = new();
     public int Releases { get; private set; }

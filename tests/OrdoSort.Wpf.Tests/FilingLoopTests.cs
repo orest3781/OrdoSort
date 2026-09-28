@@ -392,6 +392,35 @@ public class FilingLoopTests
         Assert.Equal("Ctrl+1", HotkeyParser.Display(fx.Shell.Routes[0].Gesture!));
     }
 
+    /// <summary>Q2-34: a blank inbox was resolved beside config.json, so it
+    /// became the config folder: the dashboard showed a calm "0 files ready"
+    /// and "Open inbox" opened the config folder. Blank stays blank now.</summary>
+    [Fact]
+    public void WithNoInboxSetTheDashboardSaysSoAndOpenInboxOpensNothing()
+    {
+        using var fx = new ShellFixture(cfg => cfg.Inbox = "");
+
+        fx.Shell.Initialize();
+        fx.Shell.OpenInboxCommand.Execute(null);
+
+        Assert.Equal("No inbox folder is configured yet.", fx.Shell.DetailLine);
+        Assert.Contains("No inbox folder is set", fx.Shell.StatusLine);
+    }
+
+    /// <summary>QC-24: when the preview's Edge process dies the viewer stops
+    /// and says why; the shell passes that on, and filing carries on.</summary>
+    [Fact]
+    public async Task WhenThePreviewStopsTheShellSaysSoAndFilingCarriesOn()
+    {
+        using var fx = Started("20240115--111111.pdf");
+
+        fx.Viewer.Stop("The document preview stopped.");
+
+        Assert.Contains(fx.Dialogs.Warnings, w => w.Message == "The document preview stopped.");
+        await fx.Shell.OnRouteAsync(0);
+        Assert.Single(Directory.GetFiles(fx.RouteDir));
+    }
+
     [Fact]
     public void SuggestionsComeFromSeedsRankedAndPrefixFiltered()
     {

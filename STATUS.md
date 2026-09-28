@@ -40,8 +40,8 @@
 | P1 | Q2-35 | Two destinations on the same key in config.json: both buttons show it, the key silently files to one of them | ✅ Done |
 | P2 | QC-17, D4, QC-23 (QC-23 ✅ done) | Settings accepts values that make every filing (or session start) fail later: a `:` in a suffix, a bad naming mode, a numeric hotkey | ✅ Done |
 | P2 | QC-18, Q2-08, DW-07 | Settings OK: freezes on a dead share; can switch config under a Start scan; a failed save leaves the app on unsaved settings | ✅ Done |
-| P2 | QC-24, Q2-31 | If the Edge preview process dies, every filing key (and Review matches' Use/Skip) fails until restart | ⬜ Not started |
-| P2 | QC-20, Q2-34 | Live folder watch dies silently after an overflow or share drop; a blank inbox shows a calm "0 files" and opens the config folder | ⬜ Not started |
+| P2 | QC-24, Q2-31 | If the Edge preview process dies, every filing key (and Review matches' Use/Skip) fails until restart | ✅ Done |
+| P2 | QC-20, Q2-34 | Live folder watch dies silently after an overflow or share drop; a blank inbox shows a calm "0 files" and opens the config folder | ✅ Done |
 | P2 | QC-21, QC-22 | Privacy: document names and paths in the shared crash.log; preview history kept in the WebView2 profile | ⬜ Not started |
 | P2 | QC-28, QC-29 | Box labels: renaming a client onto a peer's new id loses the counter; a lowercase id on disk blocks Save and Print | ⬜ Not started |
 | P2 | Q2-05, Q2-06, Q2-12, Q2-09 | Tool windows: Clear during an add brings rows back; saved passwords changed mid-unlock re-probe live rows; re-adding during a rename lists a file twice; Page counts drops a walk error | ✅ Done |

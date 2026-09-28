@@ -211,6 +211,12 @@ public partial class TriageWindow : Window
             AdditionalBrowserArguments = "--disable-smooth-scrolling",
         };
         _pdf = new WebViewPdfViewer(Viewer);
+        // The preview's Edge process died: Use and Skip go on without it
+        // (Q2-31); before, each one threw into the crash dialog.
+        _pdf.Stopped += message =>
+        {
+            if (!IsClosed) Dialogs.Warn(message, "OrdoSort — Review matches");
+        };
         _panZone = () =>
         {
             if (!IsActive || !Viewer.IsVisible) return null;
