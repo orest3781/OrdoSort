@@ -71,4 +71,40 @@ public class DialogServiceContractTests
         IDialogService dialogs = new OneFileDialogs();
         Assert.Null(dialogs.AskDate("20260115", 3));
     }
+
+    /// <summary>MainWindow's DialogRelay, the dashboard's dialog service,
+    /// wrapping whichever real service is current.</summary>
+    private static IDialogService RelayTo(IDialogService inner)
+    {
+        var relayType = typeof(OrdoSort.Wpf.MainWindow).GetNestedType("DialogRelay",
+            System.Reflection.BindingFlags.NonPublic)!;
+        Func<IDialogService> get = () => inner;
+        return (IDialogService)Activator.CreateInstance(relayType, get)!;
+    }
+
+    /// <summary>DW-24: the relay forwarded only the members it spelled out.
+    /// Everything with a default body (AskOpenFiles, the folder-aware
+    /// AskOpenFile, AskPassword, AskDate) silently fell back to that default
+    /// instead of reaching the real service: a multi-file picker through it
+    /// would have allowed one file, a password prompt would never have shown.
+    /// No caller goes through it for those today; now any caller would get
+    /// the real thing.</summary>
+    [Fact]
+    public void TheDashboardsDialogRelayForwardsEveryDefaultedQuestion()
+    {
+        var inner = new FakeDialogs
+        {
+            NextOpenFiles = new[] { @"C:\a.pdf", @"C:\b.pdf" },
+            NextOpenFile = @"C:\c.pdf",
+        };
+        inner.PasswordAnswers.Enqueue("secret");
+        inner.DateAnswers.Enqueue("20260115");
+        var relay = RelayTo(inner);
+
+        Assert.Equal(2, relay.AskOpenFiles("*.*").Length);
+        Assert.Equal(@"C:\c.pdf", relay.AskOpenFile("*.*", @"C:\start"));
+        Assert.Equal(@"C:\start", inner.LastOpenFileInitialDirectory);
+        Assert.Equal("secret", relay.AskPassword(new OrdoSort.Core.PasswordRequest("a.pdf", null, false)));
+        Assert.Equal("20260115", relay.AskDate("20260101", 2));
+    }
 }

@@ -77,7 +77,8 @@ public static class PathIdentity
         public bool Equals(string? a, string? b) => Same(a, b);
         // Must agree with Same's own fallback: hash whichever form Same
         // would actually compare, canonical when there is one.
+        // Null hashes to 0, as the default comparer does (DW-85).
         public int GetHashCode(string obj) =>
-            StringComparer.OrdinalIgnoreCase.GetHashCode(Canonical(obj) ?? obj);
+            obj is null ? 0 : StringComparer.OrdinalIgnoreCase.GetHashCode(Canonical(obj) ?? obj);
     }
 }

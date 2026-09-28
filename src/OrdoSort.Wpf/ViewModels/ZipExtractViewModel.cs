@@ -38,6 +38,12 @@ public sealed class ZipExtractViewModel : ZipListViewModel
         ZipCommand = new AsyncRelayCommand(() => ZipAsync(null), () => Rows.Count > 0 && !IsBusy);
         ZipAsCommand = new AsyncRelayCommand(ZipWithDialogAsync, () => Rows.Count > 0 && !IsBusy);
         ExtractCommand = new AsyncRelayCommand(ExtractAsync, () => RunnableZips > 0 && !IsBusy);
+        // AsyncRelayCommand hands a faulted run to OnError and swallows it;
+        // unwired, the status line kept "Zipping 3 items…" and said nothing
+        // more (Q2-44).
+        ZipCommand.OnError += ex => Status = $"The zip stopped unexpectedly: {ex.Message}";
+        ZipAsCommand.OnError += ex => Status = $"The zip stopped unexpectedly: {ex.Message}";
+        ExtractCommand.OnError += ex => Status = $"Extracting stopped unexpectedly: {ex.Message}";
     }
 
     /// <summary>Anything that exists — a PDF is valid input here, just for

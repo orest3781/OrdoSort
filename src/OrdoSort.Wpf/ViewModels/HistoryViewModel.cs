@@ -156,9 +156,10 @@ public sealed class HistoryViewModel : ObservableObject
         }
         finally
         {
+            // Also re-queries Show all, with _showedAll already settled, so
+            // no second RaiseCanExecuteChanged is needed after (DW-87).
             IsBusy = false;
         }
-        ShowAllCommand.RaiseCanExecuteChanged();
         Raise(nameof(CanShowAll));
         ApplyFilter();
     }

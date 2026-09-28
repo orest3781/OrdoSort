@@ -689,9 +689,11 @@ public class SettingsViewModelTests : IDisposable
         // simply skipped the blank case instead of flagging it (QC-02,
         // 2026-08-21 audit). Match the inbox warning's own shape: still a
         // Warning, not a HardError, since a user who never skips doesn't
-        // need a blocked OK over an optional field.
-        var cfg = new Config { Inbox = _dir };
+        // need a blocked OK over an optional field. Since Q2-43 it is asked
+        // only when this edit is what blanked it (SettingsOkWarningsTests).
+        var cfg = new Config { Inbox = _dir, Deferred = _dir };
         var vm = new SettingsViewModel(cfg, _dialogs);
+        vm.Deferred = "";
 
         Assert.Contains(vm.Warnings(), w => w.Contains("set-aside", StringComparison.OrdinalIgnoreCase));
     }
@@ -1903,12 +1905,108 @@ public class SettingsViewModelTests : IDisposable
         scheduler.ReleaseAll();
         Assert.Equal("no folder chosen yet", w.Problem);
     }
+
+    /// <summary>DW-65: Up and Down moved a folder in the hidden flat list.
+    /// When the next folder in that list sat in another section, the move
+    /// changed nothing on screen (the folder stays under its own heading),
+    /// so the button looked broken. They now move a folder among its own
+    /// section's folders, and are off at the section's edge (drag, or the
+    /// Section box, moves a folder to another section).</summary>
+    [Fact]
+    public void UpAndDownMoveAFolderWithinItsOwnSection()
+    {
+        // flat order A(Day) X(Night) B(Day): on screen Day holds A, B
+        var vm = new SettingsViewModel(WatchCfg(("A", "Day"), ("X", "Night"), ("B", "Day")), _dialogs);
+        var b = vm.WatchFolders[2];
+        vm.SelectedWatch = b;
+
+        Assert.True(vm.WatchUpCommand.CanExecute(null));
+        vm.WatchUpCommand.Execute(null);
+
+        var day = vm.WatchFolders.Where(w => w.Section == "Day").Select(w => w.Label).ToArray();
+        Assert.Equal(new[] { "B", "A" }, day);   // a visible change: B is now above A
+        Assert.False(vm.WatchUpCommand.CanExecute(null));   // top of its section
+        Assert.True(vm.WatchDownCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void UpIsOffForTheFirstFolderOfASectionEvenWithAnotherSectionAbove()
+    {
+        var vm = new SettingsViewModel(WatchCfg(("X", "Night"), ("A", "Day")), _dialogs);
+        vm.SelectedWatch = vm.WatchFolders[1];
+
+        Assert.False(vm.WatchUpCommand.CanExecute(null));
+        Assert.False(vm.WatchDownCommand.CanExecute(null));
+    }
+
+    /// <summary>DW-66: dropping a folder on empty space below the list had
+    /// no test. It goes to the end, into the last folder's section, which is
+    /// where it then shows.</summary>
+    [Fact]
+    public void DropOnEmptySpaceMovesTheFolderToTheEndOfTheLastSection()
+    {
+        var vm = new SettingsViewModel(
+            WatchCfg(("A", "Night"), ("B", "Day"), ("C", "Day")), _dialogs);
+        var a = vm.WatchFolders[0];
+
+        vm.DropWatch(a, over: null);
+
+        Assert.Equal(new[] { "B", "C", "A" }, vm.WatchFolders.Select(w => w.Label).ToArray());
+        Assert.Equal("Day", a.Section);
+        Assert.Same(a, vm.SelectedWatch);
+    }
+
+    /// <summary>DW-66: the only folder dropped on empty space stays put.</summary>
+    [Fact]
+    public void DropOnEmptySpaceWithNothingElseInTheListLeavesTheFolderAlone()
+    {
+        var vm = new SettingsViewModel(WatchCfg(("A", "Night")), _dialogs);
+        var a = vm.WatchFolders[0];
+
+        vm.DropWatch(a, over: null);
+
+        Assert.Same(a, Assert.Single(vm.WatchFolders));
+        Assert.Equal("Night", a.Section);
+    }
+
+    /// <summary>DW-68: a section typed with the same name as the default
+    /// heading showed as a second header with that same text, though the
+    /// dashboard shows the two as one group. Settings now shows them as one
+    /// group too.</summary>
+    [Fact]
+    public void ASectionNamedLikeTheDefaultHeadingIsShownAsTheDefaultGroup()
+    {
+        var cfg = WatchCfg(("A", ""), ("B", "monitored folders"));
+        cfg.MonitorTitle = "Monitored folders";
+        var vm = new SettingsViewModel(cfg, _dialogs);
+
+        var header = Assert.Single(vm.WatchRows.OfType<WatchSectionVm>());
+        Assert.True(header.IsDefault);
+        Assert.Equal(new object[] { header, vm.WatchFolders[0], vm.WatchFolders[1] }, vm.WatchRows.ToArray());
+    }
+
+    /// <summary>DW-70: with the default heading renamed to "New section",
+    /// Add section named its new section "New section" too: two headings
+    /// with one name.</summary>
+    [Fact]
+    public void AddSectionNeverReusesTheDefaultHeadingsName()
+    {
+        var cfg = WatchCfg(("A", ""));
+        cfg.MonitorTitle = "New section";
+        var vm = new SettingsViewModel(cfg, _dialogs);
+
+        var added = vm.AddSection();
+
+        Assert.NotNull(added);
+        Assert.NotEqual("New section", added.Header, StringComparer.CurrentCultureIgnoreCase);
+        Assert.Equal(2, vm.WatchRows.OfType<WatchSectionVm>().Count());
+    }
 }
 
 public class ApplySettingsTests
 {
     [Fact]
-    public void FreshConfigForSettingsRereadsTheSharedConfigFromDisk()
+    public async Task FreshConfigForSettingsRereadsTheSharedConfigFromDisk()
     {
         using var fx = new ShellFixture();
         fx.Shell.Initialize();
@@ -1917,8 +2015,30 @@ public class ApplySettingsTests
         // simulate an admin hand-editing the shared alerts while the app runs
         SetAlertTextsOnDisk(fx.CfgPath, "ADMIN-EDIT");
 
-        var fresh = fx.Shell.FreshConfigForSettings();
+        var fresh = await fx.Shell.FreshConfigForSettingsAsync();
         Assert.Contains("ADMIN-EDIT", fresh.AlertTexts);
+    }
+
+    /// <summary>Q2-20: opening Settings read config.json and its side file
+    /// several times and hashed three sections, all on the UI thread before
+    /// the window appeared, even if the user then cancelled at once. With the
+    /// config on a slow or dead share the dashboard froze on the click. The
+    /// reads now run off the UI thread; the window opens once they're back.</summary>
+    [Fact]
+    public async Task OpeningSettingsReadsTheConfigOffTheUiThread()
+    {
+        var scheduler = new ControlledWorkScheduler();
+        using var fx = new ShellFixture(scheduler: scheduler);
+        fx.Shell.SaveConfigNow();
+        SetAlertTextsOnDisk(fx.CfgPath, "ADMIN-EDIT");
+        var queuedBefore = scheduler.Queued;
+
+        var opening = fx.Shell.FreshConfigForSettingsAsync();
+
+        Assert.False(opening.IsCompleted);   // nothing read on the click itself
+        Assert.Equal(queuedBefore + 1, scheduler.Queued);
+        scheduler.ReleaseNewest();
+        Assert.Contains("ADMIN-EDIT", (await opening).AlertTexts);
     }
 
     [Fact]
@@ -2047,7 +2167,7 @@ public class ApplySettingsTests
     }
 
     [Fact]
-    public void OpeningSettingsWithADuplicateKeyInConfigJsonDoesNotCrash()
+    public async Task OpeningSettingsWithADuplicateKeyInConfigJsonDoesNotCrash()
     {
         // Config.Load accepts a key written twice (last wins); JsonNode
         // throws ArgumentException for it. The snapshot must not escape that.
@@ -2057,7 +2177,7 @@ public class ApplySettingsTests
         var text = File.ReadAllText(fx.CfgPath);
         File.WriteAllText(fx.CfgPath, text.Replace("\"theme\":", "\"theme\": \"auto\", \"theme\":"));
 
-        var fresh = fx.Shell.FreshConfigForSettings();
+        var fresh = await fx.Shell.FreshConfigForSettingsAsync();
 
         Assert.NotNull(fresh);
     }

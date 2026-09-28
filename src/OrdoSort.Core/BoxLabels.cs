@@ -252,7 +252,10 @@ public static class BoxLabels
         string dateStyle = DateStyleBars)
     {
         using var doc = ComposePdf(items, dateStyle);
-        doc.Save(path);
+        // Saved beside path and swapped in whole, so a save cut off partway
+        // never replaces the previous PDF with a stub (R3).
+        if (!AtomicPlace.TryReplace(path, tmp => doc.Save(tmp), out var error))
+            throw new IOException(error);
     }
 
     /// <summary>Render into a stream the caller already holds open, and leave

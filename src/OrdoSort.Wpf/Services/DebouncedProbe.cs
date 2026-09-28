@@ -89,13 +89,16 @@ public sealed class DebouncedProbe<T> : IDisposable where T : class
     /// actually runs the probe.</summary>
     public void Trigger(Func<T> compute, bool immediate = false)
     {
-        if (_disposed) return;
+        // The disposed check and the arming sit under the lock Dispose
+        // takes, so a Dispose on another thread can't land between them and
+        // leave work armed on a disposed probe (DW-25).
         lock (_gate)
         {
+            if (_disposed) return;
             _generation++;
             _pendingCompute = compute;
+            _timer.Change(immediate ? TimeSpan.Zero : TimeSpan.FromMilliseconds(_intervalMs), Timeout.InfiniteTimeSpan);
         }
-        _timer.Change(immediate ? TimeSpan.Zero : TimeSpan.FromMilliseconds(_intervalMs), Timeout.InfiniteTimeSpan);
     }
 
     /// <summary>Cancel whatever's pending: bumps the generation (so an
@@ -103,13 +106,13 @@ public sealed class DebouncedProbe<T> : IDisposable where T : class
     /// disarms the timer (so a not-yet-fired one never runs at all).</summary>
     public void Cancel()
     {
-        if (_disposed) return;
         lock (_gate)
         {
+            if (_disposed) return;
             _generation++;
             _pendingCompute = null;
+            _timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         }
-        _timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     private void Fire()
@@ -167,8 +170,8 @@ public sealed class DebouncedProbe<T> : IDisposable where T : class
         {
             _generation++;
             _pendingCompute = null;
+            _disposed = true;
+            _timer.Dispose();
         }
-        _disposed = true;
-        _timer.Dispose();
     }
 }

@@ -335,7 +335,7 @@ public sealed class WatchEditVm : ObservableObject, IDisposable
         _problemProbe.Resolve(
             p.Length == 0 ? "no folder chosen yet" : null,
             neutralValue: "",
-            compute: () => _directoryExists(p) ? "" : $"folder doesn't exist: {p}",
+            compute: () => _directoryExists(p) ? "" : $"folder {Config.MissingFolder(p, _directoryExists)}",
             immediate);
     }
 
@@ -608,6 +608,23 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     // substitutable.
     private readonly Func<WatchFolder, IEnumerable<string>, FolderMonitor.FolderStatus> _folderStatus;
 
+    // Why files can't be written and deleted in a folder ("" when they can):
+    // the inbox and set-aside folders get the write check destinations get.
+    private readonly Func<string, string> _writeProblem;
+
+    // Whether a path is on a share or network drive rather than this PC's
+    // own disk: a shared config pointing at C:\ means each station's own C:.
+    private readonly Func<string, bool> _isNetworkPath;
+
+    private static bool IsNetworkPath(string path)
+    {
+        if (path.StartsWith(@"\\", StringComparison.Ordinal)) return true;
+        var root = Path.GetPathRoot(path);
+        if (string.IsNullOrEmpty(root)) return false;
+        try { return new DriveInfo(root).DriveType == DriveType.Network; }
+        catch (ArgumentException) { return false; }
+    }
+
     // Off-thread + debounced, mirroring ShellViewModel's own gather
     // (thread pool) → apply (UI) shape: _scheduler runs each probe off the
     // UI thread, _uiContext marshals the result back since a bare
@@ -630,7 +647,9 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null,
         int probeDelayMs = 300,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        Func<string, string>? writeProblem = null,
+        Func<string, bool>? isNetworkPath = null)
     {
         _original = current;
         _dialogs = dialogs;
@@ -640,6 +659,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         _fileExists = fileExists ?? File.Exists;
         // Resolve relative routes beside the config file, as a commit will.
         _validateRoute = validateRoute ?? (r => Config.ValidateRoute(r, cfgPath));
+        _writeProblem = writeProblem ?? Config.WriteProblem;
+        _isNetworkPath = isNetworkPath ?? IsNetworkPath;
         _folderStatus = folderStatus ?? FolderMonitor.Status;
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _uiContext = uiContext;
@@ -742,14 +763,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         {
             // "Add folder": born into the SELECTED folder's section, right
             // after it — not teleported to the default group at the far end
-            var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs, _time)
-            {
-                Label = "New folder",
-                Section = SelectedWatch?.Section ?? "",
-            };
             var at = SelectedWatch is { } sel ? WatchFolders.IndexOf(sel) + 1 : WatchFolders.Count;
-            WatchFolders.Insert(at, vm);
-            SelectedWatch = vm;
+            InsertNewWatch(SelectedWatch?.Section ?? "", at);
         });
         RemoveWatchCommand = new RelayCommand(
             () => { if (SelectedWatch is { } w) { WatchFolders.Remove(w); w.Dispose(); } SelectedWatch = WatchFolders.FirstOrDefault(); },
@@ -777,8 +792,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         // Problem probe does (see RouteEditVm.From/WatchEditVm.From)
         AlertTerms.CollectionChanged += (_, _) => RecomputeTilePreview(immediate: true);
 
-        BrowseInboxCommand = new RelayCommand(() => Inbox = _dialogs.BrowseFolder(Inbox) ?? Inbox);
-        BrowseDeferredCommand = new RelayCommand(() => Deferred = _dialogs.BrowseFolder(Deferred) ?? Deferred);
+        BrowseInboxCommand = new RelayCommand(() => _ = BrowseForFolderAsync(Inbox, picked => Inbox = picked));
+        BrowseDeferredCommand = new RelayCommand(() => _ = BrowseForFolderAsync(Deferred, picked => Deferred = picked));
         BrowseNamesFileCommand = new RelayCommand(() =>
             NamesFile = _dialogs.AskOpenFile("Name lists (*.txt)|*.txt|All files (*.*)|*.*") ?? NamesFile);
         // open-style picker: choosing the EXISTING audit db must not trigger
@@ -790,11 +805,11 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             BoxLabelsFile = PickSideFile(BoxLabelsFile, "box_labels_file"));
         BrowseRoutePathCommand = new RelayCommand(() =>
         {
-            if (SelectedRoute is { } r) r.Path = _dialogs.BrowseFolder(r.Path) ?? r.Path;
+            if (SelectedRoute is { } r) _ = BrowseForFolderAsync(r.Path, picked => r.Path = picked);
         });
         BrowseWatchPathCommand = new RelayCommand(() =>
         {
-            if (SelectedWatch is { } w) w.Path = _dialogs.BrowseFolder(w.Path) ?? w.Path;
+            if (SelectedWatch is { } w) _ = BrowseForFolderAsync(w.Path, picked => w.Path = picked);
         });
         CreateRouteFolderCommand = new RelayCommand(() =>
             CreateFolder(SelectedRoute?.Path, () => SelectedRoute?.RefreshProblem()));
@@ -1068,8 +1083,40 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         probe.Resolve(fastPath, FieldNote.Clear,
             () => _directoryExists(full)
                 ? (relative ? FieldNote.Info("relative — resolved beside the config file") : FieldNote.Clear)
-                : FieldNote.Problem($"folder doesn't exist: {full}"),
+                : FieldNote.Problem($"folder {Config.MissingFolder(full, _directoryExists)}"),
             immediate);
+    }
+
+    /// <summary>How long Browse… waits to hear whether the current folder
+    /// exists before opening the picker without it.</summary>
+    internal static readonly TimeSpan BrowseStartCheckLimit = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>Browse… for a folder, starting in <paramref name="current"/>
+    /// when it answers that it exists. The picker used to check that itself,
+    /// on the UI thread; on a dead share (exactly when someone clicks Browse…
+    /// to re-point a folder) that held the window until the network gave up
+    /// (Q2-25). The check now runs off the UI thread and gets
+    /// <see cref="BrowseStartCheckLimit"/>; no answer in time opens the
+    /// picker in its default place.</summary>
+    private async Task BrowseForFolderAsync(string current, Action<string> adopt)
+    {
+        try
+        {
+            string? start = null;
+            if (current.Trim() is { Length: > 0 } typed)
+            {
+                var full = ResolveFolderPath(typed);
+                var exists = _scheduler.Run(() => _directoryExists(full));
+                var limit = Task.Delay(BrowseStartCheckLimit, _time ?? TimeProvider.System);
+                if (await Task.WhenAny(exists, limit) == exists && await exists) start = full;
+            }
+            if (_dialogs.BrowseFolder(start) is { } picked) adopt(picked);
+        }
+        catch (Exception ex)
+        {
+            // Every caller discards this Task, so a fault would otherwise vanish.
+            _dialogs.Warn($"The folder picker couldn't open: {ex.Message}", "OrdoSort");
+        }
     }
 
     /// <summary>Resolve a relative Inbox/Deferred value beside config.json —
@@ -1122,12 +1169,16 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private void RecomputeHistoryDbNote(bool immediate = false)
     {
         var p = HistoryDb.Trim();
-        FieldNote? fastPath = p.Length == 0 ? FieldNote.Clear
+        // Blank saves as the default, as a blank box-labels file does (Q2-40).
+        FieldNote? fastPath = p.Length == 0 ? FieldNote.Info($"blank = {Config.DefaultHistoryDb} beside the config file")
             : !Path.IsPathRooted(p) ? FieldNote.Info("relative — kept beside the config file")
             : null;
         _historyDbProbe.Resolve(fastPath, FieldNote.Clear, () =>
         {
             if (_fileExists(p)) return FieldNote.Clear;
+            // a folder here stopped the app starting, naming nothing (Q2-40)
+            if (_directoryExists(p))
+                return FieldNote.Problem($"that's a folder — add a file name, such as {Path.Combine(p, Config.DefaultHistoryDb)}");
             var dir = Path.GetDirectoryName(p);
             return dir is not null && !_directoryExists(dir)
                 ? FieldNote.Problem($"folder doesn't exist: {dir}")
@@ -1667,7 +1718,10 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         {
             var key = w.Section.Trim();
             WatchSectionVm h;
-            if (key.Length == 0)
+            // A section spelled like the default heading is the default group:
+            // the dashboard groups tiles by heading text and shows them as one,
+            // so a second header here with the same text was a phantom (DW-68).
+            if (key.Length == 0 || IsDefaultHeading(key))
             {
                 if (def is null)
                 {
@@ -1738,7 +1792,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         Dictionary<string, WatchSectionVm> byKey)
     {
         var orphaned = _stickySections
-            .Where(s => !byKey.ContainsKey(s))
+            .Where(s => !byKey.ContainsKey(s) && !IsDefaultHeading(s))
             .OrderBy(s =>
             {
                 var i = _lastHeaderOrder.FindIndex(k => string.Equals(k, s, StringComparison.CurrentCultureIgnoreCase));
@@ -1768,6 +1822,10 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     private string DefaultSectionHeader =>
         MonitorTitle.Trim().Length == 0 ? "(untitled)" : MonitorTitle;
+
+    private bool IsDefaultHeading(string sectionName) =>
+        MonitorTitle.Trim().Length > 0
+        && string.Equals(sectionName.Trim(), MonitorTitle.Trim(), StringComparison.CurrentCultureIgnoreCase);
 
     /// <summary>Tooltip for a section header's ✕ — it names the group the
     /// folders will land in rather than saying "the default group", so the
@@ -1830,17 +1888,26 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// (an empty group's folder lands at the end of the flat list).</summary>
     public void AddFolderToSection(WatchSectionVm h)
     {
-        var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs, _time)
-        {
-            Label = "New folder",
-            Section = h.IsDefault ? "" : h.Header,
-        };
         var last = WatchFolders.LastOrDefault(w => h.IsDefault
             ? w.Section.Trim().Length == 0
             : string.Equals(w.Section.Trim(), h.Header, StringComparison.CurrentCultureIgnoreCase));
         var at = last is null ? WatchFolders.Count : WatchFolders.IndexOf(last) + 1;
+        InsertNewWatch(h.IsDefault ? "" : h.Header, at);
+    }
+
+    /// <summary>The one way a new, blank monitored folder is made: Add
+    /// folder, a header's ＋ and Add section differ only in its section and
+    /// where it lands (DW-69). It is selected, ready to fill in.</summary>
+    private WatchEditVm InsertNewWatch(string section, int at)
+    {
+        var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs, _time)
+        {
+            Label = "New folder",
+            Section = section,
+        };
         WatchFolders.Insert(at, vm);
         SelectedWatch = vm;
+        return vm;
     }
 
     /// <summary>Per-header ✕: drop the GROUP, keep its folders. Every member's
@@ -1894,9 +1961,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         for (var n = 2; SectionKeyExists(name); n++)
             name = $"New section {n}";
         TrackSticky(name);   // EXPLICITLY created — the other of the two things that makes a section sticky
-        var vm = new WatchEditVm(FolderExists, _scheduler, _uiContext, _probeDelayMs, _time) { Label = "New folder", Section = name };
-        WatchFolders.Add(vm);
-        SelectedWatch = vm;
+        InsertNewWatch(name, WatchFolders.Count);
         var header = WatchRows.OfType<WatchSectionVm>().FirstOrDefault(h =>
             !h.IsDefault && string.Equals(h.Header, name, StringComparison.CurrentCultureIgnoreCase));
         if (header is not null) BeginSectionRename(header);
@@ -1908,9 +1973,12 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// currently empty. The sticky half matters now that an emptied section
     /// can exist with zero members: without it, "Add section" could
     /// silently reuse — and so REVIVE — an already-emptied section's exact
-    /// name instead of generating a genuinely new, disjoint one.</summary>
+    /// name instead of generating a genuinely new, disjoint one. The default
+    /// heading counts too: renamed to "New section", it would otherwise be
+    /// given a twin (DW-70).</summary>
     private bool SectionKeyExists(string name) =>
-        WatchFolders.Any(w => string.Equals(w.Section.Trim(), name, StringComparison.CurrentCultureIgnoreCase))
+        IsDefaultHeading(name)
+        || WatchFolders.Any(w => string.Equals(w.Section.Trim(), name, StringComparison.CurrentCultureIgnoreCase))
         || _stickySections.Any(s => string.Equals(s, name, StringComparison.CurrentCultureIgnoreCase));
 
     /// <summary>Drag-and-drop reorder of the routes list: drop
@@ -2145,21 +2213,39 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     public IEnumerable<string> SectionChoices =>
         WatchRows.OfType<WatchSectionVm>().Where(h => !h.IsDefault).Select(h => h.Header).ToList();
 
-    private bool CanMoveWatch(int delta)
-    {
-        if (SelectedWatch is null) return false;
-        var j = WatchFolders.IndexOf(SelectedWatch) + delta;
-        return j >= 0 && j < WatchFolders.Count;
-    }
+    private bool CanMoveWatch(int delta) => SameSectionNeighbour(delta) >= 0;
 
     private void MoveWatch(int delta)
     {
         if (SelectedWatch is null) return;
-        var i = WatchFolders.IndexOf(SelectedWatch);
-        WatchFolders.Move(i, i + delta);
+        var to = SameSectionNeighbour(delta);
+        if (to < 0) return;
+        WatchFolders.Move(WatchFolders.IndexOf(SelectedWatch), to);
         WatchUpCommand.RaiseCanExecuteChanged();
         WatchDownCommand.RaiseCanExecuteChanged();
     }
+
+    /// <summary>Flat index of the nearest folder in the selected folder's own
+    /// section, above (delta -1) or below (+1); -1 when there is none. Up and
+    /// Down used to swap with the flat-list neighbour, and when that sat in
+    /// another section nothing moved on screen, so the buttons looked dead
+    /// (DW-65). Moving to another section is drag's or the Section box's job.</summary>
+    private int SameSectionNeighbour(int delta)
+    {
+        if (SelectedWatch is not { } selected) return -1;
+        var key = GroupKey(selected);
+        for (var j = WatchFolders.IndexOf(selected) + delta; j >= 0 && j < WatchFolders.Count; j += delta)
+        {
+            if (string.Equals(GroupKey(WatchFolders[j]), key, StringComparison.CurrentCultureIgnoreCase))
+                return j;
+        }
+        return -1;
+    }
+
+    /// <summary>The heading a folder shows under: "" for the default group,
+    /// which a section spelled like the default heading joins (DW-68).</summary>
+    private string GroupKey(WatchEditVm w) =>
+        IsDefaultHeading(w.Section) ? "" : w.Section.Trim();
 
     public RelayCommand AddRouteCommand { get; }
     public RelayCommand RemoveRouteCommand { get; }
@@ -2306,17 +2392,80 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     /// <summary>What the folder checks need, read from the editor on the UI
     /// thread so the checks themselves can run anywhere.</summary>
+    /// <param name="WarnBlankDeferred">Only when this edit is what cleared
+    /// it: a station that never uses a set-aside folder was asked "Save
+    /// anyway?" about it on every OK (Q2-43).</param>
+    /// <param name="EditorWarnings">Warnings that need no disk, worked out
+    /// on the UI thread.</param>
     private sealed record FolderChecks(
-        string InboxPath, string DeferredPath,
+        string InboxPath, string DeferredPath, bool WarnBlankDeferred,
         IReadOnlyList<(string Label, Route Route)> Routes,
-        IReadOnlyList<(string Label, string Path)> WatchFolders);
+        IReadOnlyList<(string Label, string Path)> WatchFolders,
+        IReadOnlyList<(string Name, string Path)> SoundFiles,
+        IReadOnlyList<(string What, string Path)> NewFolders,
+        IReadOnlyList<string> EditorWarnings);
 
     private FolderChecks FolderChecksNow() => new(
         Inbox.Trim().Length == 0 ? "" : ResolveFolderPath(Inbox.Trim()),
         Deferred.Trim().Length == 0 ? "" : ResolveFolderPath(Deferred.Trim()),
+        !string.IsNullOrWhiteSpace(_original.Deferred),
         Routes.Select(r => (r.Label.Trim(), r.ToRoute())).ToList(),
         WatchFolders.Where(w => w.Path.Trim().Length > 0)
-            .Select(w => (w.Label.Trim(), ResolveFolderPath(w.Path.Trim()))).ToList());
+            .Select(w => (w.Label.Trim(), ResolveFolderPath(w.Path.Trim()))).ToList(),
+        new[] { NewAlertSound, FiledSound, SetAsideSound, ErrorSound }
+            .Where(s => s.ShowCustom && s.Spec.Length > 0)
+            .Select(s => (s.Name, s.Spec)).ToList(),
+        FoldersNewInThisEdit(),
+        WatchFolderWarnings());
+
+    /// <summary>Every folder setting whose path this edit introduced, as the
+    /// app will use it. Only these are checked for being on this PC's own
+    /// drive (DW-09): an office that keeps the same local folder on every PC
+    /// is asked once, when it sets it, not on every OK.</summary>
+    private List<(string What, string Path)> FoldersNewInThisEdit()
+    {
+        var before = new HashSet<string>(PathIdentity.PathComparer.Instance);
+        foreach (var p in new[] { _original.Inbox, _original.Deferred }
+                     .Concat(_original.Routes.Select(r => r.Path ?? ""))
+                     .Concat(_original.WatchFolders.Select(w => w.Path)))
+        {
+            if (!string.IsNullOrWhiteSpace(p)) before.Add(ResolveFolderPath(p.Trim()));
+        }
+        var now = new List<(string What, string Path)>
+        {
+            ("The inbox folder", Inbox.Trim()),
+            ("The set-aside folder", Deferred.Trim()),
+        };
+        now.AddRange(Routes.Select(r => ($"\"{r.Label.Trim()}\"", r.Path.Trim())));
+        now.AddRange(WatchFolders.Select(w => ($"\"{w.Label.Trim()}\"", w.Path.Trim())));
+        return now.Where(f => f.Item2.Length > 0)
+            .Select(f => (f.Item1, ResolveFolderPath(f.Item2)))
+            .Where(f => !before.Contains(f.Item2))
+            .ToList();
+    }
+
+    /// <summary>A monitored folder with no path became a tile that only
+    /// shows an error, and whose click does nothing; a destination with no
+    /// folder was already warned about (Q2-41). Two in one section with one
+    /// label make tiles and alerts that can't be told apart (DW-21); in
+    /// different sections the heading tells them apart, so that's allowed.</summary>
+    private List<string> WatchFolderWarnings()
+    {
+        var warnings = new List<string>();
+        foreach (var w in WatchFolders)
+            if (w.Path.Trim().Length == 0)
+                warnings.Add($"\"{w.Label.Trim()}\": no folder is set — its tile will only show an error.");
+        var seen = new HashSet<(string, string)>();
+        var reported = new HashSet<(string, string)>();
+        foreach (var w in WatchFolders)
+        {
+            var key = (w.Section.Trim().ToUpperInvariant(), w.Label.Trim().ToUpperInvariant());
+            if (w.Label.Trim().Length > 0 && !seen.Add(key) && reported.Add(key))
+                warnings.Add($"Two monitored folders{(w.Section.Trim().Length > 0 ? $" in {w.Section.Trim()}" : "")} " +
+                             $"have the same name, \"{w.Label.Trim()}\" — their tiles and alerts will look alike.");
+        }
+        return warnings;
+    }
 
     /// <summary>Every check here can be a network round trip (a destination's
     /// check writes and deletes a probe file), so OK runs this off the UI
@@ -2327,11 +2476,20 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         if (checks.InboxPath.Length == 0)
             warnings.Add("No inbox folder is set — there will be nothing to process.");
         else if (!_directoryExists(checks.InboxPath))
-            warnings.Add($"The inbox folder doesn't exist: {checks.InboxPath}");
+            warnings.Add($"The inbox folder {Config.MissingFolder(checks.InboxPath, _directoryExists)}");
+        // Filing moves documents OUT of the inbox, which deletes there: a
+        // read-only inbox failed every filing with "access denied" (DW-08).
+        else if (_writeProblem(checks.InboxPath) is { Length: > 0 } inboxProblem)
+            warnings.Add($"Documents can't be moved out of the inbox folder ({checks.InboxPath}): {inboxProblem}");
         if (checks.DeferredPath.Length == 0)
-            warnings.Add("No set-aside folder is set — Skip will refuse until one is configured.");
+        {
+            if (checks.WarnBlankDeferred)
+                warnings.Add("No set-aside folder is set — Skip will refuse until one is configured.");
+        }
         else if (!_directoryExists(checks.DeferredPath))
-            warnings.Add($"The set-aside folder doesn't exist: {checks.DeferredPath}");
+            warnings.Add($"The set-aside folder {Config.MissingFolder(checks.DeferredPath, _directoryExists)}");
+        else if (_writeProblem(checks.DeferredPath) is { Length: > 0 } deferredProblem)
+            warnings.Add($"Documents can't be put in the set-aside folder ({checks.DeferredPath}): {deferredProblem}");
         foreach (var (label, route) in checks.Routes)
         {
             var problem = _validateRoute(route);
@@ -2340,8 +2498,27 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         foreach (var (label, path) in checks.WatchFolders)
         {
             if (!_directoryExists(path))
-                warnings.Add($"\"{label}\": folder doesn't exist: {path}");
+                warnings.Add($"\"{label}\": folder {Config.MissingFolder(path, _directoryExists)}");
         }
+        // Every other file setting is checked; a moved .wav saved silently
+        // and the built-in sound played instead, unexplained (DW-41).
+        foreach (var (name, path) in checks.SoundFiles)
+        {
+            if (!_fileExists(path))
+                warnings.Add($"The \"{name}\" sound file doesn't exist: {path} — OrdoSort's own sound will play instead.");
+        }
+        // A shared config is read by every station; a folder on this PC's
+        // own drive there means each station looks on ITS own drive (DW-09).
+        if (_cfgPath is { } cfgPath && _isNetworkPath(Path.GetFullPath(cfgPath)))
+        {
+            foreach (var (what, path) in checks.NewFolders)
+            {
+                if (Path.IsPathFullyQualified(path) && !_isNetworkPath(path))
+                    warnings.Add($"{what} is on this PC's own drive ({path}), but the settings are shared: " +
+                                 "every other station will look on its own drive. Use the share's path instead.");
+            }
+        }
+        warnings.AddRange(checks.EditorWarnings);
         return warnings;
     }
 
@@ -2413,7 +2590,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         cfg.Inbox = Inbox.Trim();
         cfg.Deferred = Deferred.Trim();
         cfg.NamesFile = NamesFile.Trim();
-        cfg.HistoryDb = HistoryDb.Trim();
+        cfg.HistoryDb = HistoryDb.Trim().Length == 0
+            ? Config.DefaultHistoryDb : HistoryDb.Trim();
         cfg.BoxLabelsFile = BoxLabelsFile.Trim().Length == 0
             ? Config.DefaultBoxLabelsFile : BoxLabelsFile.Trim();
         cfg.MonitorTitle = MonitorTitle.Trim();

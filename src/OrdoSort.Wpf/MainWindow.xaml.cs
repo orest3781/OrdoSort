@@ -332,7 +332,9 @@ public partial class MainWindow : Window
             .Where(password => password.Length > 0)
             .ToList();
 
-    private void OnSettings(object sender, RoutedEventArgs e)
+    private bool _openingSettings;
+
+    private async void OnSettings(object sender, RoutedEventArgs e)
     {
         if (!Shell.IsReady)
         {
@@ -340,7 +342,15 @@ public partial class MainWindow : Window
                 "OrdoSort");
             return;
         }
-        var vm = new SettingsViewModel(Shell.FreshConfigForSettings(), Dialogs, () => Theme.ThemeManager.Current,
+        // The config is read off the UI thread (Q2-20); a second click while
+        // it loads must not open a second Settings window.
+        if (_openingSettings) return;
+        _openingSettings = true;
+        Config fresh;
+        try { fresh = await Shell.FreshConfigForSettingsAsync(); }
+        finally { _openingSettings = false; }
+        if (!IsLoaded || !Shell.IsReady) return;   // closed, or a session started, while it loaded
+        var vm = new SettingsViewModel(fresh, Dialogs, () => Theme.ThemeManager.Current,
             Shell.CfgPath, new SoundService(), uiContext: SynchronizationContext.Current);
         var win = new Windows.SettingsWindow(vm) { Owner = this };
         var accepted = win.ShowDialog() == true;
@@ -368,5 +378,12 @@ public partial class MainWindow : Window
         public string? AskOpenFile(string f) => _get().AskOpenFile(f);
         public string? AskFilePath(string f, string s) => _get().AskFilePath(f, s);
         public string? BrowseFolder(string? s) => _get().BrowseFolder(s);
+        // The same hazard as Confirm, for every member with a default body:
+        // unforwarded, AskOpenFiles came back single-select and AskPassword
+        // and AskDate never asked at all (DW-24).
+        public string? AskOpenFile(string f, string? dir) => _get().AskOpenFile(f, dir);
+        public string[] AskOpenFiles(string f) => _get().AskOpenFiles(f);
+        public string? AskPassword(PasswordRequest r) => _get().AskPassword(r);
+        public string? AskDate(string d, int n) => _get().AskDate(d, n);
     }
 }

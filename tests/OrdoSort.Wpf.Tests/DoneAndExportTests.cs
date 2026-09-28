@@ -165,4 +165,29 @@ public class DoneAndExportTests
         // MarkRouteState() still ran on the AuditError path
         Assert.True(fx.Shell.Routes[0].IsLastUsed);
     }
+
+    /// <summary>DW-16: a document gone from the inbox when the history
+    /// database was also down was reported as "moved" and "filed, but not
+    /// recorded". Nothing moved: the file had vanished. The warning and the
+    /// status line now say that.</summary>
+    [Fact]
+    public async Task AVanishedDocumentThatCouldNotBeRecordedIsNotReportedAsMoved()
+    {
+        using var fx = new ShellFixture();
+        var path = fx.AddInboxFile("20240115--111111.pdf");
+        fx.AddInboxFile("20240116--222222.pdf");   // keeps the session going
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+
+        File.Delete(path);
+        fx.Shell.History.Dispose();   // and the history DB dies too
+        fx.Shell.TypedName = "SMITH JOHN";
+        await fx.Shell.OnRouteAsync(0);
+
+        var (message, title) = Assert.Single(fx.Dialogs.Warnings);
+        Assert.Contains("was gone from the inbox", message);
+        Assert.DoesNotContain("filed", title);
+        Assert.DoesNotContain("moved", fx.Shell.StatusLine);
+        Assert.Contains("gone from the inbox", fx.Shell.StatusLine);
+    }
 }

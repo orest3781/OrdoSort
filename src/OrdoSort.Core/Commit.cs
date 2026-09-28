@@ -39,7 +39,7 @@ public static class Commit
 
     private static void MoveNeverOverwrite(string src, string target)
     {
-        if (File.Exists(target))
+        if (Path.Exists(target))
             throw new FileExistsRace($"{Path.GetFileName(target)} appeared at the destination mid-commit");
         try
         {
@@ -48,6 +48,12 @@ public static class Commit
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // Deleted in the instant after the caller checked it was there
+            // (DW-46): the answer that check gives, not a raw "could not
+            // find file".
+            if (ex is FileNotFoundException && !File.Exists(src)
+                && Directory.Exists(Path.GetDirectoryName(src)))
+                throw new SourceGoneRace();
             throw new CommitError($"Couldn't move {Path.GetFileName(src)} to " +
                                   $"{Path.GetDirectoryName(target)}:\n{ex.Message}");
         }
@@ -214,7 +220,7 @@ public static class Commit
         Naming.NameResult Build() => Naming.BuildTarget(
             Path.GetFileName(src), typedName, route.NamingMode, globalMode,
             route.Suffix, route.AppendSuffix,
-            name => File.Exists(Path.Combine(destDir, name)));
+            Collision.TakenIn(destDir));
 
         Naming.NameResult result;
         try { result = Build(); }
@@ -222,18 +228,22 @@ public static class Commit
 
         try
         {
-            MoveNeverOverwrite(src, Path.Combine(destDir, result.Filename));
-        }
-        catch (FileExistsRace)
-        {
-            // Collision race: something claimed the name after Build. Retry once.
-            result = Build();
-            try { MoveNeverOverwrite(src, Path.Combine(destDir, result.Filename)); }
-            catch (FileExistsRace ex)
+            try
             {
-                throw new CommitError(ex.Message);
+                MoveNeverOverwrite(src, Path.Combine(destDir, result.Filename));
+            }
+            catch (FileExistsRace)
+            {
+                // Collision race: something claimed the name after Build. Retry once.
+                result = Build();
+                try { MoveNeverOverwrite(src, Path.Combine(destDir, result.Filename)); }
+                catch (FileExistsRace ex)
+                {
+                    throw new CommitError(ex.Message);
+                }
             }
         }
+        catch (SourceGoneRace) { return new CommitOutcome(true, null, null); }
         return new CommitOutcome(false, Path.Combine(destDir, result.Filename), result);
     }
 
@@ -246,10 +256,17 @@ public static class Commit
                                   $"{(string.IsNullOrWhiteSpace(deferredDir) ? "(not set)" : deferredDir)}");
         RefuseItsOwnFolder(src, deferredDir);
 
-        // blank name + empty route == keep the original filename, collision-counted
-        var result = Naming.BuildTarget(
-            Path.GetFileName(src), "", null, Naming.ModeInsert, "", false,
-            name => File.Exists(Path.Combine(deferredDir, name)));
+        // blank name + empty route == keep the original filename, collision-counted.
+        // The original name itself can be refused (a device name): same
+        // readable CommitError CommitFile gives (DW-15).
+        Naming.NameResult result;
+        try
+        {
+            result = Naming.BuildTarget(
+                Path.GetFileName(src), "", null, Naming.ModeInsert, "", false,
+                Collision.TakenIn(deferredDir));
+        }
+        catch (ArgumentException ex) { throw new CommitError(ex.Message); }
         SkipRaceHookForTests?.Invoke();
         try
         {
@@ -270,6 +287,7 @@ public static class Commit
             // produce instead.
             throw new CommitError(ex.Message);
         }
+        catch (SourceGoneRace) { return new SkipOutcome(true, null, ""); }
         return new SkipOutcome(false, Path.Combine(deferredDir, result.Filename),
             result.CollisionSuffix);
     }
@@ -318,7 +336,7 @@ public static class Commit
     {
         if (!File.Exists(filedPath))
             throw new CommitError($"Can't undo: {Path.GetFileName(filedPath)} is no longer there");
-        if (File.Exists(originalPath))
+        if (Path.Exists(originalPath))   // a folder on the name blocks the move too (DW-18)
             throw new CommitError($"Can't undo: {Path.GetFileName(originalPath)} already exists again");
         var parent = Path.GetDirectoryName(originalPath);
         if (parent is null || !Directory.Exists(parent))
@@ -337,12 +355,20 @@ public static class Commit
             // this private type escape the assembly as an unhandled error.
             throw new CommitError($"Can't undo: {Path.GetFileName(originalPath)} already exists again");
         }
+        catch (SourceGoneRace)
+        {
+            throw new CommitError($"Can't undo: {Path.GetFileName(filedPath)} is no longer there");
+        }
     }
 
     private sealed class FileExistsRace : Exception
     {
         public FileExistsRace(string message) : base(message) { }
     }
+
+    /// <summary>The file being moved was deleted after its caller checked
+    /// it was there. Never leaves this class.</summary>
+    private sealed class SourceGoneRace : Exception { }
 }
 
 public sealed class CommitError : Exception
@@ -366,6 +392,14 @@ public sealed class AuditError : Exception
     public AuditError(string newPath, string message) : base(message) =>
         NewPath = newPath;
 
+    internal AuditError(string newPath, string message, bool vanished) : this(newPath, message) =>
+        Vanished = vanished;
+
     /// <summary>Where the document is now.</summary>
     public string NewPath { get; }
+
+    /// <summary>Nothing moved: the document was already gone from the inbox,
+    /// and <see cref="NewPath"/> is where it used to be. Only recording that
+    /// failed (DW-16).</summary>
+    public bool Vanished { get; }
 }

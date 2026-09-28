@@ -182,6 +182,28 @@ public class NamingTests
     public void ReservedDeviceNamesRejected(string typed) =>
         Assert.Throws<ArgumentException>(() => Build(typed));
 
+    /// <summary>DW-19: "CON " (a trailing space) slipped past the device-name
+    /// check, so a document could be filed as "CON .pdf". Older Windows reads
+    /// that as the CON device, and another station could not open it.</summary>
+    [Theory]
+    [InlineData("CON ")]
+    [InlineData("PRN  ")]
+    [InlineData("nul .x")]
+    public void DeviceNamesWithATrailingSpaceAreRejectedToo(string typed) =>
+        Assert.Throws<ArgumentException>(() => Build(typed));
+
+    /// <summary>DW-49: a name built from a long roster row had no length
+    /// limit here; it failed later, at the move, with a raw "path too long"
+    /// error. Windows allows 255 characters per name; the cap leaves room for
+    /// ".pdf" (or another extension) and a " (nn)" counter.</summary>
+    [Fact]
+    public void ANameTooLongForWindowsIsRejectedReadably()
+    {
+        var ex = Assert.Throws<ArgumentException>(() => Build(new string('A', Naming.MaxStemLength + 1)));
+        Assert.Contains("too long", ex.Message);
+        Assert.EndsWith(".pdf", Build(new string('A', Naming.MaxStemLength)).Filename);
+    }
+
     [Fact]
     public void ReservedCharInInsertModeToo() =>
         Assert.Throws<ArgumentException>(() => Build("SMITH:JOHN", "insert"));

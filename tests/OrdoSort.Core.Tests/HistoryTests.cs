@@ -197,4 +197,20 @@ public class HistoryTests : IDisposable
         Assert.Equal("truncate", h.JournalMode().ToLowerInvariant());
         Assert.Equal("KEEP", h.Rows()[0]["name_entered"]);  // data survived
     }
+
+    /// <summary>DW-75: when opening the history file failed partway (the
+    /// file is not a database), the half-open connection was never closed.
+    /// It kept the file locked, so the user could not rename or replace the
+    /// broken file until the app exited.</summary>
+    [Fact]
+    public void AHistoryFileThatFailsToOpenIsNotLeftLocked()
+    {
+        var path = Path.Combine(_dir, "broken.sqlite");
+        File.WriteAllText(path, "this is not a SQLite database, just some text long enough to have a header");
+
+        Assert.ThrowsAny<Exception>(() => new History(path));
+
+        File.Move(path, path + ".bad");   // throws if the file is still held open
+        Assert.True(File.Exists(path + ".bad"));
+    }
 }

@@ -33,14 +33,14 @@ public class ConcurrentSettingsEditTests
         string.Join(",", Config.Load(fx.CfgPath).Routes.Select(r => r.Label));
 
     [Fact]
-    public void PeerEditToDestinationsWhileSettingsIsOpenIsDetectedAndDecliningKeepsThePeersRoutes()
+    public async Task PeerEditToDestinationsWhileSettingsIsOpenIsDetectedAndDecliningKeepsThePeersRoutes()
     {
         using var fx = new ShellFixture();
         fx.Shell.Initialize();
         fx.Shell.SaveConfigNow();   // config.json now exists on disk
 
         // Settings window opens: this is where the snapshot is taken.
-        var fresh = fx.Shell.FreshConfigForSettings();
+        var fresh = await fx.Shell.FreshConfigForSettingsAsync();
 
         // A second station saves its own Settings edit while this station's
         // dialog is still open.
@@ -71,13 +71,13 @@ public class ConcurrentSettingsEditTests
     }
 
     [Fact]
-    public void ConfirmingTheConflictSavesTheUsersEditsOverThePeers()
+    public async Task ConfirmingTheConflictSavesTheUsersEditsOverThePeers()
     {
         using var fx = new ShellFixture();
         fx.Shell.Initialize();
         fx.Shell.SaveConfigNow();
 
-        var fresh = fx.Shell.FreshConfigForSettings();
+        var fresh = await fx.Shell.FreshConfigForSettingsAsync();
         PeerEdit(fx.CfgPath, "routes", PeerRoutes("PEER"));
 
         var mine = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(fresh))!;
@@ -94,13 +94,13 @@ public class ConcurrentSettingsEditTests
     }
 
     [Fact]
-    public void NoPeerEditMeansSettingsSaveGoesThroughWithoutPrompting()
+    public async Task NoPeerEditMeansSettingsSaveGoesThroughWithoutPrompting()
     {
         using var fx = new ShellFixture();
         fx.Shell.Initialize();
         fx.Shell.SaveConfigNow();
 
-        var fresh = fx.Shell.FreshConfigForSettings();
+        var fresh = await fx.Shell.FreshConfigForSettingsAsync();
         var mine = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(fresh))!;
         mine.Routes.Add(new Route { Label = "MINE", Path = fx.RouteDir, Color = "#123456" });
 
@@ -111,13 +111,13 @@ public class ConcurrentSettingsEditTests
     }
 
     [Fact]
-    public void MultipleChangedSectionsAreAllNamedInThePromptWithNaturalPhrasing()
+    public async Task MultipleChangedSectionsAreAllNamedInThePromptWithNaturalPhrasing()
     {
         using var fx = new ShellFixture();
         fx.Shell.Initialize();
         fx.Shell.SaveConfigNow();
 
-        var fresh = fx.Shell.FreshConfigForSettings();
+        var fresh = await fx.Shell.FreshConfigForSettingsAsync();
         PeerEdit(fx.CfgPath, "routes", PeerRoutes("PEER"));
         PeerEdit(fx.CfgPath, "watch_folders", PeerMonitoredFolders("PEER"));
         PeerEdit(fx.CfgPath, "alert_texts", PeerAlerts("PEER-ALERT"));
@@ -134,7 +134,7 @@ public class ConcurrentSettingsEditTests
     }
 
     [Fact]
-    public void APeerRewriteThatLeavesTheSharedSectionsUnchangedDoesNotPrompt()
+    public async Task APeerRewriteThatLeavesTheSharedSectionsUnchangedDoesNotPrompt()
     {
         // SaveConfigNow (the header-bar tile-visibility toggle, remembered
         // match/merge headers — none of them a Settings edit) rewrites
@@ -147,7 +147,7 @@ public class ConcurrentSettingsEditTests
         fx.Shell.Initialize();
         fx.Shell.SaveConfigNow();   // config.json now exists on disk
 
-        var fresh = fx.Shell.FreshConfigForSettings();
+        var fresh = await fx.Shell.FreshConfigForSettingsAsync();
 
         var node = JsonNode.Parse(File.ReadAllText(fx.CfgPath))!.AsObject();
         node["tile_visibility"] = "hidden";

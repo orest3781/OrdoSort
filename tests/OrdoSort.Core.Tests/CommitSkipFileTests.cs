@@ -42,6 +42,7 @@ public class CommitSkipFileTests : IDisposable
     public void Dispose()
     {
         Commit.SkipRaceHookForTests = null;
+        Commit.SameVolume = Commit.OnSameVolume;
         try { Directory.Delete(_root, recursive: true); } catch { /* best effort */ }
     }
 
@@ -129,5 +130,99 @@ public class CommitSkipFileTests : IDisposable
         Assert.False(File.Exists(src));
         Assert.True(File.Exists(outcome.NewPath!));
         Assert.Equal(Path.Combine(_deferred, "20240115--333333.pdf"), outcome.NewPath);
+    }
+
+    /// <summary>DW-15: a name the naming rules refuse made SkipFile throw a
+    /// bare ArgumentException, which the dashboard doesn't catch as a filing
+    /// problem, while File wrapped the same refusal in a readable CommitError.
+    /// Win11 NTFS stores "CON .pdf" as an ordinary file (fresh-qc, DW-19), so
+    /// such a document can really sit in an inbox.</summary>
+    [Fact]
+    public void SettingAsideADocumentWhoseNameIsRefusedIsACommitErrorAndTheDocumentStays()
+    {
+        var src = MakePdf(_inbox, "CON .pdf");
+        Assert.True(File.Exists(src), "this Windows treats \"CON .pdf\" as a device, not a file");
+
+        var ex = Assert.Throws<CommitError>(() => Commit.SkipFile(src, _deferred));
+
+        Assert.Contains("reserved Windows device name", ex.Message);
+        Assert.True(File.Exists(src));
+    }
+
+    /// <summary>DW-18: a FOLDER already carrying the document's name was
+    /// invisible to the collision check (File.Exists is false for folders),
+    /// so the move ran into it and the user got a raw "cannot create a file"
+    /// error instead of the usual " (2)".</summary>
+    [Fact]
+    public void AFolderCarryingTheNameCountsAsTakenWhenSettingAside()
+    {
+        var src = MakePdf(_inbox, "20240115--444444.pdf");
+        Directory.CreateDirectory(Path.Combine(_deferred, "20240115--444444.pdf"));
+
+        var outcome = Commit.SkipFile(src, _deferred);
+
+        Assert.Equal(Path.Combine(_deferred, "20240115--444444 (2).pdf"), outcome.NewPath);
+        Assert.True(File.Exists(outcome.NewPath!));
+    }
+
+    /// <summary>DW-18, for filing: same folder-in-the-way case.</summary>
+    [Fact]
+    public void AFolderCarryingTheNameCountsAsTakenWhenFiling()
+    {
+        var src = MakePdf(_inbox, "20240115--555555.pdf");
+        Directory.CreateDirectory(Path.Combine(_deferred, "SMITH JOHN.pdf"));
+
+        var outcome = Commit.CommitFile(src, "SMITH JOHN",
+            new Route { Path = _deferred, NamingMode = Naming.ModeReplace }, Naming.ModeInsert);
+
+        Assert.Equal(Path.Combine(_deferred, "SMITH JOHN (2).pdf"), outcome.NewPath);
+        Assert.True(File.Exists(outcome.NewPath!));
+    }
+
+    /// <summary>DW-18, for undo: a folder now sitting on the original name
+    /// is "already exists again", not a raw move error.</summary>
+    [Fact]
+    public void AFolderOnTheOriginalNameRefusesTheUndoReadably()
+    {
+        var filed = MakePdf(_deferred, "SMITH JOHN.pdf");
+        var original = Path.Combine(_inbox, "20240115--666666.pdf");
+        Directory.CreateDirectory(original);
+
+        var ex = Assert.Throws<CommitError>(() => Commit.UndoAction(filed, original));
+
+        Assert.Contains("already exists again", ex.Message);
+        Assert.True(File.Exists(filed));
+    }
+
+    /// <summary>DW-46: a document deleted in the instant between the
+    /// "is it still there?" check and the move gave a raw "could not find
+    /// file" error. It now gets the same answer the check gives: vanished,
+    /// logged and passed over.</summary>
+    [Fact]
+    public void ADocumentGoneJustBeforeTheFilingMoveIsVanished()
+    {
+        var src = MakePdf(_inbox, "20240115--777777.pdf");
+        // SameVolume runs right before the move; deleting there is the race
+        Commit.SameVolume = (from, to) =>
+        {
+            if (from == src) File.Delete(src);
+            return Commit.OnSameVolume(from, to);
+        };
+
+        var outcome = Commit.CommitFile(src, "", new Route { Path = _deferred }, Naming.ModeInsert);
+
+        Assert.True(outcome.Vanished);
+    }
+
+    /// <summary>DW-46, for Skip.</summary>
+    [Fact]
+    public void ADocumentGoneJustBeforeTheSetAsideMoveIsVanished()
+    {
+        var src = MakePdf(_inbox, "20240115--888888.pdf");
+        Commit.SkipRaceHookForTests = () => File.Delete(src);
+
+        var outcome = Commit.SkipFile(src, _deferred);
+
+        Assert.True(outcome.Vanished);
     }
 }

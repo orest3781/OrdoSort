@@ -131,7 +131,10 @@ public sealed class Config
     [JsonPropertyName("inbox")] public string Inbox { get; set; } = "";
     [JsonPropertyName("deferred")] public string Deferred { get; set; } = "";
     [JsonPropertyName("names_file")] public string NamesFile { get; set; } = "names.txt";
-    [JsonPropertyName("history_db")] public string HistoryDb { get; set; } = "history.sqlite";
+    /// <summary>history_db's default: a file beside config.json.</summary>
+    public const string DefaultHistoryDb = "history.sqlite";
+
+    [JsonPropertyName("history_db")] public string HistoryDb { get; set; } = DefaultHistoryDb;
     [JsonPropertyName("naming_mode")] public string NamingMode { get; set; } = "insert";
     [JsonPropertyName("sort")] public string Sort { get; set; } = "size_desc";
     [JsonPropertyName("enter_commits")] public bool EnterCommits { get; set; } = true;
@@ -310,6 +313,16 @@ public sealed class Config
             throw new ConfigException(
                 $"poll_seconds must be {MinPollSeconds}-{MaxPollSeconds}, " +
                 $"got {cfg.PollSeconds}");
+        // Unchecked, both of these failed later inside SQLite as "unable to
+        // open database file", naming no setting and no path (Q2-40).
+        if (string.IsNullOrWhiteSpace(cfg.HistoryDb))
+            throw new ConfigException(
+                $"history_db is blank. Set it to a file name, such as \"{DefaultHistoryDb}\" " +
+                "(kept beside config.json), or a full path to the history database.");
+        if (ResolveBeside(path, cfg.HistoryDb.Trim()) is var historyDb && Directory.Exists(historyDb))
+            throw new ConfigException(
+                $"history_db points at a folder ({historyDb}), not a file. Add a file name, " +
+                $"such as \"{Path.Combine(cfg.HistoryDb.Trim(), DefaultHistoryDb)}\".");
         // ---- box labels: the side file wins; inline (legacy) is the fallback
         if (ReadDoc<BoxLabelsDoc>(path, cfg.BoxLabelsFile, "box_labels_file") is { } bd)
         {
@@ -365,7 +378,38 @@ public sealed class Config
                 $"{full}, which is outside {configDir}. Use a plain filename, or a path nested " +
                 "in a subfolder of the config's own directory.");
         }
+        RefuseLinks(configDir, full, sectionPath, keyName);
         return full;
+    }
+
+    /// <summary>The check above reads only the path's spelling. A junction or
+    /// symbolic link inside the config folder spells a path inside it while
+    /// Windows follows it somewhere else, and a junction needs nothing more
+    /// than write access to the shared folder (DW-03). So every part of the
+    /// path below the config folder that exists is checked, and one that is
+    /// a link is refused. Other reparse points (a cloud-sync placeholder)
+    /// have no link target and pass. The config folder itself may be a link:
+    /// the containment question starts inside it.</summary>
+    private static void RefuseLinks(string configDir, string full, string sectionPath, string keyName)
+    {
+        var current = configDir;
+        foreach (var part in Path.GetRelativePath(configDir, full).Split(Path.DirectorySeparatorChar))
+        {
+            current = Path.Combine(current, part);
+            FileSystemInfo entry = Directory.Exists(current) ? new DirectoryInfo(current) : new FileInfo(current);
+            if (!entry.Exists) return;   // nothing below a missing part can be a link
+            string? linkTarget;
+            try { linkTarget = entry.LinkTarget; }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                throw new ConfigException($"Couldn't check {keyName} (\"{sectionPath}\"): {e.Message}", e);
+            }
+            if (linkTarget is not null)
+                throw new ConfigException(
+                    $"{keyName} must stay beside the config file, but \"{sectionPath}\" goes through " +
+                    $"{current}, a link to {linkTarget}. Use a plain filename, or a real subfolder " +
+                    "of the config's own directory.");
+        }
     }
 
     /// <summary>Resolve a side-file path for WRITING, refusing anything
@@ -504,7 +548,7 @@ public sealed class Config
         Inbox ??= "";
         Deferred ??= "";
         NamesFile ??= "names.txt";
-        HistoryDb ??= "history.sqlite";
+        HistoryDb ??= DefaultHistoryDb;
         // Value-typed keys need nothing here: a JSON null on an int or bool
         // can't be deserialized at all, so it already surfaces as a readable
         // ConfigException. Normalizing them would only mask an explicit
@@ -848,18 +892,40 @@ public sealed class Config
         if (raw.Length == 0) return "no destination path configured";
         if (configPath is not null) raw = ResolveFolderPath(configPath, raw);
         if (!Directory.Exists(raw))
-            return File.Exists(raw)
-                ? $"destination is not a folder: {raw}"
-                : $"destination does not exist: {raw}";
+            return File.Exists(raw) ? $"destination is not a folder: {raw}"
+                : MissingFolder(raw) is var missing && missing.StartsWith("wasn't checked", StringComparison.Ordinal)
+                    ? $"destination {missing}"
+                    : $"destination does not exist: {raw}";
         return ProbeWritable(raw);
     }
 
     /// <summary>Empty string if we can create files in dest, else a readable
     /// error. Actually creates and removes a probe file — os.access lies on
     /// Windows and over SMB.</summary>
-    public static string ProbeWritable(string dest)
+    /// <summary>What to say about a folder that isn't there, after its
+    /// subject ("folder ", "The inbox folder "). "Doesn't exist" read the
+    /// same whether the folder was never made or its drive or share was just
+    /// offline, and the fixes differ (DW-45): when the root itself can't be
+    /// reached, say that instead.</summary>
+    /// <param name="directoryExists">Directory.Exists, or a test's stand-in.</param>
+    public static string MissingFolder(string folder, Func<string, bool>? directoryExists = null)
     {
-        var probe = System.IO.Path.Combine(dest, $".ordosort_probe_{Guid.NewGuid():N}");
+        var root = Path.GetPathRoot(folder);
+        return !string.IsNullOrEmpty(root) && !(directoryExists ?? Directory.Exists)(root)
+            ? $"wasn't checked — can't reach {root.TrimEnd('\\')} right now: {folder}"
+            : $"doesn't exist: {folder}";
+    }
+
+    public static string ProbeWritable(string dest) =>
+        WriteProblem(dest) is { Length: > 0 } problem ? $"destination not writable: {problem}" : "";
+
+    /// <summary>Empty string if files can be created and deleted in
+    /// <paramref name="folder"/>, else the reason they can't. The same probe
+    /// file <see cref="ProbeWritable"/> uses: a file is written and removed,
+    /// because asking for the permissions lies on Windows and over SMB.</summary>
+    public static string WriteProblem(string folder)
+    {
+        var probe = System.IO.Path.Combine(folder, $".ordosort_probe_{Guid.NewGuid():N}");
         try
         {
             File.WriteAllBytes(probe, Array.Empty<byte>());
@@ -868,7 +934,7 @@ public sealed class Config
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return $"destination not writable: {ex.Message}";
+            return ex.Message;
         }
     }
 

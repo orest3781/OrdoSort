@@ -41,4 +41,40 @@ public static class Collision
             if (!Directory.Exists(candidate)) return candidate;
         }
     }
+
+    /// <summary>The collision counter's "is this name taken?" for one
+    /// folder. Folders count as taken too: a move can't land on one, and a
+    /// folder on the name used to surface as a raw move error (DW-18).
+    ///
+    /// The first candidate costs one check. Only when it is taken is the
+    /// folder listed, once, for names starting the same way, so each further
+    /// " (n)" is answered from that list instead of one more trip to a share
+    /// per number (DW-17). A name claimed after the listing is still caught
+    /// by Commit's last-instant check before the move, and the
+    /// name is built again.</summary>
+    public static Func<string, bool> TakenIn(string folder)
+    {
+        HashSet<string>? listed = null;
+        var askEachName = false;
+        return name =>
+        {
+            if (listed is not null) return listed.Contains(name);
+            if (!Path.Exists(Path.Combine(folder, name))) return false;
+            if (askEachName) return true;
+            try
+            {
+                listed = new HashSet<string>(
+                    Directory.EnumerateFileSystemEntries(folder, Path.GetFileNameWithoutExtension(name) + "*")
+                        .Select(entry => Path.GetFileName(entry)),
+                    StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // The listing is only a shortcut: asking name by name gives
+                // the same answers, with more round trips.
+                askEachName = true;
+            }
+            return true;
+        };
+    }
 }

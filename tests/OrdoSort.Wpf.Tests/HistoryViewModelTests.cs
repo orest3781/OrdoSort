@@ -252,4 +252,22 @@ public class HistoryViewModelTests : IDisposable
         Assert.Contains("database is locked", warning.Message);
         Assert.Empty(_dialogs.Infos);
     }
+
+    /// <summary>DW-87: a load told the window "Show all may have changed"
+    /// twice at the end, once as it stopped being busy and again straight
+    /// after, re-querying the button for nothing. Once per change now: busy,
+    /// then done.</summary>
+    [Fact]
+    public async Task ALoadAnnouncesShowAllOncePerChange()
+    {
+        Seed(3);
+        var vm = new HistoryViewModel(_history, _dialogs, new InlineWorkScheduler());
+        var announced = 0;
+        vm.ShowAllCommand.CanExecuteChanged += (_, _) => announced++;
+
+        await vm.LoadAsync(all: true);
+
+        Assert.Equal(2, announced);
+        Assert.False(vm.ShowAllCommand.CanExecute(null));
+    }
 }

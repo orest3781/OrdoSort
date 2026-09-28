@@ -32,7 +32,7 @@ namespace OrdoSort.Wpf.Tests;
 public class ApplySettingsSavedPasswordsTests
 {
     [Fact]
-    public void APeersPasswordProtectionSweepSurvivesASettingsOkFromBeforeTheSweep()
+    public async Task APeersPasswordProtectionSweepSurvivesASettingsOkFromBeforeTheSweep()
     {
         using var fx = new ShellFixture();
         fx.Shell.Initialize();
@@ -46,7 +46,7 @@ public class ApplySettingsSavedPasswordsTests
 
         // Settings opens: this station's snapshot still carries the
         // plaintext password.
-        var loadedForSettings = fx.Shell.FreshConfigForSettings();
+        var loadedForSettings = await fx.Shell.FreshConfigForSettingsAsync();
         Assert.Equal("hunter2", Assert.Single(loadedForSettings.SavedPasswords).Password);
 
         // A peer's Unlock window opens WHILE this station's Settings dialog
@@ -85,7 +85,7 @@ public class ApplySettingsSavedPasswordsTests
     }
 
     [Fact]
-    public void ThisStationsOwnPasswordAddedThroughUnlockWhileSettingsWasOpenSurvivesToo()
+    public async Task ThisStationsOwnPasswordAddedThroughUnlockWhileSettingsWasOpenSurvivesToo()
     {
         // Same mechanism, same-process variant: nothing requires a second
         // station for the bug to bite. If THIS station's Unlock window adds
@@ -97,7 +97,7 @@ public class ApplySettingsSavedPasswordsTests
         fx.Shell.Initialize();
         fx.Shell.SaveConfigNow();   // config.json must already exist — SaveSavedPasswordsNow (Gap B) never creates it from nothing
 
-        var loadedForSettings = fx.Shell.FreshConfigForSettings();
+        var loadedForSettings = await fx.Shell.FreshConfigForSettingsAsync();
         Assert.Empty(loadedForSettings.SavedPasswords);
 
         // The Unlock window's "Manage saved…" add flow, in miniature:

@@ -100,7 +100,15 @@ public sealed class FakeDialogs : IDialogService
     public string[] AskOpenFiles(string filter) =>
         NextOpenFiles ?? (NextOpenFile is { } one ? new[] { one } : Array.Empty<string>());
     public string? AskFilePath(string filter, string suggested) => NextFilePath;
-    public string? BrowseFolder(string? startAt) => NextFolder;
+    /// <summary>Every startAt a BrowseFolder call was handed, in order, so a
+    /// test can see where the picker would have opened.</summary>
+    public List<string?> BrowseStarts { get; } = new();
+
+    public string? BrowseFolder(string? startAt)
+    {
+        BrowseStarts.Add(startAt);
+        return NextFolder;
+    }
 
     /// <summary>Scripted prompt answers, one per AskPassword call; an empty
     /// queue answers null — the person skipped — so a test that never

@@ -311,6 +311,15 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // the window is gone (work that outlived it, e.g. a start-up still
         // running when the dashboard closed): crash.log has it, no dialog
         if (_disposed) return;
+        // A vanished document never moved: "filed"/"moved" would send the
+        // user looking for a copy that doesn't exist (DW-16).
+        if (ex.Vanished)
+        {
+            _dialogs.Warn(ex.Message, "OrdoSort — gone, and not recorded");
+            ShowStatusNote($"{Path.GetFileName(ex.NewPath)} was gone from the inbox, and the " +
+                           "history database didn't record that — see the warning.");
+            return;
+        }
         _dialogs.Warn(ex.Message, title);
         ShowStatusNote($"{Path.GetFileName(ex.NewPath)} moved, but the history " +
                        "database didn't record it — see the warning.");
@@ -329,17 +338,26 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// warns and falls back to the in-memory config rather than blocking.
     /// This is also the moment the user's editing session begins, so it's
     /// where the conflict-detection snapshot is taken (see
-    /// <see cref="_settingsSnapshot"/> and <see cref="ApplySettingsAsync"/>).</summary>
-    internal Config FreshConfigForSettings()
+    /// <see cref="_settingsSnapshot"/> and <see cref="ApplySettingsAsync"/>).
+    ///
+    /// The reads (config.json and its side file, several times over, and a
+    /// hash of each shared section) run off the UI thread: with the config on
+    /// a slow or dead share they froze the dashboard on the Settings click,
+    /// before any window showed and even if the user then cancelled (Q2-20).</summary>
+    internal async Task<Config> FreshConfigForSettingsAsync()
     {
-        _settingsSnapshot = SnapshotSections();
-        try { return Config.Load(_cfgPath); }
-        catch (ConfigException ex)
+        var cfgPath = _cfgPath;
+        var (snapshot, fresh, problem) = await _scheduler.Run(() =>
         {
-            _dialogs.Warn(ex.Message + "\n\nShowing the settings the app is currently running with.",
-                "OrdoSort — settings");
-            return _cfg;
-        }
+            var sections = SnapshotSections();
+            try { return (sections, Config.Load(cfgPath), (ConfigException?)null); }
+            catch (ConfigException ex) { return (sections, (Config?)null, ex); }
+        });
+        _settingsSnapshot = snapshot;
+        if (fresh is not null) return fresh;
+        _dialogs.Warn(problem!.Message + "\n\nShowing the settings the app is currently running with.",
+            "OrdoSort — settings");
+        return _cfg;
     }
 
     /// <summary>Fingerprint the three shared sections of config.json as they
@@ -622,6 +640,16 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 ApplySnapshot(snap, showErrors);
             } while (_refreshPending);
         }
+        catch (Exception ex)
+        {
+            // Every caller discards this Task, so a fault past the scanners'
+            // own filters used to vanish, unlogged (Q2-27). A note, not a
+            // dialog: the watcher and the poll run this again, and a fault
+            // that persists would otherwise pop a dialog every few seconds.
+            UnexpectedError?.Invoke(ex);
+            if (!_disposed)
+                ShowStatusNote($"Couldn't check the folders: {ex.Message} — details in {App.CrashLogPlace}.");
+        }
         finally { _refreshBusy = false; }
     }
 
@@ -858,7 +886,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             var byTitle = new Dictionary<string, TileGroupViewModel>(StringComparer.CurrentCultureIgnoreCase);
             foreach (var s in statuses)
             {
-                var tile = new TileViewModel(s, p);
+                var tile = new TileViewModel(s, p, OpenFolder);
                 Tiles.Add(tile);
                 var title = string.IsNullOrWhiteSpace(s.Section) ? defaultTitle : s.Section.Trim();
                 if (!byTitle.TryGetValue(title, out var group))
@@ -2366,11 +2394,38 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         OpenFolder(ResolveFolderSetting(value, _cfgPath));
     }
 
-    internal static void OpenFolder(string folder)
+    /// <summary>Shows a folder in Explorer. Settable only by tests, which
+    /// must not open windows.</summary>
+    internal Action<string> LaunchFolder { get; set; } = folder =>
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(folder) { UseShellExecute = true });
+
+    /// <summary>The check and the launch both run off the UI thread: the
+    /// inbox and set-aside folders are the share paths most likely to be
+    /// dead, and a dead share held the check for as long as the network took
+    /// to give up, freezing the window on an everyday click (Q2-24). A folder
+    /// that can't be opened used to do nothing; the status line says so.</summary>
+    internal void OpenFolder(string folder) => _ = OpenFolderAsync(folder);
+
+    private async Task OpenFolderAsync(string folder)
     {
-        if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(folder)
-            { UseShellExecute = true });
+        if (string.IsNullOrWhiteSpace(folder)) return;
+        string problem;
+        try
+        {
+            problem = await _scheduler.Run(() =>
+            {
+                if (!Directory.Exists(folder)) return "it " + Config.MissingFolder(folder);
+                LaunchFolder(folder);
+                return "";
+            });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException
+                                       or UnauthorizedAccessException or InvalidOperationException)
+        {
+            problem = ex.Message;
+        }
+        if (problem.Length > 0 && !_disposed)
+            ShowStatusNote($"Can't open the folder — {problem}");
     }
 
     /// <summary>Run the daily history-DB backup and report whether it
