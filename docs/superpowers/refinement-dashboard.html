@@ -149,12 +149,12 @@
 <div class="wrap">
   <h1>OrdoSort Refinement Tracker</h1>
   <p class="sub">Every open item app-wide, consolidated from ten audits, their remediation plans, and memory-recorded deferrals.</p>
-  <p class="prov">Render of <code>docs/superpowers/refinement-master-checklist.md</code>, snapshot 2026-09-27 · branch <code>main</code> · if this page and the checklist disagree, the checklist wins.</p>
+  <p class="prov">Render of <code>docs/superpowers/refinement-master-checklist.md</code>, snapshot 2026-09-28 · branch <code>main</code> · if this page and the checklist disagree, the checklist wins.</p>
 
   <div class="tiles">
     <div class="tile hero">
       <div class="lbl">Open items</div>
-      <div class="val" id="heroOpen">163</div>
+      <div class="val" id="heroOpen">16</div>
       <div class="note">across 18 surfaces</div>
     </div>
     <div class="tile">
@@ -164,12 +164,12 @@
     </div>
     <div class="tile">
       <div class="lbl"><span class="dot" style="background:var(--imp)"></span>Important</div>
-      <div class="val">65</div>
+      <div class="val">4</div>
       <div class="note">wrong &amp; confusing, nothing destroyed</div>
     </div>
     <div class="tile">
       <div class="lbl"><span class="dot" style="background:var(--minor)"></span>Minor</div>
-      <div class="val">98</div>
+      <div class="val">12</div>
       <div class="note">real but small</div>
     </div>
     <div class="tile">
@@ -186,8 +186,8 @@
       <div class="sevbar" id="sevbar"></div>
       <div class="legend">
         <span><span class="dot" style="background:var(--crit)"></span>High · 0</span>
-        <span><span class="dot" style="background:var(--imp)"></span>Important · 65</span>
-        <span><span class="dot" style="background:var(--minor)"></span>Minor · 98</span>
+        <span><span class="dot" style="background:var(--imp)"></span>Important · 4</span>
+        <span><span class="dot" style="background:var(--minor)"></span>Minor · 12</span>
       </div>
       <h2 style="margin-top:18px">Closure progress by source</h2>
       <div id="sources"></div>
@@ -234,169 +234,22 @@
 // [id, sev(I|M), surface, title, source, marks, tags[]]
 // Mirrors refinement-master-checklist.md 1:1 — regenerate from it, never edit independently.
 const ITEMS = [
-["Q2-05","I","Zip Tools","Clear cannot stop an in-flight add — four tools (Zip/Unlock/PageCounts/BulkRename) repopulate a cleared list","fresh-qc","V",[]],
-["Q2-06","I","Unlock","Manage saved… live during a run re-probes files the batch is rewriting; candidates snapshot makes the new password useless","fresh-qc","V/U",[]],
-["Q2-08","I","Shell / main window","Settings OK during Start's scan: route buttons wear the old config's problems; session seeded from the old inbox","fresh-qc","V/U",[]],
-["Q2-09","I","Zip Tools","Three of four intake paths discard their own failure — a drop that fails mid-walk does nothing, silently","fresh-qc","V",[]],
-["Q2-10","I","PageCounts","Save/Copy mid-count exports a total short by every in-flight row and calls it 'Saved'","fresh-qc","V",[]],
-["Q2-12","I","Bulk Rename","Add buttons and drop ungated during a batch; mid-batch add can list one file twice after the fixup","fresh-qc","V",[]],
-["Q2-13","I","Zip Tools","Zipper.CreateZip still uses the aborting enumeration — one denied subfolder loses the whole archive job","fresh-qc","V",[]],
-["Q2-15","I","Tests / build","Nothing measures LabelMakerWindow vertically — the delegation covers the wrong axis at no declared height","fresh-qc","V",[]],
-["Q2-16","I","Tests / build","Ready dashboard never measured in the ~350-422px band compact mode parks users at","fresh-qc","V",[]],
-["Q2-17","I","Tests / build","Batch A's per-window 75% floor reached one of five probe call sites; the rest sit at 28-75% of measured","fresh-qc","V",[]],
-["Q2-18","I","Tests / build","Neither overflow suite renders largest-font-at-narrowest-width — the corner the suites exist for","fresh-qc","V",[]],
-["Q2-19","I","Tests / build","TextWrapCoverage floors are loose and fact 1's floor counts candidates before the waiver can zero the walk","fresh-qc","V",[]],
-["Q2-20","I","Settings","Opening Settings: 7-9 sequential file reads + three SHA256 hashes on the UI thread before the window exists","fresh-qc","V/U",[]],
-["Q2-21","I","Label Maker","The constructor blocks up to a documented 5s on a contended store file before the window appears","fresh-qc","V",[]],
-["Q2-22","I","Label Maker","PrintPreview's constructor enumerates print queues synchronously; an offline queue stalls before anything shows","fresh-qc","V/U",[]],
-["Q2-24","I","Shell / main window","The four open-folder commands check-and-launch synchronously; a dead share stalls an everyday click","fresh-qc","V/U",[]],
-["Q2-25","I","Settings","Browse… probes the current (possibly dead) path before the picker opens — hangs exactly when fixing a bad path","fresh-qc","V/U",[]],
-["Q2-26","I","Unlock","UnlockAsync size-classifies every queued file synchronously before its first await","fresh-qc","V",[]],
-["Q2-27","I","Shell / main window","RefreshFoldersAsync has no catch at three fire-and-forget sites — one exception and the dashboard never updates again","fresh-qc","V/U",[]],
-["Q2-30","I","Unlock","UnlockCommand's OnError is never subscribed — a throwing run produces zero feedback; the code's own comment admits it","fresh-qc","V",[]],
-["Q2-31","I","MatchMerge / Review","TriageWindow holds the app's only unguarded async-void handlers (three); census is 7 sites, not the recorded 5","fresh-qc","V/U",[]],
-["Q2-32","I","Shell / main window","Log-off/restart tears the process down with no grace for tool-window batches mid-write","fresh-qc","V/U",[]],
-["Q2-34","I","Shell / main window","A blank inbox flattens to the config directory; the Ready screen affirms a calm empty inbox that doesn't exist","fresh-qc","V",[]],
-["Q2-35","I","Shell / main window","Hand-edited duplicate hotkeys: both buttons wear the badge, the later binding silently wins","fresh-qc","V/U",[]],
-["Q2-36","M","Tests / build","WindowOverflowTests' registry lacks the discovery guard its siblings have — a new window ships uncovered, silently","fresh-qc","V",[]],
-["Q2-37","M","Tests / build","The FilenameList overflow builder says 'every column on' and omits the Pages column","fresh-qc","V",[]],
-["Q2-38","M","Folder watch","SetFolders lacks the _disposed guard its neighbours have; post-dispose calls resurrect undisposable watchers","fresh-qc","V",[]],
-["Q2-39","M","Zip Tools","Three more cancelled-but-never-disposed CTS/semaphore pairs at close (both zip tabs + Unlock's probe pair)","fresh-qc","V",[]],
-["Q2-40","M","Config","history_db validated nowhere: blank/directory value is the one startup refusal naming no key, path, or remedy","fresh-qc","V/U",[]],
-["Q2-41","M","Settings","A monitored folder with a blank path passes OK silently and becomes a permanent, unclearable error tile","fresh-qc","V",[]],
-["Q2-42","M","Label Maker","A close refused for a duplicate id re-asks every blank-id destroy confirmation on each attempt, plus a 5s store read","fresh-qc","V",[]],
-["Q2-43","M","Settings","The blank-set-aside warning turns every OK into 'Save anyway?' on stations that never skip","fresh-qc","V",[]],
-["Q2-44","M","Shell / main window","AsyncRelayCommand is silent-by-default without OnError; five more VMs never wire it — class-sweep row","fresh-qc","V",[]],
-["Q2-45","M","Tests / build","The FolderMonitor ACL test bails with a bare return (zero assertions) wherever the deny-ACE doesn't hold","fresh-qc","V",[]],
-["Q2-46","M","Tests / build","UnknownOldestAge test never exercises the sentinel detection that is QC-13; its '155' assert cannot fail","fresh-qc","V",[]],
-["QC-17","I","Settings","OK never validates a route's filename suffix; a ':' passes OK then fails every commit","app-qc","V",[]],
-["QC-18","I","Settings","OK runs every folder check and write-probe inline on the UI thread","app-qc","V/U",[]],
-["QC-19","I","Shell / main window","10-second force-close can discard an AuditError in silence: filed, no history row, no warning","app-qc","V/U",[]],
-["QC-20","I","Folder watch","FileSystemWatcher.Error never handled; a dead watcher is never re-armed","app-qc","V",[]],
-["QC-21","I","History / crash log","Patient document paths reach crash.log, which sits beside the shared config on the share","app-qc","V",[]],
-["QC-22","I","WebView2 preview","WebView2 keeps a history DB of every previewed document; nothing clears it","app-qc","V/U",[]],
-["QC-23","I","Settings","HotkeyParser catches a narrower exception than KeyGesture throws; 'Ctrl+300' bricks Settings — settled empirically 2026-08-22","app-qc","V",[]],
-["QC-24","I","WebView2 preview","No ProcessFailed handler and _ready never cleared; a dead Edge process fails every keystroke","app-qc","V",[]],
-["QC-25","I","Filename List","Dispose() disposes the count semaphore while in-flight counters still release it","app-qc","V",[]],
-["QC-27","I","Folder watch","Unguarded List shared across threads; SetFolders racing Dispose can skip Shell.Dispose","app-qc","U",[]],
-["QC-28","I","Label Maker","Rename onto an id a peer just created merges into their row and drops the counter","app-qc","V/U",[]],
-["QC-29","I","Label Maker","A lowercase id on disk duplicates on first save, then bricks save and print","app-qc","V/U",[]],
-["QC-31","I","Zip Tools","ZipAsync ignores cancellation entirely; closing the window mid-zip leaves it running","app-qc","V",[]],
-["FL-07","I","Filename List","Nothing the tool learns survives closing it (columns, subfolders, filters)","fl","",["deferred"]],
-["FL-08","I","Filename List","No sign a big walk is happening: no spinner, no cancel on a large recursive folder","fl","live",[]],
-["FL-09","I","Filename List","Toggling Include extension re-walks the disk for a cosmetic change","fl","",["deferred"]],
-["FL-11","I","Filename List","Column headers look sortable and aren't","fl","",["deferred"]],
-["FL-12","I","Filename List","'Z to A' is a checkbox doing a two-state control's job","fl","",["deferred"]],
-["FL-13","I","Filename List","'Remove from list' is right-click-and-Delete only; no toolbar button","fl","",[]],
-["FL-14","I","Filename List","Buttons never disable; Copy/Restore/Clear/Save on empty states are silent no-ops","fl","",[]],
-["FL-15","I","Filename List","'Restore removed' doesn't say how many rows it will restore","fl","",[]],
-["FL-16","I","Filename List","Clear wipes everything with no confirmation and no undo","fl","",[]],
-["FL-17","I","Filename List","Stale AddNote and Status outlive what produced them","fl","",[]],
-["FL-18","I","Filename List","The footer grows and shoves the grid when a save fails; full text still unrecoverable","fl","live",[]],
-["FL-19","I","Filename List","Dropping onto either text box probably loses the drop","fl","live",[]],
-["FL-20","I","Filename List","Nothing indicates the window is a drop target while you drag","fl","",[]],
-["D2","I","Config","SortChoices/Config.Sorts list drift throws on Load and blocks startup with no in-app recovery","08-07","V",[]],
-["D3","I","Settings","6 of 11 combos have no accessible name","08-07","V",[]],
-["D4","I","Settings","No validation on UiFontFamily, NamingMode, or Section; a stale value renders the combo blank","08-07","V",[]],
-["R3","I","Core / filing spine","ExportCsv and RenderPdf truncate in place with no temp+rename; a crash destroys the old file","08-07","V",[]],
-["R4","I","History / crash log","crash.log grows unbounded with no rotation; SMB append atomicity unverified","08-07","V/U",[]],
-["DW-07","I","Shell / main window","ApplySettingsAsync adopts a failed save into memory (_cfg = cfg before TrySave is checked)","08-07","",[]],
-["DW-08","I","Settings","Only route destinations get a writability probe; everything else is existence-only","08-07","",[]],
-["DW-09","I","Settings","Station-local absolute paths in the shared config never flagged; drive/UNC coherence unchecked","08-07","",[]],
-["DW-01","I","Core / filing spine","Cross-volume kill mid-copy PROVEN 2026-08-22: full-length corrupt file under the canonical name, undetectable by size","08-04 + core","V",["2src"]],
-["DW-03","I","Config","ResolveConfined is lexical only; a junction inside the config dir escapes confinement","sec","",[]],
-["DW-04","I","Repo / process","Releases ship unsigned; SmartScreen on first run. Needs a signing certificate","08-04 + tb","",["user","2src"]],
-["DW-05","I","Tests / build","LabelPreview.cs (the physical printed label sheet) has zero test coverage","08-04 + tb","",["2src"]],
-["DW-10","I","Shell / main window","OpenDeferredCommand and two SetFolders call sites share QC-02's blank-Deferred root","app-qc","",[]],
-["DW-12","I","MatchMerge / Review","Plain digit/S keys over the viewer pane are unrecoverable without a WH_KEYBOARD_LL hook","memory","",[]],
-["DW-14","I","Repo / process","FileMover.py / paper_mover_logger.py / RemoveReadOnly.ps1 log document paths inside the tree","app-qc","",["user"]],
-["DW-15","M","Core / filing spine","Commit.SkipFile lets ArgumentException escape while CommitFile wraps it","app-qc","",[]],
-["DW-16","M","Shell / main window","AuditError.NewPath carries a vanished file's inbox path and the UI says it 'moved'","app-qc","",[]],
-["DW-17","M","Core / filing spine","Collision counter is O(n) sequential File.Exists round-trips per commit","app-qc","",[]],
-["DW-18","M","Core / filing spine","A directory occupying the target name is invisible to both collision guards","app-qc","",[]],
-["DW-19","M","Core / filing spine","RejectIllegal misses a trailing space; 'CON .pdf' measured 2026-08-22: an ordinary file on Win11 NTFS","app-qc","V",[]],
-["DW-20","M","MatchMerge / Review","ClearCommand doesn't clear _outcomes; Undo renames files the empty grid never showed","app-qc","",[]],
-["DW-21","M","Settings","Watch-folder labels aren't duplicate-checked at OK, while route labels are","app-qc","",[]],
-["DW-22","M","Unlock","Hard kill leaves an unencrypted temp PDF in %TEMP%; no startup sweep for stale files","app-qc + 08-07","",["2src"]],
-["DW-23","M","PageCounts","CTS/semaphore never disposed; MainWindow never disposes WebView2 (test-host exit hang)","app-qc","",[]],
-["DW-24","M","Shell / main window","DialogRelay inherits the single-select default for AskOpenFiles (latent)","app-qc","",[]],
-["DW-25","M","Core / filing spine","DebouncedProbe.Trigger's _disposed check sits outside the lock Dispose takes","app-qc","U",[]],
-["DW-26","M","Tests / build","Fixed-sleep negative tests (probe cancels); the flake direction is a silent pass","app-qc","",[]],
-["DW-27","M","Tests / build","RouteTrailTests has the only unguarded Assert.All; passes on an empty collection","app-qc","",[]],
-["DW-28","M","Tests / build","Two tests derive the expected value from the code under test","app-qc","",[]],
-["DW-29","M","Tests / build","Scanner.Scan's mtime sorts are fixed but unpinned by any test","app-qc","",[]],
-["DW-30","M","Tests / build","RestoreRemovedStillClearsEveryBatchAtOnce is an already-true trap","app-qc","",[]],
-["DW-31","M","Tests / build","Ctrl+C routing to PerformCopy() has no test; delete the branch and the suite stays green","app-qc","",[]],
-["FL-21","M","Filename List","'ignored' conflates filtered-out with broken","fl","",[]],
-["FL-22","M","Filename List","Find searches names only, even when the Full path column is on","fl","",[]],
-["FL-23","M","Filename List","The two hidden-row mechanisms share one dead-end message; still no way out","fl","",[]],
-["FL-24","M","Filename List","Intake and view controls interleaved across three toolbar rows","fl","",[]],
-["FL-25","M","Filename List","No accessible names on this window's inputs","fl","",[]],
-["FL-26","M","Filename List","Find label spacing off-canon (6px button gap for a label→control pair)","fl","",[]],
-["FL-27","M","Filename List","No default button; Enter does nothing","fl","",[]],
-["FL-28","M","Filename List","ToText and ToCsv disagree about the empty listing","fl","",[]],
-["FL-29","M","Filename List","AddNote truncates the sentence that explains what went wrong; no tooltip","fl","",[]],
-["FL-30","M","Filename List","The Size column renders raw bytes","fl","",["deferred"]],
-["DW-32","M","Tests / build","QcTests.MatchMergeControlIdWithColonIsSafeToo has a dead branch; its assertion never runs","08-04","",[]],
-["DW-33","M","Tests / build","WatchListRowTemplateTests.OpenDashboard can leak a shown SettingsWindow into later tests","08-04","",[]],
-["DW-34","M","Tests / build","ValidateRoute/ProbeWritable's 'not a folder'/'not writable' branches untested","08-04","",[]],
-["DW-35","M","Tests / build",".NET 8 reaches end of life 2026-11-10 — under three months away; noted, not migrated","08-04 + tb","",["2src"]],
-["DW-36","M","Unlock","Suffix-mode writes the final .pdf with CreateNew and no temp+swap; crash leaves a corrupt file","core","",[]],
-["DW-37","M","History / crash log","crash.log appends have no cross-process coordination; concurrent crashes can interleave","sec","",[]],
-["DW-38","M","Settings","RecomputeDataFileNote/AdoptRepointedSection use the unconfined resolver every other read path avoids","08-07 + sec","",["2src"]],
-["DW-39","M","Tests / build","Mutable test seams owed consolidation into one TestHooks class; a seventh was found undercounted","tb + memory","",["2src"]],
-["DW-40","M","Tests / build","ThemeTests.TextPairs() missing three real pairings (StatusAmber/Surface, AccentBronzeText, SubtleText)","ui + memory","",["2src"]],
-["DW-80","M","Tests / build","publish.bat's comment overstates .NET 8 Desktop Runtime presence on 'modern Windows'","tb","",[]],
-["DW-81","M","Tests / build","Local publish output not purely single-file: ~815 KB of WebView2 XML docs beside the exe","tb","",[]],
-["DW-41","M","Settings","A saved custom .wav sound file is never existence-checked","08-07","",[]],
-["DW-42","M","Label Maker","'No printers found' also fires for a stopped print spooler","08-07","",[]],
-["DW-43","M","Settings","TileVisibilityIndex/SoundChoiceVm int↔string mapping duplicated and unenforced","08-07","",[]],
-["DW-44","M","Settings","Highlighted-row legibility fix test-pinned for only 6 of 11 combos","08-07","",[]],
-["DW-45","M","Settings","'Folder does not exist' ambiguous between never-configured and share-unreachable","08-07","U",[]],
-["DW-46","M","Core / filing spine","TOCTOU in CommitFile's vanished-file check yields a raw error, not the friendly message","08-07","",[]],
-["DW-47","M","Config","ProbeWritable writes its probe file inside the real destination folder","08-07","",[]],
-["DW-48","M","Repo / process","No longPathAware manifest declaration","08-07","",[]],
-["DW-49","M","Core / filing spine","Roster-driven names have no length cap short of PathTooLongException","08-07","",[]],
-["DW-50","M","Filename List","FilenameListWindow never calls DataGridColumnCap.Track, unlike every sibling","memory","",["deferred"]],
-["DW-51","M","Shell / main window","A Collapsed column's ActualWidth counts as MinWidth — phantom entitlement in the cap math","memory","",[]],
-["DW-52","M","MatchMerge / Review","Folder expansion runs synchronously on the UI thread","memory","",[]],
-["DW-53","M","MatchMerge / Review","MatchResult.Status uses raw strings where sibling VMs use enums","memory","",[]],
-["DW-54","M","MatchMerge / Review","Refresh() is O(files × roster) per mutation","memory","",[]],
-["DW-55","M","MatchMerge / Review","The roster file is read twice per load","memory","",[]],
-["DW-56","M","Tests / build","SessionDeferredResolutionTests flake (2026-08-19) not yet in known-flakes.md","memory","",["verify"]],
-["DW-57","M","Tests / build","WPF test-host process-exit hang not yet written up in known-flakes.md","memory","",[]],
-["DW-58","M","Tests / build","Two VM tests flaky under full-suite load only (TilePreview…, HandEditSurvives…)","memory","",[]],
-["DW-59","M","Tests / build","TabItemShowsTheBronzeFocusRing is environment-sensitive","memory","",["2src"]],
-["DW-60","M","Tests / build","UnlockProbeWritesNothingTests flaky under full-suite parallelism","memory","",[]],
-["DW-61","M","Tests / build","Box labels + Routing loop have one clean e2e scenario each; spec promised clean+awkward pairs","memory","",[]],
-["DW-62","M","Label Maker","BoxLabelStore IOException HResult filtering follow-up","memory","",["verify"]],
-["DW-63","M","Label Maker","ClaimNumbers should be offloaded from the UI thread in SavePdf","memory","",["verify"]],
-["DW-64","M","Settings","AdoptRepointedSection path-identity edge: wrap ResolveBeside in Path.GetFullPath","memory","",["verify"]],
-["DW-65","M","Settings · Dashboard tab","Flat-order ↑/↓ can look inert across group boundaries","memory","",[]],
-["DW-66","M","Settings · Dashboard tab","DropWatch's null branch is untested","memory","",[]],
-["DW-67","M","Settings · Dashboard tab","Per-keystroke Section rebuild overhead","memory","",[]],
-["DW-68","M","Settings · Dashboard tab","Two headers show when a Section equals MonitorTitle","memory","",[]],
-["DW-69","M","Settings · Dashboard tab","Triple insert-shape duplication; an InsertWatch helper is owed","memory","",[]],
-["DW-70","M","Settings · Dashboard tab","'Add section' can duplicate a renamed default heading's text","memory","",[]],
-["DW-71","M","Settings · Dashboard tab","The user's visual acceptance pass on the tab is still recorded as pending","memory","",["user","verify"]],
-["DW-72","M","Shell / main window","OnEnterAsync carries an inline copy of the enter-target formula","memory","",[]],
-["DW-73","M","Core / filing spine","DebouncedProbe checks its generation before Post, not inside it (~300ms stale repaint)","memory","",[]],
-["DW-74","M","Bulk Rename","Recursive/Color ride the debounced path though they're discrete clicks","memory","",[]],
-["DW-75","M","History / crash log","History's SqliteConnection undisposed when its constructor throws mid-open","memory","",["verify"]],
-["DW-76","M","Website","Settings gallery screenshot's lower half is empty; recapture on a denser tab","memory","",[]],
-["DW-77","M","Tests / build","The other coverage-style suites were never asked 'what did this actually measure?'","app-qc","",[]],
-["DW-78","M","Zip Tools","Sweep every batch surface for the mutated-under-a-live-list class (four instances so far)","app-qc","",[]],
-["DW-79","M","Repo / process","v1-release-blockers plan shows every checkbox unchecked though its tasks landed","tb","",[]],
-["DW-82","M","Tests","RunIcacls copied between FolderMonitorTests and IntakeTests","ledger","",[]],
-["DW-83","M","Tests","AtomicPlace / UnlockNeverOverwrites collection membership kept by hand","ledger","",[]],
-["DW-84","M","Unlock","Clear replaces the probe token source even when idle","ledger","",[]],
-["DW-85","M","Core","PathComparer.GetHashCode throws on null","ledger","",[]],
-["DW-86","M","Zip Tools","ZipAsync sets Status via RunOnUi but IsBusy directly","ledger","",[]],
-["DW-87","M","History","LoadAsync raises ShowAll CanExecuteChanged twice","ledger","",[]],
-["DW-88","M","Message window","Copy-label reset timer not stopped on Closed","ledger","",[]],
-["DW-89","M","Tests","ListReformatWindow IsEnabled bindings untested","ledger","",[]],
-["DW-90","M","Match and merge / Merge PDFs / Zip Tools","IsDefault comment placed inside Button content","ledger","",[]],
-["DW-91","M","Bulk rename","IndexOfNextNeedingName is public but only used internally","ledger","",[]]
+["FL-20","I","Filename List","nothing indicates the window is a drop target while you drag (whole-family finding). (FL audit §Medium) — RE-VERIFIED 2026-09-27: still real","checklist","",[]],
+["DW-04","I","Repo / process","releases ship unsigned; first run trips SmartScreen. Azure Trusted Signing is wired in release.yml but gated on secrets that don't exist; ne","checklist","",[]],
+["DW-12","I","MatchMerge / Review matches","plain digit/S keys over the WebView2 viewer pane are characters, not accelerators, and are unrecoverable without a WH_KEYBOARD_LL hook besid","checklist","",[]],
+["Q2-21","I","Label Maker","the constructor blocks up to a documented 5 seconds (BoxLabelStore.DefaultMaxWaitMs) on a contended store file before the window appears. (f","checklist","",[]],
+["DW-20","M","MatchMerge / Review matches","ClearCommand doesn't clear _outcomes, so \"Undo last merge\" stays enabled and renames files the empty grid never showed (MatchMergeViewModel.","checklist","",[]],
+["DW-23","M","PageCounts","PageCountsViewModel never disposes its CTS or semaphore; MainWindow never disposes its WebView2 while TriageWindow does — the asymmetry behi","checklist","",[]],
+["FL-27","M","Filename List","no default button; Enter does nothing. (FL audit §Low) — 2026-09-28: owner decision: keep Enter inert in the File list (the audit leans that","checklist","",[]],
+["DW-35","M","Tests / build","both projects target net8.0, which reaches end of life 2026-11-10 (under three months away); noted, not migrated. Time-sensitive despite the","checklist","",[]],
+["DW-36","M","Unlock","the suffix-mode path writes its final .pdf via FileMode.CreateNew with no temp+swap; a crash mid-write leaves a corrupt .pdf that matches Sc","checklist","",[]],
+["DW-39","M","Tests / build","the mutable test seams in production code are owed consolidation into one TestHooks class \"before it becomes six\" — and the 08-09 audit then","checklist","",[]],
+["DW-47","M","Config","ProbeWritable creates/deletes its probe file directly inside the real destination folder, not a scratch location (Config.cs:884-897 unchange","checklist","",[]],
+["DW-53","M","MatchMerge / Review matches","MatchResult.Status uses raw strings where sibling VMs use enums. (memory: ordosort-review-matches-fixes) — 2026-09-28: declined: a refactor ","checklist","",[]],
+["DW-67","M","Settings · Dashboard tab","per-keystroke Section rebuild overhead. (memory: ordosort-rebrand-state) — 2026-09-28: declined until measured: a realistic folder count has","checklist","",[]],
+["DW-71","M","Settings · Dashboard tab","the user's visual acceptance pass on the tab is still recorded as pending (2026-08-01; may have happened unrecorded). (memory: ordosort-rebr","checklist","",[]],
+["DW-76","M","Website","the Settings gallery screenshot's lower half is empty; recapture on a denser tab (e.g. Destinations). (memory: ordosort-website-state, accep","checklist","",[]],
+["Q2-39","M","Zip Tools / Unlock","three more cancelled-but-never-disposed CTS/semaphore pairs at close, beyond QC-25/DW-23: ZipListViewModel._cts (both tabs) and Unlock's _pr","checklist","",[]]
 ];
 
 const SOURCES = [
@@ -418,8 +271,8 @@ const $ = s => document.querySelector(s);
 // Severity mix bar (2px surface gaps via flex gap)
 {
   $("#sevbar").innerHTML =
-        `<div style="flex:65;background:var(--imp)">65</div>` +
-    `<div style="flex:98;background:var(--minor)">98</div>`;
+        `<div style="flex:4;background:var(--imp)">4</div>` +
+    `<div style="flex:12;background:var(--minor)">12</div>`;
 }
 
 // Per-source closure meters (closed / total; open+declined = remainder)
