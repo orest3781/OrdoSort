@@ -130,6 +130,29 @@ public class PipelineTests : IDisposable
         Assert.Equal("20240102--2.pdf", Path.GetFileName(r.Matching[0]));
     }
 
+    /// <summary>DW-29: the "Oldest first" / "Newest first" inbox orders were
+    /// fixed in batch A but nothing pinned them, so a regression would quietly
+    /// hand the user documents in the wrong order. Names and sizes are chosen
+    /// so that neither the filename nor the size order matches the answer.</summary>
+    [Theory]
+    [InlineData("mtime_asc", new[] { "20240102--b.pdf", "20240103--c.pdf", "20240101--a.pdf" })]
+    [InlineData("mtime_desc", new[] { "20240101--a.pdf", "20240103--c.pdf", "20240102--b.pdf" })]
+    public void ScanSortsByModifiedTimeInTheChosenDirection(string sort, string[] expected)
+    {
+        var written = new (string Name, DateTime Modified)[]
+        {
+            ("20240101--a.pdf", new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc)),
+            ("20240102--b.pdf", new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
+            ("20240103--c.pdf", new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc)),
+        };
+        foreach (var (name, modified) in written)
+            File.SetLastWriteTimeUtc(MakePdf(_inbox, name), modified);
+
+        var r = Scanner.Scan(_inbox, sort);
+
+        Assert.Equal(expected, r.Matching.Select(Path.GetFileName).ToArray());
+    }
+
     [Fact]
     public void ScanMissingFolderIsMessageNotCrash() =>
         Assert.Contains("does not exist", Scanner.Scan(@"Z:\nope\gone").Error);
