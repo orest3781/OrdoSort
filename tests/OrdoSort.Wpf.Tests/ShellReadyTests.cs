@@ -53,19 +53,22 @@ public class ShellReadyTests
         Assert.Contains("1 set-aside file waiting", fx.Shell.DeferredAlert);
     }
 
+    /// <summary>QC-13's rendering half: OldestAgeDays is null when every
+    /// set-aside file's mtime read failed, and the alert must say "oldest
+    /// unknown" rather than a number. Q2-46: this is only the rendering. The
+    /// sentinel detection itself (the ~155,000-day age the user saw) is pinned
+    /// in PipelineTests.SafeMtimeOfAFileGoneByReadTimeIsNullNotTheSentinelTicks;
+    /// the old DoesNotContain("155") here could not fail for any input.
+    /// Constructed directly (see ApplyDeferred's doc comment): reaching this
+    /// through a real Scanner.DeferredSummary call needs a file gone between
+    /// Directory.GetFiles and its mtime read, which isn't a race this machine
+    /// can reproduce.</summary>
     [Fact]
-    public void UnknownOldestAgeRendersAsUnknownNotAHugeNumber()
+    public void UnknownOldestAgeRendersAsOldestUnknown()
     {
-        // QC-13: OldestAgeDays is null when every set-aside file's mtime read
-        // failed -- the pre-fix bug reported a ~155,000-day-old folder
-        // instead. Constructed directly (see ApplyDeferred's doc comment):
-        // reaching this through a real Scanner.DeferredSummary call needs a
-        // file gone between Directory.GetFiles and its mtime read, which
-        // isn't a race this machine can reproduce.
         using var fx = new ShellFixture();
         fx.Shell.ApplyDeferred(new Scanner.DeferredInfo(1, null));
-        Assert.Contains("unknown", fx.Shell.DeferredAlert);
-        Assert.DoesNotContain("155", fx.Shell.DeferredAlert);
+        Assert.Contains("oldest unknown", fx.Shell.DeferredAlert);
 
         // The rail-facing _deferredDetail switch is a separate, hand-edited
         // copy of the same OldestAgeDays switch (ShellViewModel.cs:659-664)
@@ -73,7 +76,19 @@ public class ShellReadyTests
         // a silently blank "oldest  " (Nullable<int>.ToString() on null).
         var deferredNotice = fx.Shell.Notices.FirstOrDefault(n => n.Key == "deferred");
         Assert.NotNull(deferredNotice);
-        Assert.Contains("unknown", deferredNotice!.Detail);
+        Assert.Equal("oldest unknown", deferredNotice!.Detail);
+    }
+
+    /// <summary>Q2-46: the other side of the test above, so "oldest unknown"
+    /// can't be what every age renders as.</summary>
+    [Fact]
+    public void AKnownOldestAgeRendersInDays()
+    {
+        using var fx = new ShellFixture();
+        fx.Shell.ApplyDeferred(new Scanner.DeferredInfo(2, 4));
+        Assert.Contains("oldest 4 days", fx.Shell.DeferredAlert);
+        Assert.DoesNotContain("unknown", fx.Shell.DeferredAlert);
+        Assert.Equal("oldest 4 days", fx.Shell.Notices.Single(n => n.Key == "deferred").Detail);
     }
 
     [Fact]
