@@ -227,14 +227,20 @@ public class UnlockClearAndRemoveTests : IDisposable
     {
         var archive = Directory.CreateDirectory(Path.Combine(_dir, "locked_archive_20260901")).FullName;
         File.WriteAllText(Path.Combine(archive, "invoice.pdf"), "locked original");
-        File.WriteAllText(Path.Combine(_dir, "invoice.unlocking.tmp"), "unlocked copy");
+        var leftover = Path.Combine(_dir, "invoice.unlocking.tmp");
+        using (var doc = new PdfDocument())
+        {
+            doc.AddPage();
+            doc.Save(leftover);
+        }
+        var unlockedCopy = File.ReadAllBytes(leftover);
         var vm = new UnlockViewModel(new Config(), () => true,
             probe: (path, candidates) => new Unlock.ProbeResult("needs_password", path, Message: "x"),
             scheduler: new InlineWorkScheduler());
 
         await vm.AddFilesAsync(new[] { Touch("other.pdf") });
 
-        Assert.Equal("unlocked copy", File.ReadAllText(Path.Combine(_dir, "invoice.pdf")));
+        Assert.Equal(unlockedCopy, File.ReadAllBytes(Path.Combine(_dir, "invoice.pdf")));
         Assert.Contains("invoice.pdf", vm.AddNote);
     }
 
