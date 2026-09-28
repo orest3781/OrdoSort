@@ -1,6 +1,8 @@
 @echo off
 rem Build the portable Box Labels exe locally: publish-boxlabels\BoxLabels.exe
-rem (needs the .NET 8 Desktop Runtime, already on modern Windows).
+rem (needs the .NET 8 Desktop Runtime installed. Windows ships .NET Framework,
+rem not .NET 8; where it is missing, the exe shows a download link when
+rem started. The release's self-contained zip carries its own runtime.)
 rem
 rem This is the label maker on its own, for someone who needs box labels and
 rem nothing else from OrdoSort. Hand over the whole publish-boxlabels folder.

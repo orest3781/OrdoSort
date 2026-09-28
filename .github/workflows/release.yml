@@ -37,9 +37,10 @@ jobs:
           "tag=$tag" >> $env:GITHUB_OUTPUT
           "version=$($tag.TrimStart('v'))" >> $env:GITHUB_OUTPUT
 
-      # ~5 MB: the .NET 8 Desktop Runtime and WebView2 are already on modern
-      # Windows (the app's whole design bet). Windows shows a download link
-      # for the runtime if it's missing.
+      # ~7 MB: needs the .NET 8 Desktop Runtime, which Windows does not ship
+      # (it ships .NET Framework), and WebView2, which current Windows does.
+      # Windows shows a download link for the runtime if it's missing; the
+      # self-contained build below is for machines that can't install it.
       - name: Publish portable exe
         run: >
           dotnet publish src/OrdoSort.Wpf -c Release -r win-x64
