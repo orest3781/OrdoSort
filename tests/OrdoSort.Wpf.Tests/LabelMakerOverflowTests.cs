@@ -26,7 +26,7 @@ file sealed class NoDialogs : IDialogService
 
 /// <summary>2026-08-16 wrap audit, user report: text in the Box labels window
 /// (LabelMakerWindow) ran off screen. The window mixes fixed-width columns
-/// (170px client list, 140/60px field cells, Width=680/MinWidth=600) with a
+/// (170px client list, 140/60px field cells, Width=680/MinWidth=620) with a
 /// user-configurable app font (Config.UiFontSize, 6–72, default 14), so
 /// content that fits at 14px marches past the window edge as the font grows —
 /// and a WPF Grid does not clip, so there is no visual hint beyond the text
@@ -37,8 +37,7 @@ file sealed class NoDialogs : IDialogService
 /// visible TextBlock, RadioButton and Button lands inside the window's
 /// content bounds. Guaranteed range, deliberately bounded: the default font
 /// and 18px, the Settings Text tab's largest preset, at both the minimum
-/// (600) and default (680) widths (18px at 600 is a known escape today; see
-/// the first test's remarks). 72px cannot be honoured by ANY fixed-width dialog and is out of
+/// (620) and default (680) widths. 72px cannot be honoured by ANY fixed-width dialog and is out of
 /// scope; past 18 the prose elements degrade by trimming/wrapping instead of
 /// overflowing, which is what the fixes this suite pins actually changed.</summary>
 [Collection(HighlightContrastTests.Name)]
@@ -52,17 +51,15 @@ public class LabelMakerOverflowTests : UiTest
     /// This used to check horizontally only, at whatever height the window
     /// opened, so a form row pushed off the bottom at the minimum size passed
     /// (Q2-15). 18px at the minimum width is the corner a large font on a
-    /// window dragged small produces, which no case rendered (Q2-18). It
-    /// escapes today: "Reset to 1" runs about 14px past the right edge. The
-    /// fix (wrap, trim, or a wider minimum) is a visual call for the owner, so
-    /// that case is marked <paramref name="knownToEscape"/> and asserts the
-    /// escape is still there; it fails once the window fits, so the mark gets
-    /// removed rather than forgotten.</remarks>
+    /// window dragged small produces, which no case rendered (Q2-18). At the
+    /// old 600 minimum "Reset to 1" ran about 14px past the right edge, so the
+    /// minimum is 620. <paramref name="knownToEscape"/> marks a case expected
+    /// to escape; none is now.</remarks>
     [Theory]
-    [InlineData(14.0, 600.0, 512.0, false)]
+    [InlineData(14.0, 620.0, 512.0, false)]
     [InlineData(14.0, 680.0, 572.0, false)]
     [InlineData(18.0, 680.0, 572.0, false)]
-    [InlineData(18.0, 600.0, 512.0, true)]
+    [InlineData(18.0, 620.0, 512.0, false)]
     public void EveryTextElementStaysInsideTheWindow(double fontSize, double width, double height,
         bool knownToEscape) => _fx.Invoke(() =>
     {
@@ -88,7 +85,7 @@ public class LabelMakerOverflowTests : UiTest
             PumpRender();
 
             var offenders = OverflowProbe.Escapees((FrameworkElement)window.Content, checkVertical: true, out var examined);
-            // 36 judged at 600x512 and 38 at 680x572. The floor is three
+            // 36 judged at 620x512 and 38 at 680x572. The floor is three
             // quarters of the smaller, rounded up, WindowOverflowTests' rule
             // (Probe.MinExamined): the old floor of 10 still passed with
             // nearly three quarters of the window unmeasured (Q2-17)

@@ -1,7 +1,7 @@
 <Window x:Class="OrdoSort.Wpf.Windows.BulkRenameWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="OrdoSort — Bulk rename" Width="820" Height="700" MinWidth="700" MinHeight="600"
+        Title="OrdoSort — Bulk rename" Width="820" Height="700" MinWidth="700" MinHeight="640"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False" AllowDrop="True"
         DragOver="OnDragOver" Drop="OnDrop"
         Style="{StaticResource {x:Type Window}}">
