@@ -9,9 +9,23 @@ How OrdoSort is tested, how to run each kind, and the rules that keep the everyd
 | Core unit tests | `tests/OrdoSort.Core.Tests` | `check.bat core` | nothing |
 | WPF tests (view models, real windows off-screen) | `tests/OrdoSort.Wpf.Tests` | `check.bat wpf` | nothing |
 | Integration (real Edge/WebView2, real Office) | classes tagged `[Trait("Category", "Integration")]` | `check.bat integration` | WebView2 runtime; Office for the Office tests |
+| Network share (two stations saving over a real Windows share) | classes tagged `[Trait("Category", "NetworkShare")]` in `tests/OrdoSort.Core.Tests` | `check.bat share` | the test share, below |
 | End-to-end (the real app, driven) | `tools/OrdoSort.Smoke` | `scripts\e2e.bat` | a desktop session |
 
-`check.bat` runs everything except Integration: format check, Release build, then the tests from a Debug build in `artifacts\check` (see the comment at the top of `check.bat` for why). `check.bat all` adds Integration. CI runs the everyday set on Release plus its own `integration` job.
+`check.bat` runs everything except Integration and NetworkShare: format check, Release build, then the tests from a Debug build in `artifacts\check` (see the comment at the top of `check.bat` for why). `check.bat all` adds Integration. CI runs the everyday set on Release plus its own `integration` job; it never runs NetworkShare (no share there).
+
+## The test share
+
+The NetworkShare tests make this PC a file server with two "stations": you through `\\localhost\OrdoSortTest$`, and a local user with plain Modify rights (`OrdoSortShareTest`) through `\\127.0.0.1\OrdoSortTest$`. Windows keeps one sign-in per server name, so the two names give two users. `\\127.0.0.1\OrdoSortTestRO$` is the same folder, read-only for the test user. A test fails, naming these steps, when the share isn't ready.
+
+| Step | Command | When |
+|---|---|---|
+| Create the user, the two hidden shares and the stored password | `powershell -ExecutionPolicy Bypass -File scripts\share-test-setup.ps1`, as administrator | once |
+| Sign in to `\\127.0.0.1` as the test user | `powershell -ExecutionPolicy Bypass -File scripts\share-test-connect.ps1`, without admin | after each Windows sign-in, before anything else opens `\\127.0.0.1` |
+| If `127.0.0.1` is already open as you (connect fails with 1219) | as administrator: `Get-SmbSession \| Where-Object ClientComputerName -match '^(127\.\|\[?::1)' \| Close-SmbSession -Force`, then connect again | when needed |
+| Remove it all | `scripts\share-test-teardown.ps1`, as administrator | when done |
+
+What it covers today: a station saving the config another station wrote last (the office "access denied", fixed in `f80c880`; the test fails with that exact message when the fix is taken out), and a save to a read-only share. A dropped, hung or slow share needs a server that can be stopped or slowed (a Samba container behind Toxiproxy is the plan); not set up yet.
 
 ## Rules
 

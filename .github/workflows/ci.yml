@@ -46,7 +46,7 @@ jobs:
       # Everyday tests only; the real Edge/Office ones run in the
       # integration job below (docs/testing.md).
       - name: Test
-        run: dotnet test --no-build -c Release --verbosity normal --filter "Category!=Integration"
+        run: dotnet test --no-build -c Release --verbosity normal --filter "Category!=Integration&Category!=NetworkShare"
       # NonDeterministicDebugBuildTests asserts opposite things per
       # configuration, and #if DEBUG picks which. A Release-only CI would
       # therefore never compile the Debug assertion, so deleting
