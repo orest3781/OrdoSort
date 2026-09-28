@@ -413,10 +413,6 @@ public class WindowOverflowTests : UiTest
     /// starts fitting fails until it is removed.</summary>
     private static readonly Dictionary<string, string> EscapesAtLargeFontMinWidth = new()
     {
-        ["BulkRenameWindow"] =
-            "the help line under the grid is pushed below the bottom edge at 700x600",
-        ["PageCountsWindow"] =
-            "the counts line and the Clear button run past the right edge at 580 wide",
         ["SettingsWindow"] =
             "Open and Create it on the Destinations and Monitored folders tabs run past the right edge at 760 wide",
     };
