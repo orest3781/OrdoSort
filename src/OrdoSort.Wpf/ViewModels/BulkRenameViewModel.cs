@@ -680,7 +680,7 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
 
     /// <summary>The next row still waiting on a name, wrapping. -1 when there
     /// are none, so Enter simply commits on a finished batch.</summary>
-    public int IndexOfNextNeedingName(int after)
+    internal int IndexOfNextNeedingName(int after)
     {
         for (var step = 1; step <= Preview.Count; step++)
         {
