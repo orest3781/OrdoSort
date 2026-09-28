@@ -503,4 +503,43 @@ public sealed class MatchMergeHeaderMappingTests : IDisposable
         Assert.Equal("Roster loaded: 1 people.", vm.Status);
         Assert.Equal(1, reads);
     }
+
+    /// <summary>DW-54: every add, remove or rename re-matched EVERY listed
+    /// file against the whole roster, so a long list got slower to touch
+    /// with each file in it. A file already matched against this roster is
+    /// not matched again; a new roster matches everything afresh.</summary>
+    [Fact]
+    public void AddingAFileMatchesOnlyTheNewFile()
+    {
+        var roster = WriteCsv("First,Last,Control\nJohn,Smith,1\n");
+        var a = WriteNamed("20240101-SMITH-JOHN.pdf");
+        var b = WriteNamed("20240102-JONES-MARY.pdf");
+        var matched = new List<string>();
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(),
+            matchFiles: (paths, r) =>
+            {
+                var list = paths.ToList();
+                matched.AddRange(list);
+                return MatchMerge.MatchFiles(list, r);
+            });
+        vm.LoadRosterFrom(roster);
+        vm.AddFiles(new[] { a });
+        matched.Clear();
+
+        vm.AddFiles(new[] { b });
+
+        Assert.Equal(new[] { b }, matched);
+        Assert.Equal(new[] { "merge", "no_match" }, vm.Rows.Select(r => r.Status));
+
+        matched.Clear();
+        vm.LoadRosterFrom(roster);   // a fresh roster: everything again
+        Assert.Equal(new[] { a, b }, matched);
+    }
+
+    private string WriteNamed(string name)
+    {
+        var path = Path.Combine(_dir, name);
+        File.WriteAllText(path, "pdf");
+        return path;
+    }
 }

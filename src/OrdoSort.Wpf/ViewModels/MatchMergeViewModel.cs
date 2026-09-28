@@ -30,6 +30,7 @@ public sealed class MatchMergeViewModel : ObservableObject
     private readonly Action? _saveCfg;
     private readonly IWorkScheduler _scheduler;
     private readonly Func<string, List<List<string>>> _readRoster;
+    private readonly Func<IEnumerable<string>, MatchMerge.Roster, List<MatchMerge.MatchResult>> _matchFiles;
 
     /// <summary>Extension set in Intake's shape (dot-less, lowercase) rather
     /// than the EndsWith(".pdf") this used to inline — same rule, one place.</summary>
@@ -55,9 +56,11 @@ public sealed class MatchMergeViewModel : ObservableObject
 
     public MatchMergeViewModel(Config cfg, Action<Dictionary<string, string>> saveHeaders,
         IDialogService dialogs, Action? saveCfg = null, IWorkScheduler? scheduler = null,
-        Func<string, List<List<string>>>? readRoster = null)
+        Func<string, List<List<string>>>? readRoster = null,
+        Func<IEnumerable<string>, MatchMerge.Roster, List<MatchMerge.MatchResult>>? matchFiles = null)
     {
         _readRoster = readRoster ?? MatchMerge.ReadRosterTable;
+        _matchFiles = matchFiles ?? MatchMerge.MatchFiles;
         _cfg = cfg;
         _saveHeaders = saveHeaders;
         _dialogs = dialogs;
@@ -444,9 +447,30 @@ public sealed class MatchMergeViewModel : ObservableObject
         Refresh();
     }
 
+    // Each file's match against _matchedRoster, by source path. A match
+    // depends only on the file's name and the roster, so a file already
+    // matched is not matched again when some other file is added, removed or
+    // renamed; the token pass behind a "suggested" row walks the whole roster,
+    // and redoing it for every listed file on every change made a long list
+    // slow to touch (DW-54). A different roster starts a fresh cache.
+    private readonly Dictionary<string, MatchMerge.MatchResult> _matchCache = new(StringComparer.Ordinal);
+    private MatchMerge.Roster? _matchedRoster;
+
+    private List<MatchMerge.MatchResult> MatchAll(MatchMerge.Roster roster)
+    {
+        if (!ReferenceEquals(roster, _matchedRoster))
+        {
+            _matchCache.Clear();
+            _matchedRoster = roster;
+        }
+        var unmatched = _files.Where(f => !_matchCache.ContainsKey(f)).ToList();
+        foreach (var result in _matchFiles(unmatched, roster)) _matchCache[result.Source] = result;
+        return _files.Select(f => _matchCache[f]).ToList();
+    }
+
     private void Refresh()
     {
-        _results = _roster is null ? new() : MatchMerge.MatchFiles(_files, _roster);
+        _results = _roster is null ? new() : MatchAll(_roster);
         Rows.Clear();
         int merges = 0, review = 0, suggested = 0;
         var display = _roster is null
