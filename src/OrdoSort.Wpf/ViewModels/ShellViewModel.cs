@@ -1294,6 +1294,21 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// Closing handler (2026-08-04 audit 1.1).</summary>
     internal bool IsBusy => _busy;
 
+    private Task _filingInFlight = Task.CompletedTask;
+
+    /// <summary>The background half of the last commit, skip or undo: the
+    /// move AND its history row. Unlike <see cref="IsBusy"/> it does not wait
+    /// for the UI's follow-up, so the window can wait for it after it closes
+    /// (QC-19).</summary>
+    internal Task FilingInFlight => _filingInFlight;
+
+    private Task<T> RunFiling<T>(Func<T> work)
+    {
+        var task = _scheduler.Run(work);
+        _filingInFlight = task;
+        return task;
+    }
+
     /// <summary>Wait for the in-flight commit to finish, up to
     /// <paramref name="timeout"/>. Returns false if it did not. Polls on the
     /// UI thread because _busy is only ever written there.</summary>
@@ -1504,7 +1519,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             {
                 // the move itself can be a copy+delete across SMB shares —
                 // never on the UI thread
-                var outcome = await _scheduler.Run(() => _session.CommitCurrent(typed, route));
+                var outcome = await RunFiling(() => _session.CommitCurrent(typed, route));
+                // the window closed while this was moving: nothing left to show (QC-19)
+                if (_disposed) return;
                 _lastRoute = index;
                 MarkRouteState();
                 if (outcome.Vanished)
@@ -1550,7 +1567,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             await _viewer.ReleaseAsync();
             try
             {
-                var outcome = await _scheduler.Run(() => _session.SkipCurrent());
+                var outcome = await RunFiling(() => _session.SkipCurrent());
+                // the window closed while this was moving: nothing left to show (QC-19)
+                if (_disposed) return;
                 if (outcome.Vanished)
                     ShowStatusNote("That file disappeared from the inbox — logged and moved on.");
                 else
@@ -1587,7 +1606,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         {
             try
             {
-                var (filed, original) = await _scheduler.Run(() => _session.UndoLast());
+                var (filed, original) = await RunFiling(() => _session.UndoLast());
+                // the window closed while this was moving: nothing left to show (QC-19)
+                if (_disposed) return;
                 ShowStatusNote($"Undid {Path.GetFileName(filed)} → {Path.GetFileName(original)}");
                 HideLastAction();   // the card must never claim an undone filing
             }
@@ -2328,6 +2349,11 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         _lastActionTimer.Dispose();
         _toastTimer.Dispose();
         _statusTimer.Dispose();
-        _history.Dispose();
+        // A document still being moved writes its history row when the move
+        // lands; disposing the database first lost that row with no word
+        // (QC-19). So it closes once that filing is done.
+        var inFlight = _filingInFlight;
+        if (inFlight.IsCompleted) _history.Dispose();
+        else inFlight.ContinueWith(_ => _history.Dispose(), TaskScheduler.Default);
     }
 }

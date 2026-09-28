@@ -163,11 +163,24 @@ public partial class MainWindow : Window
             Processing.CloseForReal();
             _watch.Dispose();
             Shell.Dispose();
+            // The app ends when this window closes, and that would cut off a
+            // document still being moved over the network, and its history
+            // row (QC-19). The window is already gone; the process stays until
+            // that one filing lands, with a backstop so a dead share can't
+            // keep it forever.
+            if (!Shell.FilingInFlight.Wait(FilingExitWait))
+                App.LogCrash(new TimeoutException(
+                    $"OrdoSort closed while a document was still being filed, after waiting {FilingExitWait.TotalSeconds:0} s; "
+                    + "check History and the destination folder for the last document."));
         };
     }
 
     private bool _reallyExit;
     private bool _closed;
+
+    /// <summary>How long the closed app waits for a filing still in flight
+    /// before exiting anyway. A seam for tests.</summary>
+    internal TimeSpan FilingExitWait { get; set; } = TimeSpan.FromMinutes(2);
 
     /// <summary>Windows is shutting down or signing out: nothing here may
     /// cancel that, so the session window closes for real too.</summary>
