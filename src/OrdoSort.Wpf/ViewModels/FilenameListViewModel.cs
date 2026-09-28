@@ -164,7 +164,21 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     public bool Descending
     {
         get => _descending;
-        set { if (Set(ref _descending, value)) Reproject(); }
+        set
+        {
+            if (!Set(ref _descending, value)) return;
+            Raise(nameof(Ascending));
+            Reproject();
+        }
+    }
+
+    /// <summary>The "A to Z" half of the order choice (FL-12). Only a TRUE
+    /// changes anything: the other button being unticked by its group writes
+    /// false here, and that must not flip the order back.</summary>
+    public bool Ascending
+    {
+        get => !Descending;
+        set { if (value) Descending = false; }
     }
 
     /// <summary>Drives the Save dialog's filter. Delegates to Core's own

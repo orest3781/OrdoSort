@@ -65,6 +65,88 @@ public class FilenameListWindowTests : UiTest
         finally { window.Close(); }
     });
 
+    private FilenameListWindow OpenOffScreen(FilenameListViewModel vm)
+    {
+        var window = new FilenameListWindow(vm, _ => { })
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        window.Show();
+        window.UpdateLayout();
+        return window;
+    }
+
+    private static System.Windows.Media.Color ColourOf(System.Windows.Media.Brush brush) =>
+        ((System.Windows.Media.SolidColorBrush)brush).Color;
+
+    /// <summary>FL-11: the File list's headers lit up under the mouse like
+    /// every sortable header in the app, but clicking them does nothing — the
+    /// # column is the row order, so this table deliberately has no header
+    /// sorting. Its headers no longer light up; a sortable table's still do.</summary>
+    [Fact]
+    public void TheHeadersDoNotLightUpAsIfClickingWouldSort() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var hover = ColourOf((System.Windows.Media.Brush)_fx.App.FindResource("Theme.SurfaceHover"));
+        var window = OpenOffScreen(new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler()));
+        var sortable = new Window
+        {
+            Left = -20000, Top = 0, ShowActivated = false, Width = 300, Height = 200,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Content = new DataGrid { Columns = { new DataGridTextColumn { Header = "Name" } } },
+        };
+        try
+        {
+            var header = Ui.Descendants<System.Windows.Controls.Primitives.DataGridColumnHeader>(window)
+                .Single(h => h.Column == window.FileNameColumn);
+            Ui.ForceMouseOver(header, true);
+            Assert.NotEqual(hover, ColourOf(header.Background));
+
+            sortable.Show();
+            sortable.UpdateLayout();
+            var sortableHeader = Ui.Descendants<System.Windows.Controls.Primitives.DataGridColumnHeader>(sortable)
+                .Single(h => h.Column is not null);
+            Ui.ForceMouseOver(sortableHeader, true);
+            Assert.Equal(hover, ColourOf(sortableHeader.Background));
+        }
+        finally
+        {
+            window.Close();
+            sortable.Close();
+        }
+    });
+
+    /// <summary>FL-12: the order was one checkbox, "Z to A", whose unticked
+    /// state never said "A to Z" anywhere. It is a two-way choice now, and
+    /// the current order is always the one marked.</summary>
+    [Fact]
+    public void TheOrderIsAChoiceBetweenAToZAndZToA() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
+        var window = OpenOffScreen(vm);
+        try
+        {
+            var radios = Ui.Descendants<RadioButton>(window);
+            var aToZ = radios.Single(r => (string)r.Content == "A to Z");
+            var zToA = radios.Single(r => (string)r.Content == "Z to A");
+            Assert.True(aToZ.IsChecked);
+            Assert.False(zToA.IsChecked);
+            Assert.DoesNotContain(Ui.Descendants<CheckBox>(window), c => (c.Content as string) == "Z to A");
+
+            zToA.IsChecked = true;
+
+            Assert.True(vm.Descending);
+            Assert.False(aToZ.IsChecked);
+
+            aToZ.IsChecked = true;
+
+            Assert.False(vm.Descending);
+        }
+        finally { window.Close(); }
+    });
+
     /// <summary>DW-31 (FL-04's other half): Ctrl+C in the grid must copy the
     /// same text the Copy button does. Nothing tested it, so the branch could
     /// be deleted and Ctrl+C would silently copy nothing.</summary>

@@ -106,8 +106,12 @@
                                   IsChecked="{Binding ShowFullPath}" StaysOpenOnClick="True" />
                     </MenuItem>
                 </Menu>
-                <CheckBox Content="Z to A" IsChecked="{Binding Descending}"
-                          VerticalAlignment="Center" Margin="0,4,14,4" />
+                <!-- Two choices, not a "Z to A" checkbox whose unticked state
+                     never said "A to Z" (FL-12). -->
+                <RadioButton Content="A to Z" GroupName="Order" IsChecked="{Binding Ascending}"
+                             VerticalAlignment="Center" Margin="0,4,8,4" />
+                <RadioButton Content="Z to A" GroupName="Order" IsChecked="{Binding Descending}"
+                             VerticalAlignment="Center" Margin="0,4,14,4" />
                 <Button Content="Restore removed" Command="{Binding RestoreRemovedCommand}" Margin="0,4" />
             </WrapPanel>
 
@@ -156,11 +160,12 @@
                          header would throw or silently no-op depending on WPF's
                          mood. It would also be wrong even for a column that DID
                          sort cleanly: this window already has a sort control (the
-                         Z to A checkbox above, bound to Descending), and letting
+                         A to Z / Z to A choice above, bound to Descending), and letting
                          the grid's own header-click sorting run at the same time
                          would reorder Rows out from under it, so the on-screen "#"
                          would stop matching the numbering in whatever gets copied
-                         or saved. Z to A is this window's only sort surface. -->
+                         or saved. That choice is this window's only sort surface, and
+                         the shared header style gives these headers no hover (FL-11). -->
                     <!-- Local RowStyle, same shape as BulkRename/MatchMerge's own —
                          Theme.RowHover so the hover tint stays consistent app-wide. -->
                     <DataGrid.RowStyle>
