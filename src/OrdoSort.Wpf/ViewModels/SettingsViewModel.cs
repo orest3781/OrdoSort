@@ -2298,17 +2298,48 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     /// <summary>What the folder checks need, read from the editor on the UI
     /// thread so the checks themselves can run anywhere.</summary>
+    /// <param name="WarnBlankDeferred">Only when this edit is what cleared
+    /// it: a station that never uses a set-aside folder was asked "Save
+    /// anyway?" about it on every OK (Q2-43).</param>
+    /// <param name="EditorWarnings">Warnings that need no disk, worked out
+    /// on the UI thread.</param>
     private sealed record FolderChecks(
-        string InboxPath, string DeferredPath,
+        string InboxPath, string DeferredPath, bool WarnBlankDeferred,
         IReadOnlyList<(string Label, Route Route)> Routes,
-        IReadOnlyList<(string Label, string Path)> WatchFolders);
+        IReadOnlyList<(string Label, string Path)> WatchFolders,
+        IReadOnlyList<string> EditorWarnings);
 
     private FolderChecks FolderChecksNow() => new(
         Inbox.Trim().Length == 0 ? "" : ResolveFolderPath(Inbox.Trim()),
         Deferred.Trim().Length == 0 ? "" : ResolveFolderPath(Deferred.Trim()),
+        !string.IsNullOrWhiteSpace(_original.Deferred),
         Routes.Select(r => (r.Label.Trim(), r.ToRoute())).ToList(),
         WatchFolders.Where(w => w.Path.Trim().Length > 0)
-            .Select(w => (w.Label.Trim(), ResolveFolderPath(w.Path.Trim()))).ToList());
+            .Select(w => (w.Label.Trim(), ResolveFolderPath(w.Path.Trim()))).ToList(),
+        WatchFolderWarnings());
+
+    /// <summary>A monitored folder with no path became a tile that only
+    /// shows an error, and whose click does nothing; a destination with no
+    /// folder was already warned about (Q2-41). Two in one section with one
+    /// label make tiles and alerts that can't be told apart (DW-21); in
+    /// different sections the heading tells them apart, so that's allowed.</summary>
+    private List<string> WatchFolderWarnings()
+    {
+        var warnings = new List<string>();
+        foreach (var w in WatchFolders)
+            if (w.Path.Trim().Length == 0)
+                warnings.Add($"\"{w.Label.Trim()}\": no folder is set — its tile will only show an error.");
+        var seen = new HashSet<(string, string)>();
+        var reported = new HashSet<(string, string)>();
+        foreach (var w in WatchFolders)
+        {
+            var key = (w.Section.Trim().ToUpperInvariant(), w.Label.Trim().ToUpperInvariant());
+            if (w.Label.Trim().Length > 0 && !seen.Add(key) && reported.Add(key))
+                warnings.Add($"Two monitored folders{(w.Section.Trim().Length > 0 ? $" in {w.Section.Trim()}" : "")} " +
+                             $"have the same name, \"{w.Label.Trim()}\" — their tiles and alerts will look alike.");
+        }
+        return warnings;
+    }
 
     /// <summary>Every check here can be a network round trip (a destination's
     /// check writes and deletes a probe file), so OK runs this off the UI
@@ -2321,7 +2352,10 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         else if (!_directoryExists(checks.InboxPath))
             warnings.Add($"The inbox folder doesn't exist: {checks.InboxPath}");
         if (checks.DeferredPath.Length == 0)
-            warnings.Add("No set-aside folder is set — Skip will refuse until one is configured.");
+        {
+            if (checks.WarnBlankDeferred)
+                warnings.Add("No set-aside folder is set — Skip will refuse until one is configured.");
+        }
         else if (!_directoryExists(checks.DeferredPath))
             warnings.Add($"The set-aside folder doesn't exist: {checks.DeferredPath}");
         foreach (var (label, route) in checks.Routes)
@@ -2334,6 +2368,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             if (!_directoryExists(path))
                 warnings.Add($"\"{label}\": folder doesn't exist: {path}");
         }
+        warnings.AddRange(checks.EditorWarnings);
         return warnings;
     }
 

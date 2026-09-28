@@ -689,9 +689,11 @@ public class SettingsViewModelTests : IDisposable
         // simply skipped the blank case instead of flagging it (QC-02,
         // 2026-08-21 audit). Match the inbox warning's own shape: still a
         // Warning, not a HardError, since a user who never skips doesn't
-        // need a blocked OK over an optional field.
-        var cfg = new Config { Inbox = _dir };
+        // need a blocked OK over an optional field. Since Q2-43 it is asked
+        // only when this edit is what blanked it (SettingsOkWarningsTests).
+        var cfg = new Config { Inbox = _dir, Deferred = _dir };
         var vm = new SettingsViewModel(cfg, _dialogs);
+        vm.Deferred = "";
 
         Assert.Contains(vm.Warnings(), w => w.Contains("set-aside", StringComparison.OrdinalIgnoreCase));
     }
