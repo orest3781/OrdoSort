@@ -793,8 +793,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         // Problem probe does (see RouteEditVm.From/WatchEditVm.From)
         AlertTerms.CollectionChanged += (_, _) => RecomputeTilePreview(immediate: true);
 
-        BrowseInboxCommand = new RelayCommand(() => Inbox = _dialogs.BrowseFolder(Inbox) ?? Inbox);
-        BrowseDeferredCommand = new RelayCommand(() => Deferred = _dialogs.BrowseFolder(Deferred) ?? Deferred);
+        BrowseInboxCommand = new RelayCommand(() => _ = BrowseForFolderAsync(Inbox, picked => Inbox = picked));
+        BrowseDeferredCommand = new RelayCommand(() => _ = BrowseForFolderAsync(Deferred, picked => Deferred = picked));
         BrowseNamesFileCommand = new RelayCommand(() =>
             NamesFile = _dialogs.AskOpenFile("Name lists (*.txt)|*.txt|All files (*.*)|*.*") ?? NamesFile);
         // open-style picker: choosing the EXISTING audit db must not trigger
@@ -806,11 +806,11 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             BoxLabelsFile = PickSideFile(BoxLabelsFile, "box_labels_file"));
         BrowseRoutePathCommand = new RelayCommand(() =>
         {
-            if (SelectedRoute is { } r) r.Path = _dialogs.BrowseFolder(r.Path) ?? r.Path;
+            if (SelectedRoute is { } r) _ = BrowseForFolderAsync(r.Path, picked => r.Path = picked);
         });
         BrowseWatchPathCommand = new RelayCommand(() =>
         {
-            if (SelectedWatch is { } w) w.Path = _dialogs.BrowseFolder(w.Path) ?? w.Path;
+            if (SelectedWatch is { } w) _ = BrowseForFolderAsync(w.Path, picked => w.Path = picked);
         });
         CreateRouteFolderCommand = new RelayCommand(() =>
             CreateFolder(SelectedRoute?.Path, () => SelectedRoute?.RefreshProblem()));
@@ -1079,6 +1079,38 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 ? (relative ? FieldNote.Info("relative — resolved beside the config file") : FieldNote.Clear)
                 : FieldNote.Problem($"folder {Config.MissingFolder(full, _directoryExists)}"),
             immediate);
+    }
+
+    /// <summary>How long Browse… waits to hear whether the current folder
+    /// exists before opening the picker without it.</summary>
+    internal static readonly TimeSpan BrowseStartCheckLimit = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>Browse… for a folder, starting in <paramref name="current"/>
+    /// when it answers that it exists. The picker used to check that itself,
+    /// on the UI thread; on a dead share (exactly when someone clicks Browse…
+    /// to re-point a folder) that held the window until the network gave up
+    /// (Q2-25). The check now runs off the UI thread and gets
+    /// <see cref="BrowseStartCheckLimit"/>; no answer in time opens the
+    /// picker in its default place.</summary>
+    private async Task BrowseForFolderAsync(string current, Action<string> adopt)
+    {
+        try
+        {
+            string? start = null;
+            if (current.Trim() is { Length: > 0 } typed)
+            {
+                var full = ResolveFolderPath(typed);
+                var exists = _scheduler.Run(() => _directoryExists(full));
+                var limit = Task.Delay(BrowseStartCheckLimit, _time ?? TimeProvider.System);
+                if (await Task.WhenAny(exists, limit) == exists && await exists) start = full;
+            }
+            if (_dialogs.BrowseFolder(start) is { } picked) adopt(picked);
+        }
+        catch (Exception ex)
+        {
+            // Every caller discards this Task, so a fault would otherwise vanish.
+            _dialogs.Warn($"The folder picker couldn't open: {ex.Message}", "OrdoSort");
+        }
     }
 
     /// <summary>Resolve a relative Inbox/Deferred value beside config.json —
