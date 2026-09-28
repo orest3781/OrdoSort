@@ -28,7 +28,7 @@ public class ZipExtractViewModelTests
     private static ZipExtractViewModel MakeVm(
         IDialogService? dialogs = null,
         IReadOnlyList<string>? savedPasswords = null,
-        Func<IReadOnlyList<string>, string?, Zipper.ZipResult>? zipper = null,
+        Func<IReadOnlyList<string>, string?, CancellationToken, Zipper.ZipResult>? zipper = null,
         Func<string, IReadOnlyList<string>, Func<PasswordRequest, string?>?, Zipper.UnzipResult>? extractor = null,
         Func<string, IReadOnlyList<string>, Zipper.ZipProbeResult>? zipProbe = null,
         SynchronizationContext? uiContext = null) =>
@@ -43,7 +43,7 @@ public class ZipExtractViewModelTests
         using var dir = new TempDir();
         var a = dir.File("a.txt");
         string? seenOutput = "not called";
-        var vm = MakeVm(zipper: (paths, output) =>
+        var vm = MakeVm(zipper: (paths, output, _) =>
         {
             seenOutput = output;
             return new Zipper.ZipResult("ok", Path.Combine(dir.Path, "a.zip"));
@@ -61,7 +61,7 @@ public class ZipExtractViewModelTests
         using var dir = new TempDir();
         var a = dir.File("a.txt");
         var b = dir.File("b.txt");
-        var vm = MakeVm(zipper: (paths, output) => new Zipper.ZipResult("ok", Path.Combine(dir.Path, "made.zip")));
+        var vm = MakeVm(zipper: (paths, output, _) => new Zipper.ZipResult("ok", Path.Combine(dir.Path, "made.zip")));
         await vm.AddPaths(new[] { a, b });
 
         await vm.ZipAsync(null);
@@ -76,7 +76,7 @@ public class ZipExtractViewModelTests
     {
         using var dir = new TempDir();
         var a = dir.File("a.txt");
-        var vm = MakeVm(zipper: (paths, output) => new Zipper.ZipResult("ok", Path.Combine(dir.Path, "made.zip"),
+        var vm = MakeVm(zipper: (paths, output, _) => new Zipper.ZipResult("ok", Path.Combine(dir.Path, "made.zip"),
             "left out 1 folder that couldn't be read: scans/private"));
         await vm.AddPaths(new[] { a });
 
@@ -91,7 +91,7 @@ public class ZipExtractViewModelTests
     {
         using var dir = new TempDir();
         var a = dir.File("a.txt");
-        var vm = MakeVm(zipper: (paths, output) => new Zipper.ZipResult("error", null, "nothing to zip"));
+        var vm = MakeVm(zipper: (paths, output, _) => new Zipper.ZipResult("error", null, "nothing to zip"));
         await vm.AddPaths(new[] { a });
 
         await vm.ZipAsync(null);
@@ -107,7 +107,7 @@ public class ZipExtractViewModelTests
         var chosen = Path.Combine(dir.Path, "chosen.zip");
         string? seenOutput = null;
         var calls = 0;
-        var vm = MakeVm(dialogs: new FakeDialogs { NextSaveFile = chosen }, zipper: (paths, output) =>
+        var vm = MakeVm(dialogs: new FakeDialogs { NextSaveFile = chosen }, zipper: (paths, output, _) =>
         {
             calls++;
             seenOutput = output;
@@ -127,7 +127,7 @@ public class ZipExtractViewModelTests
         using var dir = new TempDir();
         var a = dir.File("a.txt");
         var calls = 0;
-        var vm = MakeVm(dialogs: new FakeDialogs { NextSaveFile = null }, zipper: (paths, output) =>
+        var vm = MakeVm(dialogs: new FakeDialogs { NextSaveFile = null }, zipper: (paths, output, _) =>
         {
             calls++;
             return new Zipper.ZipResult("ok", "irrelevant.zip");
@@ -155,7 +155,7 @@ public class ZipExtractViewModelTests
         bool? busyDuring = null;
         ZipExtractViewModel? vm = null;
         vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(), uiContext: null,
-            zipper: (_, _) =>
+            zipper: (_, _, _) =>
             {
                 statusDuring = vm!.Status;
                 busyDuring = vm.IsBusy;
@@ -189,7 +189,7 @@ public class ZipExtractViewModelTests
         Task? secondBatch = null;
         ZipExtractViewModel? vm = null;
         vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(), uiContext: null,
-            zipper: (_, _) =>
+            zipper: (_, _, _) =>
             {
                 zipEnabledDuring = vm!.ZipCommand.CanExecute(null);
                 zipAsEnabledDuring = vm.ZipAsCommand.CanExecute(null);
@@ -303,7 +303,7 @@ public class ZipExtractViewModelTests
     {
         using var dir = new TempDir();
         var a = dir.File("a.txt");
-        var vm = MakeVm(zipper: (paths, output) => new Zipper.ZipResult("ok", Path.Combine(dir.Path, "a.zip")));
+        var vm = MakeVm(zipper: (paths, output, _) => new Zipper.ZipResult("ok", Path.Combine(dir.Path, "a.zip")));
         await vm.AddPaths(new[] { a });
         await vm.ZipAsync(null);
         Assert.NotEqual("", vm.Status);
@@ -1040,5 +1040,77 @@ public class ZipExtractViewModelTests
         ctx.Drain();
 
         Assert.Equal("Extract", announced);
+    }
+
+    /// <summary>QC-31: closing the window mid-zip (OnClosed calls Cancel)
+    /// never reached the zip, which took no token and ran on to the end.
+    /// The zipper must be handed the run's token, and a cancel must reach it.</summary>
+    [Fact]
+    public async Task ClosingTheWindowMidZipCancelsTheZip()
+    {
+        using var dir = new TempDir();
+        var file = dir.File("a.txt");
+        var cancelledInside = false;
+        ZipExtractViewModel? vm = null;
+        vm = MakeVm(zipper: (_, _, cancel) =>
+        {
+            vm!.Cancel();   // what ZipToolsWindow.OnClosed does
+            cancelledInside = cancel.IsCancellationRequested;
+            return new Zipper.ZipResult("cancelled", null, "zip cancelled");
+        });
+        await vm.AddPaths(new[] { file });
+
+        await vm.ZipAsync(null);
+
+        Assert.True(cancelledInside);
+        Assert.False(vm.IsBusy);
+    }
+
+    /// <summary>QC-31: Clear during a zip must stop it and must not have its
+    /// blank status overwritten by the stopped zip's own words.</summary>
+    [Fact]
+    public async Task ClearDuringAZipStopsItAndLeavesTheStatusBlank()
+    {
+        using var dir = new TempDir();
+        var file = dir.File("a.txt");
+        var cancelledInside = false;
+        ZipExtractViewModel? vm = null;
+        vm = MakeVm(zipper: (_, _, cancel) =>
+        {
+            vm!.ClearCommand.Execute(null);
+            cancelledInside = cancel.IsCancellationRequested;
+            return new Zipper.ZipResult("cancelled", null, "zip cancelled");
+        });
+        await vm.AddPaths(new[] { file });
+
+        await vm.ZipAsync(null);
+
+        Assert.True(cancelledInside);
+        Assert.Equal("", vm.Status);
+    }
+
+    /// <summary>DW-86: the zip's verdict was POSTED to the UI while IsBusy
+    /// was cleared at once, so for a moment the window was idle again but
+    /// still said "Zipping…". Both now land together.</summary>
+    [Fact]
+    public async Task WhenAZipStopsBeingBusyItsVerdictIsAlreadyShown()
+    {
+        using var dir = new TempDir();
+        var file = dir.File("a.txt");
+        var ctx = new QueueingContext();
+        var vm = MakeVm(uiContext: ctx,
+            zipper: (_, _, _) => new Zipper.ZipResult("ok", Path.Combine(dir.Path, "a.zip")));
+        await vm.AddPaths(new[] { file });
+        ctx.Drain();
+        string? statusWhenIdle = null;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ZipExtractViewModel.IsBusy) && !vm.IsBusy)
+                statusWhenIdle = vm.Status;
+        };
+
+        await vm.ZipAsync(null);
+
+        Assert.StartsWith("Created a.zip", statusWhenIdle);
     }
 }

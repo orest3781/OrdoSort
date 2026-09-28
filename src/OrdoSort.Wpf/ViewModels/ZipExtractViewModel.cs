@@ -17,13 +17,13 @@ namespace OrdoSort.Wpf.ViewModels;
 /// window's candidates or the prompt; a skipped prompt leaves it runnable.</summary>
 public sealed class ZipExtractViewModel : ZipListViewModel
 {
-    private readonly Func<IReadOnlyList<string>, string?, Zipper.ZipResult> _zipper;
+    private readonly Func<IReadOnlyList<string>, string?, CancellationToken, Zipper.ZipResult> _zipper;
     private readonly Func<string, IReadOnlyList<string>, Func<PasswordRequest, string?>?, Zipper.UnzipResult> _extractor;
     private readonly Func<string, IReadOnlyList<string>, Zipper.ZipProbeResult> _zipProbe;
 
     public ZipExtractViewModel(IDialogService dialogs, IReadOnlyList<string> savedPasswords,
         IWorkScheduler? scheduler = null, SynchronizationContext? uiContext = null,
-        Func<IReadOnlyList<string>, string?, Zipper.ZipResult>? zipper = null,
+        Func<IReadOnlyList<string>, string?, CancellationToken, Zipper.ZipResult>? zipper = null,
         Func<string, IReadOnlyList<string>, Func<PasswordRequest, string?>?, Zipper.UnzipResult>? extractor = null,
         Func<string, IReadOnlyList<string>, Zipper.ZipProbeResult>? zipProbe = null)
         : base(dialogs, savedPasswords, scheduler, uiContext)
@@ -98,17 +98,28 @@ public sealed class ZipExtractViewModel : ZipListViewModel
         // Extract: a large folder takes seconds to compress, and the window
         // used to give no sign of it (UX-07). IsBusy also parks Remove
         // selected (IsIdle) for the duration.
+        // Closing the window or pressing Clear cancels this token, and the
+        // zipper stops between files and removes what it wrote (QC-31).
+        var token = RunToken;
         IsBusy = true;
         Status = $"Zipping {itemCount} item{(itemCount == 1 ? "" : "s")}…";
         try
         {
-            var result = await Scheduler.Run(() => _zipper(paths, outputPath));
-            // an "ok" can still carry a note: folders that couldn't be read
-            // and were left out (Q2-13), which must not go unsaid
-            RunOnUi(() => Status = result.Status == "ok"
-                ? $"Created {System.IO.Path.GetFileName(result.Output!)} · {itemCount} item{(itemCount == 1 ? "" : "s")}"
-                  + (result.Message.Length > 0 ? $" · {result.Message}" : "")
-                : result.Message);
+            var result = await Scheduler.Run(() => _zipper(paths, outputPath, token));
+            // Written here, where the await resumed, rather than posted: a
+            // posted write landed after IsBusy cleared below, so the window
+            // was idle again while still saying "Zipping…" (DW-86). A run
+            // that was cancelled says nothing: Clear has already blanked the
+            // line, and a closed window has nobody to tell.
+            if (!token.IsCancellationRequested)
+            {
+                // an "ok" can still carry a note: folders that couldn't be
+                // read and were left out (Q2-13), which must not go unsaid
+                Status = result.Status == "ok"
+                    ? $"Created {System.IO.Path.GetFileName(result.Output!)} · {itemCount} item{(itemCount == 1 ? "" : "s")}"
+                      + (result.Message.Length > 0 ? $" · {result.Message}" : "")
+                    : result.Message;
+            }
         }
         finally
         {
