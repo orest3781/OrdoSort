@@ -61,6 +61,10 @@ What it covers today: a station saving the config another station wrote last (th
 | `SettingsViewModelTests` path checks, `BulkRenameProbeTests`, `TilePreviewProbeTests`, `FolderWatchServiceTests`, `DebouncedProbeTests` | ✅ Done | No sleeps or wall-clock asserts; manual clock and scheduler |
 | `UnlockEnterKeyTests`, UI tests seeing leftover windows or focus | ✅ Done | `UiTest` reset |
 | `WebViewPdfViewerGuardBehaviourTests`, MainWindow hang on real Edge | ✅ Done | Own WebView2 profile per run; real-Edge tests are Integration |
+| `SessionDeferredResolutionTests` (`IOException` in `Commit.SkipFile`, seen 2026-08-19) | ✅ Done | It ran alongside `PipelineTests`, which arms a Commit seam that fires inside every move. Since `5e643f6` it shares `UndoFailureTests.Name`, and `EveryClassThatReachesMoveNeverOverwriteSharesTheCollection` keeps every class that moves files there |
+| `SettingsViewModelTests.TilePreviewExplainsEmptyAndMissingFolders`, `BulkRenameViewModelTests.HandEditSurvivesAnOpChange` (full-suite load only) | ✅ Done | Their own `WaitFor` copies gave up after 3 s on a busy machine; both use the shared 30 s `WaitFor` since `78621bf` |
+| `UnlockProbeWritesNothingTests` (full-suite parallelism) | ✅ Done | A streamed unlock in another class wrote `ordosort_unlock_*.pdf` into the temp folder this test watches. It joined `UnlockNeverOverwritesTests.Name` (`88332dc`), pinned by `UnlockThresholdTestCollectionMembershipTests` |
+| WPF test host hangs at process exit (seen 2026-08-19) | ⬜ Not started | Every test passed, then `testhost.exe` never exited. Suspected cause: `MainWindow` never disposes its WebView2 while `TriageWindow` does (DW-23). Everyday tests no longer start Edge (`initViewer` seam), so expect it in `check.bat integration` if anywhere. If it happens: end the stray `testhost.exe` and re-run |
 
 ## Environment notes
 
