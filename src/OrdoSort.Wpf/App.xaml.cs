@@ -52,6 +52,11 @@ public partial class App : Application
             : Path.Combine(AppContext.BaseDirectory, "config.json");
         _crashDir = DefaultCrashDir;
 
+        // An unlock killed mid-run leaves a decrypted copy in %TEMP% (DW-22);
+        // clear out old ones, off the UI thread so a big temp folder never
+        // delays the window.
+        _ = Task.Run(() => Unlock.SweepStaleTemps(Path.GetTempPath(), DateTime.UtcNow));
+
         // Theme FIRST, before anything that can raise a dialog. The app's
         // dialogs are real WPF windows now (MessageWindow, UI-02), so they
         // resolve Theme.* brushes and need those resources present — and the

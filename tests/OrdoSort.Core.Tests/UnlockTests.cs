@@ -296,4 +296,33 @@ public class UnlockTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_dir, "a.unlocking.tmp")));
         Assert.False(File.Exists(Path.Combine(_dir, "b.pdf")));
     }
+
+    /// <summary>DW-22: a large-file unlock writes the decrypted document to
+    /// %TEMP% first, and an app killed mid-unlock left that unencrypted copy
+    /// there for good, since nothing ever looked for it. The startup sweep
+    /// removes this app's own stale temps, and only those: a fresh one may
+    /// belong to an unlock running right now, and nobody else's files are
+    /// touched.</summary>
+    [Fact]
+    public void TheStartupSweepRemovesOnlyThisAppsStaleUnlockTemps()
+    {
+        var now = new DateTime(2026, 9, 27, 12, 0, 0, DateTimeKind.Utc);
+        string Plant(string name, TimeSpan age)
+        {
+            var path = Path.Combine(_dir, name);
+            File.WriteAllText(path, "decrypted");
+            File.SetLastWriteTimeUtc(path, now - age);
+            return path;
+        }
+        var stale = Plant("ordosort_unlock_0123456789abcdef.pdf", TimeSpan.FromDays(2));
+        var fresh = Plant("ordosort_unlock_fedcba9876543210.pdf", TimeSpan.FromMinutes(5));
+        var someoneElses = Plant("report.pdf", TimeSpan.FromDays(2));
+
+        var removed = Unlock.SweepStaleTemps(_dir, now);
+
+        Assert.Equal(1, removed);
+        Assert.False(File.Exists(stale));
+        Assert.True(File.Exists(fresh));
+        Assert.True(File.Exists(someoneElses));
+    }
 }
