@@ -284,7 +284,10 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     {
         CancelCounting();
         _countCts.Dispose();
-        _countGate.Dispose();
+        // _countGate is deliberately not disposed (QC-25): counts already
+        // running hand it back when they end, after this, and Release on a
+        // disposed gate throws. It holds no OS handle, so the collector
+        // reclaims it — PageCountsViewModel's gate works the same way.
         _listingProbe.Dispose();
     }
 
@@ -507,8 +510,12 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         // the type box or the Find box scopes the work before it starts. Once
         // everything on screen is counted this finds nothing to do and returns
         // immediately, which is what makes it safe to call per keystroke.
-        if (ShowPages) _ = CountVisiblePdfsAsync();
+        if (ShowPages) Counting = CountVisiblePdfsAsync();
     }
+
+    /// <summary>The latest round of page counting; tests await it to see how
+    /// it ended.</summary>
+    internal Task Counting { get; private set; } = Task.CompletedTask;
 
     /// <summary>Re-attaches a page count this row already earned. FileRow is an
     /// immutable record, so this is a with-copy rather than a mutation: the row

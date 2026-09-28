@@ -1007,6 +1007,33 @@ public class FilenameListViewModelTests : IDisposable
         Assert.Single(vm.Rows);   // kept: the answer was no
     }
 
+    /// <summary>QC-25: closing the window while PDFs were being counted
+    /// disposed the gate the running counts still hand back when they end, so
+    /// each one finished with an ObjectDisposedException. Silent today, but a
+    /// crash on close the day unobserved task errors are reported.</summary>
+    [Fact]
+    public async Task ClosingWhileCountingLetsTheRunningCountsEndCleanly()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+        Touch("a.pdf");
+        var scheduler = new ManualWorkScheduler();
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler, uiContext: null, probeDelayMs: 0,
+            counter: p => new PageCounts.CountResult(p, 1));
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => scheduler.PendingCount > 0, "the folder walk should be queued");
+        scheduler.ReleaseAll();
+        Assert.Single(vm.Rows);
+
+        vm.ShowPages = true;   // the count starts and waits on the scheduler
+        var pendingBeforeClose = scheduler.PendingCount;
+
+        vm.Dispose();
+        scheduler.ReleaseAll();
+
+        Assert.True(pendingBeforeClose > 1, "the count should have been running when the window closed");
+        await vm.Counting;   // must not fault
+    }
+
     [Fact]
     public void ClearingAListWithNoRemovalsDoesNotAsk()
     {
