@@ -670,6 +670,31 @@ public class FilenameListViewModelTests : IDisposable
         Assert.Equal("1 file · 2 other types · 1 not found", vm.CountsLine);
     }
 
+    /// <summary>FL-22: with the Folder or Full path column on, the paths are
+    /// on screen and look searchable, but Find only ever looked at names, so
+    /// typing a folder's name found nothing. Find now searches the columns
+    /// that are showing; with them off, it stays names only.</summary>
+    [Fact]
+    public void FindAlsoSearchesTheFolderAndPathColumnsWhenTheyAreShowing()
+    {
+        Touch(Path.Combine("acme", "invoice.pdf"));
+        Touch(Path.Combine("zenith", "report.pdf"));
+        var vm = MakeVm(new FakeDialogs());
+        vm.IncludeSubfolders = true;
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        vm.NameFilter = "acme";
+        Assert.Empty(vm.Rows);   // names only while no path column is on
+
+        vm.ShowFolder = true;
+        Assert.Equal("invoice.pdf", Assert.Single(vm.Rows).Name);
+
+        vm.ShowFolder = false;
+        vm.ShowFullPath = true;
+        Assert.Equal("invoice.pdf", Assert.Single(vm.Rows).Name);
+    }
+
     /// <summary>FL-15: "Restore removed" never said how many rows it would
     /// bring back; the count was only in the footer. The button names it.</summary>
     [Fact]

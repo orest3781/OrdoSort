@@ -533,8 +533,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         // trailing space or newline, and neither is in any filename (UX-38).
         var filter = NameFilter.Trim();
         if (filter.Length > 0)
-            visible = visible.Where(r =>
-                r.Name.Contains(filter, StringComparison.OrdinalIgnoreCase));
+            visible = visible.Where(r => MatchesFind(r, filter));
 
         var projected = visible.ToList();
         if (Descending) projected.Reverse();
@@ -573,6 +572,15 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     /// <summary>The latest round of page counting; tests await it to see how
     /// it ended.</summary>
     internal Task Counting { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Find searches what is on screen (FL-22): the name always, and
+    /// the Folder and Full path columns while they are showing. A path column
+    /// that is hidden is not searched, or a row could match on text the user
+    /// can't see.</summary>
+    private bool MatchesFind(FilenameList.FileRow row, string filter) =>
+        row.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+        || (ShowFolder && row.Folder.Contains(filter, StringComparison.OrdinalIgnoreCase))
+        || (ShowFullPath && row.FullPath.Contains(filter, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Re-attaches a page count this row already earned. FileRow is an
     /// immutable record, so this is a with-copy rather than a mutation: the row
