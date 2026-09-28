@@ -83,6 +83,11 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         _palette = palette ?? (() => ThemeManager.Current);
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _sounds = sounds ?? new NullSoundService();
+        // The preview's Edge process died: filing goes on without it (QC-24).
+        _viewer.Stopped += message =>
+        {
+            if (!_disposed) _dialogs.Warn(message, "OrdoSort — document preview");
+        };
         _flash = new System.Threading.Timer(_ =>
         {
             if (_uiContext is null) FlashTick();

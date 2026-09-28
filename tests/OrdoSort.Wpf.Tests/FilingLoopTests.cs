@@ -392,6 +392,20 @@ public class FilingLoopTests
         Assert.Equal("Ctrl+1", HotkeyParser.Display(fx.Shell.Routes[0].Gesture!));
     }
 
+    /// <summary>QC-24: when the preview's Edge process dies the viewer stops
+    /// and says why; the shell passes that on, and filing carries on.</summary>
+    [Fact]
+    public async Task WhenThePreviewStopsTheShellSaysSoAndFilingCarriesOn()
+    {
+        using var fx = Started("20240115--111111.pdf");
+
+        fx.Viewer.Stop("The document preview stopped.");
+
+        Assert.Contains(fx.Dialogs.Warnings, w => w.Message == "The document preview stopped.");
+        await fx.Shell.OnRouteAsync(0);
+        Assert.Single(Directory.GetFiles(fx.RouteDir));
+    }
+
     [Fact]
     public void SuggestionsComeFromSeedsRankedAndPrefixFiltered()
     {

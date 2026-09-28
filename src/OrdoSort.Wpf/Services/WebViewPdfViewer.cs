@@ -34,6 +34,48 @@ public sealed class WebViewPdfViewer : IPdfViewer
     public string? InitError { get; private set; }
     public bool Ready => _ready;
 
+    public event Action<string>? Stopped;
+
+    internal const string StoppedMessage =
+        "The document preview stopped: its Microsoft Edge process closed. Filing still works, " +
+        "without the preview; restart OrdoSort to get the preview back.";
+
+    /// <summary>The pane can't show anything any more (QC-24): stop calling
+    /// into it, and say so once. Every filing navigates the pane first, so
+    /// before this each keystroke failed with "didn't finish" until restart.</summary>
+    private void MarkStopped()
+    {
+        if (!_ready) return;
+        _ready = false;
+        _expected = null;
+        _shownPath = null;
+        Stopped?.Invoke(StoppedMessage);
+    }
+
+    /// <summary>Only the browser process exiting leaves the control unusable;
+    /// a renderer that dies is replaced by the next navigation.</summary>
+    private void OnProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
+    {
+        if (e.ProcessFailedKind == CoreWebView2ProcessFailedKind.BrowserProcessExited) MarkStopped();
+    }
+
+    /// <summary>Navigate, or stop the viewer if the engine is gone. The
+    /// ProcessFailed event can arrive after the call that finds it.</summary>
+    private bool TryNavigate(string url)
+    {
+        try
+        {
+            _view.CoreWebView2.Navigate(url);
+            return true;
+        }
+        catch (Exception e) when (e is InvalidOperationException or System.Runtime.InteropServices.COMException
+                                   or ObjectDisposedException)
+        {
+            MarkStopped();
+            return false;
+        }
+    }
+
     private const string InstallUrl = "https://developer.microsoft.com/microsoft-edge/webview2/";
 
     private static string MissingRuntimeMessage =>
@@ -172,6 +214,7 @@ public sealed class WebViewPdfViewer : IPdfViewer
             // CurrentUrl. See task-1-report.md for the screenshots and method.
             s.IsScriptEnabled = false;
 
+            core.ProcessFailed += OnProcessFailed;
             _ready = true;
             return true;
         }
@@ -219,7 +262,7 @@ public sealed class WebViewPdfViewer : IPdfViewer
             _shownPath = path;
             _shownPage = page;
             _expected = DocumentUrl(path, FitZoom());
-            _view.CoreWebView2.Navigate(_expected);
+            TryNavigate(_expected);
         }
         return Task.CompletedTask;
     }
@@ -242,10 +285,10 @@ public sealed class WebViewPdfViewer : IPdfViewer
         void Reopen(object? sender, CoreWebView2NavigationCompletedEventArgs e)
         {
             core.NavigationCompleted -= Reopen;
-            if (_expected == url) core.Navigate(url);
+            if (_ready && _expected == url) TryNavigate(url);
         }
         core.NavigationCompleted += Reopen;
-        core.Navigate("about:blank");
+        if (!TryNavigate("about:blank")) core.NavigationCompleted -= Reopen;
     }
 
     public void Blank()
@@ -253,7 +296,7 @@ public sealed class WebViewPdfViewer : IPdfViewer
         if (_ready)
         {
             _expected = null;
-            _view.CoreWebView2.Navigate("about:blank");
+            TryNavigate("about:blank");
         }
     }
 
@@ -277,7 +320,14 @@ public sealed class WebViewPdfViewer : IPdfViewer
     {
         if (!_ready) return;
         _expected = null;
-        var core = _view.CoreWebView2;
+        CoreWebView2 core;
+        try { core = _view.CoreWebView2; }
+        catch (Exception e) when (e is InvalidOperationException or System.Runtime.InteropServices.COMException
+                                   or ObjectDisposedException)
+        {
+            MarkStopped();
+            return;
+        }
         var tcs = new TaskCompletionSource();
         ulong? blankNavigationId = null;
 
@@ -297,8 +347,9 @@ public sealed class WebViewPdfViewer : IPdfViewer
         core.NavigationCompleted += OnCompleted;
         try
         {
-            core.Navigate("about:blank");
-            await Task.WhenAny(tcs.Task, Task.Delay(2000));
+            // a dead engine holds no file open: nothing to wait for
+            if (TryNavigate("about:blank"))
+                await Task.WhenAny(tcs.Task, Task.Delay(2000));
         }
         finally
         {

@@ -17,4 +17,9 @@ public interface IPdfViewer
 
     /// <summary>Show nothing (Ready/Done screens).</summary>
     void Blank();
+
+    /// <summary>Raised once, with a message for the user, when the engine
+    /// has gone and the pane can't show documents any more. From then on the
+    /// other members do nothing, so filing carries on without a preview.</summary>
+    event Action<string>? Stopped;
 }
