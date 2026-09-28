@@ -39,6 +39,16 @@ public static class Ui
     public static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject =>
         Descendants(root).OfType<T>().FirstOrDefault();
 
+    /// <summary>Sets UIElement.IsMouseOver, which is read-only and normally
+    /// flipped only by a real mouse, so a hover style can be tested.</summary>
+    public static void ForceMouseOver(UIElement element, bool value)
+    {
+        var field = typeof(UIElement).GetField("IsMouseOverPropertyKey",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("UIElement has no private static IsMouseOverPropertyKey field");
+        element.SetValue((DependencyPropertyKey)field.GetValue(null)!, value);
+    }
+
     /// <summary>Every <typeparamref name="T"/> under <paramref name="root"/> in
     /// the logical tree (works before a window is shown or templated).</summary>
     public static IEnumerable<T> LogicalDescendants<T>(DependencyObject root) where T : DependencyObject

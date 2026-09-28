@@ -1743,9 +1743,16 @@
                             <Setter TargetName="SortChevron" Property="Visibility" Value="Visible" />
                             <Setter TargetName="SortChevron" Property="Data" Value="M 0,0 L 4,4 L 8,0" />
                         </Trigger>
-                        <Trigger Property="IsMouseOver" Value="True">
+                        <!-- Hover says "click to sort", so only a header that sorts
+                             lights up. The File list and Merge PDFs keep their
+                             row order on purpose; theirs stay still (FL-11). -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsMouseOver" Value="True" />
+                                <Condition Property="CanUserSort" Value="True" />
+                            </MultiTrigger.Conditions>
                             <Setter Property="Background" Value="{DynamicResource Theme.SurfaceHover}" />
-                        </Trigger>
+                        </MultiTrigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>

@@ -39,7 +39,13 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     // is what keeps "what you see is what you copy" true of the name filter and
     // the sort direction and not only of the columns.
     private IReadOnlyList<FilenameList.FileRow> _allRows = Array.Empty<FilenameList.FileRow>();
+
+    /// <summary>_allRows named without extensions, made the first time
+    /// Include extension is off and kept until the next walk, so the Find
+    /// box doesn't rename and re-sort every row per keystroke.</summary>
+    private IReadOnlyList<FilenameList.FileRow>? _stemRows;
     private int _lastIgnored;
+    private int _lastNotFound;
     private string _lastError = "";
 
     // Full paths the user has removed. Keyed on PATH rather than on the row,
@@ -83,6 +89,10 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     private CancellationTokenSource _countCts = new();
 
     public int RemovedCount => _allRows.Count(r => _excluded.Contains(r.FullPath));
+
+    /// <summary>The Restore button's text, with the number it brings back
+    /// (FL-15) — the same number the counts line shows as "· N removed".</summary>
+    public string RestoreLabel => RemovedCount > 0 ? $"Restore {RemovedCount} removed" : "Restore removed";
 
     /// <summary>Pushed in by the window on SelectionChanged — DataGrid's
     /// SelectedItems is not bindable.</summary>
@@ -159,7 +169,21 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     public bool Descending
     {
         get => _descending;
-        set { if (Set(ref _descending, value)) Reproject(); }
+        set
+        {
+            if (!Set(ref _descending, value)) return;
+            Raise(nameof(Ascending));
+            Reproject();
+        }
+    }
+
+    /// <summary>The "A to Z" half of the order choice (FL-12). Only a TRUE
+    /// changes anything: the other button being unticked by its group writes
+    /// false here, and that must not flip the order back.</summary>
+    public bool Ascending
+    {
+        get => !Descending;
+        set { if (value) Descending = false; }
     }
 
     /// <summary>Drives the Save dialog's filter. Delegates to Core's own
@@ -185,6 +209,11 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     /// button copied all 200 rows while Ctrl+C copied the 5 you had picked.</summary>
     public string CopyText => FilenameList.ToText(SelectedRows(), Columns);
 
+    /// <summary>Whether the Copy button is on (FL-14). Copy is a click handler
+    /// in the window (the clipboard must stay out of this class), so it is
+    /// gated by this binding rather than a command.</summary>
+    public bool CanCopy => Rows.Count > 0;
+
     private List<FilenameList.FileRow> SelectedRows()
     {
         if (_selectedPaths.Count == 0) return Rows.ToList();
@@ -194,9 +223,19 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
 
     public FilenameListViewModel(IDialogService dialogs, IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null, int probeDelayMs = 300,
-        Func<string, PageCounts.CountResult>? counter = null)
+        Func<string, PageCounts.CountResult>? counter = null, FilenameListOptionsStore? options = null)
     {
         _dialogs = dialogs;
+        _options = options;
+        // Fields, not properties: nothing is listed yet, so there is nothing
+        // to walk or re-render.
+        if (options?.Load() is { } remembered)
+        {
+            _includeSubfolders = remembered.IncludeSubfolders;
+            _includeExtension = remembered.IncludeExtension;
+            _descending = remembered.Descending;
+            _extensionFilter = remembered.ExtensionFilter ?? "";
+        }
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _uiContext = uiContext;
         _counter = counter ?? PageCounts.Count;
@@ -229,8 +268,10 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
             _removalBatches.Clear();
             CancelCounting();
             _pageCounts.Clear();   // a re-added file may have changed on disk
+            AddNote = "";          // both describe the list just cleared (FL-17)
+            SetStatus("");
             Refresh(immediate: true);
-        });
+        }, () => _sources.Count > 0);   // FL-14; live while reading, since Clear stops a read
         RemoveSelectedCommand = new RelayCommand(() =>
         {
             if (_selectedPaths.Count == 0) return;
@@ -244,6 +285,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
             SelectedPaths = Array.Empty<string>();
             Reproject();
         }, () => _selectedPaths.Count > 0);
+        NoMatchesActionCommand = new RelayCommand(RunNoMatchesAction);
         UndoRemovalCommand = new RelayCommand(() =>
         {
             if (_removalBatches.Count == 0) return;
@@ -275,16 +317,26 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     private void RefreshCommandStates()
     {
         SaveCommand.RaiseCanExecuteChanged();
+        ClearCommand.RaiseCanExecuteChanged();
         RemoveSelectedCommand.RaiseCanExecuteChanged();
         UndoRemovalCommand.RaiseCanExecuteChanged();
         RestoreRemovedCommand.RaiseCanExecuteChanged();
     }
 
+    /// <summary>Where the view options are remembered between sessions
+    /// (FL-07); null remembers nothing. Loaded when the list opens, saved when
+    /// it is disposed on close.</summary>
+    private readonly FilenameListOptionsStore? _options;
+
     public void Dispose()
     {
+        _options?.Save(new FilenameListOptions(IncludeSubfolders, IncludeExtension, Descending, ExtensionFilter));
         CancelCounting();
         _countCts.Dispose();
-        _countGate.Dispose();
+        // _countGate is deliberately not disposed (QC-25): counts already
+        // running hand it back when they end, after this, and Release on a
+        // disposed gate throws. It holds no OS handle, so the collector
+        // reclaims it — PageCountsViewModel's gate works the same way.
         _listingProbe.Dispose();
     }
 
@@ -296,11 +348,12 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         set { if (Set(ref _includeSubfolders, value)) Refresh(immediate: true); }
     }
 
+    // A display choice, so a Reproject rather than a walk of the disk (FL-09).
     private bool _includeExtension = true;
     public bool IncludeExtension
     {
         get => _includeExtension;
-        set { if (Set(ref _includeExtension, value)) Refresh(immediate: true); }
+        set { if (Set(ref _includeExtension, value)) Reproject(); }
     }
 
     // Typed field, like BulkRename's Find/Replace — debounced, not immediate.
@@ -341,6 +394,68 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     /// the name filter, the type filter, everything having been removed, or a
     /// folder that turned out to hold no files. See <see cref="IsEmpty"/>.</summary>
     public bool NoMatches => Rows.Count == 0 && _sources.Count > 0;
+
+    /// <summary>Why <see cref="NoMatches"/> shows nothing, most specific
+    /// first, so the empty view can name the cause and offer the one click
+    /// that undoes it (FL-23).</summary>
+    private enum EmptyCause { None, Reading, Find, Removed, Types, NoFilesAtTop, NoFiles }
+
+    private EmptyCause CurrentEmptyCause()
+    {
+        if (!NoMatches) return EmptyCause.None;
+        if (IsListing) return EmptyCause.Reading;
+        // Some rows survive the removals, so the Find box hid them.
+        if (NameFilter.Trim().Length > 0 && RemovedCount < _allRows.Count) return EmptyCause.Find;
+        if (_allRows.Count > 0) return EmptyCause.Removed;
+        if (ExtensionFilter.Trim().Length > 0) return EmptyCause.Types;
+        return IncludeSubfolders ? EmptyCause.NoFiles : EmptyCause.NoFilesAtTop;
+    }
+
+    /// <summary>The empty view's sentence: what is hiding the rows.</summary>
+    public string NoMatchesMessage => CurrentEmptyCause() switch
+    {
+        EmptyCause.Reading => "Reading the folders…",
+        EmptyCause.Find => $"No file matches “{NameFilter.Trim()}”.",
+        EmptyCause.Removed => "Every file here has been removed from the list.",
+        EmptyCause.Types => $"No files of the types “{ExtensionFilter.Trim()}”.",
+        EmptyCause.NoFilesAtTop => "No files at the top of these folders.",
+        EmptyCause.NoFiles => "These folders hold no files.",
+        _ => "",
+    };
+
+    /// <summary>The empty view's button text; empty when there is no one-click
+    /// way out.</summary>
+    public string NoMatchesActionLabel => CurrentEmptyCause() switch
+    {
+        EmptyCause.Find => "Clear Find",
+        EmptyCause.Removed => RestoreLabel,
+        EmptyCause.Types => "Show all types",
+        EmptyCause.NoFilesAtTop => "Include subfolders",
+        _ => "",
+    };
+
+    public bool HasNoMatchesAction => NoMatchesActionLabel.Length > 0;
+
+    /// <summary>Does what <see cref="NoMatchesActionLabel"/> says.</summary>
+    public RelayCommand NoMatchesActionCommand { get; }
+
+    private void RunNoMatchesAction()
+    {
+        switch (CurrentEmptyCause())
+        {
+            case EmptyCause.Find: NameFilter = ""; break;
+            case EmptyCause.Removed: RestoreRemovedCommand.Execute(null); break;
+            case EmptyCause.Types: ExtensionFilter = ""; break;
+            case EmptyCause.NoFilesAtTop: IncludeSubfolders = true; break;
+        }
+    }
+
+    private void RaiseEmptyView()
+    {
+        Raise(nameof(NoMatchesMessage));
+        Raise(nameof(NoMatchesActionLabel));
+        Raise(nameof(HasNoMatchesAction));
+    }
 
     private string _status = "";
     public string Status { get => _status; private set => Set(ref _status, value); }
@@ -386,6 +501,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         var taken = Intake.Add(_sources, paths);
         _sources.AddRange(taken.Files);
         AddNote = taken.Note("file");
+        SetStatus("");   // "Saved to…" or "Copied…" was about the list before this add (FL-17)
         Refresh(immediate: true);
     }
 
@@ -396,7 +512,8 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     /// stale probe from repopulating Rows after this.</summary>
     private void Refresh(bool immediate = false)
     {
-        var opt = new FilenameList.Options(IncludeSubfolders, IncludeExtension, ExtensionFilter);
+        // Always read with extensions: hiding them is Reproject's job.
+        var opt = new FilenameList.Options(IncludeSubfolders, IncludeExtension: true, ExtensionFilter);
         var sourcesSnapshot = _sources.ToList();
 
         if (sourcesSnapshot.Count == 0)
@@ -407,6 +524,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         }
 
         IsListing = true;
+        RefreshCommandStates();   // Clear goes live now, before the read lands
         _listingProbe.Trigger(() => FilenameList.Build(sourcesSnapshot, opt), immediate);
     }
 
@@ -424,6 +542,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         {
             if (!Set(ref _isListing, value)) return;
             CountsLine = _sources.Count == 0 ? "" : value ? ReadingLine : FormatCounts();
+            RaiseEmptyView();
         }
     }
 
@@ -436,7 +555,9 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     private void ApplyListing(FilenameList.Listing listing)
     {
         _allRows = listing.Rows;
+        _stemRows = null;
         _lastIgnored = listing.Ignored;
+        _lastNotFound = listing.NotFound;
         _lastError = listing.Error;
         _isListing = false;   // Reproject below writes the counts line
         Raise(nameof(IsListing));
@@ -444,13 +565,13 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Rebuilds Rows from _allRows in memory — the name filter, the
-    /// sort direction and the columns all land here, never a new Build.
-    /// Deliberately never touches _listingProbe: only the roots and the
-    /// three intake filters (IncludeSubfolders, IncludeExtension,
-    /// ExtensionFilter) justify going back to the disk.
+    /// sort direction, the extensions and the columns all land here, never a
+    /// new Build. Deliberately never touches _listingProbe: only the roots
+    /// and the two intake filters (IncludeSubfolders, ExtensionFilter)
+    /// justify going back to the disk.
     ///
-    /// Six call sites reach this: ApplyListing (the probe's marshalled
-    /// callback), the Columns/NameFilter/Descending setters (driven by
+    /// The call sites: ApplyListing (the probe's marshalled
+    /// callback), the Columns/NameFilter/Descending/IncludeExtension setters (driven by
     /// bindings, so the caller's thread), and RemoveSelectedCommand/
     /// RestoreRemovedCommand (driven by a button click, also the UI thread).
     /// Mutating the ObservableCollection
@@ -468,15 +589,15 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     /// that ordering.</summary>
     private void Reproject()
     {
+        var named = IncludeExtension ? _allRows : (_stemRows ??= FilenameList.WithoutExtensions(_allRows));
         IEnumerable<FilenameList.FileRow> visible =
-            _allRows.Where(r => !_excluded.Contains(r.FullPath));
+            named.Where(r => !_excluded.Contains(r.FullPath));
 
         // Trimmed at use, not in the setter: a pasted term often carries a
         // trailing space or newline, and neither is in any filename (UX-38).
         var filter = NameFilter.Trim();
         if (filter.Length > 0)
-            visible = visible.Where(r =>
-                r.Name.Contains(filter, StringComparison.OrdinalIgnoreCase));
+            visible = visible.Where(r => MatchesFind(r, filter));
 
         var projected = visible.ToList();
         if (Descending) projected.Reverse();
@@ -497,18 +618,34 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         CountsLine = _sources.Count == 0 ? "" : IsListing ? ReadingLine : FormatCounts();
         Raise(nameof(IsEmpty));
         Raise(nameof(NoMatches));
+        RaiseEmptyView();
         Raise(nameof(OutputText));
         Raise(nameof(OutputCsv));
         Raise(nameof(CopyText));
         Raise(nameof(RemovedCount));
+        Raise(nameof(RestoreLabel));
+        Raise(nameof(CanCopy));
         RefreshCommandStates();
 
         // Only ever counts what is VISIBLE and not yet known, so narrowing with
         // the type box or the Find box scopes the work before it starts. Once
         // everything on screen is counted this finds nothing to do and returns
         // immediately, which is what makes it safe to call per keystroke.
-        if (ShowPages) _ = CountVisiblePdfsAsync();
+        if (ShowPages) Counting = CountVisiblePdfsAsync();
     }
+
+    /// <summary>The latest round of page counting; tests await it to see how
+    /// it ended.</summary>
+    internal Task Counting { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Find searches what is on screen (FL-22): the name always, and
+    /// the Folder and Full path columns while they are showing. A path column
+    /// that is hidden is not searched, or a row could match on text the user
+    /// can't see.</summary>
+    private bool MatchesFind(FilenameList.FileRow row, string filter) =>
+        row.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+        || (ShowFolder && row.Folder.Contains(filter, StringComparison.OrdinalIgnoreCase))
+        || (ShowFullPath && row.FullPath.Contains(filter, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Re-attaches a page count this row already earned. FileRow is an
     /// immutable record, so this is a with-copy rather than a mutation: the row
@@ -654,7 +791,11 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         if (removed > 0) line += $" · {removed} removed";
         var hidden = total - removed - Rows.Count;
         if (hidden > 0) line += $" · {hidden} filtered out";
-        if (_lastIgnored > 0) line += $" · {_lastIgnored} ignored";
+        // Two causes, two words (FL-21): the type box leaving files out on
+        // purpose must not read like paths that have gone.
+        var otherTypes = _lastIgnored - _lastNotFound;
+        if (otherTypes > 0) line += $" · {otherTypes} other type{(otherTypes == 1 ? "" : "s")}";
+        if (_lastNotFound > 0) line += $" · {_lastNotFound} not found";
         if (_lastError.Length > 0) line += $" · {_lastError}";
         return line;
     }

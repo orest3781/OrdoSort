@@ -38,9 +38,34 @@ public static class FilenameList
         /// not an error and needs no explanation.</summary>
         public string PageCell =>
             Pages?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? PageNote;
+
+        /// <summary>What the Size column shows: "4.1 MB" rather than 4293904
+        /// (FL-30). The exports keep raw bytes under "Size (bytes)", which a
+        /// spreadsheet can add up. Blank when the size couldn't be read.</summary>
+        public string SizeCell => FormatSize(Size);
     }
 
-    public sealed record Listing(IReadOnlyList<FileRow> Rows, int Ignored, string Error = "");
+    /// <summary>The manifest spec's "Auto" size (§2.1): the largest unit whose
+    /// value is at least 1, dividing by 1024, with that unit's decimals —
+    /// KB 0, MB 1, GB 3. Under 1 KB it is plain bytes. Null is blank, never 0.</summary>
+    public static string FormatSize(long? bytes)
+    {
+        if (bytes is not { } value) return "";
+        const double Kb = 1024, Mb = Kb * 1024, Gb = Mb * 1024;
+        var inv = CultureInfo.InvariantCulture;
+        if (value >= Gb) return (value / Gb).ToString("0.000", inv) + " GB";
+        if (value >= Mb) return (value / Mb).ToString("0.0", inv) + " MB";
+        if (value >= Kb) return (value / Kb).ToString("0", inv) + " KB";
+        return value.ToString(inv) + " bytes";
+    }
+
+    /// <summary>One Build's result.</summary>
+    /// <param name="Rows">The files listed.</param>
+    /// <param name="Ignored">Files of another type plus paths not found.</param>
+    /// <param name="Error">Why the walk stopped early, or empty.</param>
+    /// <param name="NotFound">How many of <paramref name="Ignored"/> were
+    /// paths that had gone (FL-21); see <see cref="Intake.Expanded"/>.</param>
+    public sealed record Listing(IReadOnlyList<FileRow> Rows, int Ignored, string Error = "", int NotFound = 0);
 
     /// <summary>Never throws — Intake.Expand's own Ignored/Error flow through
     /// unchanged, and the per-file read below is guarded row by row, so a file
@@ -75,15 +100,23 @@ public static class FilenameList
                 // reason to drop the row or to throw out of a never-throws method
             }
 
-            rows.Add(new FileRow(
-                opt.IncludeExtension ? Path.GetFileName(file) : Path.GetFileNameWithoutExtension(file),
-                size, modified, FolderFor(file, paths), file));
+            rows.Add(new FileRow(Path.GetFileName(file), size, modified, FolderFor(file, paths), file));
         }
 
         // Intake sorts by full PATH; re-sort on the NAME this list actually shows.
         rows.Sort((a, b) => NaturalSort.Instance.Compare(a.Name, b.Name));
-        return new Listing(rows, expanded.Ignored, expanded.Error);
+        return new Listing(opt.IncludeExtension ? rows : WithoutExtensions(rows), expanded.Ignored, expanded.Error,
+            expanded.NotFound);
     }
+
+    /// <summary>The same rows named without their extensions, in the natural
+    /// order of those shorter names. Works on rows already read, so hiding
+    /// extensions never needs a second walk of the disk (FL-09). The sort is
+    /// stable: two files with the same stem keep the order they came in.</summary>
+    public static IReadOnlyList<FileRow> WithoutExtensions(IReadOnlyList<FileRow> rows) =>
+        rows.Select(r => r with { Name = Path.GetFileNameWithoutExtension(r.Name) })
+            .OrderBy(r => r.Name, NaturalSort.Instance)
+            .ToList();
 
     /// <summary>Which optional columns are on. Name is NOT a member: it is always
     /// emitted, so including it would make a HasFlag check trivially true and
@@ -131,7 +164,7 @@ public static class FilenameList
         (Columns.Number, "#"),
         (Columns.None, "Name"),
         (Columns.Pages, "Pages"),
-        (Columns.Size, "Size"),
+        (Columns.Size, "Size (bytes)"),   // raw bytes, though the grid shows "4.1 MB" (FL-30)
         (Columns.Modified, "Modified"),
         (Columns.Folder, "Folder"),
         (Columns.FullPath, "Full path"),
@@ -170,9 +203,14 @@ public static class FilenameList
     /// the Excel formula-injection guard. That guard matters more here than almost
     /// anywhere else in the app: filenames are user-controlled, and a file called
     /// "=cmd...pdf" is something Excel will try to interpret when the exported
-    /// file is opened.</summary>
+    /// file is opened.
+    ///
+    /// No rows is no text, header included, the same as ToText: the shape of
+    /// "nothing" must not depend on which column is on (FL-28).</summary>
     public static string ToCsv(IReadOnlyList<FileRow> rows, Columns cols)
     {
+        if (rows.Count == 0) return "";
+
         var active = Active(cols);
         var lines = new List<string>(rows.Count + 1)
         {

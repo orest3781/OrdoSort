@@ -226,7 +226,10 @@ public class PageCountsViewModelTests : IDisposable
         // needed — Save()'s fire-and-forget SaveAsync() runs to completion
         // inline because nothing it awaits ever actually suspends.
         Assert.True(File.Exists(savePath));
-        Assert.Equal(vm.OutputText, File.ReadAllText(savePath));
+        // A literal, not vm.OutputText: an expectation read from the code
+        // under test agrees with whatever that code writes (DW-28).
+        Assert.Equal("a.pdf\t2" + Environment.NewLine + Environment.NewLine + "Total\t2",
+            File.ReadAllText(savePath));
         Assert.Contains("Saved to", vm.Status);
     }
 

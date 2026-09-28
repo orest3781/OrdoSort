@@ -14,12 +14,21 @@ namespace OrdoSort.Core;
 /// </summary>
 public static class Intake
 {
-    public sealed record Expanded(List<string> Files, int Ignored, string Error = "");
+    /// <summary>What one Expand call found.</summary>
+    /// <param name="Files">The files kept, in natural order.</param>
+    /// <param name="Ignored">Everything turned away: files of another type
+    /// plus paths not found.</param>
+    /// <param name="Error">Why the walk stopped early, or empty.</param>
+    /// <param name="NotFound">How many of <paramref name="Ignored"/> were
+    /// neither a file nor a folder — gone since they were added. Kept apart
+    /// so "you filtered these out" never reads like "these are broken" (FL-21).</param>
+    public sealed record Expanded(List<string> Files, int Ignored, string Error = "", int NotFound = 0);
 
     public static Expanded Expand(IEnumerable<string> paths, bool recursive, ISet<string>? extensions)
     {
         var files = new List<string>();
         var ignored = 0;
+        var notFound = 0;
         try
         {
             foreach (var path in paths)
@@ -53,6 +62,7 @@ public static class Intake
                 else
                 {
                     ignored++;   // neither a file nor a folder — gone, or never existed
+                    notFound++;
                 }
             }
         }
@@ -61,11 +71,11 @@ public static class Intake
             // whatever was gathered before the failure is still worth returning
             files.Sort(NaturalSort.Instance);
             return new Expanded(files, ignored,
-                $"Couldn't finish reading the dropped items: {ex.Message}");
+                $"Couldn't finish reading the dropped items: {ex.Message}", notFound);
         }
 
         files.Sort(NaturalSort.Instance);
-        return new Expanded(files, ignored, "");
+        return new Expanded(files, ignored, "", notFound);
     }
 
     /// <summary>What one Add call did. Files are canonical and in input

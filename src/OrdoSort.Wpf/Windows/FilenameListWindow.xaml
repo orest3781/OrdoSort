@@ -15,7 +15,7 @@
         <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
             <Button DockPanel.Dock="Right" Content="Close" Width="96" IsCancel="True" />
             <StackPanel Orientation="Horizontal">
-                <Button Content="Copy to clipboard" Click="OnCopy" Margin="0,0,8,0" />
+                <Button Content="Copy to clipboard" Click="OnCopy" IsEnabled="{Binding CanCopy}" Margin="0,0,8,0" />
                 <!-- Content is BOUND, not literal: Save writes a .csv the moment any
                      data column is on (FilenameListViewModel.SaveLabel), and a
                      button promising ".txt" while the dialog offers ".csv" is the
@@ -64,34 +64,39 @@
                  to a second line at the window's MinWidth instead of marching
                  off screen (WindowOverflowTests) -->
             <DockPanel Margin="0,0,0,10">
+                <!-- The cut-off end of the note is the part that says what went
+                     wrong, so the whole note shows as a tooltip (FL-29). -->
                 <TextBlock DockPanel.Dock="Right" Text="{Binding AddNote}"
                            Style="{StaticResource CaptionText}"
                            VerticalAlignment="Center" MaxWidth="240"
-                           TextTrimming="CharacterEllipsis" />
+                           TextTrimming="CharacterEllipsis"
+                           views:TrimmedTextTooltip.Enabled="True" />
                 <WrapPanel>
                     <Button Content="Browse folder…" Command="{Binding BrowseFolderCommand}" Margin="0,0,6,4" />
                     <Button Content="Browse files…" Command="{Binding BrowseFilesCommand}" Margin="0,0,6,4" />
                     <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,14,4" />
                     <CheckBox Content="Include subfolders" IsChecked="{Binding IncludeSubfolders}"
-                              VerticalAlignment="Center" Margin="0,4,14,4" />
-                    <CheckBox Content="Include extension" IsChecked="{Binding IncludeExtension}"
                               VerticalAlignment="Center" Margin="0,4" />
                 </WrapPanel>
             </DockPanel>
 
-            <!-- Its own row, not more items in the toolbar WrapPanel above:
-                 that one already carries three buttons and two checkboxes,
-                 and five more controls (Find box, Columns menu, sort
-                 checkbox, Restore button) would wrap to a THIRD line at the
-                 480px MinWidth WindowOverflowTests pins, not a tidy second
-                 one. -->
-            <WrapPanel Grid.Row="1" Margin="0,0,0,10">
-                <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,4,6,4" />
+            <!-- What gets READ sits above what gets SHOWN (FL-24): the two
+                 rows above re-read the disk when changed (the roots, Include
+                 subfolders, Only these types); everything in this row only
+                 re-renders what is already read, so it is instant. Its own
+                 row, not more items in the toolbar WrapPanel above: at the
+                 480px MinWidth WindowOverflowTests pins, that one would wrap
+                 to a third line. -->
+            <WrapPanel Grid.Row="2" Margin="0,0,0,10">
+                <!-- 8: the label-to-control gap (FieldLabel), not 6, the gap
+                     between two buttons (FL-26). -->
+                <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,4,8,4" />
                 <TextBox Width="140" VerticalAlignment="Center" Margin="0,4,14,4"
                          Text="{Binding NameFilter, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.Name="Find in this list" />
                 <Menu Background="Transparent" VerticalAlignment="Center" Margin="0,4,14,4">
-                    <MenuItem Header="Columns ▾">
+                    <!-- named without the ▾, which a screen reader reads out (FL-25) -->
+                    <MenuItem Header="Columns ▾" AutomationProperties.Name="Columns">
                         <MenuItem Header="Row number" IsCheckable="True"
                                   IsChecked="{Binding ShowNumber}" StaysOpenOnClick="True" />
                         <MenuItem Header="Pages" IsCheckable="True"
@@ -106,12 +111,21 @@
                                   IsChecked="{Binding ShowFullPath}" StaysOpenOnClick="True" />
                     </MenuItem>
                 </Menu>
-                <CheckBox Content="Z to A" IsChecked="{Binding Descending}"
+                <!-- A display choice since FL-09, so it lives here with the others -->
+                <CheckBox Content="Include extension" IsChecked="{Binding IncludeExtension}"
                           VerticalAlignment="Center" Margin="0,4,14,4" />
-                <Button Content="Restore removed" Command="{Binding RestoreRemovedCommand}" Margin="0,4" />
+                <!-- Two choices, not a "Z to A" checkbox whose unticked state
+                     never said "A to Z" (FL-12). -->
+                <RadioButton Content="A to Z" GroupName="Order" IsChecked="{Binding Ascending}"
+                             VerticalAlignment="Center" Margin="0,4,8,4" />
+                <RadioButton Content="Z to A" GroupName="Order" IsChecked="{Binding Descending}"
+                             VerticalAlignment="Center" Margin="0,4,14,4" />
+                <!-- On the toolbar, not only behind right-click and Delete (FL-13). -->
+                <Button Content="Remove selected" Command="{Binding RemoveSelectedCommand}" Margin="0,4,6,4" />
+                <Button Content="{Binding RestoreLabel}" Command="{Binding RestoreRemovedCommand}" Margin="0,4" />
             </WrapPanel>
 
-            <Grid Grid.Row="2" Style="{StaticResource FieldRow}">
+            <Grid Grid.Row="1" Style="{StaticResource FieldRow}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="180" />
@@ -156,11 +170,12 @@
                          header would throw or silently no-op depending on WPF's
                          mood. It would also be wrong even for a column that DID
                          sort cleanly: this window already has a sort control (the
-                         Z to A checkbox above, bound to Descending), and letting
+                         A to Z / Z to A choice above, bound to Descending), and letting
                          the grid's own header-click sorting run at the same time
                          would reorder Rows out from under it, so the on-screen "#"
                          would stop matching the numbering in whatever gets copied
-                         or saved. Z to A is this window's only sort surface. -->
+                         or saved. That choice is this window's only sort surface, and
+                         the shared header style gives these headers no hover (FL-11). -->
                     <!-- Local RowStyle, same shape as BulkRename/MatchMerge's own —
                          Theme.RowHover so the hover tint stays consistent app-wide. -->
                     <DataGrid.RowStyle>
@@ -184,7 +199,7 @@
                             <MenuItem Header="Undo last removal" Command="{Binding UndoRemovalCommand}"
                                       InputGestureText="Ctrl+Z" />
                             <Separator />
-                            <MenuItem Header="Restore removed"  Command="{Binding RestoreRemovedCommand}" />
+                            <MenuItem Header="{Binding RestoreLabel}" Command="{Binding RestoreRemovedCommand}" />
                         </ContextMenu>
                     </DataGrid.ContextMenu>
                     <!-- Rows is ObservableCollection<FilenameList.FileRow>, so each
@@ -270,8 +285,10 @@
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
 
-                        <DataGridTextColumn x:Name="SizeColumn" Header="Size" Binding="{Binding Size}"
-                                            Width="80">
+                        <!-- SizeCell ("4.1 MB"), not the raw bytes Size holds (FL-30);
+                             the export keeps bytes, under "Size (bytes)". -->
+                        <DataGridTextColumn x:Name="SizeColumn" Header="Size" Binding="{Binding SizeCell}"
+                                            Width="90">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellNumber}" />
                             </DataGridTextColumn.ElementStyle>
@@ -322,14 +339,16 @@
                         <Binding Path="IsEmpty" Converter="{StaticResource BoolToVis}" />
                     </TextBlock.Visibility>
                 </TextBlock>
-                <TextBlock x:Name="NoMatchesText"
-                           Text="Nothing to show — filtered out, removed, or the folder was empty."
-                           Style="{StaticResource EmptyStateText}"
-                           IsHitTestVisible="False">
-                    <TextBlock.Visibility>
-                        <Binding Path="NoMatches" Converter="{StaticResource BoolToVis}" />
-                    </TextBlock.Visibility>
-                </TextBlock>
+                <!-- Names what is hiding the rows and offers the click that
+                     undoes it: Clear Find, Restore, Show all types (FL-23). -->
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top"
+                            Visibility="{Binding NoMatches, Converter={StaticResource BoolToVis}}">
+                    <TextBlock x:Name="NoMatchesText" Text="{Binding NoMatchesMessage}"
+                               Style="{StaticResource EmptyStateText}" />
+                    <Button Content="{Binding NoMatchesActionLabel}" Command="{Binding NoMatchesActionCommand}"
+                            HorizontalAlignment="Center"
+                            Visibility="{Binding HasNoMatchesAction, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
             </Grid>
         </Grid>
     </DockPanel>

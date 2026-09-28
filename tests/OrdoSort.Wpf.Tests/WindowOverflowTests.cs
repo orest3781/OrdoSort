@@ -103,10 +103,11 @@ public class WindowOverflowTests : UiTest
             var vm = new FilenameListViewModel(new NoDialogs(), scheduler: new InlineWorkScheduler())
             {
                 // every column on, a filter typed, Z to A ticked: the longest
-                // the toolbar and the counts line ever get
+                // the toolbar and the counts line ever get. Pages included
+                // (Q2-37): without it the widest real set was never rendered.
                 Columns = FilenameList.Columns.Number | FilenameList.Columns.Size
                         | FilenameList.Columns.Modified | FilenameList.Columns.Folder
-                        | FilenameList.Columns.FullPath,
+                        | FilenameList.Columns.FullPath | FilenameList.Columns.Pages,
                 NameFilter = "invoice",
                 Descending = true,
             };
@@ -118,9 +119,10 @@ public class WindowOverflowTests : UiTest
                 "a-long-enough-filename-to-matter.pdf", 123456789,
                 new DateTime(2026, 8, 19, 14, 30, 0),
                 @"C:\inbox\a-long-enough-folder-path-to-matter-at-minwidth",
-                @"C:\inbox\a-long-enough-folder-path-to-matter-at-minwidth\a-long-enough-filename-to-matter.pdf"));
+                @"C:\inbox\a-long-enough-folder-path-to-matter-at-minwidth\a-long-enough-filename-to-matter.pdf",
+                Pages: 1234));
             return (new FilenameListWindow(vm), null);
-        }, MinExamined: 33),   // 44 measured
+        }, MinExamined: 35),   // 47 measured
 
         ["HistoryWindow"] = new(700, 980, 400, 640, () =>
         {

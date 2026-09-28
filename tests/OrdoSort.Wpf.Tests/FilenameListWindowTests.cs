@@ -65,6 +65,263 @@ public class FilenameListWindowTests : UiTest
         finally { window.Close(); }
     });
 
+    private FilenameListWindow OpenOffScreen(FilenameListViewModel vm)
+    {
+        var window = new FilenameListWindow(vm, _ => { })
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        window.Show();
+        window.UpdateLayout();
+        return window;
+    }
+
+    private static System.Windows.Media.Color ColourOf(System.Windows.Media.Brush brush) =>
+        ((System.Windows.Media.SolidColorBrush)brush).Color;
+
+    /// <summary>FL-11: the File list's headers lit up under the mouse like
+    /// every sortable header in the app, but clicking them does nothing — the
+    /// # column is the row order, so this table deliberately has no header
+    /// sorting. Its headers no longer light up; a sortable table's still do.</summary>
+    [Fact]
+    public void TheHeadersDoNotLightUpAsIfClickingWouldSort() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var hover = ColourOf((System.Windows.Media.Brush)_fx.App.FindResource("Theme.SurfaceHover"));
+        var window = OpenOffScreen(new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler()));
+        var sortable = new Window
+        {
+            Left = -20000, Top = 0, ShowActivated = false, Width = 300, Height = 200,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Content = new DataGrid { Columns = { new DataGridTextColumn { Header = "Name" } } },
+        };
+        try
+        {
+            var header = Ui.Descendants<System.Windows.Controls.Primitives.DataGridColumnHeader>(window)
+                .Single(h => h.Column == window.FileNameColumn);
+            Ui.ForceMouseOver(header, true);
+            Assert.NotEqual(hover, ColourOf(header.Background));
+
+            sortable.Show();
+            sortable.UpdateLayout();
+            var sortableHeader = Ui.Descendants<System.Windows.Controls.Primitives.DataGridColumnHeader>(sortable)
+                .Single(h => h.Column is not null);
+            Ui.ForceMouseOver(sortableHeader, true);
+            Assert.Equal(hover, ColourOf(sortableHeader.Background));
+        }
+        finally
+        {
+            window.Close();
+            sortable.Close();
+        }
+    });
+
+    /// <summary>FL-12: the order was one checkbox, "Z to A", whose unticked
+    /// state never said "A to Z" anywhere. It is a two-way choice now, and
+    /// the current order is always the one marked.</summary>
+    [Fact]
+    public void TheOrderIsAChoiceBetweenAToZAndZToA() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
+        var window = OpenOffScreen(vm);
+        try
+        {
+            var radios = Ui.Descendants<RadioButton>(window);
+            var aToZ = radios.Single(r => (string)r.Content == "A to Z");
+            var zToA = radios.Single(r => (string)r.Content == "Z to A");
+            Assert.True(aToZ.IsChecked);
+            Assert.False(zToA.IsChecked);
+            Assert.DoesNotContain(Ui.Descendants<CheckBox>(window), c => (c.Content as string) == "Z to A");
+
+            zToA.IsChecked = true;
+
+            Assert.True(vm.Descending);
+            Assert.False(aToZ.IsChecked);
+
+            aToZ.IsChecked = true;
+
+            Assert.False(vm.Descending);
+        }
+        finally { window.Close(); }
+    });
+
+    /// <summary>FL-13: removing rows — the curation that makes this more than
+    /// a dir listing — was only on the right-click menu and the Delete key.
+    /// It has a button on the toolbar, next to Restore, whose text says how
+    /// many rows Restore brings back (FL-15).</summary>
+    [Fact]
+    public void RemoveSelectedAndRestoreAreButtonsOnTheToolbar() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
+        var window = OpenOffScreen(vm);
+        try
+        {
+            var buttons = Ui.Descendants<Button>(window);
+            var remove = buttons.Single(b => b.Command == vm.RemoveSelectedCommand);
+            Assert.Equal("Remove selected", remove.Content);
+            var restore = buttons.Single(b => b.Command == vm.RestoreRemovedCommand);
+            Assert.Equal(vm.RestoreLabel, restore.Content);
+            // FL-14: Copy is a click handler, not a command, so it is gated by binding
+            Assert.False(buttons.Single(b => (b.Content as string) == "Copy to clipboard").IsEnabled);
+        }
+        finally { window.Close(); }
+    });
+
+    /// <summary>FL-25: a screen reader read the Columns menu as "Columns ▾",
+    /// glyph and all. Every input here has a plain name.</summary>
+    [Fact]
+    public void EveryInputHasAPlainAccessibleName() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var window = OpenOffScreen(new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler()));
+        try
+        {
+            var columns = Ui.Descendants<MenuItem>(window).Single(m => (m.Header as string) == "Columns ▾");
+            Assert.Equal("Columns", System.Windows.Automation.AutomationProperties.GetName(columns));
+            foreach (var box in Ui.Descendants<TextBox>(window))
+                Assert.False(string.IsNullOrWhiteSpace(System.Windows.Automation.AutomationProperties.GetName(box)),
+                    "a text box has no accessible name");
+            Assert.False(string.IsNullOrWhiteSpace(
+                System.Windows.Automation.AutomationProperties.GetName(window.NamesGrid)));
+        }
+        finally { window.Close(); }
+    });
+
+    /// <summary>FL-26: the Find label sat 6px from its box, the gap between
+    /// two buttons; a label and its control are 8px apart everywhere else
+    /// (FieldLabel, History's Find).</summary>
+    [Fact]
+    public void TheFindLabelSitsTheLabelGapFromItsBox() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var window = OpenOffScreen(new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler()));
+        try
+        {
+            var label = Ui.Descendants<TextBlock>(window).Single(t => t.Text == "Find:");
+            var box = Ui.Descendants<TextBox>(window).Single(t =>
+                System.Windows.Automation.AutomationProperties.GetName(t) == "Find in this list");
+            var labelRight = label.TranslatePoint(new Point(label.ActualWidth, 0), window).X;
+            var boxLeft = box.TranslatePoint(new Point(0, 0), window).X;
+
+            Assert.Equal(8, boxLeft - labelRight, precision: 1);
+        }
+        finally { window.Close(); }
+    });
+
+    /// <summary>FL-29: the add note ("4 added · 3 ignored (2 already listed ·
+    /// 1 doesn't exist)") is cut off from the end, which is exactly the part
+    /// that explains what went wrong, and nothing showed the rest. It shows
+    /// the whole note as a tooltip once cut off, like the status line.</summary>
+    [Fact]
+    public void ACutOffAddNoteCanBeReadInFull() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var window = OpenOffScreen(new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler()));
+        try
+        {
+            var note = Ui.Descendants<TextBlock>(window).Single(t =>
+                System.Windows.Data.BindingOperations.GetBinding(t, TextBlock.TextProperty)?.Path.Path == "AddNote");
+            Assert.True(OrdoSort.Wpf.Views.TrimmedTextTooltip.GetEnabled(note));
+        }
+        finally { window.Close(); }
+    });
+
+    /// <summary>FL-30: the Size column showed 4293904 where a person expects
+    /// 4.1 MB.</summary>
+    [Fact]
+    public void TheSizeColumnShowsAReadableSize() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler()) { ShowSize = true };
+        vm.Rows.Add(new OrdoSort.Core.FilenameList.FileRow("a.pdf", 4293904, DateTime.Today, "", @"C:\in\a.pdf"));
+        var window = OpenOffScreen(vm);
+        try
+        {
+            Assert.Contains(Ui.Descendants<TextBlock>(window.NamesGrid), t => t.Text == "4.1 MB");
+        }
+        finally { window.Close(); }
+    });
+
+    /// <summary>FL-24: the controls that re-read the disk (Include subfolders,
+    /// Only these types) were split by a row of controls that only re-render
+    /// what is already read, with Include extension (now a display choice,
+    /// FL-09) among the disk ones. What gets read now sits above what gets
+    /// shown.</summary>
+    [Fact]
+    public void WhatGetsReadSitsAboveWhatGetsShown() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var window = OpenOffScreen(new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler()));
+        try
+        {
+            double Top(FrameworkElement e) => e.TranslatePoint(new Point(0, 0), window).Y;
+            double Bottom(FrameworkElement e) => Top(e) + e.ActualHeight;
+            var boxes = Ui.Descendants<TextBox>(window);
+            var types = boxes.Single(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Only these file types");
+            var find = boxes.Single(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Find in this list");
+            var checks = Ui.Descendants<CheckBox>(window);
+            var subfolders = checks.Single(c => (string)c.Content == "Include subfolders");
+            var extension = checks.Single(c => (string)c.Content == "Include extension");
+
+            var readEnds = Math.Max(Bottom(subfolders), Bottom(types));
+            Assert.True(readEnds <= Top(find), "the Find row should sit below every control that re-reads the disk");
+            Assert.True(readEnds <= Top(extension), "Include extension is a display choice and belongs with Find");
+        }
+        finally { window.Close(); }
+    });
+
+    /// <summary>FL-23: the empty view shows the view model's cause and its
+    /// way-out button. A mistyped binding here fails silently, so this checks
+    /// both are wired.</summary>
+    [Fact]
+    public void TheEmptyViewShowsTheCauseAndItsWayOut() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
+        var window = OpenOffScreen(vm);
+        try
+        {
+            var message = (TextBlock)window.FindName("NoMatchesText")!;
+            Assert.Equal(nameof(vm.NoMatchesMessage),
+                System.Windows.Data.BindingOperations.GetBinding(message, TextBlock.TextProperty)?.Path.Path);
+            Assert.Single(Ui.Descendants<Button>(window), b => b.Command == vm.NoMatchesActionCommand);
+        }
+        finally { window.Close(); }
+    });
+
+    /// <summary>DW-31 (FL-04's other half): Ctrl+C in the grid must copy the
+    /// same text the Copy button does. Nothing tested it, so the branch could
+    /// be deleted and Ctrl+C would silently copy nothing.</summary>
+    [Fact]
+    public void CtrlCInTheGridCopiesWhatTheCopyButtonCopies() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
+        foreach (var name in new[] { "alpha.pdf", "bravo.pdf" })
+            vm.Rows.Add(new OrdoSort.Core.FilenameList.FileRow(name, 1, DateTime.Today, "", @"C:\inbox\" + name));
+        var copied = new List<string>();
+        var window = new FilenameListWindow(vm, copied.Add)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+
+            var used = window.HandleGridKey(System.Windows.Input.Key.C, System.Windows.Input.ModifierKeys.Control);
+
+            Assert.True(used);
+            Assert.Equal(new[] { "alpha.pdf" + Environment.NewLine + "bravo.pdf" }, copied);
+            Assert.Equal("Copied 2 names", vm.Status);
+        }
+        finally { window.Close(); }
+    });
+
     /// <summary>The column-visibility mechanism is imperative on purpose: a
     /// DataGridColumn is not in the visual or logical tree, so a RelativeSource
     /// binding to the view model never resolves and would fail SILENTLY, leaving

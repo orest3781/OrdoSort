@@ -179,7 +179,7 @@ public static class SmallToolScenarios
         // no E2EPump wait appears on these two checks.
         vm.Columns = FilenameList.Columns.Size | FilenameList.Columns.Folder;
         ctx.Check("turning columns on switches the copy text to a table with a header",
-            vm.CopyText.StartsWith("Name\tSize\tFolder", StringComparison.Ordinal), vm.CopyText);
+            vm.CopyText.StartsWith("Name\tSize (bytes)\tFolder", StringComparison.Ordinal), vm.CopyText);
 
         var doomed = vm.Rows[0].FullPath;
         vm.SelectedPaths = new[] { doomed };

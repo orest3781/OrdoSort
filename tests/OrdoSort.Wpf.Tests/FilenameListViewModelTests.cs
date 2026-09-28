@@ -71,6 +71,33 @@ public class FilenameListViewModelTests : IDisposable
             "unchecking Include extension should strip it from the listed name");
     }
 
+    /// <summary>FL-09: unticking Include extension walked the whole folder
+    /// again, a multi-second stall on a big share for a display choice. It
+    /// now re-renders the rows already read: no walk is queued and the names
+    /// change at once.</summary>
+    [Fact]
+    public void TogglingIncludeExtensionDoesNotReadTheFolderAgain()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+        Touch("report.pdf");
+        var scheduler = new ManualWorkScheduler();
+        using var vm = new FilenameListViewModel(new FakeDialogs(), scheduler, uiContext: null, probeDelayMs: 0);
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => scheduler.PendingCount > 0, "the folder walk should be queued");
+        scheduler.ReleaseAll();
+        var walks = scheduler.PendingCount;
+
+        vm.IncludeExtension = false;
+
+        Assert.Equal("report", Assert.Single(vm.Rows).Name);
+        Assert.False(vm.IsListing);
+        Assert.Equal(walks, scheduler.PendingCount);
+
+        vm.IncludeExtension = true;
+
+        Assert.Equal("report.pdf", Assert.Single(vm.Rows).Name);
+    }
+
     [Fact]
     public void TogglingIncludeSubfoldersRebuildsRows()
     {
@@ -129,7 +156,9 @@ public class FilenameListViewModelTests : IDisposable
         // is needed here — Save()'s fire-and-forget SaveAsync() runs to
         // completion inline because nothing it awaits ever actually suspends.
         Assert.True(File.Exists(savePath));
-        Assert.Equal(vm.OutputText, File.ReadAllText(savePath));
+        // A literal, not vm.OutputText: an expectation read from the code
+        // under test agrees with whatever that code writes (DW-28).
+        Assert.Equal("a.pdf", File.ReadAllText(savePath));
         Assert.Contains("Saved to", vm.Status);
     }
 
@@ -528,10 +557,13 @@ public class FilenameListViewModelTests : IDisposable
         Assert.Equal(new[] { "beta.pdf", "gamma.pdf" }, vm.Rows.Select(r => r.Name));
     }
 
-    /// <summary>Undo pops one batch at a time; Restore removed still clears the
-    /// whole stack in one go. Two controls, each saying plainly what it does.</summary>
+    /// <summary>Undo pops one batch at a time; Restore removed clears the whole
+    /// stack in one go, so there is nothing left for Ctrl+Z to undo. DW-30: this
+    /// used to check only the rows and the removed count, which a Restore that
+    /// forgot the undo stack also passes — the next Ctrl+Z would then hide
+    /// rows the user had just brought back.</summary>
     [Fact]
-    public void RestoreRemovedStillClearsEveryBatchAtOnce()
+    public void RestoreRemovedLeavesNothingForUndoToHideAgain()
     {
         Touch("alpha.pdf");
         Touch("beta.pdf");
@@ -547,8 +579,195 @@ public class FilenameListViewModelTests : IDisposable
 
         vm.RestoreRemovedCommand.Execute(null);
 
+        Assert.False(vm.UndoRemovalCommand.CanExecute(null));
+        vm.UndoRemovalCommand.Execute(null);
         Assert.Equal(2, vm.Rows.Count);
-        Assert.Equal(0, vm.RemovedCount);
+    }
+
+    /// <summary>FL-14: Copy and Clear stayed clickable on an empty list and
+    /// did nothing — no clipboard write, no message — which looks like a
+    /// broken button. They are off until there is something to act on. Clear
+    /// comes on the moment something is added, before the folder has been
+    /// read, because Clear is how a slow read is stopped.</summary>
+    [Fact]
+    public void CopyAndClearAreOffUntilThereIsSomethingToActOn()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+        Touch("a.pdf");
+        var scheduler = new ManualWorkScheduler();
+        using var vm = new FilenameListViewModel(new FakeDialogs(), scheduler, uiContext: null, probeDelayMs: 0);
+        var clearAsked = 0;
+        vm.ClearCommand.CanExecuteChanged += (_, _) => clearAsked++;
+        Assert.False(vm.CanCopy);
+        Assert.False(vm.ClearCommand.CanExecute(null));
+
+        vm.AddPaths(new[] { _dir });
+
+        Assert.True(vm.ClearCommand.CanExecute(null));
+        Assert.True(clearAsked > 0, "Clear was never re-asked, so its button would stay disabled");
+        Assert.False(vm.CanCopy);   // still reading
+
+        WaitFor(() => scheduler.PendingCount > 0, "the folder walk should be queued");
+        scheduler.ReleaseAll();
+        Assert.True(vm.CanCopy);
+
+        vm.ClearCommand.Execute(null);
+
+        Assert.False(vm.CanCopy);
+        Assert.False(vm.ClearCommand.CanExecute(null));
+    }
+
+    /// <summary>FL-17: "nothing new — already listed" and "Saved to
+    /// filenames.txt" stayed beside a list that Clear had emptied, and the
+    /// save message outlived a whole new folder being added — both
+    /// describing a list that no longer existed.</summary>
+    [Fact]
+    public void ClearAndANewAddDropMessagesAboutTheOldList()
+    {
+        Touch("a.pdf");
+        var other = Path.Combine(_dir, "other");
+        Directory.CreateDirectory(other);
+        File.WriteAllText(Path.Combine(other, "b.pdf"), "x");
+        var dialogs = new FakeDialogs { NextSaveFile = Path.Combine(_dir, "out.txt") };
+        var vm = MakeVm(dialogs);
+        vm.AddPaths(new[] { _dir });
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle first");
+        vm.SaveCommand.Execute(null);
+        Assert.Contains("already listed", vm.AddNote);
+        Assert.Contains("Saved to", vm.Status);
+
+        vm.AddPaths(new[] { other });
+
+        Assert.Equal("", vm.Status);
+
+        vm.SaveCommand.Execute(null);
+        vm.ClearCommand.Execute(null);
+
+        Assert.Equal("", vm.Status);
+        Assert.Equal("", vm.AddNote);
+        Assert.False(vm.StatusIsProblem);
+    }
+
+    /// <summary>FL-21: filtering 3 files down to 1 on purpose showed
+    /// "1 file · 2 ignored" — the same word, in the same place, as paths
+    /// that were gone. The counts line now tells the two apart.</summary>
+    [Fact]
+    public void TheCountsLineTellsOtherTypesApartFromPathsNotFound()
+    {
+        Touch("keep.pdf");
+        Touch("skip.txt");
+        Touch("skip.docx");
+        var soonGone = Touch(Path.Combine("later", "moved.pdf"));
+        var vm = MakeVm(new FakeDialogs());
+        vm.AddPaths(new[] { _dir, soonGone });
+        WaitFor(() => vm.Rows.Count == 4 && !vm.IsListing, "the add should settle first");
+        File.Delete(soonGone);   // moved away after it was added
+
+        vm.ExtensionFilter = "pdf";
+
+        WaitFor(() => vm.Rows.Count == 1 && !vm.IsListing, "the type filter should settle");
+        Assert.Equal("1 file · 2 other types · 1 not found", vm.CountsLine);
+    }
+
+    /// <summary>FL-22: with the Folder or Full path column on, the paths are
+    /// on screen and look searchable, but Find only ever looked at names, so
+    /// typing a folder's name found nothing. Find now searches the columns
+    /// that are showing; with them off, it stays names only.</summary>
+    [Fact]
+    public void FindAlsoSearchesTheFolderAndPathColumnsWhenTheyAreShowing()
+    {
+        Touch(Path.Combine("acme", "invoice.pdf"));
+        Touch(Path.Combine("zenith", "report.pdf"));
+        var vm = MakeVm(new FakeDialogs());
+        vm.IncludeSubfolders = true;
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 2, "the add should settle first");
+
+        vm.NameFilter = "acme";
+        Assert.Empty(vm.Rows);   // names only while no path column is on
+
+        vm.ShowFolder = true;
+        Assert.Equal("invoice.pdf", Assert.Single(vm.Rows).Name);
+
+        vm.ShowFolder = false;
+        vm.ShowFullPath = true;
+        Assert.Equal("invoice.pdf", Assert.Single(vm.Rows).Name);
+    }
+
+    /// <summary>FL-23: when Find or the removals hid every row, the window
+    /// said "Nothing to show — filtered out, removed, or the folder was
+    /// empty" and offered no way out. It now names the cause and offers the
+    /// one click that undoes it.</summary>
+    [Fact]
+    public void AnEmptyViewNamesItsCauseAndOffersTheWayOut()
+    {
+        Touch("invoice.pdf");
+        var vm = MakeVm(new FakeDialogs());
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 1 && !vm.IsListing, "the add should settle first");
+        Assert.False(vm.HasNoMatchesAction);
+
+        vm.NameFilter = "draft";
+
+        Assert.Contains("draft", vm.NoMatchesMessage);
+        Assert.Equal("Clear Find", vm.NoMatchesActionLabel);
+        vm.NoMatchesActionCommand.Execute(null);
+        Assert.Equal("", vm.NameFilter);
+        Assert.Single(vm.Rows);
+
+        vm.SelectedPaths = new[] { vm.Rows[0].FullPath };
+        vm.RemoveSelectedCommand.Execute(null);
+
+        Assert.Contains("removed", vm.NoMatchesMessage);
+        Assert.Equal("Restore 1 removed", vm.NoMatchesActionLabel);
+        vm.NoMatchesActionCommand.Execute(null);
+        Assert.Single(vm.Rows);
+    }
+
+    /// <summary>The other two dead ends from FL-23: a type filter that
+    /// matches nothing, and a folder whose files are all in subfolders.</summary>
+    [Fact]
+    public void AnEmptyViewFromTheTypeFilterOrSubfoldersOffsTheMatchingFix()
+    {
+        Touch(Path.Combine("sub", "nested.pdf"));
+        var vm = MakeVm(new FakeDialogs());
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => !vm.IsListing && vm.NoMatches, "the add should settle first");
+
+        Assert.Equal("Include subfolders", vm.NoMatchesActionLabel);
+        vm.NoMatchesActionCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 1, "the subfolder's file should be listed");
+
+        vm.ExtensionFilter = "docx";
+        WaitFor(() => vm.Rows.Count == 0 && !vm.IsListing, "the type filter should hide it");
+
+        Assert.Contains("docx", vm.NoMatchesMessage);
+        Assert.Equal("Show all types", vm.NoMatchesActionLabel);
+        vm.NoMatchesActionCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 1, "clearing the type box should list it again");
+    }
+
+    /// <summary>FL-15: "Restore removed" never said how many rows it would
+    /// bring back; the count was only in the footer. The button names it.</summary>
+    [Fact]
+    public void RestoreSaysHowManyRowsItWillBringBack()
+    {
+        Touch("alpha.pdf");
+        Touch("beta.pdf");
+        Touch("gamma.pdf");
+        var vm = MakeVm(new FakeDialogs());
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 3, "the add should settle first");
+        Assert.Equal("Restore removed", vm.RestoreLabel);
+        var notified = new List<string>();
+        vm.PropertyChanged += (_, e) => notified.Add(e.PropertyName ?? "");
+
+        vm.SelectedPaths = new[] { Path.Combine(_dir, "alpha.pdf"), Path.Combine(_dir, "beta.pdf") };
+        vm.RemoveSelectedCommand.Execute(null);
+
+        Assert.Equal("Restore 2 removed", vm.RestoreLabel);
+        Assert.Contains(nameof(vm.RestoreLabel), notified);
     }
 
     /// <summary>Undo with nothing removed must be a no-op, not a crash — the
@@ -1005,6 +1224,75 @@ public class FilenameListViewModelTests : IDisposable
 
         Assert.Single(dialogs.Confirms);
         Assert.Single(vm.Rows);   // kept: the answer was no
+    }
+
+    /// <summary>QC-25: closing the window while PDFs were being counted
+    /// disposed the gate the running counts still hand back when they end, so
+    /// each one finished with an ObjectDisposedException. Silent today, but a
+    /// crash on close the day unobserved task errors are reported.</summary>
+    [Fact]
+    public async Task ClosingWhileCountingLetsTheRunningCountsEndCleanly()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+        Touch("a.pdf");
+        var scheduler = new ManualWorkScheduler();
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler, uiContext: null, probeDelayMs: 0,
+            counter: p => new PageCounts.CountResult(p, 1));
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => scheduler.PendingCount > 0, "the folder walk should be queued");
+        scheduler.ReleaseAll();
+        Assert.Single(vm.Rows);
+
+        vm.ShowPages = true;   // the count starts and waits on the scheduler
+        var pendingBeforeClose = scheduler.PendingCount;
+
+        vm.Dispose();
+        scheduler.ReleaseAll();
+
+        Assert.True(pendingBeforeClose > 1, "the count should have been running when the window closed");
+        await vm.Counting;   // must not fault
+    }
+
+    /// <summary>FL-07: every open started at subfolders off, extensions on,
+    /// A to Z and no type filter, so someone who always lists a client folder
+    /// with its subfolders re-ticked the same boxes every time. The columns
+    /// were already remembered; now these are too.</summary>
+    [Fact]
+    public void TheViewOptionsComeBackTheNextTimeTheListOpens()
+    {
+        var store = new FilenameListOptionsStore(Path.Combine(_dir, "options.json"),
+            e => throw new Xunit.Sdk.XunitException("unexpected store error: " + e.Message));
+        using (var first = new FilenameListViewModel(new FakeDialogs(), new InlineWorkScheduler(), options: store))
+        {
+            first.IncludeSubfolders = true;
+            first.IncludeExtension = false;
+            first.Descending = true;
+            first.ExtensionFilter = "pdf, docx";
+        }
+
+        using var second = new FilenameListViewModel(new FakeDialogs(), new InlineWorkScheduler(), options: store);
+
+        Assert.True(second.IncludeSubfolders);
+        Assert.False(second.IncludeExtension);
+        Assert.True(second.Descending);
+        Assert.Equal("pdf, docx", second.ExtensionFilter);
+    }
+
+    /// <summary>A damaged options file must not stop the window opening: it
+    /// opens at the defaults and the damage is reported, not hidden.</summary>
+    [Fact]
+    public void ADamagedOptionsFileOpensAtTheDefaultsAndIsReported()
+    {
+        var path = Path.Combine(_dir, "options.json");
+        File.WriteAllText(path, "{ not json");
+        var reported = new List<Exception>();
+
+        using var vm = new FilenameListViewModel(new FakeDialogs(), new InlineWorkScheduler(),
+            options: new FilenameListOptionsStore(path, reported.Add));
+
+        Assert.False(vm.IncludeSubfolders);
+        Assert.True(vm.IncludeExtension);
+        Assert.Single(reported);
     }
 
     [Fact]

@@ -80,6 +80,81 @@ public class FilenameListTests : IDisposable
         Assert.Equal(new[] { "report.pdf" }, listing.Rows.Select(r => r.Name).ToArray());
     }
 
+    /// <summary>FL-21: "ignored" lumped files the type box filtered out on
+    /// purpose together with paths that were gone. The listing now says how
+    /// many of the ignored were not found; the rest are other types.</summary>
+    [Fact]
+    public void TheListingKeepsNotFoundApartFromOtherTypes()
+    {
+        Touch("keep.pdf");
+        Touch("skip.txt");
+        var gone = Path.Combine(_dir, "gone.pdf");
+
+        var listing = FilenameList.Build(new[] { _dir, gone },
+            new FilenameList.Options(Recursive: false, IncludeExtension: true, ExtensionFilter: "pdf"));
+
+        Assert.Equal(2, listing.Ignored);
+        Assert.Equal(1, listing.NotFound);
+    }
+
+    /// <summary>FL-30: the Size column showed raw bytes ("4293904"). It shows
+    /// the largest unit that is at least 1, dividing by 1024, with that unit's
+    /// decimals (KB 0, MB 1, GB 3), per the manifest spec's §2.1 "Auto".</summary>
+    [Theory]
+    [InlineData(512L, "512 bytes")]
+    [InlineData(1536L, "2 KB")]
+    [InlineData(4293904L, "4.1 MB")]
+    [InlineData(5368709120L, "5.000 GB")]
+    public void TheSizeCellShowsAReadableSize(long bytes, string shown)
+    {
+        var row = new FilenameList.FileRow("a.pdf", bytes, null, "", @"C:\in\a.pdf");
+        Assert.Equal(shown, row.SizeCell);
+    }
+
+    /// <summary>A size that couldn't be read is blank, never "0 bytes".</summary>
+    [Fact]
+    public void AnUnreadableSizeShowsBlank() =>
+        Assert.Equal("", new FilenameList.FileRow("a.pdf", null, null, "", @"C:\in\a.pdf").SizeCell);
+
+    /// <summary>FL-30's other half: the export keeps raw bytes, which a
+    /// spreadsheet can add up, and its header now says so — the one place the
+    /// screen and the export differ, named in the header (spec §2.1).</summary>
+    [Fact]
+    public void TheExportKeepsBytesAndSaysSoInTheHeader()
+    {
+        var text = FilenameList.ToText(new[] { RowA }, FilenameList.Columns.Size);
+        Assert.Equal("Name\tSize (bytes)" + Environment.NewLine + "invoice-2024.pdf\t241152", text);
+    }
+
+    /// <summary>FL-28: an empty listing came out as nothing in a .txt but as a
+    /// header row in a .csv, so the shape of "nothing" depended on which
+    /// column was on. Both are empty now.</summary>
+    [Fact]
+    public void AnEmptyListingExportsAsNothingInEitherShape()
+    {
+        var none = Array.Empty<FilenameList.FileRow>();
+
+        Assert.Equal("", FilenameList.ToText(none, FilenameList.Columns.Size));
+        Assert.Equal("", FilenameList.ToCsv(none, FilenameList.Columns.Size));
+        Assert.Equal("", FilenameList.ToCsv(none, FilenameList.Columns.None));
+    }
+
+    /// <summary>FL-09: hiding extensions is done on rows already read, so
+    /// the File list no longer walks the disk again for a display choice.
+    /// The rows come back in the order of the names now shown: "x" sorts
+    /// before "x-2", although "x-2.pdf" sorts before "x.txt".</summary>
+    [Fact]
+    public void WithoutExtensionsShowsTheStemsInTheirOwnOrder()
+    {
+        var withDash = new FilenameList.FileRow("x-2.pdf", 1, null, "", @"C:\in\x-2.pdf");
+        var plain = new FilenameList.FileRow("x.txt", 2, null, "", @"C:\in\x.txt");
+
+        var rows = FilenameList.WithoutExtensions(new[] { withDash, plain });
+
+        Assert.Equal(new[] { "x", "x-2" }, rows.Select(r => r.Name).ToArray());
+        Assert.Equal(new[] { @"C:\in\x.txt", @"C:\in\x-2.pdf" }, rows.Select(r => r.FullPath).ToArray());
+    }
+
     /// <summary>ParseFiletypes' own separator/leading-dot handling is already
     /// pinned by FolderMonitorTests — this only proves FilenameList.Build
     /// actually routes ExtensionFilter through it (comma+space separator,
@@ -346,7 +421,7 @@ public class FilenameListTests : IDisposable
         var text = FilenameList.ToText(new[] { RowA },
             FilenameList.Columns.Size | FilenameList.Columns.Modified);
         Assert.Equal(
-            "Name\tSize\tModified" + Environment.NewLine +
+            "Name\tSize (bytes)\tModified" + Environment.NewLine +
             "invoice-2024.pdf\t241152\t2026-03-04 14:22", text);
     }
 
@@ -355,7 +430,7 @@ public class FilenameListTests : IDisposable
     {
         var text = FilenameList.ToText(new[] { RowA },
             FilenameList.Columns.Number | FilenameList.Columns.Size);
-        Assert.Equal("#\tName\tSize" + Environment.NewLine + "1\tinvoice-2024.pdf\t241152", text);
+        Assert.Equal("#\tName\tSize (bytes)" + Environment.NewLine + "1\tinvoice-2024.pdf\t241152", text);
     }
 
     [Fact]
@@ -363,7 +438,7 @@ public class FilenameListTests : IDisposable
     {
         var text = FilenameList.ToText(new[] { RowA },
             FilenameList.Columns.FullPath | FilenameList.Columns.Folder | FilenameList.Columns.Size);
-        Assert.StartsWith("Name\tSize\tFolder\tFull path" + Environment.NewLine, text);
+        Assert.StartsWith("Name\tSize (bytes)\tFolder\tFull path" + Environment.NewLine, text);
     }
 
     [Fact]
@@ -416,7 +491,7 @@ public class FilenameListTests : IDisposable
         var csv = FilenameList.ToCsv(new[] { RowA, RowB },
             FilenameList.Columns.Number | FilenameList.Columns.Size);
         Assert.Equal(
-            "#,Name,Size" + Environment.NewLine +
+            "#,Name,Size (bytes)" + Environment.NewLine +
             "1,invoice-2024.pdf,241152" + Environment.NewLine +
             "2,invoice-2025.pdf,198656", csv);
     }
