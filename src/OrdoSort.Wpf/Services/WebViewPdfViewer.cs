@@ -90,7 +90,7 @@ public sealed class WebViewPdfViewer : IPdfViewer
         "The rest of OrdoSort is unaffected — scanning, renaming, filing, and history keep working; " +
         "only the preview pane stays blank.\n\n" +
         (crashLogged
-            ? "The technical details were written to crash.log, beside your config file."
+            ? $"The technical details were written to {App.CrashLogPlace}."
             : "The technical details could not be written to crash.log — the location may not be " +
               "writable.") +
         "\n\nIf this keeps happening, try reinstalling the WebView2 Runtime from " + InstallUrl + ".";
@@ -173,7 +173,12 @@ public sealed class WebViewPdfViewer : IPdfViewer
             Directory.CreateDirectory(UserDataFolder);
             var env = await CoreWebView2Environment.CreateAsync(
                 browserExecutableFolder: null, userDataFolder: UserDataFolder);
-            await _view.EnsureCoreWebView2Async(env);
+            // InPrivate: Edge keeps no history or cache of what it showed.
+            // A normal profile recorded every previewed document's file://
+            // path in its history database, and never cleared it (QC-22).
+            var options = env.CreateCoreWebView2ControllerOptions();
+            options.IsInPrivateModeEnabled = true;
+            await _view.EnsureCoreWebView2Async(env, options);
 
             var core = _view.CoreWebView2;
 

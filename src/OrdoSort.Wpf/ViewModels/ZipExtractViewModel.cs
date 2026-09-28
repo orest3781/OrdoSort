@@ -103,8 +103,11 @@ public sealed class ZipExtractViewModel : ZipListViewModel
         try
         {
             var result = await Scheduler.Run(() => _zipper(paths, outputPath));
+            // an "ok" can still carry a note: folders that couldn't be read
+            // and were left out (Q2-13), which must not go unsaid
             RunOnUi(() => Status = result.Status == "ok"
                 ? $"Created {System.IO.Path.GetFileName(result.Output!)} · {itemCount} item{(itemCount == 1 ? "" : "s")}"
+                  + (result.Message.Length > 0 ? $" · {result.Message}" : "")
                 : result.Message);
         }
         finally

@@ -551,6 +551,44 @@ public static class Unlock
 
     private static string CollisionFree(string target) => Collision.FreeFile(target);
 
+    private static readonly System.Text.RegularExpressions.Regex InterruptedSwapName =
+        new(@"^(?<stem>.+)\.unlocking( \(\d+\))?\.tmp$",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>Finishes in-place unlocks that were cut off between their two
+    /// moves (Q2-32): the locked original already in a locked_archive_*
+    /// folder, the unlocked copy still under its ".unlocking.tmp" name, and
+    /// the document's own name empty. The copy is moved onto that name. Only
+    /// then: an original still in place means the swap never started, and a
+    /// leftover with no archived original has nothing to prove it belongs
+    /// there. Returns the documents put back; never throws.</summary>
+    public static IReadOnlyList<string> FinishInterruptedSwaps(string folder)
+    {
+        var finished = new List<string>();
+        try
+        {
+            if (!Directory.Exists(folder)) return finished;
+            var archives = Directory.GetDirectories(folder, "locked_archive_*");
+            foreach (var leftover in Directory.GetFiles(folder, "*.unlocking*.tmp"))
+            {
+                var match = InterruptedSwapName.Match(Path.GetFileName(leftover));
+                if (!match.Success) continue;
+                var name = match.Groups["stem"].Value + ".pdf";
+                var original = Path.Combine(folder, name);
+                if (File.Exists(original)) continue;
+                if (!archives.Any(a => File.Exists(Path.Combine(a, name)))) continue;
+                try
+                {
+                    File.Move(leftover, original);
+                    finished.Add(original);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* next time */ }
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* next time */ }
+        return finished;
+    }
+
     private static void RemoveQuietly(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { /* best effort */ }

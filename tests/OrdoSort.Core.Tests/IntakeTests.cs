@@ -1,4 +1,3 @@
-using System.Diagnostics;
 
 namespace OrdoSort.Core.Tests;
 
@@ -107,50 +106,15 @@ public class IntakeTests : IDisposable
         var top = Touch("top.csv");
         var hidden = Touch(Path.Combine("aaa_denied", "hidden.csv"));
         var reachable = Touch(Path.Combine("zzz_ok", "reachable.csv"));
-        var deniedDir = Path.Combine(_dir, "aaa_denied");
-        var user = Environment.UserDomainName + "\\" + Environment.UserName;
+        using var denied = new DeniedFolder(Path.Combine(_dir, "aaa_denied"));
+        // an elevated session reads past the deny: nothing to test then
+        if (!denied.Holds) return;
 
-        RunIcacls(deniedDir, "/deny", $"{user}:(OI)(CI)R");
-        try
-        {
-            // Elevated/backup-privilege sessions (an admin console, some CI
-            // runners) can bypass a deny ACE outright. If enumerating the
-            // denied folder still succeeds here, this fixture can't
-            // reproduce the abort on this machine — a vacuous pass beats a
-            // false failure.
-            bool bypassed;
-            try
-            {
-                Directory.EnumerateFiles(deniedDir).Any();
-                bypassed = true;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // expected — the deny ACE bit; fall through to the real assertion.
-                bypassed = false;
-            }
-            if (bypassed) return;
+        var r = Intake.Expand(new[] { _dir }, recursive: true, extensions: null);
 
-            var r = Intake.Expand(new[] { _dir }, recursive: true, extensions: null);
-
-            Assert.Contains(top, r.Files);
-            Assert.Contains(reachable, r.Files);
-            Assert.DoesNotContain(hidden, r.Files);
-            Assert.Equal("", r.Error);
-        }
-        finally
-        {
-            // Always undo the deny — otherwise Dispose()'s Directory.Delete
-            // of _dir fails on the still-locked-out aaa_denied subtree.
-            RunIcacls(deniedDir, "/remove:d", user);
-        }
-    }
-
-    private static void RunIcacls(params string[] args)
-    {
-        var psi = new ProcessStartInfo("icacls") { UseShellExecute = false, CreateNoWindow = true };
-        foreach (var a in args) psi.ArgumentList.Add(a);
-        using var p = Process.Start(psi)!;
-        p.WaitForExit();
+        Assert.Contains(top, r.Files);
+        Assert.Contains(reachable, r.Files);
+        Assert.DoesNotContain(hidden, r.Files);
+        Assert.Equal("", r.Error);
     }
 }

@@ -258,4 +258,42 @@ public class UnlockTests : IDisposable
         Assert.Equal("locked_unlocked (2).pdf", Path.GetFileName(r.NewPath!));
         Assert.Equal("existing", File.ReadAllText(Path.Combine(_dir, "locked_unlocked.pdf")));
     }
+
+    /// <summary>Q2-32: an in-place unlock moves the locked original into the
+    /// archive folder, then moves the unlocked copy onto its name. Cut off
+    /// between the two (a sign-out, a kill), the document was left under a
+    /// ".unlocking.tmp" name with its own name empty. The swap is finished
+    /// the next time Unlock sees the folder.</summary>
+    [Fact]
+    public void AnInterruptedSwapIsFinishedWhenItsFolderIsSeenAgain()
+    {
+        var archive = Directory.CreateDirectory(Path.Combine(_dir, "locked_archive_20260901")).FullName;
+        File.WriteAllText(Path.Combine(archive, "invoice.pdf"), "locked original");
+        File.WriteAllText(Path.Combine(_dir, "invoice.unlocking.tmp"), "unlocked copy");
+
+        var finished = Unlock.FinishInterruptedSwaps(_dir);
+
+        var restored = Path.Combine(_dir, "invoice.pdf");
+        Assert.Equal(new[] { restored }, finished);
+        Assert.Equal("unlocked copy", File.ReadAllText(restored));
+        Assert.False(File.Exists(Path.Combine(_dir, "invoice.unlocking.tmp")));
+        Assert.Equal("locked original", File.ReadAllText(Path.Combine(archive, "invoice.pdf")));
+    }
+
+    /// <summary>With the original still in place the swap never started, and
+    /// without an archived original there is no proof it did: either way the
+    /// leftover is not moved over anything.</summary>
+    [Fact]
+    public void ALeftoverIsLeftAloneWhenTheSwapNeverStarted()
+    {
+        File.WriteAllText(Path.Combine(_dir, "a.pdf"), "original, still here");
+        File.WriteAllText(Path.Combine(_dir, "a.unlocking.tmp"), "unlocked copy");
+        File.WriteAllText(Path.Combine(_dir, "b.unlocking.tmp"), "no archived original");
+
+        Assert.Empty(Unlock.FinishInterruptedSwaps(_dir));
+
+        Assert.Equal("original, still here", File.ReadAllText(Path.Combine(_dir, "a.pdf")));
+        Assert.True(File.Exists(Path.Combine(_dir, "a.unlocking.tmp")));
+        Assert.False(File.Exists(Path.Combine(_dir, "b.pdf")));
+    }
 }

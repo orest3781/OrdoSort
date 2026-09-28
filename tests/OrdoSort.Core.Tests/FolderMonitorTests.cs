@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using OrdoSort.Core;
 
 namespace OrdoSort.Core.Tests;
@@ -195,50 +194,16 @@ public class FolderMonitorTests : IDisposable
         Touch(wf.Path, "top.pdf");
         Touch(Path.Combine(wf.Path, "aaa_denied"), "hidden.pdf");
         Touch(Path.Combine(wf.Path, "zzz_ok"), "URGENT-scan.pdf");
-        var deniedDir = Path.Combine(wf.Path, "aaa_denied");
-        var user = Environment.UserDomainName + "\\" + Environment.UserName;
+        using var denied = new DeniedFolder(Path.Combine(wf.Path, "aaa_denied"));
+        // an elevated session reads past the deny: nothing to test then
+        if (!denied.Holds) return;
 
-        RunIcacls(deniedDir, "/deny", $"{user}:(OI)(CI)R");
-        try
-        {
-            // Elevated/backup-privilege sessions (an admin console, some CI
-            // runners) can bypass a deny ACE outright. If enumerating the
-            // denied folder still succeeds here, this fixture can't
-            // reproduce the abort on this machine — a vacuous pass beats a
-            // false failure.
-            bool bypassed;
-            try
-            {
-                Directory.EnumerateFiles(deniedDir).Any();
-                bypassed = true;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                bypassed = false;
-            }
-            if (bypassed) return;
+        var s = FolderMonitor.Status(wf, new[] { "URGENT" });
 
-            var s = FolderMonitor.Status(wf, new[] { "URGENT" });
-
-            Assert.Equal("", s.Error);
-            Assert.Equal(2, s.Count);   // top.pdf + zzz_ok's file; aaa_denied's is skipped, not counted
-            Assert.True(s.Alerting);
-            Assert.Equal(new[] { Path.Combine("zzz_ok", "URGENT-scan.pdf") }, s.Matches);
-        }
-        finally
-        {
-            // Always undo the deny — otherwise Dispose()'s Directory.Delete
-            // of _dir fails on the still-locked-out aaa_denied subtree.
-            RunIcacls(deniedDir, "/remove:d", user);
-        }
-    }
-
-    private static void RunIcacls(params string[] args)
-    {
-        var psi = new ProcessStartInfo("icacls") { UseShellExecute = false, CreateNoWindow = true };
-        foreach (var a in args) psi.ArgumentList.Add(a);
-        using var p = Process.Start(psi)!;
-        p.WaitForExit();
+        Assert.Equal("", s.Error);
+        Assert.Equal(2, s.Count);   // top.pdf + zzz_ok's file; aaa_denied's is skipped, not counted
+        Assert.True(s.Alerting);
+        Assert.Equal(new[] { Path.Combine("zzz_ok", "URGENT-scan.pdf") }, s.Matches);
     }
 
     [Fact]

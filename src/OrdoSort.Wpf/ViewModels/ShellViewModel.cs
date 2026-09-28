@@ -260,7 +260,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             "Nothing was deleted — OrdoSort only ever moves files, so the document " +
             $"is {whereabouts}. Check both before " +
             "trying again.\n\n" +
-            "The technical details were written to crash.log, beside your config file.",
+            $"The technical details were written to {App.CrashLogPlace}.",
             "OrdoSort — that didn't finish");
     }
 
@@ -296,7 +296,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             if (_disposed) return;
             _dialogs.Warn(
                 $"{action} didn't finish.\n\n{consequence}\n\n" +
-                "The technical details were written to crash.log, beside your config file.",
+                $"The technical details were written to {App.CrashLogPlace}.",
                 "OrdoSort — that didn't finish");
         }
     }

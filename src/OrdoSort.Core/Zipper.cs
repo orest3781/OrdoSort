@@ -152,28 +152,43 @@ public static class Zipper
             // deletes the pre-existing file up front: if the build or the
             // placement fails, outputPath is left exactly as the user last
             // saw it, because nothing above ever touched it.
-            if (!AtomicPlace.TryReplace(outputPath, tmp => BuildArchiveOnce(tmp, existing), out var placeError))
+            var leftOutSaveAs = new List<string>();
+            if (!AtomicPlace.TryReplace(outputPath, tmp => BuildArchiveOnce(tmp, existing, leftOutSaveAs), out var placeError))
                 return new ZipResult("error", null, $"couldn't create the zip: {placeError}");
-            return new ZipResult("ok", outputPath);
+            return new ZipResult("ok", outputPath, LeftOutNote(leftOutSaveAs));
         }
 
         var besideDir = BesideDirectory(existing[0]);
-        var target = Collision.FreeFile(Path.Combine(besideDir, DefaultName(existing)));
+        var name = DefaultName(existing);
 
-        // See class doc comment for the created-gate discipline this
-        // implements: `created` flips to true only once ZipFile.Open has
-        // actually made the file (FileMode.CreateNew inside it — throws
-        // immediately if the name is taken, in which case `created` is
-        // never set and the catch below must not delete anything).
+        // Built under a name only this call can own, then renamed onto a
+        // free name once whole (Q2-32). Built straight under the final name,
+        // a zip cut off mid-build (a sign-out, a kill) was left there half
+        // written, looking finished. The rename happens in one folder, so it
+        // is all or nothing; if a peer takes the free name first, the next
+        // free one is used. `created` gates the cleanup as before (see the
+        // class doc): only a partial this call made is removed.
+        var partial = Path.Combine(besideDir, $"{name}.{Guid.NewGuid():N}.partial");
         var created = false;
         try
         {
-            BuildArchive(target, existing, onCreated: () => created = true);
-            return new ZipResult("ok", target);
+            var leftOut = new List<string>();
+            BuildArchive(partial, existing, leftOut, onCreated: () => created = true);
+            PartialBuiltHookForTests?.Invoke(partial);
+            for (var attempt = 0; ; attempt++)
+            {
+                var target = Collision.FreeFile(Path.Combine(besideDir, name));
+                try
+                {
+                    File.Move(partial, target);
+                    return new ZipResult("ok", target, LeftOutNote(leftOut));
+                }
+                catch (IOException) when (attempt < 10 && File.Exists(target)) { /* taken meanwhile */ }
+            }
         }
         catch (Exception ex)
         {
-            if (created) RemoveFileQuietly(target);
+            if (created) RemoveFileQuietly(partial);
             return new ZipResult("error", null, $"couldn't create the zip: {ex.Message}");
         }
     }
@@ -183,8 +198,58 @@ public static class Zipper
     /// ZipFile.Open has actually made the file — only the collision-freed
     /// branch needs it, to gate its own cleanup; the Save-As branch's temp is
     /// GUID-private and AtomicPlace owns its lifetime.</summary>
+    /// <summary>Every file under <paramref name="folder"/>, one level at a
+    /// time, as "&lt;folderName&gt;/&lt;relative path&gt;" (forward slashes always:
+    /// a zip's own convention, even on Windows). A subfolder that can't be
+    /// opened is left out and named in <paramref name="leftOut"/>: the
+    /// all-at-once walk this replaced failed the whole zip on it (Q2-13). A
+    /// file that can't be read still fails the zip, as before: leaving out a
+    /// document the user picked is not a call to make silently. Links and
+    /// junctions are not followed, so a loop can't make the walk endless.</summary>
+    private static void AddFolder(ZipArchive archive, string folder, string folderName, List<string> leftOut)
+    {
+        var pending = new Stack<string>();
+        pending.Push(folder);
+        while (pending.Count > 0)
+        {
+            var dir = pending.Pop();
+            string[] files, subfolders;
+            try
+            {
+                files = Directory.GetFiles(dir);
+                subfolders = Directory.GetDirectories(dir);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                leftOut.Add(folderName + "/" + Path.GetRelativePath(folder, dir).Replace('\\', '/'));
+                continue;
+            }
+            Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+            foreach (var file in files)
+            {
+                var rel = Path.GetRelativePath(folder, file).Replace('\\', '/');
+                archive.CreateEntryFromFile(file, $"{folderName}/{rel}", CompressionLevel.Optimal);
+            }
+            Array.Sort(subfolders, StringComparer.OrdinalIgnoreCase);
+            for (var i = subfolders.Length - 1; i >= 0; i--)
+                if (!new DirectoryInfo(subfolders[i]).Attributes.HasFlag(FileAttributes.ReparsePoint))
+                    pending.Push(subfolders[i]);
+        }
+    }
+
+    /// <summary>Test seam: runs with the ".partial" path once a default-name
+    /// zip is built, before it is renamed into place. Throwing here is a
+    /// build cut off at its last moment.</summary>
+    internal static Action<string>? PartialBuiltHookForTests;
+
+    /// <summary>"" when nothing was left out; otherwise what to tell the user.</summary>
+    private static string LeftOutNote(IReadOnlyList<string> leftOut) =>
+        leftOut.Count == 0 ? ""
+            : $"left out {leftOut.Count} folder{(leftOut.Count == 1 ? "" : "s")} that couldn't be read: "
+              + string.Join(", ", leftOut);
+
     private static void BuildArchive(
-        string path, IReadOnlyList<string> existing, Action? onCreated = null)
+        string path, IReadOnlyList<string> existing, List<string> leftOut, Action? onCreated = null)
     {
         using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
         onCreated?.Invoke();
@@ -224,11 +289,7 @@ public static class Zipper
                 // (Path.GetRelativePath gives back whatever this OS uses,
                 // hence the explicit replace).
                 var folderName = UniqueRootName(usedRootNames, new DirectoryInfo(p).Name);
-                foreach (var file in Directory.EnumerateFiles(p, "*", SearchOption.AllDirectories))
-                {
-                    var rel = Path.GetRelativePath(p, file).Replace('\\', '/');
-                    archive.CreateEntryFromFile(file, $"{folderName}/{rel}", CompressionLevel.Optimal);
-                }
+                AddFolder(archive, p, folderName, leftOut);
             }
         }
     }
@@ -247,11 +308,12 @@ public static class Zipper
     /// retry, which is the part a briefly-held destination needs. Done here
     /// rather than in AtomicPlace so its semantics stay the same for every
     /// other caller.</summary>
-    private static void BuildArchiveOnce(string path, IReadOnlyList<string> existing)
+    private static void BuildArchiveOnce(string path, IReadOnlyList<string> existing, List<string> leftOut)
     {
         try
         {
-            BuildArchive(path, existing);
+            leftOut.Clear();   // a retried placement builds again from scratch
+            BuildArchive(path, existing, leftOut);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

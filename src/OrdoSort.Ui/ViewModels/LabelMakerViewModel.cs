@@ -82,7 +82,12 @@ public sealed class LabelMakerViewModel : ObservableObject
     // string-keyed set would sweep an untouched sibling into the dirty branch
     // right along with the one actually edited.
     private readonly HashSet<LabelClientVm> _dirty = new();
-    private readonly HashSet<string> _removedIds = new();
+    private readonly HashSet<string> _removedIds = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Client ids are shown and saved uppercase, but the file can
+    /// hold a hand-edited or migrated lowercase one; matched exactly, it
+    /// became a second client on the first save (QC-29).</summary>
+    private static bool SameId(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
     // _dirty is row-granularity ("something on this client changed"), which
     // is too coarse for NextNumber specifically: editing e.g. retention days
@@ -190,7 +195,7 @@ public sealed class LabelMakerViewModel : ObservableObject
                 try
                 {
                     var onDisk = BoxLabelStore.Read(_boxLabelsPath).LabelClients
-                        .FirstOrDefault(c => c.Id == s.Id);
+                        .FirstOrDefault(c => SameId(c.Id, s.Id));
                     if (onDisk is not null) shownNumber = onDisk.NextNumber.ToString();
                 }
                 catch (ConfigException) { /* fall back to the VM's number above */ }
@@ -222,7 +227,7 @@ public sealed class LabelMakerViewModel : ObservableObject
                 try
                 {
                     var onDisk = BoxLabelStore.Read(_boxLabelsPath).LabelClients
-                        .FirstOrDefault(c => c.Id == s.Id);
+                        .FirstOrDefault(c => SameId(c.Id, s.Id));
                     if (onDisk is not null) shownNumber = onDisk.NextNumber.ToString();
                 }
                 catch (ConfigException) { /* fall back to the VM's number above */ }
@@ -470,7 +475,7 @@ public sealed class LabelMakerViewModel : ObservableObject
     private long ClaimNumbersCore(LabelClientVm client, int count, long? typedStart) =>
         BoxLabelStore.Mutate(_boxLabelsPath, doc =>
         {
-            var c = doc.LabelClients.FirstOrDefault(x => x.Id == client.Id);
+            var c = doc.LabelClients.FirstOrDefault(x => SameId(x.Id, client.Id));
             if (c is null)
             {
                 c = client.ToClient();
@@ -847,7 +852,7 @@ public sealed class LabelMakerViewModel : ObservableObject
             try
             {
                 var onDisk = BoxLabelStore.Read(_boxLabelsPath).LabelClients
-                    .FirstOrDefault(c => c.Id == origin);
+                    .FirstOrDefault(c => SameId(c.Id, origin));
                 if (onDisk is not null) shownNumber = onDisk.NextNumber.ToString();
             }
             catch (ConfigException) { /* fall back to the VM's number */ }
@@ -896,13 +901,26 @@ public sealed class LabelMakerViewModel : ObservableObject
                 // of inferring from id equality is what makes the carry
                 // correct for every hop count, not just a simple one-hop
                 // rename.
+                // A rename onto an id another station has just added, not one
+                // this session is moving away from, would merge into their
+                // client: their settings overwritten, this client's running
+                // number lost with its old row (QC-28). Refused, before
+                // anything is written.
+                foreach (var vm in Clients)
+                {
+                    if (!_dirty.Contains(vm)) continue;
+                    if (!_originId.TryGetValue(vm, out var origin) || origin.Length == 0 || SameId(origin, vm.Id)) continue;
+                    if (doc.LabelClients.Any(c => SameId(c.Id, vm.Id)) && !_removedIds.Contains(vm.Id))
+                        throw new RenameClash(origin, vm.Id);
+                }
+
                 var carried = new Dictionary<LabelClientVm, long>();
                 foreach (var vm in Clients)
                 {
                     if (!_dirty.Contains(vm)) continue;
                     if (!_originId.TryGetValue(vm, out var origin)) continue;
                     if (origin.Length == 0 || !_removedIds.Contains(origin)) continue;
-                    var originRow = doc.LabelClients.FirstOrDefault(c => c.Id == origin);
+                    var originRow = doc.LabelClients.FirstOrDefault(c => SameId(c.Id, origin));
                     if (originRow is not null) carried[vm] = originRow.NextNumber;
                 }
 
@@ -919,13 +937,13 @@ public sealed class LabelMakerViewModel : ObservableObject
                 // protected — that case's "starts back at 1" promise, tested
                 // above, depends on the old row still being swept.
                 var stillOwned = new HashSet<string>(Clients
-                    .Where(vm => _originId.TryGetValue(vm, out var o) && o.Length > 0 && o == vm.Id)
-                    .Select(vm => vm.Id));
+                    .Where(vm => _originId.TryGetValue(vm, out var o) && o.Length > 0 && SameId(o, vm.Id))
+                    .Select(vm => vm.Id), StringComparer.OrdinalIgnoreCase);
                 doc.LabelClients.RemoveAll(c => _removedIds.Contains(c.Id) && !stillOwned.Contains(c.Id));
                 foreach (var vm in Clients)
                 {
                     if (!_dirty.Contains(vm)) continue;        // untouched: disk wins
-                    var fresh = doc.LabelClients.FirstOrDefault(c => c.Id == vm.Id);
+                    var fresh = doc.LabelClients.FirstOrDefault(c => SameId(c.Id, vm.Id));
                     if (fresh is null)
                     {
                         var added = vm.ToClient();
@@ -947,6 +965,9 @@ public sealed class LabelMakerViewModel : ObservableObject
                         // client's counter from 4211 to 1 (QC-06). An
                         // unparseable box leaves the disk value alone,
                         // exactly like an untouched field already does.
+                        // the form shown here: a hand-edited lowercase id
+                        // would otherwise stay beside it as a second client
+                        fresh.Id = vm.Id;
                         if (int.TryParse(vm.DestroyDaysText.Trim(), out var days)) fresh.DestroyDays = days;
                         // NextNumber: disk wins unless the user actually
                         // edited the number box on this row AND it parses —
@@ -973,6 +994,13 @@ public sealed class LabelMakerViewModel : ObservableObject
             foreach (var vm in Clients) _originId[vm] = vm.Id;
             return true;
         }
+        catch (RenameClash clash)
+        {
+            // Like the duplicate-id refusal above: the fix is in this window.
+            _dialogs.Warn($"Another station has just added a client called “{clash.NewId}”, so “{clash.OldId}” "
+                + "can't be renamed to it. Choose a different id; nothing was saved.", _appTitle);
+            return false;
+        }
         catch (ConfigException ex)
         {
             // Unlike the duplicate-id refusal above, this does NOT block the
@@ -988,6 +1016,13 @@ public sealed class LabelMakerViewModel : ObservableObject
             return true;
         }
     }
+}
+
+/// <summary>A save refused inside the store's lock: see TryPersist.</summary>
+file sealed class RenameClash(string oldId, string newId) : Exception
+{
+    public string OldId { get; } = oldId;
+    public string NewId { get; } = newId;
 }
 
 file static class CollectionExtensions
