@@ -561,7 +561,9 @@ public static class Unlock
     /// the document's own name empty. The copy is moved onto that name. Only
     /// then: an original still in place means the swap never started, and a
     /// leftover with no archived original has nothing to prove it belongs
-    /// there. Returns the documents put back; never throws.</summary>
+    /// there. A leftover that doesn't open as a whole, unprotected PDF is a
+    /// copy cut off mid-write, and stays where it is. Returns the documents
+    /// put back; never throws.</summary>
     public static IReadOnlyList<string> FinishInterruptedSwaps(string folder)
     {
         var finished = new List<string>();
@@ -579,6 +581,13 @@ public static class Unlock
                 if (!archives.Any(a => File.Exists(Path.Combine(a, name)))) continue;
                 try
                 {
+                    // A copy cut off mid-write to a share is left under this
+                    // name too; putting that back would bring a broken,
+                    // possibly already filed, document back into the folder.
+                    string problem;
+                    using (var stream = File.OpenRead(leftover))
+                        problem = VerifyReadable(stream);
+                    if (problem.Length > 0) continue;
                     File.Move(leftover, original);
                     finished.Add(original);
                 }

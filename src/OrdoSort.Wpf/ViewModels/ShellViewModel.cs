@@ -1464,6 +1464,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         await RefreshCompleterAsync();
         // fit first, so the first page is shown at the zoom for the fitted size
         await FitViewerToCurrentAsync();
+        // Esc during the steps above closed the session already
+        if (Screen != Screen.Processing) return;
         await LoadCurrentAsync();
     }
 
@@ -1514,6 +1516,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // can; a PDF header read off an SMB inbox is a network round trip
         var page = await _scheduler.Run(() => PageShape.SizeOf(path));
         if (_session.Current != path) return;   // moved on while measuring; that load shows its own
+        // Esc closed the session while measuring: a document shown now would
+        // sit in a hidden preview, which keeps its file open
+        if (Screen != Screen.Processing) return;
         await _viewer.ShowAsync(path, page);
         RequestNameFocus?.Invoke();
     }

@@ -26,7 +26,8 @@ jobs:
           dotnet-version: "8.0.x"
 
       - name: Test
-        run: dotnet test -c Release --verbosity normal
+        # NetworkShare needs a loopback share that GitHub's runners don't have
+        run: dotnet test -c Release --verbosity normal --filter "Category!=NetworkShare"
 
       - name: Version from tag
         id: ver

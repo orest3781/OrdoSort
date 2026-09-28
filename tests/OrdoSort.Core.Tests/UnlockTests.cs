@@ -269,15 +269,35 @@ public class UnlockTests : IDisposable
     {
         var archive = Directory.CreateDirectory(Path.Combine(_dir, "locked_archive_20260901")).FullName;
         File.WriteAllText(Path.Combine(archive, "invoice.pdf"), "locked original");
-        File.WriteAllText(Path.Combine(_dir, "invoice.unlocking.tmp"), "unlocked copy");
+        var unlockedCopy = File.ReadAllBytes(MakePlain("invoice.unlocking.tmp"));
 
         var finished = Unlock.FinishInterruptedSwaps(_dir);
 
         var restored = Path.Combine(_dir, "invoice.pdf");
         Assert.Equal(new[] { restored }, finished);
-        Assert.Equal("unlocked copy", File.ReadAllText(restored));
+        Assert.Equal(unlockedCopy, File.ReadAllBytes(restored));
         Assert.False(File.Exists(Path.Combine(_dir, "invoice.unlocking.tmp")));
         Assert.Equal("locked original", File.ReadAllText(Path.Combine(archive, "invoice.pdf")));
+    }
+
+    /// <summary>A copy cut off while it was still being written (a sign-out
+    /// mid-copy to a share) must not come back under the document's name: the
+    /// retry that followed may have finished the swap and the document since
+    /// been filed away, so the half-copy would reappear as a new document.
+    /// Only a leftover that opens as a whole PDF is put back.</summary>
+    [Fact]
+    public void AHalfWrittenLeftoverIsNotPutBack()
+    {
+        var archive = Directory.CreateDirectory(Path.Combine(_dir, "locked_archive_20260901")).FullName;
+        File.WriteAllText(Path.Combine(archive, "invoice.pdf"), "locked original");
+        var whole = File.ReadAllBytes(MakePlain("whole.pdf"));
+        var leftover = Path.Combine(_dir, "invoice.unlocking.tmp");
+        File.WriteAllBytes(leftover, whole[..(whole.Length / 2)]);
+
+        Assert.Empty(Unlock.FinishInterruptedSwaps(_dir));
+
+        Assert.False(File.Exists(Path.Combine(_dir, "invoice.pdf")));
+        Assert.True(File.Exists(leftover));
     }
 
     /// <summary>With the original still in place the swap never started, and
