@@ -32,7 +32,7 @@ public partial class App : Application
                 "so anything it was part-way through is either where it started or where it " +
                 "was going.\n\n" +
                 (logged
-                    ? "The technical details were written to crash.log, beside your config file."
+                    ? $"The technical details were written to {CrashLogPlace}."
                     : "The technical details could not be written to crash.log — the location " +
                       "may not be writable."),
                 "OrdoSort — unexpected problem", OrdoSort.Wpf.Windows.MessageKind.Warning);
@@ -50,7 +50,7 @@ public partial class App : Application
         _cfgPath = e.Args.Length >= 2 && e.Args[0] == "--config"
             ? e.Args[1]
             : Path.Combine(AppContext.BaseDirectory, "config.json");
-        _crashDir = Path.GetDirectoryName(Path.GetFullPath(_cfgPath)) ?? ".";
+        _crashDir = DefaultCrashDir;
 
         // Theme FIRST, before anything that can raise a dialog. The app's
         // dialogs are real WPF windows now (MessageWindow, UI-02), so they
@@ -79,7 +79,7 @@ public partial class App : Application
             var logged = LogCrash(ex);
             OrdoSort.Wpf.Windows.MessageWindow.Show(null,
                 ex.Message + (logged
-                    ? "\n\nThe technical details were written to crash.log, beside your config file."
+                    ? $"\n\nThe technical details were written to {CrashLogPlace}."
                     : ""),
                 "OrdoSort — configuration problem", OrdoSort.Wpf.Windows.MessageKind.Warning);
             Shutdown(1);
@@ -116,7 +116,7 @@ public partial class App : Application
         app.Resources["AppFontSize"] = cfg.UiFontSize == 0 ? 14.0 : (double)cfg.UiFontSize;
     }
 
-    /// <summary>Where crash.log goes: beside the config. Static so the shell can
+    /// <summary>Where crash.log goes: <see cref="DefaultCrashDir"/>. Static so the shell can
     /// route an unexpected filing-loop exception here too. Internal (not
     /// private) only so tests can redirect it to a throwaway temp directory
     /// instead of writing crash.log into the test binary's working directory
@@ -124,7 +124,16 @@ public partial class App : Application
     /// <see cref="Unlock.LargeFileThresholdBytes"/>.</summary>
     internal static string _crashDir = ".";
 
-    /// <summary>Appends <paramref name="ex"/> to crash.log beside the config.
+    /// <summary>This PC's own OrdoSort folder, never the shared config's
+    /// (QC-21): crash.log records full exception text, document names and
+    /// paths included, and the config folder is one every station reads.</summary>
+    internal static string DefaultCrashDir { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OrdoSort");
+
+    /// <summary>Where crash.log is, as the app's messages name it.</summary>
+    internal const string CrashLogPlace = @"crash.log, in this PC's OrdoSort folder (%LOCALAPPDATA%\OrdoSort)";
+
+    /// <summary>Appends <paramref name="ex"/> to crash.log in <see cref="_crashDir"/>.
     /// Returns whether the write actually succeeded, so callers that promise
     /// the user "the details are in crash.log" (the DispatcherUnhandledException
     /// dialog) can tell the truth when that same unwritable location that
@@ -135,6 +144,7 @@ public partial class App : Application
         try
         {
             var dir = _crashDir;
+            Directory.CreateDirectory(dir);   // a PC that never ran the preview has no folder yet
             // Invariant: a stored record (a shared crash.log line), not a
             // display string — must not shift shape with the station's locale.
             File.AppendAllText(Path.Combine(dir, "crash.log"),

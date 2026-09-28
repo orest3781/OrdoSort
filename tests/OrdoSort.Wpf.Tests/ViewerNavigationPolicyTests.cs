@@ -222,6 +222,22 @@ public class WebViewPdfViewerGuardBehaviourTests : UiTest, IDisposable
         return path;
     }
 
+    /// <summary>QC-22: a normal profile kept every previewed document's path
+    /// in Edge's history, on disk, forever. The preview is InPrivate now.</summary>
+    [Fact]
+    public void ThePreviewKeepsNoHistoryOfWhatItShowed() => _fx.Invoke(() =>
+    {
+        var (view, window) = NewView();
+        try
+        {
+            var viewer = new WebViewPdfViewer(view);
+            Assert.True(InitReady(viewer), "real WebView2 init failed: " + viewer.InitError);
+
+            Assert.True(view.CoreWebView2.Profile.IsInPrivateModeEnabled);
+        }
+        finally { window.Close(); }
+    });
+
     /// <summary>QC-24, Q2-31: when the preview's Edge process died, every
     /// filing keystroke (and Review matches' Use/Skip) failed with "didn't
     /// finish" until the app was restarted, because each one navigates the
