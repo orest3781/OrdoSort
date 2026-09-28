@@ -2201,21 +2201,39 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     public IEnumerable<string> SectionChoices =>
         WatchRows.OfType<WatchSectionVm>().Where(h => !h.IsDefault).Select(h => h.Header).ToList();
 
-    private bool CanMoveWatch(int delta)
-    {
-        if (SelectedWatch is null) return false;
-        var j = WatchFolders.IndexOf(SelectedWatch) + delta;
-        return j >= 0 && j < WatchFolders.Count;
-    }
+    private bool CanMoveWatch(int delta) => SameSectionNeighbour(delta) >= 0;
 
     private void MoveWatch(int delta)
     {
         if (SelectedWatch is null) return;
-        var i = WatchFolders.IndexOf(SelectedWatch);
-        WatchFolders.Move(i, i + delta);
+        var to = SameSectionNeighbour(delta);
+        if (to < 0) return;
+        WatchFolders.Move(WatchFolders.IndexOf(SelectedWatch), to);
         WatchUpCommand.RaiseCanExecuteChanged();
         WatchDownCommand.RaiseCanExecuteChanged();
     }
+
+    /// <summary>Flat index of the nearest folder in the selected folder's own
+    /// section, above (delta -1) or below (+1); -1 when there is none. Up and
+    /// Down used to swap with the flat-list neighbour, and when that sat in
+    /// another section nothing moved on screen, so the buttons looked dead
+    /// (DW-65). Moving to another section is drag's or the Section box's job.</summary>
+    private int SameSectionNeighbour(int delta)
+    {
+        if (SelectedWatch is not { } selected) return -1;
+        var key = GroupKey(selected);
+        for (var j = WatchFolders.IndexOf(selected) + delta; j >= 0 && j < WatchFolders.Count; j += delta)
+        {
+            if (string.Equals(GroupKey(WatchFolders[j]), key, StringComparison.CurrentCultureIgnoreCase))
+                return j;
+        }
+        return -1;
+    }
+
+    /// <summary>The heading a folder shows under: "" for the default group,
+    /// which a section spelled like the default heading joins (DW-68).</summary>
+    private string GroupKey(WatchEditVm w) =>
+        IsDefaultHeading(w.Section) ? "" : w.Section.Trim();
 
     public RelayCommand AddRouteCommand { get; }
     public RelayCommand RemoveRouteCommand { get; }

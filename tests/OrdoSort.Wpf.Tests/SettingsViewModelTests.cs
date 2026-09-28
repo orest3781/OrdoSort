@@ -1906,6 +1906,39 @@ public class SettingsViewModelTests : IDisposable
         Assert.Equal("no folder chosen yet", w.Problem);
     }
 
+    /// <summary>DW-65: Up and Down moved a folder in the hidden flat list.
+    /// When the next folder in that list sat in another section, the move
+    /// changed nothing on screen (the folder stays under its own heading),
+    /// so the button looked broken. They now move a folder among its own
+    /// section's folders, and are off at the section's edge (drag, or the
+    /// Section box, moves a folder to another section).</summary>
+    [Fact]
+    public void UpAndDownMoveAFolderWithinItsOwnSection()
+    {
+        // flat order A(Day) X(Night) B(Day): on screen Day holds A, B
+        var vm = new SettingsViewModel(WatchCfg(("A", "Day"), ("X", "Night"), ("B", "Day")), _dialogs);
+        var b = vm.WatchFolders[2];
+        vm.SelectedWatch = b;
+
+        Assert.True(vm.WatchUpCommand.CanExecute(null));
+        vm.WatchUpCommand.Execute(null);
+
+        var day = vm.WatchFolders.Where(w => w.Section == "Day").Select(w => w.Label).ToArray();
+        Assert.Equal(new[] { "B", "A" }, day);   // a visible change: B is now above A
+        Assert.False(vm.WatchUpCommand.CanExecute(null));   // top of its section
+        Assert.True(vm.WatchDownCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void UpIsOffForTheFirstFolderOfASectionEvenWithAnotherSectionAbove()
+    {
+        var vm = new SettingsViewModel(WatchCfg(("X", "Night"), ("A", "Day")), _dialogs);
+        vm.SelectedWatch = vm.WatchFolders[1];
+
+        Assert.False(vm.WatchUpCommand.CanExecute(null));
+        Assert.False(vm.WatchDownCommand.CanExecute(null));
+    }
+
     /// <summary>DW-66: dropping a folder on empty space below the list had
     /// no test. It goes to the end, into the last folder's section, which is
     /// where it then shows.</summary>
