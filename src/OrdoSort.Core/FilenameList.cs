@@ -177,9 +177,14 @@ public static class FilenameList
     /// the Excel formula-injection guard. That guard matters more here than almost
     /// anywhere else in the app: filenames are user-controlled, and a file called
     /// "=cmd...pdf" is something Excel will try to interpret when the exported
-    /// file is opened.</summary>
+    /// file is opened.
+    ///
+    /// No rows is no text, header included, the same as ToText: the shape of
+    /// "nothing" must not depend on which column is on (FL-28).</summary>
     public static string ToCsv(IReadOnlyList<FileRow> rows, Columns cols)
     {
+        if (rows.Count == 0) return "";
+
         var active = Active(cols);
         var lines = new List<string>(rows.Count + 1)
         {

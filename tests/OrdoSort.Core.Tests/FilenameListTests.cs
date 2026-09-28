@@ -80,6 +80,19 @@ public class FilenameListTests : IDisposable
         Assert.Equal(new[] { "report.pdf" }, listing.Rows.Select(r => r.Name).ToArray());
     }
 
+    /// <summary>FL-28: an empty listing came out as nothing in a .txt but as a
+    /// header row in a .csv, so the shape of "nothing" depended on which
+    /// column was on. Both are empty now.</summary>
+    [Fact]
+    public void AnEmptyListingExportsAsNothingInEitherShape()
+    {
+        var none = Array.Empty<FilenameList.FileRow>();
+
+        Assert.Equal("", FilenameList.ToText(none, FilenameList.Columns.Size));
+        Assert.Equal("", FilenameList.ToCsv(none, FilenameList.Columns.Size));
+        Assert.Equal("", FilenameList.ToCsv(none, FilenameList.Columns.None));
+    }
+
     /// <summary>FL-09: hiding extensions is done on rows already read, so
     /// the File list no longer walks the disk again for a display choice.
     /// The rows come back in the order of the names now shown: "x" sorts

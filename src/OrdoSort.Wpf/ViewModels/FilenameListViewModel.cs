@@ -208,6 +208,11 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     /// button copied all 200 rows while Ctrl+C copied the 5 you had picked.</summary>
     public string CopyText => FilenameList.ToText(SelectedRows(), Columns);
 
+    /// <summary>Whether the Copy button is on (FL-14). Copy is a click handler
+    /// in the window (the clipboard must stay out of this class), so it is
+    /// gated by this binding rather than a command.</summary>
+    public bool CanCopy => Rows.Count > 0;
+
     private List<FilenameList.FileRow> SelectedRows()
     {
         if (_selectedPaths.Count == 0) return Rows.ToList();
@@ -263,7 +268,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
             CancelCounting();
             _pageCounts.Clear();   // a re-added file may have changed on disk
             Refresh(immediate: true);
-        });
+        }, () => _sources.Count > 0);   // FL-14; live while reading, since Clear stops a read
         RemoveSelectedCommand = new RelayCommand(() =>
         {
             if (_selectedPaths.Count == 0) return;
@@ -308,6 +313,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     private void RefreshCommandStates()
     {
         SaveCommand.RaiseCanExecuteChanged();
+        ClearCommand.RaiseCanExecuteChanged();
         RemoveSelectedCommand.RaiseCanExecuteChanged();
         UndoRemovalCommand.RaiseCanExecuteChanged();
         RestoreRemovedCommand.RaiseCanExecuteChanged();
@@ -451,6 +457,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         }
 
         IsListing = true;
+        RefreshCommandStates();   // Clear goes live now, before the read lands
         _listingProbe.Trigger(() => FilenameList.Build(sourcesSnapshot, opt), immediate);
     }
 
@@ -548,6 +555,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         Raise(nameof(CopyText));
         Raise(nameof(RemovedCount));
         Raise(nameof(RestoreLabel));
+        Raise(nameof(CanCopy));
         RefreshCommandStates();
 
         // Only ever counts what is VISIBLE and not yet known, so narrowing with

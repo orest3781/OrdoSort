@@ -584,6 +584,39 @@ public class FilenameListViewModelTests : IDisposable
         Assert.Equal(2, vm.Rows.Count);
     }
 
+    /// <summary>FL-14: Copy and Clear stayed clickable on an empty list and
+    /// did nothing — no clipboard write, no message — which looks like a
+    /// broken button. They are off until there is something to act on. Clear
+    /// comes on the moment something is added, before the folder has been
+    /// read, because Clear is how a slow read is stopped.</summary>
+    [Fact]
+    public void CopyAndClearAreOffUntilThereIsSomethingToActOn()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+        Touch("a.pdf");
+        var scheduler = new ManualWorkScheduler();
+        using var vm = new FilenameListViewModel(new FakeDialogs(), scheduler, uiContext: null, probeDelayMs: 0);
+        var clearAsked = 0;
+        vm.ClearCommand.CanExecuteChanged += (_, _) => clearAsked++;
+        Assert.False(vm.CanCopy);
+        Assert.False(vm.ClearCommand.CanExecute(null));
+
+        vm.AddPaths(new[] { _dir });
+
+        Assert.True(vm.ClearCommand.CanExecute(null));
+        Assert.True(clearAsked > 0, "Clear was never re-asked, so its button would stay disabled");
+        Assert.False(vm.CanCopy);   // still reading
+
+        WaitFor(() => scheduler.PendingCount > 0, "the folder walk should be queued");
+        scheduler.ReleaseAll();
+        Assert.True(vm.CanCopy);
+
+        vm.ClearCommand.Execute(null);
+
+        Assert.False(vm.CanCopy);
+        Assert.False(vm.ClearCommand.CanExecute(null));
+    }
+
     /// <summary>FL-15: "Restore removed" never said how many rows it would
     /// bring back; the count was only in the footer. The button names it.</summary>
     [Fact]

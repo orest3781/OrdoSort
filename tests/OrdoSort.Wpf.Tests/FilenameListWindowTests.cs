@@ -164,6 +164,8 @@ public class FilenameListWindowTests : UiTest
             Assert.Equal("Remove selected", remove.Content);
             var restore = buttons.Single(b => b.Command == vm.RestoreRemovedCommand);
             Assert.Equal(vm.RestoreLabel, restore.Content);
+            // FL-14: Copy is a click handler, not a command, so it is gated by binding
+            Assert.False(buttons.Single(b => (b.Content as string) == "Copy to clipboard").IsEnabled);
         }
         finally { window.Close(); }
     });
