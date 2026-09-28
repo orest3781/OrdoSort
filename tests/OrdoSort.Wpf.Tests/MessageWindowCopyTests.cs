@@ -48,4 +48,25 @@ public class MessageWindowCopyTests : UiTest
             AutomationProperties.GetName(w.CopyButton));
         Assert.True(w.IsEnabled);   // the dialog itself is untouched
     });
+
+    /// <summary>DW-88: the 2-second timer that puts "Copy" back kept running
+    /// after the box closed, and a running DispatcherTimer holds its window,
+    /// so a closed message box stayed in memory up to 2 s longer. Closing
+    /// now stops it.</summary>
+    [Fact]
+    public void ClosingTheBoxStopsTheCopyLabelTimer() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var w = MessageWindow.Build(null, "Something needs your attention.", "OrdoSort — test", MessageKind.Info);
+        w.Left = -20000; w.Top = 0; w.ShowActivated = false;
+        w.WindowStartupLocation = WindowStartupLocation.Manual;
+        w.SetClipboardText = _ => { };
+        w.Show();
+        w.CopyButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        Assert.True(w.CopyLabelResetPending);
+
+        w.Close();
+
+        Assert.False(w.CopyLabelResetPending);
+    });
 }
