@@ -26,6 +26,55 @@ public class SettingsOkWarningsTests : IDisposable
             scheduler: new InlineWorkScheduler(), time: new ManualTimeProvider());
     }
 
+    /// <summary>A view model whose config lives "on the share": the temp
+    /// folder stands in for it, and only paths under it count as shared.</summary>
+    private SettingsViewModel BuildOnAShare(Action<Config> tweak)
+    {
+        var cfg = new Config
+        {
+            Inbox = _dir.Dir("inbox"),
+            Deferred = _dir.Dir("set-aside"),
+            Routes = { new Route { Label = "Invoices", Path = _dir.Dir("filed") } },
+        };
+        tweak(cfg);
+        return new SettingsViewModel(cfg, new FakeDialogs(), cfgPath: Path.Combine(_dir.Path, "config.json"),
+            validateRoute: _ => "", writeProblem: _ => "",
+            isNetworkPath: p => p.StartsWith(_dir.Path, StringComparison.OrdinalIgnoreCase),
+            scheduler: new InlineWorkScheduler(), time: new ManualTimeProvider());
+    }
+
+    /// <summary>DW-09: config.json on a share is read by every station, but
+    /// a folder typed as this PC's own drive (C:\Scans) passed without a
+    /// word, and every other station then looked on its own C: drive. OK now
+    /// says so when an edit puts such a path into a shared config. Only on
+    /// the edit that introduces it: some offices really do keep the same
+    /// local folder on every PC, and they shouldn't be asked on every OK.</summary>
+    [Fact]
+    public void AFolderOnThisPcsOwnDriveInASharedConfigIsWarnedAboutWhenItIsAdded()
+    {
+        using var vm = BuildOnAShare(cfg => { });
+        vm.Routes[0].Path = @"C:\LocalScans\invoices";
+
+        Assert.Contains(vm.Warnings(), w => w.Contains("Invoices") && w.Contains("this PC"));
+    }
+
+    [Fact]
+    public void AFolderOnThisPcsOwnDriveThatWasAlreadyThereIsNotAskedAboutAgain()
+    {
+        using var vm = BuildOnAShare(cfg => cfg.Routes[0].Path = @"C:\LocalScans\invoices");
+
+        Assert.DoesNotContain(vm.Warnings(), w => w.Contains("this PC"));
+    }
+
+    [Fact]
+    public void AConfigKeptOnThisPcIsNotWarnedAboutLocalFolders()
+    {
+        using var vm = Build(cfg => { });
+        vm.Routes[0].Path = @"C:\LocalScans\invoices";
+
+        Assert.DoesNotContain(vm.Warnings(), w => w.Contains("this PC"));
+    }
+
     /// <summary>DW-45: "folder doesn't exist" read the same whether the
     /// folder was never made or its share or drive was simply offline, and
     /// the fixes differ (create it, or wait and reconnect). When the drive or

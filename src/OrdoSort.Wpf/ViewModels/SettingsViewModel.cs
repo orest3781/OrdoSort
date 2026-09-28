@@ -607,6 +607,19 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     // the inbox and set-aside folders get the write check destinations get.
     private readonly Func<string, string> _writeProblem;
 
+    // Whether a path is on a share or network drive rather than this PC's
+    // own disk: a shared config pointing at C:\ means each station's own C:.
+    private readonly Func<string, bool> _isNetworkPath;
+
+    private static bool IsNetworkPath(string path)
+    {
+        if (path.StartsWith(@"\\", StringComparison.Ordinal)) return true;
+        var root = Path.GetPathRoot(path);
+        if (string.IsNullOrEmpty(root)) return false;
+        try { return new DriveInfo(root).DriveType == DriveType.Network; }
+        catch (ArgumentException) { return false; }
+    }
+
     // Off-thread + debounced, mirroring ShellViewModel's own gather
     // (thread pool) → apply (UI) shape: _scheduler runs each probe off the
     // UI thread, _uiContext marshals the result back since a bare
@@ -630,7 +643,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         SynchronizationContext? uiContext = null,
         int probeDelayMs = 300,
         TimeProvider? time = null,
-        Func<string, string>? writeProblem = null)
+        Func<string, string>? writeProblem = null,
+        Func<string, bool>? isNetworkPath = null)
     {
         _original = current;
         _dialogs = dialogs;
@@ -641,6 +655,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         // Resolve relative routes beside the config file, as a commit will.
         _validateRoute = validateRoute ?? (r => Config.ValidateRoute(r, cfgPath));
         _writeProblem = writeProblem ?? Config.WriteProblem;
+        _isNetworkPath = isNetworkPath ?? IsNetworkPath;
         _folderStatus = folderStatus ?? FolderMonitor.Status;
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _uiContext = uiContext;
@@ -2314,6 +2329,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         IReadOnlyList<(string Label, Route Route)> Routes,
         IReadOnlyList<(string Label, string Path)> WatchFolders,
         IReadOnlyList<(string Name, string Path)> SoundFiles,
+        IReadOnlyList<(string What, string Path)> NewFolders,
         IReadOnlyList<string> EditorWarnings);
 
     private FolderChecks FolderChecksNow() => new(
@@ -2326,7 +2342,34 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         new[] { NewAlertSound, FiledSound, SetAsideSound, ErrorSound }
             .Where(s => s.ShowCustom && s.Spec.Length > 0)
             .Select(s => (s.Name, s.Spec)).ToList(),
+        FoldersNewInThisEdit(),
         WatchFolderWarnings());
+
+    /// <summary>Every folder setting whose path this edit introduced, as the
+    /// app will use it. Only these are checked for being on this PC's own
+    /// drive (DW-09): an office that keeps the same local folder on every PC
+    /// is asked once, when it sets it, not on every OK.</summary>
+    private List<(string What, string Path)> FoldersNewInThisEdit()
+    {
+        var before = new HashSet<string>(PathIdentity.PathComparer.Instance);
+        foreach (var p in new[] { _original.Inbox, _original.Deferred }
+                     .Concat(_original.Routes.Select(r => r.Path ?? ""))
+                     .Concat(_original.WatchFolders.Select(w => w.Path)))
+        {
+            if (!string.IsNullOrWhiteSpace(p)) before.Add(ResolveFolderPath(p.Trim()));
+        }
+        var now = new List<(string What, string Path)>
+        {
+            ("The inbox folder", Inbox.Trim()),
+            ("The set-aside folder", Deferred.Trim()),
+        };
+        now.AddRange(Routes.Select(r => ($"\"{r.Label.Trim()}\"", r.Path.Trim())));
+        now.AddRange(WatchFolders.Select(w => ($"\"{w.Label.Trim()}\"", w.Path.Trim())));
+        return now.Where(f => f.Item2.Length > 0)
+            .Select(f => (f.Item1, ResolveFolderPath(f.Item2)))
+            .Where(f => !before.Contains(f.Item2))
+            .ToList();
+    }
 
     /// <summary>A monitored folder with no path became a tile that only
     /// shows an error, and whose click does nothing; a destination with no
@@ -2390,6 +2433,17 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         {
             if (!_fileExists(path))
                 warnings.Add($"The \"{name}\" sound file doesn't exist: {path} — OrdoSort's own sound will play instead.");
+        }
+        // A shared config is read by every station; a folder on this PC's
+        // own drive there means each station looks on ITS own drive (DW-09).
+        if (_cfgPath is { } cfgPath && _isNetworkPath(Path.GetFullPath(cfgPath)))
+        {
+            foreach (var (what, path) in checks.NewFolders)
+            {
+                if (Path.IsPathFullyQualified(path) && !_isNetworkPath(path))
+                    warnings.Add($"{what} is on this PC's own drive ({path}), but the settings are shared: " +
+                                 "every other station will look on its own drive. Use the share's path instead.");
+            }
         }
         warnings.AddRange(checks.EditorWarnings);
         return warnings;
