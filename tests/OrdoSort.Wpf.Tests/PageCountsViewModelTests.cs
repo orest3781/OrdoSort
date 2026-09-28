@@ -314,6 +314,59 @@ public class PageCountsViewModelTests : IDisposable
         Assert.Equal("", vm.TotalLine);
     }
 
+    /// <summary>Runs every posted continuation at once on the posting thread,
+    /// so a row let through the count gate resumes inside the release that
+    /// freed it, not later on a pool thread the scheduler never sees.</summary>
+    private sealed class InlineContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback d, object? state) => d(state);
+    }
+
+    /// <summary>DW-78 sweep: Clear (or Remove selected) during a count left
+    /// every waiting row to be read anyway, a PDF at a time over the share,
+    /// for rows nobody could see. Rows not yet started are now skipped; the
+    /// four already reading finish, as a count can't stop partway.</summary>
+    [Fact]
+    public async Task ClearDuringACountSkipsTheRowsNotYetStarted()
+    {
+        SynchronizationContext.SetSynchronizationContext(new InlineContext());
+        var files = Enumerable.Range(1, 6).Select(i => Touch($"{i}.pdf")).ToList();
+        var counted = new List<string>();
+        var scheduler = new ControlledWorkScheduler();
+        var vm = new PageCountsViewModel(new FakeDialogs(), scheduler, uiContext: null,
+            path => { counted.Add(path); return new PageCounts.CountResult(path, 1); });
+
+        var adding = vm.AddFilesAsync(files);
+        scheduler.ReleaseNext();   // the walk; four counts start, two wait their turn
+        vm.ClearCommand.Execute(null);
+        scheduler.ReleaseAll();
+        await adding;
+
+        Assert.Equal(PageCountsViewModel.MaxConcurrentCounts, counted.Count);
+        Assert.Empty(vm.Rows);
+    }
+
+    [Fact]
+    public async Task ARemovedRowIsNotCountedIfItHasNotStarted()
+    {
+        SynchronizationContext.SetSynchronizationContext(new InlineContext());
+        var files = Enumerable.Range(1, 6).Select(i => Touch($"{i}.pdf")).ToList();
+        var counted = new List<string>();
+        var scheduler = new ControlledWorkScheduler();
+        var vm = new PageCountsViewModel(new FakeDialogs(), scheduler, uiContext: null,
+            path => { counted.Add(path); return new PageCounts.CountResult(path, 1); });
+
+        var adding = vm.AddFilesAsync(files);
+        scheduler.ReleaseNext();
+        var last = vm.Rows.Single(r => r.Path == files[5]);   // waiting at the gate
+        vm.RemoveSelected(new[] { last });
+        scheduler.ReleaseAll();
+        await adding;
+
+        Assert.DoesNotContain(files[5], counted);
+        Assert.Equal(5, counted.Count);
+    }
+
     /// <summary>Q2-09: a folder walk that failed partway (a share dropping)
     /// gave some rows or none, with nothing saying it stopped.</summary>
     [Fact]
