@@ -892,15 +892,30 @@ public sealed class Config
         if (raw.Length == 0) return "no destination path configured";
         if (configPath is not null) raw = ResolveFolderPath(configPath, raw);
         if (!Directory.Exists(raw))
-            return File.Exists(raw)
-                ? $"destination is not a folder: {raw}"
-                : $"destination does not exist: {raw}";
+            return File.Exists(raw) ? $"destination is not a folder: {raw}"
+                : MissingFolder(raw) is var missing && missing.StartsWith("wasn't checked", StringComparison.Ordinal)
+                    ? $"destination {missing}"
+                    : $"destination does not exist: {raw}";
         return ProbeWritable(raw);
     }
 
     /// <summary>Empty string if we can create files in dest, else a readable
     /// error. Actually creates and removes a probe file — os.access lies on
     /// Windows and over SMB.</summary>
+    /// <summary>What to say about a folder that isn't there, after its
+    /// subject ("folder ", "The inbox folder "). "Doesn't exist" read the
+    /// same whether the folder was never made or its drive or share was just
+    /// offline, and the fixes differ (DW-45): when the root itself can't be
+    /// reached, say that instead.</summary>
+    /// <param name="directoryExists">Directory.Exists, or a test's stand-in.</param>
+    public static string MissingFolder(string folder, Func<string, bool>? directoryExists = null)
+    {
+        var root = Path.GetPathRoot(folder);
+        return !string.IsNullOrEmpty(root) && !(directoryExists ?? Directory.Exists)(root)
+            ? $"wasn't checked — can't reach {root.TrimEnd('\\')} right now: {folder}"
+            : $"doesn't exist: {folder}";
+    }
+
     public static string ProbeWritable(string dest) =>
         WriteProblem(dest) is { Length: > 0 } problem ? $"destination not writable: {problem}" : "";
 

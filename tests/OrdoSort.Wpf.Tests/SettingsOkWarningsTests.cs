@@ -26,6 +26,45 @@ public class SettingsOkWarningsTests : IDisposable
             scheduler: new InlineWorkScheduler(), time: new ManualTimeProvider());
     }
 
+    /// <summary>DW-45: "folder doesn't exist" read the same whether the
+    /// folder was never made or its share or drive was simply offline, and
+    /// the fixes differ (create it, or wait and reconnect). When the drive or
+    /// share itself can't be reached, the note and the OK warning now say
+    /// that instead.</summary>
+    [Fact]
+    public void AFolderOnAShareThatCanNotBeReachedSaysSoInsteadOfDoesNotExist()
+    {
+        const string offline = @"\\scanner-server\scans\inbox";
+        var cfg = new Config
+        {
+            Inbox = offline,
+            Deferred = _dir.Dir("set-aside"),
+            WatchFolders = { new WatchFolder { Label = "Faxes", Path = @"\\scanner-server\scans\fax" } },
+        };
+        var reachable = new[] { _dir.Path, Path.GetPathRoot(_dir.Path)! };
+        using var vm = new SettingsViewModel(cfg, new FakeDialogs(), cfgPath: Path.Combine(_dir.Path, "config.json"),
+            directoryExists: p => reachable.Any(r => p.StartsWith(r, StringComparison.OrdinalIgnoreCase)),
+            validateRoute: _ => "", writeProblem: _ => "",
+            folderStatus: (w, _) => new FolderMonitor.FolderStatus(w.Label, w.Path, w.Color, 0, "", Array.Empty<string>(), w.Section),
+            scheduler: new InlineWorkScheduler(), time: new ManualTimeProvider());
+
+        Assert.Contains(@"can't reach \\scanner-server\scans", vm.InboxNote);
+        Assert.DoesNotContain("doesn't exist", vm.InboxNote);
+        Assert.Contains(vm.Warnings(), w => w.Contains("inbox") && w.Contains(@"can't reach \\scanner-server\scans"));
+        Assert.Contains(vm.Warnings(), w => w.Contains("Faxes") && w.Contains("can't reach"));
+    }
+
+    /// <summary>DW-45: a folder that is really missing on a reachable drive
+    /// still says it doesn't exist.</summary>
+    [Fact]
+    public void AMissingFolderOnAReachableDriveStillSaysItDoesNotExist()
+    {
+        var missing = Path.Combine(_dir.Path, "never-made");
+        using var vm = Build(cfg => cfg.Inbox = missing);
+
+        Assert.Contains("doesn't exist", vm.InboxNote);
+    }
+
     /// <summary>DW-08: only destinations were checked for write access at
     /// OK. A set-aside folder or inbox the station can read but not change
     /// passed, and then every Skip, or every filing (a move out of the inbox

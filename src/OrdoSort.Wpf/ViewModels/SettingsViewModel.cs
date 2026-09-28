@@ -330,7 +330,7 @@ public sealed class WatchEditVm : ObservableObject, IDisposable
         _problemProbe.Resolve(
             p.Length == 0 ? "no folder chosen yet" : null,
             neutralValue: "",
-            compute: () => _directoryExists(p) ? "" : $"folder doesn't exist: {p}",
+            compute: () => _directoryExists(p) ? "" : $"folder {Config.MissingFolder(p, _directoryExists)}",
             immediate);
     }
 
@@ -1062,7 +1062,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         probe.Resolve(fastPath, FieldNote.Clear,
             () => _directoryExists(full)
                 ? (relative ? FieldNote.Info("relative — resolved beside the config file") : FieldNote.Clear)
-                : FieldNote.Problem($"folder doesn't exist: {full}"),
+                : FieldNote.Problem($"folder {Config.MissingFolder(full, _directoryExists)}"),
             immediate);
     }
 
@@ -2360,7 +2360,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         if (checks.InboxPath.Length == 0)
             warnings.Add("No inbox folder is set — there will be nothing to process.");
         else if (!_directoryExists(checks.InboxPath))
-            warnings.Add($"The inbox folder doesn't exist: {checks.InboxPath}");
+            warnings.Add($"The inbox folder {Config.MissingFolder(checks.InboxPath, _directoryExists)}");
         // Filing moves documents OUT of the inbox, which deletes there: a
         // read-only inbox failed every filing with "access denied" (DW-08).
         else if (_writeProblem(checks.InboxPath) is { Length: > 0 } inboxProblem)
@@ -2371,7 +2371,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 warnings.Add("No set-aside folder is set — Skip will refuse until one is configured.");
         }
         else if (!_directoryExists(checks.DeferredPath))
-            warnings.Add($"The set-aside folder doesn't exist: {checks.DeferredPath}");
+            warnings.Add($"The set-aside folder {Config.MissingFolder(checks.DeferredPath, _directoryExists)}");
         else if (_writeProblem(checks.DeferredPath) is { Length: > 0 } deferredProblem)
             warnings.Add($"Documents can't be put in the set-aside folder ({checks.DeferredPath}): {deferredProblem}");
         foreach (var (label, route) in checks.Routes)
@@ -2382,7 +2382,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         foreach (var (label, path) in checks.WatchFolders)
         {
             if (!_directoryExists(path))
-                warnings.Add($"\"{label}\": folder doesn't exist: {path}");
+                warnings.Add($"\"{label}\": folder {Config.MissingFolder(path, _directoryExists)}");
         }
         // Every other file setting is checked; a moved .wav saved silently
         // and the built-in sound played instead, unexplained (DW-41).
