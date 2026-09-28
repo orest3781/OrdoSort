@@ -70,6 +70,22 @@ public class ZipExtractViewModelTests
         Assert.Contains("2 items", vm.Status);
     }
 
+    /// <summary>Q2-13: a zip that left out an unreadable folder says so.</summary>
+    [Fact]
+    public async Task AZipThatLeftSomethingOutSaysSo()
+    {
+        using var dir = new TempDir();
+        var a = dir.File("a.txt");
+        var vm = MakeVm(zipper: (paths, output) => new Zipper.ZipResult("ok", Path.Combine(dir.Path, "made.zip"),
+            "left out 1 folder that couldn't be read: scans/private"));
+        await vm.AddPaths(new[] { a });
+
+        await vm.ZipAsync(null);
+
+        Assert.Contains("made.zip", vm.Status);
+        Assert.Contains("left out 1 folder that couldn't be read: scans/private", vm.Status);
+    }
+
     [Fact]
     public async Task ZipCommandAppliesTheErrorMessageVerbatimOnFailure()
     {

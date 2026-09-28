@@ -810,4 +810,28 @@ public class ZipperTests : IDisposable
 
         Assert.Equal(before, Snapshot(_dir));
     }
+
+    /// <summary>Q2-13: one subfolder that can't be opened failed the whole
+    /// zip with a raw "Access denied". Now the rest is zipped and the result
+    /// names the folder that was left out, so nothing goes missing unsaid.</summary>
+    [Fact]
+    public void AnUnreadableSubfolderIsLeftOutAndNamedNotTheWholeZipFailed()
+    {
+        var root = MakeFolder("scans");
+        MakeFile(Path.Combine("scans", "top.pdf"), "top");
+        MakeFile(Path.Combine("scans", "aaa_private", "hidden.pdf"), "hidden");
+        MakeFile(Path.Combine("scans", "zzz_ok", "kept.pdf"), "kept");
+        using var denied = new DeniedFolder(Path.Combine(root, "aaa_private"));
+        if (!denied.Holds) return;   // an elevated session reads past the deny
+
+        var result = Zipper.CreateZip(new[] { root });
+
+        Assert.Equal("ok", result.Status);
+        Assert.Contains("aaa_private", result.Message);
+        using var zip = ZipFile.OpenRead(result.Output!);
+        var names = zip.Entries.Select(e => e.FullName).ToList();
+        Assert.Contains("scans/top.pdf", names);
+        Assert.Contains("scans/zzz_ok/kept.pdf", names);
+        Assert.DoesNotContain(names, n => n.Contains("hidden"));
+    }
 }
