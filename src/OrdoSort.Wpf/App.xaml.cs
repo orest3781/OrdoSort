@@ -117,8 +117,7 @@ public partial class App : Application
     /// BoxLabels.exe shares these styles and needs the same fallback.</summary>
     public static void ApplyFont(Application app, Config cfg)
     {
-        app.Resources["AppFontFamily"] = Theme.AppFonts.Create(cfg.UiFontFamily);
-        app.Resources["AppFontSize"] = cfg.UiFontSize == 0 ? 14.0 : (double)cfg.UiFontSize;
+        Theme.AppFonts.Apply(app, cfg.UiFontFamily, cfg.UiFontSize);
     }
 
     /// <summary>Where crash.log goes: <see cref="DefaultCrashDir"/>. Static so the shell can

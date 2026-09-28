@@ -391,9 +391,9 @@ public class ContentTemplateSetterTests : UiTest
                 return (new ComboBox
                 {
                     ItemTemplate = (DataTemplate)_fx.App.Resources["FontChoiceTemplate"],
-                    ItemsSource = SettingsViewModel.FontChoices,
+                    ItemsSource = OrdoSort.Wpf.Theme.AppFonts.Choices,
                 },
-                        SettingsViewModel.FontChoices[0].Value, true);
+                        OrdoSort.Wpf.Theme.AppFonts.Choices[0].Value, true);
 
             default:
                 throw new ArgumentOutOfRangeException(nameof(shape), shape, "unknown closed-face shape");

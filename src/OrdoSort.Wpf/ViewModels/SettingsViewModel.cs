@@ -535,18 +535,6 @@ public sealed class SchemeOptionVm : ObservableObject
 public sealed class SettingsViewModel : ObservableObject, IDisposable
 {
     // KeyValuePair: WPF binds properties, not tuple fields
-    public static readonly KeyValuePair<string, string>[] FontChoices =
-    {
-        new("", "Atkinson Hyperlegible Next (default)"),
-        // The pre-rebrand default, for anyone who prefers the Windows look.
-        new("Segoe UI Variable Text, Segoe UI", "Segoe UI Variable"),
-        new("Segoe UI", "Segoe UI"),
-        new("Tahoma", "Tahoma"),
-        new("Verdana", "Verdana"),
-        new("Consolas", "Consolas"),
-        new("Cascadia Mono", "Cascadia Mono"),
-    };
-
     public static readonly KeyValuePair<string, string>[] SortChoices =
     {
         new("size_desc", "Largest first"),
@@ -2293,9 +2281,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     {
         var errors = new List<string>();
 
-        if (UiFontSizeText.Trim().Length > 0
-            && (!int.TryParse(UiFontSizeText.Trim(), out var size) || size is < 6 or > 72))
-            errors.Add("Base text size must be a number from 6 to 72 (or blank for the default).");
+        if (AppFonts.SizeProblem(UiFontSizeText) is { Length: > 0 } sizeProblem)
+            errors.Add(sizeProblem);
 
         if (WordSeparator.Contains(' '))
             errors.Add("The word separator can't contain a space.");
@@ -2340,7 +2327,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
         if (Array.IndexOf(Naming.Modes, FilingMode) < 0)
             errors.Add($"Filing: \"{FilingMode}\" is not a naming mode — pick one from the list.");
-        if (UiFontFamily.Length > 0 && !FontChoices.Any(f => f.Key == UiFontFamily))
+        if (UiFontFamily.Length > 0 && !AppFonts.Choices.Any(f => f.Key == UiFontFamily))
             errors.Add($"\"{UiFontFamily}\" is not one of the app fonts — pick one from the list.");
 
         // duplicate EFFECTIVE hotkeys — the same keystroke can't file two ways

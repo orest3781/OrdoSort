@@ -36,4 +36,19 @@ public class AppFontsTests : UiTest
     [Fact]
     public void NamedFamilyIsUsedAsGiven() => _fx.Invoke(() =>
         Assert.Equal("Consolas", AppFonts.Create(" Consolas ").Source));
+
+    // Shared by OrdoSort's and Box Labels' Settings, so the rule and its
+    // wording can't differ between the two apps.
+    [Theory]
+    [InlineData("", "")]
+    [InlineData("  ", "")]
+    [InlineData("6", "")]
+    [InlineData("72", "")]
+    [InlineData("5", "Base text size must be a number from 6 to 72 (or blank for the default).")]
+    [InlineData("big", "Base text size must be a number from 6 to 72 (or blank for the default).")]
+    public void TextSizeRulesAreTheSameInBothApps(string text, string problem) =>
+        Assert.Equal(problem, AppFonts.SizeProblem(text));
+
+    [Fact]
+    public void TheDefaultFontIsTheFirstChoice() => Assert.Equal("", AppFonts.Choices[0].Key);
 }

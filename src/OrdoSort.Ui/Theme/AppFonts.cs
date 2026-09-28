@@ -1,3 +1,4 @@
+using System.Windows;
 using System.Windows.Media;
 
 namespace OrdoSort.Wpf.Theme;
@@ -36,4 +37,38 @@ public static class AppFonts
     /// family string.</exception>
     public static FontFamily Create(string? name) =>
         string.IsNullOrWhiteSpace(name) ? CreateDefault() : new FontFamily(FontBaseUri, name.Trim());
+
+    /// <summary>The fonts Settings offers (OrdoSort's and Box Labels'), as
+    /// ui_font_family value → name shown. "" is the bundled default.
+    /// KeyValuePair because WPF binds properties, not tuple fields.</summary>
+    public static readonly KeyValuePair<string, string>[] Choices =
+    {
+        new("", "Atkinson Hyperlegible Next (default)"),
+        // The pre-rebrand default, for anyone who prefers the Windows look.
+        new("Segoe UI Variable Text, Segoe UI", "Segoe UI Variable"),
+        new("Segoe UI", "Segoe UI"),
+        new("Tahoma", "Tahoma"),
+        new("Verdana", "Verdana"),
+        new("Consolas", "Consolas"),
+        new("Cascadia Mono", "Cascadia Mono"),
+    };
+
+    /// <summary>The app text size when none is set.</summary>
+    public const double DefaultSize = 14.0;
+
+    /// <summary>"" when <paramref name="text"/> is a usable text size (blank =
+    /// default, or 6–72), else what to tell the user. Shared by OrdoSort's and
+    /// Box Labels' Settings so the rule and its wording can't differ.</summary>
+    public static string SizeProblem(string text) =>
+        text.Trim().Length == 0 || (int.TryParse(text.Trim(), out var n) && n is >= 6 and <= 72)
+            ? ""
+            : "Base text size must be a number from 6 to 72 (or blank for the default).";
+
+    /// <summary>Put a family and size into the resources every window's style
+    /// reads (AppFontFamily, AppFontSize). Size 0 is the default.</summary>
+    public static void Apply(Application app, string family, int size)
+    {
+        app.Resources["AppFontFamily"] = Create(family);
+        app.Resources["AppFontSize"] = size == 0 ? DefaultSize : (double)size;
+    }
 }
