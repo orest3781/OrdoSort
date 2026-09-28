@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status (checked 2026-09-28):** landed. Task 1 `558153d` (the About box was later removed with the Help menu), Task 2 `ec437cb`, Task 3 `4f735e5` and `2e4356c` (release zips: `0fbd4ce`), Task 4 `285d6e1`, Task 5 by the v1.0 release audit `43db9f5`, which published and launched the exe. Only Task 3 Step 4 has no record.
+
 **Goal:** Clear the mechanical items that gate a v1.0 release, plus one data-loss bug pulled forward from the deferred list.
 
 **Tech Stack:** C# / .NET 8, WPF, xUnit. Repo `A:\DEV\ordosort-session` (worktree), branch `session/header-pickers`, base `b9739c6`.
@@ -29,13 +31,13 @@
 
 **Files:** `Directory.Build.props` (create if absent) or the csprojs, a new About window, `MainWindow.xaml(.cs)`, tests.
 
-- [ ] **Step 1: Set the version in exactly one place.** `<Version>`, `<AssemblyVersion>`, `<FileVersion>` and `<InformationalVersion>` should derive from a single property so they can never disagree. **v1.0.0.** Check this does not disturb `-p:Deterministic=false` or the smoke tooling.
+- [x] **Step 1: Set the version in exactly one place.** `<Version>`, `<AssemblyVersion>`, `<FileVersion>` and `<InformationalVersion>` should derive from a single property so they can never disagree. **v1.0.0.** Check this does not disturb `-p:Deterministic=false` or the smoke tooling.
 
-- [ ] **Step 2: An About box reachable from the app**, showing product name, version, and a pointer to the third-party notices from Task 3. Match the existing window conventions — theme resources, focus ring, Esc to close, `AutomationProperties.Name`. Look at an existing small dialog before inventing a shape.
+- [x] **Step 2: An About box reachable from the app**, showing product name, version, and a pointer to the third-party notices from Task 3. Match the existing window conventions — theme resources, focus ring, Esc to close, `AutomationProperties.Name`. Look at an existing small dialog before inventing a shape.
 
-- [ ] **Step 3: Test that the displayed version equals the assembly's** — not a hardcoded string in two places. A test asserting `"1.0.0" == "1.0.0"` proves nothing; read the assembly's own metadata and compare.
+- [x] **Step 3: Test that the displayed version equals the assembly's** — not a hardcoded string in two places. A test asserting `"1.0.0" == "1.0.0"` proves nothing; read the assembly's own metadata and compare.
 
-- [ ] **Step 4: Commit** `feat(app): version the build and add an About box`.
+- [x] **Step 4: Commit** `feat(app): version the build and add an About box`.
 
 ---
 
@@ -43,27 +45,27 @@
 
 **Files:** startup path (`App.xaml.cs` and/or `ShellViewModel`), tests.
 
-- [ ] **Step 1: Detect a missing runtime before it bites.** The PDF viewer needs the WebView2 runtime; on a machine without it, initialisation throws a COM exception — the same `Class not registered` this repo's own tests see intermittently. **Find where that surfaces today** and describe what the user currently experiences.
+- [x] **Step 1: Detect a missing runtime before it bites.** The PDF viewer needs the WebView2 runtime; on a machine without it, initialisation throws a COM exception — the same `Class not registered` this repo's own tests see intermittently. **Find where that surfaces today** and describe what the user currently experiences.
 
-- [ ] **Step 2: Fail clearly, not obscurely.** If the runtime is absent, say so in plain language with what to install, and keep the rest of the app usable if it can be — filing documents should not require a viewer. **Decide deliberately whether the app blocks or degrades, and record the reasoning.**
+- [x] **Step 2: Fail clearly, not obscurely.** If the runtime is absent, say so in plain language with what to install, and keep the rest of the app usable if it can be — filing documents should not require a viewer. **Decide deliberately whether the app blocks or degrades, and record the reasoning.**
 
-- [ ] **Step 3: Test both branches** with the detection stubbed — present and absent. Do not make the test depend on the host machine's actual runtime.
+- [x] **Step 3: Test both branches** with the detection stubbed — present and absent. Do not make the test depend on the host machine's actual runtime.
 
-- [ ] **Step 4: Commit** `feat(viewer): say so when the WebView2 runtime is missing`.
+- [x] **Step 4: Commit** `feat(viewer): say so when the WebView2 runtime is missing`.
 
 ---
 
 ### Task 3: Dependencies and repository hygiene
 
-- [ ] **Step 1: `SQLitePCLRaw` and CVE-2025-6965.** Currently **2.1.6**, arriving transitively through `Microsoft.Data.Sqlite` 8.0.11. **Establish the facts first**: which versions are affected, which fixed, and whether this app's usage is even reachable by the vulnerability. Then choose — bump `Microsoft.Data.Sqlite`, or pin the transitive package directly. **Report the CVE's actual content rather than assuming from its number**, and note that `journal_mode=TRUNCATE`, `synchronous=FULL` and `busy_timeout` are load-bearing for network shares and must keep working.
+- [x] **Step 1: `SQLitePCLRaw` and CVE-2025-6965.** Currently **2.1.6**, arriving transitively through `Microsoft.Data.Sqlite` 8.0.11. **Establish the facts first**: which versions are affected, which fixed, and whether this app's usage is even reachable by the vulnerability. Then choose — bump `Microsoft.Data.Sqlite`, or pin the transitive package directly. **Report the CVE's actual content rather than assuming from its number**, and note that `journal_mode=TRUNCATE`, `synchronous=FULL` and `busy_timeout` are load-bearing for network shares and must keep working.
 
-- [ ] **Step 2: `THIRD-PARTY-NOTICES`.** Enumerate every shipped dependency with its licence. Derive it from the actual package graph, not from memory. There is deliberately **no LICENSE file** — the owner is deciding that separately; do not add one.
+- [x] **Step 2: `THIRD-PARTY-NOTICES`.** Enumerate every shipped dependency with its licence. Derive it from the actual package graph, not from memory. There is deliberately **no LICENSE file** — the owner is deciding that separately; do not add one.
 
-- [ ] **Step 3: `.gitignore`.** Add `.claude/`. Check what else is untracked and shouldn't be — `.playwright-mcp/` and stray PNGs have appeared in this repo.
+- [x] **Step 3: `.gitignore`.** Add `.claude/`. Check what else is untracked and shouldn't be — `.playwright-mcp/` and stray PNGs have appeared in this repo.
 
-- [ ] **Step 4: Stale worktrees.** Six `agent-*` worktrees under `.claude/worktrees/` are long dead. **List them and their sizes before removing anything**, confirm each is genuinely unreferenced (`git worktree list`, `git worktree prune --dry-run`), and only then clean up. **Do not touch `A:\DEV\OrdoSort` or any worktree belonging to a live session.**
+- [ ] **Step 4: Stale worktrees.** Six `agent-*` worktrees under `.claude/worktrees/` are long dead. **List them and their sizes before removing anything**, confirm each is genuinely unreferenced (`git worktree list`, `git worktree prune --dry-run`), and only then clean up. **Do not touch `A:\DEV\OrdoSort` or any worktree belonging to a live session.** *(Not confirmed: no commit or note records this cleanup.)*
 
-- [ ] **Step 5: Commit** the dependency change and the hygiene separately.
+- [x] **Step 5: Commit** the dependency change and the hygiene separately.
 
 ---
 
@@ -71,22 +73,22 @@
 
 **Files:** wherever the rename/commit path resolves target names, plus tests.
 
-- [ ] **Step 1: Reproduce it first.** Renaming A→B where B is currently a *sibling's* id can sweep that sibling off disk. **Write the failing test before touching anything**, and state precisely which file is lost and when. This is the only data-loss bug left on the list, and this app's promise is that a document is either where it started or where it was going.
+- [x] **Step 1: Reproduce it first.** Renaming A→B where B is currently a *sibling's* id can sweep that sibling off disk. **Write the failing test before touching anything**, and state precisely which file is lost and when. This is the only data-loss bug left on the list, and this app's promise is that a document is either where it started or where it was going.
 
-- [ ] **Step 2: Fix it so the sibling survives.** A rename must never remove a file it did not create, and must never claim a name that is currently occupied by a different document without the user knowing.
+- [x] **Step 2: Fix it so the sibling survives.** A rename must never remove a file it did not create, and must never claim a name that is currently occupied by a different document without the user knowing.
 
-- [ ] **Step 3: Prove teeth.** Revert the fix, confirm the test fails **because the sibling's file is gone from disk** — assert its absence explicitly, not just a status string.
+- [x] **Step 3: Prove teeth.** Revert the fix, confirm the test fails **because the sibling's file is gone from disk** — assert its absence explicitly, not just a status string.
 
-- [ ] **Step 4: Commit** `fix(rename): a rename can no longer sweep a sibling off disk`.
+- [x] **Step 4: Commit** `fix(rename): a rename can no longer sweep a sibling off disk`.
 
 ---
 
 ### Task 5: Gate
 
-- [ ] **Step 1: Release build and full suites** against the baseline above.
-- [ ] **Step 2: Smoke.** `dotnet run --project tools/OrdoSort.Smoke -- demo-full` ends `All checks passed`, exit 0.
-- [ ] **Step 3: Confirm the shipped artefact carries the version** — inspect the built exe's file metadata, not the csproj.
-- [ ] **Step 4: Report, do not push.**
+- [x] **Step 1: Release build and full suites** against the baseline above.
+- [x] **Step 2: Smoke.** `dotnet run --project tools/OrdoSort.Smoke -- demo-full` ends `All checks passed`, exit 0.
+- [x] **Step 3: Confirm the shipped artefact carries the version** — inspect the built exe's file metadata, not the csproj.
+- [x] **Step 4: Report, do not push.**
 
 ## Model assignments
 
