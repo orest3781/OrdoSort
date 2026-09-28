@@ -617,6 +617,38 @@ public class FilenameListViewModelTests : IDisposable
         Assert.False(vm.ClearCommand.CanExecute(null));
     }
 
+    /// <summary>FL-17: "nothing new — already listed" and "Saved to
+    /// filenames.txt" stayed beside a list that Clear had emptied, and the
+    /// save message outlived a whole new folder being added — both
+    /// describing a list that no longer existed.</summary>
+    [Fact]
+    public void ClearAndANewAddDropMessagesAboutTheOldList()
+    {
+        Touch("a.pdf");
+        var other = Path.Combine(_dir, "other");
+        Directory.CreateDirectory(other);
+        File.WriteAllText(Path.Combine(other, "b.pdf"), "x");
+        var dialogs = new FakeDialogs { NextSaveFile = Path.Combine(_dir, "out.txt") };
+        var vm = MakeVm(dialogs);
+        vm.AddPaths(new[] { _dir });
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 1, "the add should settle first");
+        vm.SaveCommand.Execute(null);
+        Assert.Contains("already listed", vm.AddNote);
+        Assert.Contains("Saved to", vm.Status);
+
+        vm.AddPaths(new[] { other });
+
+        Assert.Equal("", vm.Status);
+
+        vm.SaveCommand.Execute(null);
+        vm.ClearCommand.Execute(null);
+
+        Assert.Equal("", vm.Status);
+        Assert.Equal("", vm.AddNote);
+        Assert.False(vm.StatusIsProblem);
+    }
+
     /// <summary>FL-15: "Restore removed" never said how many rows it would
     /// bring back; the count was only in the footer. The button names it.</summary>
     [Fact]

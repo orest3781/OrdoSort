@@ -267,6 +267,8 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
             _removalBatches.Clear();
             CancelCounting();
             _pageCounts.Clear();   // a re-added file may have changed on disk
+            AddNote = "";          // both describe the list just cleared (FL-17)
+            SetStatus("");
             Refresh(immediate: true);
         }, () => _sources.Count > 0);   // FL-14; live while reading, since Clear stops a read
         RemoveSelectedCommand = new RelayCommand(() =>
@@ -435,6 +437,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         var taken = Intake.Add(_sources, paths);
         _sources.AddRange(taken.Files);
         AddNote = taken.Note("file");
+        SetStatus("");   // "Saved to…" or "Copied…" was about the list before this add (FL-17)
         Refresh(immediate: true);
     }
 
