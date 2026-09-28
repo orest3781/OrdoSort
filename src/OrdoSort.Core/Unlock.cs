@@ -202,8 +202,7 @@ public static class Unlock
         }
         catch (IOException ex) when (IsInUse(ex))
         {
-            return new("in_use", src, Message:
-                "It's open in another program — close it there and try again.");
+            return new("in_use", src, Message: InUseMessage(src, "try again"));
         }
         catch (Exception ex)
         {
@@ -255,8 +254,7 @@ public static class Unlock
         }
         catch (IOException ex) when (IsInUse(ex))
         {
-            return new("error", src, Message:
-                "It's open in another program — close it there and unlock it again.");
+            return new("error", src, Message: InUseMessage(src, "unlock it again"));
         }
         catch (Exception ex)
         {
@@ -353,8 +351,7 @@ public static class Unlock
         }
         catch (IOException ex) when (IsInUse(ex))
         {
-            return new("error", src, Message:
-                "It's open in another program — close it there and unlock it again.");
+            return new("error", src, Message: InUseMessage(src, "unlock it again"));
         }
         catch
         {
@@ -379,8 +376,7 @@ public static class Unlock
             }
             catch (IOException ex) when (IsInUse(ex))
             {
-                return new("error", src, Message:
-                    "It's open in another program — close it there and unlock it again.");
+                return new("error", src, Message: InUseMessage(src, "unlock it again"));
             }
             catch (Exception ex)
             {
@@ -515,8 +511,7 @@ public static class Unlock
             catch (IOException ex) when (IsInUse(ex))
             {
                 if (createdTarget) RemoveQuietly(target);
-                return new("error", src, Message:
-                    "It's open in another program — close it there and unlock it again.");
+                return new("error", src, Message: InUseMessage(src, "unlock it again"));
             }
             catch (Exception ex)
             {
@@ -636,6 +631,18 @@ public static class Unlock
     private static void RemoveQuietly(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { /* best effort */ }
+    }
+
+    /// <summary>What to tell someone whose file another program holds: that
+    /// program by name when Windows can say (Explorer's preview pane holds a
+    /// selected PDF, and nobody thinks of that as "open"), up to two of them,
+    /// else "another program". <paramref name="thenWhat"/> ends the sentence.</summary>
+    internal static string InUseMessage(string src, string thenWhat)
+    {
+        var names = FileHolders.Of(src).Select(h => h.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Take(2).ToList();
+        var who = names.Count == 0 ? "another program" : string.Join(" and ", names);
+        return $"It's open in {who} — close it there and {thenWhat}.";
     }
 
     /// <summary>Windows reports a file held by another process as a sharing

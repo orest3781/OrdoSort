@@ -230,8 +230,10 @@ public class UnlockTests : IDisposable
         finally { Unlock.LargeFileThresholdBytes = was; }
     }
 
+    /// <summary>The message names the program holding the file (here, this
+    /// test run), since "another program" gave nothing to go and close.</summary>
     [Fact]
-    public void AFileHeldOpenElsewhereFailsBeforeAnythingMoves()
+    public void AFileHeldOpenElsewhereFailsBeforeAnythingMovesAndNamesTheHolder()
     {
         // Nothing can move a file another process holds without FILE_SHARE_DELETE.
         // What matters is that it fails cleanly: the original still locked, no
@@ -239,9 +241,10 @@ public class UnlockTests : IDisposable
         var src = MakeEncrypted("held.pdf");
         using (File.Open(src, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
+            var me = FileHolders.Of(src).Single(h => h.ProcessId == Environment.ProcessId).Name;
             var r = Unlock.UnlockPdf(src, "secret", suffix: "");
             Assert.Equal("error", r.Status);
-            Assert.Contains("another program", r.Message);
+            Assert.Equal($"It's open in {me} — close it there and unlock it again.", r.Message);
         }
         Assert.True(NeedsPassword(src));
         Assert.Equal(new[] { "held.pdf" },

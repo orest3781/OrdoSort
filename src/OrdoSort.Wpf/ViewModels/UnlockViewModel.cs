@@ -14,7 +14,7 @@ public sealed record UnlockResultLine(string Text, UnlockResultKind Kind);
 /// its Status strings (not_encrypted/ready/needs_password/in_use/unreadable)
 /// plus Pending for "hasn't been probed yet" — a state Core has no need for
 /// since it never sits idle mid-answer the way a row in this list does.</summary>
-public enum ReadinessStatus { Pending, NotEncrypted, Ready, NeedsPassword, InUse, Unreadable }
+public enum ReadinessStatus { Pending, NotEncrypted, Ready, NeedsPassword, InUse, Unreadable, Failed, Cancelled }
 
 /// <summary>One row in the Unlock file list: a dropped/added path plus
 /// whatever the readiness probe has found out about it so far. Files used to
@@ -88,8 +88,24 @@ public sealed class UnlockFileRow : ObservableObject
         ReadinessStatus.NeedsPassword => "  —  needs a password",
         ReadinessStatus.InUse => "  —  in use, couldn't check",
         ReadinessStatus.Unreadable => "  —  couldn't be read",
+        ReadinessStatus.Failed => "  —  ✗ " + ShortReason(Message),
+        ReadinessStatus.Cancelled => "  —  cancelled",
         _ => "",
     };
+
+    /// <summary>The longest reason a row's note shows: the note sits beside
+    /// the file name on one line, so a long reason would push the name out.</summary>
+    internal const int MaxReasonLength = 60;
+
+    /// <summary>A failure's message up to its " — " (the part that says what
+    /// happened; the rest says what to do, and stays in the tooltip), cut to
+    /// <see cref="MaxReasonLength"/>.</summary>
+    private static string ShortReason(string message)
+    {
+        var dash = message.IndexOf(" — ", StringComparison.Ordinal);
+        var reason = dash > 0 ? message[..dash] : message;
+        return reason.Length <= MaxReasonLength ? reason : reason[..(MaxReasonLength - 1)].TrimEnd() + "…";
+    }
 
     /// <summary>FileName + Note. Kept only because HighlightContrastTests
     /// and UnlockReadinessProbeTests still assert this exact combined
@@ -1007,12 +1023,20 @@ public sealed class UnlockViewModel : ObservableObject
         if (clearedThisRun) return;
 
         // reported in the order they were added, not the order they finished —
-        // a list that reshuffles itself is harder to read than a slower one
+        // a list that reshuffles itself is harder to read than a slower one.
+        // The list itself keeps only what is still locked, each row saying
+        // why, so Unlock again retries just those (owner's call, 2026-09-28).
         int ok = 0, skip = 0, fail = 0, cancelled = 0, okViaTyped = 0;
         for (var i = 0; i < rows.Count; i++)
         {
             var r = results[i];
             var name = Path.GetFileName(rows[i].Path);
+            if (r.Ok || r.Status == "not_encrypted")
+                Files.Remove(rows[i]);
+            else if (r.Status == "cancelled")
+                rows[i].SetProbeResult(ReadinessStatus.Cancelled, r.Message);
+            else
+                rows[i].SetProbeResult(ReadinessStatus.Failed, r.Message);
             if (r.Ok)
             {
                 ok++;
@@ -1061,8 +1085,20 @@ public sealed class UnlockViewModel : ObservableObject
             // must protect this snapshot, never Password itself.
             _bannerPassword = password;
             SaveBannerText = $"✓ {okViaTyped} unlocked with a new password — save it as:";
+            // a name ready to save, so one Enter does it (owner's call, 2026-09-28)
+            SaveBannerName = NextFreePasswordName();
             SaveBannerVisible = true;
         }
+    }
+
+    /// <summary>"Password N" for the save offer: N starts one past the saved
+    /// count and skips any label already in use, ignoring case.</summary>
+    private string NextFreePasswordName()
+    {
+        var taken = new HashSet<string>(Saved.Select(sp => sp.Label.Trim()), StringComparer.OrdinalIgnoreCase);
+        var n = Saved.Count + 1;
+        while (taken.Contains($"Password {n}")) n++;
+        return $"Password {n}";
     }
 
     /// <summary>Tries each candidate password against one file in order,

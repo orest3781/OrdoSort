@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using OrdoSort.Wpf.ViewModels;
 
@@ -87,7 +88,20 @@ public partial class UnlockWindow : Window
     /// lands nowhere.</summary>
     private void OnSaveBannerVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (SaveBanner.IsVisible) return;
+        if (SaveBanner.IsVisible)
+        {
+            // the offer arrives with a suggested name: focused and selected,
+            // so typing replaces it and Enter saves it (OnSaveNameKeyDown).
+            // After this layout pass: the box inside the banner only becomes
+            // visible (and so focusable) once the banner has been laid out.
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+            {
+                if (!SaveName.IsVisible) return;
+                Keyboard.Focus(SaveName);
+                SaveName.SelectAll();
+            });
+            return;
+        }
         if (Keyboard.FocusedElement is not System.Windows.Media.Visual focused) return;
         if (!SaveBanner.IsAncestorOf(focused)) return;
 
