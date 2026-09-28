@@ -16,7 +16,7 @@ public class CommandFaultReportingTests
     private static readonly InvalidOperationException Boom = new("the disk went away");
 
     private static ZipExtractViewModel ZipVm(FakeDialogs dialogs,
-        Func<IReadOnlyList<string>, string?, Zipper.ZipResult>? zipper = null,
+        Func<IReadOnlyList<string>, string?, CancellationToken, Zipper.ZipResult>? zipper = null,
         Func<string, IReadOnlyList<string>, Func<PasswordRequest, string?>?, Zipper.UnzipResult>? extractor = null) =>
         new(dialogs, Array.Empty<string>(), new InlineWorkScheduler(), uiContext: null,
             zipper, extractor, (path, _) => new Zipper.ZipProbeResult(path, "not_encrypted"));
@@ -32,7 +32,7 @@ public class CommandFaultReportingTests
     public async Task AZipThatThrowsSaysItStopped()
     {
         using var dir = new TempDir();
-        var vm = ZipVm(new FakeDialogs(), zipper: (_, _) => throw Boom);
+        var vm = ZipVm(new FakeDialogs(), zipper: (_, _, _) => throw Boom);
         await vm.AddPaths(new[] { dir.File("a.txt") });
 
         vm.ZipCommand.Execute(null);
@@ -47,7 +47,7 @@ public class CommandFaultReportingTests
     {
         using var dir = new TempDir();
         var dialogs = new FakeDialogs { NextSaveFile = Path.Combine(dir.Path, "out.zip") };
-        var vm = ZipVm(dialogs, zipper: (_, _) => throw Boom);
+        var vm = ZipVm(dialogs, zipper: (_, _, _) => throw Boom);
         await vm.AddPaths(new[] { dir.File("a.txt") });
 
         vm.ZipAsCommand.Execute(null);
