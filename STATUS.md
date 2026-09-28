@@ -38,8 +38,8 @@
 | P1 | QC-19 | Quitting during a slow network move: the document is filed but no history row is written and no warning appears | ✅ Done |
 | P1 | Q2-10 | Page counts: Save or Copy while counts are still running writes blank counts and a low Total, then says "Saved" | ✅ Done |
 | P1 | Q2-35 | Two destinations on the same key in config.json: both buttons show it, the key silently files to one of them | ✅ Done |
-| P2 | QC-17, D4, QC-23 (QC-23 ✅ done) | Settings accepts values that make every filing (or session start) fail later: a `:` in a suffix, a bad naming mode, a numeric hotkey | ⬜ Not started |
-| P2 | QC-18, Q2-08, DW-07 | Settings OK: freezes on a dead share; can switch config under a Start scan; a failed save leaves the app on unsaved settings | ⬜ Not started |
+| P2 | QC-17, D4, QC-23 (QC-23 ✅ done) | Settings accepts values that make every filing (or session start) fail later: a `:` in a suffix, a bad naming mode, a numeric hotkey | ✅ Done |
+| P2 | QC-18, Q2-08, DW-07 | Settings OK: freezes on a dead share; can switch config under a Start scan; a failed save leaves the app on unsaved settings | ✅ Done |
 | P2 | QC-24, Q2-31 | If the Edge preview process dies, every filing key (and Review matches' Use/Skip) fails until restart | ⬜ Not started |
 | P2 | QC-20, Q2-34 | Live folder watch dies silently after an overflow or share drop; a blank inbox shows a calm "0 files" and opens the config folder | ⬜ Not started |
 | P2 | QC-21, QC-22 | Privacy: document names and paths in the shared crash.log; preview history kept in the WebView2 profile | ⬜ Not started |
