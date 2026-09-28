@@ -127,6 +127,7 @@
 - [x] Draft PR #5 (phone session's E2E fix) is superseded by `e16bf95` on main — close it — already closed; its branch deleted 2026-09-27
 - [x] (plan step 5a) QC-15, second half: Copies > 1 printed the same barcode on several boxes. Fixed 2026-09-27: in the label print preview each extra copy claims its own box numbers when you print (the preview says so), and the job spools once; a cancel names every number it skipped
 - [x] Intermittent: hundreds of WPF tests fail with "Unexpected record in Baml stream" / "Found unknown BAML record". Fixed 2026-09-24. Not a stale build: `E2EHarnessTests.RoutingLoopInstallsTheUiContextBeforeItBuildsTheWindow` built a MainWindow on its own thread while the shared test Application ran in parallel, and two threads read the lazily loaded shared styles at once. Reproduced 3 in 6 runs; after moving it to a non-parallel collection (`RoutingLoopContextTests`), 8 in 8 clean
+- [ ] Intermittent (owner, 2026-09-28, 1.8.0): Unlock said one PDF was "open in another program" though it was not open; not reproduced on retry. Ruled out 2026-09-28: the preview (Edge never locks a shown PDF; tested visible/hidden, InPrivate or not) and Unlock's own reads. Likely Explorer's preview pane/thumbnails, sync or antivirus. Next time: run the scratch `whoholds.exe` (Restart Manager) on the file; option if it recurs: have Unlock name the holding program in its message
 - [ ] CI build-and-test took ~15 min on 2026-09-23 (was ~8). Everything passed; watch whether it stays slow
 
 ## Blocked
