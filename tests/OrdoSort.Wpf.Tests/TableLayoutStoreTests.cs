@@ -53,6 +53,48 @@ public sealed class TableLayoutStoreTests : IDisposable
         Assert.Null(new TableLayoutStore(FilePath).Load("BulkRename"));
     }
 
+    /// <summary>Read blocked, write allowed: exactly the moment the old store
+    /// read "nothing saved" and then wrote one window over all the others.</summary>
+    [Fact]
+    public void ASaveWhileTheFileCannotBeReadLeavesEveryOtherLayoutAlone()
+    {
+        var store = new TableLayoutStore(FilePath);
+        store.Save("BulkRename", Sample());
+
+        using (new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Write))
+            Assert.ThrowsAny<IOException>(() => store.Save("Zip", Sample()));
+
+        Assert.NotNull(store.Load("BulkRename"));
+        Assert.Null(store.Load("Zip"));
+    }
+
+    [Fact]
+    public void ADamagedFileIsReportedAndKeptAsideBeforeANewSaveReplacesIt()
+    {
+        File.WriteAllText(FilePath, "{ not json");
+        var reported = new List<Exception>();
+        var store = new TableLayoutStore(FilePath, reported.Add);
+
+        Assert.Null(store.Load("BulkRename"));
+        Assert.IsAssignableFrom<System.Text.Json.JsonException>(Assert.Single(reported));
+
+        store.Save("BulkRename", Sample());
+
+        Assert.Equal("{ not json", File.ReadAllText(FilePath + ".damaged"));
+        Assert.NotNull(store.Load("BulkRename"));
+    }
+
+    [Fact]
+    public void ASaveLeavesOnlyTheLayoutFileBehind()
+    {
+        var store = new TableLayoutStore(FilePath);
+        store.Save("BulkRename", Sample());
+        store.Save("Zip", Sample());
+
+        Assert.Equal(new[] { "table-columns.json" },
+            Directory.GetFiles(_dir).Select(Path.GetFileName).ToArray());
+    }
+
     [Fact]
     public void SavingOneWindowKeepsTheOthers()
     {

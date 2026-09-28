@@ -64,9 +64,9 @@ internal sealed partial class ExplorerColumns
         _key = key;
         _explicitAnchor = anchor;
         _visibility = visibility ?? new OwnVisibility();
-        _store = store ?? (RememberByDefault ? new TableLayoutStore(TableLayoutStore.DefaultPath) : null);
-        _clock = clock ?? (() => DateTime.UtcNow);
         _reportSaveError = reportSaveError ?? (ex => App.LogCrash(ex));
+        _store = store ?? (RememberByDefault ? new TableLayoutStore(TableLayoutStore.DefaultPath, _reportSaveError) : null);
+        _clock = clock ?? (() => DateTime.UtcNow);
     }
 
     /// <summary>Attaches the behaviour to <paramref name="grid"/>.</summary>
@@ -204,7 +204,7 @@ internal sealed partial class ExplorerColumns
     }
 
     /// <summary>Writes the current layout to the store. Called when the grid
-    /// unloads (its window closed). A failed write is reported, never thrown:
+    /// unloads (its window closed). A failed save is reported, never thrown:
     /// losing a column width must not break closing a window.</summary>
     public void Save()
     {
@@ -219,7 +219,7 @@ internal sealed partial class ExplorerColumns
         {
             _store.Save(_key, new TableLayout(columns, sorted is null ? null : HeaderOf(sorted), sorted?.SortDirection));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
             _reportSaveError(ex);
         }
