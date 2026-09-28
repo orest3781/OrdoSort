@@ -336,12 +336,14 @@ internal static class AtomicPlace
         catch (UnauthorizedAccessException)
         {
             // ReplaceFile does more than rename: it copies the destination's
-            // ACL, owner and attributes onto the replacement, which needs
-            // WRITE_DAC-level rights a user with plain Modify on a network
-            // share doesn't have — and the destination was usually last
-            // written by ANOTHER station's user. So on a share, File.Replace
-            // is denied on every save while an ordinary rename-over is
-            // allowed (QC: "access denied" saving a config on a share).
+            // ACL, owner and attributes onto the replacement. Over an SMB
+            // share, a user with plain Modify rights (no "change
+            // permissions") is refused that on EVERY replace, even of a file
+            // they own; an ordinary rename-over is allowed. Measured
+            // 2026-09-27 through a loopback share (NetworkShareTests); local
+            // NTFS allows the same replace with those rights denied, which is
+            // why no local test could show it. (QC: "access denied" saving a
+            // config on a share.)
             // File.Move with overwrite is still one rename on the server, so
             // readers still see old or new, never half; the new file just
             // takes the folder's inherited ACL instead of the old file's.
