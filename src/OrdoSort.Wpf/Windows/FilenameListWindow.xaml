@@ -64,10 +64,13 @@
                  to a second line at the window's MinWidth instead of marching
                  off screen (WindowOverflowTests) -->
             <DockPanel Margin="0,0,0,10">
+                <!-- The cut-off end of the note is the part that says what went
+                     wrong, so the whole note shows as a tooltip (FL-29). -->
                 <TextBlock DockPanel.Dock="Right" Text="{Binding AddNote}"
                            Style="{StaticResource CaptionText}"
                            VerticalAlignment="Center" MaxWidth="240"
-                           TextTrimming="CharacterEllipsis" />
+                           TextTrimming="CharacterEllipsis"
+                           views:TrimmedTextTooltip.Enabled="True" />
                 <WrapPanel>
                     <Button Content="Browse folder…" Command="{Binding BrowseFolderCommand}" Margin="0,0,6,4" />
                     <Button Content="Browse files…" Command="{Binding BrowseFilesCommand}" Margin="0,0,6,4" />
@@ -86,12 +89,15 @@
                  480px MinWidth WindowOverflowTests pins, not a tidy second
                  one. -->
             <WrapPanel Grid.Row="1" Margin="0,0,0,10">
-                <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,4,6,4" />
+                <!-- 8: the label-to-control gap (FieldLabel), not 6, the gap
+                     between two buttons (FL-26). -->
+                <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,4,8,4" />
                 <TextBox Width="140" VerticalAlignment="Center" Margin="0,4,14,4"
                          Text="{Binding NameFilter, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.Name="Find in this list" />
                 <Menu Background="Transparent" VerticalAlignment="Center" Margin="0,4,14,4">
-                    <MenuItem Header="Columns ▾">
+                    <!-- named without the ▾, which a screen reader reads out (FL-25) -->
+                    <MenuItem Header="Columns ▾" AutomationProperties.Name="Columns">
                         <MenuItem Header="Row number" IsCheckable="True"
                                   IsChecked="{Binding ShowNumber}" StaysOpenOnClick="True" />
                         <MenuItem Header="Pages" IsCheckable="True"

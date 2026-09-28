@@ -170,6 +170,65 @@ public class FilenameListWindowTests : UiTest
         finally { window.Close(); }
     });
 
+    /// <summary>FL-25: a screen reader read the Columns menu as "Columns ▾",
+    /// glyph and all. Every input here has a plain name.</summary>
+    [Fact]
+    public void EveryInputHasAPlainAccessibleName() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var window = OpenOffScreen(new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler()));
+        try
+        {
+            var columns = Ui.Descendants<MenuItem>(window).Single(m => (m.Header as string) == "Columns ▾");
+            Assert.Equal("Columns", System.Windows.Automation.AutomationProperties.GetName(columns));
+            foreach (var box in Ui.Descendants<TextBox>(window))
+                Assert.False(string.IsNullOrWhiteSpace(System.Windows.Automation.AutomationProperties.GetName(box)),
+                    "a text box has no accessible name");
+            Assert.False(string.IsNullOrWhiteSpace(
+                System.Windows.Automation.AutomationProperties.GetName(window.NamesGrid)));
+        }
+        finally { window.Close(); }
+    });
+
+    /// <summary>FL-26: the Find label sat 6px from its box, the gap between
+    /// two buttons; a label and its control are 8px apart everywhere else
+    /// (FieldLabel, History's Find).</summary>
+    [Fact]
+    public void TheFindLabelSitsTheLabelGapFromItsBox() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var window = OpenOffScreen(new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler()));
+        try
+        {
+            var label = Ui.Descendants<TextBlock>(window).Single(t => t.Text == "Find:");
+            var box = Ui.Descendants<TextBox>(window).Single(t =>
+                System.Windows.Automation.AutomationProperties.GetName(t) == "Find in this list");
+            var labelRight = label.TranslatePoint(new Point(label.ActualWidth, 0), window).X;
+            var boxLeft = box.TranslatePoint(new Point(0, 0), window).X;
+
+            Assert.Equal(8, boxLeft - labelRight, precision: 1);
+        }
+        finally { window.Close(); }
+    });
+
+    /// <summary>FL-29: the add note ("4 added · 3 ignored (2 already listed ·
+    /// 1 doesn't exist)") is cut off from the end, which is exactly the part
+    /// that explains what went wrong, and nothing showed the rest. It shows
+    /// the whole note as a tooltip once cut off, like the status line.</summary>
+    [Fact]
+    public void ACutOffAddNoteCanBeReadInFull() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var window = OpenOffScreen(new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler()));
+        try
+        {
+            var note = Ui.Descendants<TextBlock>(window).Single(t =>
+                System.Windows.Data.BindingOperations.GetBinding(t, TextBlock.TextProperty)?.Path.Path == "AddNote");
+            Assert.True(OrdoSort.Wpf.Views.TrimmedTextTooltip.GetEnabled(note));
+        }
+        finally { window.Close(); }
+    });
+
     /// <summary>FL-23: the empty view shows the view model's cause and its
     /// way-out button. A mistyped binding here fails silently, so this checks
     /// both are wired.</summary>
