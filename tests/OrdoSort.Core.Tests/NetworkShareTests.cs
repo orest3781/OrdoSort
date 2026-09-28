@@ -12,6 +12,7 @@ namespace OrdoSort.Core.Tests;
 /// no share. A test here fails, rather than passes quietly, when the share
 /// isn't set up.</summary>
 [Trait("Category", "NetworkShare")]
+[Collection(UndoFailureTests.Name)]   // files a document, so shares Commit's test seams
 public sealed class NetworkShareTests : IDisposable
 {
     private const string AsYou = @"\\localhost\OrdoSortTest$";
