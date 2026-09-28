@@ -50,6 +50,11 @@ workflow tests, builds, zips, and publishes.
   which corrupts over SMB) with a `busy_timeout`, so several workstations can
   file into one `history.sqlite` on a share. A poll (default 15s, configurable
   5–600) backstops folder watching where SMB drops change notifications.
+  Settings are saved by writing a new `config.json` and renaming it over the
+  old one. On a share where people have Modify rights but not "change
+  permissions", Windows refuses the kind of replace that would keep the old
+  file's permissions, so the new file takes the folder's instead: set
+  permissions on the folder, not on `config.json` itself.
 - **Never loses a file.** Files are only ever *moved*, never deleted or
   overwritten; a taken name gets a Windows-style ` (2)` counter. Illegal
   filename characters are rejected up front — a colon would otherwise hide a
