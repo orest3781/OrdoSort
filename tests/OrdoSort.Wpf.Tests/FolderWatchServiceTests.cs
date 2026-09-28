@@ -34,6 +34,30 @@ public class FolderWatchServiceTests : IDisposable
         WaitFor(() => Volatile.Read(ref count) >= 1, "a file landing should reach the debounce");
     }
 
+    /// <summary>QC-20: a watch that Windows ends with an error (a buffer
+    /// overflow, a share dropping, the folder going away) stopped for good,
+    /// with nothing but the poll left, up to 10 minutes apart. Now it rescans
+    /// at once, since events may have been missed, and is set up again once
+    /// its folder is back. Real clock: the events come from the OS.</summary>
+    [Fact]
+    public void AWatchThatStopsRescansAtOnceAndIsSetUpAgainOnceItsFolderIsBack()
+    {
+        using var svc = new FolderWatchService(debounceMs: 50, pollMs: 3_600_000, retryMs: 100);
+        var count = 0;
+        svc.Activity += () => Interlocked.Increment(ref count);
+        var watched = _dir.Dir("watched");
+        svc.SetFolders(watched);
+
+        Directory.Delete(watched);   // the share drops: Windows ends the watch with an error
+        WaitFor(() => Volatile.Read(ref count) >= 1, "a watch that stops should rescan at once");
+
+        Directory.CreateDirectory(watched);
+        WaitFor(() => svc.WatchingNow(watched), "the watch should be set up again once the folder is back");
+        var before = Volatile.Read(ref count);
+        File.WriteAllText(Path.Combine(watched, "arrived.pdf"), "x");
+        WaitFor(() => Volatile.Read(ref count) > before, "a file landing there should be seen again");
+    }
+
     [Fact]
     public void ABurstCoalescesToOneActivity()
     {
