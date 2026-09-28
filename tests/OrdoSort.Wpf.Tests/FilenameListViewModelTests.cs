@@ -129,7 +129,9 @@ public class FilenameListViewModelTests : IDisposable
         // is needed here — Save()'s fire-and-forget SaveAsync() runs to
         // completion inline because nothing it awaits ever actually suspends.
         Assert.True(File.Exists(savePath));
-        Assert.Equal(vm.OutputText, File.ReadAllText(savePath));
+        // A literal, not vm.OutputText: an expectation read from the code
+        // under test agrees with whatever that code writes (DW-28).
+        Assert.Equal("a.pdf", File.ReadAllText(savePath));
         Assert.Contains("Saved to", vm.Status);
     }
 
@@ -528,10 +530,13 @@ public class FilenameListViewModelTests : IDisposable
         Assert.Equal(new[] { "beta.pdf", "gamma.pdf" }, vm.Rows.Select(r => r.Name));
     }
 
-    /// <summary>Undo pops one batch at a time; Restore removed still clears the
-    /// whole stack in one go. Two controls, each saying plainly what it does.</summary>
+    /// <summary>Undo pops one batch at a time; Restore removed clears the whole
+    /// stack in one go, so there is nothing left for Ctrl+Z to undo. DW-30: this
+    /// used to check only the rows and the removed count, which a Restore that
+    /// forgot the undo stack also passes — the next Ctrl+Z would then hide
+    /// rows the user had just brought back.</summary>
     [Fact]
-    public void RestoreRemovedStillClearsEveryBatchAtOnce()
+    public void RestoreRemovedLeavesNothingForUndoToHideAgain()
     {
         Touch("alpha.pdf");
         Touch("beta.pdf");
@@ -547,8 +552,9 @@ public class FilenameListViewModelTests : IDisposable
 
         vm.RestoreRemovedCommand.Execute(null);
 
+        Assert.False(vm.UndoRemovalCommand.CanExecute(null));
+        vm.UndoRemovalCommand.Execute(null);
         Assert.Equal(2, vm.Rows.Count);
-        Assert.Equal(0, vm.RemovedCount);
     }
 
     /// <summary>Undo with nothing removed must be a no-op, not a crash — the

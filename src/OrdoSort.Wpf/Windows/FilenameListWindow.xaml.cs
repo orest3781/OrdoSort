@@ -9,11 +9,16 @@ namespace OrdoSort.Wpf.Windows;
 public partial class FilenameListWindow : Window
 {
     private readonly FilenameListViewModel _vm;
+    private readonly Action<string> _setClipboard;
 
-    public FilenameListWindow(FilenameListViewModel vm)
+    /// <param name="vm">The list this window shows.</param>
+    /// <param name="setClipboard">Puts copied text on the clipboard; tests
+    /// pass their own so they never touch the real one.</param>
+    public FilenameListWindow(FilenameListViewModel vm, Action<string>? setClipboard = null)
     {
         InitializeComponent();
         _vm = vm;
+        _setClipboard = setClipboard ?? Clipboard.SetText;
         DataContext = vm;
 
         // DataGridColumn is not part of the visual or logical tree (it lives
@@ -93,13 +98,19 @@ public partial class FilenameListWindow : Window
             .Select(r => r.FullPath)
             .ToList();
 
-    private void OnGridKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private void OnGridKeyDown(object sender, System.Windows.Input.KeyEventArgs e) =>
+        e.Handled = HandleGridKey(e.Key, e.KeyboardDevice.Modifiers);
+
+    /// <summary>The grid's own keys: Delete removes the selection, Ctrl+C
+    /// copies it. Split from the event handler so a test can press a key
+    /// without a real keyboard (DW-31).</summary>
+    /// <returns>True when the key was used.</returns>
+    internal bool HandleGridKey(System.Windows.Input.Key key, System.Windows.Input.ModifierKeys modifiers)
     {
-        if (e.Key == System.Windows.Input.Key.Delete)
+        if (key == System.Windows.Input.Key.Delete)
         {
             _vm.RemoveSelectedCommand.Execute(null);
-            e.Handled = true;
-            return;
+            return true;
         }
 
         // Ctrl+C routes to the SAME method the Copy button uses (audit FL-04).
@@ -108,12 +119,13 @@ public partial class FilenameListWindow : Window
         // would simply do nothing, which is a worse tool than one that copies the
         // wrong format. Sharing PerformCopy is what makes the two paths incapable
         // of disagreeing, rather than two implementations that happen to match.
-        if (e.Key == System.Windows.Input.Key.C
-            && e.KeyboardDevice.Modifiers == System.Windows.Input.ModifierKeys.Control)
+        if (key == System.Windows.Input.Key.C
+            && modifiers == System.Windows.Input.ModifierKeys.Control)
         {
             PerformCopy();
-            e.Handled = true;
+            return true;
         }
+        return false;
     }
 
     // CLIPBOARD RULE: System.Windows.Clipboard appears ONLY here, never in
@@ -127,7 +139,7 @@ public partial class FilenameListWindow : Window
         if (text.Length == 0) return;   // nothing listed yet — Clipboard.SetText throws on ""
         try
         {
-            Clipboard.SetText(text);
+            _setClipboard(text);
             _vm.NoteCopied();
         }
         catch (System.Runtime.InteropServices.COMException)

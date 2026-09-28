@@ -65,6 +65,36 @@ public class FilenameListWindowTests : UiTest
         finally { window.Close(); }
     });
 
+    /// <summary>DW-31 (FL-04's other half): Ctrl+C in the grid must copy the
+    /// same text the Copy button does. Nothing tested it, so the branch could
+    /// be deleted and Ctrl+C would silently copy nothing.</summary>
+    [Fact]
+    public void CtrlCInTheGridCopiesWhatTheCopyButtonCopies() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
+        foreach (var name in new[] { "alpha.pdf", "bravo.pdf" })
+            vm.Rows.Add(new OrdoSort.Core.FilenameList.FileRow(name, 1, DateTime.Today, "", @"C:\inbox\" + name));
+        var copied = new List<string>();
+        var window = new FilenameListWindow(vm, copied.Add)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+
+            var used = window.HandleGridKey(System.Windows.Input.Key.C, System.Windows.Input.ModifierKeys.Control);
+
+            Assert.True(used);
+            Assert.Equal(new[] { "alpha.pdf" + Environment.NewLine + "bravo.pdf" }, copied);
+            Assert.Equal("Copied 2 names", vm.Status);
+        }
+        finally { window.Close(); }
+    });
+
     /// <summary>The column-visibility mechanism is imperative on purpose: a
     /// DataGridColumn is not in the visual or logical tree, so a RelativeSource
     /// binding to the view model never resolves and would fail SILENTLY, leaving
