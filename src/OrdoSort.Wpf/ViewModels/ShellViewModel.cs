@@ -456,6 +456,10 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// loads: the session's window opens and its viewer is ready here.</summary>
     public Func<Task>? PrepareSessionView { get; set; }
 
+    /// <summary>Opens Settings; set by the window (its own OnSettings), so the
+    /// dashboard's setup notices can link there and this stays testable.</summary>
+    public Action? OpenSettings { get; set; }
+
     private void OnStart()
     {
         if (IsSessionOpen) ShowSessionRequested?.Invoke();
@@ -683,11 +687,17 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>An inbox folder and at least one destination: without either a
+    /// session has nothing to file or nowhere to file it (UX-03). A new
+    /// install has neither; the dashboard's setup notices say so.</summary>
+    private bool SetupComplete => _cfg.Inbox.Trim().Length > 0 && _cfg.Routes.Count > 0;
+
     private void ShowReady(FolderSnapshot snap)
     {
         _viewer.Blank();
-        StartEnabled = snap.Scan.Count > 0;
+        StartEnabled = snap.Scan.Count > 0 && SetupComplete;
         ShowDashboard(snap);
+        RefreshNotices();
     }
 
     // the last sweep, kept for refreshes that skip it mid-session
@@ -1082,6 +1092,13 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private void RefreshNotices()
     {
         var wanted = new List<(string Key, NoticeKind Kind, string Message, string Detail)>();
+        // Setup first, and not dismissable: only fixing it clears it (UX-03)
+        if (_cfg.Inbox.Trim().Length == 0)
+            wanted.Add(("inbox-unset", NoticeKind.Warning, "No inbox folder yet",
+                "Choose the folder scanned documents arrive in (Settings → General)."));
+        if (_cfg.Routes.Count == 0)
+            wanted.Add(("no-destinations", NoticeKind.Warning, "No destinations yet",
+                "Add at least one destination in Settings → Destinations before starting."));
         if (HasDeferred && !_deferredDismissed)
             wanted.Add(("deferred", NoticeKind.Warning, _deferredMessage, _deferredDetail));
         if (HasHistoryBackupWarning && !_historyBackupDismissed)
@@ -1103,8 +1120,12 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 if (Notices[j].Key == w.Key) { existing = j; break; }
 
             if (existing < 0)
-                Notices.Insert(i, new NoticeVm(w.Key, w.Kind, w.Message, w.Detail, "Open folder",
-                    NoticeActionFor(w.Key), NoticeDismissFor(w.Key)));
+            {
+                var setup = IsSetupNotice(w.Key);
+                Notices.Insert(i, new NoticeVm(w.Key, w.Kind, w.Message, w.Detail,
+                    setup ? "Open Settings" : "Open folder",
+                    NoticeActionFor(w.Key), NoticeDismissFor(w.Key), canDismiss: !setup));
+            }
             else
             {
                 if (existing != i) Notices.Move(existing, i);
@@ -1120,8 +1141,11 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// OpenToastCommand already implement exactly the click behaviour each
     /// old banner/toast had, so the rail item and a future direct caller of
     /// those commands can never drift apart.</summary>
+    private static bool IsSetupNotice(string key) => key is "inbox-unset" or "no-destinations";
+
     private Action NoticeActionFor(string key) => key switch
     {
+        "inbox-unset" or "no-destinations" => () => OpenSettings?.Invoke(),
         "deferred" => () => OpenDeferredCommand.Execute(null),
         "history-backup" => () => OpenHistoryBackupFolderCommand.Execute(null),
         "alert" => () => OpenToastCommand.Execute(null),
@@ -1423,6 +1447,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     internal async Task StartProcessingAsync()
     {
         if (_busy) return;
+        // Start is off without them (ShowReady); this covers a caller that
+        // gets here anyway, e.g. a press landing as Settings removed the last one
+        if (!SetupComplete) { RefreshNotices(); return; }
         var cfg = _cfg;
         var cfgPath = _cfgPath;
         // One list for the probes AND the buttons: a save during the scan
