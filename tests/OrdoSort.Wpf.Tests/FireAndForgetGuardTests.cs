@@ -59,8 +59,11 @@ public class FireAndForgetGuardTests : IDisposable
         var deferred = Path.Combine(_dir, "deferred");
         Directory.CreateDirectory(inbox);
         Directory.CreateDirectory(deferred);
-        return (new Config { Inbox = inbox, Deferred = deferred, Sort = "filename_asc" },
-                Path.Combine(_dir, "config.json"));
+        var cfg = new Config { Inbox = inbox, Deferred = deferred, Sort = "filename_asc" };
+        // one destination: without it Start stops at the setup check (UX-03)
+        // before reaching the failure these tests are about
+        cfg.Routes.Add(new Route { Label = "Filed", Path = Path.Combine(_dir, "routed") });
+        return (cfg, Path.Combine(_dir, "config.json"));
     }
 
     private ShellViewModel NewShell(FakeDialogs dialogs, FolderWatchService watch)

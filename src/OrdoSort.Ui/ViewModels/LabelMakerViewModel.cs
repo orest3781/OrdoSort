@@ -102,6 +102,11 @@ public sealed class LabelMakerViewModel : ObservableObject
     // win — this is what lets it.
     private readonly HashSet<LabelClientVm> _numberEdited = new();
 
+    /// <summary>Clients whose typed number is below the stored one and the
+    /// user has agreed to it (the question in <see cref="AgreedToTypedStart"/>,
+    /// or Reset to 1's own). Cleared once a claim lands.</summary>
+    private readonly HashSet<LabelClientVm> _lowerStartAgreed = new();
+
     // The id each row is CURRENTLY on disk under (or "" for a row this
     // session added and never persisted). Set once, at Hook time, from
     // whatever the row's id was at that moment — NOT updated on every
@@ -238,6 +243,7 @@ public sealed class LabelMakerViewModel : ObservableObject
                     _appTitle, "Reset to 1", "Keep counting"))
                 return;
             s.NextNumberText = "1";
+            _lowerStartAgreed.Add(s);   // that was the question; printing won't ask it again
         }, () => Selected is not null);
         PrintCommand = new RelayCommand(Print, () => Selected is not null && !IsPrinting);
         SavePdfCommand = new RelayCommand(SavePdf, () => Selected is not null);
@@ -505,11 +511,44 @@ public sealed class LabelMakerViewModel : ObservableObject
             ? typed
             : null;
 
+    /// <summary>UX-08: a typed number below the stored one reissues box numbers
+    /// that are already on boxes, which is what Reset to 1 asks about first.
+    /// The typed number still wins once agreed (owner's decision, 2026-09-23);
+    /// declined, the box goes back to the stored number and nothing is
+    /// claimed. A higher number, or none typed, is not asked about. When the
+    /// store can't be read the claim itself reports that, so this lets it
+    /// through rather than asking about a number it can't see.</summary>
+    private bool AgreedToTypedStart(LabelClientVm client, long? typedStart)
+    {
+        if (typedStart is not { } typed || _lowerStartAgreed.Contains(client)) return true;
+        long stored;
+        try
+        {
+            var onDisk = BoxLabelStore.Read(_boxLabelsPath).LabelClients
+                .FirstOrDefault(c => SameId(c.Id, client.Id));
+            if (onDisk is null) return true;
+            stored = onDisk.NextNumber;
+        }
+        catch (ConfigException) { return true; }
+        if (typed >= stored) return true;
+        if (_dialogs.Confirm(
+                $"Start \"{client.Id}\" at {typed}?\n\nLabels {typed} to {stored - 1} were already "
+                + "issued, so boxes could end up with the same barcode.",
+                _appTitle, $"Start at {typed}", "Keep counting"))
+        {
+            _lowerStartAgreed.Add(client);
+            return true;
+        }
+        SetClaimedNumber(client, stored);
+        return false;
+    }
+
     /// <summary>Push a post-claim number onto the VM without marking the
     /// client dirty — the store already holds the advanced number, so this is
     /// display-only (see the merge-Persist notes on <see cref="_dirty"/>).
     ///
-    /// Only ever called after a claim has landed, so it also retires any
+    /// Called after a claim has landed (or a lower typed number was
+    /// declined, <see cref="AgreedToTypedStart"/>), so it also retires any
     /// typed number on this client: the claim has already written the
     /// number that follows the batch. Left in <see cref="_numberEdited"/>,
     /// the on-screen end number would be written back on close as if it
@@ -520,6 +559,7 @@ public sealed class LabelMakerViewModel : ObservableObject
     private void SetClaimedNumber(LabelClientVm client, long value)
     {
         _numberEdited.Remove(client);
+        _lowerStartAgreed.Remove(client);
         _suppressDirty = true;
         try { client.NextNumberText = value.ToString(); }
         finally { _suppressDirty = false; }
@@ -586,6 +626,7 @@ public sealed class LabelMakerViewModel : ObservableObject
         // (UX-05).
         long start;
         var typedStart = TypedStartFor(b.Client);   // read on the UI thread before offloading
+        if (!AgreedToTypedStart(b.Client, typedStart)) return;
         IsPrinting = true;
         try
         {
@@ -680,6 +721,7 @@ public sealed class LabelMakerViewModel : ObservableObject
     private async Task SavePdfCoreAsync()
     {
         if (BuildBatch() is not { } b) return;
+        if (!AgreedToTypedStart(b.Client, TypedStartFor(b.Client))) return;
         var dest = _dialogs.AskSaveFile("PDF files (*.pdf)|*.pdf",
             $"labels_{b.Client.Id}_{b.Start:D8}.pdf");
         if (dest is null) return;

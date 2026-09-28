@@ -65,6 +65,7 @@ public partial class MainWindow : Window
         DataContext = Shell;
         Processing.Attach(Shell);
         Shell.PrepareSessionView = Processing.OpenForSessionAsync;
+        Shell.OpenSettings = () => OnSettings(this, new RoutedEventArgs());
         Shell.ShowSessionRequested += Processing.BringToFront;
 
         // taskbar overlay follows the alert state; a new alert flashes the

@@ -54,10 +54,15 @@ public sealed class NoticeVm : ObservableObject
     public RelayCommand ActionCommand { get; }
     public RelayCommand DismissCommand { get; }
 
+    /// <summary>False for a notice about something only fixing it can clear
+    /// (no inbox folder, no destinations): it shows no dismiss button.</summary>
+    public bool CanDismiss { get; }
+
     public NoticeVm(string key, NoticeKind kind, string message, string detail,
-        string actionLabel, Action action, Action dismiss)
+        string actionLabel, Action action, Action dismiss, bool canDismiss = true)
     {
         Key = key;
+        CanDismiss = canDismiss;
         Kind = kind;
         _message = message;
         _detail = detail;

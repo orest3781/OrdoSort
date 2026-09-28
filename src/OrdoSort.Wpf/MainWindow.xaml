@@ -134,6 +134,7 @@
                          a real Button, not a decoration, so it's reachable and
                          narratable like the action link beside it. -->
                     <Button x:Name="DismissButton" Grid.Column="3" Command="{Binding DismissCommand}"
+                            Visibility="{Binding CanDismiss, Converter={StaticResource BoolToVis}}"
                             Cursor="Hand" VerticalAlignment="Top" Padding="4"
                             AutomationProperties.Name="Dismiss">
                         <Button.Template>
@@ -362,6 +363,13 @@
             <ItemsControl x:Name="NoticeRail" ItemsSource="{Binding Notices}"
                           ItemTemplate="{StaticResource NoticeItemTemplate}"
                           Focusable="False">
+                <!-- each row is announced by its message, not its type name
+                     (found 2026-09-28 once a setup notice showed in the test) -->
+                <ItemsControl.ItemContainerStyle>
+                    <Style TargetType="ContentPresenter">
+                        <Setter Property="AutomationProperties.Name" Value="{Binding Message}" />
+                    </Style>
+                </ItemsControl.ItemContainerStyle>
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <StackPanel />

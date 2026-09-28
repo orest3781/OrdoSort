@@ -503,21 +503,30 @@ public sealed class UnlockViewModel : ObservableObject
 
     public RelayCommand RemoveSavedCommand { get; private set; } = null!;
 
+    /// <summary>Asks by name first, Keep being the default: the list is shared
+    /// by every station, and there is no undo. Nothing is selected afterwards,
+    /// so a double-click can't remove a second password (UX-02, 2026-09-28;
+    /// it used to select the next one under the still-hovered button).</summary>
     private void RemoveSelectedSaved()
     {
-        if (SelectedSavedEntry is { } p)
-        {
-            // No MigrateProtectedToPlaintext call here either — see
-            // AddSavedPassword's comment.
-            _cfg.SavedPasswords.Remove(p);
-            Saved.Remove(p);
-            _trySaveCfg();
-            // A removed saved password can turn a ready row back into
-            // needs-a-password (risk 4/staleness) — see
-            // RequeueAllFilesForProbing's doc comment.
-            RequeueAllFilesForProbing();
-        }
-        SelectedSavedEntry = Saved.FirstOrDefault();
+        if (SelectedSavedEntry is not { } p) return;
+        var dialogs = _dialogs ?? throw new InvalidOperationException(
+            "Removing a saved password needs a dialog service to ask first.");
+        if (!dialogs.Confirm(
+                $"Remove the saved password \"{p.Label}\"?\n\n"
+                + "Unlock, Zip and Merge PDFs on every station stop trying it.",
+                "OrdoSort — remove saved password", "Remove", "Keep"))
+            return;
+        // No MigrateProtectedToPlaintext call here either — see
+        // AddSavedPassword's comment.
+        _cfg.SavedPasswords.Remove(p);
+        Saved.Remove(p);
+        _trySaveCfg();
+        // A removed saved password can turn a ready row back into
+        // needs-a-password (risk 4/staleness) — see
+        // RequeueAllFilesForProbing's doc comment.
+        RequeueAllFilesForProbing();
+        SelectedSavedEntry = null;
     }
 
     /// <summary>False when either field is blank — the dialog shows a nudge

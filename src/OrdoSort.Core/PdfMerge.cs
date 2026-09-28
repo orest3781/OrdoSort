@@ -264,8 +264,8 @@ public static class PdfMerge
         }
     }
 
-    /// <summary>Merge <paramref name="pdfPaths"/> — natural-sorted by file
-    /// name, ties by full path — into one document. With
+    /// <summary>Merge <paramref name="pdfPaths"/>, in the order given, into
+    /// one document (the order the Merge PDFs list shows, UX-01). With
     /// <paramref name="outputPath"/> null the result is named by
     /// <see cref="DefaultName"/> and placed beside the first document in that
     /// order, collision-suffixed; a non-null path is a Save-As answer and is
@@ -286,7 +286,7 @@ public static class PdfMerge
         List<string>? ordered = null;
         try
         {
-            ordered = InMergeOrder(pdfPaths);
+            ordered = InGivenOrder(pdfPaths);
             if (ordered.Count == 0) return new("", "error", Message: "nothing to merge");
             return MergeFilesCore(ordered, outputPath, candidates, ask, converter, includeTypes);
         }
@@ -380,7 +380,7 @@ public static class PdfMerge
     {
         try
         {
-            var ordered = InMergeOrder(pdfPaths);
+            var ordered = InGivenOrder(pdfPaths);
             if (ordered.Count == 0) return "Merged.pdf";
             var parentName = Path.GetFileName(Path.GetDirectoryName(Path.GetFullPath(ordered[0])) ?? "");
             return parentName.Length == 0 ? "Merged.pdf" : parentName + ".pdf";
@@ -391,14 +391,18 @@ public static class PdfMerge
         }
     }
 
-    /// <summary>Natural sort by file name — "2.pdf" before "10.pdf", the way
-    /// every list in this app sorts — with two same-named files in different
-    /// folders falling back to full-path order so the result is deterministic.</summary>
-    private static List<string> InMergeOrder(IReadOnlyList<string> pdfPaths) =>
-        pdfPaths
-            .OrderBy(p => Path.GetFileName(p), NaturalSort.Instance)
-            .ThenBy(p => p, NaturalSort.Instance)
-            .ToList();
+    /// <summary>The caller's order, unchanged: it is the order the Merge PDFs
+    /// list shows and lets people move files in (UX-01, 2026-09-28). A name
+    /// sort here merged one order while the list showed another. Each entry is
+    /// still checked, inside the callers' try, so a null one comes back as an
+    /// error result rather than an exception.</summary>
+    private static List<string> InGivenOrder(IReadOnlyList<string> pdfPaths)
+    {
+        var list = pdfPaths.ToList();
+        if (list.Any(p => p is null))
+            throw new ArgumentException("the list of documents has an empty entry", nameof(pdfPaths));
+        return list;
+    }
 
     /// <summary>Dot-less, lowercase, and tolerant of a full path (not just a
     /// bare file name) — the one spelling every extension check in this

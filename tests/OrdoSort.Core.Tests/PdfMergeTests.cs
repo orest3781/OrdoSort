@@ -338,10 +338,13 @@ public class PdfMergeTests : IDisposable
 
     // --------------------------------------------------- loose PDFs
 
-    // "10.pdf" is created first and listed first; a merge that kept input
-    // order or sorted lexically would get this backwards.
+    // UX-01 (2026-09-28): loose files merge in the order they are given,
+    // which is the order the Merge PDFs list shows (and can be moved in).
+    // Sorting them by name here merged one order while the list showed
+    // another. "10.pdf" is given first on purpose: a name sort would put
+    // "2.pdf" first.
     [Fact]
-    public void LoosePdfsMergeInNaturalOrderOfTheirNames()
+    public void LoosePdfsMergeInTheOrderTheyAreGiven()
     {
         var ten = MakePdfFile("10.pdf", widthPt: 110);
         var two = MakePdfFile("2.pdf", widthPt: 102);
@@ -351,8 +354,8 @@ public class PdfMergeTests : IDisposable
         Assert.Equal("ok", r.Status);
         Assert.Equal(2, r.PdfCount);
         using var merged = PdfReader.Open(r.Output!, PdfDocumentOpenMode.Import);
-        Assert.Equal(102, merged.Pages[0].Width.Point, 3);
-        Assert.Equal(110, merged.Pages[1].Width.Point, 3);
+        Assert.Equal(110, merged.Pages[0].Width.Point, 3);
+        Assert.Equal(102, merged.Pages[1].Width.Point, 3);
     }
 
     /// <summary>The same default-name rule Zipper.DefaultName applies to a
@@ -634,13 +637,13 @@ public class PdfMergeTests : IDisposable
     /// <summary>Fix round (review finding, Important): the original version
     /// of this fact asserted only converter.Seen == ["2.docx"], which proves
     /// a call happened but not that the converted page landed BETWEEN
-    /// 1.pdf and 10.pdf — a no-op sort still passes it. This version reads
+    /// the other two — a no-op still passes it. This version reads
     /// the merged output's own page widths in sequence, the way this
     /// class's other ordering facts do, with the converted page's width
     /// (FakeConverter.ConvertedWidthPt) chosen well outside 101/110 so it is
     /// identifiable by width alone.</summary>
     [Fact]
-    public void ConvertedDocumentsTakeTheirPlaceInTheSameNaturalSort()
+    public void ConvertedDocumentsTakeTheirPlaceInTheOrderGiven()
     {
         var ten = MakePdfFile("10.pdf", widthPt: 110);
         var two = MakeDocFile("2.docx");
@@ -651,9 +654,9 @@ public class PdfMergeTests : IDisposable
         Assert.Equal(new[] { "2.docx" }, converter.Seen);
         using var merged = PdfReader.Open(r.Output!, PdfDocumentOpenMode.Import);
         Assert.Equal(3, merged.PageCount);
-        Assert.Equal(101, merged.Pages[0].Width.Point, 3);
+        Assert.Equal(110, merged.Pages[0].Width.Point, 3);   // given: 10.pdf, 2.docx, 1.pdf
         Assert.Equal(FakeConverter.ConvertedWidthPt, merged.Pages[1].Width.Point, 3);
-        Assert.Equal(110, merged.Pages[2].Width.Point, 3);
+        Assert.Equal(101, merged.Pages[2].Width.Point, 3);
     }
 
     // ------------------------------------------------- the enabled-type set

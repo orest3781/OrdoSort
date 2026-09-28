@@ -453,6 +453,29 @@ public abstract class ZipListViewModel : ObservableObject
             Rows.Remove(item);
     }
 
+    /// <summary>Moves the selected rows one place up or down, together, keeping
+    /// their order; a block already at that end stays put. Merge PDFs merges
+    /// loose files in list order, so this is how a cover page goes first
+    /// (UX-01, 2026-09-28). Refused mid-batch for the same reason as
+    /// <see cref="RemoveSelected"/>.</summary>
+    public void MoveSelected(IList rows, bool up)
+    {
+        if (IsBusy) return;
+        var indices = rows.Cast<ZipItemRow>().Select(r => Rows.IndexOf(r))
+            .Where(i => i >= 0).Distinct().OrderBy(i => i).ToList();
+        if (indices.Count == 0) return;
+        if (up)
+        {
+            if (indices[0] == 0) return;
+            foreach (var i in indices) Rows.Move(i, i - 1);
+        }
+        else
+        {
+            if (indices[^1] == Rows.Count - 1) return;
+            for (var k = indices.Count - 1; k >= 0; k--) Rows.Move(indices[k], indices[k] + 1);
+        }
+    }
+
     // ------------------------------------------------------------ passwords
 
     /// <summary>The order Core tries: typed in this window (most recent

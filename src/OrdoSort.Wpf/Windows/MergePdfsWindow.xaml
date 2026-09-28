@@ -54,6 +54,12 @@
                     <Button Content="Add files…" Click="OnAddFiles" Margin="0,0,6,4" />
                     <Button Content="Remove selected" Click="OnRemoveSelected" Margin="0,0,6,4"
                             IsEnabled="{Binding IsIdle}" />
+                    <!-- loose files merge in list order (UX-01): these set it;
+                         Alt+Up / Alt+Down on the list do the same -->
+                    <Button Content="Move up" Click="OnMoveUp" Margin="0,0,6,4"
+                            IsEnabled="{Binding IsIdle}" ToolTip="Alt+Up" />
+                    <Button Content="Move down" Click="OnMoveDown" Margin="0,0,6,4"
+                            IsEnabled="{Binding IsIdle}" ToolTip="Alt+Down" />
                     <Button Content="Clear" Command="{Binding ClearCommand}" Margin="0,0,10,4" />
                 </WrapPanel>
             </DockPanel>
@@ -100,9 +106,10 @@
                           IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
                           SelectionMode="Extended" PreviewKeyDown="OnGridKeyDown"
                           CanUserSortColumns="False">
-                    <!-- CanUserSortColumns off: the merge follows this list's
-                         own order, so a sorted view would show one order and
-                         merge another. -->
+                    <!-- CanUserSortColumns off: loose files merge in this
+                         list's own order (Move up / Move down set it, UX-01),
+                         so a sorted view would show one order and merge
+                         another. -->
                     <!-- Theme.RowHover so the hover tint stays consistent
                          app-wide; the row ToolTip carries the full path,
                          which no column shows. -->

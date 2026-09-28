@@ -85,11 +85,32 @@ public partial class MergePdfsWindow : Window
     private void OnRemoveSelected(object sender, RoutedEventArgs e) =>
         _vm.RemoveSelected(ItemsGrid.SelectedItems);
 
+    private void OnMoveUp(object sender, RoutedEventArgs e) => MoveSelected(up: true);
+
+    private void OnMoveDown(object sender, RoutedEventArgs e) => MoveSelected(up: false);
+
+    /// <summary>Moves the selected rows and keeps them selected and in view, so
+    /// a second press moves them again.</summary>
+    private void MoveSelected(bool up)
+    {
+        var moving = ItemsGrid.SelectedItems.Cast<object>().ToList();
+        _vm.MoveSelected(moving, up);
+        foreach (var row in moving) ItemsGrid.SelectedItems.Add(row);
+        if (moving.Count > 0) ItemsGrid.ScrollIntoView(moving[up ? 0 : ^1]);
+    }
+
     /// <summary>Delete = the Remove selected button (UX-32) — the Filename
     /// list has answered the key since its own audit; the other tool
     /// windows now match it.</summary>
     private void OnGridKeyDown(object sender, KeyEventArgs e)
     {
+        // Alt+arrow arrives as a system key
+        if (Keyboard.Modifiers == ModifierKeys.Alt && e.SystemKey is Key.Up or Key.Down)
+        {
+            MoveSelected(up: e.SystemKey == Key.Up);
+            e.Handled = true;
+            return;
+        }
         if (e.Key != Key.Delete) return;
         OnRemoveSelected(sender, e);
         e.Handled = true;

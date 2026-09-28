@@ -593,10 +593,103 @@ public class LabelMakerViewModelTests : IDisposable
 
         vm.SavePdf();
 
+        Assert.Single(_dialogs.Confirms);   // 7 is below the stored 100: asked, and agreed (UX-08)
         Assert.True(File.Exists(Path.Combine(_dir, "typed.pdf")));
         Assert.Equal(9, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
         Assert.Equal("9", vm.Selected!.NextNumberText);
         Assert.Empty(_dialogs.Warnings);
+    }
+
+    // UX-08 (2026-09-28): a typed number BELOW the stored one reissues box
+    // numbers already on physical boxes. Reset to 1 asks first; a typed
+    // number now asks the same way. A typed number still wins once agreed
+    // (the owner's 2026-09-23 decision), and a higher one is never asked about.
+
+    [Fact]
+    public void PrintingFromATypedNumberBelowTheStoredOneAsksAndKeepCountingPrintsNothing()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 4200 });
+        var vm = Vm(path);
+        vm.Selected!.NextNumberText = "420";   // a slip for 4200
+        vm.LabelCountText = "5";
+        var printed = false;
+        vm.PrintSheets = (_, _) => { printed = true; return true; };
+        _dialogs.ConfirmAnswer = false;   // "Keep counting"
+
+        vm.Print();
+
+        var asked = Assert.Single(_dialogs.Confirms).Message;
+        Assert.Contains("420", asked);
+        Assert.Contains("4199", asked);
+        Assert.False(printed);
+        Assert.Equal(4200, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+        Assert.Equal("4200", vm.Selected!.NextNumberText);   // back to the stored number
+    }
+
+    [Fact]
+    public void PrintingFromALowerTypedNumberOnceAgreedStartsThere()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 4200 });
+        var vm = Vm(path);
+        vm.Selected!.NextNumberText = "420";
+        vm.LabelCountText = "5";
+        IReadOnlyList<BoxLabels.Item>? sent = null;
+        vm.PrintSheets = (items, _) => { sent = items; return true; };
+        _dialogs.ConfirmAnswer = true;   // "Start at 420"
+
+        vm.Print();
+
+        Assert.Single(_dialogs.Confirms);
+        Assert.Equal("ABCD00000420", sent![0].Code);
+        Assert.Equal(425, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+    }
+
+    [Fact]
+    public void AHigherTypedNumberIsNotAskedAbout()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 4200 });
+        var vm = Vm(path);
+        vm.Selected!.NextNumberText = "5000";
+        vm.LabelCountText = "1";
+        vm.PrintSheets = (_, _) => true;
+
+        vm.Print();
+
+        Assert.Empty(_dialogs.Confirms);
+        Assert.Equal(5001, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
+    }
+
+    [Fact]
+    public void AfterResetToOneThePrintDoesNotAskASecondTime()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 4200 });
+        var vm = Vm(path);
+        _dialogs.ConfirmAnswer = true;
+        vm.ResetNumberCommand.Execute(null);   // the one question
+        vm.LabelCountText = "1";
+        vm.PrintSheets = (_, _) => true;
+
+        vm.Print();
+
+        Assert.Single(_dialogs.Confirms);
+    }
+
+    [Fact]
+    public void SavingAPdfFromALowerTypedNumberAsksFirstAndKeepCountingWritesNothing()
+    {
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 4200 });
+        var vm = Vm(path);
+        vm.Selected!.NextNumberText = "420";
+        vm.LabelCountText = "2";
+        var dest = Path.Combine(_dir, "lower.pdf");
+        _dialogs.NextSaveFile = dest;
+        _dialogs.ConfirmAnswer = false;
+
+        vm.SavePdf();
+
+        Assert.Single(_dialogs.Confirms);
+        Assert.False(File.Exists(dest));
+        Assert.Equal(4200, BoxLabelStore.Read(path).LabelClients.Single().NextNumber);
     }
 
     [Fact]
