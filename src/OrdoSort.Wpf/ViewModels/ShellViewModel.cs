@@ -186,8 +186,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // says so, and now it's true) — resolve at the moment the folder is
         // opened, not once at startup, so a Settings edit applied later is
         // reflected here without a matching edit to this closure.
-        OpenDeferredCommand = new RelayCommand(() => OpenFolder(ResolvePath(_cfg.Deferred, _cfgPath)));
-        OpenInboxCommand = new RelayCommand(() => OpenFolder(ResolvePath(_cfg.Inbox, _cfgPath)));
+        OpenDeferredCommand = new RelayCommand(() => OpenFolderSetting(_cfg.Deferred, "set-aside"));
+        OpenInboxCommand = new RelayCommand(() => OpenFolderSetting(_cfg.Inbox, "inbox"));
         OpenToastCommand = new RelayCommand(() => { OpenFolder(_toastFolder); HideToast(); });
         OpenHistoryBackupFolderCommand = new RelayCommand(() => OpenFolder(_historyBackupDir));
         // Points at config.json's own folder, not a Settings window this
@@ -563,7 +563,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // Directory.Exists + watcher registration are network round trips on
         // an SMB share — never on the UI thread
         await _scheduler.Run(() => _watch.SetFolders(
-            ResolvePath(cfg.Inbox, cfgPath), ResolvePath(cfg.Deferred, cfgPath)));
+            ResolveFolderSetting(cfg.Inbox, cfgPath), ResolveFolderSetting(cfg.Deferred, cfgPath)));
         Rescan();
     }
 
@@ -612,8 +612,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 var cfg = _cfg;
                 var cfgPath = _cfgPath;
                 var snap = await _scheduler.Run(() => new FolderSnapshot(
-                    Scanner.Scan(ResolvePath(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode),
-                    Scanner.DeferredSummary(ResolveDeferredPath(cfg.Deferred, cfgPath)),
+                    Scanner.Scan(ResolveFolderSetting(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode),
+                    Scanner.DeferredSummary(ResolveFolderSetting(cfg.Deferred, cfgPath)),
                     wantStatuses
                         ? FolderMonitor.All(cfg.WatchFolders, cfg.AlertTexts, cfgPath)
                             .Where(s => mode == "all" || s.HasFiles || s.Error.Length > 0)
@@ -764,7 +764,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     private async Task RefreshDeferredAsync()
     {
-        var deferred = ResolveDeferredPath(_cfg.Deferred, _cfgPath);
+        var deferred = ResolveFolderSetting(_cfg.Deferred, _cfgPath);
         ApplyDeferred(await _scheduler.Run(() => Scanner.DeferredSummary(deferred)));
     }
 
@@ -944,7 +944,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             var nm = Path.GetFileName(f);
             if (FolderMonitor.IsAlerting(nm, _cfg.AlertTexts))
                 current.Add(new AlertItem($"inbox\0{nm}", "the inbox", nm,
-                    ResolvePath(_cfg.Inbox, _cfgPath)));
+                    ResolveFolderSetting(_cfg.Inbox, _cfgPath)));
         }
 
         // first sweep after launch/rescan: adopt what's already there silently —
@@ -1412,7 +1412,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         try
         {
             (scan, problems) = await _scheduler.Run(() =>
-                (Scanner.Scan(ResolvePath(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode),
+                (Scanner.Scan(ResolveFolderSetting(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode),
                  routes.Select(r => Config.ValidateRoute(r, cfgPath)).ToList()));
         }
         finally { _busy = false; }
@@ -2116,7 +2116,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         _cfg = cfg;
         _session = new Session(cfg, _history, _cfgPath);
         await _scheduler.Run(() => _watch.SetFolders(
-            ResolvePath(cfg.Inbox, _cfgPath), ResolvePath(cfg.Deferred, _cfgPath)));
+            ResolveFolderSetting(cfg.Inbox, _cfgPath), ResolveFolderSetting(cfg.Deferred, _cfgPath)));
         _watch.SetPollInterval(cfg.PollSeconds * 1000);   // adopt a changed cadence live
         Raise(nameof(UppercaseNames));
         Raise(nameof(TileVisibilityIndex));
@@ -2343,18 +2343,28 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     internal static string ResolvePath(string value, string cfgPath) =>
         Config.ResolveBeside(cfgPath, value);
 
-    // Scanner.DeferredSummary's own blank-folder guard (Scanner.cs) treats
-    // "" as "nothing set aside" — but only if it is still blank by the time
-    // DeferredSummary sees it. Path.Combine(dir, "") == dir, so feeding a
-    // blank cfg.Deferred through ResolvePath first flattens it to
-    // config.json's own directory, which is non-blank and always exists:
-    // DeferredSummary's guard never fires, and it counts whatever already
-    // lives beside config.json (history.sqlite, at minimum) as "set-aside
-    // files waiting" (2026-08-21 QC-02 audit). Only the two
-    // Scanner.DeferredSummary call sites need this — they're the ones
-    // whose blank-check depends on the value staying blank.
-    internal static string ResolveDeferredPath(string value, string cfgPath) =>
+    // The inbox and set-aside folder settings go through this, never bare
+    // ResolvePath: Path.Combine(dir, "") == dir, so a blank setting would
+    // flatten to config.json's own folder, which is non-blank and always
+    // exists. Then every "nothing set" guard downstream is skipped: the
+    // set-aside count counted history.sqlite (2026-08-21 QC-02 audit), the
+    // inbox scan showed a calm "0 files ready" and Open inbox opened the
+    // config folder (Q2-34), and the watcher watched the config folder
+    // (DW-10). Blank stays blank here.
+    internal static string ResolveFolderSetting(string value, string cfgPath) =>
         string.IsNullOrWhiteSpace(value) ? value : ResolvePath(value, cfgPath);
+
+    /// <summary>Open a configured folder, or say none is set rather than
+    /// opening config.json's folder in its place (Q2-34).</summary>
+    private void OpenFolderSetting(string value, string what)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            ShowStatusNote($"No {what} folder is set — choose one in Settings.");
+            return;
+        }
+        OpenFolder(ResolveFolderSetting(value, _cfgPath));
+    }
 
     internal static void OpenFolder(string folder)
     {
