@@ -75,15 +75,22 @@ public static class FilenameList
                 // reason to drop the row or to throw out of a never-throws method
             }
 
-            rows.Add(new FileRow(
-                opt.IncludeExtension ? Path.GetFileName(file) : Path.GetFileNameWithoutExtension(file),
-                size, modified, FolderFor(file, paths), file));
+            rows.Add(new FileRow(Path.GetFileName(file), size, modified, FolderFor(file, paths), file));
         }
 
         // Intake sorts by full PATH; re-sort on the NAME this list actually shows.
         rows.Sort((a, b) => NaturalSort.Instance.Compare(a.Name, b.Name));
-        return new Listing(rows, expanded.Ignored, expanded.Error);
+        return new Listing(opt.IncludeExtension ? rows : WithoutExtensions(rows), expanded.Ignored, expanded.Error);
     }
+
+    /// <summary>The same rows named without their extensions, in the natural
+    /// order of those shorter names. Works on rows already read, so hiding
+    /// extensions never needs a second walk of the disk (FL-09). The sort is
+    /// stable: two files with the same stem keep the order they came in.</summary>
+    public static IReadOnlyList<FileRow> WithoutExtensions(IReadOnlyList<FileRow> rows) =>
+        rows.Select(r => r with { Name = Path.GetFileNameWithoutExtension(r.Name) })
+            .OrderBy(r => r.Name, NaturalSort.Instance)
+            .ToList();
 
     /// <summary>Which optional columns are on. Name is NOT a member: it is always
     /// emitted, so including it would make a HasFlag check trivially true and

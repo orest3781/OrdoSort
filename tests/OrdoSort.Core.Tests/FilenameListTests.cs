@@ -80,6 +80,22 @@ public class FilenameListTests : IDisposable
         Assert.Equal(new[] { "report.pdf" }, listing.Rows.Select(r => r.Name).ToArray());
     }
 
+    /// <summary>FL-09: hiding extensions is done on rows already read, so
+    /// the File list no longer walks the disk again for a display choice.
+    /// The rows come back in the order of the names now shown: "x" sorts
+    /// before "x-2", although "x-2.pdf" sorts before "x.txt".</summary>
+    [Fact]
+    public void WithoutExtensionsShowsTheStemsInTheirOwnOrder()
+    {
+        var withDash = new FilenameList.FileRow("x-2.pdf", 1, null, "", @"C:\in\x-2.pdf");
+        var plain = new FilenameList.FileRow("x.txt", 2, null, "", @"C:\in\x.txt");
+
+        var rows = FilenameList.WithoutExtensions(new[] { withDash, plain });
+
+        Assert.Equal(new[] { "x", "x-2" }, rows.Select(r => r.Name).ToArray());
+        Assert.Equal(new[] { @"C:\in\x.txt", @"C:\in\x-2.pdf" }, rows.Select(r => r.FullPath).ToArray());
+    }
+
     /// <summary>ParseFiletypes' own separator/leading-dot handling is already
     /// pinned by FolderMonitorTests — this only proves FilenameList.Build
     /// actually routes ExtensionFilter through it (comma+space separator,

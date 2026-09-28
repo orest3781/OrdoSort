@@ -71,6 +71,33 @@ public class FilenameListViewModelTests : IDisposable
             "unchecking Include extension should strip it from the listed name");
     }
 
+    /// <summary>FL-09: unticking Include extension walked the whole folder
+    /// again, a multi-second stall on a big share for a display choice. It
+    /// now re-renders the rows already read: no walk is queued and the names
+    /// change at once.</summary>
+    [Fact]
+    public void TogglingIncludeExtensionDoesNotReadTheFolderAgain()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+        Touch("report.pdf");
+        var scheduler = new ManualWorkScheduler();
+        using var vm = new FilenameListViewModel(new FakeDialogs(), scheduler, uiContext: null, probeDelayMs: 0);
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => scheduler.PendingCount > 0, "the folder walk should be queued");
+        scheduler.ReleaseAll();
+        var walks = scheduler.PendingCount;
+
+        vm.IncludeExtension = false;
+
+        Assert.Equal("report", Assert.Single(vm.Rows).Name);
+        Assert.False(vm.IsListing);
+        Assert.Equal(walks, scheduler.PendingCount);
+
+        vm.IncludeExtension = true;
+
+        Assert.Equal("report.pdf", Assert.Single(vm.Rows).Name);
+    }
+
     [Fact]
     public void TogglingIncludeSubfoldersRebuildsRows()
     {

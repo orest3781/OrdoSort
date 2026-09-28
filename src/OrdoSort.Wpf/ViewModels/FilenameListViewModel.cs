@@ -39,6 +39,11 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     // is what keeps "what you see is what you copy" true of the name filter and
     // the sort direction and not only of the columns.
     private IReadOnlyList<FilenameList.FileRow> _allRows = Array.Empty<FilenameList.FileRow>();
+
+    /// <summary>_allRows named without extensions, made the first time
+    /// Include extension is off and kept until the next walk, so the Find
+    /// box doesn't rename and re-sort every row per keystroke.</summary>
+    private IReadOnlyList<FilenameList.FileRow>? _stemRows;
     private int _lastIgnored;
     private string _lastError = "";
 
@@ -299,11 +304,12 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         set { if (Set(ref _includeSubfolders, value)) Refresh(immediate: true); }
     }
 
+    // A display choice, so a Reproject rather than a walk of the disk (FL-09).
     private bool _includeExtension = true;
     public bool IncludeExtension
     {
         get => _includeExtension;
-        set { if (Set(ref _includeExtension, value)) Refresh(immediate: true); }
+        set { if (Set(ref _includeExtension, value)) Reproject(); }
     }
 
     // Typed field, like BulkRename's Find/Replace — debounced, not immediate.
@@ -399,7 +405,8 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     /// stale probe from repopulating Rows after this.</summary>
     private void Refresh(bool immediate = false)
     {
-        var opt = new FilenameList.Options(IncludeSubfolders, IncludeExtension, ExtensionFilter);
+        // Always read with extensions: hiding them is Reproject's job.
+        var opt = new FilenameList.Options(IncludeSubfolders, IncludeExtension: true, ExtensionFilter);
         var sourcesSnapshot = _sources.ToList();
 
         if (sourcesSnapshot.Count == 0)
@@ -439,6 +446,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     private void ApplyListing(FilenameList.Listing listing)
     {
         _allRows = listing.Rows;
+        _stemRows = null;
         _lastIgnored = listing.Ignored;
         _lastError = listing.Error;
         _isListing = false;   // Reproject below writes the counts line
@@ -447,13 +455,13 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Rebuilds Rows from _allRows in memory — the name filter, the
-    /// sort direction and the columns all land here, never a new Build.
-    /// Deliberately never touches _listingProbe: only the roots and the
-    /// three intake filters (IncludeSubfolders, IncludeExtension,
-    /// ExtensionFilter) justify going back to the disk.
+    /// sort direction, the extensions and the columns all land here, never a
+    /// new Build. Deliberately never touches _listingProbe: only the roots
+    /// and the two intake filters (IncludeSubfolders, ExtensionFilter)
+    /// justify going back to the disk.
     ///
-    /// Six call sites reach this: ApplyListing (the probe's marshalled
-    /// callback), the Columns/NameFilter/Descending setters (driven by
+    /// The call sites: ApplyListing (the probe's marshalled
+    /// callback), the Columns/NameFilter/Descending/IncludeExtension setters (driven by
     /// bindings, so the caller's thread), and RemoveSelectedCommand/
     /// RestoreRemovedCommand (driven by a button click, also the UI thread).
     /// Mutating the ObservableCollection
@@ -471,8 +479,9 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     /// that ordering.</summary>
     private void Reproject()
     {
+        var named = IncludeExtension ? _allRows : (_stemRows ??= FilenameList.WithoutExtensions(_allRows));
         IEnumerable<FilenameList.FileRow> visible =
-            _allRows.Where(r => !_excluded.Contains(r.FullPath));
+            named.Where(r => !_excluded.Contains(r.FullPath));
 
         // Trimmed at use, not in the setter: a pasted term often carries a
         // trailing space or newline, and neither is in any filename (UX-38).
