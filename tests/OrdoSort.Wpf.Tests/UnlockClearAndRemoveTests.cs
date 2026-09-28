@@ -216,6 +216,26 @@ public class UnlockClearAndRemoveTests : IDisposable
         Assert.True(vm.IsIdle);   // normal service resumes
     }
 
+    /// <summary>Q2-30: nothing listened to the Unlock command's failures, so
+    /// a run that hit something unexpected just ended: the buttons came back
+    /// and no summary or message said anything had gone wrong.</summary>
+    [Fact]
+    public async Task AnUnlockRunThatFailsUnexpectedlySaysSo()
+    {
+        var a = Touch("a.pdf");
+        var vm = new UnlockViewModel(new Config(), () => true,
+            unlocker: (_, _) => throw new InvalidOperationException("the disk went away"),
+            probe: (path, candidates) => new Unlock.ProbeResult("needs_password", path, Message: "x"),
+            scheduler: new InlineWorkScheduler());
+        await vm.AddFilesAsync(new[] { a });
+        vm.Password = "secret";
+
+        vm.UnlockCommand.Execute(null);
+
+        Assert.Contains("stopped unexpectedly", vm.Summary);
+        Assert.Contains("the disk went away", vm.Summary);
+    }
+
     /// <summary>Q2-05 for Unlock: Clear while a drop was still being checked
     /// off-thread brought the rows back a moment later, and probed them.</summary>
     [Fact]

@@ -246,6 +246,9 @@ public sealed class UnlockViewModel : ObservableObject
         _probe = probe ?? Unlock.ProbeReadiness;
         Saved = new ObservableCollection<SavedPassword>(cfg.SavedPasswords);
         UnlockCommand = new AsyncRelayCommand(UnlockAsync, () => Files.Count > 0);
+        // Nothing listened before (Q2-30): a run that hit something
+        // unexpected just ended, with the buttons back and no word of it.
+        UnlockCommand.OnError += ex => Summary = $"The unlock stopped unexpectedly: {ex.Message}";
         CancelCommand = new RelayCommand(CancelUnlock, () => IsUnlocking);
         ClearCommand = new RelayCommand(() =>
         {
