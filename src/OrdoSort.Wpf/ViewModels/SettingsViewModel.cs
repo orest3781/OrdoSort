@@ -2223,7 +2223,27 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 errors.Add($"\"{label}\": the hotkey \"{r.Hotkey}\" needs a modifier — try \"Ctrl+{rawHotkey}\".");
             if (!r.ColorValid)
                 errors.Add($"\"{label}\": \"{r.Color}\" is not a color (try #2e7d32).");
+
+            // Checked here because filing would otherwise refuse every
+            // document sent to this destination, with Settings giving no
+            // hint why (QC-17, D4). A hand-edited config.json is the usual
+            // source: the Settings controls themselves can't produce these.
+            if (r.Suffix.Length > 0)
+            {
+                try { Naming.RejectIllegal("x" + r.Suffix); }
+                catch (ArgumentException e)
+                {
+                    errors.Add($"\"{label}\": the suffix \"{r.Suffix}\" would stop every filing here. {e.Message}");
+                }
+            }
+            if (r.NamingMode.Length > 0 && Array.IndexOf(Naming.Modes, r.NamingMode) < 0)
+                errors.Add($"\"{label}\": \"{r.NamingMode}\" is not a naming mode — pick one from the list.");
         }
+
+        if (Array.IndexOf(Naming.Modes, FilingMode) < 0)
+            errors.Add($"Filing: \"{FilingMode}\" is not a naming mode — pick one from the list.");
+        if (UiFontFamily.Length > 0 && !FontChoices.Any(f => f.Key == UiFontFamily))
+            errors.Add($"\"{UiFontFamily}\" is not one of the app fonts — pick one from the list.");
 
         // duplicate EFFECTIVE hotkeys — the same keystroke can't file two ways
         var seen = new Dictionary<string, string>();
