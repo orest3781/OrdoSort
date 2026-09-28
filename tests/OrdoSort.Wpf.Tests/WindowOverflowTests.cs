@@ -194,7 +194,7 @@ public class WindowOverflowTests : UiTest
             return (new PrintPreviewWindow(doc, "test", _ => { }), null);
         }, MinExamined: 18),   // 24 measured
 
-        ["SettingsWindow"] = new(760, 880, 560, 820, () =>
+        ["SettingsWindow"] = new(810, 880, 560, 820, () =>
         {
             var cfg = new Config();
             cfg.Routes.Add(new Route { Label = "Invoices", Path = @"C:\dest", Hotkey = "Ctrl+1" });
@@ -413,8 +413,6 @@ public class WindowOverflowTests : UiTest
     /// starts fitting fails until it is removed.</summary>
     private static readonly Dictionary<string, string> EscapesAtLargeFontMinWidth = new()
     {
-        ["SettingsWindow"] =
-            "Open and Create it on the Destinations and Monitored folders tabs run past the right edge at 760 wide",
     };
 
     /// <summary>Q2-36: every window the app ships, found by reflection, must be

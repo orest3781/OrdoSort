@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:OrdoSort.Wpf.ViewModels"
         xmlns:theme="clr-namespace:OrdoSort.Wpf.Theme;assembly=OrdoSort.Ui"
-        Title="OrdoSort — Settings" Width="880" Height="820" MinWidth="760" MinHeight="560"
+        Title="OrdoSort — Settings" Width="880" Height="820" MinWidth="810" MinHeight="560"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         KeyDown="OnWindowKeyDown"
         Style="{StaticResource {x:Type Window}}">
@@ -562,9 +562,11 @@
                                          unreadable field for unreachable buttons. This row
                                          cannot fit a label, a path and two buttons at 760px in
                                          Consolas; making it do so is a layout change, not a
-                                         column tweak (recorded as UI-30). The ToolTip on the
-                                         box below is the mitigation until then, and
-                                         FieldClippingTests holds it in place. -->
+                                         column tweak (recorded as UI-30). The window's minimum
+                                         width is 810 so Open and Create it stay on screen at
+                                         the 18px font (Q2-18); the ToolTip on the box below
+                                         still covers a squeezed path, and FieldClippingTests
+                                         holds it in place. -->
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
