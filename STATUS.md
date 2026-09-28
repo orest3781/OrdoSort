@@ -46,7 +46,7 @@
 | P2 | QC-28, QC-29 | Box labels: renaming a client onto a peer's new id loses the counter; a lowercase id on disk blocks Save and Print | ✅ Done |
 | P2 | Q2-05, Q2-06, Q2-12, Q2-09 | Tool windows: Clear during an add brings rows back; saved passwords changed mid-unlock re-probe live rows; re-adding during a rename lists a file twice; Page counts drops a walk error | ✅ Done |
 | P2 | Q2-13, Q2-30, Q2-32 | Zip fails whole on one access-denied subfolder; an unexpected unlock failure says nothing; sign-out mid-zip/unlock can leave half-written files | ✅ Done |
-| P2 | FL-08, FL-16, FL-18, FL-19 | File list: no busy sign on a big walk; Clear throws away all removals with no confirm; a cut-off error with no tooltip; drops on the text boxes do nothing | ⬜ Not started |
+| P2 | FL-08, FL-16, FL-18, FL-19 | File list: no busy sign on a big walk; Clear throws away all removals with no confirm; a cut-off error with no tooltip; drops on the text boxes do nothing | ✅ Done |
 | P2 | DW-04 | Releases are unsigned, so the first run shows the SmartScreen warning (needs a code-signing certificate) | 🚫 Blocked |
 | P3 | the other 34 Important rows marked P3 | Small or rare: UI-thread stalls on dead shares, test-guard gaps, polish | ⬜ Not started |
 | Owner | DW-14 | Are the scripts in `docs/legacy-scripts/` still run? If so their logs land in the repo folder, unignored | 🚫 Blocked |
