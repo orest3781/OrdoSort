@@ -178,6 +178,30 @@ public class DebouncedProbeTests
         lock (applied) Assert.Empty(applied);
     }
 
+    /// <summary>DW-25: the disposed check in Trigger and Cancel sat outside
+    /// the lock Dispose takes, so a Dispose on another thread could slip in
+    /// between and leave work armed on a disposed probe. The check and the
+    /// arming now share that lock. The interleaving itself needs a second
+    /// thread at an exact instant; this pins what it must come to: after
+    /// Dispose, Trigger and Cancel do nothing at all.</summary>
+    [Fact]
+    public void AfterDisposeTriggerAndCancelDoNothing()
+    {
+        var scheduler = new ManualWorkScheduler();
+        var time = new ManualTimeProvider();
+        var applied = new List<string>();
+        var probe = new DebouncedProbe<string>(scheduler, uiContext: null, v => { lock (applied) applied.Add(v); }, intervalMs: 300, time: time);
+
+        probe.Dispose();
+        probe.Trigger(() => "after dispose", immediate: true);
+        probe.Trigger(() => "after dispose, debounced");
+        probe.Cancel();
+        time.Advance(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(0, scheduler.PendingCount);
+        lock (applied) Assert.Empty(applied);
+    }
+
     /// <summary>Debounce semantics: rapid re-triggering (the shape of fast
     /// keystrokes) must only ever let the LAST call's work reach the
     /// scheduler — earlier ones are cancelled outright, never merely
