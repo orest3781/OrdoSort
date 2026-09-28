@@ -190,7 +190,8 @@ public class UnlockProbeAgreementTests : IDisposable
 
             var real = Unlock.UnlockPdf(src, "secret", suffix: "_x");
             Assert.Equal("error", real.Status);
-            Assert.Contains("another program", real.Message);
+            // both name the same holder: the probe and the unlock hit the same lock
+            Assert.StartsWith(probe.Message!.Split(" — ")[0] + " — close it there", real.Message);
         }
     }
 }

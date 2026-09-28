@@ -153,8 +153,10 @@ public class UnlockProbeTests : IDisposable
         var src = MakeEncrypted("held.pdf", "secret");
         using (File.Open(src, FileMode.Open, FileAccess.Read, FileShare.None))
         {
+            var me = FileHolders.Of(src).Single(h => h.ProcessId == Environment.ProcessId).Name;
             var r = Unlock.ProbeReadiness(src, new[] { "secret" });
             Assert.Equal("in_use", r.Status);
+            Assert.Equal($"It's open in {me} — close it there and try again.", r.Message);
             Assert.Null(r.MatchedIndex);
             Assert.False(r.ReadyToUnlock);
         }
