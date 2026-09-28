@@ -260,4 +260,74 @@ public class PageCountsViewModelTests : IDisposable
         Assert.Equal("", row.Note);
         Assert.False(row.Pending);
     }
+
+    // ManualWorkScheduler holds each off-thread step until the test releases
+    // it. xUnit's own synchronization context would post the continuations
+    // after the asserts, so each such test clears it first.
+    private static void NoSynchronizationContext() => SynchronizationContext.SetSynchronizationContext(null);
+
+    /// <summary>Q2-10: Save or Copy while rows were still counting wrote
+    /// blank counts and a Total too low, then said "Saved".</summary>
+    [Fact]
+    public void SaveAndCopyWaitUntilEveryRowIsCounted()
+    {
+        NoSynchronizationContext();
+        Touch("a.pdf");
+        Touch("b.pdf");
+        var scheduler = new ManualWorkScheduler();
+        var vm = new PageCountsViewModel(new FakeDialogs(), scheduler, uiContext: null,
+            path => new PageCounts.CountResult(path, 4));
+
+        _ = vm.AddFilesAsync(new[] { _dir });
+        scheduler.Release(0);   // the folder walk; the two counts stay queued
+
+        Assert.Equal(2, vm.Rows.Count);
+        Assert.True(vm.IsCounting);
+        Assert.False(vm.CanExport);
+        Assert.False(vm.SaveCommand.CanExecute(null));
+        Assert.Contains("2 still counting", vm.TotalLine);
+
+        scheduler.ReleaseAll();
+
+        Assert.False(vm.IsCounting);
+        Assert.True(vm.CanExport);
+        Assert.True(vm.SaveCommand.CanExecute(null));
+        Assert.DoesNotContain("counting", vm.TotalLine);
+    }
+
+    /// <summary>Q2-05: Clear while a dropped folder was still being read
+    /// brought the rows back a moment later.</summary>
+    [Fact]
+    public void ClearWhileAFolderIsStillBeingReadKeepsTheListEmpty()
+    {
+        NoSynchronizationContext();
+        Touch("a.pdf");
+        var scheduler = new ManualWorkScheduler();
+        var vm = new PageCountsViewModel(new FakeDialogs(), scheduler, uiContext: null,
+            path => new PageCounts.CountResult(path, 4));
+
+        _ = vm.AddFilesAsync(new[] { _dir });
+        vm.ClearCommand.Execute(null);
+        scheduler.ReleaseAll();
+
+        Assert.Empty(vm.Rows);
+        Assert.Equal("", vm.TotalLine);
+    }
+
+    /// <summary>Q2-09: a folder walk that failed partway (a share dropping)
+    /// gave some rows or none, with nothing saying it stopped.</summary>
+    [Fact]
+    public async Task AFolderWalkThatFailsPartwaySaysSo()
+    {
+        var a = Touch("a.pdf");
+        var vm = new PageCountsViewModel(new FakeDialogs(), new InlineWorkScheduler(), uiContext: null,
+            path => new PageCounts.CountResult(path, 4),
+            expand: _ => new Intake.Expanded(new List<string> { a }, 0,
+                "Couldn't finish reading the dropped items: The network name is no longer available."));
+
+        await vm.AddFilesAsync(new[] { _dir });
+
+        Assert.Single(vm.Rows);
+        Assert.Contains("network name is no longer available", vm.AddNote);
+    }
 }

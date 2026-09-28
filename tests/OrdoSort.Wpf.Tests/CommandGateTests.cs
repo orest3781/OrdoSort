@@ -27,7 +27,10 @@ public class CommandGateTests
         Assert.False(vm.SaveCommand.CanExecute(null),
             "Save was live on an empty list — it opens a save dialog and writes an empty file");
 
-        vm.Rows.Add(new PageCountRow(@"C:\in\a.pdf"));
+        // a counted row: one still counting keeps Save off on purpose (Q2-10)
+        var row = new PageCountRow(@"C:\in\a.pdf");
+        row.Apply(new OrdoSort.Core.PageCounts.CountResult(row.Path, 3));
+        vm.Rows.Add(row);
         Assert.True(vm.SaveCommand.CanExecute(null),
             "Save stayed disabled after a row arrived — the gate was added without wiring the " +
             "RaiseCanExecuteChanged that RelayCommand needs, which is worse than no gate");

@@ -58,6 +58,12 @@ public sealed class PageCountsViewModel : ObservableObject
     private readonly IWorkScheduler _scheduler;
     private readonly SynchronizationContext? _uiContext;
     private readonly Func<string, PageCounts.CountResult> _counter;
+    private readonly Func<IReadOnlyList<string>, Intake.Expanded> _expand;
+
+    // Bumped by Clear. An add that was still reading its folder when the
+    // list was cleared sees a newer value when it resumes and adds nothing:
+    // the user cleared that add too (Q2-05).
+    private int _clears;
     private readonly SemaphoreSlim _countGate = new(MaxConcurrentCounts);
 
     // Cancelled once, from the window's OnClosed — see Cancel()'s own doc
@@ -68,12 +74,14 @@ public sealed class PageCountsViewModel : ObservableObject
     public ObservableCollection<PageCountRow> Rows { get; } = new();
 
     public PageCountsViewModel(IDialogService dialogs, IWorkScheduler? scheduler = null,
-        SynchronizationContext? uiContext = null, Func<string, PageCounts.CountResult>? counter = null)
+        SynchronizationContext? uiContext = null, Func<string, PageCounts.CountResult>? counter = null,
+        Func<IReadOnlyList<string>, Intake.Expanded>? expand = null)
     {
         _dialogs = dialogs;
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _uiContext = uiContext;
         _counter = counter ?? PageCounts.Count;
+        _expand = expand ?? (paths => Intake.Expand(paths, recursive: true, new HashSet<string> { "pdf" }));
 
         // Gated, and the gate is WIRED: RelayCommand has no CommandManager
         // hookup, so a predicate without a matching RaiseCanExecuteChanged
@@ -82,10 +90,11 @@ public sealed class PageCountsViewModel : ObservableObject
         // this depends on, so its own CollectionChanged is the complete
         // trigger. Ungated before this, "Save as .txt…" on an empty list
         // opened a save dialog and wrote an empty file (UI-12).
-        SaveCommand = new RelayCommand(Save, () => Rows.Count > 0);
+        SaveCommand = new RelayCommand(Save, () => CanExport);
         Rows.CollectionChanged += (_, _) => SaveCommand.RaiseCanExecuteChanged();
         ClearCommand = new RelayCommand(() =>
         {
+            _clears++;
             Rows.Clear();
             Status = "";
             AddNote = "";
@@ -125,6 +134,8 @@ public sealed class PageCountsViewModel : ObservableObject
             var line = $"{Rows.Count} PDF{(Rows.Count == 1 ? "" : "s")} · " +
                        $"{pages} page{(pages == 1 ? "" : "s")}";
             if (unreadable > 0) line += $" · {unreadable} unreadable";
+            var counting = Rows.Count(r => r.Pending);
+            if (counting > 0) line += $" · {counting} still counting";
             return line;
         }
     }
@@ -161,6 +172,14 @@ public sealed class PageCountsViewModel : ObservableObject
         }
     }
 
+    /// <summary>True while any row is still being counted.</summary>
+    public bool IsCounting => Rows.Any(r => r.Pending);
+
+    /// <summary>Save and Copy wait for every count (Q2-10): a row still
+    /// counting would go out blank, the Total would be too low, and the
+    /// footer would still say "Saved".</summary>
+    public bool CanExport => Rows.Count > 0 && !IsCounting;
+
     public RelayCommand SaveCommand { get; }
     public RelayCommand ClearCommand { get; }
 
@@ -175,8 +194,9 @@ public sealed class PageCountsViewModel : ObservableObject
     public async Task AddFilesAsync(IEnumerable<string> paths)
     {
         var candidates = paths.ToList();
-        var expanded = await _scheduler.Run(() =>
-            Intake.Expand(candidates, recursive: true, new HashSet<string> { "pdf" }));
+        var clears = _clears;
+        var expanded = await _scheduler.Run(() => _expand(candidates));
+        if (clears != _clears) return;
 
         // Expand did the folder walk and the extension filter; Intake.Add does
         // the dedupe half, so this tool shares the one policy rather than
@@ -194,7 +214,13 @@ public sealed class PageCountsViewModel : ObservableObject
         // "neither a file nor a folder" and has no breakdown to hand on, so
         // both land under WrongType here. That's no worse than what this note
         // said before, which hedged across the same two cases anyway.
-        AddNote = (settled with { WrongType = expanded.Ignored }).Note("PDF");
+        var note = (settled with { WrongType = expanded.Ignored }).Note("PDF");
+        // A walk that stopped partway (a share dropping) still hands back
+        // what it found; say it stopped, or the missing files go unnoticed
+        // (Q2-09).
+        AddNote = expanded.Error.Length == 0 ? note
+            : note.Length == 0 ? expanded.Error
+            : $"{expanded.Error} · {note}";
 
         RaiseTotals();
         if (newRows.Count == 0) return;
@@ -239,6 +265,9 @@ public sealed class PageCountsViewModel : ObservableObject
     {
         Raise(nameof(TotalLine));
         Raise(nameof(OutputText));
+        Raise(nameof(IsCounting));
+        Raise(nameof(CanExport));
+        SaveCommand.RaiseCanExecuteChanged();
     }
 
     /// <summary>Removes exactly the rows the window's grid selection holds.
