@@ -93,13 +93,41 @@ internal sealed partial class ExplorerColumns
         grid.SetValue(InstanceProperty, explorer);
         grid.MinColumnWidth = MinColumnWidth;
         grid.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
-        grid.Loaded += (_, _) => explorer.ApplySaved();
-        grid.Unloaded += (_, _) => explorer.Save();
+        grid.Loaded += (_, _) =>
+        {
+            explorer.ApplySaved();
+            explorer.KeepEmptyTableScrollable(grid, EventArgs.Empty);
+            grid.LayoutUpdated += explorer.KeepEmptyTableScrollable;
+        };
+        grid.Unloaded += (_, _) =>
+        {
+            grid.LayoutUpdated -= explorer.KeepEmptyTableScrollable;
+            explorer.Save();
+        };
         grid.Columns.CollectionChanged += explorer.OnColumnsChanged;
         grid.ColumnReordering += explorer.OnColumnReordering;
         grid.ColumnReordered += (_, _) => explorer.KeepAnchorFirst();
         explorer.WireInput();
         return explorer;
+    }
+
+    /// <summary>An empty table showed no scrollbar for columns past the right
+    /// edge, so they could not be reached: the rows panel does the scrolling
+    /// and, with no rows, reports nothing to scroll. While the table is
+    /// empty the scroller scrolls by pixels instead, over a rows area kept as
+    /// wide as the columns; with rows, the panel scrolls (and virtualizes)
+    /// as before.</summary>
+    private void KeepEmptyTableScrollable(object? sender, EventArgs e)
+    {
+        if (_grid.Template?.FindName("DG_ScrollViewer", _grid) is not ScrollViewer { Content: ItemsPresenter rows } scroller)
+            return;
+        var empty = _grid.Items.Count == 0;
+        var width = empty
+            ? _grid.RowHeaderActualWidth
+              + _grid.Columns.Where(c => c.Visibility == Visibility.Visible).Sum(c => c.ActualWidth)
+            : 0;
+        if (rows.MinWidth != width) rows.MinWidth = width;
+        if (scroller.CanContentScroll == empty) scroller.CanContentScroll = !empty;
     }
 
     /// <summary>Whether a grid attached without its own store remembers its

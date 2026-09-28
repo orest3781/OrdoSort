@@ -471,6 +471,46 @@ public sealed class ExplorerColumnsTests : UiTest, IDisposable
         finally { ExplorerColumns.RememberByDefault = before; }
     });
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void ColumnsPastTheRightEdgeGetAScrollbarEvenWithNoRows(int rowCount) => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(windowWidth: 300, rows: Enumerable.Range(0, rowCount).Select(i => new Row { Name = "a" }).ToArray());
+        try
+        {
+            Settle(bed.Window);
+            var scroller = Ui.Descendants<ScrollViewer>(bed.Grid).First();
+
+            Assert.Equal(Visibility.Visible, scroller.ComputedHorizontalScrollBarVisibility);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    /// <summary>The empty-table scrolling must not outlive the emptiness: a
+    /// table with rows keeps the panel's own scrolling, which is what lets a
+    /// big History build only the rows on screen.</summary>
+    [Fact]
+    public void RowsArrivingPutTheTableBackOnItsOwnScrolling() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(windowWidth: 300);
+        try
+        {
+            Settle(bed.Window);
+            var scroller = Ui.Descendants<ScrollViewer>(bed.Grid).First();
+            Assert.False(scroller.CanContentScroll);
+
+            for (var i = 0; i < 50; i++) bed.Rows.Add(new Row { Name = "row " + i });
+            Settle(bed.Window);
+
+            Assert.True(scroller.CanContentScroll);
+            Assert.Equal(Visibility.Visible, scroller.ComputedHorizontalScrollBarVisibility);
+        }
+        finally { bed.Window.Close(); }
+    });
+
     [Fact]
     public void TheCellPaddingFitUsesIsTheOneTheStyleDraws() => _fx.Invoke(() =>
     {
