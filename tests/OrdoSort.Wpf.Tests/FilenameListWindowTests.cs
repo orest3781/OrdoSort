@@ -147,6 +147,27 @@ public class FilenameListWindowTests : UiTest
         finally { window.Close(); }
     });
 
+    /// <summary>FL-13: removing rows — the curation that makes this more than
+    /// a dir listing — was only on the right-click menu and the Delete key.
+    /// It has a button on the toolbar, next to Restore, whose text says how
+    /// many rows Restore brings back (FL-15).</summary>
+    [Fact]
+    public void RemoveSelectedAndRestoreAreButtonsOnTheToolbar() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
+        var window = OpenOffScreen(vm);
+        try
+        {
+            var buttons = Ui.Descendants<Button>(window);
+            var remove = buttons.Single(b => b.Command == vm.RemoveSelectedCommand);
+            Assert.Equal("Remove selected", remove.Content);
+            var restore = buttons.Single(b => b.Command == vm.RestoreRemovedCommand);
+            Assert.Equal(vm.RestoreLabel, restore.Content);
+        }
+        finally { window.Close(); }
+    });
+
     /// <summary>DW-31 (FL-04's other half): Ctrl+C in the grid must copy the
     /// same text the Copy button does. Nothing tested it, so the branch could
     /// be deleted and Ctrl+C would silently copy nothing.</summary>

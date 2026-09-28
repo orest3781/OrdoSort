@@ -112,7 +112,9 @@
                              VerticalAlignment="Center" Margin="0,4,8,4" />
                 <RadioButton Content="Z to A" GroupName="Order" IsChecked="{Binding Descending}"
                              VerticalAlignment="Center" Margin="0,4,14,4" />
-                <Button Content="Restore removed" Command="{Binding RestoreRemovedCommand}" Margin="0,4" />
+                <!-- On the toolbar, not only behind right-click and Delete (FL-13). -->
+                <Button Content="Remove selected" Command="{Binding RemoveSelectedCommand}" Margin="0,4,6,4" />
+                <Button Content="{Binding RestoreLabel}" Command="{Binding RestoreRemovedCommand}" Margin="0,4" />
             </WrapPanel>
 
             <Grid Grid.Row="2" Style="{StaticResource FieldRow}">
@@ -189,7 +191,7 @@
                             <MenuItem Header="Undo last removal" Command="{Binding UndoRemovalCommand}"
                                       InputGestureText="Ctrl+Z" />
                             <Separator />
-                            <MenuItem Header="Restore removed"  Command="{Binding RestoreRemovedCommand}" />
+                            <MenuItem Header="{Binding RestoreLabel}" Command="{Binding RestoreRemovedCommand}" />
                         </ContextMenu>
                     </DataGrid.ContextMenu>
                     <!-- Rows is ObservableCollection<FilenameList.FileRow>, so each

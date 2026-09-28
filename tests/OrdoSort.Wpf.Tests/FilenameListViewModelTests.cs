@@ -584,6 +584,28 @@ public class FilenameListViewModelTests : IDisposable
         Assert.Equal(2, vm.Rows.Count);
     }
 
+    /// <summary>FL-15: "Restore removed" never said how many rows it would
+    /// bring back; the count was only in the footer. The button names it.</summary>
+    [Fact]
+    public void RestoreSaysHowManyRowsItWillBringBack()
+    {
+        Touch("alpha.pdf");
+        Touch("beta.pdf");
+        Touch("gamma.pdf");
+        var vm = MakeVm(new FakeDialogs());
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 3, "the add should settle first");
+        Assert.Equal("Restore removed", vm.RestoreLabel);
+        var notified = new List<string>();
+        vm.PropertyChanged += (_, e) => notified.Add(e.PropertyName ?? "");
+
+        vm.SelectedPaths = new[] { Path.Combine(_dir, "alpha.pdf"), Path.Combine(_dir, "beta.pdf") };
+        vm.RemoveSelectedCommand.Execute(null);
+
+        Assert.Equal("Restore 2 removed", vm.RestoreLabel);
+        Assert.Contains(nameof(vm.RestoreLabel), notified);
+    }
+
     /// <summary>Undo with nothing removed must be a no-op, not a crash — the
     /// keystroke is always live, whatever state the list is in.</summary>
     [Fact]

@@ -89,6 +89,10 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
 
     public int RemovedCount => _allRows.Count(r => _excluded.Contains(r.FullPath));
 
+    /// <summary>The Restore button's text, with the number it brings back
+    /// (FL-15) — the same number the counts line shows as "· N removed".</summary>
+    public string RestoreLabel => RemovedCount > 0 ? $"Restore {RemovedCount} removed" : "Restore removed";
+
     /// <summary>Pushed in by the window on SelectionChanged — DataGrid's
     /// SelectedItems is not bindable.</summary>
     private IReadOnlyList<string> _selectedPaths = Array.Empty<string>();
@@ -543,6 +547,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         Raise(nameof(OutputCsv));
         Raise(nameof(CopyText));
         Raise(nameof(RemovedCount));
+        Raise(nameof(RestoreLabel));
         RefreshCommandStates();
 
         // Only ever counts what is VISIBLE and not yet known, so narrowing with
