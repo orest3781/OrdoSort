@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Principal;
 using OrdoSort.Core;
 
 namespace OrdoSort.Core.Tests;
@@ -204,8 +205,7 @@ public class FolderMonitorTests : IDisposable
             // Elevated/backup-privilege sessions (an admin console, some CI
             // runners) can bypass a deny ACE outright. If enumerating the
             // denied folder still succeeds here, this fixture can't
-            // reproduce the abort on this machine — a vacuous pass beats a
-            // false failure.
+            // reproduce the abort on this machine.
             bool bypassed;
             try
             {
@@ -216,7 +216,17 @@ public class FolderMonitorTests : IDisposable
             {
                 bypassed = false;
             }
-            if (bypassed) return;
+            // Q2-45: this used to `return` on ANY bypass, so a deny that never
+            // took hold (icacls failing, a changed user name) passed with zero
+            // assertions. Only an elevated run may skip; anywhere else a
+            // bypass means the fixture is broken, and that must show.
+            if (bypassed)
+            {
+                Assert.True(RunningElevated(),
+                    $"the deny ACE on {deniedDir} did not hold, and this run is not elevated, " +
+                    "so the fixture proves nothing: check the icacls call");
+                return;
+            }
 
             var s = FolderMonitor.Status(wf, new[] { "URGENT" });
 
@@ -239,7 +249,14 @@ public class FolderMonitorTests : IDisposable
         foreach (var a in args) psi.ArgumentList.Add(a);
         using var p = Process.Start(psi)!;
         p.WaitForExit();
+        Assert.True(p.ExitCode == 0, $"icacls {string.Join(' ', args)} failed with exit code {p.ExitCode}");
     }
+
+    /// <summary>True when this process holds an elevated administrator token,
+    /// the one known reason a deny ACE does not stop the test's own user.</summary>
+    private static bool RunningElevated() =>
+        OperatingSystem.IsWindows()
+        && new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
 
     [Fact]
     public void AllReturnsOnePerFolderInOrder()
