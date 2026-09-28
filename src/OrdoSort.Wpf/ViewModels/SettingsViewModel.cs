@@ -603,6 +603,10 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     // substitutable.
     private readonly Func<WatchFolder, IEnumerable<string>, FolderMonitor.FolderStatus> _folderStatus;
 
+    // Why files can't be written and deleted in a folder ("" when they can):
+    // the inbox and set-aside folders get the write check destinations get.
+    private readonly Func<string, string> _writeProblem;
+
     // Off-thread + debounced, mirroring ShellViewModel's own gather
     // (thread pool) → apply (UI) shape: _scheduler runs each probe off the
     // UI thread, _uiContext marshals the result back since a bare
@@ -625,7 +629,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null,
         int probeDelayMs = 300,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        Func<string, string>? writeProblem = null)
     {
         _original = current;
         _dialogs = dialogs;
@@ -635,6 +640,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         _fileExists = fileExists ?? File.Exists;
         // Resolve relative routes beside the config file, as a commit will.
         _validateRoute = validateRoute ?? (r => Config.ValidateRoute(r, cfgPath));
+        _writeProblem = writeProblem ?? Config.WriteProblem;
         _folderStatus = folderStatus ?? FolderMonitor.Status;
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _uiContext = uiContext;
@@ -2355,6 +2361,10 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             warnings.Add("No inbox folder is set — there will be nothing to process.");
         else if (!_directoryExists(checks.InboxPath))
             warnings.Add($"The inbox folder doesn't exist: {checks.InboxPath}");
+        // Filing moves documents OUT of the inbox, which deletes there: a
+        // read-only inbox failed every filing with "access denied" (DW-08).
+        else if (_writeProblem(checks.InboxPath) is { Length: > 0 } inboxProblem)
+            warnings.Add($"Documents can't be moved out of the inbox folder ({checks.InboxPath}): {inboxProblem}");
         if (checks.DeferredPath.Length == 0)
         {
             if (checks.WarnBlankDeferred)
@@ -2362,6 +2372,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         }
         else if (!_directoryExists(checks.DeferredPath))
             warnings.Add($"The set-aside folder doesn't exist: {checks.DeferredPath}");
+        else if (_writeProblem(checks.DeferredPath) is { Length: > 0 } deferredProblem)
+            warnings.Add($"Documents can't be put in the set-aside folder ({checks.DeferredPath}): {deferredProblem}");
         foreach (var (label, route) in checks.Routes)
         {
             var problem = _validateRoute(route);

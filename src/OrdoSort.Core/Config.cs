@@ -901,9 +901,16 @@ public sealed class Config
     /// <summary>Empty string if we can create files in dest, else a readable
     /// error. Actually creates and removes a probe file — os.access lies on
     /// Windows and over SMB.</summary>
-    public static string ProbeWritable(string dest)
+    public static string ProbeWritable(string dest) =>
+        WriteProblem(dest) is { Length: > 0 } problem ? $"destination not writable: {problem}" : "";
+
+    /// <summary>Empty string if files can be created and deleted in
+    /// <paramref name="folder"/>, else the reason they can't. The same probe
+    /// file <see cref="ProbeWritable"/> uses: a file is written and removed,
+    /// because asking for the permissions lies on Windows and over SMB.</summary>
+    public static string WriteProblem(string folder)
     {
-        var probe = System.IO.Path.Combine(dest, $".ordosort_probe_{Guid.NewGuid():N}");
+        var probe = System.IO.Path.Combine(folder, $".ordosort_probe_{Guid.NewGuid():N}");
         try
         {
             File.WriteAllBytes(probe, Array.Empty<byte>());
@@ -912,7 +919,7 @@ public sealed class Config
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return $"destination not writable: {ex.Message}";
+            return ex.Message;
         }
     }
 

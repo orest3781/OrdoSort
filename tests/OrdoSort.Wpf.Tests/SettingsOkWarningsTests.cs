@@ -12,7 +12,7 @@ public class SettingsOkWarningsTests : IDisposable
 
     public void Dispose() => _dir.Dispose();
 
-    private SettingsViewModel Build(Action<Config> tweak)
+    private SettingsViewModel Build(Action<Config> tweak, Func<string, string>? writeProblem = null)
     {
         var cfg = new Config
         {
@@ -22,7 +22,31 @@ public class SettingsOkWarningsTests : IDisposable
         };
         tweak(cfg);
         return new SettingsViewModel(cfg, new FakeDialogs(), cfgPath: Path.Combine(_dir.Path, "config.json"),
-            validateRoute: _ => "", scheduler: new InlineWorkScheduler(), time: new ManualTimeProvider());
+            validateRoute: _ => "", writeProblem: writeProblem ?? (_ => ""),
+            scheduler: new InlineWorkScheduler(), time: new ManualTimeProvider());
+    }
+
+    /// <summary>DW-08: only destinations were checked for write access at
+    /// OK. A set-aside folder or inbox the station can read but not change
+    /// passed, and then every Skip, or every filing (a move out of the inbox
+    /// deletes there), failed with "access denied". Both are now checked the
+    /// way destinations are.</summary>
+    [Fact]
+    public void ASetAsideFolderThatCanNotBeWrittenIsWarnedAbout()
+    {
+        var setAside = _dir.Dir("set-aside");
+        using var vm = Build(cfg => { }, writeProblem: path => path == setAside ? "Access is denied." : "");
+
+        Assert.Contains(vm.Warnings(), w => w.Contains("set-aside folder") && w.Contains("Access is denied."));
+    }
+
+    [Fact]
+    public void AnInboxThatCanNotBeChangedIsWarnedAbout()
+    {
+        var inbox = _dir.Dir("inbox");
+        using var vm = Build(cfg => { }, writeProblem: path => path == inbox ? "Access is denied." : "");
+
+        Assert.Contains(vm.Warnings(), w => w.Contains("inbox") && w.Contains("Access is denied."));
     }
 
     /// <summary>Q2-41: a monitored folder with no path passed OK without a
