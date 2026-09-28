@@ -567,7 +567,8 @@ public class UnlockViewModelTests : IDisposable
         // PersistingSavedPasswordsMigratesLegacyProtectedEntriesToPlaintext's
         // own comment about seeding after constructon).
         _cfg.SavedPasswords.Add(new SavedPassword { Label = "X", Password = "pw123" });
-        var vm = Vm();
+        // Remove asks first (UX-02); a yes-answering dialog service lets it through
+        var vm = new UnlockViewModel(_cfg, () => { _saves++; return true; }, dialogs: new FakeDialogs());
         vm.SelectedSavedEntry = vm.Saved[0];
         Assert.True(vm.RemoveSavedCommand.CanExecute(null));
 

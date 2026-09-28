@@ -139,7 +139,8 @@ public class UnlockReadinessProbeTests : IDisposable
         var cfg = new Config();
         cfg.SavedPasswords.Add(new SavedPassword { Label = "X", Password = PasswordVault.Protect("secret") });
         var file = Touch("f.pdf");
-        var vm = new UnlockViewModel(cfg, () => true, probe: (path, candidates) =>
+        // Remove asks first (UX-02); a yes-answering dialog service lets it through
+        var vm = new UnlockViewModel(cfg, () => true, dialogs: new FakeDialogs(), probe: (path, candidates) =>
             candidates.Count > 0
                 ? new Unlock.ProbeResult("ready", path, MatchedIndex: 0, Message: "ok")
                 : new Unlock.ProbeResult("needs_password", path, Message: "none saved"));
