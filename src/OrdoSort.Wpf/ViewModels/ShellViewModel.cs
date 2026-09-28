@@ -631,6 +631,16 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
                 ApplySnapshot(snap, showErrors);
             } while (_refreshPending);
         }
+        catch (Exception ex)
+        {
+            // Every caller discards this Task, so a fault past the scanners'
+            // own filters used to vanish, unlogged (Q2-27). A note, not a
+            // dialog: the watcher and the poll run this again, and a fault
+            // that persists would otherwise pop a dialog every few seconds.
+            UnexpectedError?.Invoke(ex);
+            if (!_disposed)
+                ShowStatusNote($"Couldn't check the folders: {ex.Message} — details in {App.CrashLogPlace}.");
+        }
         finally { _refreshBusy = false; }
     }
 

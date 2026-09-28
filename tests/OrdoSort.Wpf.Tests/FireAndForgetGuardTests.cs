@@ -132,4 +132,30 @@ public class FireAndForgetGuardTests : IDisposable
         }
         finally { shell.Dispose(); watch.Dispose(); }
     }
+
+    /// <summary>Q2-27: the folder refresh (Rescan, the folder watcher, the
+    /// tile-visibility switch) is also started as <c>_ = …</c>, and it had
+    /// no catch. Anything past the scanners' own narrow filters vanished:
+    /// nothing logged, and the dashboard just stopped changing. It is now
+    /// logged and the status line says the check failed. No dialog: the
+    /// watcher and the poll re-run it, and a persistent fault would pop one
+    /// every few seconds.</summary>
+    [Fact]
+    public void AFolderRefreshFailureIsLoggedAndShownInsteadOfVanishing()
+    {
+        var dialogs = new FakeDialogs();
+        var watch = new FolderWatchService(debounceMs: 600_000, pollMs: 600_000);
+        var shell = NewShell(dialogs, watch);
+        Exception? logged = null;
+        shell.UnexpectedError += ex => logged = ex;
+        try
+        {
+            shell.Rescan();
+
+            Assert.IsType<UnauthorizedAccessException>(logged);
+            Assert.Contains("Couldn't check the folders", shell.StatusLine);
+            Assert.Empty(dialogs.Warnings);
+        }
+        finally { shell.Dispose(); watch.Dispose(); }
+    }
 }
