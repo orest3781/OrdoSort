@@ -877,7 +877,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             var byTitle = new Dictionary<string, TileGroupViewModel>(StringComparer.CurrentCultureIgnoreCase);
             foreach (var s in statuses)
             {
-                var tile = new TileViewModel(s, p);
+                var tile = new TileViewModel(s, p, OpenFolder);
                 Tiles.Add(tile);
                 var title = string.IsNullOrWhiteSpace(s.Section) ? defaultTitle : s.Section.Trim();
                 if (!byTitle.TryGetValue(title, out var group))
@@ -2385,11 +2385,38 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         OpenFolder(ResolveFolderSetting(value, _cfgPath));
     }
 
-    internal static void OpenFolder(string folder)
+    /// <summary>Shows a folder in Explorer. Settable only by tests, which
+    /// must not open windows.</summary>
+    internal Action<string> LaunchFolder { get; set; } = folder =>
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(folder) { UseShellExecute = true });
+
+    /// <summary>The check and the launch both run off the UI thread: the
+    /// inbox and set-aside folders are the share paths most likely to be
+    /// dead, and a dead share held the check for as long as the network took
+    /// to give up, freezing the window on an everyday click (Q2-24). A folder
+    /// that can't be opened used to do nothing; the status line says so.</summary>
+    internal void OpenFolder(string folder) => _ = OpenFolderAsync(folder);
+
+    private async Task OpenFolderAsync(string folder)
     {
-        if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(folder)
-            { UseShellExecute = true });
+        if (string.IsNullOrWhiteSpace(folder)) return;
+        string problem;
+        try
+        {
+            problem = await _scheduler.Run(() =>
+            {
+                if (!Directory.Exists(folder)) return "it " + Config.MissingFolder(folder);
+                LaunchFolder(folder);
+                return "";
+            });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException
+                                       or UnauthorizedAccessException or InvalidOperationException)
+        {
+            problem = ex.Message;
+        }
+        if (problem.Length > 0 && !_disposed)
+            ShowStatusNote($"Can't open the folder — {problem}");
     }
 
     /// <summary>Run the daily history-DB backup and report whether it

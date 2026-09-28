@@ -33,7 +33,9 @@ public sealed class TileViewModel : ObservableObject
     private Rgb _fore;
     public Rgb Fore { get => _fore; private set => Set(ref _fore, value); }
 
-    public TileViewModel(FolderMonitor.FolderStatus s, ThemePalette palette)
+    /// <param name="openFolder">Opens the tile's folder; the dashboard's,
+    /// which checks and launches off the UI thread.</param>
+    public TileViewModel(FolderMonitor.FolderStatus s, ThemePalette palette, Action<string> openFolder)
     {
         Label = s.Label;
         Path = s.Path;
@@ -47,7 +49,7 @@ public sealed class TileViewModel : ObservableObject
             : "";
         Tooltip = BuildTip(s);
         _baseBack = ThemePalette.ParseColor(s.Color) ?? palette.TileDefaultBg;
-        OpenCommand = new RelayCommand(() => ShellViewModel.OpenFolder(s.Path));
+        OpenCommand = new RelayCommand(() => openFolder(s.Path));
         ApplyFlash(flashOn: false, flashAlerts: true, palette);
     }
 
