@@ -285,6 +285,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
             SelectedPaths = Array.Empty<string>();
             Reproject();
         }, () => _selectedPaths.Count > 0);
+        NoMatchesActionCommand = new RelayCommand(RunNoMatchesAction);
         UndoRemovalCommand = new RelayCommand(() =>
         {
             if (_removalBatches.Count == 0) return;
@@ -394,6 +395,68 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     /// folder that turned out to hold no files. See <see cref="IsEmpty"/>.</summary>
     public bool NoMatches => Rows.Count == 0 && _sources.Count > 0;
 
+    /// <summary>Why <see cref="NoMatches"/> shows nothing, most specific
+    /// first, so the empty view can name the cause and offer the one click
+    /// that undoes it (FL-23).</summary>
+    private enum EmptyCause { None, Reading, Find, Removed, Types, NoFilesAtTop, NoFiles }
+
+    private EmptyCause CurrentEmptyCause()
+    {
+        if (!NoMatches) return EmptyCause.None;
+        if (IsListing) return EmptyCause.Reading;
+        // Some rows survive the removals, so the Find box hid them.
+        if (NameFilter.Trim().Length > 0 && RemovedCount < _allRows.Count) return EmptyCause.Find;
+        if (_allRows.Count > 0) return EmptyCause.Removed;
+        if (ExtensionFilter.Trim().Length > 0) return EmptyCause.Types;
+        return IncludeSubfolders ? EmptyCause.NoFiles : EmptyCause.NoFilesAtTop;
+    }
+
+    /// <summary>The empty view's sentence: what is hiding the rows.</summary>
+    public string NoMatchesMessage => CurrentEmptyCause() switch
+    {
+        EmptyCause.Reading => "Reading the folders…",
+        EmptyCause.Find => $"No file matches “{NameFilter.Trim()}”.",
+        EmptyCause.Removed => "Every file here has been removed from the list.",
+        EmptyCause.Types => $"No files of the types “{ExtensionFilter.Trim()}”.",
+        EmptyCause.NoFilesAtTop => "No files at the top of these folders.",
+        EmptyCause.NoFiles => "These folders hold no files.",
+        _ => "",
+    };
+
+    /// <summary>The empty view's button text; empty when there is no one-click
+    /// way out.</summary>
+    public string NoMatchesActionLabel => CurrentEmptyCause() switch
+    {
+        EmptyCause.Find => "Clear Find",
+        EmptyCause.Removed => RestoreLabel,
+        EmptyCause.Types => "Show all types",
+        EmptyCause.NoFilesAtTop => "Include subfolders",
+        _ => "",
+    };
+
+    public bool HasNoMatchesAction => NoMatchesActionLabel.Length > 0;
+
+    /// <summary>Does what <see cref="NoMatchesActionLabel"/> says.</summary>
+    public RelayCommand NoMatchesActionCommand { get; }
+
+    private void RunNoMatchesAction()
+    {
+        switch (CurrentEmptyCause())
+        {
+            case EmptyCause.Find: NameFilter = ""; break;
+            case EmptyCause.Removed: RestoreRemovedCommand.Execute(null); break;
+            case EmptyCause.Types: ExtensionFilter = ""; break;
+            case EmptyCause.NoFilesAtTop: IncludeSubfolders = true; break;
+        }
+    }
+
+    private void RaiseEmptyView()
+    {
+        Raise(nameof(NoMatchesMessage));
+        Raise(nameof(NoMatchesActionLabel));
+        Raise(nameof(HasNoMatchesAction));
+    }
+
     private string _status = "";
     public string Status { get => _status; private set => Set(ref _status, value); }
 
@@ -479,6 +542,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         {
             if (!Set(ref _isListing, value)) return;
             CountsLine = _sources.Count == 0 ? "" : value ? ReadingLine : FormatCounts();
+            RaiseEmptyView();
         }
     }
 
@@ -554,6 +618,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         CountsLine = _sources.Count == 0 ? "" : IsListing ? ReadingLine : FormatCounts();
         Raise(nameof(IsEmpty));
         Raise(nameof(NoMatches));
+        RaiseEmptyView();
         Raise(nameof(OutputText));
         Raise(nameof(OutputCsv));
         Raise(nameof(CopyText));

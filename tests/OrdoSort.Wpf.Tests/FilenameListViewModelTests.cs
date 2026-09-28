@@ -695,6 +695,59 @@ public class FilenameListViewModelTests : IDisposable
         Assert.Equal("invoice.pdf", Assert.Single(vm.Rows).Name);
     }
 
+    /// <summary>FL-23: when Find or the removals hid every row, the window
+    /// said "Nothing to show — filtered out, removed, or the folder was
+    /// empty" and offered no way out. It now names the cause and offers the
+    /// one click that undoes it.</summary>
+    [Fact]
+    public void AnEmptyViewNamesItsCauseAndOffersTheWayOut()
+    {
+        Touch("invoice.pdf");
+        var vm = MakeVm(new FakeDialogs());
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => vm.Rows.Count == 1 && !vm.IsListing, "the add should settle first");
+        Assert.False(vm.HasNoMatchesAction);
+
+        vm.NameFilter = "draft";
+
+        Assert.Contains("draft", vm.NoMatchesMessage);
+        Assert.Equal("Clear Find", vm.NoMatchesActionLabel);
+        vm.NoMatchesActionCommand.Execute(null);
+        Assert.Equal("", vm.NameFilter);
+        Assert.Single(vm.Rows);
+
+        vm.SelectedPaths = new[] { vm.Rows[0].FullPath };
+        vm.RemoveSelectedCommand.Execute(null);
+
+        Assert.Contains("removed", vm.NoMatchesMessage);
+        Assert.Equal("Restore 1 removed", vm.NoMatchesActionLabel);
+        vm.NoMatchesActionCommand.Execute(null);
+        Assert.Single(vm.Rows);
+    }
+
+    /// <summary>The other two dead ends from FL-23: a type filter that
+    /// matches nothing, and a folder whose files are all in subfolders.</summary>
+    [Fact]
+    public void AnEmptyViewFromTheTypeFilterOrSubfoldersOffsTheMatchingFix()
+    {
+        Touch(Path.Combine("sub", "nested.pdf"));
+        var vm = MakeVm(new FakeDialogs());
+        vm.AddPaths(new[] { _dir });
+        WaitFor(() => !vm.IsListing && vm.NoMatches, "the add should settle first");
+
+        Assert.Equal("Include subfolders", vm.NoMatchesActionLabel);
+        vm.NoMatchesActionCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 1, "the subfolder's file should be listed");
+
+        vm.ExtensionFilter = "docx";
+        WaitFor(() => vm.Rows.Count == 0 && !vm.IsListing, "the type filter should hide it");
+
+        Assert.Contains("docx", vm.NoMatchesMessage);
+        Assert.Equal("Show all types", vm.NoMatchesActionLabel);
+        vm.NoMatchesActionCommand.Execute(null);
+        WaitFor(() => vm.Rows.Count == 1, "clearing the type box should list it again");
+    }
+
     /// <summary>FL-15: "Restore removed" never said how many rows it would
     /// bring back; the count was only in the footer. The button names it.</summary>
     [Fact]

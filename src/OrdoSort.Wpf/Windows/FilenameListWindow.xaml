@@ -329,14 +329,16 @@
                         <Binding Path="IsEmpty" Converter="{StaticResource BoolToVis}" />
                     </TextBlock.Visibility>
                 </TextBlock>
-                <TextBlock x:Name="NoMatchesText"
-                           Text="Nothing to show — filtered out, removed, or the folder was empty."
-                           Style="{StaticResource EmptyStateText}"
-                           IsHitTestVisible="False">
-                    <TextBlock.Visibility>
-                        <Binding Path="NoMatches" Converter="{StaticResource BoolToVis}" />
-                    </TextBlock.Visibility>
-                </TextBlock>
+                <!-- Names what is hiding the rows and offers the click that
+                     undoes it: Clear Find, Restore, Show all types (FL-23). -->
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top"
+                            Visibility="{Binding NoMatches, Converter={StaticResource BoolToVis}}">
+                    <TextBlock x:Name="NoMatchesText" Text="{Binding NoMatchesMessage}"
+                               Style="{StaticResource EmptyStateText}" />
+                    <Button Content="{Binding NoMatchesActionLabel}" Command="{Binding NoMatchesActionCommand}"
+                            HorizontalAlignment="Center"
+                            Visibility="{Binding HasNoMatchesAction, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
             </Grid>
         </Grid>
     </DockPanel>

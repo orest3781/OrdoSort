@@ -170,6 +170,25 @@ public class FilenameListWindowTests : UiTest
         finally { window.Close(); }
     });
 
+    /// <summary>FL-23: the empty view shows the view model's cause and its
+    /// way-out button. A mistyped binding here fails silently, so this checks
+    /// both are wired.</summary>
+    [Fact]
+    public void TheEmptyViewShowsTheCauseAndItsWayOut() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var vm = new FilenameListViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
+        var window = OpenOffScreen(vm);
+        try
+        {
+            var message = (TextBlock)window.FindName("NoMatchesText")!;
+            Assert.Equal(nameof(vm.NoMatchesMessage),
+                System.Windows.Data.BindingOperations.GetBinding(message, TextBlock.TextProperty)?.Path.Path);
+            Assert.Single(Ui.Descendants<Button>(window), b => b.Command == vm.NoMatchesActionCommand);
+        }
+        finally { window.Close(); }
+    });
+
     /// <summary>DW-31 (FL-04's other half): Ctrl+C in the grid must copy the
     /// same text the Copy button does. Nothing tested it, so the branch could
     /// be deleted and Ctrl+C would silently copy nothing.</summary>
