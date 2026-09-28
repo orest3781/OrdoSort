@@ -311,6 +311,15 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // the window is gone (work that outlived it, e.g. a start-up still
         // running when the dashboard closed): crash.log has it, no dialog
         if (_disposed) return;
+        // A vanished document never moved: "filed"/"moved" would send the
+        // user looking for a copy that doesn't exist (DW-16).
+        if (ex.Vanished)
+        {
+            _dialogs.Warn(ex.Message, "OrdoSort — gone, and not recorded");
+            ShowStatusNote($"{Path.GetFileName(ex.NewPath)} was gone from the inbox, and the " +
+                           "history database didn't record that — see the warning.");
+            return;
+        }
         _dialogs.Warn(ex.Message, title);
         ShowStatusNote($"{Path.GetFileName(ex.NewPath)} moved, but the history " +
                        "database didn't record it — see the warning.");

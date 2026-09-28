@@ -392,6 +392,14 @@ public sealed class AuditError : Exception
     public AuditError(string newPath, string message) : base(message) =>
         NewPath = newPath;
 
+    internal AuditError(string newPath, string message, bool vanished) : this(newPath, message) =>
+        Vanished = vanished;
+
     /// <summary>Where the document is now.</summary>
     public string NewPath { get; }
+
+    /// <summary>Nothing moved: the document was already gone from the inbox,
+    /// and <see cref="NewPath"/> is where it used to be. Only recording that
+    /// failed (DW-16).</summary>
+    public bool Vanished { get; }
 }

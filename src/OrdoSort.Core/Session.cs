@@ -251,6 +251,6 @@ public sealed class Session
             throw new AuditError(src,
                 $"{Path.GetFileName(src)} was gone from the inbox before it " +
                 "could be filed, and the history database could not record " +
-                "that either:\n\n" + failure);
+                "that either:\n\n" + failure, vanished: true);
     }
 }
