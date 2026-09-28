@@ -86,4 +86,25 @@ public class SettingsOkWarningsTests : IDisposable
 
         Assert.DoesNotContain(vm.Warnings(), w => w.Contains("same name"));
     }
+
+    /// <summary>DW-41: every other file setting is checked at OK, but a
+    /// custom sound was not. A moved or deleted .wav saved silently, and the
+    /// app then played its own sound instead, with nothing saying why.</summary>
+    [Fact]
+    public void ACustomSoundFileThatIsGoneIsWarnedAbout()
+    {
+        var gone = Path.Combine(_dir.Path, "ding.wav");
+        using var vm = Build(cfg => cfg.Sounds.NewAlert = gone);
+
+        Assert.Contains(vm.Warnings(), w => w.Contains("New alert") && w.Contains(gone));
+    }
+
+    [Fact]
+    public void ACustomSoundFileThatIsThereIsNotWarnedAbout()
+    {
+        var there = _dir.File("ding.wav");
+        using var vm = Build(cfg => cfg.Sounds.NewAlert = there);
+
+        Assert.DoesNotContain(vm.Warnings(), w => w.Contains("sound"));
+    }
 }

@@ -2307,6 +2307,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         string InboxPath, string DeferredPath, bool WarnBlankDeferred,
         IReadOnlyList<(string Label, Route Route)> Routes,
         IReadOnlyList<(string Label, string Path)> WatchFolders,
+        IReadOnlyList<(string Name, string Path)> SoundFiles,
         IReadOnlyList<string> EditorWarnings);
 
     private FolderChecks FolderChecksNow() => new(
@@ -2316,6 +2317,9 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         Routes.Select(r => (r.Label.Trim(), r.ToRoute())).ToList(),
         WatchFolders.Where(w => w.Path.Trim().Length > 0)
             .Select(w => (w.Label.Trim(), ResolveFolderPath(w.Path.Trim()))).ToList(),
+        new[] { NewAlertSound, FiledSound, SetAsideSound, ErrorSound }
+            .Where(s => s.ShowCustom && s.Spec.Length > 0)
+            .Select(s => (s.Name, s.Spec)).ToList(),
         WatchFolderWarnings());
 
     /// <summary>A monitored folder with no path became a tile that only
@@ -2367,6 +2371,13 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         {
             if (!_directoryExists(path))
                 warnings.Add($"\"{label}\": folder doesn't exist: {path}");
+        }
+        // Every other file setting is checked; a moved .wav saved silently
+        // and the built-in sound played instead, unexplained (DW-41).
+        foreach (var (name, path) in checks.SoundFiles)
+        {
+            if (!_fileExists(path))
+                warnings.Add($"The \"{name}\" sound file doesn't exist: {path} — OrdoSort's own sound will play instead.");
         }
         warnings.AddRange(checks.EditorWarnings);
         return warnings;
