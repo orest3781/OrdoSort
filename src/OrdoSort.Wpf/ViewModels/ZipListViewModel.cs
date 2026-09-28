@@ -400,6 +400,9 @@ public abstract class ZipListViewModel : ObservableObject
         var candidates = paths.ToList();
         var already = Rows.Select(r => r.Path).ToList();
         var extensions = Extensions;
+        // Clear cancels this token and hands out a new one; an add that was
+        // still being checked when the list was cleared adds nothing (Q2-05).
+        var probeToken = _probeCts.Token;
 
         var (offThread, kinds) = await Scheduler.Run(() =>
         {
@@ -410,6 +413,8 @@ public abstract class ZipListViewModel : ObservableObject
                 p => p, ZipItemRow.KindOf, StringComparer.OrdinalIgnoreCase);
             return (taken, kind);
         });
+
+        if (probeToken.IsCancellationRequested) return;
 
         // Re-checked against the LIVE list, not the snapshot taken before the
         // await — otherwise a second drop landing mid-await duplicates rows.
@@ -428,7 +433,7 @@ public abstract class ZipListViewModel : ObservableObject
             AlreadyListed = offThread.AlreadyListed + settled.AlreadyListed,
         }).Note(IntakeNoun);
 
-        await ProbeRowsAsync(added, _probeCts.Token);
+        await ProbeRowsAsync(added, probeToken);
     }
 
     /// <summary>Removes exactly the rows the window's grid selection holds.

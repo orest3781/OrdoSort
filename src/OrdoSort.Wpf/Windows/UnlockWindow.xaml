@@ -37,7 +37,8 @@
                         <TextBlock Text="Unlock" Style="{StaticResource PrimaryButtonLabel}" />
                     </StackPanel>
                 </Button>
-                <Button Content="Manage saved…" Click="OnManageSaved" Padding="8,4" Margin="0,0,8,0" />
+                <Button Content="Manage saved…" Click="OnManageSaved" Padding="8,4" Margin="0,0,8,0"
+                        IsEnabled="{Binding IsIdle}" />
                 <!-- the batch's brake: files already done stay done, the rest
                      report cancelled instead of running on unstoppably.
                      LAST in this row on purpose — it is the only child here

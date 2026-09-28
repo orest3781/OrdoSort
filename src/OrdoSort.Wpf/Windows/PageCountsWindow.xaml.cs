@@ -51,8 +51,10 @@ public partial class PageCountsWindow : Window
     // can't safely touch.
     private void OnCopy(object sender, RoutedEventArgs e)
     {
+        // Off while rows are still counting (Q2-10) or the list is empty
+        // (Clipboard.SetText throws on ""); the button follows CanExport too.
+        if (!_vm.CanExport) return;
         var text = _vm.OutputText;
-        if (text.Length == 0) return;   // nothing listed yet — Clipboard.SetText throws on ""
         try
         {
             Clipboard.SetText(text);

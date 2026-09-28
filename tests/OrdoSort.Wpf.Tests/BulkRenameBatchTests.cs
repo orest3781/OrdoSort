@@ -322,6 +322,46 @@ public class BulkRenameBatchTests : IDisposable
         Assert.True(vm.IsIdle);
     }
 
+    /// <summary>Q2-05 for Bulk rename: Clear while a drop was still being
+    /// checked off-thread brought the files back a moment later.</summary>
+    [Fact]
+    public async Task ClearWhileADropIsStillBeingCheckedKeepsTheListEmpty()
+    {
+        var scheduler = new QueuedWorkScheduler();
+        var vm = new BulkRenameViewModel(scheduler: scheduler, probeDelayMs: 0);
+
+        var adding = vm.AddFilesAsync(new[] { Touch("a.pdf") });   // the existence check is queued
+        vm.ClearCommand.Execute(null);
+        scheduler.ReleaseNext("the existence check");
+        await adding;
+        scheduler.Quiesce();
+
+        Assert.Empty(vm.Preview);
+    }
+
+    /// <summary>Q2-12: files dropped again while a batch ran were added under
+    /// their old names, and the batch's end then renamed the list entry, so
+    /// one file showed twice and the next Rename failed on the duplicate.
+    /// An add during a batch is now refused, and says why.</summary>
+    [Fact]
+    public async Task AnAddDuringABatchIsRefusedAndSaysWhy()
+    {
+        var (vm, scheduler) = Batch("a.pdf");
+        var a = Path.Combine(_dir, "a.pdf");
+
+        vm.RenameCommand.Execute(null);   // dispatched, not yet run
+        var adding = vm.AddFilesAsync(new[] { a });
+        scheduler.Settle(() => !vm.IsBusy, "the batch should run to the end");
+        scheduler.Quiesce();   // anything the add itself queued
+        await adding;
+
+        Assert.Contains("rename to finish", vm.AddNote);
+        scheduler.Settle(() => vm.Preview.Any(r => r.Current == "NEW-a.pdf"),
+            "the preview should rebuild on the renamed file");
+        scheduler.Quiesce();
+        Assert.Single(vm.Preview);
+    }
+
     /// <summary>The window calls the intake as `_ = AddFilesAsync(…)`, and a
     /// discarded Task takes its failure with it — the vanishing-failure defect
     /// FireAndForgetGuardTests exists for. It reports instead, through the
