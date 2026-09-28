@@ -1910,7 +1910,7 @@ public class SettingsViewModelTests : IDisposable
 public class ApplySettingsTests
 {
     [Fact]
-    public void FreshConfigForSettingsRereadsTheSharedConfigFromDisk()
+    public async Task FreshConfigForSettingsRereadsTheSharedConfigFromDisk()
     {
         using var fx = new ShellFixture();
         fx.Shell.Initialize();
@@ -1919,8 +1919,30 @@ public class ApplySettingsTests
         // simulate an admin hand-editing the shared alerts while the app runs
         SetAlertTextsOnDisk(fx.CfgPath, "ADMIN-EDIT");
 
-        var fresh = fx.Shell.FreshConfigForSettings();
+        var fresh = await fx.Shell.FreshConfigForSettingsAsync();
         Assert.Contains("ADMIN-EDIT", fresh.AlertTexts);
+    }
+
+    /// <summary>Q2-20: opening Settings read config.json and its side file
+    /// several times and hashed three sections, all on the UI thread before
+    /// the window appeared, even if the user then cancelled at once. With the
+    /// config on a slow or dead share the dashboard froze on the click. The
+    /// reads now run off the UI thread; the window opens once they're back.</summary>
+    [Fact]
+    public async Task OpeningSettingsReadsTheConfigOffTheUiThread()
+    {
+        var scheduler = new ControlledWorkScheduler();
+        using var fx = new ShellFixture(scheduler: scheduler);
+        fx.Shell.SaveConfigNow();
+        SetAlertTextsOnDisk(fx.CfgPath, "ADMIN-EDIT");
+        var queuedBefore = scheduler.Queued;
+
+        var opening = fx.Shell.FreshConfigForSettingsAsync();
+
+        Assert.False(opening.IsCompleted);   // nothing read on the click itself
+        Assert.Equal(queuedBefore + 1, scheduler.Queued);
+        scheduler.ReleaseNewest();
+        Assert.Contains("ADMIN-EDIT", (await opening).AlertTexts);
     }
 
     [Fact]
@@ -2049,7 +2071,7 @@ public class ApplySettingsTests
     }
 
     [Fact]
-    public void OpeningSettingsWithADuplicateKeyInConfigJsonDoesNotCrash()
+    public async Task OpeningSettingsWithADuplicateKeyInConfigJsonDoesNotCrash()
     {
         // Config.Load accepts a key written twice (last wins); JsonNode
         // throws ArgumentException for it. The snapshot must not escape that.
@@ -2059,7 +2081,7 @@ public class ApplySettingsTests
         var text = File.ReadAllText(fx.CfgPath);
         File.WriteAllText(fx.CfgPath, text.Replace("\"theme\":", "\"theme\": \"auto\", \"theme\":"));
 
-        var fresh = fx.Shell.FreshConfigForSettings();
+        var fresh = await fx.Shell.FreshConfigForSettingsAsync();
 
         Assert.NotNull(fresh);
     }

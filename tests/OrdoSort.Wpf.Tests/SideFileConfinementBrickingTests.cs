@@ -83,13 +83,13 @@ public class SideFileConfinementBrickingTests
     }
 
     [Fact]
-    public void AnOrdinarySettingsSaveWithNormalRelativePathsStillWritesEverySection()
+    public async Task AnOrdinarySettingsSaveWithNormalRelativePathsStillWritesEverySection()
     {
         using var fx = new ShellFixture();
         fx.Shell.Initialize();
         fx.Shell.SaveConfigNow();   // config.json now exists on disk
 
-        var fresh = fx.Shell.FreshConfigForSettings();
+        var fresh = await fx.Shell.FreshConfigForSettingsAsync();
         var mine = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(fresh))!;
         mine.Routes.Add(new Route { Label = "NewRoute", Path = fx.RouteDir, Color = "#123456" });
         mine.WatchFolders.Add(new WatchFolder { Label = "NewWatch", Path = fx.Deferred });
@@ -119,7 +119,7 @@ public class SideFileConfinementBrickingTests
     /// the earlier background save; the explicit Settings OK adds nothing,
     /// and <c>Assert.Equal(2, ...)</c> below sees 1.</summary>
     [Fact]
-    public void ApplySettingsAlwaysWarnsEvenAfterTheSameRefusalWasAlreadyWarnedOnce()
+    public async Task ApplySettingsAlwaysWarnsEvenAfterTheSameRefusalWasAlreadyWarnedOnce()
     {
         var outsideDir = Directory.CreateDirectory(
             Path.Combine(Path.GetTempPath(), "ordo_outside_" + Guid.NewGuid())).FullName;
@@ -139,7 +139,7 @@ public class SideFileConfinementBrickingTests
             // adds a route. This save is refused for the exact same
             // still-broken box_labels_file — it must be reported, not
             // silently eaten by the suppression above.
-            var fresh = fx.Shell.FreshConfigForSettings();
+            var fresh = await fx.Shell.FreshConfigForSettingsAsync();
             var mine = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(fresh))!;
             mine.Routes.Add(new Route { Label = "NewRoute", Path = fx.RouteDir, Color = "#123456" });
 

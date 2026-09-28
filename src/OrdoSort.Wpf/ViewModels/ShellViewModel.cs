@@ -338,17 +338,26 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// warns and falls back to the in-memory config rather than blocking.
     /// This is also the moment the user's editing session begins, so it's
     /// where the conflict-detection snapshot is taken (see
-    /// <see cref="_settingsSnapshot"/> and <see cref="ApplySettingsAsync"/>).</summary>
-    internal Config FreshConfigForSettings()
+    /// <see cref="_settingsSnapshot"/> and <see cref="ApplySettingsAsync"/>).
+    ///
+    /// The reads (config.json and its side file, several times over, and a
+    /// hash of each shared section) run off the UI thread: with the config on
+    /// a slow or dead share they froze the dashboard on the Settings click,
+    /// before any window showed and even if the user then cancelled (Q2-20).</summary>
+    internal async Task<Config> FreshConfigForSettingsAsync()
     {
-        _settingsSnapshot = SnapshotSections();
-        try { return Config.Load(_cfgPath); }
-        catch (ConfigException ex)
+        var cfgPath = _cfgPath;
+        var (snapshot, fresh, problem) = await _scheduler.Run(() =>
         {
-            _dialogs.Warn(ex.Message + "\n\nShowing the settings the app is currently running with.",
-                "OrdoSort — settings");
-            return _cfg;
-        }
+            var sections = SnapshotSections();
+            try { return (sections, Config.Load(cfgPath), (ConfigException?)null); }
+            catch (ConfigException ex) { return (sections, (Config?)null, ex); }
+        });
+        _settingsSnapshot = snapshot;
+        if (fresh is not null) return fresh;
+        _dialogs.Warn(problem!.Message + "\n\nShowing the settings the app is currently running with.",
+            "OrdoSort — settings");
+        return _cfg;
     }
 
     /// <summary>Fingerprint the three shared sections of config.json as they
