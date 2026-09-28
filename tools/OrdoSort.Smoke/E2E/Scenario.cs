@@ -11,10 +11,9 @@ public sealed record Assertion(string Description, bool Passed, string? Detail =
 /// <summary>One end-to-end scenario. Kind is "clean" (proves the surface
 /// works) or "awkward" (proves it behaves under an input that breaks naive
 /// code) — a label the report displays next to each scenario's name
-/// (Evidence.Html/Markdown read it only as a display string). Nothing
-/// enforces that every surface has at least one of each: Kind is not
-/// counted or checked anywhere, and two surfaces (Box labels, Routing loop)
-/// currently have a single "clean" scenario and no "awkward" one.</summary>
+/// (Evidence.Html/Markdown read it only as a display string). Every surface
+/// has at least one of each; E2EHarnessTests.EverySurfaceHasACleanAndAnAwkwardScenario
+/// holds that (DW-61: Box labels and Routing loop once had a clean one only).</summary>
 public sealed record Scenario(string Surface, string Name, string Kind, Action<ScenarioContext> Run);
 
 /// <summary>What a scenario is handed: its isolated fixture, its dialog

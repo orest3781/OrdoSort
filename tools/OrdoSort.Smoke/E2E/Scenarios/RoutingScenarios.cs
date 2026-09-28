@@ -43,11 +43,39 @@ public static class RoutingScenarios
     public static IReadOnlyList<Scenario> All() => new[]
     {
         new Scenario(Surface, "commit, set aside and undo under the live viewer", "clean", Drive),
+        new Scenario(Surface, "commit onto a name already filed, under the live viewer", "awkward", Collide),
     };
 
     private static void Drive(ScenarioContext ctx)
     {
         var bed = RoutingLoop.Prepare(ctx.Fx.Root);
+        var window = OpenParked(ctx, bed);
+
+        RoutingLoop.Run(window, bed,
+            new RoutingLoop.Reporter(ctx.Check, () => ctx.Dialogs.Warnings));
+
+        ctx.Check("the window is still up at the end of the loop", window.IsLoaded,
+            "MainWindow went away mid-run");
+    }
+
+    /// <summary>See <see cref="RoutingLoop.RunIntoATakenName"/>.</summary>
+    private static void Collide(ScenarioContext ctx)
+    {
+        var bed = RoutingLoop.Prepare(ctx.Fx.Root);
+        RoutingLoop.TakeTheFiledName(bed);
+        var window = OpenParked(ctx, bed);
+
+        RoutingLoop.RunIntoATakenName(window, bed,
+            new RoutingLoop.Reporter(ctx.Check, () => ctx.Dialogs.Warnings));
+
+        ctx.Check("the window is still up at the end of the commit", window.IsLoaded,
+            "MainWindow went away mid-run");
+    }
+
+    /// <summary>The real MainWindow over <paramref name="bed"/>, shown
+    /// off-screen and kept there, with its evidence capture nominated.</summary>
+    private static OrdoSort.Wpf.MainWindow OpenParked(ScenarioContext ctx, RoutingLoop.Bed bed)
+    {
         var window = RoutingLoop.OpenWindow(bed, ctx.Dialogs);
 
         // Both windows place themselves: the dashboard in the work area's
@@ -77,12 +105,7 @@ public static class RoutingScenarios
         // Evidence is nominated before the loop runs, so a loop that throws
         // still leaves a screenshot behind rather than an empty report row.
         ctx.Capture(window.Processing);   // where the session runs
-
-        RoutingLoop.Run(window, bed,
-            new RoutingLoop.Reporter(ctx.Check, () => ctx.Dialogs.Warnings));
-
-        ctx.Check("the window is still up at the end of the loop", window.IsLoaded,
-            "MainWindow went away mid-run");
+        return window;
     }
 
     private static void Park(Window win)

@@ -125,6 +125,7 @@ public static class SmallToolScenarios
         new Scenario("List reformatter", "a messy list tidied", "clean", ReformatClean),
         new Scenario("List reformatter", "blank lines, duplicates and unicode", "awkward", ReformatAwkward),
         new Scenario("Box labels", "labels generated from the store", "clean", LabelsClean),
+        new Scenario("Box labels", "a bad client id, then a PDF open in another program", "awkward", LabelsAwkward),
     };
 
     // ---------------------------------------------------------- Filename list
@@ -449,6 +450,67 @@ public static class SmallToolScenarios
         if (saved is not null)
             ctx.Check("its running number advanced by the batch size (1 -> 11)",
                 saved.NextNumber == 11, $"NextNumber was {saved.NextNumber}");
+
+        ctx.Capture(win);
+    }
+
+    /// <summary>The two ways a batch goes wrong before any label exists, and
+    /// the promise that matters for both: no box number is used up by an
+    /// attempt that produced no labels, because a used number is never issued
+    /// again. First an id Code 39 can't print (it has a space), refused
+    /// before the save dialog; then a target PDF held open by another program
+    /// (a viewer showing last week's sheet), which SavePdfAsync opens BEFORE
+    /// it claims numbers. The final, clean save starting at 1 is the proof
+    /// that neither failure moved the counter. Same synchronous shape as
+    /// <see cref="LabelsClean"/>: no E2EPump call is needed.</summary>
+    private static void LabelsAwkward(ScenarioContext ctx)
+    {
+        var (cfg, _) = ConfigFixture.Write(ctx.Fx);
+        var store = Path.Combine(ctx.Fx.Root, "box-labels.json");
+        var vm = new LabelMakerViewModel(cfg.LabelClients, store, ctx.Dialogs,
+            "OrdoSort — label maker",
+            today: () => new DateTime(2026, 8, 9),
+            openFile: _ => { },
+            scheduler: new InlineScheduler());
+        var win = new LabelMakerWindow(vm,
+            "OrdoSort — Box labels", "OrdoSort — Print preview");
+        E2EPump.ShowOffscreen(win);
+
+        vm.AddClientCommand.Execute(null);
+        if (vm.Selected is not { } client)
+        {
+            ctx.Check("a new client row became selected after Add", false, "Selected is null");
+            ctx.Capture(win);
+            return;
+        }
+
+        client.Id = "box e2e";   // upper-cased as typed, but the space is not in Code 39
+        vm.SavePdfCommand.Execute(null);
+        ctx.Check("an id Code 39 can't print is refused with a warning",
+            ctx.Dialogs.Warnings.Count == 1, $"{ctx.Dialogs.Warnings.Count} warnings");
+        ctx.Check("...and nothing was written: no store, no numbers used", !File.Exists(store),
+            "box-labels.json exists after a refused batch");
+
+        client.Id = "BOXAWK";
+        var pdfPath = ctx.Fx.Pdf("labels.pdf", "LAST WEEK'S SHEET");
+        var before = File.ReadAllBytes(pdfPath);
+        using (new FileStream(pdfPath, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            ctx.Dialogs.QueueSaveFile(pdfPath);
+            vm.SavePdfCommand.Execute(null);
+        }
+        var lockedWarning = ctx.Dialogs.Warnings.Skip(1).FirstOrDefault() ?? "";
+        ctx.Check("a target held open by another program is reported, with no numbers used",
+            lockedWarning.Contains("No box numbers were used", StringComparison.Ordinal),
+            lockedWarning.Length == 0 ? "no warning" : lockedWarning);
+        ctx.BytesUnchanged(pdfPath, before, "the file the other program had open is untouched");
+
+        ctx.Dialogs.QueueSaveFile(pdfPath);
+        vm.SavePdfCommand.Execute(null);
+        var saved = BoxLabelStore.Read(store).LabelClients.FirstOrDefault(c => c.Id == "BOXAWK");
+        ctx.Check("once it's free the batch saves and starts at 1: the failures used no numbers",
+            saved?.NextNumber == 11,
+            saved is null ? "no BOXAWK row in the store" : $"NextNumber was {saved.NextNumber}");
 
         ctx.Capture(win);
     }

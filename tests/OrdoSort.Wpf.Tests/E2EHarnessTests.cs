@@ -191,6 +191,27 @@ public class E2EHarnessTests
         Assert.IsType<DispatcherSynchronizationContext>(resumedOn);
     }
 
+    /// <summary>DW-61: the suite's promise is a pair per surface, one proving
+    /// it works and one proving it holds up under input that breaks naive
+    /// code. Kind was a display label only, so Box labels and Routing loop
+    /// shipped with a clean scenario and nothing awkward, unnoticed.</summary>
+    [Fact]
+    public void EverySurfaceHasACleanAndAnAwkwardScenario()
+    {
+        var bySurface = OrdoSort.Smoke.E2E.E2ERunner.AllScenarios()
+            .GroupBy(s => s.Surface)
+            .ToDictionary(g => g.Key, g => g.Select(s => s.Kind).ToHashSet());
+
+        Assert.True(bySurface.Count >= 12,
+            $"only {bySurface.Count} surfaces found; the scenario list looks broken");
+        var unpaired = bySurface
+            .Where(kv => !kv.Value.Contains("clean") || !kv.Value.Contains("awkward"))
+            .Select(kv => $"{kv.Key} ({string.Join("/", kv.Value)})")
+            .ToList();
+        Assert.True(unpaired.Count == 0,
+            "these surfaces lack a clean or an awkward scenario: " + string.Join(", ", unpaired));
+    }
+
     /// <summary>The whole isolation guarantee in one assertion: everything a
     /// fixture makes lives under its own root, and the root is gone after
     /// disposal. A scenario that writes outside this is a bug in the

@@ -154,12 +154,29 @@ public static class RoutingLoop
 
     /// <summary>Drive the loop to completion, pumping the dispatcher the whole
     /// way. The window must already have been shown.</summary>
-    public static void Run(MainWindow window, Bed bed, Reporter to)
+    public static void Run(MainWindow window, Bed bed, Reporter to) =>
+        RunToCompletion(DriveAsync(window, bed, to), to);
+
+    /// <summary>The awkward counterpart to <see cref="Run"/>: before the
+    /// session starts, a different document already sits in the route folder
+    /// under the exact name the first commit will produce (a colleague filed
+    /// one for the same person that day). The commit, made while Edge holds
+    /// the first document, must still file it, under a new name beside the
+    /// old one, and must leave the old one byte-for-byte alone: the
+    /// never-overwrite promise, proven through the real window.</summary>
+    public static void RunIntoATakenName(MainWindow window, Bed bed, Reporter to) =>
+        RunToCompletion(CollideAsync(window, bed, to), to);
+
+    /// <summary>Put a different document at the path the first commit will
+    /// target. Call before the window opens, so the first scan sees it.</summary>
+    public static void TakeTheFiledName(Bed bed) =>
+        MinimalPdf.Write(Path.Combine(bed.Dest, FiledName), "ALREADY FILED");
+
+    private static void RunToCompletion(Task loop, Reporter to)
     {
-        // DriveAsync runs synchronously as far as its first genuine await
+        // The drive runs synchronously as far as its first genuine await
         // (the commit), pushing its own nested frames on the way; from there
         // on this outer frame is what pumps its continuations.
-        var loop = DriveAsync(window, bed, to);
         if (!E2EPump.Until(() => loop.IsCompleted, LoopMs))
             to.Check("the routing loop ran to completion", false,
                 $"still running after {LoopMs}ms");
@@ -168,59 +185,101 @@ public static class RoutingLoop
                 ex.GetBaseException().GetType().Name + ": " + ex.GetBaseException().Message);
     }
 
+    // Every wait is recorded, not just the ones that time out: in the e2e
+    // report a green "the first document reaches the viewer" line is the
+    // evidence, and in the standalone mode the Check adapter drops it
+    // again, which is exactly the old Wait's behaviour.
+    private static bool Wait(Reporter to, Func<bool> cond, string what, Action? kickoff = null, int ms = StepMs)
+    {
+        to.Log?.Invoke("wait: " + what);
+        var ok = E2EPump.Until(cond, ms, kickoff);
+        to.Log?.Invoke((ok ? "  ok: " : "  TIMEOUT: ") + what);
+        to.Check(what, ok, $"timed out after {ms}ms");
+        return ok;
+    }
+
+    private static string Warned(Reporter to) =>
+        to.Warnings() is { Count: > 0 } w ? " — the app warned: " + w[0] : " — no warning was raised";
+
+    /// <summary>From a freshly shown window to the first document open in
+    /// Edge and locked by it. False when the viewer never started, which has
+    /// already been reported.</summary>
+    private static bool OpenTheFirstDocument(MainWindow window, Reporter to)
+    {
+        var shell = window.Shell;
+        if (!Wait(to, () => window.Pdf.Ready || window.Pdf.InitError != null,
+                "the PDF viewer finishes starting up"))
+            return false;
+
+        // The suite's ONE dependency on WebView2 being installed, named
+        // rather than left to time out: a machine without the Evergreen
+        // runtime must read the init error, not fifteen silent seconds
+        // followed by a predicate nobody can interpret.
+        if (window.Pdf.InitError is { } initError)
+        {
+            to.Check("Edge's PDF viewer started", false,
+                "WebView2 init: " + initError.Split('\n')[0]);
+            return false;
+        }
+
+        // Initialize() — the first scan — runs in the window's OWN Loaded
+        // handler; wait for the Ready refresh it ends with, so a scan
+        // landing late cannot undo StartProcessing.
+        Wait(to, () => shell.CountLine.Length > 0, "the inbox is scanned");
+
+        // StartProcessing goes through kickoff rather than being called
+        // inline: it is fire-and-forget (`_ = StartProcessingAsync()`) and
+        // its first await must capture a live dispatcher context — see
+        // E2EPump.Until's own kickoff doc comment, and Screenshots.cs,
+        // which drives this same window the same way.
+        Wait(to, () => window.Pdf.CurrentUrl.Contains("1111111111", StringComparison.Ordinal),
+            "the first document reaches the viewer", kickoff: shell.StartProcessing);
+
+        to.Log?.Invoke($"beat: {EdgeLockMs}ms for Edge to take its lock on {First}");
+        E2EPump.Until(() => false, EdgeLockMs);
+        return true;
+    }
+
+    private static async Task CollideAsync(MainWindow window, Bed bed, Reporter to)
+    {
+        var taken = Path.Combine(bed.Dest, FiledName);
+        var before = File.ReadAllBytes(taken);
+        try
+        {
+            if (!OpenTheFirstDocument(window, to)) return;
+
+            window.Shell.TypedName = Typed;
+            await window.Shell.OnRouteAsync(0);
+
+            to.Check("the document left the inbox although its name was taken — Edge let go of it",
+                !File.Exists(Path.Combine(bed.Inbox, First)), $"{First} is still in the inbox{Warned(to)}");
+            to.Check("the document already filed under that name is byte-for-byte untouched",
+                File.Exists(taken) && File.ReadAllBytes(taken).SequenceEqual(before),
+                File.Exists(taken) ? "its content changed" : "it is gone");
+            var beside = Directory.GetFiles(bed.Dest)
+                .Where(f => !string.Equals(f, taken, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            to.Check("the new document landed beside it under a name of its own",
+                beside.Count == 1 && Path.GetFileName(beside[0]).StartsWith(
+                    Path.GetFileNameWithoutExtension(FiledName), StringComparison.Ordinal),
+                "the route folder holds: " + string.Join(", ", Directory.GetFiles(bed.Dest).Select(Path.GetFileName)));
+        }
+        catch (Exception ex)
+        {
+            to.Check("the routing loop ran without throwing", false,
+                ex.GetType().Name + ": " + ex.Message);
+        }
+    }
+
     private static async Task DriveAsync(MainWindow window, Bed bed, Reporter to)
     {
         var shell = window.Shell;
-        void Log(string m) => to.Log?.Invoke(m);
-
-        // Every wait is recorded, not just the ones that time out: in the e2e
-        // report a green "the first document reaches the viewer" line is the
-        // evidence, and in the standalone mode the Check adapter drops it
-        // again, which is exactly the old Wait's behaviour.
-        bool Wait(Func<bool> cond, string what, Action? kickoff = null, int ms = StepMs)
-        {
-            Log("wait: " + what);
-            var ok = E2EPump.Until(cond, ms, kickoff);
-            Log((ok ? "  ok: " : "  TIMEOUT: ") + what);
-            to.Check(what, ok, $"timed out after {ms}ms");
-            return ok;
-        }
-
-        string Warned() =>
-            to.Warnings() is { Count: > 0 } w ? " — the app warned: " + w[0] : " — no warning was raised";
+        bool Wait(Func<bool> cond, string what) => RoutingLoop.Wait(to, cond, what);
+        string Warned() => RoutingLoop.Warned(to);
 
         try
         {
-            if (!Wait(() => window.Pdf.Ready || window.Pdf.InitError != null,
-                    "the PDF viewer finishes starting up"))
-                return;
-
-            // The suite's ONE dependency on WebView2 being installed, named
-            // rather than left to time out: a machine without the Evergreen
-            // runtime must read the init error, not fifteen silent seconds
-            // followed by a predicate nobody can interpret.
-            if (window.Pdf.InitError is { } initError)
-            {
-                to.Check("Edge's PDF viewer started", false,
-                    "WebView2 init: " + initError.Split('\n')[0]);
-                return;
-            }
-
-            // Initialize() — the first scan — runs in the window's OWN Loaded
-            // handler; wait for the Ready refresh it ends with, so a scan
-            // landing late cannot undo StartProcessing.
-            Wait(() => shell.CountLine.Length > 0, "the inbox is scanned");
-
-            // StartProcessing goes through kickoff rather than being called
-            // inline: it is fire-and-forget (`_ = StartProcessingAsync()`) and
-            // its first await must capture a live dispatcher context — see
-            // E2EPump.Until's own kickoff doc comment, and Screenshots.cs,
-            // which drives this same window the same way.
-            Wait(() => window.Pdf.CurrentUrl.Contains("1111111111", StringComparison.Ordinal),
-                "the first document reaches the viewer", kickoff: shell.StartProcessing);
-
-            Log($"beat: {EdgeLockMs}ms for Edge to take its lock on {First}");
-            E2EPump.Until(() => false, EdgeLockMs);
+            if (!OpenTheFirstDocument(window, to)) return;
 
             // ---------------------------------------------------------- commit
             shell.TypedName = Typed;
