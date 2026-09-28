@@ -110,6 +110,7 @@ public partial class TriageWindow : Window
     // header -> its roster column; by reference, since a spreadsheet can
     // have a column of its own called "Why"
     private readonly Dictionary<string, DataGridColumn> _rosterColumns = new(StringComparer.Ordinal);
+    private readonly ExplorerColumns _explorer;
     private readonly Action<IReadOnlyList<string>> _saveColumns;
     private readonly WebViewPdfViewer _pdf;
     private readonly Func<System.Windows.Rect?> _panZone;
@@ -280,7 +281,7 @@ public partial class TriageWindow : Window
         }
         // Explorer-style columns (table rules v2): fixed widths the user
         // sizes, remembered per roster header.
-        ExplorerColumns.Attach(Candidates, "Triage", visibility: new RosterVisibility(this),
+        _explorer = ExplorerColumns.Attach(Candidates, "Triage", visibility: new RosterVisibility(this),
             chooseColumns: OpenColumnChooser);
         Loaded += async (_, _) => await InitAndShowAsync(initViewer ?? _pdf.InitAsync);
     }
@@ -301,7 +302,9 @@ public partial class TriageWindow : Window
         public bool CanChange(DataGridColumn column) =>
             !window._rosterColumns.ContainsValue(column) || !window._lockedHeaders.Contains((string)column.Header);
 
-        public bool RestoreFromLayout => false;
+        // The Why column isn't a spreadsheet column, so its showing is kept
+        // in the per-PC layout like any other table's.
+        public bool RestoresFromLayout(DataGridColumn column) => !window._rosterColumns.ContainsValue(column);
     }
 
     private DataGridColumn? RosterColumn(string header) => _rosterColumns.GetValueOrDefault(header);
@@ -469,7 +472,7 @@ public partial class TriageWindow : Window
         }
         var candidates = CandidatesOf(r);
         _rowCandidates.Clear();
-        Candidates.ItemsSource = candidates
+        _explorer.ReplaceItems(candidates
             .Select((c, i) =>
             {
                 // a loop, not ToDictionary: the roster's own header list can
@@ -486,7 +489,7 @@ public partial class TriageWindow : Window
                 _rowCandidates[row] = c;
                 return row;
             })
-            .ToList();
+            .ToList());
         UseButton.IsEnabled = false;
     }
 

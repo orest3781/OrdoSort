@@ -18,10 +18,10 @@ internal interface IColumnVisibility
     /// name and id columns); its header-menu entry is disabled.</summary>
     bool CanChange(DataGridColumn column) => true;
 
-    /// <summary>False when the owner keeps which columns show itself (Review
-    /// matches, in the shared config): the per-PC layout then restores
-    /// widths and order only.</summary>
-    bool RestoreFromLayout => true;
+    /// <summary>False for a column whose showing the owner keeps itself
+    /// (Review matches' spreadsheet columns, in the shared config): the
+    /// per-PC layout then restores its width and order only.</summary>
+    bool RestoresFromLayout(DataGridColumn column) => true;
 }
 
 /// <summary>Makes one DataGrid behave like File Explorer's Details view
@@ -149,7 +149,7 @@ internal sealed partial class ExplorerColumns
             if (HeaderOf(column) is { } header && byHeader.TryGetValue(header, out var layout))
             {
                 column.Width = new DataGridLength(Math.Max(MinColumnWidth, layout.Width));
-                if (column != Anchor && _visibility.RestoreFromLayout) _visibility.SetShown(column, layout.Visible);
+                if (column != Anchor && _visibility.RestoresFromLayout(column)) _visibility.SetShown(column, layout.Visible);
             }
 
         // Order: saved positions first (stable for ties), unknown columns after.
@@ -174,16 +174,40 @@ internal sealed partial class ExplorerColumns
         }
     }
 
-    /// <summary>A column added after the grid opened (Triage builds its
-    /// columns per roster) takes its saved width, if it has one.</summary>
+    /// <summary>A column added after the grid opened (Review matches' Why
+    /// column, per file) takes its saved width, visibility and place, as if
+    /// it had been there when the layout was applied. Wherever it lands, the
+    /// pinned first column stays first.</summary>
     private void OnColumnsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (!_applied || e.NewItems is null) return;
         var saved = _store?.Load(_key);
-        if (saved is null) return;
         foreach (DataGridColumn column in e.NewItems)
-            if (HeaderOf(column) is { } header && saved.Columns.LastOrDefault(c => c.Header == header) is { } layout)
+        {
+            if (IsControlColumn(column)) continue;
+            if (HeaderOf(column) is { } header && saved?.Columns.LastOrDefault(c => c.Header == header) is { } layout)
+            {
                 column.Width = new DataGridLength(Math.Max(MinColumnWidth, layout.Width));
+                if (_visibility.RestoresFromLayout(column)) _visibility.SetShown(column, layout.Visible);
+                column.DisplayIndex = Math.Clamp(layout.DisplayIndex, 0, _grid.Columns.Count - 1);
+            }
+        }
+        KeepAnchorFirst();
+    }
+
+    /// <summary>Shows <paramref name="items"/> in place of the current rows,
+    /// keeping the current sort. A new ItemsSource clears WPF's sort, so a
+    /// window that swaps its rows (Review matches, per file) would otherwise
+    /// lose the saved or clicked sort every time.</summary>
+    public void ReplaceItems(System.Collections.IEnumerable items)
+    {
+        var sorts = _grid.Items.SortDescriptions.ToList();
+        var directions = _grid.Columns.Where(c => c.SortDirection is not null)
+            .Select(c => (Column: c, Direction: c.SortDirection))
+            .ToList();
+        _grid.ItemsSource = items;
+        foreach (var sort in sorts) _grid.Items.SortDescriptions.Add(sort);
+        foreach (var (column, direction) in directions) column.SortDirection = direction;
     }
 
     private void OnColumnReordering(object? sender, DataGridColumnReorderingEventArgs e)

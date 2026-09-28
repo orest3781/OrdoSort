@@ -518,6 +518,79 @@ public sealed class ExplorerColumnsTests : UiTest, IDisposable
         finally { bed.Window.Close(); }
     });
 
+    /// <summary>Review matches swaps in each file's rows; a new ItemsSource
+    /// clears WPF's sort, so the saved (or clicked) sort was lost on every
+    /// file.</summary>
+    [Fact]
+    public void ReplacingTheRowsKeepsTheSort() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = "a", Kind = "x" });
+        try
+        {
+            Settle(bed.Window);
+            bed.Grid.Items.SortDescriptions.Add(new SortDescription("Kind", ListSortDirection.Descending));
+            bed.Column("Kind").SortDirection = ListSortDirection.Descending;
+
+            bed.Explorer.ReplaceItems(new List<Row>
+            {
+                new() { Name = "b", Kind = "1" }, new() { Name = "c", Kind = "3" }, new() { Name = "d", Kind = "2" },
+            });
+
+            Assert.Equal(new[] { "3", "2", "1" }, bed.Grid.Items.Cast<Row>().Select(r => r.Kind));
+            Assert.Equal(ListSortDirection.Descending, bed.Column("Kind").SortDirection);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    private static DataGridTextColumn TextColumn(string header) =>
+        new() { Header = header, Binding = new Binding(nameof(Row.Note)), Width = new DataGridLength(80) };
+
+    /// <summary>Review matches inserts its Why column at the front for some
+    /// files. It used to become the first column (the one that can't be
+    /// hidden or dragged) and come back at its saved width only.</summary>
+    [Fact]
+    public void AColumnAddedLaterTakesItsSavedPlaceAndVisibilityAndTheFirstColumnStaysFirst() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var store = new TableLayoutStore(Path.Combine(_dir, "table-columns.json"));
+        store.Save("Test", new TableLayout(new[] { new ColumnLayout("Why", 130, false, 2) }, null, null));
+        var bed = Build(store: store, rows: new Row { Name = "a" });
+        try
+        {
+            Settle(bed.Window);
+            var why = TextColumn("Why");
+
+            bed.Grid.Columns.Insert(0, why);
+
+            Assert.Equal(130, why.Width.Value);
+            Assert.Equal(Visibility.Collapsed, why.Visibility);
+            Assert.Equal(2, why.DisplayIndex);
+            Assert.Equal(0, bed.Column("Name").DisplayIndex);
+            Assert.Same(bed.Column("Name"), bed.Explorer.Anchor);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    [Fact]
+    public void AColumnAddedLaterWithNothingSavedGoesAfterTheFirstColumn() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = "a" });
+        try
+        {
+            Settle(bed.Window);
+            var why = TextColumn("Why");
+
+            bed.Grid.Columns.Insert(0, why);
+
+            Assert.Equal(0, bed.Column("Name").DisplayIndex);
+            Assert.Equal(1, why.DisplayIndex);
+            Assert.Same(bed.Column("Name"), bed.Explorer.Anchor);
+        }
+        finally { bed.Window.Close(); }
+    });
+
     [Fact]
     public void ADoubleClickOnADividerFitsTheColumnToItsLeft() => _fx.Invoke(() =>
     {
@@ -823,7 +896,7 @@ public sealed class ExplorerColumnsTests : UiTest, IDisposable
         public bool IsShown(DataGridColumn column) => column.Visibility == Visibility.Visible;
         public void SetShown(DataGridColumn column, bool shown) =>
             column.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
-        public bool RestoreFromLayout => false;
+        public bool RestoresFromLayout(DataGridColumn column) => false;
     }
 
     /// <summary>Review matches keeps which spreadsheet columns show in the
