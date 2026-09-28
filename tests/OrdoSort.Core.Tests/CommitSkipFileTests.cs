@@ -42,7 +42,7 @@ public class CommitSkipFileTests : IDisposable
     public void Dispose()
     {
         Commit.SkipRaceHookForTests = null;
-        Commit.SameVolume = Commit.OnSameVolume;
+        Commit.CommitRaceHookForTests = null;
         try { Directory.Delete(_root, recursive: true); } catch { /* best effort */ }
     }
 
@@ -202,12 +202,7 @@ public class CommitSkipFileTests : IDisposable
     public void ADocumentGoneJustBeforeTheFilingMoveIsVanished()
     {
         var src = MakePdf(_inbox, "20240115--777777.pdf");
-        // SameVolume runs right before the move; deleting there is the race
-        Commit.SameVolume = (from, to) =>
-        {
-            if (from == src) File.Delete(src);
-            return Commit.OnSameVolume(from, to);
-        };
+        Commit.CommitRaceHookForTests = () => File.Delete(src);
 
         var outcome = Commit.CommitFile(src, "", new Route { Path = _deferred }, Naming.ModeInsert);
 

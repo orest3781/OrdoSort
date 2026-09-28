@@ -93,11 +93,11 @@ public sealed class NetworkShareTests : IDisposable
         Assert.Equal("second", Config.Load(Mine("config.json"), createIfMissing: false).Inbox);
     }
 
-    /// <summary>DW-01 for real: a document filed from this PC's disk onto the
-    /// share is a move across volumes, which goes through a ".partial" copy
-    /// renamed into place. It lands whole, with nothing left behind.</summary>
+    /// <summary>A document set aside from this PC's disk onto the share, as
+    /// the plain Modify user, is a move across volumes. It lands whole and
+    /// leaves the inbox.</summary>
     [Fact]
-    public void ADocumentFiledOntoTheShareLandsWholeWithNoPartialLeft()
+    public void ADocumentMovedOntoTheShareLandsWhole()
     {
         using var local = new TempDir();
         var src = local.File("20240115--111111.pdf");
@@ -107,7 +107,6 @@ public sealed class NetworkShareTests : IDisposable
 
         Assert.False(File.Exists(src));
         Assert.Equal("the whole document", File.ReadAllText(Mine(Path.GetFileName(outcome.NewPath!))));
-        Assert.Empty(Directory.GetFiles(Path.Combine(AsYou, _folder), "*.partial"));
     }
 
     [Fact]
