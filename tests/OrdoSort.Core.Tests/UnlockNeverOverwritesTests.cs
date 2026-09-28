@@ -1,6 +1,7 @@
 namespace OrdoSort.Core.Tests;
 
 using System.Reflection;
+using System.Text.RegularExpressions;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 
@@ -262,32 +263,39 @@ public class UnlockThresholdCollection
 /// <see cref="UnlockTests"/> (sets it four times) — must declare the SAME
 /// <c>[Collection(...)]</c> name, since that, not anything about either
 /// class's own behavior, is what stops xUnit from ever running them
-/// concurrently. A grep for <c>LargeFileThresholdBytes</c> across tests/
-/// confirms these two are the complete set. Pre-fix, neither class had a
-/// [Collection] attribute at all, so both names below were null and this
-/// failed; a future edit that drops either attribute, typos its name, or
-/// adds a third class that mutates the static without joining this
-/// collection needs to be caught here too.</summary>
+/// concurrently. Pre-fix, neither class had a [Collection] attribute at
+/// all; a future edit that drops either attribute, typos its name, or adds a
+/// third class that mutates the static without joining this collection
+/// needs to be caught here too. DW-83: the set of classes used to be a hand
+/// list kept current by a grep; it is now read from the source
+/// (<see cref="SeamScan"/>), so a new setter can't be forgotten.</summary>
 public class UnlockThresholdTestCollectionMembershipTests
 {
-    // Reads the [Collection("...")] name via CustomAttributeData's
-    // constructor argument rather than CollectionAttribute.Name — robust
-    // against exactly which xunit.core build resolves at compile time, and
-    // it's the constructor argument, not a settled property, that xUnit's
-    // own discovery reads to group classes into one collection.
-    private static string? CollectionNameOf(Type t) =>
-        t.GetCustomAttributesData()
-            .FirstOrDefault(a => a.AttributeType.FullName == "Xunit.CollectionAttribute")
-            ?.ConstructorArguments.FirstOrDefault().Value as string;
+    private static string? CollectionNameOf(Type t) => SeamScan.CollectionNameOf(t);
+
+    // An assignment to one of Unlock's process-wide test seams. (?![=>])
+    // leaves out comparisons and expression-bodied members.
+    private static readonly Regex UnlockSeamAssignment = new(
+        @"\bUnlock\.(?:LargeFileThresholdBytes|RaceHookForTests)\s*=(?![=>])", RegexOptions.Compiled);
 
     [Fact]
-    public void UnlockTestsSharesUnlockNeverOverwritesTestsCollection()
+    public void EveryClassThatSetsAnUnlockSeamSharesTheCollection()
     {
-        var neverOverwritesCollection = CollectionNameOf(typeof(UnlockNeverOverwritesTests));
-        var unlockTestsCollection = CollectionNameOf(typeof(UnlockTests));
+        var setters = SeamScan.ClassesWhoseCodeMatches(UnlockSeamAssignment);
 
-        Assert.NotNull(neverOverwritesCollection);
-        Assert.Equal(neverOverwritesCollection, unlockTestsCollection);
+        // UnlockTests and UnlockNeverOverwritesTests set them today. Fewer
+        // means the scan broke (a moved folder, a renamed seam), and the
+        // check below would then pass on nothing.
+        Assert.True(setters.Count >= 2,
+            $"only found {setters.Count} class(es) assigning Unlock.LargeFileThresholdBytes or " +
+            "Unlock.RaceHookForTests under tests/OrdoSort.Core.Tests; the scan looks broken: " +
+            string.Join(", ", setters));
+
+        var outside = SeamScan.NotInCollection(setters, UnlockNeverOverwritesTests.Name);
+        Assert.True(outside.Count == 0,
+            "these classes set a process-wide Unlock seam but do not declare " +
+            "[Collection(UnlockNeverOverwritesTests.Name)], so xUnit can run them alongside " +
+            "another class that relies on the seam's value: " + string.Join(", ", outside));
     }
 
     /// <summary>A third member, joined for a DIFFERENT reason than the other

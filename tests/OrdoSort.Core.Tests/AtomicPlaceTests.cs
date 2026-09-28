@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using OrdoSort.Core;
 
 namespace OrdoSort.Core.Tests;
@@ -713,36 +714,37 @@ public class AtomicPlaceSeamCollection
 /// assignment can't be forced on demand, so a timing-based regression test
 /// would either always pass or be flaky. What CAN be asserted is the thing
 /// the fix actually relies on — that every class assigning any of
-/// AtomicPlace's process-wide seams declares the same [Collection] name.
-/// There are three of them now: <see cref="AtomicPlace.BeforeAttempt"/>,
-/// <see cref="AtomicPlace.Sleep"/> and <see cref="AtomicPlace.BeforeSweep"/>
-/// — a class assigning only one of the newer two would dodge a check that
-/// grepped for just the first.
+/// AtomicPlace's process-wide seams (<see cref="AtomicPlace.BeforeAttempt"/>,
+/// <see cref="AtomicPlace.Sleep"/>, <see cref="AtomicPlace.BeforeSweep"/>,
+/// <see cref="AtomicPlace.ReplaceFile"/>) declares the same [Collection] name.
 ///
-/// Add a class to this list when it starts assigning any of those three. A
-/// grep for <c>AtomicPlace.BeforeAttempt =</c>, <c>AtomicPlace.Sleep =</c>
-/// and <c>AtomicPlace.BeforeSweep =</c> across tests/ confirms the list
-/// below is the complete set.</summary>
+/// DW-83: the class set used to be a hand list kept current by a grep, so a
+/// new class assigning a seam without joining would run in parallel and
+/// flake with nothing to say why. It is now read from the source
+/// (<see cref="SeamScan"/>), and any assignment to any AtomicPlace member
+/// counts, so a fifth seam can't slip past a pattern that names four.</summary>
 public class AtomicPlaceSeamMembershipTests
 {
-    private static string? CollectionNameOf(Type t) =>
-        t.GetCustomAttributesData()
-            .FirstOrDefault(a => a.AttributeType.FullName == "Xunit.CollectionAttribute")
-            ?.ConstructorArguments.FirstOrDefault().Value as string;
+    // (?![=>]) leaves out comparisons and expression-bodied members.
+    private static readonly Regex AtomicPlaceAssignment =
+        new(@"\bAtomicPlace\.\w+\s*=(?![=>])", RegexOptions.Compiled);
 
     [Fact]
     public void EverySeamSetterSharesOneCollection()
     {
-        var setters = new[]
-        {
-            typeof(AtomicPlaceTests),
-            typeof(AtomicWriteTests),
-            typeof(ConfigSplitTests),
-            typeof(ZipperTests),
-        };
+        var setters = SeamScan.ClassesWhoseCodeMatches(AtomicPlaceAssignment);
 
-        var names = setters.Select(CollectionNameOf).ToArray();
+        // AtomicPlaceTests, AtomicWriteTests, ConfigSplitTests and ZipperTests
+        // set a seam today. Fewer means the scan broke (a moved folder, a
+        // renamed class), and the check below would then pass on nothing.
+        Assert.True(setters.Count >= 4,
+            $"only found {setters.Count} class(es) assigning an AtomicPlace seam under " +
+            "tests/OrdoSort.Core.Tests; the scan looks broken: " + string.Join(", ", setters));
 
-        Assert.All(names, n => Assert.Equal(AtomicPlaceTests.Name, n));
+        var outside = SeamScan.NotInCollection(setters, AtomicPlaceTests.Name);
+        Assert.True(outside.Count == 0,
+            "these classes assign a process-wide AtomicPlace seam but do not declare " +
+            "[Collection(AtomicPlaceTests.Name)], so xUnit can run them while another class's " +
+            "hook is armed: " + string.Join(", ", outside));
     }
 }
