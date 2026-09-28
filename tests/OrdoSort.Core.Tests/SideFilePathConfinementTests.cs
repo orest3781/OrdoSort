@@ -307,4 +307,64 @@ public class SideFilePathConfinementTests : IDisposable
         Assert.Contains("box_labels_file", ex.Message);
         Assert.False(File.Exists(evilFile));
     }
+
+    /// <summary>A junction inside the config folder: the "link" folder a
+    /// test (or anyone with write access to the share folder) makes with
+    /// mklink /J, which needs no special rights.</summary>
+    private string JunctionTo(string target)
+    {
+        var link = Path.Combine(_dir, "link");
+        var start = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"")
+        {
+            CreateNoWindow = true,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+        };
+        using var mklink = System.Diagnostics.Process.Start(start)!;
+        mklink.StandardOutput.ReadToEnd();
+        mklink.WaitForExit();
+        Assert.True(Directory.Exists(link), "mklink /J could not make the test junction");
+        return link;
+    }
+
+    /// <summary>DW-03: the confinement check only looked at the path's
+    /// spelling. "link\evil.json", with "link" a junction inside the config
+    /// folder pointing elsewhere, spells a path inside the folder, and Windows
+    /// then followed the junction and wrote outside it: anyone who could make
+    /// a junction in the shared config folder could redirect every station's
+    /// box-labels save. A path that goes through a link is now refused.</summary>
+    [Fact]
+    public void SaveRefusesABoxLabelsFileReachedThroughAJunction()
+    {
+        JunctionTo(OutsideDir);
+        var redirected = Path.Combine(OutsideDir, "evil.json");
+        var cfg = new Config { BoxLabelsFile = @"link\evil.json" };
+
+        var ex = Assert.Throws<ConfigException>(() => Config.Save(cfg, ConfigPath));
+
+        Assert.Contains("box_labels_file", ex.Message);
+        Assert.Contains("link", ex.Message);
+        Assert.False(File.Exists(redirected));
+    }
+
+    /// <summary>DW-03, the read side: the same junction can't be used to make
+    /// a station read a file from outside the config folder.</summary>
+    [Fact]
+    public void ReadingABoxLabelsFileThroughAJunctionIsRefused()
+    {
+        JunctionTo(OutsideDir);
+        File.WriteAllText(Path.Combine(OutsideDir, "labels.json"), "{}");
+
+        Assert.Throws<ConfigException>(() =>
+            Config.ReadDoc<BoxLabelsDoc>(ConfigPath, @"link\labels.json", "box_labels_file"));
+    }
+
+    /// <summary>A real subfolder is still fine: the check is for links only.</summary>
+    [Fact]
+    public void ABoxLabelsFileInARealSubfolderIsStillAllowed()
+    {
+        Directory.CreateDirectory(Path.Combine(_dir, "sub"));
+        Assert.Equal(Path.Combine(_dir, "sub", "labels.json"),
+            Config.ResolveBesideForWrite(ConfigPath, @"sub\labels.json", "box_labels_file"));
+    }
 }

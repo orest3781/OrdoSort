@@ -365,7 +365,38 @@ public sealed class Config
                 $"{full}, which is outside {configDir}. Use a plain filename, or a path nested " +
                 "in a subfolder of the config's own directory.");
         }
+        RefuseLinks(configDir, full, sectionPath, keyName);
         return full;
+    }
+
+    /// <summary>The check above reads only the path's spelling. A junction or
+    /// symbolic link inside the config folder spells a path inside it while
+    /// Windows follows it somewhere else, and a junction needs nothing more
+    /// than write access to the shared folder (DW-03). So every part of the
+    /// path below the config folder that exists is checked, and one that is
+    /// a link is refused. Other reparse points (a cloud-sync placeholder)
+    /// have no link target and pass. The config folder itself may be a link:
+    /// the containment question starts inside it.</summary>
+    private static void RefuseLinks(string configDir, string full, string sectionPath, string keyName)
+    {
+        var current = configDir;
+        foreach (var part in Path.GetRelativePath(configDir, full).Split(Path.DirectorySeparatorChar))
+        {
+            current = Path.Combine(current, part);
+            FileSystemInfo entry = Directory.Exists(current) ? new DirectoryInfo(current) : new FileInfo(current);
+            if (!entry.Exists) return;   // nothing below a missing part can be a link
+            string? linkTarget;
+            try { linkTarget = entry.LinkTarget; }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                throw new ConfigException($"Couldn't check {keyName} (\"{sectionPath}\"): {e.Message}", e);
+            }
+            if (linkTarget is not null)
+                throw new ConfigException(
+                    $"{keyName} must stay beside the config file, but \"{sectionPath}\" goes through " +
+                    $"{current}, a link to {linkTarget}. Use a plain filename, or a real subfolder " +
+                    "of the config's own directory.");
+        }
     }
 
     /// <summary>Resolve a side-file path for WRITING, refusing anything
