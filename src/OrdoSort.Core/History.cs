@@ -312,12 +312,20 @@ public sealed class History : IDisposable
             cmd.CommandText = "SELECT * FROM history ORDER BY id";
             rows = Read(cmd);
         }
-        using var writer = new StreamWriter(dest, false, new System.Text.UTF8Encoding(true));
+        // Written beside dest and swapped in whole, so a write cut off
+        // partway never replaces the previous export with a stub (R3).
+        if (!AtomicPlace.TryReplace(dest, tmp => WriteCsv(tmp, rows), out var error))
+            throw new IOException(error);
+        return rows.Count;
+    }
+
+    private static void WriteCsv(string path, List<IReadOnlyDictionary<string, object>> rows)
+    {
+        using var writer = new StreamWriter(path, false, new System.Text.UTF8Encoding(true));
         writer.WriteLine(string.Join(",", Columns.Select(CsvField)));
         foreach (var row in rows)
             writer.WriteLine(string.Join(",",
                 Columns.Select(c => CsvField(row.TryGetValue(c, out var v) ? v?.ToString() ?? "" : ""))));
-        return rows.Count;
     }
 
     private static string CsvField(string value) => Csv.EscapeField(value);
