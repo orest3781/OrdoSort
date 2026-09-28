@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using OrdoSort.Wpf.Services;
@@ -450,6 +451,69 @@ public sealed class ExplorerColumnsTests : UiTest, IDisposable
             items[0].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));   // Size column to fit (Name)
             Settle(bed.Window);
             Assert.True(bed.Column("Name").ActualWidth > 200);
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    /// <summary>The ContextMenu open anywhere in the app right now, found the
+    /// way it is shown: as the root of an open popup.</summary>
+    private static ContextMenu? OpenContextMenu() =>
+        PresentationSource.CurrentSources.OfType<System.Windows.Interop.HwndSource>()
+            .Select(s => s.RootVisual).Where(v => v is not null)
+            .SelectMany(v => Ui.Descendants<ContextMenu>(v!))
+            .FirstOrDefault(m => m.IsOpen);
+
+    private static bool PressKey(UIElement target, Key key)
+    {
+        var args = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(target)!, 0, key)
+        {
+            RoutedEvent = Keyboard.PreviewKeyDownEvent,
+        };
+        target.RaiseEvent(args);
+        return args.Handled;
+    }
+
+    /// <summary>The header menu was mouse-only. The Menu key (and Shift+F10,
+    /// which the test can't hold Shift for) opens it for the focused cell's
+    /// column, as a right-click on that header would.</summary>
+    [Fact]
+    public void TheMenuKeyOpensTheHeaderMenuForTheFocusedCellsColumn() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = "a", Kind = new string('W', 80) });
+        try
+        {
+            Settle(bed.Window);
+            bed.Grid.CurrentCell = new DataGridCellInfo(bed.Rows[0], bed.Column("Kind"));
+
+            Assert.True(PressKey(bed.Grid, Key.Apps));
+
+            var menu = OpenContextMenu();
+            Assert.NotNull(menu);
+            Assert.Equal("Size column to fit", ((MenuItem)menu!.Items[0]).Header);
+            ((MenuItem)menu.Items[0]).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            menu.IsOpen = false;
+            Settle(bed.Window);
+            Assert.True(bed.Column("Kind").ActualWidth > 90, "the menu fitted another column than the focused one");
+        }
+        finally { bed.Window.Close(); }
+    });
+
+    /// <summary>A table with its own menu (the File list's Remove / Undo)
+    /// keeps the Menu key for it.</summary>
+    [Fact]
+    public void ATableWithItsOwnMenuKeepsTheMenuKey() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var bed = Build(rows: new Row { Name = "a" });
+        try
+        {
+            bed.Grid.ContextMenu = new ContextMenu();
+            Settle(bed.Window);
+            bed.Grid.CurrentCell = new DataGridCellInfo(bed.Rows[0], bed.Column("Kind"));
+
+            Assert.False(PressKey(bed.Grid, Key.Apps));
+            Assert.Null(OpenContextMenu());
         }
         finally { bed.Window.Close(); }
     });
