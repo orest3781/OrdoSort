@@ -306,6 +306,11 @@ public sealed class WatchEditVm : ObservableObject, IDisposable
         return string.Join(", ", ordered);
     }
 
+    /// <summary>The properties <see cref="RaiseTypeFlags"/> raises: views of
+    /// Filetypes, never changed on their own.</summary>
+    internal static bool IsTypeFlag(string? propertyName) => propertyName is nameof(AnyType)
+        or nameof(TypePdf) or nameof(TypeTiff) or nameof(TypeJpeg) or nameof(TypePng) or nameof(OtherTypes);
+
     private void RaiseTypeFlags()
     {
         Raise(nameof(AnyType));
@@ -849,8 +854,15 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private void HookWatch(WatchEditVm w) =>
         w.PropertyChanged += (_, e) =>
         {
-            if (ReferenceEquals(w, SelectedWatch))
-                RecomputeTilePreview();
+            // Include-subfolders and the file-type boxes are single clicks,
+            // not typing, so the count follows them at once (DW-74); the
+            // text fields (path, label, colour) wait for the typing to stop.
+            // The type flags are only Filetypes read back, raised just after
+            // it: recomputing for them too would queue a debounced probe
+            // that supersedes the immediate one.
+            if (ReferenceEquals(w, SelectedWatch) && !WatchEditVm.IsTypeFlag(e.PropertyName))
+                RecomputeTilePreview(immediate: e.PropertyName
+                    is nameof(WatchEditVm.Recursive) or nameof(WatchEditVm.Filetypes));
             if (e.PropertyName is nameof(WatchEditVm.Section))
             {
                 RebuildWatchRows();

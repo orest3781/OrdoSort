@@ -40,6 +40,47 @@ public class TilePreviewProbeTests : IDisposable
         Assert.Equal(before + 1, _statusChecks);
     }
 
+    /// <summary>DW-74: ticking "include subfolders" or a file type is one
+    /// click, not typing, yet the preview count waited out the typing pause
+    /// before it caught up. Those clicks now update it at once; the colour,
+    /// typed into a box, still waits for the typing to stop.</summary>
+    [Theory]
+    [InlineData("recursive")]
+    [InlineData("filetype")]
+    public void AClickOnTheSelectedWatchFolderUpdatesTheCountAtOnce(string click)
+    {
+        var vm = Build(new Config());
+        vm.AddWatchCommand.Execute(null);
+        var w = vm.WatchFolders[0];
+        w.Path = _dir.Path;
+        _time.Advance(PastTheDebounce);
+        var before = _statusChecks;
+
+        if (click == "recursive") w.Recursive = true;
+        else w.TypePdf = !w.TypePdf;
+
+        Assert.Equal(before + 1, _statusChecks);
+        // and no second, debounced probe queued behind it by the type flags
+        // Filetypes raises (which would supersede the immediate one)
+        _time.Advance(PastTheDebounce);
+        Assert.Equal(before + 1, _statusChecks);
+    }
+
+    [Fact]
+    public void TypingAColourStillWaitsForThePause()
+    {
+        var vm = Build(new Config());
+        vm.AddWatchCommand.Execute(null);
+        var w = vm.WatchFolders[0];
+        w.Path = _dir.Path;
+        _time.Advance(PastTheDebounce);
+        var before = _statusChecks;
+
+        w.Color = "#c0392b";
+
+        Assert.Equal(before, _statusChecks);
+    }
+
     [Fact]
     public void EditingANonSelectedWatchFolderNeverProbesAtAll()
     {
