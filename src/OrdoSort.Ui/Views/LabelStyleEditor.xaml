@@ -1,0 +1,36 @@
+<UserControl x:Class="OrdoSort.Wpf.Views.LabelStyleEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:OrdoSort.Wpf.Views">
+    <!-- Shared by BoxLabels.exe's Label style tab and OrdoSort's Box labels
+         tab: one editor, one preview, so the two can't offer different
+         choices. The style is kept in the shared box-labels.json. -->
+    <StackPanel>
+        <TextBlock Text="Layout" Style="{StaticResource SectionHeaderFirst}" />
+        <RadioButton GroupName="LabelLayout" Content="Standard (today's label)"
+                     IsChecked="{Binding LayoutStandard}" />
+        <RadioButton GroupName="LabelLayout" Content="Big number"
+                     IsChecked="{Binding LayoutBig}" Margin="0,4,0,0" />
+        <RadioButton GroupName="LabelLayout" Content="Huge running number"
+                     IsChecked="{Binding LayoutHuge}" Margin="0,4,0,0" />
+        <CheckBox Content="Show leading zeros (0000 4200)" IsChecked="{Binding LeadingZeros}"
+                  Margin="0,10,0,0" />
+
+        <TextBlock Text="Date lines" Style="{StaticResource SectionHeader}" />
+        <RadioButton GroupName="LabelDates" Content="Black bars (white text)"
+                     IsChecked="{Binding DatesBars}" />
+        <RadioButton GroupName="LabelDates" Content="Plain (black text)"
+                     IsChecked="{Binding DatesPlain}" Margin="0,4,0,0" />
+
+        <TextBlock Text="Preview" Style="{StaticResource SectionHeader}" />
+        <!-- white on purpose in both themes: this is the paper -->
+        <Border Background="White" BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
+                CornerRadius="4" Padding="8" HorizontalAlignment="Left">
+            <views:LabelPreviewControl Item="{Binding SampleItem}" LabelStyle="{Binding Style}"
+                                       Width="288" Height="144"
+                                       AutomationProperties.Name="Label preview" />
+        </Border>
+        <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,6,0,0"
+                   Text="Every station prints this style. The barcode always holds the full box number." />
+    </StackPanel>
+</UserControl>
