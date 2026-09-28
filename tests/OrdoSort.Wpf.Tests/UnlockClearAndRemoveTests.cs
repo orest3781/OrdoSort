@@ -215,4 +215,59 @@ public class UnlockClearAndRemoveTests : IDisposable
         Assert.Contains(rowB, vm.Files);
         Assert.True(vm.IsIdle);   // normal service resumes
     }
+
+    /// <summary>Q2-05 for Unlock: Clear while a drop was still being checked
+    /// off-thread brought the rows back a moment later, and probed them.</summary>
+    [Fact]
+    public async Task ClearWhileADropIsStillBeingCheckedKeepsTheListEmpty()
+    {
+        var a = Touch("a.pdf");
+        var scheduler = new ControlledWorkScheduler();
+        var probes = 0;
+        var vm = new UnlockViewModel(new Config(), () => true,
+            probe: (path, candidates) => { probes++; return new Unlock.ProbeResult("needs_password", path, Message: "x"); },
+            scheduler: scheduler);
+
+        var addTask = vm.AddFilesAsync(new[] { a });   // the existence check is queued
+        vm.ClearCommand.Execute(null);
+        scheduler.ReleaseAll();
+        await addTask;
+
+        Assert.Empty(vm.Files);
+        Assert.Equal(0, probes);
+    }
+
+    /// <summary>Q2-06: a saved password added during a run reset every row to
+    /// Pending and re-probed them while the run was writing them, and the
+    /// run never tried it anyway. Now the re-check waits for the run.</summary>
+    [Fact]
+    public async Task ASavedPasswordAddedDuringARunIsCheckedAfterTheRunNotDuringIt()
+    {
+        var a = Touch("a.pdf");
+        var scheduler = new ControlledWorkScheduler();
+        var probes = 0;
+        var vm = new UnlockViewModel(new Config(), () => true,
+            unlocker: (p, pw) => new Unlock.UnlockResult("ok", p, p, InPlace: true),
+            probe: (path, candidates) => { probes++; return new Unlock.ProbeResult("needs_password", path, Message: "x"); },
+            scheduler: scheduler);
+        var addTask = vm.AddFilesAsync(new[] { a });
+        scheduler.ReleaseAll();
+        await addTask;
+        var probesBeforeRun = probes;
+
+        vm.Password = "secret";
+        var unlockTask = vm.UnlockAsync();
+        Assert.True(vm.IsUnlocking);
+        Assert.True(vm.AddSavedPassword("office", "other"));
+
+        Assert.Equal(ReadinessStatus.NeedsPassword, Assert.Single(vm.Files).Status);
+        Assert.Equal(probesBeforeRun, probes);
+
+        scheduler.ReleaseAll();
+        await unlockTask;
+        scheduler.ReleaseAll();
+        await vm.ProbeCompletion;
+
+        Assert.Equal(probesBeforeRun + 1, probes);
+    }
 }

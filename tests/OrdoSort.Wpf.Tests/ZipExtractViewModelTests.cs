@@ -901,6 +901,26 @@ public class ZipExtractViewModelTests
         Assert.Equal("", row.Note);
     }
 
+    /// <summary>Q2-05 for Zip Tools: Clear while a drop was still being
+    /// checked off-thread (before any row landed) brought the rows back a
+    /// moment later.</summary>
+    [Fact]
+    public async Task ClearWhileADropIsStillBeingCheckedKeepsTheListEmpty()
+    {
+        using var dir = new TempDir();
+        var zip = dir.File("a.zip");
+        var scheduler = new ControlledWorkScheduler();
+        var vm = new ZipExtractViewModel(new FakeDialogs(), Array.Empty<string>(), scheduler, uiContext: null,
+            zipProbe: (p, _) => new Zipper.ZipProbeResult(p, "needs_password"));
+
+        var adding = vm.AddPaths(new[] { zip });   // the intake check is queued, nothing listed yet
+        vm.ClearCommand.Execute(null);
+        scheduler.ReleaseAll();
+        await adding;
+
+        Assert.Empty(vm.Rows);
+    }
+
     /// <summary>The sibling half of the guard: a row that finished — Mark
     /// stands in for a completed run here, since ControlledWorkScheduler is
     /// strictly FIFO and cannot let a real ExtractAsync unit run and finish

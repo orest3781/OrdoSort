@@ -243,9 +243,14 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         KeepFirstCommand = new RelayCommand<int>(KeepFirst, _ => !IsBusy);
         ResetSegmentsCommand = new RelayCommand(ResetSegments, () => !IsBusy);
         ClearCommand = new RelayCommand(
-            () => { _files.Clear(); _overrides.Clear(); _dropped.Clear(); Refresh(immediate: true); RebuildChips(); },
+            () => { _clears++; _files.Clear(); _overrides.Clear(); _dropped.Clear(); Refresh(immediate: true); RebuildChips(); },
             () => !IsBusy);
     }
+
+    private const string BusyAddNote = "Wait for the rename to finish before adding files.";
+
+    // Bumped by Clear; see AddFilesAsync.
+    private int _clears;
 
     public void Dispose()
     {
@@ -465,8 +470,14 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     /// first already moved. See PathIdentity.</summary>
     public async Task AddFilesAsync(IEnumerable<string> paths)
     {
+        // A batch renames the listed files and then rewrites the list to the
+        // new names, so a file added mid-batch under its old name would show
+        // twice (Q2-12). Checked again after the off-thread step, since a
+        // batch can start while it runs.
+        if (IsBusy) { AddNote = BusyAddNote; return; }
         var candidates = paths.ToList();
         var already = _files.ToList();
+        var clears = _clears;
 
         // Intake's existence check is a File.Exists per dropped path, and
         // that is a network round trip on the shares this tool targets —
@@ -489,6 +500,10 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
             AddNote = $"Couldn't read what was dropped: {ex.Message}";
             return;
         }
+
+        // Cleared while this was being checked: the user cleared this add too (Q2-05).
+        if (clears != _clears) return;
+        if (IsBusy) { AddNote = BusyAddNote; return; }
 
         // Re-checked against the LIVE list, not the snapshot taken before
         // the await — otherwise a second drop landing mid-await gets two
@@ -517,6 +532,7 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
     /// <param name="folder">The folder the picker returned.</param>
     public async Task AddFolderAsync(string folder)
     {
+        if (IsBusy) { AddNote = BusyAddNote; return; }
         Intake.Expanded expanded;
         try
         {

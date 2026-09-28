@@ -652,11 +652,15 @@ public sealed class UnlockViewModel : ObservableObject
         // existence checks go off-thread; only the list update comes back.
         var candidates = paths.ToList();
         var already = Files.Select(f => f.Path).ToList();
+        // Clear cancels this token and hands out a new one; an add that was
+        // still being checked when the list was cleared adds nothing (Q2-05).
+        var probeToken = _probeCts.Token;
 
         // Intake.Add builds its own set rather than scanning the
         // ObservableCollection per candidate — the quadratic cost this method
         // was already avoiding by hand, now avoided in one place.
         var offThread = await _scheduler.Run(() => Intake.Add(already, candidates, Pdfs, File.Exists));
+        if (probeToken.IsCancellationRequested) return;
 
         // Re-checked against the LIVE list, not the snapshot taken before the
         // await: a second drop can have read the same list and be adding the
@@ -693,7 +697,7 @@ public sealed class UnlockViewModel : ObservableObject
         // fire-and-forget the whole method, so awaiting internally costs the
         // UI thread nothing: it stays responsive, and every row's Status
         // still updates live, one at a time, as its own probe lands.
-        ProbeCompletion = ProbeRowsAsync(newRows, _probeCts.Token);
+        ProbeCompletion = ProbeRowsAsync(newRows, probeToken);
         await ProbeCompletion;
     }
 
@@ -818,6 +822,14 @@ public sealed class UnlockViewModel : ObservableObject
     /// unprobed row already has.</summary>
     private void RequeueAllFilesForProbing()
     {
+        // A run is writing these rows, and its password list was fixed when
+        // it started, so resetting them now would only show them as Pending
+        // mid-write (Q2-06). The run re-checks them when it ends instead.
+        if (IsUnlocking)
+        {
+            _requeueAfterRun = true;
+            return;
+        }
         if (Files.Count == 0)
         {
             ProbeCompletion = Task.CompletedTask;
@@ -833,6 +845,10 @@ public sealed class UnlockViewModel : ObservableObject
     /// window must not keep a probe running for rows nobody can see anymore
     /// (same reasoning as CancelUnlock's own doc comment).</summary>
     internal void CancelProbes() => _probeCts.Cancel();
+
+    // Set when a saved-password change landed during a run; see
+    // RequeueAllFilesForProbing.
+    private bool _requeueAfterRun;
 
     internal async Task UnlockAsync()
     {
@@ -952,6 +968,11 @@ public sealed class UnlockViewModel : ObservableObject
             // whether THIS run was the one Clear cancelled.
             clearedThisRun = _clearedWhileUnlocking;
             _clearedWhileUnlocking = false;
+            if (_requeueAfterRun)
+            {
+                _requeueAfterRun = false;
+                RequeueAllFilesForProbing();
+            }
         }
 
         // Clear wiped Files, ResultLines and Summary for the run this loop
