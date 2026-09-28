@@ -191,6 +191,7 @@ public static class BoxLabelStore
                 }
                 CleanHandEdits(doc);
                 doc.DateStyle = BoxLabels.NormalizeDateStyle(doc.DateStyle);
+                doc.LabelLayout = BoxLabels.NormalizeLayout(doc.LabelLayout);
 
                 var result = mutate(doc);   // outside every classification catch
 

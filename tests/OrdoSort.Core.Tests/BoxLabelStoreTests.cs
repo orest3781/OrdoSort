@@ -152,6 +152,50 @@ public class BoxLabelStoreTests : IDisposable
         Assert.Equal("plain", BoxLabels.NormalizeDateStyle("plain"));
     }
 
+    [Fact]
+    public void AStoreWrittenBeforeLabelStylesReadsAsTodaysLabel()
+    {
+        var p = PathOf("box-labels.json");
+        File.WriteAllText(p, "{ \"label_clients\": [], \"date_style\": \"plain\" }");
+
+        Assert.Equal(new BoxLabels.LabelStyle(DateStyle: "plain"), BoxLabelStore.Read(p).Style);
+    }
+
+    [Fact]
+    public void TheLabelStyleRoundTripsThroughTheStore()
+    {
+        var p = PathOf("box-labels.json");
+        var style = new BoxLabels.LabelStyle(BoxLabels.LayoutHuge, LeadingZeros: false, BoxLabels.DateStylePlain);
+
+        BoxLabelStore.Mutate(p, d => { d.Style = style; return 0; });
+
+        Assert.Equal(style, BoxLabelStore.Read(p).Style);
+        var json = File.ReadAllText(p);
+        Assert.Contains("\"label_layout\": \"huge\"", json);
+        Assert.Contains("\"leading_zeros\": false", json);
+    }
+
+    [Fact]
+    public void AnUnknownLayoutInTheFilePrintsAsStandard()
+    {
+        var p = PathOf("box-labels.json");
+        File.WriteAllText(p, "{ \"label_clients\": [], \"label_layout\": \"neon\" }");
+
+        Assert.Equal(BoxLabels.LayoutStandard, BoxLabelStore.Read(p).Style.Layout);
+    }
+
+    /// <summary>Review focus 3: a hand edit that isn't true or false is the
+    /// store's usual readable "not valid JSON" error, not a raw exception.</summary>
+    [Fact]
+    public void ALeadingZerosValueThatIsNotTrueOrFalseIsReportedNotThrownRaw()
+    {
+        var p = PathOf("box-labels.json");
+        File.WriteAllText(p, "{ \"label_clients\": [], \"leading_zeros\": \"no\" }");
+
+        var ex = Assert.Throws<ConfigException>(() => BoxLabelStore.Read(p));
+        Assert.Contains("not valid JSON", ex.Message);
+    }
+
     [Theory]
     [InlineData(unchecked((int)0x80070020), true)]   // sharing violation
     [InlineData(unchecked((int)0x80070021), true)]   // lock violation
