@@ -77,4 +77,19 @@ public class PathIdentityTests
             Assert.Null(Record.Exception(() => PathIdentity.Same(p, "C:\\jobs\\a.pdf")));
         }
     }
+
+    /// <summary>DW-85: the path comparer threw on a null path where the
+    /// default string comparer answers, so a null reaching a path set would
+    /// crash instead of simply not matching anything.</summary>
+    [Fact]
+    public void ThePathComparerHandlesANullPathLikeTheDefaultComparer()
+    {
+        var comparer = PathIdentity.PathComparer.Instance;
+
+        Assert.Equal(0, comparer.GetHashCode(null!));
+        var set = new HashSet<string?>(comparer!) { null, @"C:\jobs\a.pdf" };
+        Assert.Contains(null, set);
+        Assert.True(comparer.Equals(null, null));
+        Assert.False(comparer.Equals(null, @"C:\jobs\a.pdf"));
+    }
 }
