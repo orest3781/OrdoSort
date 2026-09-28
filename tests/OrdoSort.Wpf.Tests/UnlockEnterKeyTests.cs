@@ -305,7 +305,8 @@ public class UnlockEnterKeyTests : UiTest
         try
         {
             var saveAs = ArrangeSaveOffer(window, vm, invoked);
-            Assert.Equal("", saveAs.Text);   // deliberately nothing typed
+            saveAs.Clear();   // the suggested name deleted: deliberately no label
+            Assert.Equal("", vm.SaveBannerName);
             Assert.False(vm.SaveBannerCommand.CanExecute(null));
 
             saveAs.Focus();
@@ -320,6 +321,43 @@ public class UnlockEnterKeyTests : UiTest
             Assert.Empty(cfg.SavedPasswords);       // and nothing was saved
             Assert.True(vm.SaveBannerVisible,       // the offer is still on the table
                 "the save offer was thrown away by an Enter that did nothing else");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>The save offer used to open with an empty name and Save
+    /// disabled. It now suggests "Password 1" and takes the focus with the
+    /// name selected: typing replaces it, and one Enter saves it.</summary>
+    [Fact]
+    public void TheSaveOfferTakesFocusWithItsSuggestedNameSelectedAndEnterSavesIt() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+
+        var cfg = new Config();
+        var invoked = new List<(string Path, string Password)>();
+        var vm = new UnlockViewModel(cfg, () => true,
+            unlocker: (path, password) =>
+            {
+                invoked.Add((path, password));
+                return new Unlock.UnlockResult("ok", path, path, InPlace: true);
+            },
+            fileSize: _ => 0, scheduler: new InlineWorkScheduler());
+        vm.Files.Add(new UnlockFileRow(@"C:\inbox\20240101--1111111111.pdf"));
+
+        var window = OffScreen(vm);
+        try
+        {
+            var saveAs = ArrangeSaveOffer(window, vm, invoked);
+
+            Assert.True(saveAs.IsKeyboardFocused, $"the save offer should take the focus, but it is on {FocusedNow()}");
+            Assert.Equal("Password 1", saveAs.SelectedText);
+
+            SimulateEnterKey(saveAs, PresentationSource.FromVisual(window)!);
+
+            Assert.Equal("Password 1", Assert.Single(cfg.SavedPasswords).Label);
         }
         finally
         {

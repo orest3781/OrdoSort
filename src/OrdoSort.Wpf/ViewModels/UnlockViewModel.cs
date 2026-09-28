@@ -1085,8 +1085,20 @@ public sealed class UnlockViewModel : ObservableObject
             // must protect this snapshot, never Password itself.
             _bannerPassword = password;
             SaveBannerText = $"✓ {okViaTyped} unlocked with a new password — save it as:";
+            // a name ready to save, so one Enter does it (owner's call, 2026-09-28)
+            SaveBannerName = NextFreePasswordName();
             SaveBannerVisible = true;
         }
+    }
+
+    /// <summary>"Password N" for the save offer: N starts one past the saved
+    /// count and skips any label already in use, ignoring case.</summary>
+    private string NextFreePasswordName()
+    {
+        var taken = new HashSet<string>(Saved.Select(sp => sp.Label.Trim()), StringComparer.OrdinalIgnoreCase);
+        var n = Saved.Count + 1;
+        while (taken.Contains($"Password {n}")) n++;
+        return $"Password {n}";
     }
 
     /// <summary>Tries each candidate password against one file in order,

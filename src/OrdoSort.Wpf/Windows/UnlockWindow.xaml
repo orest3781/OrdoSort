@@ -274,7 +274,7 @@
                          ResetBanner at the start of every run, so falling
                          through would restart the whole batch AND wipe the
                          offer being answered. See OnSaveNameKeyDown. -->
-                    <TextBox DockPanel.Dock="Right" Width="150"
+                    <TextBox x:Name="SaveName" DockPanel.Dock="Right" Width="150"
                              Text="{Binding SaveBannerName, UpdateSourceTrigger=PropertyChanged}"
                              AutomationProperties.Name="Save password as" VerticalAlignment="Center"
                              PreviewKeyDown="OnSaveNameKeyDown" />

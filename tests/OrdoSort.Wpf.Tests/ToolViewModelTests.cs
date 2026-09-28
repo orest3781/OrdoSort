@@ -107,7 +107,7 @@ public class UnlockViewModelTests : IDisposable
 
         Assert.True(vm.SaveBannerVisible);
         Assert.Equal("✓ 1 unlocked with a new password — save it as:", vm.SaveBannerText);
-        Assert.Equal("", vm.SaveBannerName);
+        Assert.Equal("Password 1", vm.SaveBannerName);   // a name ready to save (2026-09-28)
     }
 
     [Fact]
@@ -175,7 +175,8 @@ public class UnlockViewModelTests : IDisposable
         vm.Password = "secret";
         await vm.UnlockAsync();
         Assert.True(vm.SaveBannerVisible);
-        Assert.False(vm.SaveBannerCommand.CanExecute(null));   // no name yet
+        vm.SaveBannerName = "  ";   // the suggested name cleared: a blank name can't be saved
+        Assert.False(vm.SaveBannerCommand.CanExecute(null));
 
         vm.SaveBannerName = "Payer A";
         Assert.True(vm.SaveBannerCommand.CanExecute(null));
