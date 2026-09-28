@@ -29,6 +29,7 @@ public sealed class MatchMergeViewModel : ObservableObject
     private readonly IDialogService _dialogs;
     private readonly Action? _saveCfg;
     private readonly IWorkScheduler _scheduler;
+    private readonly Func<string, List<List<string>>> _readRoster;
 
     /// <summary>Extension set in Intake's shape (dot-less, lowercase) rather
     /// than the EndsWith(".pdf") this used to inline — same rule, one place.</summary>
@@ -53,8 +54,10 @@ public sealed class MatchMergeViewModel : ObservableObject
     public ObservableCollection<MatchRow> Rows { get; } = new();
 
     public MatchMergeViewModel(Config cfg, Action<Dictionary<string, string>> saveHeaders,
-        IDialogService dialogs, Action? saveCfg = null, IWorkScheduler? scheduler = null)
+        IDialogService dialogs, Action? saveCfg = null, IWorkScheduler? scheduler = null,
+        Func<string, List<List<string>>>? readRoster = null)
     {
+        _readRoster = readRoster ?? MatchMerge.ReadRosterTable;
         _cfg = cfg;
         _saveHeaders = saveHeaders;
         _dialogs = dialogs;
@@ -200,10 +203,12 @@ public sealed class MatchMergeViewModel : ObservableObject
 
     public void LoadRosterFrom(string path)
     {
+        List<List<string>> table;
         List<string> headers;
         try
         {
-            headers = MatchMerge.ReadHeaders(path);
+            table = _readRoster(path);
+            headers = MatchMerge.HeadersOf(table);
         }
         catch (RosterException ex)
         {
@@ -288,7 +293,8 @@ public sealed class MatchMergeViewModel : ObservableObject
         Raise(nameof(LastHeader));
         Raise(nameof(ControlHeader));
         _fillingHeaders = false;
-        ReloadRoster();
+        // The table just read, not a second read of the file (DW-55).
+        ReloadRoster(table);
     }
 
     /// <summary>Joins role names the way a sentence would: "Control",
@@ -300,7 +306,11 @@ public sealed class MatchMergeViewModel : ObservableObject
         _ => string.Join(", ", roles.Take(roles.Count - 1)) + " and " + roles[^1],
     };
 
-    private void ReloadRoster()
+    /// <summary>Re-matches against the roster file under the current column
+    /// picks. <paramref name="table"/> is a read just made by the caller;
+    /// without one (a column pick changed) the file is read afresh, so the
+    /// pick sees the spreadsheet as it is now.</summary>
+    private void ReloadRoster(List<List<string>>? table = null)
     {
         if (_fillingHeaders || RosterPath.Length == 0) return;
 
@@ -334,7 +344,7 @@ public sealed class MatchMergeViewModel : ObservableObject
 
         try
         {
-            _roster = MatchMerge.LoadRoster(RosterPath, FirstHeader!, LastHeader!, ControlHeader!);
+            _roster = MatchMerge.LoadRoster(table ?? _readRoster(RosterPath), FirstHeader!, LastHeader!, ControlHeader!);
         }
         catch (RosterException ex)
         {

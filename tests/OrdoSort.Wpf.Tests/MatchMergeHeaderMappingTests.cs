@@ -486,4 +486,21 @@ public sealed class MatchMergeHeaderMappingTests : IDisposable
         Assert.Contains("Given Name", vm.ChosenColumns);
         Assert.Contains("ID Number", vm.ChosenColumns);
     }
+
+    /// <summary>DW-55: loading a roster read the whole spreadsheet twice,
+    /// once for its headers and again for its people, which doubled the wait
+    /// for a big roster on a share. One load, one read.</summary>
+    [Fact]
+    public void LoadingARosterReadsTheSpreadsheetOnce()
+    {
+        var path = WriteCsv("First,Last,Control\nJohn,Smith,1\n");
+        var reads = 0;
+        var vm = new MatchMergeViewModel(new Config(), _ => { }, new FakeDialogs(),
+            readRoster: p => { reads++; return MatchMerge.ReadRosterTable(p); });
+
+        vm.LoadRosterFrom(path);
+
+        Assert.Equal("Roster loaded: 1 people.", vm.Status);
+        Assert.Equal(1, reads);
+    }
 }
