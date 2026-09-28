@@ -367,5 +367,12 @@ public partial class MainWindow : Window
         public string? AskOpenFile(string f) => _get().AskOpenFile(f);
         public string? AskFilePath(string f, string s) => _get().AskFilePath(f, s);
         public string? BrowseFolder(string? s) => _get().BrowseFolder(s);
+        // The same hazard as Confirm, for every member with a default body:
+        // unforwarded, AskOpenFiles came back single-select and AskPassword
+        // and AskDate never asked at all (DW-24).
+        public string? AskOpenFile(string f, string? dir) => _get().AskOpenFile(f, dir);
+        public string[] AskOpenFiles(string f) => _get().AskOpenFiles(f);
+        public string? AskPassword(PasswordRequest r) => _get().AskPassword(r);
+        public string? AskDate(string d, int n) => _get().AskDate(d, n);
     }
 }
