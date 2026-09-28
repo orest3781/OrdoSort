@@ -45,6 +45,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
     /// box doesn't rename and re-sort every row per keystroke.</summary>
     private IReadOnlyList<FilenameList.FileRow>? _stemRows;
     private int _lastIgnored;
+    private int _lastNotFound;
     private string _lastError = "";
 
     // Full paths the user has removed. Keyed on PATH rather than on the row,
@@ -492,6 +493,7 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         _allRows = listing.Rows;
         _stemRows = null;
         _lastIgnored = listing.Ignored;
+        _lastNotFound = listing.NotFound;
         _lastError = listing.Error;
         _isListing = false;   // Reproject below writes the counts line
         Raise(nameof(IsListing));
@@ -716,7 +718,11 @@ public sealed class FilenameListViewModel : ObservableObject, IDisposable
         if (removed > 0) line += $" · {removed} removed";
         var hidden = total - removed - Rows.Count;
         if (hidden > 0) line += $" · {hidden} filtered out";
-        if (_lastIgnored > 0) line += $" · {_lastIgnored} ignored";
+        // Two causes, two words (FL-21): the type box leaving files out on
+        // purpose must not read like paths that have gone.
+        var otherTypes = _lastIgnored - _lastNotFound;
+        if (otherTypes > 0) line += $" · {otherTypes} other type{(otherTypes == 1 ? "" : "s")}";
+        if (_lastNotFound > 0) line += $" · {_lastNotFound} not found";
         if (_lastError.Length > 0) line += $" · {_lastError}";
         return line;
     }

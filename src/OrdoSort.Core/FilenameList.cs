@@ -40,7 +40,13 @@ public static class FilenameList
             Pages?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? PageNote;
     }
 
-    public sealed record Listing(IReadOnlyList<FileRow> Rows, int Ignored, string Error = "");
+    /// <summary>One Build's result.</summary>
+    /// <param name="Rows">The files listed.</param>
+    /// <param name="Ignored">Files of another type plus paths not found.</param>
+    /// <param name="Error">Why the walk stopped early, or empty.</param>
+    /// <param name="NotFound">How many of <paramref name="Ignored"/> were
+    /// paths that had gone (FL-21); see <see cref="Intake.Expanded"/>.</param>
+    public sealed record Listing(IReadOnlyList<FileRow> Rows, int Ignored, string Error = "", int NotFound = 0);
 
     /// <summary>Never throws — Intake.Expand's own Ignored/Error flow through
     /// unchanged, and the per-file read below is guarded row by row, so a file
@@ -80,7 +86,8 @@ public static class FilenameList
 
         // Intake sorts by full PATH; re-sort on the NAME this list actually shows.
         rows.Sort((a, b) => NaturalSort.Instance.Compare(a.Name, b.Name));
-        return new Listing(opt.IncludeExtension ? rows : WithoutExtensions(rows), expanded.Ignored, expanded.Error);
+        return new Listing(opt.IncludeExtension ? rows : WithoutExtensions(rows), expanded.Ignored, expanded.Error,
+            expanded.NotFound);
     }
 
     /// <summary>The same rows named without their extensions, in the natural

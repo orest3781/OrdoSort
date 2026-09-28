@@ -649,6 +649,27 @@ public class FilenameListViewModelTests : IDisposable
         Assert.False(vm.StatusIsProblem);
     }
 
+    /// <summary>FL-21: filtering 3 files down to 1 on purpose showed
+    /// "1 file · 2 ignored" — the same word, in the same place, as paths
+    /// that were gone. The counts line now tells the two apart.</summary>
+    [Fact]
+    public void TheCountsLineTellsOtherTypesApartFromPathsNotFound()
+    {
+        Touch("keep.pdf");
+        Touch("skip.txt");
+        Touch("skip.docx");
+        var soonGone = Touch(Path.Combine("later", "moved.pdf"));
+        var vm = MakeVm(new FakeDialogs());
+        vm.AddPaths(new[] { _dir, soonGone });
+        WaitFor(() => vm.Rows.Count == 4 && !vm.IsListing, "the add should settle first");
+        File.Delete(soonGone);   // moved away after it was added
+
+        vm.ExtensionFilter = "pdf";
+
+        WaitFor(() => vm.Rows.Count == 1 && !vm.IsListing, "the type filter should settle");
+        Assert.Equal("1 file · 2 other types · 1 not found", vm.CountsLine);
+    }
+
     /// <summary>FL-15: "Restore removed" never said how many rows it would
     /// bring back; the count was only in the footer. The button names it.</summary>
     [Fact]

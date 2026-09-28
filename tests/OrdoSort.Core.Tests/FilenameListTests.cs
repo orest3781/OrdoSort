@@ -80,6 +80,23 @@ public class FilenameListTests : IDisposable
         Assert.Equal(new[] { "report.pdf" }, listing.Rows.Select(r => r.Name).ToArray());
     }
 
+    /// <summary>FL-21: "ignored" lumped files the type box filtered out on
+    /// purpose together with paths that were gone. The listing now says how
+    /// many of the ignored were not found; the rest are other types.</summary>
+    [Fact]
+    public void TheListingKeepsNotFoundApartFromOtherTypes()
+    {
+        Touch("keep.pdf");
+        Touch("skip.txt");
+        var gone = Path.Combine(_dir, "gone.pdf");
+
+        var listing = FilenameList.Build(new[] { _dir, gone },
+            new FilenameList.Options(Recursive: false, IncludeExtension: true, ExtensionFilter: "pdf"));
+
+        Assert.Equal(2, listing.Ignored);
+        Assert.Equal(1, listing.NotFound);
+    }
+
     /// <summary>FL-28: an empty listing came out as nothing in a .txt but as a
     /// header row in a .csv, so the shape of "nothing" depended on which
     /// column was on. Both are empty now.</summary>
