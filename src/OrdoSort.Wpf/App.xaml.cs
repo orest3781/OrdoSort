@@ -6,7 +6,7 @@ namespace OrdoSort.Wpf;
 
 /// <summary>Startup: parse --config, load Config with a readable error dialog,
 /// boot the theme, show the shell. Uncaught exceptions append to crash.log
-/// beside the config and surface as a dialog — the app survives.</summary>
+/// in this PC's OrdoSort folder and surface as a dialog — the app survives.</summary>
 public partial class App : Application
 {
     private string _cfgPath = "";
@@ -133,6 +133,16 @@ public partial class App : Application
     /// <summary>Where crash.log is, as the app's messages name it.</summary>
     internal const string CrashLogPlace = @"crash.log, in this PC's OrdoSort folder (%LOCALAPPDATA%\OrdoSort)";
 
+    /// <summary>Size at which crash.log is set aside as crash.old.log and a
+    /// fresh one started (R4).</summary>
+    internal const long MaxCrashLogBytes = 1024 * 1024;
+
+    internal const int CrashLogRetryMs = 20;
+
+    /// <summary>The wait between tries at a crash.log another process is
+    /// writing. Settable only by tests.</summary>
+    internal static Action CrashLogRetryWait = () => Thread.Sleep(CrashLogRetryMs);
+
     /// <summary>Appends <paramref name="ex"/> to crash.log in <see cref="_crashDir"/>.
     /// Returns whether the write actually succeeded, so callers that promise
     /// the user "the details are in crash.log" (the DispatcherUnhandledException
@@ -145,12 +155,36 @@ public partial class App : Application
         {
             var dir = _crashDir;
             Directory.CreateDirectory(dir);   // a PC that never ran the preview has no folder yet
-            // Invariant: a stored record (a shared crash.log line), not a
-            // display string — must not shift shape with the station's locale.
-            File.AppendAllText(Path.Combine(dir, "crash.log"),
-                $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)}] {ex}\n\n");
-            return true;
+            var log = Path.Combine(dir, "crash.log");
+            // Invariant: a stored record (a crash.log line), not a display
+            // string — must not shift shape with the station's locale.
+            var entry = $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)}] {ex}\n\n";
+            // A write holds crash.log exclusively, so a second OrdoSort on
+            // this PC crashing at the same moment finds it busy. That entry
+            // used to be dropped (DW-37); wait briefly for the other writer.
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    StartFreshWhenFull(log);
+                    File.AppendAllText(log, entry);
+                    return true;
+                }
+                catch (IOException) when (attempt < 5) { CrashLogRetryWait(); }
+            }
         }
         catch (Exception) { return false; /* crash logging must never crash */ }
+    }
+
+    /// <summary>crash.log was appended to forever, so a recurring fault grew
+    /// it without limit (R4). At <see cref="MaxCrashLogBytes"/> it becomes
+    /// crash.old.log, replacing the one before, and a fresh log starts: the
+    /// newest entries are always kept, and the two files stay near twice the
+    /// cap.</summary>
+    private static void StartFreshWhenFull(string log)
+    {
+        var info = new FileInfo(log);
+        if (!info.Exists || info.Length < MaxCrashLogBytes) return;
+        File.Move(log, Path.Combine(info.DirectoryName!, "crash.old.log"), overwrite: true);
     }
 }
