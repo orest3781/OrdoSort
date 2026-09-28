@@ -77,12 +77,22 @@ public sealed class History : IDisposable
             Pooling = false,                       // release the file on close
                                                    // — matters on a network share
         }.ToString());
-        _conn.Open();
-        Exec($"PRAGMA busy_timeout={BusyTimeoutSeconds * 1000}");
-        Exec("PRAGMA journal_mode=TRUNCATE");      // NOT wal — see class doc
-        Exec("PRAGMA synchronous=FULL");
-        Exec(Schema);
-        Migrate();
+        try
+        {
+            _conn.Open();
+            Exec($"PRAGMA busy_timeout={BusyTimeoutSeconds * 1000}");
+            Exec("PRAGMA journal_mode=TRUNCATE");      // NOT wal — see class doc
+            Exec("PRAGMA synchronous=FULL");
+            Exec(Schema);
+            Migrate();
+        }
+        catch
+        {
+            // Nothing will ever Dispose a half-built History, and an open
+            // connection keeps the file locked until the app exits (DW-75).
+            _conn.Dispose();
+            throw;
+        }
     }
 
     /// <summary>Invariant: this is the stored ts_utc value, read back by every
