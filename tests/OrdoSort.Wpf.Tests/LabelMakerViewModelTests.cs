@@ -730,6 +730,30 @@ public class LabelMakerViewModelTests : IDisposable
         Assert.Equal(90, stored.Single(c => c.Id == "BETA").DestroyDays);
     }
 
+    /// <summary>Q2-42: a close refused over a duplicate id first asked, for
+    /// every row whose id had been cleared, "Remove …? Its running number
+    /// will be lost", and only then said the close was refused over the
+    /// duplicate. Every retry asked again. The duplicate is now named
+    /// first, before any removal is asked about.</summary>
+    [Fact]
+    public void ADuplicateIdIsNamedBeforeAnyBlankedRowIsAskedAbout()
+    {
+        var path = PathWith(
+            new LabelClient { Id = "ALPHA", NextNumber = 7 },
+            new LabelClient { Id = "BETA", NextNumber = 3 },
+            new LabelClient { Id = "GAMMA", NextNumber = 9 });
+        var vm = Vm(path);
+        vm.Clients.Single(c => c.Id == "GAMMA").Id = "";      // cleared: removal would be asked
+        vm.Clients.Single(c => c.Id == "BETA").Id = "ALPHA";  // duplicate
+
+        Assert.False(vm.TryPersist());
+        Assert.False(vm.TryPersist());   // the retry
+
+        Assert.Empty(_dialogs.Confirms);
+        Assert.Equal(2, _dialogs.Warnings.Count);
+        Assert.All(_dialogs.Warnings, w => Assert.Contains("ALPHA", w.Message));
+    }
+
     [Fact]
     public void RenamingAClientCarriesAPeersConcurrentCounterAdvanceForwardToTheNewId()
     {

@@ -834,6 +834,13 @@ public sealed class LabelMakerViewModel : ObservableObject
     /// already paid for once).</returns>
     internal bool TryPersist()
     {
+        // A duplicate refuses the close whatever else happens, so it is named
+        // before anything is asked: checked after the removal questions
+        // below only, a refused close asked them all first, and again on
+        // every retry (Q2-42). Checked again after them too, since a
+        // declined removal puts an id back.
+        if ((_dirty.Count > 0 || _removedIds.Count > 0) && RefuseDuplicateId()) return false;
+
         // A client's id going blank through editing — not the explicit
         // Remove button — is the same destructive act wearing a different
         // hat: without this, clearing the Id box and closing the window
@@ -870,16 +877,7 @@ public sealed class LabelMakerViewModel : ObservableObject
 
         if (_dirty.Count == 0 && _removedIds.Count == 0) return true;   // zero-edit close writes nothing
 
-        var duplicate = Clients
-            .Where(c => c.Id.Length > 0)
-            .GroupBy(c => c.Id)
-            .FirstOrDefault(g => g.Count() > 1);
-        if (duplicate is not null)
-        {
-            _dialogs.Warn($"Two clients share the id \"{duplicate.Key}\" — fix the duplicate "
-                + "before closing; nothing was saved.", _appTitle);
-            return false;   // caller must not let the close proceed over this
-        }
+        if (RefuseDuplicateId()) return false;   // caller must not let the close proceed over this
 
         try
         {
@@ -1015,6 +1013,20 @@ public sealed class LabelMakerViewModel : ObservableObject
                 _appTitle);
             return true;
         }
+    }
+
+    /// <summary>Warns and returns true when two clients on screen share an
+    /// id: see <see cref="TryPersist"/> for why that refuses the write.</summary>
+    private bool RefuseDuplicateId()
+    {
+        var duplicate = Clients
+            .Where(c => c.Id.Length > 0)
+            .GroupBy(c => c.Id)
+            .FirstOrDefault(g => g.Count() > 1);
+        if (duplicate is null) return false;
+        _dialogs.Warn($"Two clients share the id \"{duplicate.Key}\" — fix the duplicate "
+            + "before closing; nothing was saved.", _appTitle);
+        return true;
     }
 }
 
