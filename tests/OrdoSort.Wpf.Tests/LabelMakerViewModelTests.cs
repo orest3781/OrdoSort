@@ -1513,14 +1513,34 @@ public class LabelMakerViewModelTests : IDisposable
     }
 
     [Fact]
-    public void ReloadStylePicksUpAChangeMadeInSettings()
+    public async Task ReloadStylePicksUpAChangeMadeInSettings()
     {
         var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 1 });
         var vm = Vm(path);
         BoxLabelStore.Mutate(path, d => { d.Style = new(BoxLabels.LayoutBig); return 0; });
 
-        vm.ReloadStyle();
+        await vm.ReloadStyleAsync();
 
+        Assert.Equal(BoxLabels.LayoutBig, vm.Style.Layout);
+    }
+
+    /// <summary>Final review, 2026-09-28: the reload read the shared file on
+    /// the UI thread, and the store waits up to seconds for a station holding
+    /// it, so the window froze. The read now runs on the scheduler.</summary>
+    [Fact]
+    public void ReloadStyleReadsTheSharedFileOffTheUiThread()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+        var path = PathWith(new LabelClient { Id = "ABCD", DestroyDays = 30, NextNumber = 1 });
+        var scheduler = new ManualWorkScheduler();
+        var vm = new LabelMakerViewModel(null, path, _dialogs, AppTitle, () => Today, _opened.Add, scheduler);
+        BoxLabelStore.Mutate(path, d => { d.Style = new(BoxLabels.LayoutBig); return 0; });
+
+        var reload = vm.ReloadStyleAsync();
+
+        Assert.False(reload.IsCompleted);   // waiting on the scheduler, not blocking here
+        Assert.Equal(BoxLabels.LayoutStandard, vm.Style.Layout);
+        scheduler.ReleaseAll();
         Assert.Equal(BoxLabels.LayoutBig, vm.Style.Layout);
     }
 }

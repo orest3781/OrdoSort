@@ -175,30 +175,53 @@ public partial class App : Application
 
     /// <summary>Settings…: edit, then save each half and apply what saved. The
     /// label style is read from, and saved to, the labels file that will be
-    /// in use after OK.</summary>
-    private void OpenSettings()
-    {
-        var (family, size) = LabelsFileSettings.ReadFont(_settingsPath);
-        BoxLabels.LabelStyle? style = null;
-        var styleProblem = "";
-        try { style = BoxLabelStore.Read(_labelsFile).Style; }
-        catch (ConfigException ex) { styleProblem = ex.Message; }
-        var vm = new BoxLabelsSettingsViewModel(_labelsFile, ThemeManager.Mode, family, size, style, styleProblem);
-        var window = new BoxLabelsSettingsWindow(vm, () => _chooser.PickAndCheck()) { Owner = MainWindow };
-        if (window.ShowDialog() != true) return;
+    /// in use after OK. The shared file is read and written off the UI
+    /// thread: the store waits up to seconds on a file another station holds,
+    /// and the window must not freeze meanwhile (final review, 2026-09-28).</summary>
+    private void OpenSettings() => _ = OpenSettingsAsync();
 
-        var outcome = BoxLabelsSettingsSaver.Save(_settingsPath, vm);
-        if (outcome.AppearanceSaved)
+    private bool _settingsOpening;
+
+    private async Task OpenSettingsAsync()
+    {
+        if (_settingsOpening) return;   // a second Ctrl+, while the first is still reading
+        _settingsOpening = true;
+        try
         {
-            ThemeManager.SetMode(this, vm.Theme);
-            AppFonts.Apply(this, vm.UiFontFamily, vm.UiFontSize);
+            var (family, size) = LabelsFileSettings.ReadFont(_settingsPath);
+            var labelsFile = _labelsFile;
+            var (style, styleProblem) = await Task.Run(() =>
+            {
+                try { return ((BoxLabels.LabelStyle?)BoxLabelStore.Read(labelsFile).Style, ""); }
+                catch (ConfigException ex) { return ((BoxLabels.LabelStyle?)null, ex.Message); }
+            });
+            var vm = new BoxLabelsSettingsViewModel(_labelsFile, ThemeManager.Mode, family, size, style, styleProblem);
+            var window = new BoxLabelsSettingsWindow(vm, () => _chooser.PickAndCheck()) { Owner = MainWindow };
+            if (window.ShowDialog() != true) return;
+
+            var outcome = await Task.Run(() => BoxLabelsSettingsSaver.Save(_settingsPath, vm));
+            if (outcome.AppearanceSaved)
+            {
+                ThemeManager.SetMode(this, vm.Theme);
+                AppFonts.Apply(this, vm.UiFontFamily, vm.UiFontSize);
+            }
+            if (outcome.Failures.Count > 0)
+                _dialogs.Warn(string.Join(Environment.NewLine + Environment.NewLine, outcome.Failures), Title);
+            if (!string.Equals(vm.LabelsFile, _labelsFile, StringComparison.OrdinalIgnoreCase))
+                SwitchTo(vm.LabelsFile);          // the new window reads the style fresh
+            else if (outcome.StyleSaved && _labelMaker is { } labelMaker)
+                await labelMaker.ReloadStyleAsync();
         }
-        if (outcome.Failures.Count > 0)
-            _dialogs.Warn(string.Join("\n\n", outcome.Failures), Title);
-        if (!string.Equals(vm.LabelsFile, _labelsFile, StringComparison.OrdinalIgnoreCase))
-            SwitchTo(vm.LabelsFile);          // the new window reads the style fresh
-        else if (outcome.StyleSaved)
-            _labelMaker?.ReloadStyle();
+        catch (Exception ex)
+        {
+            // a discarded Task drops its exception: report it instead
+            LogCrash(ex);
+            _dialogs.Warn("Settings couldn't be opened or saved: " + ex.Message, Title);
+        }
+        finally
+        {
+            _settingsOpening = false;
+        }
     }
 
     /// <summary>Save the choice for next launch. A failure here is not fatal —

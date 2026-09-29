@@ -348,15 +348,18 @@ public sealed class LabelMakerViewModel : ObservableObject
     // Label style is set in Settings (BoxLabels.exe's, or OrdoSort's Box
     // labels tab), never here: it belongs to the shared store, so every
     // station prints alike. Read at open, re-read with every claim, and on
-    // ReloadStyle after Settings changed it.
+    // ReloadStyleAsync after Settings changed it.
     private BoxLabels.LabelStyle _style = BoxLabels.LabelStyle.Default;
     public BoxLabels.LabelStyle Style { get => _style; private set => Set(ref _style, value); }
 
-    /// <summary>Re-read the style after Settings changed it. A store that
-    /// can't be read keeps the style shown and says why.</summary>
-    public void ReloadStyle()
+    /// <summary>Re-read the style after Settings changed it. Off the UI
+    /// thread, like every other store access here: the store can wait seconds
+    /// on a file another station holds (final review, 2026-09-28). A store
+    /// that can't be read keeps the style shown and says why.</summary>
+    public async Task ReloadStyleAsync()
     {
-        try { Style = BoxLabelStore.Read(_boxLabelsPath).Style; }
+        var path = _boxLabelsPath;
+        try { Style = await _scheduler.Run(() => BoxLabelStore.Read(path).Style); }
         catch (ConfigException ex) { _dialogs.Warn(ex.Message, _appTitle); }
     }
 
