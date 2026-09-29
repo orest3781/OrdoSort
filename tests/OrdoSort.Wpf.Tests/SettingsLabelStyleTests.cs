@@ -32,6 +32,20 @@ public class SettingsLabelStyleTests
         Assert.Equal(BoxLabels.LayoutHuge, vm.LabelStyleResult!.Layout);
     }
 
+    /// <summary>Final review, 2026-09-28: the unsaved-changes check compared
+    /// config.json only, so a style-only edit closed on Esc without the
+    /// Discard / Keep editing question and was lost.</summary>
+    [Fact]
+    public void AStyleOnlyEditCountsAsUnsaved()
+    {
+        var vm = new SettingsViewModel(new Config(), new FakeDialogs(), labelStyle: BoxLabels.LabelStyle.Default);
+        Assert.False(vm.IsDirty);
+
+        vm.LabelStyle!.LayoutBig = true;
+
+        Assert.True(vm.IsDirty);
+    }
+
     [Fact]
     public void AStoreThatCouldNotBeReadLeavesTheTabWithAReasonAndNothingToSave()
     {

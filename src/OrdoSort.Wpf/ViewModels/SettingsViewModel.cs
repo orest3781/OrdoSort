@@ -2653,6 +2653,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     {
         get
         {
+            // the label style lives in box-labels.json, not the config snapshot
+            if (LabelStyle is { IsChanged: true }) return true;
             try { return !string.Equals(Snapshot(), _openSnapshot, StringComparison.Ordinal); }
             catch (Exception) { return true; }
         }
