@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.ViewModels;
@@ -16,23 +18,24 @@ file sealed class SilentDialogs : ILabelDialogs
     public string? AskSaveFile(string filter, string suggestedName) => null;
 }
 
-/// <summary>The store bar names which box-labels.json is open and offers the
-/// Change file… button. It exists because this app's whole risk is printing
-/// from the wrong file, and that mistake cannot be spotted once numbers are on
+/// <summary>BoxLabels.exe's menu (File → Change labels file…, Exit;
+/// Settings…) and the line naming which box-labels.json is open. The file
+/// is shown at the top because this app's whole risk is printing from the
+/// wrong file, and that mistake cannot be spotted once numbers are on
 /// physical boxes.
 ///
-/// It must appear ONLY in the standalone. OrdoSort reaches the same window
-/// from Tools, where the path is a config.json key edited on the Settings
+/// Both appear ONLY in the standalone. OrdoSort reaches the same window from
+/// Tools, where the path and the label style are edited on its own Settings
 /// page — a second way to change one setting is the thing being avoided, and
 /// "OrdoSort is unchanged" is a promise this test keeps.</summary>
 [Collection(HighlightContrastTests.Name)]
-public class LabelStoreBarTests : UiTest, IDisposable
+public class StandaloneMenuTests : UiTest, IDisposable
 {
     private readonly HighlightContrastFixture _fx;
     private readonly string _dir = Directory.CreateDirectory(
-        Path.Combine(Path.GetTempPath(), "boxlabels_bar_" + Guid.NewGuid().ToString("N"))).FullName;
+        Path.Combine(Path.GetTempPath(), "boxlabels_menu_" + Guid.NewGuid().ToString("N"))).FullName;
 
-    public LabelStoreBarTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
+    public StandaloneMenuTests(HighlightContrastFixture fx) : base(fx) => _fx = fx;
 
     public void Dispose()
     {
@@ -42,8 +45,11 @@ public class LabelStoreBarTests : UiTest, IDisposable
     private LabelMakerViewModel Vm() =>
         new(null, Path.Combine(_dir, "box-labels.json"), new SilentDialogs(), "Box labels");
 
+    private LabelMakerWindow Standalone(StandaloneMenu menu) =>
+        new(Vm(), "Box Labels", "Box Labels — Print preview", standalone: true, standaloneMenu: menu);
+
     [Fact]
-    public void OrdoSortsWindowHasNoStoreBar() => _fx.Invoke(() =>
+    public void OrdoSortsWindowHasNoMenu() => _fx.Invoke(() =>
     {
         var window = new LabelMakerWindow(Vm(), "OrdoSort — Box labels", "OrdoSort — Print preview");
         try
@@ -57,13 +63,12 @@ public class LabelStoreBarTests : UiTest, IDisposable
     public void TheStandaloneShowsTheStoreItIsPrintingFrom() => _fx.Invoke(() =>
     {
         var store = @"\\server\records\box-labels.json";
-        var window = new LabelMakerWindow(Vm(), "Box Labels", "Box Labels — Print preview",
-            standalone: true, storeBar: new LabelStoreBar(store, () => { }));
+        var window = Standalone(new StandaloneMenu(store, () => { }, () => { }));
         try
         {
             Assert.Equal(Visibility.Visible, window.StoreBar.Visibility);
             Assert.Equal(store, window.StorePathText.Text);
-            // the bar trims a long share path, so the whole thing has to be
+            // a long share path is trimmed, so the whole thing has to be
             // recoverable on hover or it is not really shown at all
             Assert.Equal(store, window.StorePathText.ToolTip);
         }
@@ -71,17 +76,34 @@ public class LabelStoreBarTests : UiTest, IDisposable
     });
 
     [Fact]
-    public void TheChangeFileButtonRunsTheHostsAction() => _fx.Invoke(() =>
+    public void TheMenuRunsTheHostsChangeFileAndSettingsActions() => _fx.Invoke(() =>
     {
-        var clicked = 0;
-        var window = new LabelMakerWindow(Vm(), "Box Labels", "Box Labels — Print preview",
-            standalone: true, storeBar: new LabelStoreBar("x.json", () => clicked++));
+        var changed = 0;
+        var settings = 0;
+        var window = Standalone(new StandaloneMenu("x.json", () => changed++, () => settings++));
         try
         {
-            window.ChangeStoreButton.RaiseEvent(
-                new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            window.ChangeFileMenuItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            window.SettingsMenuItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
 
-            Assert.Equal(1, clicked);
+            Assert.Equal((1, 1), (changed, settings));
+        }
+        finally { window.Close(); }
+    });
+
+    /// <summary>Ctrl+, opens Settings, as in OrdoSort.</summary>
+    [Fact]
+    public void CtrlCommaOpensSettings() => _fx.Invoke(() =>
+    {
+        var settings = 0;
+        var window = Standalone(new StandaloneMenu("x.json", () => { }, () => settings++));
+        try
+        {
+            var binding = window.InputBindings.OfType<KeyBinding>()
+                .Single(b => b.Key == Key.OemComma && b.Modifiers == ModifierKeys.Control);
+            binding.Command.Execute(null);
+
+            Assert.Equal(1, settings);
         }
         finally { window.Close(); }
     });
@@ -93,12 +115,11 @@ public class LabelStoreBarTests : UiTest, IDisposable
     [Fact]
     public void TheCloseButtonClosesTheStandaloneWindow() => _fx.Invoke(() =>
     {
-        var window = new LabelMakerWindow(Vm(), "Box Labels", "Box Labels — Print preview",
-            standalone: true, storeBar: new LabelStoreBar("x.json", () => { }))
-        {
-            Left = -20000, Top = 0, ShowActivated = false,
-            WindowStartupLocation = WindowStartupLocation.Manual,
-        };
+        var window = Standalone(new StandaloneMenu("x.json", () => { }, () => { }));
+        window.Left = -20000;
+        window.Top = 0;
+        window.ShowActivated = false;
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
         var closed = false;
         window.Closed += (_, _) => closed = true;
         window.Show();
@@ -116,36 +137,20 @@ public class LabelStoreBarTests : UiTest, IDisposable
     });
 
     [Fact]
-    public void WithoutAHostActionThereIsNoThemeSwitch() => _fx.Invoke(() =>
+    public void FileExitClosesTheStandaloneWindow() => _fx.Invoke(() =>
     {
-        var window = new LabelMakerWindow(Vm(), "Box Labels", "Box Labels — Print preview",
-            standalone: true, storeBar: new LabelStoreBar("x.json", () => { }));
+        var window = Standalone(new StandaloneMenu("x.json", () => { }, () => { }));
+        window.Left = -20000;
+        window.ShowActivated = false;
+        var closed = false;
+        window.Closed += (_, _) => closed = true;
+        window.Show();
         try
         {
-            Assert.Equal(Visibility.Collapsed, window.ThemeSwitch.Visibility);
+            window.ExitMenuItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+
+            Assert.True(closed);
         }
-        finally { window.Close(); }
-    });
-
-    [Fact]
-    public void TheThemeSwitchShowsTheCurrentThemeAndReportsAPick() => _fx.Invoke(() =>
-    {
-        var picked = new List<string>();
-        var window = new LabelMakerWindow(Vm(), "Box Labels", "Box Labels — Print preview",
-            standalone: true, storeBar: new LabelStoreBar("x.json", () => { }, "dark", picked.Add));
-        try
-        {
-            Assert.Equal(Visibility.Visible, window.ThemeSwitch.Visibility);
-            Assert.True(window.ThemeDarkButton.IsChecked);
-            Assert.False(window.ThemeAutoButton.IsChecked);
-            // showing the saved choice is not a new choice
-            Assert.Empty(picked);
-
-            window.ThemeLightButton.IsChecked = true;
-
-            Assert.Equal(new[] { "light" }, picked);
-            Assert.False(window.ThemeDarkButton.IsChecked);
-        }
-        finally { window.Close(); }
+        finally { if (!closed) window.Close(); }
     });
 }

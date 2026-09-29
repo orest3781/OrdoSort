@@ -90,20 +90,6 @@ public static class LabelsFileSettings
         WriteDoc(settingsPath, doc);
     }
 
-    /// <summary>Remember the Auto/Light/Dark choice. Throws on an unwritable
-    /// location, like <see cref="Write"/>; the remembered store path is
-    /// kept.</summary>
-    /// <param name="theme">"auto", "light" or "dark".</param>
-    /// <exception cref="ArgumentException">Any other value.</exception>
-    public static void WriteTheme(string settingsPath, string theme)
-    {
-        if (theme is not ("auto" or "light" or "dark"))
-            throw new ArgumentException($"theme must be auto, light or dark, got \"{theme}\"", nameof(theme));
-        var doc = ReadDoc(settingsPath);
-        doc.Theme = theme;
-        WriteDoc(settingsPath, doc);
-    }
-
     /// <summary>The remembered font and text size, or the defaults ("" and 0)
     /// when missing, damaged or out of range — a convenience setting, like
     /// the theme.</summary>

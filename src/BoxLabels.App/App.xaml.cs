@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 using BoxLabelsApp.Services;
+using BoxLabelsApp.Windows;
 using Microsoft.Win32;
 using OrdoSort.Core;
 using OrdoSort.Wpf.Theme;
@@ -63,12 +64,15 @@ public partial class App : Application
 
         // Theme FIRST, before anything that can raise a dialog: the dialogs
         // below are real WPF windows and resolve Theme.* brushes. The choice
-        // is made in the store bar and remembered beside the exe.
+        // is made in Settings and remembered beside the exe.
         _settingsPath = LabelsFileSettings.PathIn(AppContext.BaseDirectory);
         ThemeManager.Start(this, LabelsFileSettings.ReadTheme(_settingsPath));
         // The XAML placeholder is replaced by the shared default, so the two
         // applications cannot drift apart on the font they fall back to.
         Resources["AppFontFamily"] = AppFonts.CreateDefault();
+        // then the remembered font and size, set in Settings (2026-09-28)
+        var (fontFamily, fontSize) = LabelsFileSettings.ReadFont(_settingsPath);
+        AppFonts.Apply(this, fontFamily, fontSize);
 
         _dialogs = dialogs;
         _chooser = new LabelsFileChooser(dialogs, Title, AskForLabelsFile);
@@ -90,6 +94,7 @@ public partial class App : Application
     private LabelsFileChooser _chooser = null!;
     private string _settingsPath = "";
     private string _labelsFile = "";
+    private LabelMakerViewModel? _labelMaker;
 
     /// <summary>Open the label maker on whatever store is current.</summary>
     private void ShowLabelMaker()
@@ -98,9 +103,10 @@ public partial class App : Application
         // config.json, and a machine running only this app has never had one.
         var vm = new LabelMakerViewModel(null, _labelsFile, _dialogs, Title);
         vm.UnexpectedError += ex => LogCrash(ex);
+        _labelMaker = vm;
         var window = new LabelMakerWindow(vm, Title, $"{Title} — Print preview",
             standalone: true,
-            storeBar: new LabelStoreBar(_labelsFile, ChangeStoreFile, ThemeManager.Mode, SetTheme));
+            standaloneMenu: new StandaloneMenu(_labelsFile, ChangeStoreFile, OpenSettings));
         // Set here, not in the shared XAML: OrdoSort opens the same window
         // off its Tools menu and must not wear the Box Labels icon.
         window.Icon = System.Windows.Media.Imaging.BitmapFrame.Create(AppIconUri);
@@ -121,7 +127,14 @@ public partial class App : Application
     /// larger change to code both applications share.</summary>
     private void ChangeStoreFile()
     {
-        if (_chooser.PickAndCheck() is not { } chosen) return;
+        if (_chooser.PickAndCheck() is { } chosen) SwitchTo(chosen);
+    }
+
+    /// <summary>Close the window on the current store and reopen on
+    /// <paramref name="chosen"/>, remembering it. File → Change labels file…
+    /// and a file picked in Settings both end here.</summary>
+    private void SwitchTo(string chosen)
+    {
         if (string.Equals(chosen, _labelsFile, StringComparison.OrdinalIgnoreCase)) return;
 
         var old = MainWindow;
@@ -160,23 +173,32 @@ public partial class App : Application
         }
     }
 
-    /// <summary>The store bar's Auto/Light/Dark switch: apply now, then
-    /// remember. A failed save leaves the theme applied for this run and says
-    /// so, the same way <see cref="Remember"/> does.</summary>
-    private void SetTheme(string mode)
+    /// <summary>Settings…: edit, then save each half and apply what saved. The
+    /// label style is read from, and saved to, the labels file that will be
+    /// in use after OK.</summary>
+    private void OpenSettings()
     {
-        ThemeManager.SetMode(this, mode);
-        try
+        var (family, size) = LabelsFileSettings.ReadFont(_settingsPath);
+        BoxLabels.LabelStyle? style = null;
+        var styleProblem = "";
+        try { style = BoxLabelStore.Read(_labelsFile).Style; }
+        catch (ConfigException ex) { styleProblem = ex.Message; }
+        var vm = new BoxLabelsSettingsViewModel(_labelsFile, ThemeManager.Mode, family, size, style, styleProblem);
+        var window = new BoxLabelsSettingsWindow(vm, () => _chooser.PickAndCheck()) { Owner = MainWindow };
+        if (window.ShowDialog() != true) return;
+
+        var outcome = BoxLabelsSettingsSaver.Save(_settingsPath, vm);
+        if (outcome.AppearanceSaved)
         {
-            LabelsFileSettings.WriteTheme(_settingsPath, ThemeManager.Mode);
+            ThemeManager.SetMode(this, vm.Theme);
+            AppFonts.Apply(this, vm.UiFontFamily, vm.UiFontSize);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            _dialogs.Warn(
-                "Box Labels switched the theme, but couldn't remember it for next time:\n\n" +
-                ex.Message,
-                Title);
-        }
+        if (outcome.Failures.Count > 0)
+            _dialogs.Warn(string.Join("\n\n", outcome.Failures), Title);
+        if (!string.Equals(vm.LabelsFile, _labelsFile, StringComparison.OrdinalIgnoreCase))
+            SwitchTo(vm.LabelsFile);          // the new window reads the style fresh
+        else if (outcome.StyleSaved)
+            _labelMaker?.ReloadStyle();
     }
 
     /// <summary>Save the choice for next launch. A failure here is not fatal —

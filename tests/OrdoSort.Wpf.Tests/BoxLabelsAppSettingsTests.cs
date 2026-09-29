@@ -183,7 +183,7 @@ public sealed class BoxLabelsAppSettingsTests : IDisposable
     [InlineData("auto")]
     public void ARememberedThemeComesBackOnTheNextLaunch(string theme)
     {
-        LabelsFileSettings.WriteTheme(SettingsPath, theme);
+        LabelsFileSettings.WriteAppearance(SettingsPath, theme, "", 0);
 
         Assert.Equal(theme, LabelsFileSettings.ReadTheme(SettingsPath));
     }
@@ -197,7 +197,7 @@ public sealed class BoxLabelsAppSettingsTests : IDisposable
         var share = @"\\server\records\box-labels.json";
         LabelsFileSettings.Write(SettingsPath, share);
 
-        LabelsFileSettings.WriteTheme(SettingsPath, "dark");
+        LabelsFileSettings.WriteAppearance(SettingsPath, "dark", "", 0);
 
         Assert.Equal(share, LabelsFileSettings.Read(SettingsPath));
         Assert.Equal("dark", LabelsFileSettings.ReadTheme(SettingsPath));
@@ -206,7 +206,7 @@ public sealed class BoxLabelsAppSettingsTests : IDisposable
     [Fact]
     public void SavingTheStoreKeepsTheRememberedTheme()
     {
-        LabelsFileSettings.WriteTheme(SettingsPath, "light");
+        LabelsFileSettings.WriteAppearance(SettingsPath, "light", "", 0);
 
         LabelsFileSettings.Write(SettingsPath, @"\\server\records\box-labels.json");
 
@@ -220,7 +220,7 @@ public sealed class BoxLabelsAppSettingsTests : IDisposable
     {
         File.WriteAllText(SettingsPath, "{ \"box_labels_file\": \"a.json\", \"station\": \"front desk\" }");
 
-        LabelsFileSettings.WriteTheme(SettingsPath, "dark");
+        LabelsFileSettings.WriteAppearance(SettingsPath, "dark", "", 0);
 
         Assert.Contains("\"station\": \"front desk\"", File.ReadAllText(SettingsPath));
     }
@@ -243,7 +243,7 @@ public sealed class BoxLabelsAppSettingsTests : IDisposable
 
     [Fact]
     public void OnlyAutoLightOrDarkCanBeSaved() =>
-        Assert.Throws<ArgumentException>(() => LabelsFileSettings.WriteTheme(SettingsPath, "ledger"));
+        Assert.Throws<ArgumentException>(() => LabelsFileSettings.WriteAppearance(SettingsPath, "ledger", "", 0));
 
     // ------------------------------------------------------------ reachability
 

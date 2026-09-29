@@ -1,0 +1,90 @@
+<Window x:Class="BoxLabelsApp.Windows.BoxLabelsSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:theme="clr-namespace:OrdoSort.Wpf.Theme;assembly=OrdoSort.Ui"
+        xmlns:views="clr-namespace:OrdoSort.Wpf.Views;assembly=OrdoSort.Ui"
+        Title="Box Labels — Settings" Width="620" Height="640" MinWidth="520" MinHeight="520"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Style="{StaticResource {x:Type Window}}">
+    <!-- Two halves saved differently: General (theme, text, the labels file)
+         belongs to this PC, beside BoxLabels.exe; Label style belongs to the
+         shared labels file, so every station prints alike. -->
+    <Window.Resources>
+        <!-- declared here: BoxLabels.exe doesn't have OrdoSort's App.xaml -->
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </Window.Resources>
+    <DockPanel Margin="14">
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <Button DockPanel.Dock="Right" Content="Cancel" Width="96" IsCancel="True" />
+            <Button DockPanel.Dock="Right" Content="OK" Width="96" Margin="0,0,8,0" IsDefault="True"
+                    Style="{StaticResource PrimaryButton}" Click="OnOk" />
+            <TextBlock x:Name="ProblemLine" Foreground="{DynamicResource Theme.StatusAmber}"
+                       TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"
+                       AutomationProperties.Name="Settings problems" />
+        </DockPanel>
+        <TabControl>
+            <TabItem Header="_General" AutomationProperties.Name="General">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16,8" Grid.IsSharedSizeScope="True">
+                        <TextBlock Text="Labels file" Style="{StaticResource SectionHeaderFirst}" />
+                        <DockPanel>
+                            <Button x:Name="ChangeFileButton" DockPanel.Dock="Right" Content="Change…"
+                                    MinWidth="96" Margin="8,0,0,0"
+                                    AutomationProperties.Name="Change labels file" />
+                            <TextBox Text="{Binding LabelsFile, Mode=OneWay}" IsReadOnly="True"
+                                     AutomationProperties.Name="Labels file" />
+                        </DockPanel>
+                        <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                   Text="The shared file every station's box numbers come from. A new file is used once you press OK." />
+
+                        <TextBlock Text="Theme" Style="{StaticResource SectionHeader}" />
+                        <RadioButton GroupName="BoxLabelsTheme" Content="Follow Windows light/dark mode"
+                                     IsChecked="{Binding ThemeAuto}" />
+                        <RadioButton GroupName="BoxLabelsTheme" Content="Light"
+                                     IsChecked="{Binding ThemeLight}" Margin="0,4,0,0" />
+                        <RadioButton GroupName="BoxLabelsTheme" Content="Dark"
+                                     IsChecked="{Binding ThemeDark}" Margin="0,4,0,0" />
+
+                        <TextBlock Text="Text" Style="{StaticResource SectionHeader}" />
+                        <Grid Style="{StaticResource FieldRow}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                                <ColumnDefinition Width="220" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="App font:" Style="{StaticResource FieldLabel}" />
+                            <ComboBox Grid.Column="1" ItemsSource="{x:Static theme:AppFonts.Choices}"
+                                      SelectedValuePath="Key" SelectedValue="{Binding UiFontFamily}"
+                                      ItemTemplate="{StaticResource FontChoiceTemplate}"
+                                      AutomationProperties.Name="App font" />
+                        </Grid>
+                        <Grid Style="{StaticResource FieldRow}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                                <ColumnDefinition Width="60" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Text size:" Style="{StaticResource FieldLabel}" />
+                            <TextBox Grid.Column="1" Text="{Binding UiFontSizeText, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Text size" />
+                            <TextBlock Grid.Column="2" Style="{StaticResource SubtleText}"
+                                       VerticalAlignment="Center" Margin="8,0,0,0"
+                                       Text="6–72 · blank = default" TextTrimming="CharacterEllipsis" />
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="_Label style" AutomationProperties.Name="Label style">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16,8">
+                        <views:LabelStyleEditor DataContext="{Binding LabelStyle}"
+                                                Visibility="{Binding DataContext.HasLabelStyle,
+                                                    RelativeSource={RelativeSource AncestorType=TabItem},
+                                                    Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="{Binding LabelStyleProblem}" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Theme.StatusAmber}" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

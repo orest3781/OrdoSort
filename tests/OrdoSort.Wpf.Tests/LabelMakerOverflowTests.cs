@@ -142,8 +142,8 @@ public class LabelMakerOverflowTests : UiTest
         vm.Selected = vm.Clients[0];
         var window = new LabelMakerWindow(vm, "Box Labels", "Box Labels — Print preview",
             standalone: true,
-            // with the theme switch showing: the widest the bar gets
-            storeBar: new LabelStoreBar(@"\\server\records\box-labels.json", () => { }, "auto", _ => { }))
+            // with the menu and a long share path: the tallest the bar gets
+            standaloneMenu: new StandaloneMenu(@"\\server\records\box-labels.json", () => { }, () => { }))
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,

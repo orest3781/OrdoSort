@@ -26,7 +26,16 @@ public sealed class BoxLabelsSettingsViewModel : ObservableObject
         _uiFontSizeText = fontSize == 0 ? "" : fontSize.ToString();
         LabelStyle = style is { } s ? new LabelStyleEditorViewModel(s) : null;
         LabelStyleProblem = styleProblem;
+        _opened = (_labelsFile, _theme, _uiFontFamily, _uiFontSizeText);
     }
+
+    // What the window opened with, for IsChanged.
+    private readonly (string LabelsFile, string Theme, string Family, string SizeText) _opened;
+
+    /// <summary>True when anything differs from what the window opened with:
+    /// closing then asks before throwing the edits away.</summary>
+    public bool IsChanged =>
+        (LabelsFile, Theme, UiFontFamily, UiFontSizeText) != _opened || LabelStyle is { IsChanged: true };
 
     private string _labelsFile;
 

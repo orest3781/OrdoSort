@@ -10,51 +10,42 @@
          simply spilled, but with the scrolling viewport below that means a
          scrollbar on a window that never had one. The room removes it. -->
     <DockPanel Margin="14">
-        <!-- Which store is open. Collapsed unless the host passes a
-             LabelStoreBar, so OrdoSort's window is unchanged: there the path
-             is a config.json key edited on the Settings page, and a second
-             way to change it here would disagree with that one.
+        <!-- BoxLabels.exe's menu and the line naming which store is open.
+             Collapsed unless the host passes a StandaloneMenu, so OrdoSort's
+             window is unchanged: there the labels file and the label style
+             are edited on its own Settings page, and a second way to change
+             them here would disagree with that one.
 
-             It is at the TOP because this app's whole risk is printing from
-             the wrong file, and that mistake is undetectable once numbers are
-             on physical boxes — so the store has to be readable before you
-             touch anything, not after. -->
-        <Border x:Name="StoreBar" DockPanel.Dock="Top" Visibility="Collapsed"
-                BorderBrush="{DynamicResource Theme.Border}" BorderThickness="0,0,0,1"
-                Padding="0,0,0,10" Margin="0,0,0,12">
-            <DockPanel>
-                <Button x:Name="ChangeStoreButton" DockPanel.Dock="Right"
-                        Content="Change file…" MinWidth="112" Margin="12,0,0,0"
-                        AutomationProperties.Name="Change box labels file" />
-                <!-- Auto/Light/Dark: collapsed unless the host passes
-                     LabelStoreBar.SetTheme. OrdoSort picks its theme on the
-                     Settings page instead. -->
-                <StackPanel x:Name="ThemeSwitch" DockPanel.Dock="Right" Orientation="Horizontal"
-                            Visibility="Collapsed" Margin="12,0,0,0"
-                            AutomationProperties.Name="Theme">
-                    <TextBlock Text="Theme:" Style="{StaticResource FieldLabel}"
+             The file is at the TOP because this app's whole risk is printing
+             from the wrong file, and that mistake is undetectable once numbers
+             are on physical boxes — so the store has to be readable before
+             you touch anything, not after. The negative margin puts the menu
+             flush with the window edges, the way menus sit. -->
+        <DockPanel x:Name="StoreBar" DockPanel.Dock="Top" Visibility="Collapsed"
+                   Margin="-14,-14,-14,12">
+            <Menu DockPanel.Dock="Top" Padding="4,2">
+                <MenuItem Header="_File">
+                    <MenuItem x:Name="ChangeFileMenuItem" Header="Change labels _file…" />
+                    <Separator />
+                    <MenuItem x:Name="ExitMenuItem" Header="E_xit" />
+                </MenuItem>
+                <MenuItem x:Name="SettingsMenuItem" Header="_Settings…" InputGestureText="Ctrl+," />
+            </Menu>
+            <Border BorderBrush="{DynamicResource Theme.Border}" BorderThickness="0,0,0,1"
+                    Padding="14,8,14,10">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Left" Text="Labels file:"
+                               Style="{StaticResource FieldLabel}"
                                VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <RadioButton x:Name="ThemeAutoButton" GroupName="BoxLabelsTheme" Content="Auto"
-                                 VerticalAlignment="Center" Margin="0,0,10,0"
-                                 AutomationProperties.Name="Theme: follow Windows"
-                                 ToolTip="Follow the Windows light/dark setting" />
-                    <RadioButton x:Name="ThemeLightButton" GroupName="BoxLabelsTheme" Content="Light"
-                                 VerticalAlignment="Center" Margin="0,0,10,0"
-                                 AutomationProperties.Name="Theme: light" />
-                    <RadioButton x:Name="ThemeDarkButton" GroupName="BoxLabelsTheme" Content="Dark"
-                                 VerticalAlignment="Center"
-                                 AutomationProperties.Name="Theme: dark" />
-                </StackPanel>
-                <TextBlock DockPanel.Dock="Left" Text="Labels file:"
-                           Style="{StaticResource FieldLabel}"
-                           VerticalAlignment="Center" Margin="0,0,8,0" />
-                <!-- Trimmed with the full path on hover, the same treatment
-                     the status line below gets: a share path is longer than
-                     any window is wide. -->
-                <TextBlock x:Name="StorePathText" Style="{StaticResource SubtleText}"
-                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-            </DockPanel>
-        </Border>
+                    <!-- Trimmed with the full path on hover, the same treatment
+                         the status line below gets: a share path is longer than
+                         any window is wide. -->
+                    <TextBlock x:Name="StorePathText" Style="{StaticResource SubtleText}"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               AutomationProperties.Name="Labels file in use" />
+                </DockPanel>
+            </Border>
+        </DockPanel>
 
         <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
             <!-- IsCancel closes the window only when it was opened as a

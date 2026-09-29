@@ -320,6 +320,14 @@ public class WindowOverflowTests : UiTest
             "Another program may have it open. Try again?",
             "OrdoSort", MessageKind.Question), null), MinExamined: 5),   // 6 measured
 
+        // Box Labels' Settings (2026-09-28): both tabs, the longest share path
+        ["BoxLabelsSettingsWindow"] = new(520, 620, 520, 640, () =>
+            (new BoxLabelsApp.Windows.BoxLabelsSettingsWindow(
+                new BoxLabelsApp.Services.BoxLabelsSettingsViewModel(
+                    @"\\server\records\a-long-enough-share-folder-name\box-labels.json", "auto", "", 0,
+                    BoxLabels.LabelStyle.Default, ""), () => null), null),
+            MinExamined: 10, ProbeEveryTab: true),
+
         ["StandardiseDateWindow"] = new(380, 520, 0, 0, () =>
             (StandardiseDateWindow.Build(null, "20260115", 128), null), MinExamined: 6),   // 7 measured
 

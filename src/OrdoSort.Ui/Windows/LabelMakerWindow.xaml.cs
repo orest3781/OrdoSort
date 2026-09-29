@@ -1,28 +1,26 @@
 using System.Windows;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Markup;
 using OrdoSort.Core;
+using OrdoSort.Wpf.Mvvm;
 using OrdoSort.Wpf.ViewModels;
 using OrdoSort.Wpf.Views;
 
 namespace OrdoSort.Wpf.Windows;
 
-/// <summary>The bar naming which box-labels store is open, and the action
-/// that changes it.
+/// <summary>BoxLabels.exe's menu (File → Change labels file…, Exit;
+/// Settings…) and the line naming which box-labels store is open.
 ///
-/// Null in OrdoSort: there the path is a config.json key edited on the
-/// Settings page, and a button here that wrote config.json would be a second
-/// way to change one setting. Non-null in BoxLabels.exe, where this is the
-/// only place that path exists at all.</summary>
-/// <param name="Path">Shown in full; trimmed with a tooltip when too long.</param>
-/// <param name="ChangeFile">Invoked by the button. The host owns everything
+/// Null in OrdoSort: there the labels file and the label style are edited on
+/// its own Settings page, and a second way to change them here would disagree
+/// with that one. Non-null in BoxLabels.exe, where this is the only place
+/// they exist.</summary>
+/// <param name="LabelsFile">Shown in full; trimmed with a tooltip when too long.</param>
+/// <param name="ChangeFile">File → Change labels file…. The host owns everything
 /// that follows — picking, validating, and swapping the window.</param>
-/// <param name="ThemeMode">The theme in force: "auto", "light" or "dark".</param>
-/// <param name="SetTheme">Invoked with the new mode when the user picks one.
-/// Null hides the switch. BoxLabels.exe has no settings page, so this bar is
-/// its only place to choose.</param>
-public sealed record LabelStoreBar(string Path, Action ChangeFile,
-    string ThemeMode = "auto", Action<string>? SetTheme = null);
+/// <param name="OpenSettings">Settings… (and Ctrl+,).</param>
+public sealed record StandaloneMenu(string LabelsFile, Action ChangeFile, Action OpenSettings);
 
 public partial class LabelMakerWindow : Window
 {
@@ -38,10 +36,10 @@ public partial class LabelMakerWindow : Window
     /// <paramref name="standalone"/> switches those two, and makes the Close
     /// button close a window that is not a dialog.
     ///
-    /// <paramref name="storeBar"/> is null in OrdoSort, which is what keeps
-    /// that window unchanged — see <see cref="LabelStoreBar"/>.</summary>
+    /// <paramref name="standaloneMenu"/> is null in OrdoSort, which is what
+    /// keeps that window unchanged — see <see cref="StandaloneMenu"/>.</summary>
     public LabelMakerWindow(LabelMakerViewModel vm, string windowTitle,
-        string previewTitle, bool standalone = false, LabelStoreBar? storeBar = null)
+        string previewTitle, bool standalone = false, StandaloneMenu? standaloneMenu = null)
     {
         InitializeComponent();
         Title = windowTitle;
@@ -55,30 +53,24 @@ public partial class LabelMakerWindow : Window
             // the dialog and a second Close() would run mid-close.
             CloseButton.Click += (_, _) => Close();
         }
-        if (storeBar is not null)
+        if (standaloneMenu is not null)
         {
             StoreBar.Visibility = Visibility.Visible;
-            StorePathText.Text = storeBar.Path;
-            StorePathText.ToolTip = storeBar.Path;   // trimmed in the bar; whole on hover
-            ChangeStoreButton.Click += (_, _) => storeBar.ChangeFile();
-            if (storeBar.SetTheme is { } setTheme)
-            {
-                ThemeSwitch.Visibility = Visibility.Visible;
-                var buttons = new[] { (ThemeAutoButton, "auto"), (ThemeLightButton, "light"), (ThemeDarkButton, "dark") };
-                foreach (var (button, mode) in buttons)
-                {
-                    button.IsChecked = mode == storeBar.ThemeMode;
-                    button.Checked += (_, _) => setTheme(mode);
-                }
-            }
+            StorePathText.Text = standaloneMenu.LabelsFile;
+            StorePathText.ToolTip = standaloneMenu.LabelsFile;   // trimmed in the bar; whole on hover
+            ChangeFileMenuItem.Click += (_, _) => standaloneMenu.ChangeFile();
+            ExitMenuItem.Click += (_, _) => Close();
+            SettingsMenuItem.Click += (_, _) => standaloneMenu.OpenSettings();
+            InputBindings.Add(new KeyBinding(new RelayCommand(standaloneMenu.OpenSettings),
+                Key.OemComma, ModifierKeys.Control));
 
             // The window has to grow by exactly what the bar takes, or it
             // takes the room from the form instead. The Grid below has a *
             // row, so nothing complains and nothing clips: the last rows of
-            // the form simply end up underneath the preview section, and the
-            // date-style choice is not on screen at all. Measured rather than
-            // a constant because the bar is one line of the user's configured
-            // font, which ranges 6-72.
+            // the form simply end up underneath the preview section, and its
+            // last row is not on screen at all. Measured rather than a
+            // constant because the bar follows the user's configured font,
+            // which ranges 6-72.
             StoreBar.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             var barHeight = StoreBar.DesiredSize.Height;
             Height += barHeight;
