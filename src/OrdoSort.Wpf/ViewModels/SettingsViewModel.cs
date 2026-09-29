@@ -542,10 +542,24 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// <summary>Why the Box labels tab can't edit the style, or "".</summary>
     public string LabelStyleProblem { get; }
 
-    public bool HasLabelStyle => LabelStyle is not null;
+    /// <summary>The style shown was read from the labels file in use when
+    /// Settings opened; once Data files points elsewhere it would be the old
+    /// file's look, so the tab steps aside and nothing is written (final
+    /// review, 2026-09-28).</summary>
+    private bool LabelsFileChanged =>
+        !string.Equals(BoxLabelsFile.Trim(), _original.BoxLabelsFile.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    public bool HasLabelStyle => LabelStyle is not null && !LabelsFileChanged;
+
+    /// <summary>What the Box labels tab says instead of the editor, or "".</summary>
+    public string LabelStyleNote => LabelsFileChanged
+        ? "You picked a different labels file. Press OK to switch to it, then open Settings "
+        + "again to set its label style."
+        : LabelStyleProblem;
 
     /// <summary>The style to write to the shared file on OK, or null to leave it.</summary>
-    public BoxLabels.LabelStyle? LabelStyleResult => LabelStyle is { IsChanged: true } e ? e.Style : null;
+    public BoxLabels.LabelStyle? LabelStyleResult =>
+        HasLabelStyle && LabelStyle is { IsChanged: true } e ? e.Style : null;
 
     // KeyValuePair: WPF binds properties, not tuple fields
     public static readonly KeyValuePair<string, string>[] SortChoices =
@@ -1013,7 +1027,13 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     public string BoxLabelsFile
     {
         get => _boxLabelsFile;
-        set { if (Set(ref _boxLabelsFile, value)) RecomputeBoxLabelsFileNote(); }
+        set
+        {
+            if (!Set(ref _boxLabelsFile, value)) return;
+            RecomputeBoxLabelsFileNote();
+            Raise(nameof(HasLabelStyle));
+            Raise(nameof(LabelStyleNote));
+        }
     }
 
     // Live per-field notes — surfaced as you type.

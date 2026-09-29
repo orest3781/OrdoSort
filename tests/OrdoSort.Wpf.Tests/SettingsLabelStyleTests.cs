@@ -46,6 +46,23 @@ public class SettingsLabelStyleTests
         Assert.True(vm.IsDirty);
     }
 
+    /// <summary>Final review, 2026-09-28: the style shown was read from the
+    /// labels file in use when Settings opened. Pointing Data files at another
+    /// file and pressing OK wrote the old file's look into the new, shared one.
+    /// Now the tab steps aside until the switch has happened.</summary>
+    [Fact]
+    public void AfterPickingAnotherLabelsFileNoStyleIsWrittenAndTheTabSaysWhy()
+    {
+        var vm = new SettingsViewModel(new Config(), new FakeDialogs(), labelStyle: BoxLabels.LabelStyle.Default);
+        vm.LabelStyle!.LayoutHuge = true;
+
+        vm.BoxLabelsFile = "other-labels.json";
+
+        Assert.Null(vm.LabelStyleResult);
+        Assert.False(vm.HasLabelStyle);
+        Assert.Contains("different labels file", vm.LabelStyleNote);
+    }
+
     [Fact]
     public void AStoreThatCouldNotBeReadLeavesTheTabWithAReasonAndNothingToSave()
     {

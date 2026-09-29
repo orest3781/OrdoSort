@@ -82,7 +82,7 @@
                                                 Visibility="{Binding DataContext.HasLabelStyle,
                                                     RelativeSource={RelativeSource AncestorType=TabItem},
                                                     Converter={StaticResource BoolToVis}}" />
-                        <TextBlock Text="{Binding LabelStyleProblem}" TextWrapping="Wrap"
+                        <TextBlock Text="{Binding LabelStyleNote}" TextWrapping="Wrap"
                                    Foreground="{DynamicResource Theme.StatusAmber}" />
                     </StackPanel>
                 </ScrollViewer>

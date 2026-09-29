@@ -51,6 +51,26 @@ public class BoxLabelsSettingsSaverTests
         Assert.Equal("light", LabelsFileSettings.ReadTheme(settings));
     }
 
+    /// <summary>Final review, 2026-09-28: the style shown was read from the
+    /// file in use when Settings opened; picking another file and pressing OK
+    /// wrote that old look into the new, shared file.</summary>
+    [Fact]
+    public void AfterPickingAnotherLabelsFileNoStyleIsWrittenAndTheTabSaysWhy()
+    {
+        using var dir = new TempDir();
+        var other = Path.Combine(dir.Path, "other-labels.json");
+        var vm = Vm(Path.Combine(dir.Path, "box-labels.json"));
+        vm.LabelStyle!.LayoutHuge = true;
+
+        vm.LabelsFile = other;
+        var outcome = BoxLabelsSettingsSaver.Save(LabelsFileSettings.PathIn(dir.Path), vm);
+
+        Assert.Empty(outcome.Failures);
+        Assert.False(File.Exists(other));
+        Assert.False(vm.HasLabelStyle);
+        Assert.Contains("different labels file", vm.LabelStyleNote);
+    }
+
     [Fact]
     public void AnUnchangedStyleIsNotWritten()
     {

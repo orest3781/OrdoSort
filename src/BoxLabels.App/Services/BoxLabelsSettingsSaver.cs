@@ -31,7 +31,9 @@ public static class BoxLabelsSettingsSaver
         }
 
         var styleSaved = true;
-        if (vm.LabelStyle is { IsChanged: true } edited)
+        // a newly picked file's style is set after the switch, never from the
+        // old file's (vm.HasLabelStyle is false then)
+        if (vm.HasLabelStyle && vm.LabelStyle is { IsChanged: true } edited)
         {
             try
             {

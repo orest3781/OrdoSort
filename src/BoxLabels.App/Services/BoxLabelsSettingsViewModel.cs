@@ -40,7 +40,22 @@ public sealed class BoxLabelsSettingsViewModel : ObservableObject
     private string _labelsFile;
 
     /// <summary>Set by Change… in the window; the app switches to it on OK.</summary>
-    public string LabelsFile { get => _labelsFile; set => Set(ref _labelsFile, value); }
+    public string LabelsFile
+    {
+        get => _labelsFile;
+        set
+        {
+            if (!Set(ref _labelsFile, value)) return;
+            Raise(nameof(HasLabelStyle));
+            Raise(nameof(LabelStyleNote));
+        }
+    }
+
+    /// <summary>The style shown was read from the file in use when Settings
+    /// opened; once another file is picked it would be the old file's look,
+    /// so the tab steps aside and nothing is written (final review, 2026-09-28).</summary>
+    public bool LabelsFileChanged =>
+        !string.Equals(LabelsFile, _opened.LabelsFile, StringComparison.OrdinalIgnoreCase);
 
     private string _theme;
 
@@ -79,7 +94,13 @@ public sealed class BoxLabelsSettingsViewModel : ObservableObject
 
     public string LabelStyleProblem { get; }
 
-    public bool HasLabelStyle => LabelStyle is not null;
+    public bool HasLabelStyle => LabelStyle is not null && !LabelsFileChanged;
+
+    /// <summary>What the Label style tab says instead of the editor, or "".</summary>
+    public string LabelStyleNote => LabelsFileChanged
+        ? "You picked a different labels file. Press OK to switch to it, then open Settings "
+        + "again to set its label style."
+        : LabelStyleProblem;
 
     /// <summary>What blocks OK, in words for the user; empty when OK can save.</summary>
     public IReadOnlyList<string> Problems()
