@@ -40,15 +40,40 @@ public class LastActionBarTests : UiTest
         element.TransformToAncestor(within).Transform(new Point(0, 0)).Y;
 
     [Fact]
-    public void ItSitsAtTheTopOnOneSlimLine() => _fx.Invoke(() =>
+    public void ItSitsAtTheTopOnTwoSlimLines() => _fx.Invoke(() =>
     {
         var (shellFx, view, window) = Build();
         try
         {
             var panel = (StackPanel)view.Content;
             Assert.Same(view.LastActionBar, panel.Children[0]);
-            Assert.True(view.LastActionBar.ActualHeight <= 32,
-                $"the bar is {view.LastActionBar.ActualHeight:0} px tall; one slim line was asked for");
+            Assert.True(view.LastActionBar.ActualHeight <= 52,
+                $"the bar is {view.LastActionBar.ActualHeight:0} px tall; two slim lines were asked for");
+        }
+        finally
+        {
+            window.Close();
+            shellFx.Dispose();
+        }
+    });
+
+    /// <summary>A one-line bar cut the file name off (owner, 2026-09-29):
+    /// it gets its own line and wraps rather than trims.</summary>
+    [Fact]
+    public void TheFileNameIsShownInFull() => _fx.Invoke(() =>
+    {
+        var (shellFx, view, window) = Build();
+        try
+        {
+            shellFx.Shell.TypedName = "VAN DER BERG-HENDRICKS MARGARETHA ELISABETH";
+            Assert.True(shellFx.Shell.OnRouteAsync(0).IsCompleted);
+            window.UpdateLayout();
+
+            Assert.Equal(shellFx.Shell.LastActionDetail, view.LastActionFile.Text);
+            Assert.Equal(TextTrimming.None, view.LastActionFile.TextTrimming);
+            Assert.Equal(TextWrapping.Wrap, view.LastActionFile.TextWrapping);
+            Assert.True(view.LastActionFile.ActualWidth <= view.LastActionBar.ActualWidth,
+                "the file name runs past the bar");
         }
         finally
         {

@@ -2,15 +2,16 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <StackPanel>
-        <!-- what just happened: a slim one-line bar in the pressed route's
+        <!-- what just happened: a slim two-line bar in the pressed route's
              color (green when the route has none; amber for set-aside), at
-             the top where the eye already is (owner request 2026-09-29).
-             Hidden, not Collapsed, when idle: its line stays reserved, so it
-             appears and goes without moving the name box or the buttons
-             under the mouse. -->
-        <Border x:Name="LastActionBar" CornerRadius="3" Padding="8,3" Margin="0,0,0,6" MinHeight="24"
+             the top where the eye already is (owner request 2026-09-29): the
+             action, then the file name in full (a one-line bar cut it off).
+             Hidden, not Collapsed, when idle: its two lines stay reserved,
+             so it appears and goes without moving the name box or the
+             buttons under the mouse. Only a name too long for one line
+             wraps to a third. -->
+        <Border x:Name="LastActionBar" CornerRadius="3" Padding="8,4" Margin="0,0,0,6"
                 Background="{Binding LastActionBack, Converter={StaticResource RgbToBrush}}"
-                ToolTip="{Binding LastActionDetail}"
                 AutomationProperties.LiveSetting="Polite">
             <Border.Style>
                 <Style TargetType="Border">
@@ -32,12 +33,14 @@
                     </Style.Triggers>
                 </Style>
             </Border.Style>
-            <TextBlock TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                       Foreground="{Binding LastActionFore, Converter={StaticResource RgbToBrush}}">
-                <Run Text="{Binding LastActionText, Mode=OneWay}" FontWeight="SemiBold" />
-                <Run Text="  ·  " />
-                <Run Text="{Binding LastActionDetail, Mode=OneWay}" />
-            </TextBlock>
+            <StackPanel>
+                <TextBlock x:Name="LastActionTitle" Text="{Binding LastActionText}" FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{Binding LastActionFore, Converter={StaticResource RgbToBrush}}" />
+                <TextBlock x:Name="LastActionFile" Text="{Binding LastActionDetail}"
+                           Style="{StaticResource CaptionTextOnSurface}" TextWrapping="Wrap" Margin="0,1,0,0"
+                           Foreground="{Binding LastActionFore, Converter={StaticResource RgbToBrush}}" />
+            </StackPanel>
         </Border>
         <TextBlock Text="{Binding ProgressLine}" Style="{StaticResource HeadlineText}"
                    Typography.NumeralAlignment="Tabular" />
