@@ -149,4 +149,34 @@ public class LabelPrintingTests : UiTest
         Assert.Equal((lastX + BoxLabels.LabelWidthPt) * toDips, bounds.Right, 0.5);
         Assert.Equal((lastY + BoxLabels.LabelHeightPt) * toDips, bounds.Bottom, 0.5);
     });
+
+    /// <summary>Final review, 2026-09-28: the layout tests compare boxes, and
+    /// a glyph's ink can leave its box. A "Q" tail in Big's 72 pt client id
+    /// dipped about 4 pt into the barcode. This reads the real ink of every
+    /// glyph WPF drew and checks none of it touches a barcode bar, for the
+    /// large layouts, with client ids full of the one descending capital.</summary>
+    [Theory]
+    [InlineData("QRS00000042", "big", false)]
+    [InlineData("QRS00000042", "big", true)]
+    [InlineData("QQQQQQQQ00000042", "big", false)]
+    [InlineData("QRS00000042", "huge", false)]
+    [InlineData("QQQQQQQQ99999999", "huge", true)]
+    public void NoGlyphInkTouchesTheBarcode(string code, string layout, bool zeros) => _fx.Invoke(() =>
+    {
+        var item = new BoxLabels.Item(code, Created, Created.AddDays(30));
+        var plan = BoxLabels.ComposeDrawing(item, new BoxLabels.LabelStyle(layout, zeros));
+        var barcodeTop = plan.Bars.Where(b => b.W < BoxLabels.LabelWidthPt).Min(b => b.Y);
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+            LabelWpfRender.DrawLabel(dc, plan, pixelsPerDip: 1.0);
+
+        foreach (var run in Leaves(visual.Drawing).OfType<GlyphRunDrawing>())
+        {
+            var ink = run.GlyphRun.ComputeInkBoundingBox();
+            ink.Offset(run.GlyphRun.BaselineOrigin.X, run.GlyphRun.BaselineOrigin.Y);
+            if (ink.Top >= barcodeTop) continue;   // the DESTROY line, below the barcode
+            Assert.True(ink.Bottom <= barcodeTop,
+                $"\"{new string(run.GlyphRun.Characters.ToArray())}\" ink reaches {ink.Bottom:F1} pt; the barcode starts at {barcodeTop} pt");
+        }
+    });
 }

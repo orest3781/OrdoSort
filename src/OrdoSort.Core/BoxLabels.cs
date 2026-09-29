@@ -247,7 +247,13 @@ public static class BoxLabels
     // sweep must not catch digit strokes) and 2 pt above the DESTROY line.
     private const double LargeTextTop = BarH + 2, LargeTextHeight = 54;
     private const double LargeBarcodeTop = 84;
-    private const double LargeNumberMaxFont = 72;
+    // Huge prints digits only, which have no descenders, so it can use the
+    // full height. Big's text starts with the client id, and a capital Q's
+    // tail hangs about 0.2 em below the baseline: at 72 pt it reached 89 pt,
+    // into the bars (final review, 2026-09-28; guarded by the ink test
+    // LabelPrintingTests.NoGlyphInkTouchesTheBarcode). 56 pt keeps it ~3 pt clear.
+    private const double HugeNumberMaxFont = 72;
+    private const double BigNumberMaxFont = 56;
 
     /// <summary>Lay out one label: matching black date bars top and bottom
     /// (readable across a storage room), the grouped code line, and the
@@ -279,7 +285,8 @@ public static class BoxLabels
             standard
                 ? new(number, 0, BarH + 2, w, 34, CodeFontSize(number), Mono: true, White: false)
                 : new(number, 0, LargeTextTop, w, LargeTextHeight,
-                    NumberFontSize(number, LargeNumberMaxFont), Mono: true, White: false),
+                    NumberFontSize(number, s.Layout == LayoutHuge ? HugeNumberMaxFont : BigNumberMaxFont),
+                    Mono: true, White: false),
             new($"DESTROY AFTER {item.Destroy.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}",
                 0, h - BarH, w, BarH, 12, Mono: false, White: !plainDates),
         };
