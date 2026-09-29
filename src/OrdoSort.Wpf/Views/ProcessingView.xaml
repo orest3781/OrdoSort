@@ -42,8 +42,22 @@
                            Foreground="{Binding LastActionFore, Converter={StaticResource RgbToBrush}}" />
             </StackPanel>
         </Border>
-        <TextBlock Text="{Binding ProgressLine}" Style="{StaticResource HeadlineText}"
-                   Typography.NumeralAlignment="Tabular" />
+        <!-- how many are left, and in what order they come (owner request
+             2026-09-29); the order wraps under itself rather than running
+             off a narrow panel at a large text size -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="{Binding ProgressLine}" Style="{StaticResource HeadlineText}"
+                       Typography.NumeralAlignment="Tabular" VerticalAlignment="Center" />
+            <TextBlock x:Name="OrderText" Grid.Column="1" Text="{Binding OrderLine}"
+                       Style="{StaticResource SubtleText}" TextWrapping="Wrap" TextAlignment="Right"
+                       HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12,0,0,0"
+                       AutomationProperties.Name="Processing order"
+                       ToolTip="The order the inbox was sorted in when this session started (Settings, Process order). Files that join during the session go at the end." />
+        </Grid>
         <TextBlock Text="{Binding CurrentFilename}" Style="{StaticResource SubtleText}"
                    TextWrapping="Wrap" Margin="0,4,0,0" />
 

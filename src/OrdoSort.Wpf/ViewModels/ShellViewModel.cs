@@ -1255,6 +1255,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private string _progressLine = "";
     public string ProgressLine { get => _progressLine; private set => Set(ref _progressLine, value); }
 
+    private string _orderLine = "";
+    /// <summary>The order this session files in ("Oldest first", …), fixed
+    /// at Start: the queue was sorted then, and a change in Settings sorts
+    /// the next session, not this one (owner request 2026-09-29).</summary>
+    public string OrderLine { get => _orderLine; private set => Set(ref _orderLine, value); }
+
     private string _currentFilename = "";
     public string CurrentFilename { get => _currentFilename; private set => Set(ref _currentFilename, value); }
 
@@ -1530,6 +1536,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             if (problems[i].Length == 0) problems[i] = clashes[i];
         BuildRoutes(routes, problems);
         _session.Start(scan.Matching);
+        OrderLine = SettingsViewModel.SortLabel(cfg.Sort);
         ResetFilingLoop();
         _lastRoute = null;
         MarkRouteState();   // Enter always has a target now — mark it before the first document

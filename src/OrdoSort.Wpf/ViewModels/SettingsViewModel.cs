@@ -572,6 +572,15 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         new("filename_desc", "Filename Z to A"),
     };
 
+    /// <summary>The name a person sees for a sort key. An unknown key reads
+    /// as the order Scanner actually falls back to for it: filename A to Z.</summary>
+    public static string SortLabel(string? key)
+    {
+        foreach (var choice in SortChoices)
+            if (choice.Key == key) return choice.Value;
+        return "Filename A to Z";
+    }
+
     public static readonly KeyValuePair<string, string>[] ModeChoices =
     {
         new("", "(use the Filing setting)"),
