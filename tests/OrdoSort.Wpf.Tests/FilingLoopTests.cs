@@ -21,7 +21,7 @@ public class FilingLoopTests
     public async Task CommitRenamesMovesAndAdvances()
     {
         using var fx = Started("20240115--111111.pdf", "20240116--222222.pdf");
-        Assert.Equal("1 / 2", fx.Shell.ProgressLine);
+        Assert.Equal("2 files left", fx.Shell.ProgressLine);
         Assert.Equal("20240115--111111.pdf", fx.Shell.CurrentFilename);
 
         fx.Shell.TypedName = "SMITH JOHN";
@@ -29,7 +29,7 @@ public class FilingLoopTests
 
         Assert.True(File.Exists(Path.Combine(fx.RouteDir, "20240115-SMITH JOHN-111111.pdf")));
         Assert.False(File.Exists(Path.Combine(fx.Inbox, "20240115--111111.pdf")));
-        Assert.Equal("2 / 2", fx.Shell.ProgressLine);
+        Assert.Equal("1 file left", fx.Shell.ProgressLine);
         Assert.Equal("", fx.Shell.TypedName);           // cleared for the next doc
         Assert.True(fx.Viewer.Releases >= 1);           // handle released BEFORE move
         Assert.Contains(fx.Viewer.Shown, p => p.EndsWith("20240116--222222.pdf"));
@@ -40,7 +40,7 @@ public class FilingLoopTests
     {
         // the -- contract is general: not just YYYYMMDD--ID fax names
         using var fx = Started("REFERRAL--ACME CLINIC.pdf");
-        Assert.Equal("1 / 1", fx.Shell.ProgressLine);   // it entered the queue
+        Assert.Equal("1 file left", fx.Shell.ProgressLine);   // it entered the queue
 
         fx.Shell.TypedName = "SMITH JOHN";    // fixture config defaults to insert mode
         Assert.Equal("REFERRAL-SMITH JOHN-ACME CLINIC.pdf", fx.Shell.Preview);
@@ -130,14 +130,14 @@ public class FilingLoopTests
         using var fx = Started("20240115--111111.pdf", "20240116--222222.pdf");
         fx.Shell.TypedName = "DOE JANE";
         await fx.Shell.OnRouteAsync(0);
-        Assert.Equal("2 / 2", fx.Shell.ProgressLine);
+        Assert.Equal("1 file left", fx.Shell.ProgressLine);
 
         fx.Shell.OnUndo();
         await fx.Shell.RouteCommand.Completion;
 
         Assert.True(File.Exists(Path.Combine(fx.Inbox, "20240115--111111.pdf")));
         Assert.Empty(Directory.GetFiles(fx.RouteDir));
-        Assert.Equal("1 / 2", fx.Shell.ProgressLine);
+        Assert.Equal("2 files left", fx.Shell.ProgressLine);
         Assert.False(fx.Shell.CanUndo);
         Assert.Contains("Undid", fx.Shell.StatusLine);
     }

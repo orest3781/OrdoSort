@@ -385,6 +385,13 @@
                                       AutomationProperties.Name="Filing order"
                                       ItemTemplate="{StaticResource KvpValueTemplate}" />
                         </Grid>
+                        <CheckBox IsChecked="{Binding AddNewFilesToSession}" Margin="0,8,0,0">
+                            <TextBlock Text="Add files that arrive during a session to that session"
+                                       TextWrapping="Wrap" />
+                        </CheckBox>
+                        <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap"
+                                   Margin="22,2,0,0"
+                                   Text="Off: a session files only what was in the inbox when you pressed Start; new files wait for the next session." />
 
                         <TextBlock Text="Typing" Style="{StaticResource SectionHeader}" />
                         <CheckBox Content="UPPERCASE names as they're typed"

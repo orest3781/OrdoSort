@@ -759,6 +759,7 @@ public sealed partial class ShellViewModel
         _shownSource = null;
         _stopWhenLanded = false;
         _stageUnavailable = false;
+        _arrivalsWaiting = 0;
         _carriedNames.Clear();
         DisposeStage();
     }

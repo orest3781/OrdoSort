@@ -88,6 +88,14 @@ public sealed class Session
     public int Total => Queue.Count;
     public bool CanUndo => _undo.Count > 0;
 
+    /// <summary>How many of <paramref name="paths"/> the session doesn't
+    /// have: files that arrived after Start. Nothing is added.</summary>
+    public int CountNew(IEnumerable<string> paths)
+    {
+        var known = new HashSet<string>(Queue, PathIdentity.PathComparer.Instance);
+        return paths.Count(p => !known.Contains(p));
+    }
+
     /// <summary>Append newly arrived inbox files to the END of a running queue.
     /// Files already known are ignored. Returns how many were added.</summary>
     public int Extend(IEnumerable<string> paths)

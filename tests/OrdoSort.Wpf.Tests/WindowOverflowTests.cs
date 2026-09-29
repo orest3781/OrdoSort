@@ -214,26 +214,24 @@ public class WindowOverflowTests : UiTest
         // its own closest siblings, were already covered. Two real files,
         // plus a missing path and a case-only duplicate in the SAME add, so
         // AddNote reports a genuinely long "N added · N ignored (...)" note —
-        // wide enough to hit its own 240px MaxWidth cap, the worst case this
+        // wide enough to hit its own MaxWidth cap, the worst case this
         // probe needs, not a short note that would under-test the row.
         // AddFilesAsync is real, not stubbed: AddNote's setter is private
         // (StandardiseNamesViewModel.cs), so driving the real add flow is the
         // only way to seed it — the same reasoning
-        // StandardiseNamesViewModelTests.AddNotePinsWhatTheDropContained
+        // StandardiseNamesViewModelTests.AddNoteSaysWhatTheDropContained
         // already established. InlineWorkScheduler keeps every awaited step
         // synchronous, so blocking on the Task here (TriageWindow's own
         // ShowCurrentAsync().GetAwaiter().GetResult() pattern, below) never
         // risks a deadlock.
-        ["StandardiseNamesWindow"] = new(580, 700, 420, 520, () =>
+        ["StandardiseNamesWindow"] = new(660, 820, 540, 640, () =>
         {
             var dir = new TempDir();
             var first = dir.File("smith, john_A12345.pdf");
             var second = dir.File("jones-report.pdf");
             var missing = Path.Combine(dir.Path, "does-not-exist-anymore.pdf");
             var duplicate = Path.Combine(dir.Path, "SMITH, JOHN_A12345.PDF");   // case-only dup of `first`
-            var dialogs = new FakeDialogs();
-            dialogs.DateAnswers.Enqueue("20260115");
-            var vm = new StandardiseNamesViewModel(dialogs, new InlineWorkScheduler());
+            var vm = new StandardiseNamesViewModel(new InlineWorkScheduler());
 #pragma warning disable xUnit1031 // safe: InlineWorkScheduler runs every awaited step synchronously
             vm.AddFilesAsync(new[] { first, second, missing, duplicate }).GetAwaiter().GetResult();
 #pragma warning restore xUnit1031
@@ -327,9 +325,6 @@ public class WindowOverflowTests : UiTest
                     @"\\server\records\a-long-enough-share-folder-name\box-labels.json", "auto", "", 0,
                     BoxLabels.LabelStyle.Default, ""), () => null), null),
             MinExamined: 10, ProbeEveryTab: true),
-
-        ["StandardiseDateWindow"] = new(380, 520, 0, 0, () =>
-            (StandardiseDateWindow.Build(null, "20260115", 128), null), MinExamined: 6),   // 7 measured
 
         ["MainWindow"] = new(400, 470, 0, 0, () =>
         {
@@ -445,9 +440,9 @@ public class WindowOverflowTests : UiTest
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();
 
-        // 21 today. Fewer means the reflection step broke (an assembly moved,
+        // 20 today (Standardise names' date prompt went 2026-09-29). Fewer means the reflection step broke (an assembly moved,
         // a namespace changed), and the check below would pass on nothing.
-        Assert.True(windows.Count >= 21,
+        Assert.True(windows.Count >= 20,
             $"only found {windows.Count} Window types by reflection; the enumeration looks broken: " +
             string.Join(", ", windows));
 

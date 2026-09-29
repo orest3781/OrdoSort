@@ -3,106 +3,204 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:OrdoSort.Wpf.ViewModels"
         xmlns:views="clr-namespace:OrdoSort.Wpf.Views;assembly=OrdoSort.Ui"
-        Title="OrdoSort — Standardise names" Width="700" Height="520" MinWidth="580" MinHeight="420"
+        Title="OrdoSort — Standardise names" Width="820" Height="640" MinWidth="660" MinHeight="540"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False" AllowDrop="True"
         DragOver="OnDragOver" Drop="OnDrop"
         Style="{StaticResource {x:Type Window}}">
-    <!-- One job, one list, window-level drop — ZipToolsWindow/MergePdfsWindow's
-         own shape (2026-08-25 spec). What's different here: no primary
-         action button. A drop or Add files… IS the action — prompt for the
-         date, then rename immediately — so there is nothing left to click
-         afterward except Undo. -->
+    <!-- Preview, then Rename (owner request 2026-09-29). A drop or Add
+         files… lists the files with the name each will get; the controls
+         change the preview live; nothing on disk changes until Rename. -->
+    <Window.Resources>
+        <!-- Same card and chip chrome as BulkRenameWindow's, so the two
+             rename tools read as one family. -->
+        <Style x:Key="ParamCard" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource Theme.Surface}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+        </Style>
+        <Style x:Key="SegmentChip" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+            <Setter Property="Padding" Value="9,3" />
+            <Setter Property="Margin" Value="0,0,6,6" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Theme.BorderStrong}" />
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="False">
+                    <Setter Property="Background" Value="{DynamicResource Theme.WindowBg}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}" />
+                    <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <!-- One label and its drop-down; wraps to the next line as a whole
+             at large text sizes rather than splitting or overflowing. -->
+        <Style x:Key="OptionPair" TargetType="StackPanel">
+            <Setter Property="Orientation" Value="Horizontal" />
+            <Setter Property="Margin" Value="0,0,18,8" />
+        </Style>
+        <Style x:Key="OptionCombo" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+            <Setter Property="MinWidth" Value="150" />
+            <Setter Property="DisplayMemberPath" Value="Label" />
+            <Setter Property="SelectedValuePath" Value="Value" />
+        </Style>
+    </Window.Resources>
+
     <DockPanel Margin="14">
         <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
             <Button DockPanel.Dock="Right" Content="Close" Width="96" IsCancel="True" />
             <StackPanel Orientation="Horizontal">
-                <!-- MaxWidth is load-bearing, not cosmetic: StatusText
-                     carries TextWrapping="Wrap" (Theme/Styles.xaml), and a
-                     horizontal StackPanel measures every child at infinite
-                     width, so without a finite cap the wrap never engages
-                     and the line runs off screen (TextWrapCoverageTests). -->
+                <Button x:Name="RenameButton" Command="{Binding RenameCommand}"
+                        Style="{StaticResource PrimaryButton}" MinWidth="130" Margin="0,0,8,0"
+                        AutomationProperties.Name="{Binding RenameButtonText}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE8AC;" Margin="0,0,8,0"
+                                   Foreground="{DynamicResource Theme.AccentText}" />
+                        <TextBlock Text="{Binding RenameButtonText}" Style="{StaticResource PrimaryButtonLabel}" />
+                    </StackPanel>
+                </Button>
+                <Button Content="Undo last rename" Command="{Binding UndoCommand}" Margin="0,0,10,0"
+                        AutomationProperties.Name="Undo last rename" />
+                <!-- MaxWidth is load-bearing: StatusText wraps, and a
+                     horizontal StackPanel measures at infinite width, so
+                     without a cap the wrap never engages (TextWrapCoverageTests). -->
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
-                           Style="{StaticResource StatusText}" MaxWidth="360" />
+                           Style="{StaticResource StatusText}" MaxWidth="320" />
             </StackPanel>
         </DockPanel>
 
-        <Grid Margin="16,8">
+        <Grid>
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- Fix round 1 (correctness review): the buttons StackPanel now
-                 comes FIRST — Dock="Left", declared before AddNote — so it
-                 gets the DockPanel's own remaining space unconditionally,
-                 before AddNote (the DockPanel's last, un-Dock'd fill child,
-                 which trims into whatever's left) is even considered. It
-                 used to be the other way around: AddNote docked Right and
-                 arranged FIRST, leaving the buttons StackPanel as the
-                 fill child, arranged into whatever remained — but a Panel
-                 does not clip its own children to that arranged size, so
-                 the buttons' own natural, cumulative layout could still
-                 extend past it. Measured directly, off-screen, at this
-                 window's own 580px MinWidth with a genuine AddFilesAsync
-                 -produced note: Undo last batch's own rendered rect and
-                 AddNote's genuinely overlapped by roughly 119px
-                 horizontally — Undo last batch visibly painted across the
-                 caption — while every element still stayed inside the
-                 window, invisible to NoTextElementEscapesTheWindow, which
-                 measures escape past the window edge, not one element
-                 overlapping another (see StandardiseNamesWindowTests'
-                 ToolbarButtonsDoNotOverlapALongNoteAtMinWidth for the
-                 dedicated fact this needed instead). -->
+            <!-- Row 0: the list's own buttons. Buttons first, docked left,
+                 so the note trims into what they leave and never paints
+                 over them (ToolbarButtonsDoNotOverlapALongNoteAtMinWidth). -->
             <DockPanel Margin="0,0,0,10">
-                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" HorizontalAlignment="Left">
-                    <Button Content="Add files…" Click="OnAddFiles" Margin="0,0,10,0"
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                    <Button Content="Add files…" Click="OnAddFiles" Margin="0,0,6,0"
                             IsEnabled="{Binding IsIdle}" AutomationProperties.Name="Add files" />
-                    <!-- Counts from the END, one click per segment — see
-                         BulkRename.PlanPeel's own doc comment for the two
-                         rules (the one-segment floor, a refused collision).
-                         Unlike BulkRenameWindow's own Delete-segments
-                         checkboxes (which count from the LEFT and need a
-                         separate Rename click to apply), this acts
-                         immediately on whatever is selected — the same "the
-                         click IS the action" shape every button in this
-                         window already has. No IsEnabled binding: PeelCommand's
-                         own CanExecute (selection non-empty and idle) already
-                         disables the button through the Command binding, the
-                         same way Undo last batch needs none either. -->
-                    <Button Content="Remove last segment" Command="{Binding PeelCommand}" Margin="0,0,10,0"
-                            AutomationProperties.Name="Remove last segment" />
-                    <Button Content="Undo last batch" Command="{Binding UndoCommand}"
-                            AutomationProperties.Name="Undo last batch" />
+                    <Button Content="Clear list" Command="{Binding ClearCommand}" Margin="0,0,10,0"
+                            AutomationProperties.Name="Clear list" />
                 </StackPanel>
-                <!-- MaxWidth is a visual cap now, not the overflow guard it
-                     used to be — DockPanel's fill mechanism already bounds
-                     this TextBlock to whatever the buttons above left, so
-                     TextTrimming engages regardless — kept at 240 to match
-                     every sibling tool's own AddNote (ZipToolsWindow/
-                     MergePdfsWindow/PageCountsWindow). TrimmedTextTooltip
-                     opted in explicitly (this TextBlock is CaptionText, not
-                     GridCellText, so it doesn't inherit the grid cells' own
-                     default): fix round 1 — a note trimmed at 240px with no
-                     tooltip left its tail unreachable, the exact complaint
-                     Rule 4 exists to cure, one row above the grid it already
-                     cures it in. -->
                 <TextBlock Text="{Binding AddNote}"
                            Style="{StaticResource CaptionText}" VerticalAlignment="Center"
-                           MaxWidth="240" TextTrimming="CharacterEllipsis"
+                           MaxWidth="320" TextTrimming="CharacterEllipsis"
                            views:TrimmedTextTooltip.Enabled="True" />
             </DockPanel>
 
-            <Grid Grid.Row="1">
+            <!-- Row 1: how names are built. -->
+            <Border Grid.Row="1" Style="{StaticResource ParamCard}">
+                <StackPanel>
+                    <TextBlock Text="Name" Style="{StaticResource SectionHeaderFirst}" />
+                    <WrapPanel>
+                        <StackPanel Style="{StaticResource OptionPair}">
+                            <TextBlock Text="Letter case" Style="{StaticResource FieldLabel}" />
+                            <ComboBox x:Name="CaseBox" Style="{StaticResource OptionCombo}"
+                                      ItemsSource="{x:Static vm:StandardiseNamesViewModel.CaseChoices}"
+                                      SelectedValue="{Binding Case}" IsEnabled="{Binding IsIdle}"
+                                      AutomationProperties.Name="Letter case" />
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource OptionPair}">
+                            <TextBlock Text="Between words" Style="{StaticResource FieldLabel}" />
+                            <ComboBox x:Name="SeparatorBox" Style="{StaticResource OptionCombo}"
+                                      ItemsSource="{x:Static vm:StandardiseNamesViewModel.SeparatorChoices}"
+                                      SelectedValue="{Binding Separator}" IsEnabled="{Binding IsIdle}"
+                                      AutomationProperties.Name="Between words" />
+                        </StackPanel>
+                    </WrapPanel>
+                    <TextBlock Text="Date" Style="{StaticResource SectionHeaderFirst}" Margin="0,4,0,6" />
+                    <WrapPanel>
+                        <StackPanel Style="{StaticResource OptionPair}">
+                            <TextBlock Text="Place" Style="{StaticResource FieldLabel}" />
+                            <ComboBox x:Name="DatePlacementBox" Style="{StaticResource OptionCombo}"
+                                      ItemsSource="{x:Static vm:StandardiseNamesViewModel.DatePlacementChoices}"
+                                      SelectedValue="{Binding DatePlacement}" IsEnabled="{Binding IsIdle}"
+                                      AutomationProperties.Name="Date place" />
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource OptionPair}" IsEnabled="{Binding UsesDate}">
+                            <TextBlock Text="Use" Style="{StaticResource FieldLabel}" />
+                            <ComboBox x:Name="DateSourceBox" Style="{StaticResource OptionCombo}" MinWidth="210"
+                                      ItemsSource="{x:Static vm:StandardiseNamesViewModel.DateSourceChoices}"
+                                      SelectedValue="{Binding DateSource}" IsEnabled="{Binding IsIdle}"
+                                      AutomationProperties.Name="Date to use" />
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource OptionPair}" IsEnabled="{Binding UsesTypedDate}">
+                            <TextBlock Text="Date" Style="{StaticResource FieldLabel}" />
+                            <TextBox x:Name="DateBox" Width="96" MaxLength="8" VerticalContentAlignment="Center"
+                                     Text="{Binding DateText, UpdateSourceTrigger=PropertyChanged}"
+                                     IsEnabled="{Binding IsIdle}"
+                                     AutomationProperties.Name="Date, YYYYMMDD"
+                                     ToolTip="YYYYMMDD. Also used for a name with no date of its own, or a file whose modified date can't be read." />
+                        </StackPanel>
+                    </WrapPanel>
+                    <TextBlock Text="{Binding DateError}" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Theme.StatusRed}"
+                               Visibility="{Binding HasDateError, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
+            </Border>
+
+            <!-- Row 2: the segment chips. -->
+            <Border Grid.Row="2" Style="{StaticResource ParamCard}">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,8">
+                        <Button DockPanel.Dock="Right" Content="Keep all words" Command="{Binding ResetSegmentsCommand}"
+                                Margin="10,0,0,0" AutomationProperties.Name="Keep all words" />
+                        <TextBlock Text="Words" Style="{StaticResource SectionText}" Margin="0,0,10,0"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding SegmentBarCaption}" Style="{StaticResource SubtleText}"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   views:TrimmedTextTooltip.Enabled="True" />
+                    </DockPanel>
+                    <ItemsControl x:Name="ChipsList" ItemsSource="{Binding SegmentChips}" Focusable="False"
+                                  IsEnabled="{Binding IsIdle}" AutomationProperties.Name="Words">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <ToggleButton Style="{StaticResource SegmentChip}"
+                                              IsChecked="{Binding IsKept, Mode=TwoWay}"
+                                              AutomationProperties.Name="{Binding AccessibleName}"
+                                              ToolTip="Click to keep or drop this word">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Position}" FontSize="11" Margin="0,0,5,0"
+                                                   Foreground="{DynamicResource Theme.SubtleText}"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Text}" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsKept}" Value="False">
+                                                            <Setter Property="TextDecorations" Value="Strikethrough" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </ToggleButton>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- Row 3: the preview. -->
+            <Grid Grid.Row="3">
                 <DataGrid x:Name="ResultsGrid" ItemsSource="{Binding Results}" AutoGenerateColumns="False"
-                          AutomationProperties.Name="Standardised files"
+                          AutomationProperties.Name="Files to standardise"
                           IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column"
                           SelectionMode="Extended" SelectionChanged="OnSelectionChanged">
-                    <!-- Theme.RowHover so the hover tint stays consistent
-                         app-wide, same as ZipToolsWindow/MergePdfsWindow. -->
                     <DataGrid.RowStyle>
                         <Style TargetType="DataGridRow">
-                            <!-- a screen reader names the row by its file; unnamed, it read the
-                                 row's CLR type or record text (AccessibleNameTests) -->
+                            <!-- a screen reader names the row by its file (AccessibleNameTests) -->
                             <Setter Property="AutomationProperties.Name" Value="{Binding Current}" />
                             <Setter Property="Background" Value="Transparent" />
                             <Style.Triggers>
@@ -113,16 +211,14 @@
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
-                        <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
-                        <DataGridTextColumn Header="Current name" Binding="{Binding Current}"
-                                            Width="380">
+                        <!-- fixed widths; the user sizes them (table rules v2, rule 1) -->
+                        <DataGridTextColumn Header="Current name" Binding="{Binding Current}" Width="360">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellTextSelectionAware}" />
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <!-- fixed width; the user sizes it (table rules v2, rule 1) -->
                         <DataGridTextColumn x:Name="ResultColumn" Header="Result" Binding="{Binding Result}"
-                                            Width="300">
+                                            Width="380">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource GridCellText}">
                                     <Style.Triggers>
@@ -138,10 +234,7 @@
                                                      Value="{x:Static vm:StandardiseRowStatus.Unchanged}">
                                             <Setter Property="Foreground" Value="{DynamicResource Theme.SubtleText}" />
                                         </DataTrigger>
-                                        <!-- Let selection win — same measured trap and
-                                             same fix as every sibling tool's own Result/
-                                             Note column; declared last so it overrides
-                                             every trigger above once selected. -->
+                                        <!-- selection wins; declared last so it overrides the above -->
                                         <DataTrigger Value="True">
                                             <DataTrigger.Binding>
                                                 <Binding Path="IsSelected"
@@ -156,7 +249,7 @@
                         </DataGridTextColumn>
                     </DataGrid.Columns>
                 </DataGrid>
-                <TextBlock Text="Drag files anywhere on this window, or click Add files…"
+                <TextBlock Text="Drag files anywhere on this window, or click Add files…. Nothing is renamed until you click Rename."
                            Style="{StaticResource EmptyStateText}"
                            IsHitTestVisible="False">
                     <TextBlock.Visibility>

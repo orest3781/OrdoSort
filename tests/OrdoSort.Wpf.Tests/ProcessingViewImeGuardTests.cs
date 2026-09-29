@@ -109,7 +109,7 @@ public class ProcessingViewImeGuardTests : UiTest
             Assert.False(e.Handled);
             Assert.False(File.Exists(
                 Path.Combine(shellFx.RouteDir, "20240115-SMITH JOHN-111111.pdf")));
-            Assert.Equal("1 / 1", shellFx.Shell.ProgressLine);   // still on the same document
+            Assert.Equal("1 file left", shellFx.Shell.ProgressLine);   // still on the same document
             Assert.Equal("SMITH JOHN", shellFx.Shell.TypedName);  // untouched
         }
         finally { window.Close(); shellFx.Dispose(); }

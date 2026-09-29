@@ -693,11 +693,24 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         if (Screen == Screen.Processing && !_session.Done)
         {
             if (snap.Scan.Error.Length > 0) return;
-            var added = _session.Extend(snap.Scan.Matching);
-            if (added > 0)
+            if (_cfg.AddNewFilesToSession)
             {
-                RaiseProgress();
-                ShowStatusNote($"{added} new file{(added == 1 ? "" : "s")} arrived — added to this session.");
+                var added = _session.Extend(snap.Scan.Matching);
+                if (added > 0)
+                {
+                    RaiseProgress();
+                    ShowStatusNote($"{added} new file{(added == 1 ? "" : "s")} arrived — added to this session.");
+                }
+            }
+            else
+            {
+                // Settings keeps new files out of a running session: they
+                // wait in the inbox. Said once per new arrival, not per scan.
+                var waiting = _session.CountNew(snap.Scan.Matching);
+                if (waiting > _arrivalsWaiting)
+                    ShowStatusNote($"{waiting} new file{(waiting == 1 ? "" : "s")} arrived — " +
+                                   $"{(waiting == 1 ? "it waits" : "they wait")} for the next session.");
+                _arrivalsWaiting = waiting;
             }
             ShowDashboard(snap);
         }
@@ -1242,6 +1255,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private string _progressLine = "";
     public string ProgressLine { get => _progressLine; private set => Set(ref _progressLine, value); }
 
+    private string _orderLine = "";
+    /// <summary>The order this session files in ("Oldest first", …), fixed
+    /// at Start: the queue was sorted then, and a change in Settings sorts
+    /// the next session, not this one (owner request 2026-09-29).</summary>
+    public string OrderLine { get => _orderLine; private set => Set(ref _orderLine, value); }
+
     private string _currentFilename = "";
     public string CurrentFilename { get => _currentFilename; private set => Set(ref _currentFilename, value); }
 
@@ -1465,8 +1484,19 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public bool CanUndo =>
         (Screen == Screen.Processing || Screen == Screen.Done) && (_session.CanUndo || _jobs.Count > 0);
 
-    private void RaiseProgress() =>
-        ProgressLine = $"{Math.Min(_shownIndex + 1, _session.Total)} / {_session.Total}";
+    /// <summary>How many documents are still to look at, the one on screen
+    /// included (owner request 2026-09-29: "files left" instead of n / n).</summary>
+    private void RaiseProgress() => ProgressLine = FilesLeftText(_session.Total - _shownIndex);
+
+    internal static string FilesLeftText(int left)
+    {
+        left = Math.Max(left, 0);
+        return left == 1 ? "1 file left" : $"{left} files left";
+    }
+
+    // Files that arrived while a session ran, kept out of it by the
+    // add_new_files_to_session setting; so each arrival is announced once.
+    private int _arrivalsWaiting;
 
     internal void StartProcessing() => _ = RunGuarded(StartProcessingAsync(),
         "Starting that session",
@@ -1506,6 +1536,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             if (problems[i].Length == 0) problems[i] = clashes[i];
         BuildRoutes(routes, problems);
         _session.Start(scan.Matching);
+        OrderLine = SettingsViewModel.SortLabel(cfg.Sort);
         ResetFilingLoop();
         _lastRoute = null;
         MarkRouteState();   // Enter always has a target now — mark it before the first document

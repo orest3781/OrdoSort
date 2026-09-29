@@ -9,7 +9,7 @@
     <!-- Review matches' "More columns…" (2026-09-26), File Explorer's
          Choose Details: every spreadsheet column with a tick, a search box
          for long rosters, OK to apply. Escape is handled once, at the window,
-         and means Cancel (StandardiseDateWindow's reasoning); OK is the
+         and means Cancel (the reasoning every small modal prompt here follows); OK is the
          default button. -->
     <DockPanel Margin="18,16,18,14">
         <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,8"

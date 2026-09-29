@@ -47,7 +47,7 @@ public static partial class BulkRename
     /// <summary>Whether <paramref name="yyyyMMdd"/> is a real calendar date
     /// in that exact 8-digit shape — the one test that decides both what
     /// TidyStem's step 1 is allowed to strip and what the Standardise names
-    /// date prompt is allowed to accept (StandardiseDateWindow.IsValidDate
+    /// date box is allowed to accept (StandardiseNamesViewModel.IsDateValid
     /// delegates here), so the two can never quietly disagree about what
     /// counts as a date. Public, not internal: OrdoSort.Core has no
     /// InternalsVisibleTo grant to OrdoSort.Wpf (only to its own test
@@ -100,15 +100,17 @@ public static partial class BulkRename
     /// forces this comment to be touched when that happens. Parenthesized
     /// (Explorer's own " (2)", " (3)", … convention) is the default, and
     /// every caller that passes no argument keeps seeing exactly that,
-    /// unchanged. Standardise names is the single caller that opts into
-    /// Dashed: Execute's counter is the one place a collision could hand
-    /// back a name containing the space and parentheses TidyStem exists to
-    /// strip, so for that caller alone the suffix has to look like the
-    /// rest of the name it is attached to.</summary>
-    public enum CollisionSuffixStyle { Parenthesized, Dashed }
+    /// unchanged. Standardise names opts into Dashed or Underscored so a
+    /// counter looks like the rest of the name it is attached to, rather
+    /// than bringing back the space and parentheses it just took out.</summary>
+    public enum CollisionSuffixStyle { Parenthesized, Dashed, Underscored }
 
-    private static string CollisionSuffix(CollisionSuffixStyle style, int counter) =>
-        style == CollisionSuffixStyle.Dashed ? $"-{counter}" : $" ({counter})";
+    private static string CollisionSuffix(CollisionSuffixStyle style, int counter) => style switch
+    {
+        CollisionSuffixStyle.Dashed => $"-{counter}",
+        CollisionSuffixStyle.Underscored => $"_{counter}",
+        _ => $" ({counter})",
+    };
 
     /// <summary>(last, first) from a review-file filename stem, or null when
     /// the stem doesn't follow the layout. A multi-part last name comes back
@@ -218,7 +220,7 @@ public static partial class BulkRename
     /// <summary>Turn a messy dropped-file stem into the owner's
     /// YYYYMMDD-LASTNAME-FIRSTNAME-CONTROLID shape for a supplied
     /// <paramref name="date"/> (8 digits, already validated by the caller —
-    /// see StandardiseDateWindow.IsValidDate — this function trusts it the
+    /// see IsRealDate — this function trusts it the
     /// same way TransformStem trusts RenameOp.DatePrefix). Pure: no
     /// filesystem, no clock, so the same input always produces the same
     /// output, which is what makes re-dropping a file this tool already
@@ -228,7 +230,7 @@ public static partial class BulkRename
     ///  1. Drop a leading 8-digit run, and the dash right after it if there
     ///     is one — but ONLY when those 8 digits parse as a real calendar
     ///     date (IsRealDate: the same DateTime.TryParseExact "yyyyMMdd"
-    ///     test StandardiseDateWindow.IsValidDate applies to what the owner
+    ///     test the Standardise names date box applies to what the owner
     ///     types). A stem's own case or claim number can happen to be 8
     ///     digits long too, and "the requirements say drop a leading
     ///     8-digit DATE" is read strictly on purpose: stripping any 8
@@ -304,12 +306,14 @@ public static partial class BulkRename
     /// segment drops apply to (Bulk rename's ticked files); null means every
     /// file. A file outside it keeps its name, unless it has a hand edit —
     /// that is the file's own explicit choice — and its name stays claimed,
-    /// so no ticked file is renamed onto it.</summary>
+    /// so no ticked file is renamed onto it. <paramref name="suffixStyle"/>
+    /// is the clash counter's shape, as for <see cref="Execute"/>.</summary>
     public static List<PlannedRename> Plan(
         IEnumerable<string> paths, RenameOp op,
         IReadOnlyDictionary<string, string>? overrides = null,
         IReadOnlyDictionary<string, IReadOnlySet<int>>? droppedSegments = null,
-        IReadOnlySet<string>? included = null)
+        IReadOnlySet<string>? included = null,
+        CollisionSuffixStyle suffixStyle = CollisionSuffixStyle.Parenthesized)
     {
         var planned = new List<PlannedRename>();
         var taken = new Dictionary<string, HashSet<string>>();
@@ -363,8 +367,7 @@ public static partial class BulkRename
                 continue;
             }
             var candidate = Path.Combine(dir, newStem + ext);
-            // Ordinal, case-SENSITIVE — the same reasoning as PlanTidy's
-            // Changed verdict below. SameFile is case-insensitive by design,
+            // Ordinal, case-SENSITIVE. SameFile is case-insensitive by design,
             // so Case = upper on "smith.pdf" (or Find "smith" -> "Smith")
             // was reported as "unchanged" and silently skipped. SameFile
             // still guards the on-disk collision test in Free() below, which
@@ -387,177 +390,13 @@ public static partial class BulkRename
             var counter = 2;
             while (!Free(final))
             {
-                final = Path.Combine(dir, $"{newStem} ({counter}){ext}");
+                final = Path.Combine(dir, $"{newStem}{CollisionSuffix(suffixStyle, counter)}{ext}");
                 counter++;
             }
             if (!SameFile(final, candidate))
                 note = "name was taken — using a counter";
             claimed.Add(Path.GetFileName(final));
             planned.Add(new PlannedRename(source, final, true, note, manual));
-        }
-        return planned;
-    }
-
-    /// <summary>Build the Standardise names tool's rename plan straight
-    /// from TidyStem, for one already-validated <paramref name="date"/> —
-    /// bypassing Plan/TransformStem/RenameOp entirely.
-    ///
-    /// Why not go through Plan(): TidyStem's fixed (stem, date) shape
-    /// (strip a date, uppercase, normalise separators, re-date) has nowhere
-    /// to plug into RenameOp's free-form knobs without inventing a field for
-    /// a transform none of the others share. What Plan() does that this
-    /// deliberately leaves out: pre-
-    /// resolving a same-batch collision against a "taken" set before
-    /// anything touches disk. Plan() needs that because it renders a live
-    /// PREVIEW ahead of a separate Rename click — the name it shows has to
-    /// match what Execute will later do to a filesystem that has not moved
-    /// yet. This tool has no such gap: StandardiseNamesViewModel.AddFilesAsync
-    /// goes straight from this method to Execute, so Execute's own
-    /// sequential, disk-real collision loop (below) is already exactly
-    /// right — by the time it reaches the second of two sources that
-    /// tidied to the same target, the first has already landed on disk and
-    /// File.Exists sees it, bumping the counter for real. Pre-resolving
-    /// here would just be a second copy of that same decision, made too
-    /// early to be the one that actually counts.
-    ///
-    /// RejectIllegal stays as a real guard, not vestigial defensiveness:
-    /// TidyStem's own postcondition (never empty, never introduces a
-    /// character the source filename didn't already legally have) makes it
-    /// unreachable for a WELL-FORMED date — but <paramref name="date"/>
-    /// itself is this method's caller's responsibility, not TidyStem's
-    /// (see TidyStem's own doc comment), so a caller that skips validation
-    /// — a test, or code written after this one — still fails readably
-    /// here instead of handing File.Move a name Windows will refuse.</summary>
-    public static List<PlannedRename> PlanTidy(IEnumerable<string> paths, string date)
-    {
-        var planned = new List<PlannedRename>();
-        foreach (var source in paths)
-        {
-            var dir = Path.GetDirectoryName(source) ?? "";
-            var ext = Path.GetExtension(source);
-            var stem = Path.GetFileNameWithoutExtension(source);
-            var newStem = TidyStem(stem, date);
-
-            try
-            {
-                Naming.RejectIllegal(newStem);
-            }
-            catch (ArgumentException ex)
-            {
-                planned.Add(new PlannedRename(source, source, false, ex.Message));
-                continue;
-            }
-
-            var target = Path.Combine(dir, newStem + ext);
-            // Ordinal, case-SENSITIVE — deliberately NOT SameFile, which is
-            // case-insensitive by design for the on-disk collision checks
-            // Plan/Execute still need (and still get: this comparison only
-            // decides PlanTidy's own Changed verdict, nothing about how
-            // Execute picks a target when one is taken). A file already
-            // sitting at "20260115-smith.pdf" for today's date must still
-            // be renamed to "20260115-SMITH.pdf" — TidyStem's own step 2
-            // promises uppercase, and SameFile's case-insensitivity was
-            // quietly reporting that promise as already kept when it
-            // wasn't, leaving the file lowercase and calling it "already
-            // standardised."
-            var changed = !string.Equals(
-                Path.GetFileName(target), Path.GetFileName(source), StringComparison.Ordinal);
-            planned.Add(new PlannedRename(source, changed ? target : source, changed));
-        }
-        return planned;
-    }
-
-    /// <summary>PlanPeel's own Note text when the one-segment floor holds a
-    /// file — exposed (not just a literal inside PlanPeel) so a caller can
-    /// tell that reason apart from PlanPeel's only other reason to leave a
-    /// file untouched, a refused collision, without parsing prose. The same
-    /// "small, genuine, single-purpose contract" reasoning as IsRealDate
-    /// above, for the same structural reason: OrdoSort.Core has no
-    /// InternalsVisibleTo grant to OrdoSort.Wpf.</summary>
-    public const string PeelAtFloorNote = "already at one segment";
-
-    /// <summary>Standardise names' "Remove last segment" button: one click's
-    /// worth of "strip the trailing dash-separated segment" plans, one per
-    /// selected file's CURRENT path on disk (not necessarily its original
-    /// dropped name — a file already peeled once has moved). Modelled on
-    /// Plan's own taken-set-plus-File.Exists collision shape, but for the two
-    /// rules that button exists to enforce:
-    ///
-    /// 1. THE ONE-SEGMENT FLOOR. A stem already down to a single segment is
-    ///    left alone entirely: Changed = false, Note = <see
-    ///    cref="PeelAtFloorNote"/>. This is not an arbitrary stopping point —
-    ///    it is exactly where DeleteSegmentsFromStem's own guard already
-    ///    stops (see that method's own doc comment: the last segment of a
-    ///    one-segment stem stays), so this check now sits directly on top of
-    ///    that existing guard instead of stopping four segments above it.
-    ///    Checked BEFORE anything is removed, by splitting the stem on '-' —
-    ///    the same count DeleteSegmentsFromStem's own doc comment defines
-    ///    ("empties kept — 'a--b' is three segments"), so a trailing empty
-    ///    segment counts toward the floor exactly as it counts everywhere
-    ///    else in this file.
-    ///
-    /// 2. A COLLISION IS REFUSED, NOT COUNTERED. Plan's own taken-set-plus-
-    ///    File.Exists check decides whether a target is free, reused here
-    ///    verbatim — but where Plan responds to "not free" by appending a
-    ///    counter and trying again, this refuses outright: Changed = false,
-    ///    Note explains it. Appending a counter here would hand back a name
-    ///    with one MORE trailing segment than the file started with — exactly
-    ///    what this button exists to remove — so the next click would peel
-    ///    the counter straight back off and collide again, forever. Refusing
-    ///    is the honest answer. This plan-time refusal is not the only
-    ///    collision guard left in the system: the caller's own Execute call
-    ///    still carries its ordinary counter (CollisionSuffixStyle) for the
-    ///    genuinely rare race a plan can never see — a target claimed between
-    ///    this method returning and the actual File.Move — the same gap
-    ///    Execute's counter already covers for every other caller in this
-    ///    file.
-    ///
-    /// A file that survives both checks has its stem's last segment removed
-    /// by the EXISTING, already-tested DeleteSegmentsFromStem — no new
-    /// deletion logic. Because the floor already guarantees more than one
-    /// segment, the result is always shorter than the input, so — unlike
-    /// Plan — there is no "transform produced the same name" case to guard
-    /// against here. There is likewise no RejectIllegal
-    /// guard: removing a whole segment can only drop characters the source's
-    /// own, already-legal name already had, never introduce one, so that
-    /// check (real and necessary in PlanTidy, whose input is a caller-
-    /// supplied date rather than the source name itself) has no path to fire
-    /// here.</summary>
-    public static List<PlannedRename> PlanPeel(IEnumerable<string> paths)
-    {
-        var planned = new List<PlannedRename>();
-        var taken = new Dictionary<string, HashSet<string>>();
-
-        foreach (var source in paths)
-        {
-            var dir = Path.GetDirectoryName(source) ?? "";
-            var ext = Path.GetExtension(source);
-            var stem = Path.GetFileNameWithoutExtension(source);
-
-            if (stem.Split('-').Length <= 1)
-            {
-                planned.Add(new PlannedRename(source, source, false, PeelAtFloorNote));
-                continue;
-            }
-
-            var newStem = DeleteSegmentsFromStem(stem, Array.Empty<int>(), deleteLast: true);
-            var candidate = Path.Combine(dir, newStem + ext);
-
-            if (!taken.TryGetValue(dir.ToLowerInvariant(), out var claimed))
-                taken[dir.ToLowerInvariant()] = claimed = new(StringComparer.OrdinalIgnoreCase);
-
-            bool Free(string p) =>
-                !claimed.Contains(Path.GetFileName(p)) &&
-                (!File.Exists(p) || SameFile(p, source));
-
-            if (!Free(candidate))
-            {
-                planned.Add(new PlannedRename(source, source, false, "name already taken — left unchanged"));
-                continue;
-            }
-
-            claimed.Add(Path.GetFileName(candidate));
-            planned.Add(new PlannedRename(source, candidate, true));
         }
         return planned;
     }
@@ -600,26 +439,43 @@ public static partial class BulkRename
 
     /// <summary>Undo a batch (newest first). Returns readable problems, empty
     /// if all names were restored.</summary>
-    public static List<string> Revert(IReadOnlyList<RenameOutcome> outcomes)
+    public static List<string> Revert(IReadOnlyList<RenameOutcome> outcomes) =>
+        RevertEach(outcomes).Where(r => r.Problem.Length > 0).Select(r => r.Problem).ToList();
+
+    /// <summary>What happened to one renamed file on undo.</summary>
+    /// <param name="Problem">Why it was left under its new name; empty when
+    /// it is back under its old one.</param>
+    public sealed record RevertOutcome(RenameOutcome Outcome, string Problem)
     {
-        var problems = new List<string>();
+        public bool Restored => Problem.Length == 0;
+    }
+
+    /// <summary><see cref="Revert"/>, file by file (newest first), so a caller
+    /// can tell which files went back without asking the disk again: a
+    /// name taken again by another file exists either way.</summary>
+    public static List<RevertOutcome> RevertEach(IReadOnlyList<RenameOutcome> outcomes)
+    {
+        var results = new List<RevertOutcome>();
         for (var i = outcomes.Count - 1; i >= 0; i--)
         {
             var o = outcomes[i];
             if (o.Final is null) continue;
             if (File.Exists(o.Source) && !SameFile(o.Source, o.Final))
             {
-                problems.Add(
-                    $"{Path.GetFileName(o.Source)} exists again — left as " +
-                    Path.GetFileName(o.Final));
+                results.Add(new RevertOutcome(o,
+                    $"{Path.GetFileName(o.Source)} exists again — left as " + Path.GetFileName(o.Final)));
                 continue;
             }
-            try { File.Move(o.Final, o.Source); }
+            try
+            {
+                File.Move(o.Final, o.Source);
+                results.Add(new RevertOutcome(o, ""));
+            }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                problems.Add($"Couldn't restore {Path.GetFileName(o.Source)}: {ex.Message}");
+                results.Add(new RevertOutcome(o, $"Couldn't restore {Path.GetFileName(o.Source)}: {ex.Message}"));
             }
         }
-        return problems;
+        return results;
     }
 }
