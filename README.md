@@ -119,9 +119,12 @@ workflow tests, builds, zips, and publishes.
     merge each person's ID into the filename, with a side-by-side *Review
     matches* view for the ambiguous and suggested ones.
   - *Box labels* — ten 4×2" storage-box labels per letter sheet with cutting
-    gutters: a big client+number code, a Code 39 barcode for hand scanners,
-    created and destruction dates on black bars, per-client retention
-    offsets, and a resettable running number. A live card previews the exact
+    gutters: a client+number code, a Code 39 barcode for hand scanners,
+    created and destruction dates, per-client retention offsets, and a
+    resettable running number. A label style (Standard, Big number or Huge
+    running number; leading zeros on or off; black date bars or plain text)
+    is set in Settings → Box labels and shared by every station, so box
+    numbers can be read from across a room. A live card previews the exact
     label, and a full-sheet print preview with printer picker prints in-app
     at a guaranteed 100% scale — PDF export remains as an alternative. Also
     ships on its own as **Box Labels** for people who need nothing else from
@@ -229,10 +232,26 @@ keeps the running number unique across stations. Point it at the copy on your
 share, not at a local copy — two separate stores means two boxes eventually
 carrying the same number, and nothing in the software can detect that.
 
-The window says which file it is printing from, across the top, with a
-**Change file…** button beside it. OrdoSort's own Tools → Box labels does not
-show that bar: there the path is a `box_labels_file` key in `config.json`,
-edited on the Settings page.
+The window says which file it is printing from, across the top, under a menu:
+**File → Change labels file…**, and **Settings…** (Ctrl+,). OrdoSort's own
+Tools → Box labels shows neither: there the path is a `box_labels_file` key in
+`config.json`, and the label style a tab, both on OrdoSort's Settings page.
+
+### Settings
+
+| Tab | Holds | Saved in |
+|---|---|---|
+| General | Labels file, theme (Auto / Light / Dark), text size, font | `box-labels-app.json` beside the exe (this PC only) |
+| Label style | Layout, leading zeros, date lines, with a live preview | the shared `box-labels.json` (every station prints alike) |
+
+| Layout | Prints |
+|---|---|
+| Standard | Today's label: `NGC 0000 4200` on one line above the barcode |
+| Big number | The same text as large as the label width allows; a shorter barcode |
+| Huge running number | Only the running number (`4200`), as large as it fits; the client id moves into the CREATED line |
+
+The barcode always holds the full code and never gets shorter than 0.5 in.
+Print a test sheet and scan it once after choosing a new layout.
 
 On first run it asks for that file and remembers the choice in
 `box-labels-app.json` beside the exe. To set it up before handing the folder
