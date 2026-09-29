@@ -289,6 +289,19 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task AddingNewFilesToARunningSessionRoundTrips()
+    {
+        var cfg = LoadFromJson("""{"inbox":"C:/in","add_new_files_to_session":false}""");
+        var vm = new SettingsViewModel(cfg, _dialogs);
+        Assert.False(vm.AddNewFilesToSession);
+
+        vm.AddNewFilesToSession = true;
+
+        Assert.True(await vm.TryBuildResultAsync());
+        Assert.True(vm.Result!.AddNewFilesToSession);
+    }
+
+    [Fact]
     public void DuplicateHotkeyGetsALiveNote()
     {
         var cfg = new Config

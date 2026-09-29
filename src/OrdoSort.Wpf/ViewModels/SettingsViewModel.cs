@@ -732,6 +732,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         FilingMode = current.NamingMode;
         SortKey = current.Sort;
         EnterCommits = current.EnterCommits;
+        AddNewFilesToSession = current.AddNewFilesToSession;
         UppercaseNames = current.UppercaseNames;
         WordSeparator = current.WordSeparator;
         FlashAlerts = current.FlashAlerts;
@@ -1457,6 +1458,10 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     private bool _enterCommits;
     public bool EnterCommits { get => _enterCommits; set => Set(ref _enterCommits, value); }
+
+    private bool _addNewFilesToSession = true;
+    /// <summary>Files arriving mid-session join it (on) or wait for the next one (off).</summary>
+    public bool AddNewFilesToSession { get => _addNewFilesToSession; set => Set(ref _addNewFilesToSession, value); }
 
     private bool _uppercaseNames;
     public bool UppercaseNames
@@ -2622,6 +2627,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         cfg.NamingMode = FilingMode;
         cfg.Sort = SortKey;
         cfg.EnterCommits = EnterCommits;
+        cfg.AddNewFilesToSession = AddNewFilesToSession;
         cfg.UppercaseNames = UppercaseNames;
         cfg.WordSeparator = WordSeparator;
         cfg.FlashAlerts = FlashAlerts;

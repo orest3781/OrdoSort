@@ -43,7 +43,7 @@ public class UnexpectedErrorTests
         // regression: the queue used to stay put, so pressing again logged the
         // already-filed document as <vanished>
         Assert.Equal("20240115--222222.pdf", fx.Shell.CurrentFilename);
-        Assert.Equal("2 / 2", fx.Shell.ProgressLine);
+        Assert.Equal("1 file left", fx.Shell.ProgressLine);
         Assert.Equal(1, fx.Shell.Session.Filed);
         Assert.Equal(0, fx.Shell.Session.Vanished);
     }

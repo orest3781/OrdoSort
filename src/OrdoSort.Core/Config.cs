@@ -139,6 +139,12 @@ public sealed class Config
     [JsonPropertyName("sort")] public string Sort { get; set; } = "size_desc";
     [JsonPropertyName("enter_commits")] public bool EnterCommits { get; set; } = true;
 
+    /// <summary>Files that land in the inbox while a session runs join its
+    /// queue (true, the long-standing behaviour), or wait for the next
+    /// session (false): a session then files exactly what was there when
+    /// Start was pressed.</summary>
+    [JsonPropertyName("add_new_files_to_session")] public bool AddNewFilesToSession { get; set; } = true;
+
     /// <summary>Writes one line per filed document to timing.log in the local
     /// profile: how long the next page took to show, whether it came from a
     /// local copy, and how long the move took. For measuring the filing loop
