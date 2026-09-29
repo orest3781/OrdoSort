@@ -136,6 +136,10 @@ public sealed class SegmentChip : ObservableObject
     }
 
     public string AccessibleName => $"Segment {Position}: {Text}, {(IsKept ? "kept" : "dropped")}";
+
+    /// <summary>A screen reader names a chip's list entry by its item's
+    /// text, which would otherwise be this class's name (AccessibleNameTests).</summary>
+    public override string ToString() => AccessibleName;
 }
 
 public sealed class BulkRenameViewModel : ObservableObject, IDisposable
@@ -214,7 +218,7 @@ public sealed class BulkRenameViewModel : ObservableObject, IDisposable
         IWorkScheduler? scheduler = null,
         SynchronizationContext? uiContext = null, int probeDelayMs = 300, TimeProvider? time = null)
     {
-        _plan = plan ?? Plan;
+        _plan = plan ?? ((paths, op, overrides, dropped, included) => Plan(paths, op, overrides, dropped, included));
         _scheduler = scheduler ?? new TaskWorkScheduler();
         _plansProbe = new DebouncedProbe<List<PlannedRename>>(
             _scheduler, uiContext, ApplyPlans, probeDelayMs, time);

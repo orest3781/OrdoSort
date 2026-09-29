@@ -278,7 +278,7 @@ public partial class MainWindow : Window
     }
 
     private void OnStandardiseNames(object sender, RoutedEventArgs e) =>
-        new Windows.StandardiseNamesWindow(new StandardiseNamesViewModel(Dialogs))
+        new Windows.StandardiseNamesWindow(new StandardiseNamesViewModel())
         { Owner = this }.ShowDialog();
 
     private void OnMatchMerge(object sender, RoutedEventArgs e) =>
@@ -390,10 +390,9 @@ public partial class MainWindow : Window
         public string? BrowseFolder(string? s) => _get().BrowseFolder(s);
         // The same hazard as Confirm, for every member with a default body:
         // unforwarded, AskOpenFiles came back single-select and AskPassword
-        // and AskDate never asked at all (DW-24).
+        // never asked at all (DW-24).
         public string? AskOpenFile(string f, string? dir) => _get().AskOpenFile(f, dir);
         public string[] AskOpenFiles(string f) => _get().AskOpenFiles(f);
         public string? AskPassword(PasswordRequest r) => _get().AskPassword(r);
-        public string? AskDate(string d, int n) => _get().AskDate(d, n);
     }
 }

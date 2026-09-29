@@ -119,14 +119,13 @@ public class DataGridWindowCoverageTests
         // rename, a build config that hides types), an empty or tiny list
         // would make every fact below vacuously pass — proving nothing,
         // exactly the trap this whole task exists to close on the OTHER
-        // suites. Eighteen window types is the actual count at the time this
-        // suite was last updated (Standardise names' own two: StandardiseNamesWindow,
-        // which declares one, and StandardiseDateWindow, the small modal date
-        // prompt, which — like PasswordWindow — doesn't), nine of which
+        // suites. Seventeen window types is the actual count at the time this
+        // suite was last updated (StandardiseDateWindow, Standardise names'
+        // old date prompt, went when the date moved into the window itself), nine of which
         // declare a DataGrid (BulkRename/FilenameList/History/MatchMerge/
         // PageCounts/Triage/ZipTools/MergePdfsWindow/StandardiseNamesWindow —
         // LabelMakerWindow/ListReformatWindow/ManageSavedWindow/MessageWindow/
-        // PasswordWindow/PrintPreviewWindow/SettingsWindow/StandardiseDateWindow/
+        // PasswordWindow/PrintPreviewWindow/SettingsWindow/
         // UnlockWindow don't; Turnaround and Production, which also used to,
         // were removed along with the reports feature, AboutWindow was
         // deleted with the Help menu, and Zip/Unzip became ZipToolsWindow and

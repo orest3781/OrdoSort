@@ -394,12 +394,10 @@ public class DataGridNoteColourTests : UiTest
     //
     // The tool's own Result column: Failed is Theme.StatusRed (Execute's
     // per-file IOException/UnauthorizedAccessException catch — a genuine
-    // failure). Skipped is Theme.StatusAmber ("needs attention" — PlanTidy's
-    // RejectIllegal guard turned a name away; see that method's own doc
-    // comment for why a legally-named source can only reach this through a
-    // bad date). Unchanged is Theme.SubtleText (informational — the file was
+    // failure). Skipped is Theme.StatusAmber ("needs attention" — the name
+    // can't be built: every word dropped with no date, or illegal). Unchanged is Theme.SubtleText (informational — the file was
     // already exactly right, not a problem, the same treatment BulkRename's
-    // own "(no change)" gets). Renamed, the ordinary successful case, fires
+    // own "(no change)" gets). Renamed and Pending, the ordinary cases, fire
     // no trigger at all and so needs no colour coverage here — the same
     // untested-because-nothing-fired shape every OTHER window's own
     // successful row already has in this suite.
@@ -411,7 +409,7 @@ public class DataGridNoteColourTests : UiTest
         var p = scheme.Palette;
         ThemeManager.Apply(_fx.App, scheme);
 
-        var vm = new StandardiseNamesViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
+        var vm = new StandardiseNamesViewModel(new InlineWorkScheduler());
         vm.Results.Add(new StandardiseNameRow(
             "a-long-enough-filename-to-matter.pdf", "some result text here",
             @"C:\inbox\a-long-enough-filename-to-matter.pdf", status));

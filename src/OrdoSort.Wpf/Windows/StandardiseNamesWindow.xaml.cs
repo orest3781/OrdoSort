@@ -47,19 +47,16 @@ public partial class StandardiseNamesWindow : Window
     private void OnAddFiles(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog { Filter = "All files (*.*)|*.*", Multiselect = true };
-        // fire and forget: the intake and rename work is off-thread, so the
+        // fire and forget: the intake and preview are off-thread, so the
         // dialog closes immediately instead of hanging on a slow share —
         // same idiom as every sibling tool's own OnAddFiles.
         if (dlg.ShowDialog(this) == true) _ = _vm.AddFilesAsync(dlg.FileNames);
     }
 
-    /// <summary>Pushes the grid's live selection down into the view model —
-    /// DataGrid.SelectedItems is not bindable, the same reason
-    /// BulkRenameWindow.OnSelectionChanged exists. Rows here, not paths (see
-    /// StandardiseNamesViewModel.SelectedRows's own doc comment): unlike
-    /// BulkRenameWindow, there is no SelectionRestored counterpart to wire up
-    /// here, because nothing in this window ever rebuilds Results out from
-    /// under the grid's own selection.</summary>
+    /// <summary>Pushes the grid's live selection down into the view model
+    /// (DataGrid.SelectedItems is not bindable), so the word chips follow
+    /// the selected files. Rows update in place and Results is never
+    /// rebuilt, so the grid's own selection needs no restoring.</summary>
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e) =>
         _vm.SelectedRows = ResultsGrid.SelectedItems.OfType<StandardiseNameRow>().ToList();
 

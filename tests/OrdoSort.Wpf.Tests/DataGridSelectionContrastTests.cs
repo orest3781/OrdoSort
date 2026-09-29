@@ -198,7 +198,7 @@ public class DataGridSelectionContrastTests : UiTest
 
     private static (StandardiseNamesWindow win, DataGrid grid) BuildStandardiseNamesWindow()
     {
-        var vm = new StandardiseNamesViewModel(new FakeDialogs(), scheduler: new InlineWorkScheduler());
+        var vm = new StandardiseNamesViewModel(new InlineWorkScheduler());
         vm.Results.Add(new StandardiseNameRow(
             "a-long-enough-filename-to-matter.pdf",
             "in use by another program — a long enough message to matter",
