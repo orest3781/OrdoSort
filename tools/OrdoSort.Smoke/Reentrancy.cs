@@ -73,6 +73,9 @@ public static class Reentrancy
                 var t1 = shell.OnRouteAsync(0);
                 var t2 = shell.OnRouteAsync(0);   // must be dropped by the guard
                 await Task.WhenAll(t1, t2);
+                // a press returns once the next page is up; its move lands
+                // just behind it (spec 2026-09-29-filing-loop-design.md)
+                while (shell.IsBusy && Environment.TickCount64 < deadline) await Task.Delay(50);
                 await Task.Delay(500);
 
                 // doc #1 filed as ALICE

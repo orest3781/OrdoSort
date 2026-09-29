@@ -250,6 +250,10 @@ public static class RoutingLoop
 
             window.Shell.TypedName = Typed;
             await window.Shell.OnRouteAsync(0);
+            // A press returns once the next page is up; its move lands just
+            // behind it (spec 2026-09-29-filing-loop-design.md). The disk is
+            // only asked once the shell itself says every press has landed.
+            RoutingLoop.Wait(to, () => !window.Shell.IsBusy, "the move lands");
 
             to.Check("the document left the inbox although its name was taken — Edge let go of it",
                 !File.Exists(Path.Combine(bed.Inbox, First)), $"{First} is still in the inbox{Warned(to)}");
@@ -284,6 +288,10 @@ public static class RoutingLoop
             // ---------------------------------------------------------- commit
             shell.TypedName = Typed;
             await shell.OnRouteAsync(0);
+            // A press returns once the next page is up; its move lands just
+            // behind it (spec 2026-09-29-filing-loop-design.md). The disk is
+            // only asked once the shell itself says every press has landed.
+            Wait(() => !shell.IsBusy, "the move lands");
 
             var filed = Path.Combine(bed.Dest, FiledName);
             to.Check("the document is filed under the name the app derived",
@@ -298,6 +306,7 @@ public static class RoutingLoop
             E2EPump.Until(() => false, SettleMs);
 
             await shell.OnSkipAsync();
+            Wait(() => !shell.IsBusy, "the set-aside lands");
             to.Check("the set-aside document is in the deferred folder",
                 File.Exists(Path.Combine(bed.Deferred, Second)),
                 $"no {Second} in the deferred folder{Warned()}");
