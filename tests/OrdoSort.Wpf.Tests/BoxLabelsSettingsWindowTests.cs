@@ -18,8 +18,10 @@ public class BoxLabelsSettingsWindowTests : UiTest
     private static BoxLabelsSettingsViewModel Vm() =>
         new("x.json", "auto", "", 0, BoxLabels.LabelStyle.Default, "");
 
+    // Closing after an edit would otherwise show the real, modal Discard /
+    // Keep editing question and block the shared UI thread: answer Discard.
     private static BoxLabelsSettingsWindow OffScreen(BoxLabelsSettingsViewModel vm, Func<string?> pick) =>
-        new(vm, pick)
+        new(vm, pick, confirmDiscard: () => true)
         {
             Left = -20000, Top = 0, ShowActivated = false,
             WindowStartupLocation = WindowStartupLocation.Manual,

@@ -16,8 +16,10 @@
     <DockPanel Margin="14">
         <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
             <Button DockPanel.Dock="Right" Content="Cancel" Width="96" IsCancel="True" />
-            <Button DockPanel.Dock="Right" Content="OK" Width="96" Margin="0,0,8,0" IsDefault="True"
-                    Style="{StaticResource PrimaryButton}" Click="OnOk" />
+            <Button DockPanel.Dock="Right" Width="96" Margin="0,0,8,0" IsDefault="True"
+                    Style="{StaticResource PrimaryButton}" Click="OnOk" AutomationProperties.Name="OK">
+                <TextBlock Text="OK" Style="{StaticResource PrimaryButtonLabel}" />
+            </Button>
             <TextBlock x:Name="ProblemLine" Foreground="{DynamicResource Theme.StatusAmber}"
                        TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"
                        AutomationProperties.Name="Settings problems" />
