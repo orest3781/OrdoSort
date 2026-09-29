@@ -61,7 +61,9 @@ public partial class MainWindow : Window
         // messages raised during a session appear over the session's window
         Shell = new ShellViewModel(cfg, cfgPath, Processing.PdfViewer,
             new DialogRelay(() => Processing.IsVisible ? Processing.Dialogs : Dialogs), _watch,
-            SynchronizationContext.Current, sounds: new SoundService());
+            SynchronizationContext.Current, sounds: new SoundService(),
+            // the next documents are copied to this PC while one is read (spec 2026-09-29)
+            stageFactory: () => new DocumentStage(DocumentStage.Root));
         DataContext = Shell;
         Processing.Attach(Shell);
         Shell.PrepareSessionView = Processing.OpenForSessionAsync;
@@ -228,7 +230,8 @@ public partial class MainWindow : Window
     /// through rather than restarting the wait forever.</summary>
     private async Task FinishClosingWhenIdle()
     {
-        await Shell.WaitForIdleAsync(CloseIdleTimeout);
+        // a press no longer waits for its move, so up to MaxInFlight may still land
+        await Shell.WaitForIdleAsync(CloseIdleTimeout * Math.Max(1, Shell.PendingFilings));
         _reallyExit = true;
         _forceClosing = true;
         Close();

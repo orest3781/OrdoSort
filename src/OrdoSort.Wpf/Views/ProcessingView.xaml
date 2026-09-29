@@ -39,6 +39,7 @@
                 <ListBox x:Name="SuggestList" ItemsSource="{Binding Suggestions}"
                          Focusable="False" MaxHeight="220" Margin="4"
                          Background="Transparent" BorderThickness="0"
+                         PreviewMouseLeftButtonDown="SuggestList_PreviewMouseLeftButtonDown"
                          SelectionChanged="SuggestList_SelectionChanged" />
             </Border>
         </Popup>

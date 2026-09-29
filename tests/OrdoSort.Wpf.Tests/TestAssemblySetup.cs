@@ -20,6 +20,8 @@ internal static class TestAssemblySetup
         Directory.CreateDirectory(RunRoot);
         TableLayoutStore.DefaultPath = Path.Combine(RunRoot, "layouts", "table-columns.json");
         WebViewPdfViewer.UserDataFolder = Path.Combine(RunRoot, "WebView2");
+        OrdoSort.Core.DocumentStage.Root = Path.Combine(RunRoot, "stage");
+        FilingTimingLog.PathInUse = Path.Combine(RunRoot, "timing.log");
         App._crashDir = Path.Combine(RunRoot, "crash");
         Directory.CreateDirectory(App._crashDir);
         // Windows built by tests don't remember layouts at all, or one
@@ -40,7 +42,8 @@ public class TestRunIsHermeticTests
     [Fact]
     public void NothingTheAppWritesPointsAtTheRealProfile()
     {
-        foreach (var path in new[] { TableLayoutStore.DefaultPath, WebViewPdfViewer.UserDataFolder, App._crashDir })
+        foreach (var path in new[] { TableLayoutStore.DefaultPath, WebViewPdfViewer.UserDataFolder, App._crashDir,
+                     OrdoSort.Core.DocumentStage.Root, FilingTimingLog.PathInUse })
         {
             Assert.False(Path.GetFullPath(path).StartsWith(RealProfile, StringComparison.OrdinalIgnoreCase),
                 $"{path} is under the real profile {RealProfile}");

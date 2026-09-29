@@ -98,6 +98,23 @@ public partial class ProcessingView : UserControl
             NameBox.CaretIndex = NameBox.Text.Length;
     }
 
+    /// <summary>A click on a suggestion takes it here, on the way down,
+    /// before the row itself sees the click. Left to the row, it takes the
+    /// keyboard focus first; the name box losing focus closes the list and
+    /// empties it, so the click selected nothing and the name was never
+    /// taken (owner report 2026-09-29). Handled, the row never moves the
+    /// focus, and typing carries on in the name box.</summary>
+    private void SuggestList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_shell is null || e.OriginalSource is not DependencyObject clicked) return;
+        if (ItemsControl.ContainerFromElement(SuggestList, clicked) is not ListBoxItem { Content: string name })
+            return;
+        e.Handled = true;
+        _shell.TypedName = name;
+        _shell.DismissSuggestions();
+        FocusNameBox();
+    }
+
     private void SuggestList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_shell is null || e.AddedItems.Count == 0) return;

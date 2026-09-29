@@ -138,6 +138,15 @@ public sealed class Config
     [JsonPropertyName("naming_mode")] public string NamingMode { get; set; } = "insert";
     [JsonPropertyName("sort")] public string Sort { get; set; } = "size_desc";
     [JsonPropertyName("enter_commits")] public bool EnterCommits { get; set; } = true;
+
+    /// <summary>Writes one line per filed document to timing.log in the local
+    /// profile: how long the next page took to show, whether it came from a
+    /// local copy, and how long the move took. For measuring the filing loop
+    /// on a real share; off by default, never names a document (QC-21), and
+    /// only written to config.json when on.</summary>
+    [JsonPropertyName("timing")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Timing { get; set; }
     [JsonPropertyName("uppercase_names")] public bool UppercaseNames { get; set; } = true;
     [JsonPropertyName("routes")] public List<Route> Routes { get; set; } = new();
 
