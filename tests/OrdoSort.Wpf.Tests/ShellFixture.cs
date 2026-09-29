@@ -22,7 +22,10 @@ public sealed class ShellFixture : IDisposable
 
     /// <param name="scheduler">Defaults to <see cref="InlineWorkScheduler"/>;
     /// pass another to hold background work open mid-flight.</param>
-    public ShellFixture(Action<Config>? tweak = null, IWorkScheduler? scheduler = null)
+    /// <param name="stageFactory">The filing loop's local read-ahead; none by
+    /// default, so documents are shown straight from the inbox.</param>
+    public ShellFixture(Action<Config>? tweak = null, IWorkScheduler? scheduler = null,
+        Func<IDocumentStage>? stageFactory = null)
     {
         Dir = Path.Combine(Path.GetTempPath(), "ordoshell_" + Guid.NewGuid());
         Inbox = Path.Combine(Dir, "inbox");
@@ -44,7 +47,8 @@ public sealed class ShellFixture : IDisposable
         Watch = new FolderWatchService(debounceMs: 600_000, pollMs: 600_000);
         Shell = new ShellViewModel(Cfg, CfgPath, Viewer, Dialogs, Watch,
             uiContext: null, palette: () => Theme.ThemePalette.Light,
-            scheduler: scheduler ?? new InlineWorkScheduler(), sounds: Sounds);
+            scheduler: scheduler ?? new InlineWorkScheduler(), sounds: Sounds,
+            stageFactory: stageFactory);
     }
 
     /// <summary>Drop a file matching the inbox pattern (YYYYMMDD--ID.pdf).</summary>

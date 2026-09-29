@@ -84,7 +84,7 @@ On a route key the shell captures what it needs (the document's path, the typed 
 
 ### 4. Measure it
 
-A `timing.log` beside `config.json`, on when `"timing": true` is in the config, one line per document: `key→shown ms`, `stage wait ms` (0 when the copy was ready), `move ms`, `stage hit/miss`. This is how the targets above are checked on the real share, and how a future "it feels slow again" report is answered in minutes rather than a day. Off by default; no document names in it (QC-21).
+A `timing.log` in `%LOCALAPPDATA%\OrdoSort\` (not beside `config.json`, which may be shared), on when `"timing": true` is in the config, one line per document: `key→shown ms`, `stage wait ms` (0 when the copy was ready), `move ms`, `stage hit/miss`. This is how the targets above are checked on the real share, and how a future "it feels slow again" report is answered in minutes rather than a day. Off by default; no document names in it (QC-21).
 
 ## What the user sees
 
@@ -115,12 +115,12 @@ Each phase ships on its own, is measured against the previous one, and is useful
 
 | Question | Options | Owner's answer |
 |---|---|---|
-| Local copies of documents during a session (§1 privacy) | Accept (bounded, per session, cleaned) / never stage, only take steps 1-4 off the path | |
-| Read-ahead depth | 2 (design) / 1 / 5 | |
-| Show-then-move at all (phase 3) | Yes / no, keep one document at a time | |
-| In-flight limit if yes | 3 (design) / 1 | |
-| Where a failed move re-appears | In front of the current document (design) / at the end of the queue | |
-| Timing log | Config switch (design) / always on / never | |
+| Local copies of documents during a session (§1 privacy) | Accept (bounded, per session, cleaned) / never stage, only take steps 1-4 off the path | Accept (owner: "do it, fix everything", 2026-09-29, design defaults taken) |
+| Read-ahead depth | 2 (design) / 1 / 5 | 2 |
+| Show-then-move at all (phase 3) | Yes / no, keep one document at a time | Yes |
+| In-flight limit if yes | 3 (design) / 1 | 3 |
+| Where a failed move re-appears | In front of the current document (design) / at the end of the queue | In front: the screen goes back to it; presses queued behind it are dropped and keep their names |
+| Timing log | Config switch (design) / always on / never | Config switch, `"timing": true` |
 
 ## Tests
 
@@ -140,3 +140,16 @@ Each phase ships on its own, is measured against the previous one, and is useful
 | 3 | The 4th route key with 3 in flight waits for the oldest | bounded |
 | 3 | Stop with a move in flight waits for it and logs it (QC-19) | no lost history row |
 | all | `timing.log` has one line per document, no document names | measurement, QC-21 |
+## As built (2026-09-29)
+
+Differences from the design above, from building it and from a fresh review:
+
+| Point | As built |
+|---|---|
+| Read-ahead window | The document on screen and the next 2. The one before is not kept: a document on its way out is held by `LetGoAsync` until it moves, then its copy is deleted; Undo shows the restored document from the inbox |
+| A name the move would refuse | Filed in place (the press waits for its move), so the refusal comes up on its own document with the name still in the box |
+| Before each move | Waits for any viewer release and for a copy still holding the inbox file open (up to 30 s); a document whose inbox file changed after its copy was shown is not filed ("not filed" warning, back on screen) |
+| Held keys | Auto-repeat of Enter and every bound filing key is ignored: a held key files once |
+| Closing with presses pending | The move under way lands and is logged; presses not yet started stay in the inbox and crash.log records how many (no names); the close wait scales with the presses still landing |
+| The "Filing…" chip | Not built: moves land fast enough that the ✓ card follows at once; revisit if the timing log says otherwise |
+| Code | `ShellViewModel.Filing.cs` (the loop), `DocumentStage.cs` (Core), `FilingTimingLog.cs`; tests `FilingPipelineTests`, `DocumentStageTests` |

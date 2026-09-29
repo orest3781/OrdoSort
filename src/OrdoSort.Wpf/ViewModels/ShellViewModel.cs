@@ -33,7 +33,7 @@ internal sealed record SectionFingerprint(
 /// <summary>The app's state machine: Ready (dashboard) → Processing (filing
 /// loop) → Done (summary), plus live folder monitoring. Owns Config, History,
 /// Session. No WPF types — the whole lifecycle is unit-tested headless.</summary>
-public sealed class ShellViewModel : ObservableObject, IDisposable
+public sealed partial class ShellViewModel : ObservableObject, IDisposable
 {
     private Config _cfg;               // replaced by Settings
     private readonly string _cfgPath;
@@ -80,9 +80,13 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     public ShellViewModel(Config cfg, string cfgPath, IPdfViewer viewer,
         IDialogService dialogs, FolderWatchService watch,
         SynchronizationContext? uiContext = null, Func<ThemePalette>? palette = null,
-        IWorkScheduler? scheduler = null, ISoundService? sounds = null)
+        IWorkScheduler? scheduler = null, ISoundService? sounds = null,
+        Func<IDocumentStage>? stageFactory = null)
     {
         _cfg = cfg;
+        // null: every document is shown straight from the inbox (the tests,
+        // and any caller that doesn't want the local read-ahead)
+        _stageFactory = stageFactory;
         _cfgPath = cfgPath;
         _viewer = viewer;
         _dialogs = dialogs;
@@ -615,10 +619,12 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // Mid-commit/undo the screen belongs to that operation: dropping to
         // Ready underneath it would let the undo's own LoadCurrentAsync put
         // the session back up (or leave the viewer pointing at a moved file).
-        if (_busy) return;
+        if (FilingInProgress) return;
         _loadedPath = null;
+        _shownSource = null;
         Screen = Screen.Ready;
         _viewer.Blank();
+        DisposeStage();
         _ = RefreshFoldersAsync(showErrors: true);
     }
 
@@ -1370,7 +1376,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// <summary>True while a commit/skip/undo is mid-flight. Exposed so the
     /// window can refuse to finish closing underneath one — see MainWindow's
     /// Closing handler (2026-08-04 audit 1.1).</summary>
-    internal bool IsBusy => _busy;
+    internal bool IsBusy => FilingInProgress || _pressing || _recovering;
 
     private Task _filingInFlight = Task.CompletedTask;
 
@@ -1393,9 +1399,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     internal async Task<bool> WaitForIdleAsync(TimeSpan timeout)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        while (_busy && sw.Elapsed < timeout)
+        while (IsBusy && sw.Elapsed < timeout)
             await Task.Delay(25);
-        return !_busy;
+        return !IsBusy;
     }
 
     /// <summary>True once any commit/skip/undo this session has hit an
@@ -1457,9 +1463,10 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// undoing one there would move a file back into the inbox with nothing
     /// on screen to show it — so only Processing and Done offer it.</summary>
     public bool CanUndo =>
-        (Screen == Screen.Processing || Screen == Screen.Done) && _session.CanUndo;
+        (Screen == Screen.Processing || Screen == Screen.Done) && (_session.CanUndo || _jobs.Count > 0);
 
-    private void RaiseProgress() => ProgressLine = $"{_session.Pos + 1} / {_session.Total}";
+    private void RaiseProgress() =>
+        ProgressLine = $"{Math.Min(_shownIndex + 1, _session.Total)} / {_session.Total}";
 
     internal void StartProcessing() => _ = RunGuarded(StartProcessingAsync(),
         "Starting that session",
@@ -1467,7 +1474,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     internal async Task StartProcessingAsync()
     {
-        if (_busy) return;
+        if (IsBusy) return;
         // Start is off without them (ShowReady); this covers a caller that
         // gets here anyway, e.g. a press landing as Settings removed the last one
         if (!SetupComplete) { RefreshNotices(); return; }
@@ -1499,6 +1506,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             if (problems[i].Length == 0) problems[i] = clashes[i];
         BuildRoutes(routes, problems);
         _session.Start(scan.Matching);
+        ResetFilingLoop();
         _lastRoute = null;
         MarkRouteState();   // Enter always has a target now — mark it before the first document
         _auditFailedThisSession = false;
@@ -1525,7 +1533,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private async Task FitViewerToCurrentAsync()
     {
         _sessionPage = null;
-        var path = _session.Current;
+        var path = ShownPath;
         if (path is null) return;
         // reads the whole file, and off an SMB inbox that is a network
         // transfer: done once per session, never per document
@@ -1544,38 +1552,13 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         RoutesRebuilt?.Invoke();
     }
 
-    internal async Task LoadCurrentAsync()
-    {
-        var path = _session.Current;
-        if (path is null) { ShowDone(); return; }
-        RaiseProgress();
-        CurrentFilename = Path.GetFileName(path);
-        if (path != _loadedPath)
-        {
-            _loadedPath = path;
-            // the FIELD, not the property — so the setter's bookkeeping is skipped
-            // and the frozen suggestion walk has to be cleared by hand, or the
-            // next ↓ would offer this document the previous one's names
-            _typedName = "";
-            ResetCycle();
-            Raise(nameof(TypedName));
-        }
-        RefreshSuggestions();
-        UpdatePreview();
-        RaiseUndoState();
-        // a document shown outside a session would sit in a hidden preview,
-        // which keeps its file open
-        if (Screen != Screen.Processing) return;
-        // the session's first page size, not this document's own: see _sessionPage
-        await _viewer.ShowAsync(path, _sessionPage);
-        RequestNameFocus?.Invoke();
-    }
-
     private void ShowDone()
     {
         _loadedPath = null;
+        _shownSource = null;
         Screen = Screen.Done;
         _viewer.Blank();
+        DisposeStage();
         DoneTitle = "Session complete";
         DoneDetail = $"{_session.Filed} filed, {_session.Skipped} set aside"
             + (_session.Vanished > 0 ? $", {_session.Vanished} vanished" : "");
@@ -1594,148 +1577,6 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     }
 
     // ------------------------------------------------------------- actions
-    internal async Task OnRouteAsync(int index)
-    {
-        // _busy is set BEFORE the first await: without it, a fast second
-        // Enter/Ctrl+1 would start a second commit during ReleaseAsync's
-        // yield, capturing the same textbox text and mislabeling the next doc.
-        // Index into the session's own buttons, not _cfg.Routes: a mid-session
-        // save can replace _cfg.Routes with a peer's reordered list, and the
-        // button (and hotkey) the user pressed must still file where it says.
-        if (_busy || Screen != Screen.Processing || _session.Current is null
-            || index < 0 || index >= Routes.Count) return;
-        if (!Routes[index].Enabled) return;
-        var route = Routes[index].Route;
-        _busy = true;
-        try
-        {
-            var typed = TypedName;
-            await _viewer.ReleaseAsync();
-            try
-            {
-                // the move itself can be a copy+delete across SMB shares —
-                // never on the UI thread
-                var outcome = await RunFiling(() => _session.CommitCurrent(typed, route));
-                // the window closed while this was moving: nothing left to show (QC-19)
-                if (_disposed) return;
-                _lastRoute = index;
-                MarkRouteState();
-                if (outcome.Vanished)
-                {
-                    ShowStatusNote("That file disappeared from the inbox — logged and moved on.");
-                }
-                else
-                {
-                    var back = ThemePalette.ParseColor(route.Color) ?? _palette().Success;
-                    ShowLastAction($"✓  Filed to {route.Label}",
-                        Path.GetFileName(outcome.NewPath!), back);
-                }
-            }
-            catch (AuditError ex)
-            {
-                // the move already happened and the queue moved with it — report
-                // and carry on rather than reloading a document that isn't there
-                _lastRoute = index;
-                MarkRouteState();
-                HideLastAction();
-                ReportAuditFailure(ex, "OrdoSort — filed, but not recorded");
-            }
-            catch (CommitError ex)
-            {
-                if (_cfg.Sounds.Enabled) _sounds.Play(SoundEvent.Error, _cfg.Sounds.Error);
-                _dialogs.Warn(ex.Message, "OrdoSort — couldn't file it");
-                await LoadCurrentAsync();   // reload the same doc; nothing moved
-                return;
-            }
-            await RefreshDeferredAsync();
-            await RefreshCompleterAsync();   // the just-used name is now suggestable
-            await LoadCurrentAsync();
-        }
-        finally { _busy = false; }
-    }
-
-    internal async Task OnSkipAsync()
-    {
-        if (_busy || Screen != Screen.Processing || _session.Current is null) return;
-        _busy = true;
-        try
-        {
-            await _viewer.ReleaseAsync();
-            try
-            {
-                var outcome = await RunFiling(() => _session.SkipCurrent());
-                // the window closed while this was moving: nothing left to show (QC-19)
-                if (_disposed) return;
-                if (outcome.Vanished)
-                    ShowStatusNote("That file disappeared from the inbox — logged and moved on.");
-                else
-                {
-                    ShowLastAction("✓  Set aside for later",
-                        Path.GetFileName(outcome.NewPath!), _palette().Warning);
-                    if (_cfg.Sounds.Enabled) _sounds.Play(SoundEvent.SetAside, _cfg.Sounds.SetAside);
-                }
-            }
-            catch (AuditError ex)
-            {
-                HideLastAction();
-                ReportAuditFailure(ex, "OrdoSort — set aside, but not recorded");
-            }
-            catch (CommitError ex)
-            {
-                if (_cfg.Sounds.Enabled) _sounds.Play(SoundEvent.Error, _cfg.Sounds.Error);
-                _dialogs.Warn(ex.Message, "OrdoSort — set-aside failed");
-            }
-            await RefreshDeferredAsync();
-            await LoadCurrentAsync();
-        }
-        finally { _busy = false; }
-    }
-
-    internal void OnUndo() => _ = OnUndoAsync();
-
-    internal async Task OnUndoAsync()
-    {
-        if (_busy || (Screen != Screen.Processing && Screen != Screen.Done)) return;
-        if (!_session.CanUndo) { ShowStatusNote("Nothing to undo."); return; }
-        _busy = true;
-        try
-        {
-            try
-            {
-                var (filed, original) = await RunFiling(() => _session.UndoLast());
-                // the window closed while this was moving: nothing left to show (QC-19)
-                if (_disposed) return;
-                ShowStatusNote($"Undid {Path.GetFileName(filed)} → {Path.GetFileName(original)}");
-                HideLastAction();   // the card must never claim an undone filing
-            }
-            catch (AuditError ex)
-            {
-                // the file is back; only the history row is stale
-                HideLastAction();
-                ReportAuditFailure(ex, "OrdoSort — undone, but still logged as filed");
-            }
-            catch (CommitError ex) when (ex.LeftBothCopies)
-            {
-                // The document is back and the session says so; only the
-                // filed copy would not delete. An undo, with a warning: the
-                // screen follows the session back to it below (Q2-04).
-                HideLastAction();
-                _dialogs.Warn(ex.Message, "OrdoSort — undone, but a copy remains");
-            }
-            catch (CommitError ex)
-            {
-                _dialogs.Warn(ex.Message, "OrdoSort — undo failed");
-                return;
-            }
-            if (Screen == Screen.Done)   // undo from Done re-enters the session
-                Screen = Screen.Processing;
-            await RefreshDeferredAsync();
-            await RefreshCompleterAsync();   // a reverted name may drop out
-            await LoadCurrentAsync();
-        }
-        finally { _busy = false; }
-    }
-
     /// <summary>Index of the route Enter would press right now: null while
     /// there are no routes to press; otherwise the last-used route (falling
     /// back to the first before anything's been filed) when enter_commits is
@@ -2036,7 +1877,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // have its _session and History swapped out and its screen dropped
         // to Ready mid-commit. Holding _busy refuses Start (and commit/undo)
         // for the whole apply; clearing StartEnabled shows it.
-        if (_busy)
+        if (IsBusy)
         {
             _dialogs.Warn("Your settings weren't applied because OrdoSort was busy starting " +
                           "a session or filing. Reopen Settings and press OK again.",
@@ -2253,15 +2094,6 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Esc: back to Ready. Nothing is lost — the remaining queue
-    /// stays in the inbox.</summary>
-    internal void StopSession()
-    {
-        if (Screen != Screen.Processing || _busy) return;
-        ClearStatus();
-        Rescan();
-    }
-
     /// <summary>Live "will be filed as" preview — the same BuildTarget the
     /// commit uses, so an illegal name (colon…) warns before the button. Keyed
     /// off the SAME route Enter would press right now (EnterTargetIndex) —
@@ -2270,7 +2102,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// than silently ignoring it.</summary>
     private void UpdatePreview()
     {
-        var current = _session.Current;
+        var current = ShownPath;
         if (Screen != Screen.Processing || current is null)
         {
             Preview = "";
@@ -2526,6 +2358,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         _lastActionTimer.Dispose();
         _toastTimer.Dispose();
         _statusTimer.Dispose();
+        DropUnstartedPresses();
+        DisposeStage();
         // A document still being moved writes its history row when the move
         // lands; disposing the database first lost that row with no word
         // (QC-19). So it closes once that filing is done.

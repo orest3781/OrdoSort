@@ -43,6 +43,7 @@ public partial class ProcessingWindow : Window
         _panZone = ViewerPanZone;
         Loaded += (_, _) => ViewerInputEnhancer.Register(_panZone);
         Closing += OnClosing;
+        PreviewKeyDown += IgnoreHeldFilingKeys;
         Closed += (_, _) =>
         {
             ViewerInputEnhancer.Unregister(_panZone);
@@ -179,6 +180,22 @@ public partial class ProcessingWindow : Window
         var device = new Rect(topLeft.X, topLeft.Y,
             Viewer.ActualWidth * dpi.DpiScaleX, Viewer.ActualHeight * dpi.DpiScaleY);
         return PanMath.PanZone(device, dpi.DpiScaleX, dpi.DpiScaleY);
+    }
+
+    /// <summary>A filing key held down files once. A press no longer waits
+    /// for its move (spec 2026-09-29), so the keyboard's auto-repeat would
+    /// otherwise walk through several documents before the key came up.</summary>
+    private void IgnoreHeldFilingKeys(object sender, KeyEventArgs e)
+    {
+        if (!e.IsRepeat) return;
+        if (e.Key == Key.Enter || IsBoundKey(e)) e.Handled = true;
+    }
+
+    private bool IsBoundKey(KeyEventArgs e)
+    {
+        foreach (InputBinding binding in InputBindings)
+            if (binding.Gesture?.Matches(this, e) == true) return true;
+        return false;
     }
 
     /// <summary>Config-driven route hotkeys: rebuilt with the route buttons at

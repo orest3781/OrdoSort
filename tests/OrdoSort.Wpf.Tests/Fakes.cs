@@ -140,3 +140,45 @@ public sealed class FakeDialogs : IDialogService
         return DateAnswers.Count > 0 ? DateAnswers.Dequeue() : null;
     }
 }
+
+/// <summary>Stands in for the local read-ahead: every document has a "copy"
+/// at once, under a folder no real file lives in, unless the test says
+/// otherwise. Records what it was asked to keep.</summary>
+public sealed class FakeStage : IDocumentStage
+{
+    public const string CopyFolder = @"C:\ordo-stage-fake";
+
+    public List<List<string>> Wants { get; } = new();
+
+    /// <summary>Documents with no copy: shown from the inbox instead.</summary>
+    public HashSet<string> NoCopy { get; } = new(PathIdentity.PathComparer.Instance);
+
+    public bool Disposed { get; private set; }
+
+    public static string CopyOf(string path) => Path.Combine(CopyFolder, Path.GetFileName(path));
+
+    public void Want(IReadOnlyList<string> paths) => Wants.Add(paths.ToList());
+
+    public Task<string?> CopyForAsync(string path, TimeSpan maxWait) =>
+        Task.FromResult(NoCopy.Contains(path) ? null : CopyOf(path));
+
+    /// <summary>Documents let go of before their move, in order.</summary>
+    public List<string> LetGo { get; } = new();
+
+    /// <summary>Documents to report as changed since they were shown.</summary>
+    public HashSet<string> Changed { get; } = new(PathIdentity.PathComparer.Instance);
+
+    public List<string> Discarded { get; } = new();
+
+    public Task LetGoAsync(string path, TimeSpan maxWait)
+    {
+        LetGo.Add(path);
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> IsUnchangedAsync(string path) => Task.FromResult(!Changed.Contains(path));
+
+    public void Discard(string path) => Discarded.Add(path);
+
+    public void Dispose() => Disposed = true;
+}
