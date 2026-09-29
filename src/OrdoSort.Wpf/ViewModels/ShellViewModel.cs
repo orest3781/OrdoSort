@@ -52,6 +52,14 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// box. Cleared whenever the session ends or returns to Ready, so a
     /// later session never inherits a name typed in an earlier one.</summary>
     private string? _loadedPath;
+
+    /// <summary>The session's first page size, read once at Start and used
+    /// to zoom every document. Reading each document's own size before
+    /// showing it pulled the whole file over the network first (PdfSharp's
+    /// Import mode reads every object), which made each load visibly slower
+    /// on an SMB inbox. Batches are nearly always one page size; a document
+    /// of another shape shows at this zoom and scrolls.</summary>
+    private OrdoSort.Core.PageSize? _sessionPage;
     private readonly IPdfViewer _viewer;
     private readonly IDialogService _dialogs;
     private readonly FolderWatchService _watch;
@@ -1516,11 +1524,14 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// exactly where unreadable files turn up.</summary>
     private async Task FitViewerToCurrentAsync()
     {
+        _sessionPage = null;
         var path = _session.Current;
         if (path is null) return;
-        // a PDF header read off an SMB inbox is a network round trip
-        var aspect = await _scheduler.Run(() => PageShape.AspectOf(path));
-        if (aspect is > 0) FitViewerToPage?.Invoke(aspect.Value);
+        // reads the whole file, and off an SMB inbox that is a network
+        // transfer: done once per session, never per document
+        var page = await _scheduler.Run(() => PageShape.SizeOf(path));
+        _sessionPage = page;
+        if (page?.Aspect is > 0) FitViewerToPage?.Invoke(page.Value.Aspect);
     }
 
     private void BuildRoutes(IReadOnlyList<Route> routes, IReadOnlyList<string> problems)
@@ -1552,14 +1563,11 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         RefreshSuggestions();
         UpdatePreview();
         RaiseUndoState();
-        // the page's size, so the viewer shows the whole page as large as it
-        // can; a PDF header read off an SMB inbox is a network round trip
-        var page = await _scheduler.Run(() => PageShape.SizeOf(path));
-        if (_session.Current != path) return;   // moved on while measuring; that load shows its own
-        // Esc closed the session while measuring: a document shown now would
-        // sit in a hidden preview, which keeps its file open
+        // a document shown outside a session would sit in a hidden preview,
+        // which keeps its file open
         if (Screen != Screen.Processing) return;
-        await _viewer.ShowAsync(path, page);
+        // the session's first page size, not this document's own: see _sessionPage
+        await _viewer.ShowAsync(path, _sessionPage);
         RequestNameFocus?.Invoke();
     }
 

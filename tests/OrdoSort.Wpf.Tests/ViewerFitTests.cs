@@ -139,8 +139,12 @@ public class ViewerFitTests
         Assert.Single(fx.Viewer.Shown);
     }
 
+    /// <summary>Every document is zoomed for the FIRST page's size. Reading
+    /// each document's own size meant pulling the whole file over the network
+    /// before the preview could start (PdfSharp reads every object), and
+    /// loads got visibly slower on a share (owner report 2026-09-29).</summary>
     [Fact]
-    public async Task EveryDocumentIsShownWithItsOwnPageSize()
+    public async Task EveryDocumentIsShownAtTheFirstPagesSize()
     {
         using var fx = new ShellFixture();
         WritePdf(Path.Combine(fx.Inbox, "20240115--111111.pdf"), 612, 792);
@@ -150,7 +154,41 @@ public class ViewerFitTests
         fx.Shell.StartProcessing();
         await fx.Shell.OnRouteAsync(0);
 
-        Assert.Equal(new PageSize?[] { new PageSize(612, 792), new PageSize(792, 612) }, fx.Viewer.ShownPages);
+        Assert.Equal(new PageSize?[] { new PageSize(612, 792), new PageSize(612, 792) }, fx.Viewer.ShownPages);
+    }
+
+    /// <summary>The proof that later documents are not read before they are
+    /// shown: one that isn't a PDF at all still gets the session's zoom.</summary>
+    [Fact]
+    public async Task ALaterDocumentIsNotReadBeforeItIsShown()
+    {
+        using var fx = new ShellFixture();
+        WritePdf(Path.Combine(fx.Inbox, "20240115--111111.pdf"), 612, 792);
+        fx.AddInboxFile("20240116--222222.pdf");   // text, not a PDF
+
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+        await fx.Shell.OnRouteAsync(0);
+
+        Assert.Equal(new PageSize?[] { new PageSize(612, 792), new PageSize(612, 792) }, fx.Viewer.ShownPages);
+    }
+
+    /// <summary>A session never inherits the last session's page size.</summary>
+    [Fact]
+    public void ANewSessionDoesNotReuseTheLastSessionsPageSize()
+    {
+        using var fx = new ShellFixture();
+        WritePdf(Path.Combine(fx.Inbox, "20240115--111111.pdf"), 792, 612);
+
+        fx.Shell.Initialize();
+        fx.Shell.StartProcessing();
+        fx.Shell.StopSession();
+        File.Delete(Path.Combine(fx.Inbox, "20240115--111111.pdf"));
+        fx.AddInboxFile("20240116--222222.pdf");   // text, not a PDF
+        fx.Shell.Rescan();
+        fx.Shell.StartProcessing();
+
+        Assert.Equal(new PageSize?[] { new PageSize(792, 612), null }, fx.Viewer.ShownPages);
     }
 
     [Fact]
