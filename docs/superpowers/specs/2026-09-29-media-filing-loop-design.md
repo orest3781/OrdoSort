@@ -10,6 +10,10 @@ Owner request, 2026-09-29: "a filing loop that can power through photos, gifs, v
 | Where it goes | The same routes and hotkeys as PDFs |
 | Inbox | One inbox and one session; PDFs, photos, GIFs and videos mixed, in whatever order the inbox sorts them |
 | Video player | Bundled VLC engine (LibVLCSharp), so iPhone `.mov` (HEVC), `.avi` and `.mkv` play without extra codecs |
+| How a video starts | Paused on its first frame, muted |
+| Subfolder | One `Media` folder inside the route folder, by default |
+| Live photos (a `.heic` and a `.mov` with one name) | Owner unsure: filed as two separate items for now; revisit after using it |
+| More file types | Owner unsure: the table below is the default, editable in Settings |
 
 ## Goal
 
@@ -29,7 +33,7 @@ Owner request, 2026-09-29: "a filing loop that can power through photos, gifs, v
 | Page size | `ShellViewModel` → `PageShape.SizeOf` | Read once per session from the first PDF | Skipped for media; a photo or video fits the pane by its own size |
 | Preview | `IPdfViewer` / `WebViewPdfViewer` | Edge shows the PDF | Becomes `IPreview` with three hosts: Edge for PDFs, Edge for photos and GIFs, VLC for video |
 | Read-ahead | `DocumentStage` | Current + next 2, files over 200 MB not staged | Unchanged rules; large videos play off the share with a bigger read buffer |
-| PDF-only steps | password check, Unlock, page counts | Run on every document | Skipped for media |
+| Page-size fit | `FitViewerToCurrentAsync` | Measures the session's first document | Measures the first PDF, so a session that starts on a photo still fits its PDFs |
 
 ## Design
 
@@ -43,7 +47,7 @@ Owner request, 2026-09-29: "a filing loop that can power through photos, gifs, v
 | Camera RAW | `.cr2 .cr3 .nef .arw .dng .raf .orf` (off by default) | The JPEG preview embedded in the file; "No preview" if there is none |
 
 - Settings gets a **File types** section: a tick box per kind and an editable list of extensions per kind.
-- HEIC: Edge can't show it. It is decoded through Windows' own imaging (WIC) into a JPEG in the stage folder. Without Microsoft's free *HEIF Image Extensions* the pane says so, with the Store link, and filing still works.
+- HEIC: Edge can't show it. It is decoded through Windows' own imaging (WIC) into a JPEG in a preview folder of the app's own (made ahead for the next two photos, deleted when the app closes). Windows needs Microsoft's *HEIF Image Extensions* and *HEVC Video Extensions* for this; without them the pane says so, and filing still works.
 - Anything else in the inbox is still ignored and counted, as today.
 
 ### 2. Naming: date taken + typed name
@@ -59,7 +63,7 @@ The rule for photos and videos, in every naming mode:
 | Name clashes at the destination | ` (2)`, ` (3)` before the extension, as for PDFs |
 | The typed name starts with 8 digits that are a real date | That date replaces the date taken (the one way to correct a wrong camera clock) |
 
-Where the date comes from, first found wins:
+Where the date comes from, first found wins (EXIF's plain `DateTime` is left out: it is when the file was last edited):
 
 | # | Source | Covers |
 |---|---|---|
@@ -67,6 +71,7 @@ Where the date comes from, first found wins:
 | 2 | QuickTime/MP4 creation time (stored in UTC, shown in local time) | `.mov .mp4 .m4v .3gp` |
 | 3 | A date in the file name (`IMG_20260929_…`, `PXL_20260929…`, `2026-09-29 …`, `VID-20260929-WA…`) | WhatsApp, Android, screenshots |
 | 4 | The file's last-modified time | GIFs and everything else |
+| — | Today, marked "couldn't read the photo's date" | A file that can't be read at all (a share down). Never kept: the move reads it again |
 
 - The date and where it came from show above the name box: `29 Sep 2026 · from the photo` / `· from the file name` / `· from the modified date`. The last is in amber, because a copied file's modified date is often the copy date.
 - Metadata is read with **MetadataExtractor** (Apache-2.0; one library for EXIF, HEIC, RAW and QuickTime), off the UI thread, as part of the read-ahead, so it is ready before the file is on screen.
@@ -75,11 +80,11 @@ Where the date comes from, first found wins:
 ### 3. Where it goes
 
 - The same routes and hotkeys (`Ctrl+1`…) as PDFs.
-- New Settings option, **Photos and videos go into**: `the route folder itself` (default) / `a Photos or Videos subfolder` / `a Media subfolder`. A subfolder is created when missing.
+- New Settings option, **Photos and videos go into**: `a Media subfolder` (default) / `the route folder itself` / `Photos or Videos subfolders`. A subfolder is created when missing.
 
 ### 4. Video: playing and scrubbing
 
-The video starts as soon as it is on screen: **playing, muted, at normal speed**. You can name and file it without touching the video at all.
+The video is shown **paused on its first frame, muted**, as soon as it is on screen. You can name and file it without touching the video at all; `Alt+K` plays it.
 
 Keys work while the cursor is in the name box. Plain arrows, Space and letters stay free for typing; every video key uses Alt. (Not `Alt+Space`: Windows keeps that for the window menu.) The Processing window handles these before WPF's access keys see them, and none of its buttons use an Alt access key today:
 
@@ -129,7 +134,7 @@ With the mouse:
 
 | Phase | Delivers | Status |
 |---|---|---|
-| 1 | File types in Settings; mixed inbox; photos, GIFs and HEIC in the pane; date-taken naming; the subfolder option | Not started |
+| 1 | File types in Settings; mixed inbox; photos, GIFs and HEIC in the pane; date-taken naming; the subfolder option | Built on `feature/media-loop` (2026-09-29) |
 | 2 | VLC video: play, all scrub keys, timeline, mouse wheel, speed, mute | Not started |
 | 3 | The filmstrip; camera RAW previews | Not started |
 
@@ -147,10 +152,10 @@ Each phase is its own branch and release, checked on Windows with `check.bat`, E
 
 ## Open questions for the owner
 
-- [ ] Video starts **playing muted**, or paused on the first frame?
-- [ ] Subfolder names: `Photos` / `Videos`, or one `Media` folder? (Both are offered; which is the default?)
-- [ ] Should live photos (iPhone `.heic` + `.mov` pair with the same name) be filed together as one item?
-- [ ] Any file types you have that aren't in the table above?
+- [x] Video start: paused on the first frame, muted
+- [x] Subfolder default: one `Media` folder
+- [ ] Live photos filed together: undecided; separate for now
+- [ ] More file types: undecided; the default table, editable in Settings
 
 ## Next (not in these phases)
 

@@ -133,7 +133,9 @@ public sealed class Session
                      "…but the history database could not record it, so this " +
                      "document is missing from the audit trail:\n\n" + failure);
 
-    public Commit.CommitOutcome CommitCurrent(string typedName, Route route)
+    /// <param name="media">A photo's date and Media folder
+    /// (<see cref="MediaFiles.TargetFor"/>); null for a PDF.</param>
+    public Commit.CommitOutcome CommitCurrent(string typedName, Route route, MediaTarget? media = null)
     {
         var src = Current ?? throw new CommitError("No document is loaded.");
         // A relative route lands beside config.json, not against whatever
@@ -141,14 +143,16 @@ public sealed class Session
         // route reaches Commit, on a copy: the route itself keeps its path as
         // typed (same reason _cfgPath is stored rather than applied up front).
         var target = route.WithPath(Config.ResolveFolderPath(_cfgPath, route.Path));
-        var outcome = Commit.CommitFile(src, typedName, target, SessionMode);
+        var outcome = Commit.CommitFile(src, typedName, target, SessionMode, media);
         if (outcome.Vanished) { LogVanished(src); return outcome; }
 
         var result = outcome.NameResult!;
+        // a photo in the route's Media folder is recorded where it is
+        var filedIn = media is null ? target.Path : Path.GetDirectoryName(outcome.NewPath!) ?? target.Path;
         var rowId = TryLog(() => _history.LogCommit(
             src, Path.GetFileName(src), result.Filename,
-            Naming.IsBlankName(typedName) ? "" : typedName, result.ModeUsed,
-            result.SuffixApplied, target.Label, target.Path, tagged: false,
+            Naming.IsBlankName(typedName, Path.GetFileName(src)) ? "" : typedName, result.ModeUsed,
+            result.SuffixApplied, target.Label, filedIn, tagged: false,
             result.CollisionSuffix), out var failure);
 
         // the file is GONE from the inbox — advance regardless, or the next

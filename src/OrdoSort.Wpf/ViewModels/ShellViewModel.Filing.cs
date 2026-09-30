@@ -233,6 +233,7 @@ public sealed partial class ShellViewModel
         _shownIndex = job.QueueIndex;
         _loadedPath = job.Path;
         CurrentFilename = Path.GetFileName(job.Path);
+        ShowKnownTaken(job.Path);
         _typedName = job.Typed;
         ResetCycle();
         Raise(nameof(TypedName));
@@ -249,7 +250,8 @@ public sealed partial class ShellViewModel
         try
         {
             Naming.BuildTarget(Path.GetFileName(path), typed, route?.NamingMode, _session.SessionMode,
-                route?.Suffix ?? "", route?.AppendSuffix ?? false, _ => false);
+                route?.Suffix ?? "", route?.AppendSuffix ?? false, _ => false,
+                IsMedia(path) ? StampPending : null);
             return true;
         }
         catch (ArgumentException)
@@ -318,6 +320,7 @@ public sealed partial class ShellViewModel
         }
         RaiseProgress();
         CurrentFilename = Path.GetFileName(path);
+        ShowKnownTaken(path);
         if (path != _loadedPath)
         {
             _loadedPath = path;
@@ -341,13 +344,18 @@ public sealed partial class ShellViewModel
         // preview, which keeps its file open
         if (Screen != Screen.Processing) return;
         RequestNameFocus?.Invoke();
-        var source = await LocalCopyOrInboxAsync(path);
+        var copy = await LocalCopyOrInboxAsync(path);
+        var media = IsMedia(path);
+        var source = media ? await PreviewSourceAsync(path, copy) : copy;
         // moved on, or closed, while the copy was waited for: that load shows its own
         if (Screen != Screen.Processing || !PathIdentity.Same(ShownPath, path)) return;
         _shownSource = source;
-        await _viewer.ShowAsync(source, _sessionPage);
+        // a photo fits the pane by its own size; the PDF zoom is for PDFs
+        await _viewer.ShowAsync(source, media ? null : _sessionPage);
         // Edge can take the focus as it opens a document
         RequestNameFocus?.Invoke();
+        if (media) _ = ShowTakenAsync(path, copy);
+        PrepareNextMedia();
     }
 
     /// <summary>The document's local copy when there is one in time,
@@ -515,7 +523,7 @@ public sealed partial class ShellViewModel
     {
         job.MoveStarted = true;
         // the move itself can be a copy+delete across SMB shares — never on the UI thread
-        var outcome = await RunFiling(() => _session.CommitCurrent(job.Typed, job.Route!));
+        var outcome = await RunFiling(() => _session.CommitCurrent(job.Typed, job.Route!, MediaTargetFor(job.Path)));
         // the window closed while this was moving: nothing left to show (QC-19)
         if (_disposed) return;
         _lastRoute = job.RouteIndex;
@@ -525,6 +533,7 @@ public sealed partial class ShellViewModel
             ShowStatusNote("That file disappeared from the inbox — logged and moved on.");
             return;
         }
+        ForgetMedia(job.Path);
         var back = Theme.ThemePalette.ParseColor(job.Route!.Color) ?? _palette().Success;
         ShowLastAction($"✓  Filed to {job.Route.Label}", Path.GetFileName(outcome.NewPath!), back);
     }

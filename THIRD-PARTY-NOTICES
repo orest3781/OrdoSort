@@ -73,6 +73,11 @@ The following packages are licensed under the Apache License, Version 2.0
   - SQLitePCLRaw.lib.e_sqlite3       2.1.12
   - SQLitePCLRaw.provider.e_sqlite3  2.1.12
 
+  MetadataExtractor 2.9.3 is also licensed under the Apache License,
+  Version 2.0, copyright Drew Noakes and contributors
+  (https://github.com/drewnoakes/metadata-extractor-dotnet). It reads the
+  date a photo was taken.
+
   Licensed under the Apache License, Version 2.0 (the "License"); you may not
   use this file except in compliance with the License. You may obtain a copy
   of the License at
@@ -89,6 +94,28 @@ The following packages are licensed under the Apache License, Version 2.0
   binary. SQLite itself is public domain (https://www.sqlite.org/copyright.html)
   and carries no separate copyright notice to reproduce; the Apache-2.0 terms
   above apply to the SQLitePCLRaw wrapper packages, not to SQLite's own code.
+
+--------------------------------------------------------------------------
+XmpCore 6.1.10.1
+--------------------------------------------------------------------------
+
+XmpCore (a dependency of MetadataExtractor) is a .NET port of Adobe's XMP
+Core library, copyright Adobe Systems Incorporated and Drew Noakes, under
+the BSD licence of the Adobe XMP Toolkit
+(https://www.adobe.com/devnet/xmp/library/eula-xmp-library-java.html):
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are
+  met: redistributions of source code must retain the copyright notice,
+  this list of conditions and the following disclaimer; redistributions in
+  binary form must reproduce the copyright notice, this list of conditions
+  and the following disclaimer in the documentation and/or other materials
+  provided with the distribution; neither the name of Adobe Systems
+  Incorporated, nor the names of its contributors may be used to endorse or
+  promote products derived from this software without specific prior
+  written permission. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS
+  AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES ARE
+  DISCLAIMED.
 
 --------------------------------------------------------------------------
 Microsoft.Web.WebView2 1.0.2903.40

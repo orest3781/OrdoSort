@@ -302,6 +302,36 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task PhotoSettingsRoundTrip()
+    {
+        var cfg = LoadFromJson("""{"inbox":"C:/in","media":{"enabled":false,"extensions":[".jpg",".png"],"folder":"media"}}""");
+        var vm = new SettingsViewModel(cfg, _dialogs);
+        Assert.False(vm.FileMedia);
+        Assert.Equal(".jpg .png", vm.MediaExtensionsText);
+        Assert.Equal(MediaSettings.FolderMedia, vm.MediaFolder);
+
+        vm.FileMedia = true;
+        vm.MediaExtensionsText = "JPG, heic gif";
+        vm.MediaFolder = MediaSettings.FolderRoute;
+
+        Assert.True(await vm.TryBuildResultAsync());
+        Assert.True(vm.Result!.Media.Enabled);
+        Assert.Equal(new[] { ".jpg", ".heic", ".gif" }, vm.Result.Media.Extensions);
+        Assert.Equal(MediaSettings.FolderRoute, vm.Result.Media.Folder);
+    }
+
+    /// <summary>An emptied type list means the defaults: the tick box is the
+    /// way to turn photos off.</summary>
+    [Fact]
+    public async Task AnEmptiedPhotoTypeListFallsBackToTheDefaults()
+    {
+        var vm = new SettingsViewModel(LoadFromJson("""{"inbox":"C:/in"}"""), _dialogs) { MediaExtensionsText = "  " };
+
+        Assert.True(await vm.TryBuildResultAsync());
+        Assert.Equal(MediaSettings.DefaultExtensions, vm.Result!.Media.Extensions);
+    }
+
+    [Fact]
     public void DuplicateHotkeyGetsALiveNote()
     {
         var cfg = new Config

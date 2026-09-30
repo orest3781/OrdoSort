@@ -79,6 +79,31 @@ public sealed class SoundSettings
     [JsonExtensionData] public Dictionary<string, System.Text.Json.JsonElement> Extras { get; set; } = new();
 }
 
+/// <summary>Photos and GIFs in the filing loop (owner request
+/// 2026-09-29). Off until turned on in Settings, so an inbox that already
+/// holds pictures doesn't start queueing them after an update.</summary>
+public sealed class MediaSettings
+{
+    /// <summary>Where a filed photo goes: a Media folder inside the route's
+    /// folder, or the route's folder itself.</summary>
+    public const string FolderMedia = "media";
+    public const string FolderRoute = "route";
+    public static readonly string[] Folders = { FolderMedia, FolderRoute };
+
+    /// <summary>The folder a filed photo goes into under
+    /// <see cref="FolderMedia"/>.</summary>
+    public const string MediaFolderName = "Media";
+
+    public static readonly string[] DefaultExtensions =
+        { ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".heic", ".heif" };
+
+    [JsonPropertyName("enabled")] public bool Enabled { get; set; }
+    [JsonPropertyName("extensions")] public List<string> Extensions { get; set; } = new(DefaultExtensions);
+    [JsonPropertyName("folder")] public string Folder { get; set; } = FolderMedia;
+
+    [JsonExtensionData] public Dictionary<string, System.Text.Json.JsonElement> Extras { get; set; } = new();
+}
+
 /// <summary>A saved Unlock-tool password. The password value is plaintext —
 /// the app's own storage form since saved passwords became portable across
 /// stations sharing one config.json (2026-08-08 portable-saved-passwords
@@ -154,6 +179,7 @@ public sealed class Config
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Timing { get; set; }
     [JsonPropertyName("uppercase_names")] public bool UppercaseNames { get; set; } = true;
+    [JsonPropertyName("media")] public MediaSettings Media { get; set; } = new();
     [JsonPropertyName("routes")] public List<Route> Routes { get; set; } = new();
 
     // Match & merge: which spreadsheet headers hold the names + the id
@@ -316,6 +342,9 @@ public sealed class Config
         if (Array.IndexOf(Sorts, cfg.Sort) < 0)
             throw new ConfigException($"sort must be one of {string.Join('/', Sorts)}, " +
                                       $"got \"{cfg.Sort}\"");
+        if (Array.IndexOf(MediaSettings.Folders, cfg.Media.Folder) < 0)
+            throw new ConfigException($"media.folder must be one of {string.Join('/', MediaSettings.Folders)}, " +
+                                      $"got \"{cfg.Media.Folder}\"");
         if (cfg.UiFontSize is not 0 and (< 6 or > 72))
             throw new ConfigException(
                 $"ui_font_size must be 0 (default) or 6-72, got {cfg.UiFontSize}");
@@ -595,6 +624,14 @@ public sealed class Config
         MergeTypes ??= "";
         Extras ??= new();
         foreach (var key in RetiredSideFileKeys) Extras.Remove(key);
+
+        Media ??= new();
+        // cleaned as Settings cleans them: a hand-typed "pdf" would otherwise
+        // make every PDF a photo, named by date and filed into Media
+        var extensions = MediaFiles.ParseExtensions(string.Join(" ", Media.Extensions ?? new()));
+        Media.Extensions = extensions.Count > 0 ? extensions : new(MediaSettings.DefaultExtensions);
+        Media.Folder ??= MediaSettings.FolderMedia;
+        Media.Extras ??= new();
 
         Sounds ??= new();
         Sounds.NewAlert ??= "";

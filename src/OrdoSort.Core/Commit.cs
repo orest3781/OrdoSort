@@ -115,8 +115,10 @@ public static class Commit
                 "That folder is set as a destination or the set-aside folder; check it in Settings.");
     }
 
+    /// <param name="media">A photo's date and Media folder; null for a PDF,
+    /// which files exactly as it always has.</param>
     public static CommitOutcome CommitFile(
-        string src, string typedName, Route route, string globalMode)
+        string src, string typedName, Route route, string globalMode, MediaTarget? media = null)
     {
         if (SourceVanished(src))
             return new CommitOutcome(true, null, null);
@@ -125,16 +127,24 @@ public static class Commit
         if (!Directory.Exists(destDir))
             throw new CommitError($"Destination folder is not available: " +
                                   $"{(destDir.Length > 0 ? destDir : "(not set)")}");
+        // the route folder itself: an inbox set as a destination is refused
+        // before a Media folder inside it could make it look like another place
+        RefuseItsOwnFolder(src, destDir);
+        var mediaFolder = media is { Subfolder.Length: > 0 };
+        if (mediaFolder) destDir = Path.Combine(destDir, media!.Subfolder);
         RefuseItsOwnFolder(src, destDir);
 
         Naming.NameResult Build() => Naming.BuildTarget(
             Path.GetFileName(src), typedName, route.NamingMode, globalMode,
             route.Suffix, route.AppendSuffix,
-            Collision.TakenIn(destDir));
+            Collision.TakenIn(destDir), media?.TakenStamp);
 
         Naming.NameResult result;
         try { result = Build(); }
         catch (ArgumentException ex) { throw new CommitError(ex.Message); }
+        // made only once the name is accepted, so a refused name leaves no
+        // empty Media folder behind
+        if (mediaFolder) MakeMediaFolder(destDir);
 
         CommitRaceHookForTests?.Invoke();
         try
@@ -156,6 +166,21 @@ public static class Commit
         }
         catch (SourceGoneRace) { return new CommitOutcome(true, null, null); }
         return new CommitOutcome(false, Path.Combine(destDir, result.Filename), result);
+    }
+
+    /// <summary>The route's Media folder, made when it isn't there yet. Only
+    /// ever inside a route folder that exists, so a route on a share that is
+    /// down still fails as "not available", not with a half-made path.</summary>
+    private static void MakeMediaFolder(string folder)
+    {
+        try
+        {
+            Directory.CreateDirectory(folder);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new CommitError($"Couldn't make the folder {folder}:\n{ex.Message}");
+        }
     }
 
     public static SkipOutcome SkipFile(string src, string deferredDir)

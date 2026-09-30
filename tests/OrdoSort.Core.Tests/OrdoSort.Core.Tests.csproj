@@ -27,6 +27,11 @@
     <Compile Include="..\Shared\**\*.cs" Link="Shared\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!-- small real photos and a clip for the date-taken reader, a few hundred bytes each -->
+  <ItemGroup>
+    <None Include="Fixtures\Media\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\OrdoSort.Core\OrdoSort.Core.csproj" />
   </ItemGroup>

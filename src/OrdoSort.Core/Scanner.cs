@@ -34,15 +34,20 @@ public static class Scanner
     }
 
     /// <summary>Which files the inbox picks up: insert mode needs the "--"
-    /// marker to splice into; every other mode works on ANY pdf.</summary>
-    public static bool Eligible(string filename, string mode) =>
-        mode == Naming.ModeInsert
+    /// marker to splice into; every other mode works on ANY pdf. Photos and
+    /// GIFs, when turned on, are picked up in every mode: they are named by
+    /// date taken, not by the mode.</summary>
+    public static bool Eligible(string filename, string mode, MediaSettings? media = null)
+    {
+        if (MediaFiles.IsMedia(filename, media)) return true;
+        return mode == Naming.ModeInsert
             ? Naming.InboxRegex().IsMatch(filename)
             : filename.EndsWith(Naming.PdfExt, StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>Snapshot the inbox. Never throws — problems come back in Error.</summary>
     public static ScanResult Scan(string inbox, string sort = "size_desc",
-        string mode = Naming.ModeInsert)
+        string mode = Naming.ModeInsert, MediaSettings? media = null)
     {
         if (string.IsNullOrWhiteSpace(inbox))
             return new ScanResult(Array.Empty<string>(), 0, "No inbox folder is configured yet.");
@@ -61,7 +66,7 @@ public static class Scanner
         }
 
         var matching = files
-            .Where(f => Eligible(System.IO.Path.GetFileName(f), mode))
+            .Where(f => Eligible(System.IO.Path.GetFileName(f), mode, media))
             .ToList();
         var ignored = files.Length - matching.Count;
 

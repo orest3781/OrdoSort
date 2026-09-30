@@ -60,6 +60,23 @@
         </Grid>
         <TextBlock Text="{Binding CurrentFilename}" Style="{StaticResource SubtleText}"
                    TextWrapping="Wrap" Margin="0,4,0,0" />
+        <!-- a photo's date taken, which starts its new name; amber when it is
+             only the modified date, often the day the photo was copied -->
+        <TextBlock x:Name="TakenText" Text="{Binding TakenLine}" TextWrapping="Wrap" Margin="0,2,0,0"
+                   AutomationProperties.Name="Date taken"
+                   Visibility="{Binding HasTakenLine, Converter={StaticResource BoolToVis}}">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource SubtleText}">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding TakenIsGuess}" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource Theme.StatusAmber}" />
+                            <Setter Property="ToolTip"
+                                    Value="No date in the photo or its name: this is when the file was last changed. Type a date at the start of the name to use another." />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
 
         <TextBlock Text="Name:" Style="{StaticResource SectionHeader}" />
         <!-- the room where the work happens — a little extra presence -->

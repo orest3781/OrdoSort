@@ -561,6 +561,13 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     public BoxLabels.LabelStyle? LabelStyleResult =>
         HasLabelStyle && LabelStyle is { IsChanged: true } e ? e.Style : null;
 
+    /// <summary>Where a filed photo goes (media.folder).</summary>
+    public static readonly KeyValuePair<string, string>[] MediaFolderChoices =
+    {
+        new(MediaSettings.FolderMedia, "A Media folder inside the destination"),
+        new(MediaSettings.FolderRoute, "The destination folder itself"),
+    };
+
     // KeyValuePair: WPF binds properties, not tuple fields
     public static readonly KeyValuePair<string, string>[] SortChoices =
     {
@@ -742,6 +749,9 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         SortKey = current.Sort;
         EnterCommits = current.EnterCommits;
         AddNewFilesToSession = current.AddNewFilesToSession;
+        FileMedia = current.Media.Enabled;
+        MediaExtensionsText = string.Join(" ", current.Media.Extensions);
+        MediaFolder = current.Media.Folder;
         UppercaseNames = current.UppercaseNames;
         WordSeparator = current.WordSeparator;
         FlashAlerts = current.FlashAlerts;
@@ -1471,6 +1481,17 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private bool _addNewFilesToSession = true;
     /// <summary>Files arriving mid-session join it (on) or wait for the next one (off).</summary>
     public bool AddNewFilesToSession { get => _addNewFilesToSession; set => Set(ref _addNewFilesToSession, value); }
+
+    private bool _fileMedia;
+    /// <summary>Photos and GIFs join the filing loop (media.enabled).</summary>
+    public bool FileMedia { get => _fileMedia; set => Set(ref _fileMedia, value); }
+
+    private string _mediaExtensionsText = string.Join(" ", MediaSettings.DefaultExtensions);
+    /// <summary>The photo types, as typed: "jpg png heic".</summary>
+    public string MediaExtensionsText { get => _mediaExtensionsText; set => Set(ref _mediaExtensionsText, value ?? ""); }
+
+    private string _mediaFolder = MediaSettings.FolderMedia;
+    public string MediaFolder { get => _mediaFolder; set => Set(ref _mediaFolder, value ?? MediaSettings.FolderMedia); }
 
     private bool _uppercaseNames;
     public bool UppercaseNames
@@ -2637,6 +2658,12 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         cfg.Sort = SortKey;
         cfg.EnterCommits = EnterCommits;
         cfg.AddNewFilesToSession = AddNewFilesToSession;
+        cfg.Media.Enabled = FileMedia;
+        var extensions = MediaFiles.ParseExtensions(MediaExtensionsText);
+        // an emptied box means the defaults, not "no types": the tick box is
+        // how photos are turned off
+        cfg.Media.Extensions = extensions.Count > 0 ? extensions : new(MediaSettings.DefaultExtensions);
+        cfg.Media.Folder = MediaFolder;
         cfg.UppercaseNames = UppercaseNames;
         cfg.WordSeparator = WordSeparator;
         cfg.FlashAlerts = FlashAlerts;
