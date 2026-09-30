@@ -85,6 +85,7 @@
                  PreviewKeyDown="NameBox_PreviewKeyDown"
                  LostKeyboardFocus="NameBox_LostKeyboardFocus"
                  TextChanged="NameBox_TextChanged"
+                 IsReadOnly="{Binding IsWaitingForRoom}"
                  AutomationProperties.Name="Name">
             <TextBox.Style>
                 <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
@@ -116,6 +117,12 @@
         </Popup>
         <TextBlock Style="{StaticResource CaptionText}" Margin="0,6,0,0" TextWrapping="Wrap"
                    Text="Tab completes a word · ↓ ↑ walk the matches · blank files without renaming" />
+        <!-- a press waiting for room on a slow share; live so a screen
+             reader says it too -->
+        <TextBlock x:Name="WaitingText" Margin="0,4,0,0" TextWrapping="Wrap"
+                   Text="Waiting for the share to catch up. This document is filed with the name above."
+                   AutomationProperties.LiveSetting="Polite"
+                   Visibility="{Binding IsWaitingForRoom, Converter={StaticResource BoolToVis}}" />
 
         <TextBlock Text="Will be filed as:" Style="{StaticResource SectionHeader}" />
         <TextBlock Text="{Binding Preview}" TextWrapping="Wrap" MinHeight="40">

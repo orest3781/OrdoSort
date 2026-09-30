@@ -78,6 +78,16 @@ public sealed partial class ShellViewModel
     // True for the whole of a press; a second press in that moment would
     // file what the first one captured.
     private bool _pressing;
+
+    private bool _isWaitingForRoom;
+    /// <summary>A press is waiting for the oldest move to land before its
+    /// document leaves the screen (a slow share). The name box is read-only
+    /// meanwhile, so nothing typed for the next document is lost.</summary>
+    public bool IsWaitingForRoom
+    {
+        get => _isWaitingForRoom;
+        private set => Set(ref _isWaitingForRoom, value);
+    }
     // Presses taking their document off the screen, not yet queued to move.
     private int _leavingPresses;
     // A failed move is putting its document back on screen.
@@ -160,15 +170,30 @@ public sealed partial class ShellViewModel
         {
             var pressed = Stopwatch.GetTimestamp();
             var pressedFor = ShownPath;
+            // The name is the one in the box at the press, not after the wait
+            // below: while moves are still on their way, the user can start
+            // typing the next document's name before this one leaves.
+            var typed = TypedName;
             var rewinds = _rewinds;
-            while (_jobs.First is { } oldest && _jobs.Count >= MaxInFlight)
-                await oldest.Value.Landed.Task;
+            if (_jobs.Count >= MaxInFlight)
+            {
+                IsWaitingForRoom = true;
+                try
+                {
+                    while (_jobs.First is { } oldest && _jobs.Count >= MaxInFlight)
+                        await oldest.Value.Landed.Task;
+                }
+                finally
+                {
+                    IsWaitingForRoom = false;
+                }
+            }
             if (_disposed || _stopWhenLanded || Screen != Screen.Processing) return;
             // A failure while this press waited sent the screen back to an
             // earlier document: the press was for one no longer showing.
             if (_rewinds != rewinds || ShownPath is not { } path || !PathIdentity.Same(path, pressedFor)) return;
 
-            var job = new FilingJob(_shownIndex, path, TypedName, route, routeIndex)
+            var job = new FilingJob(_shownIndex, path, typed, route, routeIndex)
             {
                 ShownFromCopy = _shownSource is not null && !PathIdentity.Same(_shownSource, path),
             };
