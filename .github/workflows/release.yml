@@ -125,12 +125,21 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path THIRD-PARTY-NOTICES)) { throw "THIRD-PARTY-NOTICES is missing from the repo root" }
+          # the video player's libVLC ships as a folder beside the exe (LGPL:
+          # separate, replaceable DLLs, never bundled into the single file)
+          foreach ($flavour in 'portable', 'selfcontained') {
+            if (-not (Test-Path "out/$flavour/libvlc/win-x64/libvlc.dll")) { throw "libvlc is missing from the $flavour publish" }
+          }
           Copy-Item out/portable/OrdoSort.exe ordosort.exe
-          Compress-Archive -Path ordosort.exe, THIRD-PARTY-NOTICES -DestinationPath "ordosort-${{ steps.ver.outputs.tag }}-win-x64.zip"
+          Copy-Item out/portable/libvlc libvlc -Recurse
+          Compress-Archive -Path ordosort.exe, libvlc, THIRD-PARTY-NOTICES -DestinationPath "ordosort-${{ steps.ver.outputs.tag }}-win-x64.zip"
           Remove-Item ordosort.exe
+          Remove-Item libvlc -Recurse
           Copy-Item out/selfcontained/OrdoSort.exe ordosort.exe
-          Compress-Archive -Path ordosort.exe, THIRD-PARTY-NOTICES -DestinationPath "ordosort-${{ steps.ver.outputs.tag }}-win-x64-selfcontained.zip"
+          Copy-Item out/selfcontained/libvlc libvlc -Recurse
+          Compress-Archive -Path ordosort.exe, libvlc, THIRD-PARTY-NOTICES -DestinationPath "ordosort-${{ steps.ver.outputs.tag }}-win-x64-selfcontained.zip"
           Remove-Item ordosort.exe
+          Remove-Item libvlc -Recurse
           Copy-Item out/boxlabels-portable/BoxLabels.exe BoxLabels.exe
           Compress-Archive -Path BoxLabels.exe, THIRD-PARTY-NOTICES -DestinationPath "boxlabels-${{ steps.ver.outputs.tag }}-win-x64.zip"
           Remove-Item BoxLabels.exe

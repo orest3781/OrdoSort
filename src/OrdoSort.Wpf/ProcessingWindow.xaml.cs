@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using OrdoSort.Wpf.Services;
 using OrdoSort.Wpf.ViewModels;
@@ -15,6 +16,7 @@ namespace OrdoSort.Wpf;
 public partial class ProcessingWindow : Window
 {
     private readonly WebViewPdfViewer _pdf;
+    private readonly VlcVideoPlayer _video;
     private readonly Func<Rect> _dashboardWorkArea;
     private readonly Func<Task<bool>> _initViewer;
     private readonly Func<Rect?> _panZone;
@@ -38,15 +40,20 @@ public partial class ProcessingWindow : Window
             AdditionalBrowserArguments = "--disable-smooth-scrolling",
         };
         _pdf = new WebViewPdfViewer(Viewer);
+        _video = new VlcVideoPlayer(VideoSurface);
+        VideoTimeline.AddHandler(Thumb.DragStartedEvent, new DragStartedEventHandler((_, _) => _shell?.Video.BeginDrag()));
+        VideoTimeline.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((_, _) => _shell?.Video.EndDrag()));
         _initViewer = initViewer ?? _pdf.InitAsync;
         Dialogs = new DialogService(this);
         _panZone = ViewerPanZone;
         Loaded += (_, _) => ViewerInputEnhancer.Register(_panZone);
         Closing += OnClosing;
         PreviewKeyDown += IgnoreHeldFilingKeys;
+        PreviewKeyDown += HandleVideoKeys;
         Closed += (_, _) =>
         {
             ViewerInputEnhancer.Unregister(_panZone);
+            _video.Dispose();
             // Disposing WebView2 while it is still starting blocks the UI
             // thread (the app closed within a moment of launch): wait for the
             // start to settle, then dispose.
@@ -60,6 +67,9 @@ public partial class ProcessingWindow : Window
 
     /// <summary>The viewer the view model files through.</summary>
     internal WebViewPdfViewer PdfViewer => _pdf;
+
+    /// <summary>The video pane's player, on this window's video surface.</summary>
+    internal VlcVideoPlayer VideoPlayer => _video;
 
     /// <summary>Messages raised while this window is up appear over it.
     /// Settable so the smoke harness can swap in a recording service.</summary>
@@ -156,9 +166,11 @@ public partial class ProcessingWindow : Window
     {
         if (WindowState != WindowState.Normal) return;
         UpdateLayout();
-        if (Viewer.ActualHeight <= 0) return;
-        if (FitMath.SessionBounds(_dashboardWorkArea(), ActualWidth - Viewer.ActualWidth,
-                ActualHeight - Viewer.ActualHeight, aspect, MinWidth, MinHeight) is { } r)
+        // a session that starts on a video has the video pane where Edge would be
+        FrameworkElement pane = Viewer.IsVisible ? Viewer : VideoPane;
+        if (pane.ActualHeight <= 0) return;
+        if (FitMath.SessionBounds(_dashboardWorkArea(), ActualWidth - pane.ActualWidth,
+                ActualHeight - pane.ActualHeight, aspect, MinWidth, MinHeight) is { } r)
         {
             Left = r.Left;
             Top = r.Top;
@@ -189,6 +201,23 @@ public partial class ProcessingWindow : Window
     {
         if (!e.IsRepeat) return;
         if (e.Key == Key.Enter || IsBoundKey(e)) e.Handled = true;
+    }
+
+    /// <summary>The video keys (all Alt+…, so the name box keeps every key
+    /// it types with) while a video is on screen. Held keys repeat on
+    /// purpose: holding Alt+→ scrubs. A route set to an Alt hotkey keeps it.</summary>
+    private void HandleVideoKeys(object sender, KeyEventArgs e)
+    {
+        if (_shell is null || !_shell.IsVideoShown || IsBoundKey(e)) return;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        var (command, tenth) = VideoKeys.Map(key, Keyboard.Modifiers);
+        if (_shell.Video.Handle(command, tenth)) e.Handled = true;
+    }
+
+    private void OnVideoWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (_shell is null) return;
+        if (_shell.Video.Wheel(e.Delta, (Keyboard.Modifiers & ModifierKeys.Shift) != 0)) e.Handled = true;
     }
 
     private bool IsBoundKey(KeyEventArgs e)

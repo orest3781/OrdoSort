@@ -27,6 +27,37 @@ public class MediaFilesTests
     public void OnlyListedTypesAreMedia(string name, bool expected) =>
         Assert.Equal(expected, MediaFiles.IsMedia(name, On()));
 
+    [Theory]
+    [InlineData("clip.MOV", MediaKind.Video)]
+    [InlineData("clip.mp4", MediaKind.Video)]
+    [InlineData("IMG_1.jpg", MediaKind.Photo)]
+    [InlineData("scan.pdf", MediaKind.None)]
+    public void VideosAreTheirOwnKind(string name, MediaKind expected) =>
+        Assert.Equal(expected, MediaFiles.KindOf(name, new MediaSettings { Enabled = true, VideosEnabled = true }));
+
+    [Fact]
+    public void VideosAndPhotosAreTurnedOnSeparately()
+    {
+        var videosOnly = new MediaSettings { VideosEnabled = true };
+        Assert.True(MediaFiles.IsMedia("clip.mov", videosOnly));
+        Assert.False(MediaFiles.IsMedia("IMG_1.jpg", videosOnly));
+        Assert.False(MediaFiles.IsMedia("clip.mov", On()));
+    }
+
+    [Fact]
+    public void AVideoIsNamedAndFiledLikeAPhoto()
+    {
+        using var tmp = new TempDir();
+        var clip = tmp.File("inbox/IMG_0042.MOV");
+        var route = new Route { Label = "Smith", Path = tmp.Dir("smith") };
+        var media = new MediaSettings { VideosEnabled = true };
+
+        var target = MediaFiles.TargetFor(clip, media, () => new DateTaken(new DateTime(2023, 7, 4), DateTakenSource.Metadata));
+        var outcome = Commit.CommitFile(clip, "BACKYARD", route, Naming.ModeInsert, target);
+
+        Assert.Equal(Path.Combine(route.Path, "Media", "20230704-BACKYARD.mov"), outcome.NewPath);
+    }
+
     [Fact]
     public void NothingIsMediaWhileItIsTurnedOff() =>
         Assert.False(MediaFiles.IsMedia("IMG_4031.jpg", new MediaSettings()));
@@ -341,6 +372,8 @@ public class MediaFilesTests
     public void MediaIsOffUntilTurnedOn()
     {
         var cfg = new Config();
+        Assert.False(cfg.Media.VideosEnabled);
+        Assert.Contains(".mov", cfg.Media.VideoExtensions);
         Assert.False(cfg.Media.Enabled);
         Assert.Equal(MediaSettings.FolderMedia, cfg.Media.Folder);
         Assert.Contains(".heic", cfg.Media.Extensions);

@@ -320,6 +320,22 @@ public class SettingsViewModelTests : IDisposable
         Assert.Equal(MediaSettings.FolderRoute, vm.Result.Media.Folder);
     }
 
+    [Fact]
+    public async Task VideoSettingsRoundTrip()
+    {
+        var cfg = LoadFromJson("""{"inbox":"C:/in","media":{"videos":false,"video_extensions":[".mp4"]}}""");
+        var vm = new SettingsViewModel(cfg, _dialogs);
+        Assert.False(vm.FileVideos);
+        Assert.Equal(".mp4", vm.VideoExtensionsText);
+
+        vm.FileVideos = true;
+        vm.VideoExtensionsText = "mov MP4 mkv";
+
+        Assert.True(await vm.TryBuildResultAsync());
+        Assert.True(vm.Result!.Media.VideosEnabled);
+        Assert.Equal(new[] { ".mov", ".mp4", ".mkv" }, vm.Result.Media.VideoExtensions);
+    }
+
     /// <summary>An emptied type list means the defaults: the tick box is the
     /// way to turn photos off.</summary>
     [Fact]

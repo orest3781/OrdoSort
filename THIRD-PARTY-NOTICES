@@ -118,6 +118,25 @@ the BSD licence of the Adobe XMP Toolkit
   DISCLAIMED.
 
 --------------------------------------------------------------------------
+LibVLCSharp 3.10.1, LibVLCSharp.WPF 3.10.1, VideoLAN.LibVLC.Windows 3.0.24
+--------------------------------------------------------------------------
+
+The video player uses libVLC and its .NET binding, copyright VideoLAN and
+the VLC authors (https://www.videolan.org/vlc/libvlc.html,
+https://code.videolan.org/videolan/LibVLCSharp), licensed under the GNU
+Lesser General Public License, version 2.1 or later
+(https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html).
+
+libVLC ships unmodified, as separate DLLs in the "libvlc" folder beside
+OrdoSort.exe, and OrdoSort only calls it through its public API; you may
+replace those DLLs with another build of the same libVLC version. The
+source code of libVLC and of each plugin is available from
+https://code.videolan.org/videolan/vlc (tag 3.0.24 for the libVLC used
+here) and https://code.videolan.org/videolan/LibVLCSharp. OrdoSort ships
+only the plugins needed to play local video files; the rest of the
+package is left out.
+
+--------------------------------------------------------------------------
 Microsoft.Web.WebView2 1.0.2903.40
 --------------------------------------------------------------------------
 

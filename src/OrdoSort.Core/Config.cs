@@ -97,8 +97,17 @@ public sealed class MediaSettings
     public static readonly string[] DefaultExtensions =
         { ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".heic", ".heif" };
 
+    public static readonly string[] DefaultVideoExtensions =
+        { ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".wmv", ".3gp" };
+
+    /// <summary>Photos and GIFs are filed.</summary>
     [JsonPropertyName("enabled")] public bool Enabled { get; set; }
     [JsonPropertyName("extensions")] public List<string> Extensions { get; set; } = new(DefaultExtensions);
+
+    /// <summary>Videos are filed too (release 2): their own tick box, since
+    /// they need the video engine and can be large.</summary>
+    [JsonPropertyName("videos")] public bool VideosEnabled { get; set; }
+    [JsonPropertyName("video_extensions")] public List<string> VideoExtensions { get; set; } = new(DefaultVideoExtensions);
     [JsonPropertyName("folder")] public string Folder { get; set; } = FolderMedia;
 
     [JsonExtensionData] public Dictionary<string, System.Text.Json.JsonElement> Extras { get; set; } = new();
@@ -630,6 +639,8 @@ public sealed class Config
         // make every PDF a photo, named by date and filed into Media
         var extensions = MediaFiles.ParseExtensions(string.Join(" ", Media.Extensions ?? new()));
         Media.Extensions = extensions.Count > 0 ? extensions : new(MediaSettings.DefaultExtensions);
+        var videoExtensions = MediaFiles.ParseExtensions(string.Join(" ", Media.VideoExtensions ?? new()));
+        Media.VideoExtensions = videoExtensions.Count > 0 ? videoExtensions : new(MediaSettings.DefaultVideoExtensions);
         Media.Folder ??= MediaSettings.FolderMedia;
         Media.Extras ??= new();
 

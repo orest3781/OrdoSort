@@ -30,7 +30,7 @@ public sealed class ShellFixture : IDisposable
     /// real converter when not given.</param>
     public ShellFixture(Action<Config>? tweak = null, IWorkScheduler? scheduler = null,
         Func<IDocumentStage>? stageFactory = null,
-        IDateTakenReader? dates = null, IPreviewImages? previews = null)
+        IDateTakenReader? dates = null, IPreviewImages? previews = null, IVideoPlayer? video = null)
     {
         Dir = Path.Combine(Path.GetTempPath(), "ordoshell_" + Guid.NewGuid());
         Inbox = Path.Combine(Dir, "inbox");
@@ -53,7 +53,7 @@ public sealed class ShellFixture : IDisposable
         Shell = new ShellViewModel(Cfg, CfgPath, Viewer, Dialogs, Watch,
             uiContext: null, palette: () => Theme.ThemePalette.Light,
             scheduler: scheduler ?? new InlineWorkScheduler(), sounds: Sounds,
-            stageFactory: stageFactory, dates: dates, previews: previews);
+            stageFactory: stageFactory, dates: dates, previews: previews, video: video);
     }
 
     /// <summary>Drop a file matching the inbox pattern (YYYYMMDD--ID.pdf).</summary>

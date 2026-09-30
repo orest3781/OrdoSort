@@ -82,10 +82,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         SynchronizationContext? uiContext = null, Func<ThemePalette>? palette = null,
         IWorkScheduler? scheduler = null, ISoundService? sounds = null,
         Func<IDocumentStage>? stageFactory = null,
-        IDateTakenReader? dates = null, IPreviewImages? previews = null)
+        IDateTakenReader? dates = null, IPreviewImages? previews = null, IVideoPlayer? video = null)
     {
         _cfg = cfg;
         _dates = dates ?? new DateTakenReader();
+        Video = new VideoScrubber(video ?? new NoVideoPlayer(), uiContext);
         _ownsPreviews = previews is null;
         _previews = previews ?? new PreviewImages();
         // null: every document is shown straight from the inbox (the tests,
@@ -627,7 +628,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _loadedPath = null;
         _shownSource = null;
         Screen = Screen.Ready;
-        _viewer.Blank();
+        BlankPanes();
         DisposeStage();
         _ = RefreshFoldersAsync(showErrors: true);
     }
@@ -738,7 +739,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     private void ShowReady(FolderSnapshot snap)
     {
-        _viewer.Blank();
+        BlankPanes();
         StartEnabled = snap.Scan.Count > 0 && SetupComplete;
         ShowDashboard(snap);
         RefreshNotices();
@@ -761,7 +762,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         BigCount = scan.Error.Length > 0 ? "⚠" : scan.Count.ToString();
         CountCaption = scan.Error.Length > 0
             ? "inbox problem"
-            : _cfg.Media.Enabled
+            : _cfg.Media.Enabled || _cfg.Media.VideosEnabled
                 ? $"file{(scan.Count == 1 ? "" : "s")} in the inbox"
                 : $"PDF{(scan.Count == 1 ? "" : "s")} in the inbox";
         DetailLine = scan.Error.Length > 0
@@ -1542,6 +1543,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             if (problems[i].Length == 0) problems[i] = clashes[i];
         BuildRoutes(routes, problems);
         _session.Start(scan.Matching);
+        WarmUpVideoIfQueued();
         _takenDates.Clear();
         _previewTasks.Clear();
         OrderLine = SettingsViewModel.SortLabel(cfg.Sort);
@@ -1606,7 +1608,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _loadedPath = null;
         _shownSource = null;
         Screen = Screen.Done;
-        _viewer.Blank();
+        BlankPanes();
         DisposeStage();
         DoneTitle = "Session complete";
         DoneDetail = $"{_session.Filed} filed, {_session.Skipped} set aside"
@@ -2411,6 +2413,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         DisposeStage();
         // the shell made the preview converter, so it removes its folder
         if (_ownsPreviews && _previews is IDisposable previews) previews.Dispose();
+        Video.Dispose();
         // A document still being moved writes its history row when the move
         // lands; disposing the database first lost that row with no word
         // (QC-19). So it closes once that filing is done.

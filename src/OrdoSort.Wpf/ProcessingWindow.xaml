@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:views="clr-namespace:OrdoSort.Wpf.Views"
+        xmlns:vlc="clr-namespace:LibVLCSharp.WPF;assembly=LibVLCSharp.WPF"
         Title="OrdoSort — Processing" Width="1280" Height="860" MinWidth="900" MinHeight="600"
         Icon="pack://application:,,,/OrdoSort;component/app.ico"
         WindowStartupLocation="Manual"
@@ -26,7 +27,43 @@
              toolbar, and the splitter/ScrollViewer are focus-ring noise —
              Tab goes name box → buttons. Mouse still focuses the viewer for
              keyboard scrolling inside the PDF. -->
-        <wv2:WebView2 x:Name="Viewer" Grid.Column="0" Focusable="False" />
+        <wv2:WebView2 x:Name="Viewer" Grid.Column="0" Focusable="False"
+                      Visibility="{Binding IsDocumentShown, Converter={StaticResource BoolToVis}}" />
+        <!-- The video pane (spec 2026-09-29-media-filing-loop, release 2),
+             in the Edge pane's place while a video is on screen. VLC draws
+             into its own window, which WPF can't paint over, so the timeline
+             sits below the picture, not on it; what is on the picture goes in
+             the VideoView's own overlay (its Content). -->
+        <DockPanel x:Name="VideoPane" Grid.Column="0"
+                   Visibility="{Binding IsVideoShown, Converter={StaticResource BoolToVis}}"
+                   Background="{DynamicResource Theme.WindowBg}">
+            <Border DockPanel.Dock="Bottom" Padding="12,8" BorderThickness="0,1,0,0"
+                    BorderBrush="{DynamicResource Theme.Border}" Background="{DynamicResource Theme.Surface}">
+                <StackPanel>
+                    <Slider x:Name="VideoTimeline" Minimum="0" Maximum="{Binding Video.LengthSeconds}"
+                            Value="{Binding Video.PositionSeconds, Mode=TwoWay}"
+                            IsMoveToPointEnabled="True" Focusable="False"
+                            AutomationProperties.Name="Video position" />
+                    <WrapPanel Margin="0,4,0,0">
+                        <TextBlock Text="{Binding Video.TimeText}" Typography.NumeralAlignment="Tabular"
+                                   FontWeight="SemiBold" Margin="0,0,12,0" />
+                        <TextBlock Text="{Binding Video.SpeedText}" Margin="0,0,12,0"
+                                   Foreground="{DynamicResource Theme.StatusAmber}" />
+                        <TextBlock Text="{Binding Video.MuteText}" Style="{StaticResource SubtleText}" />
+                    </WrapPanel>
+                    <TextBlock Style="{StaticResource SubtleText}" TextWrapping="Wrap" Margin="0,2,0,0"
+                               Text="Alt+K play/pause · Alt+← → 5 s (Shift: 30 s) · Alt+, . one frame · Alt+J L rewind/faster · Alt+1–9 jump · Alt+M sound · wheel scrubs" />
+                </StackPanel>
+            </Border>
+            <vlc:VideoView x:Name="VideoSurface" Background="Black">
+                <Grid Background="#01000000" MouseWheel="OnVideoWheel">
+                    <TextBlock Text="{Binding Video.Problem}" Foreground="White" FontSize="16"
+                               TextWrapping="Wrap" TextAlignment="Center" Margin="24"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Visibility="{Binding Video.HasProblem, Converter={StaticResource BoolToVis}}" />
+                </Grid>
+            </vlc:VideoView>
+        </DockPanel>
         <GridSplitter x:Name="Split" Grid.Column="1" HorizontalAlignment="Stretch"
                       VerticalAlignment="Stretch" ResizeBehavior="PreviousAndNext"
                       IsTabStop="False" />

@@ -751,6 +751,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         AddNewFilesToSession = current.AddNewFilesToSession;
         FileMedia = current.Media.Enabled;
         MediaExtensionsText = string.Join(" ", current.Media.Extensions);
+        FileVideos = current.Media.VideosEnabled;
+        VideoExtensionsText = string.Join(" ", current.Media.VideoExtensions);
         MediaFolder = current.Media.Folder;
         UppercaseNames = current.UppercaseNames;
         WordSeparator = current.WordSeparator;
@@ -1489,6 +1491,13 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private string _mediaExtensionsText = string.Join(" ", MediaSettings.DefaultExtensions);
     /// <summary>The photo types, as typed: "jpg png heic".</summary>
     public string MediaExtensionsText { get => _mediaExtensionsText; set => Set(ref _mediaExtensionsText, value ?? ""); }
+
+    private bool _fileVideos;
+    /// <summary>Videos join the filing loop (media.videos).</summary>
+    public bool FileVideos { get => _fileVideos; set => Set(ref _fileVideos, value); }
+
+    private string _videoExtensionsText = string.Join(" ", MediaSettings.DefaultVideoExtensions);
+    public string VideoExtensionsText { get => _videoExtensionsText; set => Set(ref _videoExtensionsText, value ?? ""); }
 
     private string _mediaFolder = MediaSettings.FolderMedia;
     public string MediaFolder { get => _mediaFolder; set => Set(ref _mediaFolder, value ?? MediaSettings.FolderMedia); }
@@ -2663,6 +2672,9 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         // an emptied box means the defaults, not "no types": the tick box is
         // how photos are turned off
         cfg.Media.Extensions = extensions.Count > 0 ? extensions : new(MediaSettings.DefaultExtensions);
+        cfg.Media.VideosEnabled = FileVideos;
+        var videoExtensions = MediaFiles.ParseExtensions(VideoExtensionsText);
+        cfg.Media.VideoExtensions = videoExtensions.Count > 0 ? videoExtensions : new(MediaSettings.DefaultVideoExtensions);
         cfg.Media.Folder = MediaFolder;
         cfg.UppercaseNames = UppercaseNames;
         cfg.WordSeparator = WordSeparator;

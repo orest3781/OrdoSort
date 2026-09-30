@@ -56,8 +56,45 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <!-- The video pane (spec 2026-09-29-media-filing-loop, release 2).
+         libVLC is LGPL-2.1+: it ships as separate DLLs in a libvlc folder
+         beside the exe, never merged into it. -->
+    <PackageReference Include="LibVLCSharp.WPF" Version="3.10.1" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.24" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
+
+  <!-- libVLC for 64-bit Windows only, and only the plugins that playing a
+       local video needs: file access, the common containers, the decoders
+       (avcodec covers H.264, HEVC, VP8/9, MPEG-4 and the usual audio; dav1d
+       AV1), hardware decoding, video and audio output and the filters that
+       rotate and convert. Left out: streaming, encoding, recording, network
+       protocols, discs, subtitles, visualisations and Lua (about 110 MB
+       down to roughly 50). -->
+  <PropertyGroup>
+    <VlcWindowsX86Enabled>false</VlcWindowsX86Enabled>
+    <VlcWindowsArm64Enabled>false</VlcWindowsArm64Enabled>
+  </PropertyGroup>
+  <ItemGroup>
+    <VlcWindowsX64IncludeFiles Include="libvlc.dll;libvlccore.dll" />
+    <VlcWindowsX64IncludeFiles Include="plugins\access\libfilesystem_plugin.dll" />
+    <VlcWindowsX64IncludeFiles Include="plugins\demux\libmp4_plugin.dll;plugins\demux\libavi_plugin.dll;plugins\demux\libmkv_plugin.dll;plugins\demux\libasf_plugin.dll;plugins\demux\libes_plugin.dll;plugins\demux\libps_plugin.dll;plugins\demux\libts_plugin.dll;plugins\demux\libh26x_plugin.dll;plugins\demux\libogg_plugin.dll;plugins\demux\libmpgv_plugin.dll;plugins\demux\librawvid_plugin.dll" />
+    <VlcWindowsX64IncludeFiles Include="plugins\codec\libavcodec_plugin.dll;plugins\codec\libdav1d_plugin.dll;plugins\codec\libd3d11va_plugin.dll;plugins\codec\libdxva2_plugin.dll;plugins\codec\libmft_plugin.dll;plugins\codec\libvorbis_plugin.dll;plugins\codec\libopus_plugin.dll;plugins\codec\libmpg123_plugin.dll;plugins\codec\libflac_plugin.dll;plugins\codec\libaraw_plugin.dll;plugins\codec\librawvideo_plugin.dll" />
+    <VlcWindowsX64IncludeFiles Include="plugins\packetizer\%2A;plugins\video_output\%2A;plugins\video_chroma\%2A;plugins\video_filter\%2A;plugins\d3d11\%2A;plugins\d3d9\%2A;plugins\audio_output\%2A;plugins\audio_filter\%2A;plugins\audio_mixer\%2A;plugins\stream_filter\%2A" />
+  </ItemGroup>
+
+  <!-- libVLC stays a folder beside the exe in a single-file publish: the
+       bundler would otherwise pack its DLLs into OrdoSort.exe (they are
+       native), and LGPL wants them separate and replaceable. The package
+       adds them as Content in its own target, so they are marked after it. -->
+  <Target Name="KeepLibVlcBesideTheExe" AfterTargets="CollectVlcFilesToCopyWindows">
+    <ItemGroup>
+      <Content Condition="$([System.String]::Copy('%(Content.Link)').StartsWith('libvlc'))">
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </Content>
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <InternalsVisibleTo Include="OrdoSort.Wpf.Tests" />

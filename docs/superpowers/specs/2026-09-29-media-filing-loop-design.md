@@ -95,7 +95,7 @@ Keys work while the cursor is in the name box. Plain arrows, Space and letters s
 | `Alt+Shift+←` / `Alt+Shift+→` | Back / forward 30 s |
 | `Alt+,` / `Alt+.` | One frame back / forward (pauses) |
 | `Alt+J` / `Alt+L` | Rewind / fast forward, faster on each press (1×, 2×, 4×, 8×), as J/K/L in video editors; `Alt+K` pauses and resets to 1×. VLC can't play backwards, so rewind is a quick series of jumps back |
-| `Alt+1` … `Alt+9` | Jump to 10 % … 90 %; `Alt+0` to the start |
+| `Alt+1` … `Alt+9` | Jump to 10 % … 90 %; `Alt+0` to the start (top-row digits: Alt with the number pad types an Alt-code character) |
 | `Alt+M` | Sound on / off (stays for the session) |
 
 With the mouse:
@@ -116,9 +116,9 @@ With the mouse:
 | Item | Design |
 |---|---|
 | Packages | `LibVLCSharp.WPF` + `VideoLAN.LibVLC.Windows` (x64 only) |
-| Size | About 80 MB added to each zip, after trimming the VLC plugins to what playback needs (demuxers, decoders, Direct3D11 output) |
+| Size | 42 MB beside the exe (about 110 MB before trimming), in a `libvlc` folder: the plugins are a whitelist in `OrdoSort.Wpf.csproj` (file access, the common containers, avcodec/dav1d and friends, hardware decoding, video and audio output, filters) |
 | Licence | libVLC and LibVLCSharp are LGPL-2.1: loaded as separate DLLs, never merged into the app; THIRD-PARTY-NOTICES gets both licences and the source links. Any plugin under GPL is left out when trimming |
-| Start-up | libVLC is loaded on the first video of a session, not at app start, so a PDF-only session costs nothing |
+| Start-up | libVLC is loaded when a session has a video queued, not at app start, so a PDF-only session costs nothing. Measured on the owner's PC: engine 145 ms, first frame 219 ms after that |
 | Drawing over the video | VLC draws into its own window, which WPF can't paint on top of (the same "airspace" limit Edge has). Nothing in the pane overlaps the video; the timeline, the date line and the filed bar sit outside it |
 | Off the share | Large videos play straight off the share with VLC's read buffer raised (`file-caching` about 1.5 s) |
 | Hardware decoding | On (`avcodec-hw=d3d11va`), with software decoding as VLC's own fallback |
@@ -135,7 +135,7 @@ With the mouse:
 | Phase | Delivers | Status |
 |---|---|---|
 | 1 | File types in Settings; mixed inbox; photos, GIFs and HEIC in the pane; date-taken naming; the subfolder option | Built on `feature/media-loop` (2026-09-29) |
-| 2 | VLC video: play, all scrub keys, timeline, mouse wheel, speed, mute | Not started |
+| 2 | VLC video: play, all scrub keys, timeline, mouse wheel, speed, mute | Built on `feature/media-loop` (2026-09-30) |
 | 3 | The filmstrip; camera RAW previews | Not started |
 
 Each phase is its own branch and release, checked on Windows with `check.bat`, E2E and a live run on real phone photos and videos before merging.

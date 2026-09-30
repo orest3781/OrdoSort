@@ -38,24 +38,39 @@ public interface IDateTakenReader
     DateTaken Read(string path);
 }
 
+/// <summary>What kind of file the filing loop is showing.</summary>
+public enum MediaKind { None, Photo, Video }
+
 /// <summary>What a media file needs at the move: the date for its name and
 /// the folder under the route it goes into ("" for the route's own).</summary>
 public sealed record MediaTarget(string TakenStamp, string Subfolder);
 
 /// <summary>
-/// Photos and GIFs in the filing loop (spec 2026-09-29-media-filing-loop):
-/// which files count, and the date each was taken.
+/// Photos, GIFs and videos in the filing loop (spec
+/// 2026-09-29-media-filing-loop): which files count, and the date each was
+/// taken.
 /// </summary>
 public static partial class MediaFiles
 {
-    /// <summary>True when <paramref name="path"/> is a photo or GIF the
-    /// loop files: media is turned on and its extension is listed.</summary>
-    public static bool IsMedia(string path, MediaSettings? media)
+    /// <summary>True when <paramref name="path"/> is a photo, GIF or video
+    /// the loop files: its kind is turned on and its extension is listed.</summary>
+    public static bool IsMedia(string path, MediaSettings? media) => KindOf(path, media) != MediaKind.None;
+
+    /// <summary>Photo or video by its listed extension; <see cref="MediaKind.None"/>
+    /// for a PDF, anything unlisted, or a kind that is turned off.</summary>
+    public static MediaKind KindOf(string path, MediaSettings? media)
     {
-        if (media is null || !media.Enabled) return false;
+        if (media is null) return MediaKind.None;
         var extension = Path.GetExtension(path);
-        if (extension.Length == 0) return false;
-        foreach (var listed in media.Extensions)
+        if (extension.Length == 0) return MediaKind.None;
+        if (media.Enabled && Listed(extension, media.Extensions)) return MediaKind.Photo;
+        if (media.VideosEnabled && Listed(extension, media.VideoExtensions)) return MediaKind.Video;
+        return MediaKind.None;
+    }
+
+    private static bool Listed(string extension, IEnumerable<string> extensions)
+    {
+        foreach (var listed in extensions)
             if (string.Equals(NormalizeExtension(listed), extension, StringComparison.OrdinalIgnoreCase))
                 return true;
         return false;

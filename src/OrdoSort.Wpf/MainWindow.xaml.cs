@@ -63,7 +63,8 @@ public partial class MainWindow : Window
             new DialogRelay(() => Processing.IsVisible ? Processing.Dialogs : Dialogs), _watch,
             SynchronizationContext.Current, sounds: new SoundService(),
             // the next documents are copied to this PC while one is read (spec 2026-09-29)
-            stageFactory: () => new DocumentStage(DocumentStage.Root));
+            stageFactory: () => new DocumentStage(DocumentStage.Root),
+            video: Processing.VideoPlayer);
         DataContext = Shell;
         Processing.Attach(Shell);
         Shell.PrepareSessionView = Processing.OpenForSessionAsync;

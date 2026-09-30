@@ -285,7 +285,7 @@ public sealed partial class ShellViewModel
     private Task ReleaseViewerAsync()
     {
         _shownSource = null;
-        _release = _viewer.ReleaseAsync();
+        _release = ReleaseShownAsync();
         return _release;
     }
 
@@ -346,12 +346,21 @@ public sealed partial class ShellViewModel
         RequestNameFocus?.Invoke();
         var copy = await LocalCopyOrInboxAsync(path);
         var media = IsMedia(path);
-        var source = media ? await PreviewSourceAsync(path, copy) : copy;
+        var video = IsVideo(path);
+        var source = media && !video ? await PreviewSourceAsync(path, copy) : copy;
         // moved on, or closed, while the copy was waited for: that load shows its own
         if (Screen != Screen.Processing || !PathIdentity.Same(ShownPath, path)) return;
         _shownSource = source;
-        // a photo fits the pane by its own size; the PDF zoom is for PDFs
-        await _viewer.ShowAsync(source, media ? null : _sessionPage);
+        if (video)
+        {
+            await ShowVideoAsync(source);
+        }
+        else
+        {
+            LeaveVideo();
+            // a photo fits the pane by its own size; the PDF zoom is for PDFs
+            await _viewer.ShowAsync(source, media ? null : _sessionPage);
+        }
         // Edge can take the focus as it opens a document
         RequestNameFocus?.Invoke();
         if (media) _ = ShowTakenAsync(path, copy);

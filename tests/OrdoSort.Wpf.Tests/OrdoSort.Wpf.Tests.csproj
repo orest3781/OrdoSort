@@ -37,4 +37,9 @@
     <ProjectReference Include="..\..\src\BoxLabels.App\BoxLabels.App.csproj" />
   </ItemGroup>
 
+  <!-- the Core tests' small phone clip, for the video engine's own check -->
+  <ItemGroup>
+    <None Include="..\OrdoSort.Core.Tests\Fixtures\Media\taken-20230704.mov" Link="Fixtures\Media\taken-20230704.mov" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
