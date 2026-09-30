@@ -91,4 +91,29 @@ public class DialogServiceContractTests
         Assert.Equal(@"C:\start", inner.LastOpenFileInitialDirectory);
         Assert.Equal("secret", relay.AskPassword(new OrdoSort.Core.PasswordRequest("a.pdf", null, false)));
     }
+
+    /// <summary>A folder written with forward slashes in config.json (the dev
+    /// config's <c>routes/invoices</c>) reaches the picker with backslashes
+    /// only: the shell refused the mixed form with "Value does not fall
+    /// within the expected range".</summary>
+    [Fact]
+    public void APickerStartsInTheFolderWithBackslashesOnly()
+    {
+        using var dir = new TempDir();
+        Directory.CreateDirectory(Path.Combine(dir.Path, "routes", "invoices"));
+
+        var start = DialogService.StartFolder(dir.Path + @"\routes/invoices");
+
+        Assert.Equal(Path.Combine(dir.Path, "routes", "invoices"), start);
+        Assert.DoesNotContain('/', start);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(@"C:\no\such\folder\anywhere")]
+    [InlineData("bad\0name")]
+    public void AMissingOrUnusableFolderOpensThePickerInItsDefaultPlace(string? folder) =>
+        Assert.Null(DialogService.StartFolder(folder));
 }
