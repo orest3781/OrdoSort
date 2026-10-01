@@ -228,23 +228,7 @@ public class PipelineTests : IDisposable
     public void DeferredSummaryMissingFolderIsZeroNotCrash() =>
         Assert.Equal(0, Scanner.DeferredSummary(@"Z:\nope\gone").Count);
 
-    [Fact]
-    public void SafeMtimeOfAFileGoneByReadTimeIsNullNotTheSentinelTicks()
-    {
-        // QC-13: FileInfo.LastWriteTimeUtc does not throw for a file that's
-        // gone -- it silently returns 1601-01-01 UTC -- so files.Min(SafeMtime)
-        // used to latch that sentinel and report a ~155,000-day-old folder
-        // over one vanished file. Directory.GetFiles's result is captured
-        // BEFORE the delete, exactly how DeferredSummary/Scan capture it, so
-        // this reproduces "gone by the time it's read" deterministically
-        // instead of racing a real deletion against the scan (not
-        // reproducible on this machine per the plan's filesystem-condition
-        // note).
-        var path = MakePdf(_inbox, "20240101--1.pdf");
-        var listed = Directory.GetFiles(_inbox);
-        File.Delete(path);
-        Assert.Null(Scanner.SafeMtime(listed[0]));
-    }
+    // QC-13's sentinel-date guard is pinned in ScannerListingTests.
 
     [Fact]
     public void OldestAgeDaysSkipsUnknownMtimesInsteadOfLettingOnePoisonTheFolder()
