@@ -212,6 +212,12 @@ public sealed class Config
     // that distinction has to survive the round trip).
     [JsonPropertyName("merge_types")] public string MergeTypes { get; set; } = "";
 
+    // Merge PDFs: after a merge, move its originals into a dated
+    // merged_archive_YYYYMMDD folder beside them (MergeArchive). Off unless
+    // someone ticks the box in the window, so a merge leaves its originals
+    // where they are, as it always has.
+    [JsonPropertyName("merge_archive_originals")] public bool MergeArchiveOriginals { get; set; }
+
     // Ready dashboard: monitored-folder tiles + filename alerts
     [JsonPropertyName("watch_folders")] public List<WatchFolder> WatchFolders { get; set; } = new();
     [JsonPropertyName("alert_texts")] public List<string> AlertTexts { get; set; } = new();

@@ -278,9 +278,15 @@ public static class PdfMerge
     /// Zipper.CreateZip places a Save-As archive — built to a GUID-named temp
     /// sibling, moved into place only once complete, so a merge that fails
     /// part-way leaves whatever was at that name untouched.</summary>
+    /// <param name="outputName">A name typed for the merged PDF, used in
+    /// place of <see cref="DefaultName"/> when <paramref name="outputPath"/>
+    /// is null: same folder, same collision counter, never an overwrite. It
+    /// is read by <see cref="FileNameFromTyped"/>; a name Windows can't take
+    /// comes back as an error result before anything is read or written.</param>
     public static MergeResult MergeFiles(IReadOnlyList<string> pdfPaths, string? outputPath,
         IReadOnlyList<string> candidates, Func<PasswordRequest, string?>? ask,
-        IDocumentConverter? converter = null, ISet<string>? includeTypes = null)
+        IDocumentConverter? converter = null, ISet<string>? includeTypes = null,
+        string? outputName = null)
     {
         // Ordering the list is INSIDE the try, not before it: it is the
         // caller's list and it touches every element (Path.GetFileName, the
@@ -293,7 +299,8 @@ public static class PdfMerge
         {
             ordered = InGivenOrder(pdfPaths);
             if (ordered.Count == 0) return new("", "error", Message: "nothing to merge");
-            return MergeFilesCore(ordered, outputPath, candidates, ask, converter, includeTypes);
+            var fileName = outputName is null ? null : FileNameFromTyped(outputName);
+            return MergeFilesCore(ordered, outputPath, candidates, ask, converter, includeTypes, fileName);
         }
         catch (Exception ex)
         {
@@ -307,7 +314,7 @@ public static class PdfMerge
 
     private static MergeResult MergeFilesCore(IReadOnlyList<string> ordered, string? outputPath,
         IReadOnlyList<string> candidates, Func<PasswordRequest, string?>? ask,
-        IDocumentConverter? converter, ISet<string>? includeTypes)
+        IDocumentConverter? converter, ISet<string>? includeTypes, string? fileName)
     {
         // ONLY an explicitly switched-off type is filtered out here, before
         // a single path is read — that alone is not an error, it simply
@@ -361,7 +368,7 @@ public static class PdfMerge
             }
 
             var target = Collision.FreeFile(
-                Path.Combine(Path.GetDirectoryName(Path.GetFullPath(source))!, DefaultName(mergeable)));
+                Path.Combine(Path.GetDirectoryName(Path.GetFullPath(source))!, fileName ?? DefaultName(mergeable)));
             var saved = SaveNew(output, target, source, mergeable.Count, 0);
             return saved with { Notes = notes.Count > 0 ? notes : null };
         }
@@ -394,6 +401,22 @@ public static class PdfMerge
         {
             return "Merged.pdf";
         }
+    }
+
+    /// <summary>The file name a typed merge name gives: trimmed, with ".pdf"
+    /// added unless it was typed. A file name only, never a path.</summary>
+    /// <exception cref="ArgumentException">The name is blank or Windows can't
+    /// take it; the message is fit to show.</exception>
+    public static string FileNameFromTyped(string typed)
+    {
+        const string extension = ".pdf";
+        var name = (typed ?? "").Trim();
+        var hasExtension = name.EndsWith(extension, StringComparison.OrdinalIgnoreCase);
+        var stem = hasExtension ? name[..^extension.Length] : name;
+        if (stem.Trim().Length == 0)
+            throw new ArgumentException("Type a name for the merged PDF.");
+        Naming.RejectIllegal(stem);
+        return hasExtension ? name : name + extension;
     }
 
     /// <summary>The caller's order, unchanged: it is the order the Merge PDFs

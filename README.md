@@ -156,7 +156,13 @@ workflow tests, builds, zips, and publishes.
     toggles (PDF, Zip, Word, Excel, PowerPoint, Images, Text) in the window
     itself turns each one on, remembered between sessions. A locked PDF or
     archive asks for its password; one unopenable document merges nothing
-    from its group rather than a document with pages quietly missing.
+    from its group rather than a document with pages quietly missing. The
+    loose files' document takes the name typed in the window's name box
+    (the folder's name until you type one; a taken name gets " (2)"). Tick
+    "After merging, move the originals to an archive folder" and, once a
+    merge succeeds, each original (a merged zip too) moves into
+    `merged_archive_YYYYMMDD` beside where it was; off by default,
+    remembered as `merge_archive_originals` in config.json.
 
   Tables work like File Explorer's Details view: drag or double-click column
   dividers, right-click a header to show or hide columns, Ctrl + Plus fits

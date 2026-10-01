@@ -361,7 +361,7 @@ public class MergePdfsViewModelTests
 
     // ---- the loose group ----------------------------------------------
 
-    private static string WritePdf(string path, int pages = 1)
+    internal static string WritePdf(string path, int pages = 1)
     {
         using var doc = new PdfDocument();
         for (var i = 0; i < pages; i++) doc.AddPage();

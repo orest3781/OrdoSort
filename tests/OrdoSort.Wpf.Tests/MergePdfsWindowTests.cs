@@ -211,4 +211,90 @@ public class MergePdfsWindowTests : UiTest
         }
         finally { window.Close(); }
     });
+
+    /// <summary>Owner request 2026-10-01: the name box and the archive tick
+    /// box reach the view model from the real window, the box is off while
+    /// there is nothing to name, and a refused name reads as an error.</summary>
+    [Fact]
+    public void TheNameBoxAndTheArchiveTickBoxDriveTheViewModel() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        using var dir = new TempDir();
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(),
+            zipProbe: (p, _) => new Zipper.ZipProbeResult(p, "not_encrypted"),
+            pdfProbe: (p, _) => new Unlock.ProbeResult("not_encrypted", p));
+        var window = new MergePdfsWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            var nameBox = (TextBox)window.FindName("OutputNameBox");
+            var note = (TextBlock)window.FindName("OutputNameNoteText");
+            var archiveBox = (CheckBox)window.FindName("ArchiveOriginalsBox");
+
+            Assert.False(nameBox.IsEnabled);   // nothing listed, nothing to name
+            Assert.Equal(MergePdfsViewModel.OutputNameHint, note.Text);
+
+            // InlineWorkScheduler and no UiContext: the add has finished by
+            // the time AcceptDrop returns.
+            window.AcceptDrop(new DataObject(DataFormats.FileDrop, new[] { dir.File("a.pdf") }));
+            window.UpdateLayout();
+
+            Assert.True(nameBox.IsEnabled);
+            Assert.Equal(Path.GetFileName(dir.Path) + ".pdf", nameBox.Text);
+
+            nameBox.Text = "Smith: invoices";
+            window.UpdateLayout();
+
+            Assert.Equal("Smith: invoices", vm.OutputName);
+            Assert.Contains("can't contain ':'", note.Text);
+            var red = (SolidColorBrush)window.FindResource("Theme.StatusRed");
+            Assert.Equal(red.Color, ((SolidColorBrush)note.Foreground).Color);
+
+            archiveBox.IsChecked = true;
+
+            Assert.True(vm.ArchiveOriginals);
+        }
+        finally { window.Close(); }
+    });
+
+    /// <summary>The new controls sit above the buttons and take their height
+    /// from the list. At the smallest size the window allows, with the
+    /// largest text preset (18px, where the toolbar and the type toggles wrap
+    /// to two rows each), the list still shows about three rows (UX-74 is
+    /// what losing it looks like).</summary>
+    [Fact]
+    public void TheListKeepsRoomAtTheSmallestWindowSizeWithLargeText() => _fx.Invoke(() =>
+    {
+        ThemeManager.Apply(_fx.App, dark: false);
+        var defaultFontSize = _fx.App.Resources["AppFontSize"];
+        _fx.App.Resources["AppFontSize"] = 18.0;
+        var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), new InlineWorkScheduler(),
+            zipProbe: (p, _) => new Zipper.ZipProbeResult(p, "not_encrypted"),
+            pdfProbe: (p, _) => new Unlock.ProbeResult("not_encrypted", p));
+        var window = new MergePdfsWindow(vm)
+        {
+            Left = -20000, Top = 0, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+        try
+        {
+            window.Width = window.MinWidth;
+            window.Height = window.MinHeight;
+            window.Show();
+            window.UpdateLayout();
+            var grid = Assert.Single(Descendants<DataGrid>((DependencyObject)window.Content));
+
+            Assert.True(grid.ActualHeight >= 150, $"the list is only {grid.ActualHeight:F0} px tall");
+        }
+        finally
+        {
+            window.Close();
+            _fx.App.Resources["AppFontSize"] = defaultFontSize;
+        }
+    });
 }

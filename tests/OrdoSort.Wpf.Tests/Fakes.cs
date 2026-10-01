@@ -78,7 +78,14 @@ public sealed class FakeDialogs : IDialogService
         Confirms.Add((message, title));
         return ConfirmAnswer;
     }
-    public string? AskSaveFile(string filter, string suggested) => NextSaveFile;
+    /// <summary>The name the last <see cref="AskSaveFile"/> call offered.</summary>
+    public string? LastSaveSuggested { get; private set; }
+
+    public string? AskSaveFile(string filter, string suggested)
+    {
+        LastSaveSuggested = suggested;
+        return NextSaveFile;
+    }
     public string? AskOpenFile(string filter) => NextOpenFile;
 
     /// <summary>What the last <see cref="AskOpenFile(string, string?)"/> call

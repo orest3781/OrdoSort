@@ -285,7 +285,7 @@ public class WindowOverflowTests : UiTest
 
         // A failed zip and a locked PDF: the Result column's messages are the
         // widest thing this grid ever shows.
-        ["MergePdfsWindow"] = new(580, 700, 420, 520, () =>
+        ["MergePdfsWindow"] = new(580, 700, 560, 640, () =>
         {
             var vm = new MergePdfsViewModel(new FakeDialogs(), Array.Empty<string>(), scheduler: new InlineWorkScheduler());
             var toMerge = new ZipItemRow(@"C:\inbox\a-long-enough-filename-to-matter.zip", "zip");

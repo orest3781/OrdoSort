@@ -186,6 +186,12 @@ public sealed class ZipItemRow : ObservableObject
         StatusKind = status;
         Note = note;
     }
+
+    /// <summary>Something more to say about a row whose verdict is already
+    /// in: where its original went after the merge. Added after the
+    /// verdict, never in place of it.</summary>
+    internal void AppendNote(string more) =>
+        Note = _note.Length > 0 ? $"{_note} · {more}" : more;
 }
 
 /// <summary>Everything the two zip-tool windows share: the list, intake and

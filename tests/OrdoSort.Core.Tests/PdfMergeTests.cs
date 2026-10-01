@@ -322,6 +322,76 @@ public class PdfMergeTests : IDisposable
         Assert.Empty(Directory.GetFiles(_dir, "*.partial"));
     }
 
+    // ------------------------------------------- a name typed for the merge
+
+    [Theory]
+    [InlineData("Smith invoices", "Smith invoices.pdf")]
+    [InlineData("  Smith invoices  ", "Smith invoices.pdf")]
+    [InlineData("Smith invoices.pdf", "Smith invoices.pdf")]
+    [InlineData("Smith invoices.PDF", "Smith invoices.PDF")]   // typed with its extension: kept as typed
+    [InlineData("v1.2 final", "v1.2 final.pdf")]                // a dot in the name is not an extension
+    public void ATypedNameBecomesAPdfFileName(string typed, string expected)
+    {
+        Assert.Equal(expected, PdfMerge.FileNameFromTyped(typed));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(".pdf")]
+    [InlineData("a:b")]
+    [InlineData(@"sub\name")]
+    [InlineData("what?")]
+    [InlineData("CON")]
+    public void ANameWindowsCannotTakeIsRefusedWithAReason(string typed)
+    {
+        var refused = Assert.Throws<ArgumentException>(() => PdfMerge.FileNameFromTyped(typed));
+        Assert.NotEqual("", refused.Message);
+    }
+
+    [Fact]
+    public void ALooseMergeTakesTheNameItIsGivenBesideTheFirstDocument()
+    {
+        var a = MakePdfFile("a.pdf", pageCount: 1);
+        var b = MakePdfFile("b.pdf", pageCount: 2);
+
+        var r = PdfMerge.MergeFiles(new[] { a, b }, outputPath: null, NoPasswords, null,
+            outputName: "Smith invoices.pdf");
+
+        Assert.Equal("ok", r.Status);
+        Assert.Equal(Path.Combine(_dir, "Smith invoices.pdf"), r.Output);
+        using var merged = PdfReader.Open(r.Output!, PdfDocumentOpenMode.Import);
+        Assert.Equal(3, merged.PageCount);
+    }
+
+    [Fact]
+    public void AGivenNameThatIsTakenGetsTheCounterAndNothingIsReplaced()
+    {
+        var a = MakePdfFile("a.pdf");
+        File.WriteAllText(Path.Combine(_dir, "Smith invoices.pdf"), "existing");
+
+        var r = PdfMerge.MergeFiles(new[] { a }, outputPath: null, NoPasswords, null,
+            outputName: "Smith invoices.pdf");
+
+        Assert.Equal("ok", r.Status);
+        Assert.Equal(Path.Combine(_dir, "Smith invoices (2).pdf"), r.Output);
+        Assert.Equal("existing", File.ReadAllText(Path.Combine(_dir, "Smith invoices.pdf")));
+    }
+
+    /// <summary>The name is a file name, never a way to another folder: the
+    /// window checks it first, and the merge itself refuses it too.</summary>
+    [Fact]
+    public void AGivenNameWithAFolderInItIsRefusedAndNothingIsWritten()
+    {
+        var a = MakePdfFile("a.pdf");
+
+        var r = PdfMerge.MergeFiles(new[] { a }, outputPath: null, NoPasswords, null,
+            outputName: @"..\escaped.pdf");
+
+        Assert.Equal("error", r.Status);
+        Assert.Equal(new[] { a }, Directory.GetFiles(_dir));
+    }
+
     // ------------------------------------------- passwords inside a zip
 
     [Fact]
