@@ -125,15 +125,20 @@ public static class PdfMerge
     /// test can make the "collision-free" name resolve to a path IT already
     /// controls — the deterministic equivalent of another station claiming
     /// that exact name in the gap between the real FreeFile probe and this
-    /// call's own FileMode.CreateNew, without needing real thread timing to
+    /// call's own rename onto it, without needing real thread timing to
     /// provoke it.</summary>
+    /// <param name="savedNotYetPlaced">Test seam too: runs with the path the
+    /// merged document was just written to, before this call finishes. What
+    /// exists under the final name at that moment is what a kill would leave.</param>
     internal static MergeResult MergeZip(string zipPath, IReadOnlyList<string> candidates,
         Func<PasswordRequest, string?>? ask, Func<string, string>? pickOutput,
-        IDocumentConverter? converter = null, ISet<string>? includeTypes = null)
+        IDocumentConverter? converter = null, ISet<string>? includeTypes = null,
+        Action<string>? savedNotYetPlaced = null)
     {
         try
         {
-            return MergeZipCore(zipPath, candidates, ask, pickOutput ?? Collision.FreeFile, converter, includeTypes);
+            return MergeZipCore(zipPath, candidates, ask, pickOutput ?? Collision.FreeFile, converter, includeTypes,
+                savedNotYetPlaced);
         }
         catch (Exception ex)
         {
@@ -143,7 +148,7 @@ public static class PdfMerge
 
     private static MergeResult MergeZipCore(string zipPath, IReadOnlyList<string> candidates,
         Func<PasswordRequest, string?>? ask, Func<string, string> pickOutput,
-        IDocumentConverter? converter, ISet<string>? includeTypes)
+        IDocumentConverter? converter, ISet<string>? includeTypes, Action<string>? savedNotYetPlaced)
     {
         var zipName = Path.GetFileName(zipPath);
         SzlZipFile zip;
@@ -254,7 +259,7 @@ public static class PdfMerge
                 var zipDir = Path.GetDirectoryName(Path.GetFullPath(zipPath))!;
                 var zipStem = Path.GetFileNameWithoutExtension(zipPath);
                 var target = pickOutput(Path.Combine(zipDir, zipStem + ".pdf"));
-                var saved = SaveNew(output, target, zipPath, mergeable.Count, skipped);
+                var saved = SaveNew(output, target, zipPath, mergeable.Count, skipped, savedNotYetPlaced);
                 return saved with { Notes = notes.Count > 0 ? notes : null };
             }
             finally
@@ -566,28 +571,36 @@ public static class PdfMerge
         return null;
     }
 
-    /// <summary>Exclusive-create save behind the created-by-me gate.
-    /// <c>created</c> is set ONLY once FileMode.CreateNew has actually
-    /// succeeded — mirroring Unlock.PlaceAndSwap's own markCreated gate
-    /// (2026-08 audit finding 1.2). Collision.FreeFile only proves the name
-    /// was free AT CHECK TIME: another process can create that exact file in
-    /// the gap before this line runs, in which case the FileStream ctor
-    /// itself throws and `created` is never set — so the catch below must
-    /// NOT call RemoveQuietly in that case, or it deletes a file this call
-    /// never wrote a single byte of. RemoveQuietly only ever runs against a
-    /// target THIS call is certain it created.</summary>
-    private static MergeResult SaveNew(PdfDocument output, string target, string source, int pdfCount, int skipped)
+    /// <summary>Saves the merge under a name only this call can own, then
+    /// renames it onto <paramref name="target"/> once it is whole (AR-02, the
+    /// way Zipper builds a default-name zip, Q2-32). Saved straight under the
+    /// target, a merge cut off mid-save (a sign-out, a kill) was left there
+    /// half written, looking finished. The rename stays in one folder, so it
+    /// is all or nothing.
+    ///
+    /// The target itself is never written to or deleted here. Collision.FreeFile
+    /// only proves the name was free AT CHECK TIME: when another station has
+    /// taken it since, the rename fails, that file stays as it is, and the
+    /// result is an error. <c>created</c> gates the cleanup as before: only
+    /// a partial this call made is removed.</summary>
+    private static MergeResult SaveNew(PdfDocument output, string target, string source, int pdfCount, int skipped,
+        Action<string>? savedNotYetPlaced = null)
     {
+        var partial = $"{target}.{Guid.NewGuid():N}.partial";
         var created = false;
         try
         {
-            using var fs = new FileStream(target, FileMode.CreateNew, FileAccess.Write);
-            created = true;
-            output.Save(fs, closeStream: false);
+            using (var fs = new FileStream(partial, FileMode.CreateNew, FileAccess.Write))
+            {
+                created = true;
+                output.Save(fs, closeStream: false);
+            }
+            savedNotYetPlaced?.Invoke(partial);
+            File.Move(partial, target);   // never overwrites
         }
         catch (Exception ex)
         {
-            if (created) RemoveQuietly(target);
+            if (created) RemoveQuietly(partial);
             return new(source, "error", Message: $"couldn't save the merged PDF: {ex.Message}");
         }
         return new(source, "ok", Output: target, PdfCount: pdfCount, SkippedEntries: skipped);

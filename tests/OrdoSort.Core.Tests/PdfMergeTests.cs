@@ -235,9 +235,10 @@ public class PdfMergeTests : IDisposable
     /// The internal pickOutput seam stands in for that race deterministically:
     /// instead of hoping to win a timing race against a second process, this
     /// makes the "collision-free" name resolve straight to a path that
-    /// ALREADY has real content on disk, so FileMode.CreateNew is guaranteed
-    /// to throw (the name is taken) before a single byte of the merge is
-    /// written — proving the `created` gate, not just its intent.</summary>
+    /// ALREADY has real content on disk, so the save is guaranteed to fail
+    /// (the name is taken) — proving that file is never touched, not just
+    /// the intent. Since AR-02 the merge is written under a private name and
+    /// renamed, so it is the rename that refuses.</summary>
     [Fact]
     public void SaveFailureNeverDeletesAFileThisCallDidNotCreate()
     {
@@ -251,6 +252,74 @@ public class PdfMergeTests : IDisposable
         Assert.Contains("couldn't save", r.Message);
         Assert.True(File.Exists(peerPath));
         Assert.Equal("not touched", File.ReadAllText(peerPath));
+    }
+
+    /// <summary>AR-02 (Q2-32's merge half): a merge under the default name
+    /// was written straight to that name, so one cut off mid-save (a
+    /// sign-out, a kill) left half a PDF there, looking finished. It is
+    /// written under a private ".partial" name and renamed only once whole,
+    /// as a default-name zip is.</summary>
+    [Fact]
+    public void TheMergedPdfIsNotUnderItsFinalNameUntilItIsWhole()
+    {
+        var zip = MakeZip("cutoff.zip", ("a.pdf", MakePdfBytes(2)));
+        var finalName = Path.Combine(_dir, "cutoff.pdf");
+        bool? underFinalNameMidSave = null;
+
+        var r = PdfMerge.MergeZip(zip, NoPasswords, null, pickOutput: null,
+            savedNotYetPlaced: _ => underFinalNameMidSave = File.Exists(finalName));
+
+        Assert.False(underFinalNameMidSave);
+        Assert.Equal("ok", r.Status);
+        Assert.Equal(finalName, r.Output);
+        using var merged = PdfReader.Open(finalName, PdfDocumentOpenMode.Import);
+        Assert.Equal(2, merged.PageCount);
+        Assert.Empty(Directory.GetFiles(_dir, "*.partial"));
+    }
+
+    [Fact]
+    public void AMergeCutOffBeforeItIsPlacedLeavesNothingBehind()
+    {
+        var zip = MakeZip("cutoff.zip", ("a.pdf", MakePdfBytes(1)));
+
+        var r = PdfMerge.MergeZip(zip, NoPasswords, null, pickOutput: null,
+            savedNotYetPlaced: _ => throw new IOException("signed out"));
+
+        Assert.Equal("error", r.Status);
+        Assert.Contains("couldn't save", r.Message);
+        Assert.Empty(Directory.GetFiles(_dir, "*.pdf"));
+        Assert.Empty(Directory.GetFiles(_dir, "*.partial"));
+    }
+
+    /// <summary>The name picked can be taken by another station before the
+    /// rename: that file is left alone (as above), and this call's own
+    /// private copy is cleaned up rather than left beside it.</summary>
+    [Fact]
+    public void ANameTakenAtTheLastMomentLeavesNoPartialBehind()
+    {
+        var zip = MakeZip("collide.zip", ("a.pdf", MakePdfBytes(1)));
+        var peerPath = Path.Combine(_dir, "peer.pdf");
+        File.WriteAllText(peerPath, "not touched");
+
+        var r = PdfMerge.MergeZip(zip, NoPasswords, null, pickOutput: _ => peerPath);
+
+        Assert.Equal("error", r.Status);
+        Assert.Equal("not touched", File.ReadAllText(peerPath));
+        Assert.Empty(Directory.GetFiles(_dir, "*.partial"));
+    }
+
+    [Fact]
+    public void ALooseMergeUnderTheDefaultNameLeavesNoPartialBehind()
+    {
+        var a = MakePdfFile("a.pdf", pageCount: 1);
+        var b = MakePdfFile("b.pdf", pageCount: 2);
+
+        var r = PdfMerge.MergeFiles(new[] { a, b }, outputPath: null, NoPasswords, null);
+
+        Assert.Equal("ok", r.Status);
+        using var merged = PdfReader.Open(r.Output!, PdfDocumentOpenMode.Import);
+        Assert.Equal(3, merged.PageCount);
+        Assert.Empty(Directory.GetFiles(_dir, "*.partial"));
     }
 
     // ------------------------------------------- passwords inside a zip
