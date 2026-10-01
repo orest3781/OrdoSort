@@ -160,6 +160,28 @@ public class MergePdfsViewModelTests
         Assert.True(vm.MergeCommand.CanExecute(null));
     }
 
+    /// <summary>A refresh re-checks every row, so one per added row made a
+    /// big drop rows × rows: 3,000 files froze the window about 1.5 s longer.
+    /// A type the converter takes gets no probe verdict, so the add is the
+    /// only thing here that refreshes.</summary>
+    [Fact]
+    public async Task ADropRefreshesTheListOnceNotOncePerFile()
+    {
+        using var dir = new TempDir();
+        var vm = MakeVm(converter: new AlwaysHandlesConverter());
+        vm.SetTypeEnabled(MergeTypes.Word, true);   // off by default
+        var refreshes = 0;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MergePdfsViewModel.MergeButtonText)) refreshes++;
+        };
+
+        await vm.AddPaths(new[] { dir.File("a.docx"), dir.File("b.docx"), dir.File("c.docx") });
+
+        Assert.Equal(1, refreshes);
+        Assert.Equal("Merge 3 items", vm.MergeButtonText);
+    }
+
     /// <summary>Extensions widened to MergeTypes.AllExtensions (Task 7): a
     /// .txt file is now ACCEPTED (the Text group), so this no longer proves
     /// intake still refuses something — an .exe, which no MergeTypes group
