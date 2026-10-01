@@ -33,8 +33,13 @@ namespace OrdoSort.Core;
 /// so cleanup is unconditional against it, and the destination is never
 /// touched on failure. Two different disciplines that read alike; this module
 /// is only the first one.
+///
+/// Public for <see cref="TryReplace"/> alone, so the apps' own small
+/// settings files (Box Labels' box-labels-app.json) are saved the same way
+/// instead of each keeping a copy of this procedure. Everything else here
+/// stays internal.
 /// </summary>
-internal static class AtomicPlace
+public static class AtomicPlace
 {
     /// <summary>Governs how many times the WHOLE placement — the write and
     /// the move alike, see <see cref="Place"/> — is attempted, and therefore,
@@ -186,7 +191,14 @@ internal static class AtomicPlace
     ///
     /// Must NOT be used where the destination belongs to whoever created it;
     /// see <see cref="TryCreateNew"/>.</summary>
-    internal static bool TryReplace(string destination, Action<string> writeTemp, out string error) =>
+    /// <param name="destination">The file to put in place. Its folder must exist.</param>
+    /// <param name="writeTemp">Writes the new content to the path it is
+    /// given: a temp file beside <paramref name="destination"/>.</param>
+    /// <param name="error">Why the file could not be placed; empty on success.</param>
+    /// <returns>True when <paramref name="destination"/> holds the new
+    /// content. False leaves it exactly as it was. Never throws for an I/O
+    /// failure.</returns>
+    public static bool TryReplace(string destination, Action<string> writeTemp, out string error) =>
         Place(destination, writeTemp, replaceExisting: true, out error);
 
     /// <summary>For files whose ownership passes to whoever creates them —
