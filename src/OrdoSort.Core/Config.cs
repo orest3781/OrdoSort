@@ -79,6 +79,40 @@ public sealed class SoundSettings
     [JsonExtensionData] public Dictionary<string, System.Text.Json.JsonElement> Extras { get; set; } = new();
 }
 
+/// <summary>Photos and GIFs in the filing loop (owner request
+/// 2026-09-29). Off until turned on in Settings, so an inbox that already
+/// holds pictures doesn't start queueing them after an update.</summary>
+public sealed class MediaSettings
+{
+    /// <summary>Where a filed photo goes: a Media folder inside the route's
+    /// folder, or the route's folder itself.</summary>
+    public const string FolderMedia = "media";
+    public const string FolderRoute = "route";
+    public static readonly string[] Folders = { FolderMedia, FolderRoute };
+
+    /// <summary>The folder a filed photo goes into under
+    /// <see cref="FolderMedia"/>.</summary>
+    public const string MediaFolderName = "Media";
+
+    public static readonly string[] DefaultExtensions =
+        { ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".heic", ".heif" };
+
+    public static readonly string[] DefaultVideoExtensions =
+        { ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".wmv", ".3gp" };
+
+    /// <summary>Photos and GIFs are filed.</summary>
+    [JsonPropertyName("enabled")] public bool Enabled { get; set; }
+    [JsonPropertyName("extensions")] public List<string> Extensions { get; set; } = new(DefaultExtensions);
+
+    /// <summary>Videos are filed too (release 2): their own tick box, since
+    /// they need the video engine and can be large.</summary>
+    [JsonPropertyName("videos")] public bool VideosEnabled { get; set; }
+    [JsonPropertyName("video_extensions")] public List<string> VideoExtensions { get; set; } = new(DefaultVideoExtensions);
+    [JsonPropertyName("folder")] public string Folder { get; set; } = FolderMedia;
+
+    [JsonExtensionData] public Dictionary<string, System.Text.Json.JsonElement> Extras { get; set; } = new();
+}
+
 /// <summary>A saved Unlock-tool password. The password value is plaintext —
 /// the app's own storage form since saved passwords became portable across
 /// stations sharing one config.json (2026-08-08 portable-saved-passwords
@@ -154,6 +188,7 @@ public sealed class Config
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Timing { get; set; }
     [JsonPropertyName("uppercase_names")] public bool UppercaseNames { get; set; } = true;
+    [JsonPropertyName("media")] public MediaSettings Media { get; set; } = new();
     [JsonPropertyName("routes")] public List<Route> Routes { get; set; } = new();
 
     // Match & merge: which spreadsheet headers hold the names + the id
@@ -176,6 +211,12 @@ public sealed class Config
     // and coming back all-on (see MergeTypes.Save's own doc comment for why
     // that distinction has to survive the round trip).
     [JsonPropertyName("merge_types")] public string MergeTypes { get; set; } = "";
+
+    // Merge PDFs: after a merge, move its originals into a dated
+    // merged_archive_YYYYMMDD folder beside them (MergeArchive). Off unless
+    // someone ticks the box in the window, so a merge leaves its originals
+    // where they are, as it always has.
+    [JsonPropertyName("merge_archive_originals")] public bool MergeArchiveOriginals { get; set; }
 
     // Ready dashboard: monitored-folder tiles + filename alerts
     [JsonPropertyName("watch_folders")] public List<WatchFolder> WatchFolders { get; set; } = new();
@@ -316,6 +357,9 @@ public sealed class Config
         if (Array.IndexOf(Sorts, cfg.Sort) < 0)
             throw new ConfigException($"sort must be one of {string.Join('/', Sorts)}, " +
                                       $"got \"{cfg.Sort}\"");
+        if (Array.IndexOf(MediaSettings.Folders, cfg.Media.Folder) < 0)
+            throw new ConfigException($"media.folder must be one of {string.Join('/', MediaSettings.Folders)}, " +
+                                      $"got \"{cfg.Media.Folder}\"");
         if (cfg.UiFontSize is not 0 and (< 6 or > 72))
             throw new ConfigException(
                 $"ui_font_size must be 0 (default) or 6-72, got {cfg.UiFontSize}");
@@ -595,6 +639,16 @@ public sealed class Config
         MergeTypes ??= "";
         Extras ??= new();
         foreach (var key in RetiredSideFileKeys) Extras.Remove(key);
+
+        Media ??= new();
+        // cleaned as Settings cleans them: a hand-typed "pdf" would otherwise
+        // make every PDF a photo, named by date and filed into Media
+        var extensions = MediaFiles.ParseExtensions(string.Join(" ", Media.Extensions ?? new()));
+        Media.Extensions = extensions.Count > 0 ? extensions : new(MediaSettings.DefaultExtensions);
+        var videoExtensions = MediaFiles.ParseExtensions(string.Join(" ", Media.VideoExtensions ?? new()));
+        Media.VideoExtensions = videoExtensions.Count > 0 ? videoExtensions : new(MediaSettings.DefaultVideoExtensions);
+        Media.Folder ??= MediaSettings.FolderMedia;
+        Media.Extras ??= new();
 
         Sounds ??= new();
         Sounds.NewAlert ??= "";

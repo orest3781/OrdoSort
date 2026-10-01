@@ -7,9 +7,13 @@ namespace OrdoSort.Core;
 /// checks go through an injected predicate so callers decide what "exists"
 /// means and tests never touch a disk.
 ///
-/// The one mechanical rule: the result ends in exactly one ".pdf". The typed
-/// name is otherwise used verbatim — no sanitization, no case folding.
-/// Assembly order: name per mode -> route suffix -> collision counter -> .pdf
+/// The one mechanical rule: the result keeps the original's extension, once
+/// (".pdf" for a PDF, lower case; a photo keeps its own, lower-cased). The
+/// typed name is otherwise used verbatim — no sanitization, no case folding.
+/// Assembly order: name per mode -> route suffix -> collision counter -> extension
+///
+/// A photo or GIF is named by date taken instead of by mode (spec
+/// 2026-09-29-media-filing-loop): "&lt;date taken&gt;-&lt;typed name&gt;".
 /// </summary>
 public static partial class Naming
 {
@@ -20,6 +24,10 @@ public static partial class Naming
     public const string ModeAppend = "append";
     public static readonly string[] Modes =
         { ModeInsert, ModeReplace, ModePrefix, ModeAppend };
+
+    /// <summary>What History records as the mode for a photo named by date
+    /// taken. Not a mode a route or Settings can choose.</summary>
+    public const string ModeDated = "dated";
 
     // Inbox contract: any PDF with "--" in the stem (something on each side).
     // Insert mode splices the typed name at the FIRST "--"; the classic
@@ -50,10 +58,10 @@ public static partial class Naming
     public const int MaxStemLength = 240;
 
     public sealed record NameResult(
-        string Filename,          // final name, including .pdf
+        string Filename,          // final name, including the extension
         string CollisionSuffix,   // "" or " (2)", " (3)", ...  (Explorer style)
         string SuffixApplied,     // "" or the route suffix appended verbatim
-        string ModeUsed);         // one of Naming.Modes
+        string ModeUsed);         // one of Naming.Modes, or ModeDated
 
     /// <summary>Strip ONE trailing ".pdf" (case-insensitive). Nothing else.</summary>
     public static string StripPdfExt(string text) =>
@@ -61,10 +69,63 @@ public static partial class Naming
             ? text[..^PdfExt.Length]
             : text;
 
+    /// <summary>The extension a file keeps: ".pdf" for any PDF, otherwise its
+    /// own, lower-cased (".JPG" becomes ".jpg"); "" when it has none.</summary>
+    public static string ExtensionOf(string originalFilename)
+    {
+        if (originalFilename.EndsWith(PdfExt, StringComparison.OrdinalIgnoreCase)) return PdfExt;
+        return Path.GetExtension(originalFilename).ToLowerInvariant();
+    }
+
+    /// <summary>A file name without its extension (the one
+    /// <see cref="ExtensionOf"/> reports).</summary>
+    private static string StemOf(string originalFilename)
+    {
+        var extension = ExtensionOf(originalFilename);
+        return extension.Length > 0 ? originalFilename[..^extension.Length] : originalFilename;
+    }
+
+    /// <summary>The typed name without a trailing ".pdf" or the file's own
+    /// extension: typing "kitchen.jpg" on a .jpg names it "kitchen".</summary>
+    private static string StripTypedExt(string typedName, string extension)
+    {
+        var name = StripPdfExt(typedName);
+        if (extension.Length > 0 && extension != PdfExt
+            && name.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+            name = name[..^extension.Length];
+        return name;
+    }
+
+    [GeneratedRegex(@"^(?<date>\d{8})(?:[-_ ]+(?<rest>.*))?$")]
+    private static partial Regex TypedDateRegex();
+
+    /// <summary>A photo's stem: "&lt;date taken&gt;-&lt;typed name&gt;". A blank
+    /// name keeps the original stem, as for PDFs. A typed name that starts
+    /// with a real 8-digit date uses that date instead (the way to correct a
+    /// camera with the wrong clock).</summary>
+    public static string ApplyDatedName(string originalFilename, string typedName, string takenStamp)
+    {
+        var extension = ExtensionOf(originalFilename);
+        var name = StripTypedExt(typedName, extension).Trim();
+        if (name.Length == 0) return StemOf(originalFilename);
+        var typedDate = TypedDateRegex().Match(name);
+        if (typedDate.Success && BulkRename.IsRealDate(typedDate.Groups["date"].Value))
+        {
+            var rest = typedDate.Groups["rest"].Value.Trim();
+            return rest.Length > 0 ? $"{typedDate.Groups["date"].Value}-{rest}" : typedDate.Groups["date"].Value;
+        }
+        return $"{takenStamp}-{name}";
+    }
+
     /// <summary>True when the typed name commits without renaming
     /// (blank/whitespace, or just ".pdf", which strips to nothing).</summary>
     public static bool IsBlankName(string typedName) =>
         string.IsNullOrWhiteSpace(StripPdfExt(typedName));
+
+    /// <summary><see cref="IsBlankName(string)"/>, also counting the file's own
+    /// extension typed on its own (".jpg" on a photo) as blank.</summary>
+    public static bool IsBlankName(string typedName, string originalFilename) =>
+        string.IsNullOrWhiteSpace(StripTypedExt(typedName, ExtensionOf(originalFilename)));
 
     /// <summary>Route's own naming_mode wins; absent means inherit global.</summary>
     public static string ResolveMode(string? routeMode, string globalMode)
@@ -81,8 +142,8 @@ public static partial class Naming
     {
         if (Array.IndexOf(Modes, mode) < 0)
             throw new ArgumentException($"Unknown naming mode: '{mode}'");
-        var name = StripPdfExt(typedName);
-        var stem = StripPdfExt(originalFilename);
+        var name = StripTypedExt(typedName, ExtensionOf(originalFilename));
+        var stem = StemOf(originalFilename);
         if (string.IsNullOrWhiteSpace(name))
             return stem;
         switch (mode)
@@ -103,7 +164,7 @@ public static partial class Naming
 
     /// <summary>Throw if <paramref name="stem"/> can't be a Windows filename.
     /// Legal names — spaces, apostrophes, hyphens, unicode — pass untouched.
-    /// (Trailing dots/spaces in the STEM are fine: the ".pdf" that always
+    /// (Trailing dots/spaces in the STEM are fine: the extension that always
     /// follows keeps them mid-name, where Windows preserves them.)</summary>
     public static void RejectIllegal(string stem)
     {
@@ -126,16 +187,30 @@ public static partial class Naming
 
     /// <summary>Assemble the final target filename for a commit. The
     /// <paramref name="exists"/> predicate is called with candidate filenames
-    /// (including .pdf) and returns true while a candidate is taken; the
-    /// collision counter starts at " (2)" and goes after the route suffix.</summary>
+    /// (including the extension) and returns true while a candidate is taken;
+    /// the collision counter starts at " (2)" and goes after the route suffix.
+    /// With <paramref name="takenStamp"/> (a photo's YYYYMMDD) the name is
+    /// built by <see cref="ApplyDatedName"/> in every mode.</summary>
     public static NameResult BuildTarget(
         string originalFilename, string typedName,
         string? routeMode, string globalMode,
         string routeSuffix, bool appendSuffix,
-        Func<string, bool> exists)
+        Func<string, bool> exists,
+        string? takenStamp = null)
     {
-        var mode = ResolveMode(routeMode, globalMode);
-        var stem = ApplyName(originalFilename, typedName, mode);
+        string mode;
+        string stem;
+        if (takenStamp is null)
+        {
+            mode = ResolveMode(routeMode, globalMode);
+            stem = ApplyName(originalFilename, typedName, mode);
+        }
+        else
+        {
+            mode = ModeDated;
+            stem = ApplyDatedName(originalFilename, typedName, takenStamp);
+        }
+        var extension = ExtensionOf(originalFilename);
 
         var suffixApplied = "";
         if (appendSuffix && !string.IsNullOrEmpty(routeSuffix))
@@ -147,12 +222,12 @@ public static partial class Naming
         RejectIllegal(stem);  // colon etc. -> readable error, file stays put
 
         var collisionSuffix = "";
-        var filename = stem + PdfExt;
+        var filename = stem + extension;
         var counter = 2;
         while (exists(filename))
         {
             collisionSuffix = $" ({counter})";
-            filename = stem + collisionSuffix + PdfExt;
+            filename = stem + collisionSuffix + extension;
             counter++;
         }
         return new NameResult(filename, collisionSuffix, suffixApplied, mode);

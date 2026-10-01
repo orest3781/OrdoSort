@@ -129,6 +129,33 @@ public class FilingPipelineTests
         Assert.Equal(4, Directory.GetFiles(fx.RouteDir).Length);
     }
 
+    /// <summary>UX-67: a press that waits for room files the name that was
+    /// in the box when it was pressed. Typing ahead while it waits (the next
+    /// document's name) never lands on this one, and the box is read-only
+    /// until it leaves.</summary>
+    [Fact]
+    public async Task AWaitingPressFilesTheNameTypedAtThePress()
+    {
+        var (fx, moves, _) = Started(First, Second, Third, Fourth, Fifth);
+        using var _fx = fx;
+        moves.Holding = true;
+        for (var i = 0; i < ShellViewModel.MaxInFlight; i++) await fx.Shell.OnRouteAsync(0);
+        Assert.Equal(Fourth, fx.Shell.CurrentFilename);
+
+        fx.Shell.TypedName = "FOUR";
+        var fourth = fx.Shell.OnRouteAsync(0);
+        Assert.True(fx.Shell.IsWaitingForRoom);
+        fx.Shell.TypedName = "FIVE";   // typed ahead for the next document
+
+        moves.LetEverythingLand();
+        await fourth;
+
+        Assert.False(fx.Shell.IsWaitingForRoom);
+        var filed = Directory.GetFiles(fx.RouteDir).Select(Path.GetFileName).ToList();
+        Assert.Contains(filed, n => n!.Contains("444444") && n.Contains("FOUR"));
+        Assert.DoesNotContain(filed, n => n!.Contains("FIVE"));
+    }
+
     /// <summary>A move that fails brings its document back on screen with the
     /// name typed for it. The press made behind it, for a document the
     /// session has not reached, is dropped rather than filed out of order,

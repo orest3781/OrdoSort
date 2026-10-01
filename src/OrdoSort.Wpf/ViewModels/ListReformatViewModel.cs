@@ -144,4 +144,21 @@ public sealed class ListReformatViewModel : ObservableObject
     /// string, and there is nothing useful to put on the clipboard either
     /// way, so this says so rather than silently doing nothing.</summary>
     public void NoteNothingToCopy() => Status = "nothing to copy";
+
+    /// <summary>Paste &amp; copy's paste: puts the clipboard's text into the
+    /// list. When the clipboard holds no text (an image, a copied file, or
+    /// nothing), the list is left as it is and the status says so, since
+    /// pasting "" would wipe a list that can't be got back.</summary>
+    /// <param name="clipboardText">The clipboard's text, or null when it has none.</param>
+    /// <returns>True when the text was pasted and the result can be copied.</returns>
+    public bool TryPaste(string? clipboardText)
+    {
+        if (string.IsNullOrWhiteSpace(clipboardText))
+        {
+            Status = "The clipboard has no text · the list is unchanged";
+            return false;
+        }
+        InputText = clipboardText;
+        return true;
+    }
 }

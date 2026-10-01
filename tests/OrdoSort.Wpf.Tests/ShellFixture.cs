@@ -24,8 +24,13 @@ public sealed class ShellFixture : IDisposable
     /// pass another to hold background work open mid-flight.</param>
     /// <param name="stageFactory">The filing loop's local read-ahead; none by
     /// default, so documents are shown straight from the inbox.</param>
+    /// <param name="dates">Reads a photo's date taken; the real reader when
+    /// not given.</param>
+    /// <param name="previews">Turns a HEIC into something the pane shows; the
+    /// real converter when not given.</param>
     public ShellFixture(Action<Config>? tweak = null, IWorkScheduler? scheduler = null,
-        Func<IDocumentStage>? stageFactory = null)
+        Func<IDocumentStage>? stageFactory = null,
+        IDateTakenReader? dates = null, IPreviewImages? previews = null, IVideoPlayer? video = null)
     {
         Dir = Path.Combine(Path.GetTempPath(), "ordoshell_" + Guid.NewGuid());
         Inbox = Path.Combine(Dir, "inbox");
@@ -48,7 +53,7 @@ public sealed class ShellFixture : IDisposable
         Shell = new ShellViewModel(Cfg, CfgPath, Viewer, Dialogs, Watch,
             uiContext: null, palette: () => Theme.ThemePalette.Light,
             scheduler: scheduler ?? new InlineWorkScheduler(), sounds: Sounds,
-            stageFactory: stageFactory);
+            stageFactory: stageFactory, dates: dates, previews: previews, video: video);
     }
 
     /// <summary>Drop a file matching the inbox pattern (YYYYMMDD--ID.pdf).</summary>

@@ -101,7 +101,7 @@ public static class DemoWorkbench
             badRoutes.Count == 0 ? "" : string.Join("; ", badRoutes.Select(b => $"{b.Label}: {b.Problem}")));
 
         // 3. the inbox scan agrees with what was generated
-        var scan = OrdoSort.Core.Scanner.Scan(cfg.Inbox, cfg.Sort, cfg.NamingMode);
+        var scan = OrdoSort.Core.Scanner.Scan(cfg.Inbox, cfg.Sort, cfg.NamingMode, cfg.Media);
         Check("inbox scan matches", scan.Error.Length == 0 && scan.Count == expectedFilable,
             $"{scan.Count} filable, {scan.IgnoredCount} ignored{(scan.Error.Length > 0 ? " · " + scan.Error : "")}");
 

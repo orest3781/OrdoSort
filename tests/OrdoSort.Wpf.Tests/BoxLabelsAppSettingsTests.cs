@@ -225,6 +225,69 @@ public sealed class BoxLabelsAppSettingsTests : IDisposable
         Assert.Contains("\"station\": \"front desk\"", File.ReadAllText(SettingsPath));
     }
 
+    // ------------------------------------- a file that can't be read right now
+
+    /// <summary>Another program holding the file so that it can't be read,
+    /// though it can still be written (a share mode a scanner or a sync tool
+    /// can take).</summary>
+    private FileStream HeldUnreadable() =>
+        new(SettingsPath, FileMode.Open, FileAccess.Read, FileShare.Write);
+
+    /// <summary>AR-03: a file that could not be read for a moment was taken
+    /// for a blank one, and the save then wrote that blank over it. The
+    /// station forgot its labels file and came up in first run, where
+    /// picking another file starts a second store and box numbers repeat.
+    /// A save that can't read the file first says so and changes nothing.</summary>
+    [Fact]
+    public void SavingTheThemeNeverWritesOverAFileItCouldNotRead()
+    {
+        var share = @"\\server\records\box-labels.json";
+        LabelsFileSettings.Write(SettingsPath, share);
+
+        using (HeldUnreadable())
+            Assert.ThrowsAny<IOException>(() => LabelsFileSettings.WriteAppearance(SettingsPath, "dark", "", 0));
+
+        Assert.Equal(share, LabelsFileSettings.Read(SettingsPath));
+        Assert.Equal("auto", LabelsFileSettings.ReadTheme(SettingsPath));
+    }
+
+    [Fact]
+    public void SavingTheStoreNeverWritesOverAFileItCouldNotRead()
+    {
+        LabelsFileSettings.WriteAppearance(SettingsPath, "dark", "Tahoma", 18);
+
+        using (HeldUnreadable())
+            Assert.ThrowsAny<IOException>(() => LabelsFileSettings.Write(SettingsPath, @"C:\other\box-labels.json"));
+
+        Assert.Equal("dark", LabelsFileSettings.ReadTheme(SettingsPath));
+        Assert.Equal(("Tahoma", 18), LabelsFileSettings.ReadFont(SettingsPath));
+        Assert.Equal("", LabelsFileSettings.Read(SettingsPath));
+    }
+
+    /// <summary>The save swaps a finished file into place instead of
+    /// emptying the old one and writing into it: a program reading the file
+    /// at that moment keeps the whole old one, and a save cut off partway
+    /// leaves the old one, not half a file that reads as first run.</summary>
+    [Fact]
+    public void ASaveSwapsInAWholeFileRatherThanRewritingItInPlace()
+    {
+        var share = @"\\server\records\box-labels.json";
+        LabelsFileSettings.Write(SettingsPath, share);
+        var before = File.ReadAllText(SettingsPath);
+
+        using (var reader = new FileStream(SettingsPath, FileMode.Open, FileAccess.Read,
+                   FileShare.Read | FileShare.Delete))
+        {
+            LabelsFileSettings.WriteAppearance(SettingsPath, "dark", "", 0);
+
+            Assert.Equal(before, new StreamReader(reader).ReadToEnd());
+        }
+
+        Assert.Equal("dark", LabelsFileSettings.ReadTheme(SettingsPath));
+        Assert.Equal(share, LabelsFileSettings.Read(SettingsPath));
+        Assert.Equal(new[] { SettingsPath }, Directory.GetFiles(_dir));   // no temp file left
+    }
+
     /// <summary>The old OrdoSort scheme names map the same way config.json's
     /// do; anything unreadable follows Windows rather than stopping the app
     /// over a cosmetic setting.</summary>

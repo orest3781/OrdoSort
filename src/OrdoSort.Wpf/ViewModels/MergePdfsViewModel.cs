@@ -65,6 +65,19 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
 
     private readonly Config _cfg;
     private readonly Action? _saveConfig;
+    private readonly TimeProvider _time;
+
+    /// <summary>What is in the name box once someone has typed there
+    /// (<see cref="_nameTyped"/>). Until then the box shows
+    /// <see cref="SuggestedName"/> and follows the list.</summary>
+    private string _typedName = "";
+    private bool _nameTyped;
+
+    /// <summary>The typed name the run in flight saves its loose merge
+    /// under, or null for the default name: a snapshot taken when the run
+    /// starts, read by the default file merger on the worker thread, for the
+    /// reason <see cref="_activeIncludeTypes"/> is one.</summary>
+    private string? _activeOutputName;
 
     /// <summary>Which MergeTypes groups are currently switched on — seeded
     /// from config at construction and the single source of truth
@@ -120,9 +133,11 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
         Func<string, IReadOnlyList<string>, Zipper.ZipProbeResult>? zipProbe = null,
         Func<string, IReadOnlyList<string>, Unlock.ProbeResult>? pdfProbe = null,
         Config? config = null, Action? saveConfig = null,
-        IDocumentConverter? converter = null)
+        IDocumentConverter? converter = null, TimeProvider? time = null)
         : base(dialogs, savedPasswords, scheduler, uiContext)
     {
+        // the day an archive folder is named for; tests pass a manual clock
+        _time = time ?? TimeProvider.System;
         // Task 8: the machinery Tasks 2-7 built (the four converters, the
         // toggle row, the enabled-type set) had nothing calling it yet.
         // Office first — best fidelity when installed — then the three
@@ -176,7 +191,8 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
         _zipMerger = zipMerger ?? ((path, mergeCandidates, ask) =>
             PdfMerge.MergeZip(path, mergeCandidates, ask, converter: _converter, includeTypes: _activeIncludeTypes));
         _fileMerger = fileMerger ?? ((paths, outputPath, mergeCandidates, ask) =>
-            PdfMerge.MergeFiles(paths, outputPath, mergeCandidates, ask, converter: _converter, includeTypes: _activeIncludeTypes));
+            PdfMerge.MergeFiles(paths, outputPath, mergeCandidates, ask, converter: _converter,
+                includeTypes: _activeIncludeTypes, outputName: outputPath is null ? _activeOutputName : null));
         _zipProbe = zipProbe ?? Zipper.Probe;
         _pdfProbe = pdfProbe ?? Unlock.ProbeReadiness;
 
@@ -200,8 +216,12 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
         // !IsBusy on both: each command only blocks a second press of
         // itself, so without it Merge and Merge to… could run two batches
         // over the same rows at once (see the base class's IsBusy).
-        MergeCommand = new AsyncRelayCommand(() => MergeAsync(null), () => RunnableRows > 0 && !IsBusy);
-        MergeToCommand = new AsyncRelayCommand(MergeToAsync, () => RunnableLooseDocuments > 0 && !IsBusy);
+        // A name Windows can't take holds both back; the line under the
+        // name box says why.
+        MergeCommand = new AsyncRelayCommand(() => MergeAsync(null),
+            () => RunnableRows > 0 && !IsBusy && !OutputNameIsRefused);
+        MergeToCommand = new AsyncRelayCommand(MergeToAsync,
+            () => RunnableLooseDocuments > 0 && !IsBusy && !OutputNameIsRefused);
         // AsyncRelayCommand hands a faulted run to OnError and swallows it;
         // unwired, the status line kept "Merging 1 of 3…" and said nothing
         // more (Q2-44).
@@ -234,6 +254,118 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
     /// row that ISN'T its own zip unit belongs to the loose group, whatever
     /// its own type.</summary>
     private int RunnableLooseDocuments => Rows.Count(r => !r.IsZip && r.IsRunnable);
+
+    // ---------------------------------------------------- the merged PDF's name
+
+    /// <summary>The first loose document a merge would take, or null. The
+    /// default name comes from its folder, and the merged PDF lands beside it.</summary>
+    private ZipItemRow? FirstLooseToMerge => Rows.FirstOrDefault(r => !r.IsZip && r.IsRunnable);
+
+    /// <summary>The name Merge picks when nobody types one; "" with no
+    /// loose document to merge.</summary>
+    private string SuggestedName =>
+        FirstLooseToMerge is { } first ? PdfMerge.DefaultName(new[] { first.Path }) : "";
+
+    /// <summary>The name box applies to the loose documents only: a zip
+    /// becomes "zip name".pdf beside itself.</summary>
+    public bool CanNameOutput => !IsBusy && FirstLooseToMerge is not null;
+
+    /// <summary>The name box. It starts as the name Merge would pick and
+    /// follows the list until someone types in it; after that it holds what
+    /// was typed. Emptied, the merge uses the suggested name
+    /// (<see cref="OutputNameNote"/> says which). ".pdf" is added when it
+    /// isn't typed.</summary>
+    public string OutputName
+    {
+        get => _nameTyped ? _typedName : SuggestedName;
+        set
+        {
+            var typed = value ?? "";
+            // the binding writing back the suggestion it was just shown is not typing
+            if (typed == OutputName) return;
+            _nameTyped = true;
+            _typedName = typed;
+            RaiseOutputName();
+        }
+    }
+
+    private bool HasTypedName => _nameTyped && _typedName.Trim().Length > 0;
+
+    /// <summary>Why Windows can't take the typed name, or "" when it can (or
+    /// when there is nothing for it to name).</summary>
+    private string TypedNameProblem()
+    {
+        if (!HasTypedName || FirstLooseToMerge is null) return "";
+        try
+        {
+            PdfMerge.FileNameFromTyped(_typedName);
+            return "";
+        }
+        catch (ArgumentException ex)
+        {
+            return ex.Message;
+        }
+    }
+
+    /// <summary>The typed name can't be a file name: Merge and Merge to… wait
+    /// for another one.</summary>
+    public bool OutputNameIsRefused => TypedNameProblem().Length > 0;
+
+    /// <summary>What the line under the name box says when there is nothing
+    /// else to say. Never empty, so the line keeps its place and the box
+    /// doesn't move while a name is typed.</summary>
+    internal const string OutputNameHint = "Saved beside the first file. A zip keeps its own name.";
+
+    /// <summary>The line under the name box: why the name is refused, which
+    /// name an empty box gives, or the standing hint.</summary>
+    public string OutputNameNote
+    {
+        get
+        {
+            var problem = TypedNameProblem();
+            if (problem.Length > 0) return problem;
+            return _nameTyped && !HasTypedName && FirstLooseToMerge is not null
+                ? $"Blank uses {SuggestedName}"
+                : OutputNameHint;
+        }
+    }
+
+    private void RaiseOutputName()
+    {
+        Raise(nameof(OutputName));
+        Raise(nameof(OutputNameNote));
+        Raise(nameof(OutputNameIsRefused));
+        Raise(nameof(CanNameOutput));
+        MergeCommand.RaiseCanExecuteChanged();
+        MergeToCommand.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>The typed name was for a merge that is done, or for a list
+    /// that is gone: the box goes back to following the list.</summary>
+    private void ForgetTypedName()
+    {
+        _nameTyped = false;
+        _typedName = "";
+        RaiseOutputName();
+    }
+
+    // ------------------------------------------------------------ the archive
+
+    /// <summary>After a merge succeeds, move its originals into a
+    /// "merged_archive_YYYYMMDD" folder beside each (<see cref="MergeArchive"/>).
+    /// Off unless ticked; remembered in config.json, as the file-type toggles
+    /// are. Read once when a merge starts.</summary>
+    public bool ArchiveOriginals
+    {
+        get => _cfg.MergeArchiveOriginals;
+        set
+        {
+            if (_cfg.MergeArchiveOriginals == value) return;
+            _cfg.MergeArchiveOriginals = value;
+            _saveConfig?.Invoke();
+            Raise();
+        }
+    }
 
     /// <summary>One checkbox in the toggle row: a MergeTypes group's current
     /// on/off state, bound two-way so ticking or unticking calls straight
@@ -404,8 +536,10 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
         foreach (var row in Rows) row.IsIncluded = IsRowIncluded(row);
 
         Raise(nameof(MergeButtonText));
-        MergeCommand.RaiseCanExecuteChanged();
-        MergeToCommand.RaiseCanExecuteChanged();
+        // A typed name was for the files that were listed. Either call
+        // re-queries both commands.
+        if (Rows.Count == 0 && _nameTyped) ForgetTypedName();
+        else RaiseOutputName();
     }
 
     public AsyncRelayCommand MergeCommand { get; }
@@ -431,8 +565,10 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
     internal async Task MergeToAsync()
     {
         var loose = Rows.Where(r => !r.IsZip && r.IsRunnable).Select(r => r.Path).ToList();
-        if (loose.Count == 0) return;
-        var path = Dialogs.AskSaveFile("PDF (*.pdf)|*.pdf", PdfMerge.DefaultName(loose));
+        if (loose.Count == 0 || OutputNameIsRefused) return;
+        // the dialog starts from the name in the box
+        var suggested = HasTypedName ? PdfMerge.FileNameFromTyped(_typedName) : PdfMerge.DefaultName(loose);
+        var path = Dialogs.AskSaveFile("PDF (*.pdf)|*.pdf", suggested);
         if (path is null) return;
         await MergeAsync(path);
     }
@@ -469,22 +605,42 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
         // _enabledTypes was not good enough on its own even with the toggle
         // row disabled for the run's duration.
         _activeIncludeTypes = new HashSet<string>(_enabledTypes, StringComparer.OrdinalIgnoreCase);
+        // The name and the archive choice are fixed here too, for the same
+        // reason: the run reads them on a worker thread.
+        _activeOutputName = HasTypedName ? _typedName : null;
+        var archive = ArchiveOriginals;
+        var day = _time.GetLocalNow().DateTime;
+        // Every original this run moved or failed to move, for the status
+        // line. Filled by the units, one at a time, on the worker thread; read
+        // only once the whole run is over.
+        var archived = new List<MergeArchive.Moved>();
 
-        var units = new List<Unit<PdfMerge.MergeResult>>();
+        // The originals move only once their merge is whole and in place, on
+        // the same worker thread: a failed merge moves nothing.
+        MergeOutcome Finish(PdfMerge.MergeResult result, IReadOnlyList<string> sources)
+        {
+            if (!archive || result.Status != "ok")
+                return new MergeOutcome(result, Array.Empty<MergeArchive.Moved>());
+            var moved = MergeArchive.MoveOriginals(sources, result.Output, day);
+            lock (archived) archived.AddRange(moved);
+            return new MergeOutcome(result, moved);
+        }
+
+        var units = new List<Unit<MergeOutcome>>();
         foreach (var row in Rows.Where(r => r.IsZip && r.IsRunnable))
         {
             var zipRow = row;
-            units.Add(new Unit<PdfMerge.MergeResult>(new[] { zipRow },
-                candidates => _zipMerger(zipRow.Path, candidates, AskPassword)));
+            units.Add(new Unit<MergeOutcome>(new[] { zipRow },
+                candidates => Finish(_zipMerger(zipRow.Path, candidates, AskPassword), new[] { zipRow.Path })));
         }
         var loose = Rows.Where(r => !r.IsZip && r.IsRunnable).ToList();
         if (loose.Count > 0)
         {
             var paths = loose.Select(r => r.Path).ToList();
-            units.Add(new Unit<PdfMerge.MergeResult>(loose,
-                candidates => _fileMerger(paths, outputPath, candidates, AskPassword)));
+            units.Add(new Unit<MergeOutcome>(loose,
+                candidates => Finish(_fileMerger(paths, outputPath, candidates, AskPassword), paths)));
         }
-        await RunBatchAsync(units, r => r.Status, ApplyToUnit, "Merging",
+        await RunBatchAsync(units, o => o.Merge.Status, ApplyOutcome, "Merging",
             new[]
             {
                 new TallyClause("ok", "merged"),
@@ -499,7 +655,43 @@ public sealed class MergePdfsViewModel : ZipListViewModel, IDisposable
                 new TallyClause("needs_password", "needs a password", "need a password"),
                 new TallyClause("error", "failed"),
             });
+        lock (archived) AddArchiveTally(archived);
         DrainConverterWarnings();
+    }
+
+    /// <summary>A unit's merge result, and what became of its originals
+    /// (empty unless the archive box was ticked and the merge succeeded).</summary>
+    private sealed record MergeOutcome(PdfMerge.MergeResult Merge, IReadOnlyList<MergeArchive.Moved> Archived);
+
+    /// <summary>The merge verdict on every row of the unit, then where each
+    /// row's own original went. A loose merge that succeeded has used the
+    /// typed name, so the name box goes back to following the list; one that
+    /// was held back keeps it for the next press.</summary>
+    private void ApplyOutcome(IReadOnlyList<ZipItemRow> rows, MergeOutcome outcome)
+    {
+        ApplyToUnit(rows, outcome.Merge);
+        foreach (var moved in outcome.Archived)
+        {
+            var row = rows.FirstOrDefault(r => PathIdentity.Same(r.Path, moved.Source));
+            row?.AppendNote(moved.MovedTo is { } now
+                ? $"original moved to {System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(now))}"
+                : $"original not moved: {moved.Problem}");
+        }
+        if (outcome.Merge.Status == "ok" && rows.Any(r => !r.IsZip)) ForgetTypedName();
+    }
+
+    /// <summary>Adds what happened to the originals to the run's status
+    /// line. Nothing when the line is empty: Clear emptied it mid-run, and
+    /// the rows it would describe are gone.</summary>
+    private void AddArchiveTally(IReadOnlyList<MergeArchive.Moved> archived)
+    {
+        if (archived.Count == 0 || Status.Length == 0) return;
+        var moved = archived.Count(a => a.MovedTo is not null);
+        var stayed = archived.Count - moved;
+        var parts = new List<string> { Status };
+        if (moved > 0) parts.Add($"{moved} original{(moved == 1 ? "" : "s")} moved to the archive");
+        if (stayed > 0) parts.Add($"{stayed} original{(stayed == 1 ? "" : "s")} couldn't be moved");
+        Status = string.Join(" · ", parts);
     }
 
     /// <summary>Reads whatever NEW entries the converter's own

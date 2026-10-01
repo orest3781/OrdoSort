@@ -78,6 +78,16 @@ public sealed partial class ShellViewModel
     // True for the whole of a press; a second press in that moment would
     // file what the first one captured.
     private bool _pressing;
+
+    private bool _isWaitingForRoom;
+    /// <summary>A press is waiting for the oldest move to land before its
+    /// document leaves the screen (a slow share). The name box is read-only
+    /// meanwhile, so nothing typed for the next document is lost.</summary>
+    public bool IsWaitingForRoom
+    {
+        get => _isWaitingForRoom;
+        private set => Set(ref _isWaitingForRoom, value);
+    }
     // Presses taking their document off the screen, not yet queued to move.
     private int _leavingPresses;
     // A failed move is putting its document back on screen.
@@ -160,15 +170,30 @@ public sealed partial class ShellViewModel
         {
             var pressed = Stopwatch.GetTimestamp();
             var pressedFor = ShownPath;
+            // The name is the one in the box at the press, not after the wait
+            // below: while moves are still on their way, the user can start
+            // typing the next document's name before this one leaves.
+            var typed = TypedName;
             var rewinds = _rewinds;
-            while (_jobs.First is { } oldest && _jobs.Count >= MaxInFlight)
-                await oldest.Value.Landed.Task;
+            if (_jobs.Count >= MaxInFlight)
+            {
+                IsWaitingForRoom = true;
+                try
+                {
+                    while (_jobs.First is { } oldest && _jobs.Count >= MaxInFlight)
+                        await oldest.Value.Landed.Task;
+                }
+                finally
+                {
+                    IsWaitingForRoom = false;
+                }
+            }
             if (_disposed || _stopWhenLanded || Screen != Screen.Processing) return;
             // A failure while this press waited sent the screen back to an
             // earlier document: the press was for one no longer showing.
             if (_rewinds != rewinds || ShownPath is not { } path || !PathIdentity.Same(path, pressedFor)) return;
 
-            var job = new FilingJob(_shownIndex, path, TypedName, route, routeIndex)
+            var job = new FilingJob(_shownIndex, path, typed, route, routeIndex)
             {
                 ShownFromCopy = _shownSource is not null && !PathIdentity.Same(_shownSource, path),
             };
@@ -233,6 +258,7 @@ public sealed partial class ShellViewModel
         _shownIndex = job.QueueIndex;
         _loadedPath = job.Path;
         CurrentFilename = Path.GetFileName(job.Path);
+        ShowKnownTaken(job.Path);
         _typedName = job.Typed;
         ResetCycle();
         Raise(nameof(TypedName));
@@ -249,7 +275,8 @@ public sealed partial class ShellViewModel
         try
         {
             Naming.BuildTarget(Path.GetFileName(path), typed, route?.NamingMode, _session.SessionMode,
-                route?.Suffix ?? "", route?.AppendSuffix ?? false, _ => false);
+                route?.Suffix ?? "", route?.AppendSuffix ?? false, _ => false,
+                IsMedia(path) ? StampPending : null);
             return true;
         }
         catch (ArgumentException)
@@ -283,7 +310,7 @@ public sealed partial class ShellViewModel
     private Task ReleaseViewerAsync()
     {
         _shownSource = null;
-        _release = _viewer.ReleaseAsync();
+        _release = ReleaseShownAsync();
         return _release;
     }
 
@@ -318,6 +345,7 @@ public sealed partial class ShellViewModel
         }
         RaiseProgress();
         CurrentFilename = Path.GetFileName(path);
+        ShowKnownTaken(path);
         if (path != _loadedPath)
         {
             _loadedPath = path;
@@ -341,13 +369,27 @@ public sealed partial class ShellViewModel
         // preview, which keeps its file open
         if (Screen != Screen.Processing) return;
         RequestNameFocus?.Invoke();
-        var source = await LocalCopyOrInboxAsync(path);
+        var copy = await LocalCopyOrInboxAsync(path);
+        var media = IsMedia(path);
+        var video = IsVideo(path);
+        var source = media && !video ? await PreviewSourceAsync(path, copy) : copy;
         // moved on, or closed, while the copy was waited for: that load shows its own
         if (Screen != Screen.Processing || !PathIdentity.Same(ShownPath, path)) return;
         _shownSource = source;
-        await _viewer.ShowAsync(source, _sessionPage);
+        if (video)
+        {
+            await ShowVideoAsync(source);
+        }
+        else
+        {
+            LeaveVideo();
+            // a photo fits the pane by its own size; the PDF zoom is for PDFs
+            await _viewer.ShowAsync(source, media ? null : _sessionPage);
+        }
         // Edge can take the focus as it opens a document
         RequestNameFocus?.Invoke();
+        if (media) _ = ShowTakenAsync(path, copy);
+        PrepareNextMedia();
     }
 
     /// <summary>The document's local copy when there is one in time,
@@ -515,7 +557,7 @@ public sealed partial class ShellViewModel
     {
         job.MoveStarted = true;
         // the move itself can be a copy+delete across SMB shares — never on the UI thread
-        var outcome = await RunFiling(() => _session.CommitCurrent(job.Typed, job.Route!));
+        var outcome = await RunFiling(() => _session.CommitCurrent(job.Typed, job.Route!, MediaTargetFor(job.Path)));
         // the window closed while this was moving: nothing left to show (QC-19)
         if (_disposed) return;
         _lastRoute = job.RouteIndex;
@@ -525,6 +567,7 @@ public sealed partial class ShellViewModel
             ShowStatusNote("That file disappeared from the inbox — logged and moved on.");
             return;
         }
+        ForgetMedia(job.Path);
         var back = Theme.ThemePalette.ParseColor(job.Route!.Color) ?? _palette().Success;
         ShowLastAction($"✓  Filed to {job.Route.Label}", Path.GetFileName(outcome.NewPath!), back);
     }

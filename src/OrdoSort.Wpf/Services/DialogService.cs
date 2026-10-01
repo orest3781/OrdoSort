@@ -48,9 +48,18 @@ public sealed class DialogService : IDialogService
     public string? AskOpenFile(string filter, string? initialDirectory)
     {
         var dlg = new OpenFileDialog { Filter = filter };
-        if (!string.IsNullOrWhiteSpace(initialDirectory) && Directory.Exists(initialDirectory))
-            dlg.InitialDirectory = initialDirectory;
-        return dlg.ShowDialog(_owner) == true ? dlg.FileName : null;
+        if (StartFolder(initialDirectory) is not { } start) return dlg.ShowDialog(_owner) == true ? dlg.FileName : null;
+        dlg.InitialDirectory = start;
+        try
+        {
+            return dlg.ShowDialog(_owner) == true ? dlg.FileName : null;
+        }
+        catch (ArgumentException)
+        {
+            // the shell refused the start folder: open in its default place
+            var retry = new OpenFileDialog { Filter = filter };
+            return retry.ShowDialog(_owner) == true ? retry.FileName : null;
+        }
     }
 
     public string[] AskOpenFiles(string filter)
@@ -73,9 +82,40 @@ public sealed class DialogService : IDialogService
     public string? BrowseFolder(string? startAt)
     {
         var dlg = new OpenFolderDialog();
-        if (!string.IsNullOrWhiteSpace(startAt) && Directory.Exists(startAt))
-            dlg.InitialDirectory = startAt;
-        return dlg.ShowDialog(_owner) == true ? dlg.FolderName : null;
+        if (StartFolder(startAt) is not { } start) return dlg.ShowDialog(_owner) == true ? dlg.FolderName : null;
+        dlg.InitialDirectory = start;
+        try
+        {
+            return dlg.ShowDialog(_owner) == true ? dlg.FolderName : null;
+        }
+        catch (ArgumentException)
+        {
+            // the shell refused the start folder: open in its default place
+            var retry = new OpenFolderDialog();
+            return retry.ShowDialog(_owner) == true ? retry.FolderName : null;
+        }
+    }
+
+    /// <summary>The folder a picker starts in, in the form the Windows shell
+    /// accepts, or null to let it open in its default place. A config can
+    /// hold <c>routes/invoices</c>: resolved beside the config that becomes
+    /// <c>A:\dev\routes/invoices</c>, which Directory.Exists accepts but the
+    /// shell rejects ("Value does not fall within the expected range").
+    /// Path.GetFullPath turns every separator into a backslash and drops
+    /// <c>.</c> and <c>..</c> segments.</summary>
+    /// <param name="folder">The folder asked for; may be blank or missing.</param>
+    internal static string? StartFolder(string? folder)
+    {
+        if (string.IsNullOrWhiteSpace(folder)) return null;
+        try
+        {
+            var full = Path.GetFullPath(folder.Trim());
+            return Directory.Exists(full) ? full : null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The password prompt's Show toggle, carried from one prompt to

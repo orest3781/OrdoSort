@@ -237,4 +237,32 @@ public class ListReformatViewModelTests
         vm.Shape = ListReformat.OutputShape.CustomDelimiter;
         Assert.True(vm.SpaceAfterApplies);
     }
+
+    /// <summary>UX-68: Paste &amp; copy with an image, a copied file or
+    /// nothing on the clipboard leaves the list alone and says why.</summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  \r\n ")]
+    public void PastingNoTextLeavesTheListAlone(string? clipboard)
+    {
+        var vm = new ListReformatViewModel();
+        vm.InputText = "SMITH\nJONES";
+
+        Assert.False(vm.TryPaste(clipboard));
+
+        Assert.Equal("SMITH\nJONES", vm.InputText);
+        Assert.Contains("no text", vm.Status);
+    }
+
+    [Fact]
+    public void PastingTextReplacesTheList()
+    {
+        var vm = new ListReformatViewModel();
+        vm.InputText = "OLD";
+
+        Assert.True(vm.TryPaste("SMITH\nJONES"));
+
+        Assert.Equal("SMITH\nJONES", vm.InputText);
+    }
 }

@@ -83,9 +83,12 @@ public static class LabelsFileSettings
     /// silently forgetting the choice would make the app ask again on every
     /// single launch with no explanation. Other settings in the file are
     /// kept.</summary>
+    /// <exception cref="IOException">The file can't be written, or can't be
+    /// read first: it is then left as it is, so the other settings survive.</exception>
+    /// <exception cref="UnauthorizedAccessException">No permission to read it.</exception>
     public static void Write(string settingsPath, string boxLabelsFile)
     {
-        var doc = ReadDoc(settingsPath);
+        var doc = ReadDocToChange(settingsPath);
         doc.BoxLabelsFile = boxLabelsFile;
         WriteDoc(settingsPath, doc);
     }
@@ -104,39 +107,73 @@ public static class LabelsFileSettings
     /// Throws on an unwritable location, like <see cref="Write"/>; the
     /// remembered labels file is kept.</summary>
     /// <exception cref="ArgumentException">A theme other than auto, light or dark.</exception>
+    /// <exception cref="IOException">The file can't be written, or can't be
+    /// read first: it is then left as it is, so the labels file survives.</exception>
+    /// <exception cref="UnauthorizedAccessException">No permission to read it.</exception>
     public static void WriteAppearance(string settingsPath, string theme, string fontFamily, int fontSize)
     {
         if (theme is not ("auto" or "light" or "dark"))
             throw new ArgumentException($"theme must be auto, light or dark, got \"{theme}\"", nameof(theme));
-        var doc = ReadDoc(settingsPath);
+        var doc = ReadDocToChange(settingsPath);
         doc.Theme = theme;
         doc.UiFontFamily = fontFamily;
         doc.UiFontSize = fontSize;
         WriteDoc(settingsPath, doc);
     }
 
-    /// <summary>The whole file, or a fresh one when it is missing or
-    /// damaged. Every writer starts here, so saving one setting never erases
-    /// the other.</summary>
+    /// <summary>The whole file for a reader: a fresh one when it is missing,
+    /// damaged or can't be read right now. Starting the app never fails on
+    /// this file.</summary>
     private static LabelsFileDoc ReadDoc(string settingsPath)
     {
         try
         {
-            if (!File.Exists(settingsPath)) return new LabelsFileDoc();
-            return JsonSerializer.Deserialize<LabelsFileDoc>(File.ReadAllText(settingsPath), Opts)
-                ?? new LabelsFileDoc();
+            return ReadDocToChange(settingsPath);
         }
-        catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             return new LabelsFileDoc();
         }
     }
 
+    /// <summary>The whole file for a writer, so saving one setting never
+    /// erases the other: a fresh one when it is missing or damaged, but
+    /// never when it is there and can't be read right now (held by another
+    /// program). Taken for blank, that file was saved over and the station
+    /// forgot its labels file (AR-03).</summary>
+    /// <exception cref="IOException">The file is there and can't be read.</exception>
+    /// <exception cref="UnauthorizedAccessException">No permission to read it.</exception>
+    private static LabelsFileDoc ReadDocToChange(string settingsPath)
+    {
+        string text;
+        try
+        {
+            text = File.ReadAllText(settingsPath);
+        }
+        catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return new LabelsFileDoc();
+        }
+        try
+        {
+            return JsonSerializer.Deserialize<LabelsFileDoc>(text, Opts) ?? new LabelsFileDoc();
+        }
+        catch (JsonException)
+        {
+            return new LabelsFileDoc();
+        }
+    }
+
+    /// <summary>Swapped in whole through <see cref="AtomicPlace"/>, never
+    /// rewritten in place: a save cut off partway used to leave half a file,
+    /// which reads as first run.</summary>
     private static void WriteDoc(string settingsPath, LabelsFileDoc doc)
     {
         var dir = Path.GetDirectoryName(Path.GetFullPath(settingsPath));
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        File.WriteAllText(settingsPath, JsonSerializer.Serialize(doc, Opts) + "\n");
+        var json = JsonSerializer.Serialize(doc, Opts) + "\n";
+        if (!AtomicPlace.TryReplace(settingsPath, temp => File.WriteAllText(temp, json), out var error))
+            throw new IOException(error);
     }
 
     /// <summary>The "--file &lt;path&gt;" argument, or null when it isn't

@@ -186,6 +186,12 @@ public sealed class ZipItemRow : ObservableObject
         StatusKind = status;
         Note = note;
     }
+
+    /// <summary>Something more to say about a row whose verdict is already
+    /// in: where its original went after the merge. Added after the
+    /// verdict, never in place of it.</summary>
+    internal void AppendNote(string more) =>
+        Note = _note.Length > 0 ? $"{_note} · {more}" : more;
 }
 
 /// <summary>Everything the two zip-tool windows share: the list, intake and
@@ -322,8 +328,16 @@ public abstract class ZipListViewModel : ObservableObject
             oldProbeCts.Dispose();
         });
 
-        Rows.CollectionChanged += (_, _) => OnRowsChanged();
+        Rows.CollectionChanged += (_, _) =>
+        {
+            if (!_addingRows) OnRowsChanged();
+        };
     }
+
+    // True while AddPaths adds a drop's rows: the list is refreshed once
+    // after the last one. A refresh walks every row (Merge PDFs re-checks
+    // each row's type), so one per added row made a big drop rows × rows.
+    private bool _addingRows;
 
     /// <summary>Which extensions this window accepts, in Intake's shape
     /// (dot-less, lowercase); null means anything that exists, files and
@@ -425,12 +439,21 @@ public abstract class ZipListViewModel : ObservableObject
         // await — otherwise a second drop landing mid-await duplicates rows.
         var settled = Intake.Add(Rows.Select(r => r.Path), offThread.Files);
         var added = new List<ZipItemRow>();
-        foreach (var p in settled.Files)
+        _addingRows = true;
+        try
         {
-            var row = new ZipItemRow(p, kinds[p]);
-            Rows.Add(row);
-            added.Add(row);
+            foreach (var p in settled.Files)
+            {
+                var row = new ZipItemRow(p, kinds[p]);
+                Rows.Add(row);
+                added.Add(row);
+            }
         }
+        finally
+        {
+            _addingRows = false;
+        }
+        if (added.Count > 0) OnRowsChanged();
 
         AddNote = (offThread with
         {

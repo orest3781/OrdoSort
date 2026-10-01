@@ -21,7 +21,8 @@ public partial class ListReformatWindow : Window
     {
         try
         {
-            _vm.InputText = Clipboard.GetText();
+            var pasted = Clipboard.ContainsText() ? Clipboard.GetText() : null;
+            if (!_vm.TryPaste(pasted)) return;
         }
         catch (System.Runtime.InteropServices.COMException)
         {

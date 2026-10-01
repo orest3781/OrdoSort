@@ -363,7 +363,7 @@
                              rather than guess. -->
                         <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap"
                                    Margin="22,2,0,0"
-                                   Text='Insert mode picks up only PDFs with "--" in the name; every other mode picks up every PDF. Anything else shows as "ignored" on the Ready screen.' />
+                                   Text='Insert mode picks up only PDFs with "--" in the name; every other mode picks up every PDF. Photos and GIFs, when turned on below, are picked up in every mode. Anything else shows as "ignored" on the Ready screen.' />
                         <!-- one live example tying mode + UPPERCASE + separator together -->
                         <Border Background="{DynamicResource Theme.Surface}"
                                 BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
@@ -392,6 +392,50 @@
                         <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap"
                                    Margin="22,2,0,0"
                                    Text="Off: a session files only what was in the inbox when you pressed Start; new files wait for the next session." />
+
+                        <TextBlock Text="Photos, GIFs and videos" Style="{StaticResource SectionHeader}" />
+                        <CheckBox x:Name="FileMediaBox" IsChecked="{Binding FileMedia}">
+                            <TextBlock Text="File photos and GIFs too, in the same session as PDFs"
+                                       TextWrapping="Wrap" />
+                        </CheckBox>
+                        <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap"
+                                   Margin="22,2,0,0"
+                                   Text="A photo or video is named by the date it was taken, then what you type: 20260929-SMITH KITCHEN.jpg. Leave the name blank to keep the original name." />
+                        <Grid Style="{StaticResource FieldRow}" IsEnabled="{Binding FileMedia}" Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Photo types:" Style="{StaticResource FieldLabel}" />
+                            <TextBox Grid.Column="1" Text="{Binding MediaExtensionsText, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Photo file types" />
+                        </Grid>
+                        <CheckBox x:Name="FileVideosBox" IsChecked="{Binding FileVideos}" Margin="0,4,0,0">
+                            <TextBlock Text="File videos too, with a player you can scrub from the keyboard"
+                                       TextWrapping="Wrap" />
+                        </CheckBox>
+                        <Grid Style="{StaticResource FieldRow}" IsEnabled="{Binding FileVideos}" Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Video types:" Style="{StaticResource FieldLabel}" />
+                            <TextBox Grid.Column="1" Text="{Binding VideoExtensionsText, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Video file types" />
+                        </Grid>
+                        <Grid Style="{StaticResource FieldRow}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="They go into:" Style="{StaticResource FieldLabel}" />
+                            <ComboBox Grid.Column="1"
+                                      ItemsSource="{x:Static vm:SettingsViewModel.MediaFolderChoices}"
+                                      SelectedValuePath="Key"
+                                      SelectedValue="{Binding MediaFolder}"
+                                      AutomationProperties.Name="Photos and videos go into"
+                                      ItemTemplate="{StaticResource KvpValueTemplate}" />
+                        </Grid>
 
                         <TextBlock Text="Typing" Style="{StaticResource SectionHeader}" />
                         <CheckBox Content="UPPERCASE names as they're typed"

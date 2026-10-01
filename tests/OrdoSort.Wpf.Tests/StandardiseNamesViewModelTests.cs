@@ -442,6 +442,95 @@ public class StandardiseNamesViewModelTests : IDisposable
         Assert.Contains("exists again", vm.Status);
     }
 
+    /// <summary>A file Undo could not put back is still renamed on disk, so
+    /// Undo must stay on for it: once whatever was in the way is gone, a
+    /// second Undo puts it back. Forgetting it left the file under its new
+    /// name with no way back through the window.</summary>
+    [Fact]
+    public async Task UndoThatCouldNotPutANameBackCanBeTriedAgain()
+    {
+        var src = _dir.File("smith.pdf");
+        var vm = NewViewModel();
+        await vm.AddFilesAsync(new[] { src });
+        vm.RenameCommand.Execute(null);
+        await vm.RenameCommand.Completion;
+        File.WriteAllText(src, "someone else's file");
+        vm.UndoCommand.Execute(null);
+        await vm.UndoCommand.Completion;
+
+        Assert.True(vm.UndoCommand.CanExecute(null));
+        File.Delete(src);
+        vm.UndoCommand.Execute(null);
+        await vm.UndoCommand.Completion;
+
+        Assert.True(File.Exists(src));
+        Assert.False(File.Exists(OnDisk("20260115-SMITH.pdf")));
+        Assert.Equal(src, Assert.Single(vm.Results).CurrentPath);
+        Assert.StartsWith("Undid the last rename (1 file)", vm.Status);
+        Assert.False(vm.UndoCommand.CanExecute(null));
+    }
+
+    /// <summary>Undo keeps exactly the files still under their new names:
+    /// the one that went back is done with, the one that didn't can be tried
+    /// again, and it gets its dropped words back when it does.</summary>
+    [Fact]
+    public async Task UndoKeepsOnlyTheFilesItCouldNotPutBack()
+    {
+        var smith = _dir.File("smith john scan.pdf");
+        var jones = _dir.File("jones mary scan.pdf");
+        var vm = NewViewModel();
+        await vm.AddFilesAsync(new[] { smith, jones });
+        vm.SegmentChips[2].IsKept = false;   // "scan", in both files
+        vm.RenameCommand.Execute(null);
+        await vm.RenameCommand.Completion;
+        File.WriteAllText(smith, "someone else's file");
+
+        vm.UndoCommand.Execute(null);
+        await vm.UndoCommand.Completion;
+
+        Assert.True(File.Exists(jones));
+        Assert.True(File.Exists(OnDisk("20260115-SMITH-JOHN.pdf")));
+        Assert.True(vm.UndoCommand.CanExecute(null));
+
+        File.Delete(smith);
+        vm.UndoCommand.Execute(null);
+        await vm.UndoCommand.Completion;
+
+        Assert.True(File.Exists(smith));
+        Assert.True(File.Exists(jones));
+        var smithRow = vm.Results.Single(r => r.CurrentPath == smith);
+        Assert.Equal("20260115-SMITH-JOHN.pdf", smithRow.Result);   // "scan" is dropped again
+        Assert.False(vm.UndoCommand.CanExecute(null));
+    }
+
+    /// <summary>Undo covers the last rename that moved something. A Rename
+    /// that moves nothing (its only file is in use) must not wipe that
+    /// record: the earlier files are still under their new names (the rule
+    /// Bulk rename follows, Q2-01).</summary>
+    [Fact]
+    public async Task ARenameThatMovesNothingKeepsTheLastRenamesUndo()
+    {
+        var first = _dir.File("smith.pdf");
+        var vm = NewViewModel();
+        await vm.AddFilesAsync(new[] { first });
+        vm.RenameCommand.Execute(null);
+        await vm.RenameCommand.Completion;
+        var locked = _dir.File("jones.pdf");
+        await vm.AddFilesAsync(new[] { locked });
+
+        using (File.Open(locked, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            vm.RenameCommand.Execute(null);
+            await vm.RenameCommand.Completion;
+        }
+
+        Assert.Equal(StandardiseRowStatus.Failed, vm.Results.Single(r => r.CurrentPath == locked).Status);
+        Assert.True(vm.UndoCommand.CanExecute(null));
+        vm.UndoCommand.Execute(null);
+        await vm.UndoCommand.Completion;
+        Assert.True(File.Exists(first));
+    }
+
     [Fact]
     public void UndoCannotRunWithNothingToUndo() =>
         Assert.False(NewViewModel().UndoCommand.CanExecute(null));

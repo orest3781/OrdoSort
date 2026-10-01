@@ -53,16 +53,16 @@ public class ShellReadyTests
         Assert.Contains("1 set-aside file waiting", fx.Shell.DeferredAlert);
     }
 
-    /// <summary>QC-13's rendering half: OldestAgeDays is null when every
-    /// set-aside file's mtime read failed, and the alert must say "oldest
-    /// unknown" rather than a number. Q2-46: this is only the rendering. The
-    /// sentinel detection itself (the ~155,000-day age the user saw) is pinned
-    /// in PipelineTests.SafeMtimeOfAFileGoneByReadTimeIsNullNotTheSentinelTicks;
+    /// <summary>QC-13's rendering half: OldestAgeDays is null when no
+    /// set-aside file has a known modified time, and the alert must say
+    /// "oldest unknown" rather than a number. Q2-46: this is only the
+    /// rendering. The sentinel detection itself (the ~155,000-day age the user
+    /// saw) is pinned in
+    /// ScannerListingTests.ATimeOfTheMissingFileSentinelIsUnknownNotTheYear1601;
     /// the old DoesNotContain("155") here could not fail for any input.
     /// Constructed directly (see ApplyDeferred's doc comment): reaching this
-    /// through a real Scanner.DeferredSummary call needs a file gone between
-    /// Directory.GetFiles and its mtime read, which isn't a race this machine
-    /// can reproduce.</summary>
+    /// through a real Scanner.DeferredSummary call needs a file Windows has
+    /// no time for, which this machine can't make.</summary>
     [Fact]
     public void UnknownOldestAgeRendersAsOldestUnknown()
     {

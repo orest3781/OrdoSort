@@ -78,7 +78,14 @@ public sealed class FakeDialogs : IDialogService
         Confirms.Add((message, title));
         return ConfirmAnswer;
     }
-    public string? AskSaveFile(string filter, string suggested) => NextSaveFile;
+    /// <summary>The name the last <see cref="AskSaveFile"/> call offered.</summary>
+    public string? LastSaveSuggested { get; private set; }
+
+    public string? AskSaveFile(string filter, string suggested)
+    {
+        LastSaveSuggested = suggested;
+        return NextSaveFile;
+    }
     public string? AskOpenFile(string filter) => NextOpenFile;
 
     /// <summary>What the last <see cref="AskOpenFile(string, string?)"/> call
@@ -165,4 +172,108 @@ public sealed class FakeStage : IDocumentStage
     public void Discard(string path) => Discarded.Add(path);
 
     public void Dispose() => Disposed = true;
+}
+
+/// <summary>A video player with a hand-driven clock: tests set where the video
+/// is and how long it is, and read back every call.</summary>
+public sealed class FakeVideoPlayer : IVideoPlayer
+{
+    /// <summary>Every call, in order ("open C:\…", "release", "seek 00:00:05"…).</summary>
+    public List<string> Calls { get; } = new();
+    public List<string> Opened { get; } = new();
+    public int Releases { get; private set; }
+    public int WarmUps { get; private set; }
+
+    public bool IsOpen { get; private set; }
+    public bool IsPlaying { get; private set; }
+    public TimeSpan Position { get; set; }
+    public TimeSpan Length { get; set; } = TimeSpan.FromMinutes(2);
+    public TimeSpan FrameTime { get; set; } = TimeSpan.FromMilliseconds(40);
+    public bool IsMuted { get; private set; } = true;
+    public float Rate { get; private set; } = 1f;
+
+    /// <summary>When set, the next open fails with this message.</summary>
+    public string? FailNextOpen { get; set; }
+
+    /// <summary>When set, an open waits for it, as a real one waits for the
+    /// engine to load.</summary>
+    public TaskCompletionSource? HoldOpen { get; set; }
+
+    /// <summary>Holds the open file as a real player does (no delete or
+    /// rename sharing), so a move that doesn't wait for the release fails.</summary>
+    public bool LockFiles { get; set; }
+
+    private FileStream? _held;
+
+    public event Action<string>? Failed;
+
+    public async Task OpenAsync(string path)
+    {
+        Calls.Add("open " + path);
+        Opened.Add(path);
+        if (HoldOpen is { } hold) await hold.Task;
+        if (LockFiles)
+        {
+            _held?.Dispose();
+            _held = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        }
+        IsOpen = true;
+        IsPlaying = false;
+        Position = TimeSpan.Zero;
+        if (FailNextOpen is { } message)
+        {
+            FailNextOpen = null;
+            Failed?.Invoke(message);
+        }
+    }
+
+    public Task ReleaseAsync()
+    {
+        Calls.Add("release");
+        _held?.Dispose();
+        _held = null;
+        Releases++;
+        IsOpen = false;
+        IsPlaying = false;
+        return Task.CompletedTask;
+    }
+
+    public void WarmUp() => WarmUps++;
+
+    public void Play()
+    {
+        Calls.Add("play");
+        IsPlaying = true;
+    }
+
+    public void Pause()
+    {
+        Calls.Add("pause");
+        IsPlaying = false;
+    }
+
+    public void Seek(TimeSpan position)
+    {
+        Calls.Add("seek " + position);
+        Position = position < TimeSpan.Zero ? TimeSpan.Zero : position > Length ? Length : position;
+    }
+
+    public void SetRate(float rate)
+    {
+        Calls.Add("rate " + rate.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Rate = rate;
+    }
+
+    public void SetMuted(bool muted)
+    {
+        Calls.Add(muted ? "mute" : "unmute");
+        IsMuted = muted;
+    }
+
+    public void NextFrame()
+    {
+        Calls.Add("next frame");
+        IsPlaying = false;
+        Position += FrameTime;
+    }
 }

@@ -81,9 +81,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         IDialogService dialogs, FolderWatchService watch,
         SynchronizationContext? uiContext = null, Func<ThemePalette>? palette = null,
         IWorkScheduler? scheduler = null, ISoundService? sounds = null,
-        Func<IDocumentStage>? stageFactory = null)
+        Func<IDocumentStage>? stageFactory = null,
+        IDateTakenReader? dates = null, IPreviewImages? previews = null, IVideoPlayer? video = null)
     {
         _cfg = cfg;
+        _dates = dates ?? new DateTakenReader();
+        Video = new VideoScrubber(video ?? new NoVideoPlayer(), uiContext);
+        _ownsPreviews = previews is null;
+        _previews = previews ?? new PreviewImages();
         // null: every document is shown straight from the inbox (the tests,
         // and any caller that doesn't want the local read-ahead)
         _stageFactory = stageFactory;
@@ -623,7 +628,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _loadedPath = null;
         _shownSource = null;
         Screen = Screen.Ready;
-        _viewer.Blank();
+        BlankPanes();
         DisposeStage();
         _ = RefreshFoldersAsync(showErrors: true);
     }
@@ -661,7 +666,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 var cfg = _cfg;
                 var cfgPath = _cfgPath;
                 var snap = await _scheduler.Run(() => new FolderSnapshot(
-                    Scanner.Scan(ResolveFolderSetting(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode),
+                    Scanner.Scan(ResolveFolderSetting(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode, cfg.Media),
                     Scanner.DeferredSummary(ResolveFolderSetting(cfg.Deferred, cfgPath)),
                     wantStatuses
                         ? FolderMonitor.All(cfg.WatchFolders, cfg.AlertTexts, cfgPath)
@@ -734,7 +739,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     private void ShowReady(FolderSnapshot snap)
     {
-        _viewer.Blank();
+        BlankPanes();
         StartEnabled = snap.Scan.Count > 0 && SetupComplete;
         ShowDashboard(snap);
         RefreshNotices();
@@ -757,7 +762,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         BigCount = scan.Error.Length > 0 ? "⚠" : scan.Count.ToString();
         CountCaption = scan.Error.Length > 0
             ? "inbox problem"
-            : $"PDF{(scan.Count == 1 ? "" : "s")} in the inbox";
+            : _cfg.Media.Enabled || _cfg.Media.VideosEnabled
+                ? $"file{(scan.Count == 1 ? "" : "s")} in the inbox"
+                : $"PDF{(scan.Count == 1 ? "" : "s")} in the inbox";
         DetailLine = scan.Error.Length > 0
             ? scan.Error
             : (scan.IgnoredCount > 0
@@ -783,11 +790,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private string _deferredDetail = "";
 
     // internal, not private: QC-13's "unknown" rendering needs OldestAgeDays
-    // null with Count > 0, which only happens when every set-aside file
-    // vanishes between Directory.GetFiles and its mtime read (Scanner) — not
-    // reproducible as a real race on this machine. Constructing the
-    // DeferredInfo directly and calling this pins the rendering seam
-    // instead. See ShellReadyTests.
+    // null with Count > 0, which only happens when Windows has no modified
+    // time for any set-aside file (Scanner.ModifiedTicksOf) — not something
+    // this machine can make. Constructing the DeferredInfo directly and
+    // calling this pins the rendering seam instead. See ShellReadyTests.
     internal void ApplyDeferred(Scanner.DeferredInfo info)
     {
         if (info.Count == 0)
@@ -804,10 +810,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             _deferredDismissed = false;
         _deferredLastCount = info.Count;
 
-        // QC-13: OldestAgeDays is null when every set-aside file's mtime read
-        // failed (Scanner.SafeMtime, e.g. a file gone by read time) -- render
-        // "unknown" rather than let that read as "0 days old" or, pre-fix, a
-        // ~155,000-day sentinel date.
+        // QC-13: OldestAgeDays is null when no set-aside file has a known
+        // modified time (Scanner.ModifiedTicksOf) -- render "unknown" rather
+        // than let that read as "0 days old" or, pre-fix, a ~155,000-day
+        // sentinel date.
         var age = info.OldestAgeDays switch
         {
             null => "   ·   oldest unknown",
@@ -1525,7 +1531,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         try
         {
             (scan, problems) = await _scheduler.Run(() =>
-                (Scanner.Scan(ResolveFolderSetting(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode),
+                (Scanner.Scan(ResolveFolderSetting(cfg.Inbox, cfgPath), cfg.Sort, cfg.NamingMode, cfg.Media),
                  routes.Select(r => Config.ValidateRoute(r, cfgPath)).ToList()));
         }
         finally { _busy = false; }
@@ -1536,6 +1542,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             if (problems[i].Length == 0) problems[i] = clashes[i];
         BuildRoutes(routes, problems);
         _session.Start(scan.Matching);
+        WarmUpVideoIfQueued();
+        _takenDates.Clear();
+        _previewTasks.Clear();
         OrderLine = SettingsViewModel.SortLabel(cfg.Sort);
         ResetFilingLoop();
         _lastRoute = null;
@@ -1556,21 +1565,31 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         await LoadCurrentAsync();
     }
 
-    /// <summary>Measure the document now on screen and ask the window to fit
+    /// <summary>Measure the session's first PDF and ask the window to fit
     /// the viewer pane to it. Silent about everything that can go wrong: an
     /// empty session, a file that will not open, a page with no size. The
     /// pane keeping the size it already had is a non-event, and an inbox is
-    /// exactly where unreadable files turn up.</summary>
+    /// exactly where unreadable files turn up. Photos are skipped: each fits
+    /// the pane by its own size, and a session that starts on one still
+    /// fits its PDFs.</summary>
     private async Task FitViewerToCurrentAsync()
     {
         _sessionPage = null;
-        var path = ShownPath;
+        var path = FirstPdfFromHere();
         if (path is null) return;
         // reads the whole file, and off an SMB inbox that is a network
         // transfer: done once per session, never per document
         var page = await _scheduler.Run(() => PageShape.SizeOf(path));
         _sessionPage = page;
         if (page?.Aspect is > 0) FitViewerToPage?.Invoke(page.Value.Aspect);
+    }
+
+    private string? FirstPdfFromHere()
+    {
+        var queue = _session.Queue;
+        for (var i = _session.Pos; i < queue.Count; i++)
+            if (!IsMedia(queue[i])) return queue[i];
+        return null;
     }
 
     private void BuildRoutes(IReadOnlyList<Route> routes, IReadOnlyList<string> problems)
@@ -1588,7 +1607,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _loadedPath = null;
         _shownSource = null;
         Screen = Screen.Done;
-        _viewer.Blank();
+        BlankPanes();
         DisposeStage();
         DoneTitle = "Session complete";
         DoneDetail = $"{_session.Filed} filed, {_session.Skipped} set aside"
@@ -2149,7 +2168,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 Path.GetFileName(current), TypedName,
                 route?.NamingMode, _session.SessionMode,
                 route?.Suffix ?? "", route?.AppendSuffix ?? false,
-                _ => false);
+                _ => false, PreviewStamp(current));
             Preview = result.Filename;
             PreviewIsWarning = false;
         }
@@ -2391,6 +2410,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _statusTimer.Dispose();
         DropUnstartedPresses();
         DisposeStage();
+        // the shell made the preview converter, so it removes its folder
+        if (_ownsPreviews && _previews is IDisposable previews) previews.Dispose();
+        Video.Dispose();
         // A document still being moved writes its history row when the move
         // lands; disposing the database first lost that row with no word
         // (QC-19). So it closes once that filing is done.

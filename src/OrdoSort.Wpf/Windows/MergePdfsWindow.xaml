@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:OrdoSort.Wpf.ViewModels"
         xmlns:views="clr-namespace:OrdoSort.Wpf.Views;assembly=OrdoSort.Ui"
-        Title="OrdoSort — Merge PDFs" Width="700" Height="520" MinWidth="580" MinHeight="420"
+        Title="OrdoSort — Merge PDFs" Width="700" Height="640" MinWidth="580" MinHeight="560"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False" AllowDrop="True"
         DragOver="OnDragOver" Drop="OnDrop"
         Style="{StaticResource {x:Type Window}}">
@@ -11,28 +11,59 @@
          the drop landed on, so there is no routing decision left to get
          wrong (2026-08-25 spec). -->
     <DockPanel Margin="14">
-        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
-            <Button DockPanel.Dock="Right" Content="Close" Width="96" IsCancel="True" />
-            <StackPanel Orientation="Horizontal">
-                <!-- IsDefault: CanExecute already needs rows, so Enter cannot fire early; the sibling batch windows wire it (UX-22). -->
-                <Button Command="{Binding MergeCommand}"
-                        Style="{StaticResource PrimaryButton}" MinWidth="120" Margin="0,0,8,0"
-                        IsDefault="True"
-                        AutomationProperties.Name="{Binding MergeButtonText}">
-                    <TextBlock Text="{Binding MergeButtonText}"
-                               Style="{StaticResource PrimaryButtonLabel}" />
-                </Button>
-                <Button Content="Merge to…" Command="{Binding MergeToCommand}" Margin="0,0,10,0" />
-                <!-- MaxWidth is load-bearing, not cosmetic: StatusText
-                     carries TextWrapping="Wrap" (Theme/Styles.xaml), and a
-                     horizontal StackPanel measures every child at infinite
-                     width, so without a finite cap the wrap never engages
-                     and the line runs off screen — the failure
-                     TextWrapCoverageTests exists to catch. -->
-                <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
-                           Style="{StaticResource StatusText}" MaxWidth="360" />
-            </StackPanel>
-        </DockPanel>
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <!-- What the loose files' PDF is called, and what becomes of the
+                 originals (owner request 2026-10-01). Above the buttons they
+                 act on; Enter in the name box is the Merge button. The note
+                 line always holds something (a hint when there is nothing to
+                 say), so the box doesn't move while a name is typed. -->
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Left" Text="Name of the merged PDF" Style="{StaticResource FieldLabel}" />
+                <TextBox x:Name="OutputNameBox" VerticalContentAlignment="Center"
+                         Text="{Binding OutputName, UpdateSourceTrigger=PropertyChanged}"
+                         IsEnabled="{Binding CanNameOutput}"
+                         AutomationProperties.Name="Name of the merged PDF"
+                         AutomationProperties.HelpText="{Binding OutputNameNote}" />
+            </DockPanel>
+            <TextBlock x:Name="OutputNameNoteText" Text="{Binding OutputNameNote}" TextWrapping="Wrap"
+                       Margin="0,4,0,0">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding OutputNameIsRefused}" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource Theme.StatusRed}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+            <CheckBox x:Name="ArchiveOriginalsBox" Margin="0,8,0,0"
+                      Content="After merging, move the originals to an archive folder"
+                      IsChecked="{Binding ArchiveOriginals}" IsEnabled="{Binding IsIdle}"
+                      ToolTip="Each original goes into a folder named merged_archive_ and today's date, beside where it was. Nothing is deleted." />
+            <DockPanel Margin="0,10,0,0">
+                <Button DockPanel.Dock="Right" Content="Close" Width="96" IsCancel="True" />
+                <StackPanel Orientation="Horizontal">
+                    <!-- IsDefault: CanExecute already needs rows, so Enter cannot fire early; the sibling batch windows wire it (UX-22). -->
+                    <Button Command="{Binding MergeCommand}"
+                            Style="{StaticResource PrimaryButton}" MinWidth="120" Margin="0,0,8,0"
+                            IsDefault="True"
+                            AutomationProperties.Name="{Binding MergeButtonText}">
+                        <TextBlock Text="{Binding MergeButtonText}"
+                                   Style="{StaticResource PrimaryButtonLabel}" />
+                    </Button>
+                    <Button Content="Merge to…" Command="{Binding MergeToCommand}" Margin="0,0,10,0" />
+                    <!-- MaxWidth is load-bearing, not cosmetic: StatusText
+                         carries TextWrapping="Wrap" (Theme/Styles.xaml), and a
+                         horizontal StackPanel measures every child at infinite
+                         width, so without a finite cap the wrap never engages
+                         and the line runs off screen — the failure
+                         TextWrapCoverageTests exists to catch. -->
+                    <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
+                               Style="{StaticResource StatusText}" MaxWidth="360" />
+                </StackPanel>
+            </DockPanel>
+        </StackPanel>
 
         <Grid Margin="16,8">
             <Grid.RowDefinitions>
