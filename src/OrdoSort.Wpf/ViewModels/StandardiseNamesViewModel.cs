@@ -564,8 +564,16 @@ public sealed class StandardiseNamesViewModel : ObservableObject
                     failed++;
                 }
             }
-            _lastOutcomes = outcomes.Where(o => o.Final is not null).ToList();
-            _lastDropped = dropped;
+            // Only a rename that moved something replaces the undo record: one
+            // that moved nothing (every file in use) must not wipe the record
+            // of the rename before it, whose files are still under their new
+            // names (the rule Bulk rename follows, Q2-01).
+            var moved = outcomes.Where(o => o.Final is not null).ToList();
+            if (moved.Count > 0)
+            {
+                _lastOutcomes = moved;
+                _lastDropped = dropped;
+            }
             ForgetShownPlan();
             Status = $"Renamed {renamed} file{(renamed == 1 ? "" : "s")}" +
                      (failed > 0 ? $" · {failed} couldn't be renamed" : "") + ".";
@@ -601,8 +609,16 @@ public sealed class StandardiseNamesViewModel : ObservableObject
                     if (dropped.TryGetValue(final, out var words)) row.Dropped.UnionWith(words);
                 }
             }
-            _lastOutcomes = new();
-            _lastDropped = new(PathIdentity.PathComparer.Instance);
+            // A file that could not be put back is still under its new name,
+            // so it stays in the record and Undo can be pressed again once
+            // whatever was in the way is gone. RevertEach answers newest
+            // first; the record is kept oldest first, as Rename wrote it.
+            var stillRenamed = reverted.Where(r => !r.Restored).Select(r => r.Outcome).Reverse().ToList();
+            var stillDropped = new Dictionary<string, HashSet<int>>(PathIdentity.PathComparer.Instance);
+            foreach (var outcome in stillRenamed)
+                if (dropped.TryGetValue(outcome.Final!, out var words)) stillDropped[outcome.Final!] = words;
+            _lastOutcomes = stillRenamed;
+            _lastDropped = stillDropped;
             var problems = reverted.Where(r => !r.Restored).Select(r => r.Problem).ToList();
             Status = problems.Count == 0
                 ? $"Undid the last rename ({outcomes.Count} file{(outcomes.Count == 1 ? "" : "s")})."
